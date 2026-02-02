@@ -209,8 +209,8 @@ pub fn random_names(mut conflicts: HashSet<String>, output_size: usize) -> Vec<S
 
 // Generate a random name as a pair from left and right string arrays
 fn generate(rng: &mut ThreadRng) -> String {
-    let left_idx = rng.gen_range(0..LEFT_LENGTH);
-    let right_idx = rng.gen_range(0..RIGHT_LENGTH);
+    let left_idx = rng.r#gen_range(0..LEFT_LENGTH);
+    let right_idx = rng.r#gen_range(0..RIGHT_LENGTH);
     format!(
         "{}-{}",
         LEFT_NAMES.get(left_idx).unwrap(),

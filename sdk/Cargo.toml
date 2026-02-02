@@ -8,7 +8,7 @@ types.workspace = true
 soma-keys.workspace = true
 serde.workspace = true
 anyhow.workspace = true
-serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
+serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 thiserror.workspace = true
 rpc.workspace = true
 bcs.workspace = true

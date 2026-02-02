@@ -502,10 +502,20 @@ impl CommitteeTrait<AuthorityName> for Committee {
             (Vec::new(), restricted.collect())
         };
 
-        Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
-            .chain(Self::choose_multiple_weighted(&rest, rest.len(), rng))
-            .cloned()
-            .collect()
+        let mut result: Vec<AuthorityName> = Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
+        .map(|name| name.clone())
+        .collect();
+
+        let rest_sampled = Self::choose_multiple_weighted(&rest, rest.len(), rng)
+        .map(|name| name.clone());
+
+        result.extend(rest_sampled);
+        result
+
+        // Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
+        //     .chain(Self::choose_multiple_weighted(&rest, rest.len(), rng))
+        //     .cloned()
+        //     .collect()
     }
 
     fn weight(&self, author: &AuthorityName) -> VotingPower {

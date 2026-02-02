@@ -102,7 +102,7 @@ pub(crate) fn create_random_dag(
     let mut dag_builder = DagBuilder::new(context);
 
     for r in 1..=num_rounds {
-        let random_num = rng.gen_range(0..100);
+        let random_num = rng.r#gen_range(0..100);
         let include_leader = random_num <= include_leader_percentage;
         dag_builder
             .layer(r)

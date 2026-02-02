@@ -1135,8 +1135,8 @@ impl WritebackCache {
             }
 
             for ObjectKey(object_id, _) in outputs.deleted.iter() {
-                self.object_by_id_cache.invalidate(&object_id);
-                self.cached.object_cache.invalidate(&object_id);
+                self.object_by_id_cache.invalidate(object_id);
+                self.cached.object_cache.invalidate(object_id);
             }
         }
 

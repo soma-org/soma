@@ -1,14 +1,13 @@
 [package]
 name = "cli"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 clap.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-encoder.workspace = true
 colored.workspace = true
 bin-version.workspace = true
 strum_macros.workspace = true
@@ -41,10 +40,10 @@ rpc.workspace = true
 futures.workspace = true
 chrono.workspace = true
 hex.workspace = true
-camino = "1.1.1"
-csv = "1.2.1"
+camino = "1.2.2"
+csv = "1.4.0"
 serde_yaml = "0.8.26"
-inquire = "0.6.0"
+inquire = "0.6.2"
 
 [lints]
 workspace = true

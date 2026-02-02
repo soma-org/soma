@@ -89,7 +89,7 @@ impl StressTestRunner {
     }
 
     pub fn pick_random_sender(&mut self) -> &SomaNodeHandle {
-        &self.accounts[self.rng.gen_range(0..self.accounts.len())]
+        &self.accounts[self.rng.r#gen_range(0..self.accounts.len())]
     }
 
     pub fn system_state(&self) -> SystemState {
@@ -373,7 +373,7 @@ async fn fuzz_dynamic_committee() {
     let actions = [Box::new(add_stake::RequestAddStakeGen)];
 
     for _ in 0..num_operations {
-        let index = runner.rng.gen_range(0..actions.len());
+        let index = runner.rng.r#gen_range(0..actions.len());
         let mut task = actions[index].create(&mut runner);
         let effects = task.run(&mut runner).await.unwrap();
         task.pre_epoch_post_condition(&mut runner, &effects).await;

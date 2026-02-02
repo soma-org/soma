@@ -1,7 +1,7 @@
 use crate::{
     client_commands::SomaClientCommands,
     commands::{
-        EnvCommand, ObjectsCommand, ShardsCommand, SomaEncoderCommand, SomaValidatorCommand,
+        EnvCommand, ObjectsCommand, ShardsCommand, SomaValidatorCommand,
         WalletCommand,
     },
     keytool::KeyToolCommand,
@@ -287,16 +287,6 @@ pub enum SomaCommand {
     // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
-    /// Encoder committee operations
-    #[clap(name = "encoder")]
-    Encoder {
-        #[clap(flatten)]
-        config: SomaEnvConfig,
-        #[clap(subcommand)]
-        cmd: Option<SomaEncoderCommand>,
-        #[clap(long, global = true)]
-        json: bool,
-    },
 
     /// A tool for validators and validator candidates
     #[clap(name = "validator")]
@@ -578,23 +568,6 @@ impl SomaCommand {
             // =================================================================
             // OPERATOR COMMANDS
             // =================================================================
-            SomaCommand::Encoder { config, cmd, json } => {
-                let mut context = get_wallet_context(&config).await?;
-                if let Some(cmd) = cmd {
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
-                    }
-                    let result = cmd.execute(&mut context).await?;
-                    result.print(!json);
-                } else {
-                    let mut app: Command = SomaCommand::command();
-                    app.build();
-                    app.find_subcommand_mut("encoder").unwrap().print_help()?;
-                }
-                Ok(())
-            }
 
             SomaCommand::Validator { config, cmd, json } => {
                 let mut context = get_wallet_context(&config).await?;

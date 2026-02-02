@@ -1,6 +1,6 @@
 [package]
 name = "utils"
-edition = "2021"
+edition = "2024"
 version.workspace = true
 
 [dependencies]
@@ -16,4 +16,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 regex.workspace = true
 chrono.workspace = true
-snap = "1.1.0"
+snap = "1.1.1"

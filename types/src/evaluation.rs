@@ -135,25 +135,25 @@ impl EvaluationOutputV1 {
 
         // Create the evaluation scores with random values between 0 and 1
         let evaluation_scores = EvaluationScores::V1(EvaluationScoresV1::new(
-            U32F32::from_num(rng.gen::<f64>()), // flow_matching
-            U32F32::from_num(rng.gen::<f64>()), // sig_reg
-            U32F32::from_num(rng.gen::<f64>()), // compression
-            U32F32::from_num(rng.gen::<f64>()), // composite
+            U32F32::from_num(rng.r#gen::<f64>()), // flow_matching
+            U32F32::from_num(rng.r#gen::<f64>()), // sig_reg
+            U32F32::from_num(rng.r#gen::<f64>()), // compression
+            U32F32::from_num(rng.r#gen::<f64>()), // composite
         ));
 
         // Create embeddings with random bytes
-        let summary_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
-        let sampled_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
+        let summary_embedding: Embedding = Bytes::from(rng.r#gen::<[u8; 32]>().to_vec());
+        let sampled_embedding: Embedding = Bytes::from(rng.r#gen::<[u8; 32]>().to_vec());
 
         // Create target scores
         let target_scores = TargetScores::V1(TargetScoresV1::new(
-            U32F32::from_num(rng.gen::<f64>()), // distance
-            U32F32::from_num(rng.gen::<f64>()), // evaluation_score
-            U32F32::from_num(rng.gen::<f64>()), // composite
+            U32F32::from_num(rng.r#gen::<f64>()), // distance
+            U32F32::from_num(rng.r#gen::<f64>()), // evaluation_score
+            U32F32::from_num(rng.r#gen::<f64>()), // composite
         ));
 
         // Create target details
-        let target_embedding: Embedding = Bytes::from(rng.gen::<[u8; 32]>().to_vec());
+        let target_embedding: Embedding = Bytes::from(rng.r#gen::<[u8; 32]>().to_vec());
         let target_details =
             TargetDetails::V1(TargetDetailsV1::new(target_scores, target_embedding));
 

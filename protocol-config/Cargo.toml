@@ -6,9 +6,9 @@ version.workspace = true
 [dependencies]
 serde.workspace = true
 tracing.workspace = true
-serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
+serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 protocol-config-macros.workspace = true
-schemars = { version = "0.8.21", features = ["either"] }
+schemars = { version = "0.8.22", features = ["either"] }
 clap.workspace = true
 serde-env = "0.2.0"
 fastcrypto = { workspace = true }

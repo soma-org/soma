@@ -111,7 +111,7 @@ mod tests {
     fn test_bytes() {
         for _ in 0..20 {
             let mut rng = thread_rng();
-            let len = rng.gen_range(50..100);
+            let len = rng.r#gen_range(50..100);
             let raw: Vec<_> = std::iter::from_fn(|| Some(rng.r#gen())).take(len).collect();
 
             for config in [

@@ -799,7 +799,7 @@ impl<'a> LayerBuilder<'a> {
                     for ancestor in &ancestors {
                         let mut rejects = vec![];
                         for i in 0..self.num_transactions {
-                            if reject_rng.gen_range(1..=100) <= self.rejected_transactions_pct {
+                            if reject_rng.r#gen_range(1..=100) <= self.rejected_transactions_pct {
                                 rejects.push(i as TransactionIndex);
                             }
                         }

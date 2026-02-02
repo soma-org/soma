@@ -18,8 +18,8 @@ tonic = { version = "0.13", default-features = false, features = [
     "tls-webpki-roots",
     "zstd",
 ] }
-prost = "0.13.4"
-prost-types = "0.13.3"
+prost = "0.13.5"
+prost-types = "0.13.5"
 types.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
@@ -38,11 +38,11 @@ serde_json.workspace = true
 bs58.workspace = true
 hex.workspace = true
 tonic-web = "0.13.1"
-serde_derive = { version = "1.0.210" }
-serde_with = { version = "3.9", default-features = false, features = ["alloc"] }
+serde_derive = { version = "1.0.228" }
+serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 rand_core = "0.6.4"
-base64ct = { version = "1.6.0", features = ["alloc"] }
-roaring = { version = "0.10.9", default-features = false }
+base64ct = { version = "1.8.3", features = ["alloc"] }
+roaring = { version = "0.10.12", default-features = false }
 blake2 = "0.10.6"
 fastcrypto.workspace = true
 thiserror.workspace = true
@@ -51,13 +51,13 @@ thiserror.workspace = true
 tonic-build = "0.13"
 walkdir = "2.5.0"
 protox = "0.7"
-prost = "0.13.4"
-prost-types = "0.13.3"
+prost = "0.13.5"
+prost-types = "0.13.5"
 heck = { version = ">=0.4, <=0.5" }
-quote = "1.0.40"
-proc-macro2 = "1.0.95"
-syn = "2.0.104"
-prettyplease = "0.2.35"
+quote = "1.0.44"
+proc-macro2 = "1.0.106"
+syn = "2.0.114"
+prettyplease = "0.2.37"
 itertools.workspace = true
 
 

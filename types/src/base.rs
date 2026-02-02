@@ -313,7 +313,7 @@ impl SomaAddress {
     /// A randomly generated SomaAddress
     pub fn random() -> Self {
         let mut rng = OsRng;
-        let buf: [u8; Self::LENGTH] = rng.gen();
+        let buf: [u8; Self::LENGTH] = rng.r#gen();
         Self(buf)
     }
 
@@ -325,7 +325,7 @@ impl SomaAddress {
     /// # Returns
     /// A randomly generated SomaAddress
     pub fn generate<R: rand::RngCore + rand::CryptoRng>(mut rng: R) -> Self {
-        let buf: [u8; SOMA_ADDRESS_LENGTH] = rng.gen();
+        let buf: [u8; SOMA_ADDRESS_LENGTH] = rng.r#gen();
         Self(buf)
     }
 

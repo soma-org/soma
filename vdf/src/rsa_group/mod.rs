@@ -43,7 +43,7 @@ impl<'a> RSAGroupElement<'a> {
     /// using the given seed.
     pub fn from_seed(seed: [u8; 32], modulus: &'a RSAModulus) -> Self {
         let mut rng = ChaCha20Rng::from_seed(seed);
-        Self::new(rng.gen_biguint_below(&modulus.half), modulus)
+        Self::new(rng.r#gen_biguint_below(&modulus.half), modulus)
     }
 }
 

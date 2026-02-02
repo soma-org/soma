@@ -1,6 +1,6 @@
 [package]
 name = "test-cluster"
-edition = "2021"
+edition = "2024"
 version.workspace = true
 
 [dependencies]
@@ -25,4 +25,4 @@ object_store.workspace = true
 url.workspace = true
 soma-http.workspace = true
 hex.workspace = true
-tempfile = "3.12.0"
+tempfile = "3.24.0"

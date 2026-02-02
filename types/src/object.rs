@@ -722,7 +722,7 @@ impl ObjectID {
     /// Returns a random ObjectID
     pub fn random() -> Self {
         let mut rng = OsRng;
-        let buf: [u8; Self::LENGTH] = rng.gen();
+        let buf: [u8; Self::LENGTH] = rng.r#gen();
         ObjectID::new(buf)
     }
 
@@ -731,7 +731,7 @@ impl ObjectID {
     where
         R: AllowedRng,
     {
-        let buf: [u8; Self::LENGTH] = rng.gen();
+        let buf: [u8; Self::LENGTH] = rng.r#gen();
         ObjectID::new(buf)
     }
 
