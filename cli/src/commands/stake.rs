@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use sdk::wallet_context::WalletContext;
 use types::base::SomaAddress;
 use types::object::ObjectID;
@@ -11,17 +11,12 @@ use crate::response::{ClientCommandResponse, TransactionResponse};
 pub async fn execute_stake(
     context: &mut WalletContext,
     validator: Option<SomaAddress>,
-    encoder: Option<SomaAddress>,
     amount: Option<u64>,
     coin: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
-    // Validate that exactly one target is specified
-    if validator.is_none() && encoder.is_none() {
-        bail!("Must specify either --validator or --encoder");
-    }
-    if validator.is_some() && encoder.is_some() {
-        bail!("Cannot specify both --validator and --encoder");
+    if validator.is_none() {
+        bail!("Must specify --validator");
     }
 
     let sender = context.active_address()?;
@@ -46,12 +41,6 @@ pub async fn execute_stake(
     let kind = if let Some(validator_address) = validator {
         TransactionKind::AddStake {
             address: validator_address,
-            coin_ref,
-            amount,
-        }
-    } else if let Some(encoder_address) = encoder {
-        TransactionKind::AddStakeToEncoder {
-            encoder_address,
             coin_ref,
             amount,
         }

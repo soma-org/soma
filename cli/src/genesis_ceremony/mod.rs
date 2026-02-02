@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use camino::Utf8PathBuf;
 use clap::Parser;
 use fastcrypto::encoding::{Encoding, Hex};
@@ -51,28 +51,8 @@ pub enum CeremonyCommand {
         file: PathBuf,
     },
 
-    /// Add a networking-only validator from their info file
-    AddNetworkingValidator {
-        /// Path to the validator.info file  
-        #[clap(name = "validator-info-path")]
-        file: PathBuf,
-    },
-
-    /// Add an encoder from their info file
-    AddEncoder {
-        /// Path to the encoder.info file
-        #[clap(name = "encoder-info-path")]
-        file: PathBuf,
-        /// URL to the probe data (will be downloaded to compute checksum)
-        #[clap(long)]
-        probe_url: String,
-    },
-
     /// List all validators in the ceremony
     ListValidators,
-
-    /// List all encoders in the ceremony
-    ListEncoders,
 
     /// Build the unsigned genesis checkpoint
     ///
@@ -133,35 +113,12 @@ pub fn run(cmd: Ceremony) -> Result<()> {
             println!("Added consensus validator from {}", file.display());
         }
 
-        CeremonyCommand::AddNetworkingValidator { file } => {
-            let mut builder = GenesisBuilder::load(&dir)?;
-
-            let validator_info: GenesisValidatorInfo = load_validator_info(&file)?;
-
-            builder = builder.add_networking_validator(validator_info);
-            builder.save(&dir)?;
-
-            println!("Added networking validator from {}", file.display());
-        }
-
-        CeremonyCommand::AddEncoder { file, probe_url } => {
-            let mut builder = GenesisBuilder::load(&dir)?;
-
-            let encoder_info = load_encoder_info(&file, &probe_url)?;
-
-            builder = builder.add_encoder(encoder_info);
-            builder.save(&dir)?;
-
-            println!("Added encoder from {}", file.display());
-        }
-
         CeremonyCommand::ListValidators => {
             let builder = GenesisBuilder::load(&dir)?;
 
             let validators = builder.validators();
-            let networking_validators = builder.networking_validators();
 
-            println!("Consensus Validators ({}):", validators.len());
+            println!("Validators ({}):", validators.len());
             println!("{:-<80}", "");
 
             let mut writer = csv::Writer::from_writer(std::io::stdout());
@@ -171,42 +128,6 @@ pub fn run(cmd: Ceremony) -> Result<()> {
                 writer.write_record([
                     &v.info.account_address.to_string(),
                     &Hex::encode(v.info.protocol_key.as_bytes()),
-                ])?;
-            }
-            writer.flush()?;
-
-            if !networking_validators.is_empty() {
-                println!("\nNetworking Validators ({}):", networking_validators.len());
-                println!("{:-<80}", "");
-
-                let mut writer = csv::Writer::from_writer(std::io::stdout());
-                writer.write_record(["account-address", "protocol-key"])?;
-
-                for v in networking_validators {
-                    writer.write_record([
-                        &v.info.account_address.to_string(),
-                        &Hex::encode(v.info.protocol_key.as_bytes()),
-                    ])?;
-                }
-                writer.flush()?;
-            }
-        }
-
-        CeremonyCommand::ListEncoders => {
-            let builder = GenesisBuilder::load(&dir)?;
-
-            let encoders = builder.encoders();
-
-            println!("Encoders ({}):", encoders.len());
-            println!("{:-<80}", "");
-
-            let mut writer = csv::Writer::from_writer(std::io::stdout());
-            writer.write_record(["account-address", "encoder-pubkey"])?;
-
-            for e in encoders {
-                writer.write_record([
-                    &e.info.account_address.to_string(),
-                    &Hex::encode(e.info.encoder_pubkey.to_bytes()),
                 ])?;
             }
             writer.flush()?;
@@ -301,63 +222,4 @@ fn load_validator_info(path: &PathBuf) -> Result<GenesisValidatorInfo> {
     let bytes = std::fs::read(path)?;
     serde_yaml::from_slice(&bytes)
         .map_err(|e| anyhow::anyhow!("Failed to parse validator info from {:?}: {}", path, e))
-}
-
-fn load_encoder_info(
-    path: &PathBuf,
-    probe_url: &str,
-) -> Result<types::encoder_info::GenesisEncoderInfo> {
-    use types::encoder_info::{EncoderInfo, GenesisEncoderInfo};
-
-    let bytes = std::fs::read(path)?;
-    let info: EncoderInfo = serde_yaml::from_slice(&bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to parse encoder info from {:?}: {}", path, e))?;
-
-    // Download probe data and create metadata
-    let probe = download_and_create_probe(probe_url)?;
-
-    Ok(GenesisEncoderInfo { info, probe })
-}
-
-fn download_and_create_probe(url_str: &str) -> Result<types::metadata::DownloadMetadata> {
-    use fastcrypto::hash::HashFunction as _;
-    use types::{
-        checksum::Checksum,
-        crypto::DefaultHash,
-        metadata::{
-            DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata,
-            MetadataV1,
-        },
-    };
-    use url::Url;
-
-    let parsed_url = Url::parse(url_str).map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
-
-    println!("Downloading probe data from {}...", url_str);
-
-    let response = reqwest::blocking::get(url_str)
-        .map_err(|e| anyhow::anyhow!("Failed to download probe data: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(anyhow::anyhow!("HTTP error: {}", response.status()));
-    }
-
-    let data = response
-        .bytes()
-        .map_err(|e| anyhow::anyhow!("Failed to read response body: {}", e))?;
-
-    let size = data.len();
-    println!("Downloaded {} bytes", size);
-
-    // Compute checksum
-    let mut hasher = DefaultHash::default();
-    hasher.update(&data);
-    let hash: [u8; 32] = hasher.finalize().into();
-    let checksum = Checksum::new_from_hash(hash);
-
-    let metadata = Metadata::V1(MetadataV1::new(checksum, size));
-
-    Ok(DownloadMetadata::Default(DefaultDownloadMetadata::V1(
-        DefaultDownloadMetadataV1::new(parsed_url, metadata),
-    )))
 }

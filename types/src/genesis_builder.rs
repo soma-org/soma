@@ -97,12 +97,6 @@ impl GenesisBuilder {
         self
     }
 
-    /// Add a networking-only validator from GenesisValidatorInfo
-    pub fn add_networking_validator(mut self, validator: GenesisValidatorInfo) -> Self {
-        self.built_genesis = None;
-        self
-    }
-
     // Convenience methods for local testing with config types
 
     /// Add validators from ValidatorGenesisConfig (local testing workflow)

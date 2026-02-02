@@ -55,8 +55,6 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::SystemState => ObjectType::SystemState,
             types::object::ObjectType::Coin => ObjectType::Coin,
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
-            types::object::ObjectType::Shard => ObjectType::Shard,
-            types::object::ObjectType::Target => ObjectType::Target,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -82,8 +80,6 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::SystemState => types::object::ObjectType::SystemState,
             ObjectType::Coin => types::object::ObjectType::Coin,
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
-            ObjectType::Shard => types::object::ObjectType::Shard,
-            ObjectType::Target => types::object::ObjectType::Target,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -345,7 +341,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 net_address: args.net_address,
                 p2p_address: args.p2p_address,
                 primary_address: args.primary_address,
-                encoder_validator_address: args.encoder_validator_address,
             }),
 
             TK::RemoveValidator(args) => TransactionKind::RemoveValidator(RemoveValidatorArgs {
@@ -372,45 +367,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             }
 
             TK::SetCommissionRate { new_rate } => TransactionKind::SetCommissionRate { new_rate },
-
-            // Encoder operations
-            TK::AddEncoder(args) => TransactionKind::AddEncoder(AddEncoderArgs {
-                encoder_pubkey_bytes: args.encoder_pubkey_bytes,
-                network_pubkey_bytes: args.network_pubkey_bytes,
-                internal_network_address: args.internal_network_address,
-                external_network_address: args.external_network_address,
-                object_server_address: args.object_server_address,
-                probe: args.probe,
-            }),
-
-            TK::RemoveEncoder(args) => TransactionKind::RemoveEncoder(RemoveEncoderArgs {
-                encoder_pubkey_bytes: args.encoder_pubkey_bytes,
-            }),
-
-            TK::ReportEncoder { reportee } => TransactionKind::ReportEncoder {
-                reportee: reportee.into(),
-            },
-
-            TK::UndoReportEncoder { reportee } => TransactionKind::UndoReportEncoder {
-                reportee: reportee.into(),
-            },
-
-            TK::UpdateEncoderMetadata(args) => {
-                TransactionKind::UpdateEncoderMetadata(UpdateEncoderMetadataArgs {
-                    next_epoch_external_network_address: args.next_epoch_external_network_address,
-                    next_epoch_internal_network_address: args.next_epoch_internal_network_address,
-                    next_epoch_network_pubkey: args.next_epoch_network_pubkey,
-                    next_epoch_object_server_address: args.next_epoch_object_server_address,
-                    next_epoch_probe: args.next_epoch_probe,
-                })
-            }
-
-            TK::SetEncoderCommissionRate { new_rate } => {
-                TransactionKind::SetEncoderCommissionRate { new_rate }
-            }
-            TK::SetEncoderBytePrice { new_price } => {
-                TransactionKind::SetEncoderBytePrice { new_price }
-            }
 
             // Transfer operations
             TK::TransferCoin {
@@ -449,56 +405,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 amount,
             },
 
-            TK::AddStakeToEncoder {
-                encoder_address,
-                coin_ref,
-                amount,
-            } => TransactionKind::AddStakeToEncoder {
-                encoder_address: encoder_address.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
-
             TK::WithdrawStake { staked_soma } => TransactionKind::WithdrawStake {
                 staked_soma: staked_soma.into(),
-            },
-
-            // Shard operations
-            TK::EmbedData {
-                download_metadata,
-                coin_ref,
-                target_ref,
-            } => TransactionKind::EmbedData {
-                download_metadata: download_metadata.into(),
-                coin_ref: coin_ref.into(),
-                target_ref: target_ref.map(Into::into),
-            },
-
-            TK::ClaimEscrow { shard_ref } => TransactionKind::ClaimEscrow {
-                shard_ref: shard_ref.into(),
-            },
-
-            TK::ReportWinner {
-                shard_ref,
-                target_ref,
-                report,
-                signature,
-                signers,
-                shard_auth_token,
-            } => TransactionKind::ReportWinner {
-                shard_ref: shard_ref.into(),
-                target_ref: target_ref.map(Into::into),
-                report,
-                signature,
-                signers: signers
-                    .into_iter()
-                    .map(|s| format!("0x{}", hex::encode(s.to_bytes())))
-                    .collect(),
-                shard_auth_token,
-            },
-
-            TK::ClaimReward { target_ref } => TransactionKind::ClaimReward {
-                target_ref: target_ref.into(),
             },
         })
     }
@@ -551,7 +459,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     net_address: args.net_address,
                     p2p_address: args.p2p_address,
                     primary_address: args.primary_address,
-                    encoder_validator_address: args.encoder_validator_address,
                 })
             }
 
@@ -581,49 +488,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
 
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
-
-            // Encoder operations
-            TransactionKind::AddEncoder(args) => {
-                TK::AddEncoder(types::transaction::AddEncoderArgs {
-                    encoder_pubkey_bytes: args.encoder_pubkey_bytes,
-                    network_pubkey_bytes: args.network_pubkey_bytes,
-                    internal_network_address: args.internal_network_address,
-                    external_network_address: args.external_network_address,
-                    object_server_address: args.object_server_address,
-                    probe: args.probe,
-                })
-            }
-
-            TransactionKind::RemoveEncoder(args) => {
-                TK::RemoveEncoder(types::transaction::RemoveEncoderArgs {
-                    encoder_pubkey_bytes: args.encoder_pubkey_bytes,
-                })
-            }
-
-            TransactionKind::ReportEncoder { reportee } => TK::ReportEncoder {
-                reportee: reportee.into(),
-            },
-
-            TransactionKind::UndoReportEncoder { reportee } => TK::UndoReportEncoder {
-                reportee: reportee.into(),
-            },
-
-            TransactionKind::UpdateEncoderMetadata(args) => {
-                TK::UpdateEncoderMetadata(types::transaction::UpdateEncoderMetadataArgs {
-                    next_epoch_external_network_address: args.next_epoch_external_network_address,
-                    next_epoch_internal_network_address: args.next_epoch_internal_network_address,
-                    next_epoch_network_pubkey: args.next_epoch_network_pubkey,
-                    next_epoch_object_server_address: args.next_epoch_object_server_address,
-                    next_epoch_probe: args.next_epoch_probe,
-                })
-            }
-
-            TransactionKind::SetEncoderCommissionRate { new_rate } => {
-                TK::SetEncoderCommissionRate { new_rate }
-            }
-            TransactionKind::SetEncoderBytePrice { new_price } => {
-                TK::SetEncoderBytePrice { new_price }
-            }
 
             // Transfer operations
             TransactionKind::TransferCoin {
@@ -662,68 +526,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 amount,
             },
 
-            TransactionKind::AddStakeToEncoder {
-                encoder_address,
-                coin_ref,
-                amount,
-            } => TK::AddStakeToEncoder {
-                encoder_address: encoder_address.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
-
             TransactionKind::WithdrawStake { staked_soma } => TK::WithdrawStake {
                 staked_soma: staked_soma.into(),
-            },
-
-            // Shard operations
-            TransactionKind::EmbedData {
-                download_metadata,
-                coin_ref,
-                target_ref,
-            } => TK::EmbedData {
-                download_metadata: download_metadata.try_into()?,
-                coin_ref: coin_ref.into(),
-                target_ref: target_ref.map(Into::into),
-            },
-
-            TransactionKind::ClaimEscrow { shard_ref } => TK::ClaimEscrow {
-                shard_ref: shard_ref.into(),
-            },
-
-            TransactionKind::ReportWinner {
-                shard_ref,
-                target_ref,
-                report,
-                signature,
-                signers,
-                shard_auth_token,
-            } => TK::ReportWinner {
-                shard_ref: shard_ref.into(),
-                target_ref: target_ref.map(Into::into),
-                report,
-                signature,
-                signers: signers
-                    .into_iter()
-                    .map(|s| {
-                        let hex_str = s.strip_prefix("0x").unwrap_or(&s);
-                        let bytes = hex::decode(hex_str).map_err(|e| {
-                            SdkTypeConversionError(format!(
-                                "Invalid hex encoding for BLS public key: {}",
-                                e
-                            ))
-                        })?;
-                        let key = BLS12381PublicKey::from_bytes(&bytes).map_err(|e| {
-                            SdkTypeConversionError(format!("Invalid BLS public key: {}", e))
-                        })?;
-                        Ok(types::shard_crypto::keys::EncoderPublicKey::new(key))
-                    })
-                    .collect::<Result<Vec<_>, SdkTypeConversionError>>()?,
-                shard_auth_token,
-            },
-
-            TransactionKind::ClaimReward { target_ref } => TK::ClaimReward {
-                target_ref: target_ref.into(),
             },
         })
     }
@@ -1513,63 +1317,6 @@ impl From<types::transaction::ChangeEpoch> for ChangeEpoch {
     }
 }
 
-// Domain to SDK
-impl TryFrom<types::shard::Shard> for Shard {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: types::shard::Shard) -> Result<Self, Self::Error> {
-        let encoders = value
-            .encoders()
-            .into_iter()
-            .map(|encoder| {
-                // EncoderPublicKey wraps BLS12381PublicKey, get the raw bytes
-                Ok(encoder.to_bytes().to_vec())
-            })
-            .collect::<Result<Vec<_>, SdkTypeConversionError>>()?;
-
-        // Get the raw bytes of the seed digest
-        let seed: &[u8] = value.seed.as_ref();
-
-        Ok(Shard::new(
-            value.quorum_threshold(),
-            encoders,
-            seed.to_vec(),
-            value.epoch(),
-        ))
-    }
-}
-
-// SDK to Domain
-impl TryFrom<Shard> for types::shard::Shard {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: Shard) -> Result<Self, Self::Error> {
-        // Convert encoder bytes back to EncoderPublicKey
-        let encoders = value
-            .encoders
-            .into_iter()
-            .map(|bytes| {
-                let pubkey = BLS12381PublicKey::from_bytes(&bytes).map_err(|e| {
-                    SdkTypeConversionError(format!("Invalid BLS public key: {}", e))
-                })?;
-                Ok(types::shard_crypto::keys::EncoderPublicKey::new(pubkey))
-            })
-            .collect::<Result<Vec<_>, SdkTypeConversionError>>()?;
-
-        // Convert seed bytes back to Digest<ShardEntropy>
-        let seed =
-            types::shard_crypto::digest::Digest::<types::shard::ShardEntropy>::try_from(value.seed)
-                .map_err(|e| SdkTypeConversionError(format!("Invalid seed digest: {}", e)))?;
-
-        Ok(types::shard::Shard::new(
-            value.quorum_threshold,
-            encoders,
-            seed,
-            value.epoch,
-        ))
-    }
-}
-
 impl From<types::metadata::Metadata> for Metadata {
     fn from(value: types::metadata::Metadata) -> Self {
         match value {
@@ -1727,8 +1474,7 @@ impl TryFrom<types::checkpoints::EndOfEpochData> for crate::types::EndOfEpochDat
     fn try_from(value: types::checkpoints::EndOfEpochData) -> Result<Self, Self::Error> {
         Ok(Self {
             next_epoch_validator_committee: value.next_epoch_validator_committee.into(),
-            next_epoch_encoder_committee: value.next_epoch_encoder_committee.into(), // Uses From
-            next_epoch_networking_committee: value.next_epoch_networking_committee.into(), // Uses From
+
             next_epoch_protocol_version: value.next_epoch_protocol_version.as_u64(),
             epoch_commitments: value
                 .epoch_commitments
@@ -1748,248 +1494,16 @@ impl TryFrom<crate::types::EndOfEpochData> for types::checkpoints::EndOfEpochDat
             .try_into()
             .map_err(|e: ConversionError| SdkTypeConversionError(e.to_string()))?;
 
-        let next_epoch_encoder_committee: types::encoder_committee::EncoderCommittee =
-            value.next_epoch_encoder_committee.try_into()?; // Uses TryFrom
-
-        let next_epoch_networking_committee: types::committee::NetworkingCommittee =
-            value.next_epoch_networking_committee.try_into()?; // Uses TryFrom
-
         Ok(Self {
             next_epoch_protocol_version: value.next_epoch_protocol_version.into(),
             next_epoch_validator_committee,
-            next_epoch_encoder_committee,
-            next_epoch_networking_committee,
+
             epoch_commitments: value
                 .epoch_commitments
                 .into_iter()
                 .map(Into::into)
                 .collect(),
         })
-    }
-}
-
-impl From<types::encoder_committee::EncoderCommittee> for crate::types::EncoderCommittee {
-    fn from(value: types::encoder_committee::EncoderCommittee) -> Self {
-        let members: Vec<crate::types::EncoderCommitteeMember> = value
-            .members()
-            .into_iter()
-            .map(|(encoder_key, voting_power)| {
-                let encoder = value.encoder_by_key(&encoder_key);
-                let network_metadata = value.network_metadata.get(&encoder_key);
-
-                // TODO: fill this in with actual probe
-                let probe = encoder.map(|e| e.probe.clone().into()).unwrap_or_else(|| {
-                    crate::types::DownloadMetadata::Default(
-                        crate::types::DefaultDownloadMetadata::V1(
-                            crate::types::DefaultDownloadMetadataV1 {
-                                url: url::Url::parse("http://placeholder").unwrap(),
-                                metadata: crate::types::Metadata::V1(crate::types::MetadataV1 {
-                                    checksum: vec![0u8; 32],
-                                    size: 0,
-                                }),
-                            },
-                        ),
-                    )
-                });
-
-                let (
-                    internal_network_address,
-                    external_network_address,
-                    object_server_address,
-                    network_key,
-                    hostname,
-                ) = if let Some(net_meta) = network_metadata {
-                    (
-                        net_meta.internal_network_address.to_string(),
-                        net_meta.external_network_address.to_string(),
-                        net_meta.object_server_address.to_string(),
-                        net_meta.network_key.to_bytes().to_vec(),
-                        net_meta.hostname.clone(),
-                    )
-                } else {
-                    (
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        Vec::new(),
-                        String::new(),
-                    )
-                };
-
-                crate::types::EncoderCommitteeMember {
-                    voting_power,
-                    encoder_key: encoder_key.to_bytes().to_vec(),
-                    probe,
-                    internal_network_address,
-                    external_network_address,
-                    object_server_address,
-                    network_key,
-                    hostname,
-                }
-            })
-            .collect();
-
-        crate::types::EncoderCommittee {
-            epoch: value.epoch,
-            members,
-            shard_size: value.shard_size(),
-            quorum_threshold: value.quorum_threshold(),
-        }
-    }
-}
-
-// SDK -> Domain
-impl TryFrom<crate::types::EncoderCommittee> for types::encoder_committee::EncoderCommittee {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: crate::types::EncoderCommittee) -> Result<Self, Self::Error> {
-        use std::collections::BTreeMap;
-
-        let mut encoders = Vec::new();
-        let mut network_metadata = BTreeMap::new();
-
-        for member in value.members {
-            let encoder_key =
-                types::shard_crypto::keys::EncoderPublicKey::from_bytes(&member.encoder_key)
-                    .map_err(|e| SdkTypeConversionError(format!("Invalid encoder key: {}", e)))?;
-
-            let probe: types::metadata::DownloadMetadata = member.probe.try_into()?;
-
-            let encoder = types::encoder_committee::Encoder {
-                voting_power: member.voting_power,
-                encoder_key: encoder_key.clone(),
-                probe,
-            };
-            encoders.push(encoder);
-
-            let internal_network_address =
-                member.internal_network_address.parse().map_err(|e| {
-                    SdkTypeConversionError(format!("Invalid internal_network_address: {:?}", e))
-                })?;
-            let external_network_address =
-                member.external_network_address.parse().map_err(|e| {
-                    SdkTypeConversionError(format!("Invalid external_network_address: {:?}", e))
-                })?;
-            let object_server_address = member.object_server_address.parse().map_err(|e| {
-                SdkTypeConversionError(format!("Invalid object_server_address: {:?}", e))
-            })?;
-
-            let ed25519_key =
-                fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&member.network_key)
-                    .map_err(|e| SdkTypeConversionError(format!("Invalid network key: {}", e)))?;
-            let network_key = types::crypto::NetworkPublicKey::new(ed25519_key);
-
-            let net_meta = types::encoder_committee::EncoderNetworkMetadata {
-                internal_network_address,
-                external_network_address,
-                object_server_address,
-                network_key,
-                hostname: member.hostname,
-            };
-            network_metadata.insert(encoder_key, net_meta);
-        }
-
-        Ok(types::encoder_committee::EncoderCommittee::new(
-            value.epoch,
-            encoders,
-            value.shard_size,
-            value.quorum_threshold,
-            network_metadata,
-        ))
-    }
-}
-
-// ============================================================================
-// NetworkingCommittee conversions (SDK <-> Domain)
-// ============================================================================
-
-// Domain -> SDK
-impl From<types::committee::NetworkingCommittee> for crate::types::NetworkingCommittee {
-    fn from(value: types::committee::NetworkingCommittee) -> Self {
-        let members: Vec<crate::types::NetworkingCommitteeMember> = value
-            .members
-            .into_iter()
-            .map(
-                |(authority_name, network_metadata)| crate::types::NetworkingCommitteeMember {
-                    authority_key: authority_name.as_ref().to_vec(),
-                    network_metadata: crate::types::ValidatorNetworkMetadata {
-                        consensus_address: network_metadata.consensus_address.to_string(),
-                        hostname: network_metadata.hostname,
-                        protocol_key: network_metadata.protocol_key.to_bytes().to_vec(),
-                        network_key: network_metadata.network_key.to_bytes().to_vec(),
-                    },
-                },
-            )
-            .collect();
-
-        crate::types::NetworkingCommittee {
-            epoch: value.epoch,
-            members,
-        }
-    }
-}
-
-// SDK -> Domain
-impl TryFrom<crate::types::NetworkingCommittee> for types::committee::NetworkingCommittee {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: crate::types::NetworkingCommittee) -> Result<Self, Self::Error> {
-        use std::collections::BTreeMap;
-
-        let members: BTreeMap<types::base::AuthorityName, types::committee::NetworkMetadata> =
-            value
-                .members
-                .into_iter()
-                .map(|member| {
-                    let authority_key =
-                        types::crypto::AuthorityPublicKey::from_bytes(&member.authority_key)
-                            .map_err(|e| {
-                                SdkTypeConversionError(format!("Invalid authority key: {}", e))
-                            })?;
-                    let authority_name = types::base::AuthorityName::from(&authority_key);
-
-                    let consensus_address: Multiaddr = member
-                        .network_metadata
-                        .consensus_address
-                        .parse()
-                        .map_err(|e| {
-                            SdkTypeConversionError(format!("Invalid consensus_address: {:?}", e))
-                        })?;
-
-                    let protocol_ed25519_key = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(
-                        &member.network_metadata.protocol_key,
-                    )
-                    .map_err(|e| SdkTypeConversionError(format!("Invalid network key: {}", e)))?;
-                    let protocol_key = types::crypto::ProtocolPublicKey::new(protocol_ed25519_key);
-
-                    let ed25519_key = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(
-                        &member.network_metadata.network_key,
-                    )
-                    .map_err(|e| SdkTypeConversionError(format!("Invalid network key: {}", e)))?;
-                    let network_key = types::crypto::NetworkPublicKey::new(ed25519_key);
-
-                    // TODO: fill this in with actual addresses (network, primary, encoder_validator_address)
-                    // Note: NetworkMetadata has more fields than ValidatorNetworkMetadata in the SDK
-                    // Using consensus_address as placeholder for missing fields
-                    let network_metadata = types::committee::NetworkMetadata {
-                        consensus_address: consensus_address.clone(),
-                        network_address: consensus_address.clone(),
-                        primary_address: consensus_address.clone(),
-                        encoder_validator_address: consensus_address,
-                        protocol_key,
-                        network_key,
-                        authority_key,
-                        hostname: member.network_metadata.hostname,
-                    };
-
-                    Ok((authority_name, network_metadata))
-                })
-                .collect::<Result<_, SdkTypeConversionError>>()?;
-
-        Ok(types::committee::NetworkingCommittee::new(
-            value.epoch,
-            members,
-        ))
     }
 }
 

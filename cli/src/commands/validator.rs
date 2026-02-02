@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{self, Debug, Display, Formatter, Write},
@@ -25,13 +25,13 @@ use types::{
     crypto::{AuthorityPublicKey, NetworkPublicKey, Signable},
     multiaddr::Multiaddr,
     object::{ObjectID, ObjectRef, Owner},
-    system_state::{validator::Validator, SystemState},
+    system_state::{SystemState, validator::Validator},
     transaction::{
         AddValidatorArgs, RemoveValidatorArgs, TransactionKind, UpdateValidatorMetadataArgs,
     },
 };
 use types::{
-    config::{node_config::NodeConfig, PersistedConfig},
+    config::{PersistedConfig, node_config::NodeConfig},
     intent::{Intent, IntentMessage, IntentScope},
     validator_info::GenesisValidatorInfo,
 };
@@ -50,8 +50,8 @@ use soma_keys::{
     },
 };
 use soma_keys::{keypair_file::read_key, keystore::AccountKeystore};
-use types::crypto::{get_authority_key_pair, AuthorityPublicKeyBytes};
 use types::crypto::{AuthorityKeyPair, NetworkKeyPair, SignatureScheme, SomaKeyPair};
+use types::crypto::{AuthorityPublicKeyBytes, get_authority_key_pair};
 use types::transaction::{Transaction, TransactionData};
 
 use crate::response::{
@@ -214,11 +214,7 @@ impl SomaValidatorCommand {
 
             SomaValidatorCommand::LeaveCommittee { tx_args } => {
                 // Verify sender is an active validator before building tx
-                check_status(
-                    context,
-                    HashSet::from([ValidatorStatus::Consensus, ValidatorStatus::Networking]),
-                )
-                .await?;
+                check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
 
                 let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs {
                     pubkey_bytes: vec![], // The signer is inferred from tx sender
@@ -239,11 +235,7 @@ impl SomaValidatorCommand {
                 // Verify sender is active or pending
                 check_status(
                     context,
-                    HashSet::from([
-                        ValidatorStatus::Consensus,
-                        ValidatorStatus::Networking,
-                        ValidatorStatus::Pending,
-                    ]),
+                    HashSet::from([ValidatorStatus::Active, ValidatorStatus::Pending]),
                 )
                 .await?;
 
@@ -258,11 +250,7 @@ impl SomaValidatorCommand {
                 // Verify sender is active or pending
                 check_status(
                     context,
-                    HashSet::from([
-                        ValidatorStatus::Consensus,
-                        ValidatorStatus::Networking,
-                        ValidatorStatus::Pending,
-                    ]),
+                    HashSet::from([ValidatorStatus::Active, ValidatorStatus::Pending]),
                 )
                 .await?;
 
@@ -283,11 +271,7 @@ impl SomaValidatorCommand {
                 tx_args,
             } => {
                 // Only active validators can report
-                check_status(
-                    context,
-                    HashSet::from([ValidatorStatus::Consensus, ValidatorStatus::Networking]),
-                )
-                .await?;
+                check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
 
                 // Can't report yourself
                 if sender == reportee_address {
@@ -481,10 +465,6 @@ fn make_validator_info(
             network_address: Multiaddr::try_from(format!("/dns/{}/tcp/8080/http", host_name))?,
             p2p_address: Multiaddr::try_from(format!("/dns/{}/tcp/8084/http", host_name))?,
             primary_address: Multiaddr::try_from(format!("/dns/{}/tcp/8081/http", host_name))?,
-            encoder_validator_address: Multiaddr::try_from(format!(
-                "/dns/{}/tcp/8082/http",
-                host_name
-            ))?,
         },
     };
 
@@ -514,7 +494,6 @@ fn build_join_committee_tx(file: &PathBuf) -> Result<TransactionKind> {
         net_address: bcs::to_bytes(&info.network_address.to_string())?,
         p2p_address: bcs::to_bytes(&info.p2p_address.to_string())?,
         primary_address: bcs::to_bytes(&info.primary_address.to_string())?,
-        encoder_validator_address: bcs::to_bytes(&info.encoder_validator_address.to_string())?,
     }))
 }
 
@@ -644,7 +623,6 @@ fn validator_to_summary(validator: &Validator, status: ValidatorStatus) -> Valid
         network_address: metadata.net_address.to_string(),
         p2p_address: metadata.p2p_address.to_string(),
         primary_address: metadata.primary_address.to_string(),
-        encoder_validator_address: metadata.encoder_validator_address.to_string(),
         protocol_pubkey: metadata.protocol_pubkey.to_string(),
         network_pubkey: metadata.network_pubkey.clone().into_inner().to_string(),
         worker_pubkey: metadata.worker_pubkey.clone().into_inner().to_string(),
@@ -657,21 +635,11 @@ fn find_validator_in_system_state(
     address: SomaAddress,
 ) -> Option<(ValidatorStatus, ValidatorSummary)> {
     // Check consensus validators
-    for validator in &system_state.validators.consensus_validators {
+    for validator in &system_state.validators.validators {
         if validator.metadata.soma_address == address {
             return Some((
-                ValidatorStatus::Consensus,
-                validator_to_summary(validator, ValidatorStatus::Consensus),
-            ));
-        }
-    }
-
-    // Check networking validators
-    for validator in &system_state.validators.networking_validators {
-        if validator.metadata.soma_address == address {
-            return Some((
-                ValidatorStatus::Networking,
-                validator_to_summary(validator, ValidatorStatus::Networking),
+                ValidatorStatus::Active,
+                validator_to_summary(validator, ValidatorStatus::Active),
             ));
         }
     }

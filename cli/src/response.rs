@@ -8,10 +8,10 @@ use serde::Serialize;
 use tabled::{
     builder::Builder as TableBuilder,
     settings::{
-        object::{Columns as TableCols, Rows as TableRows},
-        style::HorizontalLine,
         Alignment as TableAlignment, Border as TableBorder, Modify as TableModify,
         Panel as TablePanel, Style as TableStyle,
+        object::{Columns as TableCols, Rows as TableRows},
+        style::HorizontalLine,
     },
 };
 use types::{
@@ -21,8 +21,7 @@ use types::{
     digests::{ObjectDigest, TransactionDigest},
     effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    shard_crypto::keys::EncoderPublicKey,
-    system_state::{shard::Shard, staking::StakedSoma},
+    system_state::staking::StakedSoma,
     tx_fee::TransactionFee,
 };
 
@@ -105,387 +104,6 @@ impl ValidatorCommandResponse {
                 Ok(s) => println!("{}", s),
                 Err(e) => eprintln!("Failed to serialize response: {}", e),
             }
-        } else {
-            print!("{}", self);
-        }
-    }
-}
-
-// =============================================================================
-// ENCODER COMMAND RESPONSE
-// =============================================================================
-
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum EncoderCommandResponse {
-    Started,
-    MakeEncoderInfo,
-    DisplayMetadata,
-    Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
-}
-
-impl Display for EncoderCommandResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            EncoderCommandResponse::MakeEncoderInfo => {
-                writeln!(
-                    f,
-                    "{}",
-                    "✓ Encoder info files created successfully.".green().bold()
-                )?;
-                writeln!(f)?;
-
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Generated Files"]);
-                builder.push_record(["encoder.key"]);
-                builder.push_record(["account.key"]);
-                builder.push_record(["network.key"]);
-                builder.push_record(["encoder.info"]);
-
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
-                write!(f, "{}", table)?;
-            }
-            EncoderCommandResponse::DisplayMetadata | EncoderCommandResponse::Started => {}
-            EncoderCommandResponse::Transaction(tx_response) => {
-                write!(f, "{}", tx_response)?;
-            }
-            EncoderCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
-                writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
-                writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)?;
-                writeln!(f)?;
-                writeln!(
-                    f,
-                    "{}",
-                    "→ Use 'soma client execute-signed-tx' to submit after signing.".yellow()
-                )?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl EncoderCommandResponse {
-    pub fn print(&self, json: bool) {
-        if json {
-            match serde_json::to_string_pretty(self) {
-                Ok(s) => println!("{}", s),
-                Err(e) => eprintln!("Failed to serialize response: {}", e),
-            }
-        } else {
-            print!("{}", self);
-        }
-    }
-}
-
-// =============================================================================
-// EMBED COMMAND RESPONSE
-// =============================================================================
-
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum EmbedCommandResponse {
-    Submitted(EmbedSubmittedOutput),
-    Completed(EmbedCompletedOutput),
-    Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
-}
-
-#[derive(Debug, Serialize)]
-pub struct EmbedSubmittedOutput {
-    pub shard_id: ObjectID,
-    pub tx_digest: TransactionDigest,
-    pub checkpoint: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct EmbedCompletedOutput {
-    pub shard_id: ObjectID,
-    pub tx_digest: TransactionDigest,
-    pub checkpoint: u64,
-    pub winner_tx_digest: String,
-    // TODO: pub winning_encoder: EncoderPublicKey,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub embedding_url: Option<String>,
-}
-
-impl Display for EmbedCommandResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            EmbedCommandResponse::Submitted(output) => {
-                writeln!(
-                    f,
-                    "{} {}",
-                    "✓".green(),
-                    "Data submitted for embedding".green().bold()
-                )?;
-                writeln!(f)?;
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Shard ID", &output.shard_id.to_string()]);
-                builder.push_record(["Transaction", &output.tx_digest.to_string()]);
-                builder.push_record(["Checkpoint", &output.checkpoint.to_string()]);
-                builder.push_record(["Status", "Pending encoding"]);
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                writeln!(f, "{}", table)
-            }
-            EmbedCommandResponse::Completed(output) => {
-                writeln!(f, "{} {}", "✓".green(), "Embedding complete".green().bold())?;
-                writeln!(f)?;
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Shard ID", &output.shard_id.to_string()]);
-                builder.push_record(["Transaction", &output.tx_digest.to_string()]);
-                builder.push_record(["Checkpoint", &output.checkpoint.to_string()]);
-                builder.push_record(["Winner TX", &output.winner_tx_digest]);
-                // builder.push_record(["Winning Encoder", &output.winning_encoder.to_string()]);
-                if let Some(url) = &output.embedding_url {
-                    builder.push_record(["Embedding URL", url]);
-                }
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                writeln!(f, "{}", table)
-            }
-            EmbedCommandResponse::Transaction(tx) => write!(f, "{}", tx),
-            EmbedCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
-                writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
-                writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)
-            }
-        }
-    }
-}
-
-impl EmbedCommandResponse {
-    pub fn print(&self, json: bool) {
-        if json {
-            println!("{}", serde_json::to_string_pretty(self).unwrap());
-        } else {
-            print!("{}", self);
-        }
-    }
-}
-
-// =============================================================================
-// SHARDS QUERY RESPONSE
-// =============================================================================
-
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub enum ShardsQueryResponse {
-    Status(ShardStatusOutput),
-    List(ShardListOutput),
-    Targets(TargetsOutput),
-    ClaimableEscrows(ClaimableListOutput),
-    ClaimableRewards(ClaimableListOutput),
-}
-
-#[derive(Debug, Serialize)]
-pub struct ShardStatusOutput {
-    pub shard_id: ObjectID,
-    pub status: ShardStatus,
-    pub created_epoch: u64,
-    pub data_submitter: SomaAddress,
-    pub amount: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub winning_encoder: Option<EncoderPublicKey>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_id: Option<ObjectID>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-pub enum ShardStatus {
-    PendingEncoding,
-    Completed,
-    EscrowClaimable,
-    Expired,
-}
-
-impl Display for ShardStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ShardStatus::PendingEncoding => write!(f, "{}", "Pending".yellow()),
-            ShardStatus::Completed => write!(f, "{}", "Completed".green()),
-            ShardStatus::EscrowClaimable => write!(f, "{}", "Escrow Claimable".cyan()),
-            ShardStatus::Expired => write!(f, "{}", "Expired".red()),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct ShardListOutput {
-    pub shards: Vec<ShardSummary>,
-    pub total_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ShardSummary {
-    pub shard_id: ObjectID,
-    pub created_epoch: u64,
-    pub status: ShardStatus,
-    pub amount: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TargetsOutput {
-    pub epoch: u64,
-    pub targets: Vec<TargetSummary>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TargetSummary {
-    pub target_id: ObjectID,
-    pub created_epoch: u64,
-    pub has_winning_shard: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ClaimableListOutput {
-    pub items: Vec<ClaimableItem>,
-    pub total_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ClaimableItem {
-    pub object_id: ObjectID,
-    pub claimable_amount: u64,
-}
-
-impl Display for ShardsQueryResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            ShardsQueryResponse::Status(output) => {
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Shard ID", &output.shard_id.to_string()]);
-                builder.push_record(["Status", &output.status.to_string()]);
-                builder.push_record(["Created Epoch", &output.created_epoch.to_string()]);
-                builder.push_record(["Submitter", &output.data_submitter.to_string()]);
-                builder.push_record(["Amount (SHANNONS)", &output.amount.to_string()]);
-                if let Some(encoder) = &output.winning_encoder {
-                    builder.push_record(["Winning Encoder", &encoder.to_hex_string()]);
-                }
-                if let Some(target) = &output.target_id {
-                    builder.push_record(["Target", &target.to_string()]);
-                }
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                table.with(TablePanel::header("Shard Details"));
-                writeln!(f, "{}", table)
-            }
-            ShardsQueryResponse::List(output) => {
-                if output.shards.is_empty() {
-                    return writeln!(f, "{}", "No shards found".yellow());
-                }
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Shard ID", "Epoch", "Status", "Amount"]);
-                for shard in &output.shards {
-                    builder.push_record([
-                        shard.shard_id.to_string(),
-                        shard.created_epoch.to_string(),
-                        shard.status.to_string(),
-                        shard.amount.to_string(),
-                    ]);
-                }
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                table.with(TablePanel::header(format!(
-                    "Shards ({} total)",
-                    output.total_count
-                )));
-                table.with(HorizontalLine::new(
-                    1,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(HorizontalLine::new(
-                    2,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(tabled::settings::style::BorderSpanCorrection);
-                writeln!(f, "{}", table)
-            }
-            ShardsQueryResponse::Targets(output) => {
-                if output.targets.is_empty() {
-                    return writeln!(f, "{}", "No valid targets found".yellow());
-                }
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Target ID", "Created Epoch", "Has Winner"]);
-                for target in &output.targets {
-                    builder.push_record([
-                        target.target_id.to_string(),
-                        target.created_epoch.to_string(),
-                        if target.has_winning_shard {
-                            "Yes"
-                        } else {
-                            "No"
-                        }
-                        .to_string(),
-                    ]);
-                }
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                table.with(TablePanel::header(format!(
-                    "Valid Targets for Epoch {}",
-                    output.epoch
-                )));
-                table.with(HorizontalLine::new(
-                    1,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(HorizontalLine::new(
-                    2,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(tabled::settings::style::BorderSpanCorrection);
-                writeln!(f, "{}", table)
-            }
-            ShardsQueryResponse::ClaimableEscrows(output)
-            | ShardsQueryResponse::ClaimableRewards(output) => {
-                if output.items.is_empty() {
-                    return writeln!(f, "{}", "Nothing to claim".yellow());
-                }
-                let mut builder = TableBuilder::default();
-                builder.push_record(["Object ID", "Claimable Amount"]);
-                for item in &output.items {
-                    builder.push_record([
-                        item.object_id.to_string(),
-                        format!("{} SHANNONS", item.claimable_amount),
-                    ]);
-                }
-                let mut table = builder.build();
-                table.with(TableStyle::rounded());
-                table.with(TablePanel::header(format!(
-                    "Claimable ({} total)",
-                    output.total_count
-                )));
-                table.with(HorizontalLine::new(
-                    1,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(HorizontalLine::new(
-                    2,
-                    TableStyle::modern().get_horizontal(),
-                ));
-                table.with(tabled::settings::style::BorderSpanCorrection);
-                writeln!(f, "{}", table)
-            }
-        }
-    }
-}
-
-impl ShardsQueryResponse {
-    pub fn print(&self, json: bool) {
-        if json {
-            println!("{}", serde_json::to_string_pretty(self).unwrap());
         } else {
             print!("{}", self);
         }
@@ -1173,8 +791,6 @@ impl Display for ChainInfoOutput {
 pub enum ObjectContent {
     Coin { balance: u64 },
     StakedSoma(StakedSomaDisplay),
-    Shard(ShardDisplay),
-    Target(TargetDisplay),
     SystemState,
     Unknown,
 }
@@ -1184,21 +800,6 @@ pub struct StakedSomaDisplay {
     pub pool_id: ObjectID,
     pub stake_activation_epoch: u64,
     pub principal: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ShardDisplay {
-    pub amount: u64,
-    pub created_epoch: u64,
-    pub data_submitter: SomaAddress,
-    pub has_target: bool,
-    pub has_winning_encoder: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct TargetDisplay {
-    pub created_epoch: u64,
-    pub has_winning_shard: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1241,21 +842,6 @@ impl ObjectOutput {
                     pool_id: s.pool_id,
                     stake_activation_epoch: s.stake_activation_epoch,
                     principal: s.principal,
-                })
-            }),
-            ObjectType::Shard => obj.as_shard().map(|s| {
-                ObjectContent::Shard(ShardDisplay {
-                    amount: s.amount,
-                    created_epoch: s.created_epoch,
-                    data_submitter: s.data_submitter,
-                    has_target: s.target.is_some(),
-                    has_winning_encoder: s.winning_encoder.is_some(),
-                })
-            }),
-            ObjectType::Target => obj.as_target().map(|t| {
-                ObjectContent::Target(TargetDisplay {
-                    created_epoch: t.created_epoch,
-                    has_winning_shard: t.winning_shard.is_some(),
                 })
             }),
             ObjectType::SystemState => Some(ObjectContent::SystemState),
@@ -1337,43 +923,7 @@ impl Display for ObjectOutput {
                     table.with(tabled::settings::style::BorderSpanCorrection);
                     writeln!(f, "{}", table)?;
                 }
-                ObjectContent::Shard(shard) => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Amount (SHANNONS)", &shard.amount.to_string()]);
-                    builder.push_record(["Created Epoch", &shard.created_epoch.to_string()]);
-                    builder.push_record(["Data Submitter", &shard.data_submitter.to_string()]);
-                    builder.push_record(["Has Target", &shard.has_target.to_string()]);
-                    builder.push_record([
-                        "Has Winning Encoder",
-                        &shard.has_winning_encoder.to_string(),
-                    ]);
 
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Shard Data"));
-                    table.with(HorizontalLine::new(
-                        1,
-                        TableStyle::modern().get_horizontal(),
-                    ));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
-                ObjectContent::Target(target) => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Created Epoch", &target.created_epoch.to_string()]);
-                    builder
-                        .push_record(["Has Winning Shard", &target.has_winning_shard.to_string()]);
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Target Data"));
-                    table.with(HorizontalLine::new(
-                        1,
-                        TableStyle::modern().get_horizontal(),
-                    ));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
                 ObjectContent::SystemState => {
                     writeln!(
                         f,
@@ -1844,7 +1394,6 @@ pub struct ValidatorSummary {
     pub network_address: String,
     pub p2p_address: String,
     pub primary_address: String,
-    pub encoder_validator_address: String,
     pub protocol_pubkey: String,
     pub network_pubkey: String,
     pub worker_pubkey: String,
@@ -1852,16 +1401,14 @@ pub struct ValidatorSummary {
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
 pub enum ValidatorStatus {
-    Consensus,
-    Networking,
+    Active,
     Pending,
 }
 
 impl Display for ValidatorStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ValidatorStatus::Consensus => write!(f, "{}", "Consensus".green()),
-            ValidatorStatus::Networking => write!(f, "{}", "Networking".cyan()),
+            ValidatorStatus::Active => write!(f, "{}", "Active".green()),
             ValidatorStatus::Pending => write!(f, "{}", "Pending".yellow()),
         }
     }
@@ -1893,7 +1440,6 @@ impl Display for ValidatorSummary {
         builder.push_record(["Network", &self.network_address]);
         builder.push_record(["P2P", &self.p2p_address]);
         builder.push_record(["Primary", &self.primary_address]);
-        builder.push_record(["Encoder", &self.encoder_validator_address]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1910,92 +1456,6 @@ impl Display for ValidatorSummary {
         builder.push_record(["Protocol", &truncate_key(&self.protocol_pubkey)]);
         builder.push_record(["Network", &truncate_key(&self.network_pubkey)]);
         builder.push_record(["Worker", &truncate_key(&self.worker_pubkey)]);
-
-        let mut table = builder.build();
-        table.with(TableStyle::rounded());
-        table.with(TablePanel::header("Public Keys"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(tabled::settings::style::BorderSpanCorrection);
-        writeln!(f, "{}", table)
-    }
-}
-
-// =============================================================================
-// ENCODER SUMMARY
-// =============================================================================
-
-#[derive(Debug, Clone, Serialize)]
-pub struct EncoderSummary {
-    pub address: SomaAddress,
-    pub status: EncoderStatus,
-    pub commission_rate: u64,
-    pub byte_price: u64,
-    pub external_address: String,
-    pub internal_address: String,
-    pub object_server_address: String,
-    pub encoder_pubkey: String,
-    pub network_pubkey: String,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
-pub enum EncoderStatus {
-    Active,
-    Pending,
-}
-
-impl Display for EncoderStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            EncoderStatus::Active => write!(f, "{}", "Active".green()),
-            EncoderStatus::Pending => write!(f, "{}", "Pending".yellow()),
-        }
-    }
-}
-
-impl Display for EncoderSummary {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut builder = TableBuilder::default();
-        builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record(["Status", &self.status.to_string()]);
-        builder.push_record([
-            "Commission Rate",
-            &format!("{:.2}%", self.commission_rate as f64 / 100.0),
-        ]);
-        builder.push_record(["Byte Price", &format!("{} SHANNONS/byte", self.byte_price)]);
-
-        let mut table = builder.build();
-        table.with(TableStyle::rounded());
-        table.with(TablePanel::header("Encoder Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(tabled::settings::style::BorderSpanCorrection);
-        writeln!(f, "{}", table)?;
-
-        writeln!(f)?;
-        let mut builder = TableBuilder::default();
-        builder.push_record(["External", &self.external_address]);
-        builder.push_record(["Internal", &self.internal_address]);
-        builder.push_record(["Object Server", &self.object_server_address]);
-
-        let mut table = builder.build();
-        table.with(TableStyle::rounded());
-        table.with(TablePanel::header("Network Addresses"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(tabled::settings::style::BorderSpanCorrection);
-        writeln!(f, "{}", table)?;
-
-        writeln!(f)?;
-        let mut builder = TableBuilder::default();
-        builder.push_record(["Encoder", &truncate_key(&self.encoder_pubkey)]);
-        builder.push_record(["Network", &truncate_key(&self.network_pubkey)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());

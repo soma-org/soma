@@ -162,6 +162,4 @@ pub enum ObjectType {
     SystemState,
     Coin,
     StakedSoma,
-    Shard,
-    Target,
 }

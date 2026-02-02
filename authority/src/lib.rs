@@ -19,7 +19,6 @@ pub mod consensus_quarantine;
 pub mod consensus_store_pruner;
 pub mod consensus_tx_status_cache;
 pub mod consensus_validator;
-pub mod encoder_client;
 pub mod execution;
 pub mod execution_driver;
 pub mod execution_scheduler;

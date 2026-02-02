@@ -10,10 +10,7 @@ use serde_with::serde_as;
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use types::{
     base::*,
-    config::{
-        Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME,
-        encoder_config::EncoderConfig,
-    },
+    config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME},
 };
 
 use crate::{

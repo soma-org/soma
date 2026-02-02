@@ -291,17 +291,6 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             UpdateValidatorMetadata(args) => Kind::UpdateValidatorMetadata(args.into()),
             SetCommissionRate { new_rate } => Kind::SetCommissionRate(new_rate.into()),
 
-            // Encoder management
-            AddEncoder(args) => Kind::AddEncoder(args.into()),
-            RemoveEncoder(args) => Kind::RemoveEncoder(args.into()),
-            ReportEncoder { reportee } => Kind::ReportEncoder(reportee.into()),
-            UndoReportEncoder { reportee } => Kind::UndoReportEncoder(reportee.into()),
-            UpdateEncoderMetadata(args) => Kind::UpdateEncoderMetadata(args.into()),
-            SetEncoderCommissionRate { new_rate } => {
-                Kind::SetEncoderCommissionRate(new_rate.into())
-            }
-            SetEncoderBytePrice { new_price } => Kind::SetEncoderBytePrice(new_price.into()),
-
             // Transfers and payments
             TransferCoin {
                 coin,
@@ -344,53 +333,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 }
                 .into(),
             ),
-            AddStakeToEncoder {
-                encoder_address,
-                coin_ref,
-                amount,
-            } => Kind::AddStakeToEncoder(
-                AddStakeToEncoderArgs {
-                    encoder_address,
-                    coin_ref,
-                    amount,
-                }
-                .into(),
-            ),
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
-
-            // Shard operations
-            EmbedData {
-                download_metadata,
-                coin_ref,
-                target_ref,
-            } => Kind::EmbedData(
-                EmbedDataArgs {
-                    download_metadata,
-                    coin_ref,
-                    target_ref,
-                }
-                .into(),
-            ),
-            ClaimEscrow { shard_ref } => Kind::ClaimEscrow(shard_ref.into()),
-            ReportWinner {
-                shard_ref,
-                target_ref,
-                report,
-                signature,
-                signers,
-                shard_auth_token,
-            } => Kind::ReportWinner(
-                ReportWinnerArgs {
-                    shard_ref,
-                    target_ref,
-                    report,
-                    signature,
-                    signers,
-                    shard_auth_token,
-                }
-                .into(),
-            ),
-            ClaimReward { target_ref } => Kind::ClaimReward(target_ref.into()),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -441,39 +384,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 new_rate: rate
                     .new_rate
                     .ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
-            },
-
-            // Encoder management
-            Kind::AddEncoder(args) => Self::AddEncoder(args.try_into()?),
-            Kind::RemoveEncoder(args) => Self::RemoveEncoder(args.try_into()?),
-            Kind::ReportEncoder(report) => Self::ReportEncoder {
-                reportee: report
-                    .reportee
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("reportee"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("reportee", e))?,
-            },
-            Kind::UndoReportEncoder(undo) => Self::UndoReportEncoder {
-                reportee: undo
-                    .reportee
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("reportee"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("reportee", e))?,
-            },
-            Kind::UpdateEncoderMetadata(metadata) => {
-                Self::UpdateEncoderMetadata(metadata.try_into()?)
-            }
-            Kind::SetEncoderCommissionRate(rate) => Self::SetEncoderCommissionRate {
-                new_rate: rate
-                    .new_rate
-                    .ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
-            },
-            Kind::SetEncoderBytePrice(price) => Self::SetEncoderBytePrice {
-                new_price: price
-                    .new_price
-                    .ok_or_else(|| TryFromProtoError::missing("new_price"))?,
             },
 
             // Transfers and payments
@@ -536,93 +446,12 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .try_into()?,
                 amount: stake.amount,
             },
-            Kind::AddStakeToEncoder(stake) => Self::AddStakeToEncoder {
-                encoder_address: stake
-                    .encoder_address
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("encoder_address"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("encoder_address", e))?,
-                coin_ref: stake
-                    .coin_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
-                    .try_into()?,
-                amount: stake.amount,
-            },
+
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
                 staked_soma: withdraw
                     .staked_soma
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("staked_soma"))?
-                    .try_into()?,
-            },
-
-            // Shard operations
-            Kind::EmbedData(embed) => Self::EmbedData {
-                download_metadata: embed
-                    .download_metadata
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("download_metadata"))?
-                    .try_into()?,
-                coin_ref: embed
-                    .coin_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
-                    .try_into()?,
-                target_ref: embed
-                    .target_ref
-                    .as_ref()
-                    .map(|r| r.try_into())
-                    .transpose()?,
-            },
-            Kind::ClaimEscrow(claim) => Self::ClaimEscrow {
-                shard_ref: claim
-                    .shard_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("shard_ref"))?
-                    .try_into()?,
-            },
-            Kind::ReportWinner(report) => Self::ReportWinner {
-                shard_ref: report
-                    .shard_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("shard_input_ref"))?
-                    .try_into()?,
-                target_ref: report
-                    .target_ref
-                    .as_ref()
-                    .map(|r| r.try_into())
-                    .transpose()?,
-                report: report
-                    .report
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("scores"))?
-                    .into(),
-                signature: report
-                    .signature
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("signature"))?
-                    .into(),
-                signers: report
-                    .signers
-                    .iter()
-                    .map(|s| {
-                        s.parse()
-                            .map_err(|e| TryFromProtoError::invalid("signers", e))
-                    })
-                    .collect::<Result<_, _>>()?,
-                shard_auth_token: report
-                    .shard_auth_token
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("scores"))?
-                    .into(),
-            },
-            Kind::ClaimReward(claim) => Self::ClaimReward {
-                target_ref: claim
-                    .target_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("target_ref"))?
                     .try_into()?,
             },
         }
@@ -642,7 +471,6 @@ impl From<crate::types::AddValidatorArgs> for AddValidator {
             net_address: Some(value.net_address.into()),
             p2p_address: Some(value.p2p_address.into()),
             primary_address: Some(value.primary_address.into()),
-            encoder_validator_address: Some(value.encoder_validator_address.into()),
         }
     }
 }
@@ -681,11 +509,6 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
                 .primary_address
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("primary_address"))?
-                .into(),
-            encoder_validator_address: value
-                .encoder_validator_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("encoder_validator_address"))?
                 .into(),
         })
     }
@@ -739,124 +562,6 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
-        })
-    }
-}
-
-// AddEncoderArgs conversions
-impl From<crate::types::AddEncoderArgs> for AddEncoder {
-    fn from(value: crate::types::AddEncoderArgs) -> Self {
-        Self {
-            encoder_pubkey_bytes: Some(value.encoder_pubkey_bytes.into()),
-            network_pubkey_bytes: Some(value.network_pubkey_bytes.into()),
-            internal_network_address: Some(value.internal_network_address.into()),
-            external_network_address: Some(value.external_network_address.into()),
-            object_server_address: Some(value.object_server_address.into()),
-            probe: Some(value.probe.into()),
-        }
-    }
-}
-
-impl TryFrom<&AddEncoder> for crate::types::AddEncoderArgs {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &AddEncoder) -> Result<Self, Self::Error> {
-        Ok(Self {
-            encoder_pubkey_bytes: value
-                .encoder_pubkey_bytes
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("encoder_pubkey_bytes"))?
-                .into(),
-            network_pubkey_bytes: value
-                .network_pubkey_bytes
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("network_pubkey_bytes"))?
-                .into(),
-            internal_network_address: value
-                .internal_network_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("internal_network_address"))?
-                .into(),
-            external_network_address: value
-                .external_network_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("external_network_address"))?
-                .into(),
-            object_server_address: value
-                .object_server_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("object_server_address"))?
-                .into(),
-            probe: value
-                .probe
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("probe"))?
-                .into(),
-        })
-    }
-}
-
-// RemoveEncoderArgs conversions
-impl From<crate::types::RemoveEncoderArgs> for RemoveEncoder {
-    fn from(value: crate::types::RemoveEncoderArgs) -> Self {
-        Self {
-            encoder_pubkey_bytes: Some(value.encoder_pubkey_bytes.into()),
-        }
-    }
-}
-
-impl TryFrom<&RemoveEncoder> for crate::types::RemoveEncoderArgs {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &RemoveEncoder) -> Result<Self, Self::Error> {
-        Ok(Self {
-            encoder_pubkey_bytes: value
-                .encoder_pubkey_bytes
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("encoder_pubkey_bytes"))?
-                .into(),
-        })
-    }
-}
-
-// UpdateEncoderMetadataArgs conversions
-impl From<crate::types::UpdateEncoderMetadataArgs> for UpdateEncoderMetadata {
-    fn from(value: crate::types::UpdateEncoderMetadataArgs) -> Self {
-        Self {
-            next_epoch_external_network_address: value
-                .next_epoch_external_network_address
-                .map(|v| v.into()),
-            next_epoch_internal_network_address: value
-                .next_epoch_internal_network_address
-                .map(|v| v.into()),
-            next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
-            next_epoch_object_server_address: value
-                .next_epoch_object_server_address
-                .map(|v| v.into()),
-            next_epoch_probe: value.next_epoch_probe.map(|v| v.into()),
-        }
-    }
-}
-
-impl TryFrom<&UpdateEncoderMetadata> for crate::types::UpdateEncoderMetadataArgs {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &UpdateEncoderMetadata) -> Result<Self, Self::Error> {
-        Ok(Self {
-            next_epoch_external_network_address: value
-                .next_epoch_external_network_address
-                .clone()
-                .map(|v| v.into()),
-            next_epoch_internal_network_address: value
-                .next_epoch_internal_network_address
-                .clone()
-                .map(|v| v.into()),
-            next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
-            next_epoch_object_server_address: value
-                .next_epoch_object_server_address
-                .clone()
-                .map(|v| v.into()),
-            next_epoch_probe: value.next_epoch_probe.clone().map(|v| v.into()),
         })
     }
 }
@@ -1025,42 +730,6 @@ impl From<u64> for SetCommissionRate {
     }
 }
 
-// ReportEncoder conversions
-impl From<crate::types::Address> for ReportEncoder {
-    fn from(reportee: crate::types::Address) -> Self {
-        Self {
-            reportee: Some(reportee.to_string()),
-        }
-    }
-}
-
-// UndoReportEncoder conversions
-impl From<crate::types::Address> for UndoReportEncoder {
-    fn from(reportee: crate::types::Address) -> Self {
-        Self {
-            reportee: Some(reportee.to_string()),
-        }
-    }
-}
-
-// SetEncoderCommissionRate conversions
-impl From<u64> for SetEncoderCommissionRate {
-    fn from(new_rate: u64) -> Self {
-        Self {
-            new_rate: Some(new_rate),
-        }
-    }
-}
-
-// SetEncoderBytePrice conversions
-impl From<u64> for SetEncoderBytePrice {
-    fn from(new_price: u64) -> Self {
-        Self {
-            new_price: Some(new_price),
-        }
-    }
-}
-
 // TransferCoin conversions (create a wrapper struct)
 pub struct TransferCoinArgs {
     pub coin: crate::types::ObjectReference,
@@ -1127,85 +796,11 @@ impl From<AddStakeArgs> for AddStake {
     }
 }
 
-// AddStakeToEncoder conversions
-pub struct AddStakeToEncoderArgs {
-    pub encoder_address: crate::types::Address,
-    pub coin_ref: crate::types::ObjectReference,
-    pub amount: Option<u64>,
-}
-
-impl From<AddStakeToEncoderArgs> for AddStakeToEncoder {
-    fn from(args: AddStakeToEncoderArgs) -> Self {
-        Self {
-            encoder_address: Some(args.encoder_address.to_string()),
-            coin_ref: Some(args.coin_ref.into()),
-            amount: args.amount,
-        }
-    }
-}
-
 // WithdrawStake conversions
 impl From<crate::types::ObjectReference> for WithdrawStake {
     fn from(staked_soma: crate::types::ObjectReference) -> Self {
         Self {
             staked_soma: Some(staked_soma.into()),
-        }
-    }
-}
-
-// EmbedData conversions
-pub struct EmbedDataArgs {
-    pub download_metadata: crate::types::DownloadMetadata,
-    pub coin_ref: crate::types::ObjectReference,
-    pub target_ref: Option<crate::types::ObjectReference>,
-}
-
-impl From<EmbedDataArgs> for EmbedData {
-    fn from(args: EmbedDataArgs) -> Self {
-        Self {
-            download_metadata: Some(args.download_metadata.into()),
-            coin_ref: Some(args.coin_ref.into()),
-            target_ref: args.target_ref.map(|r| r.into()),
-        }
-    }
-}
-
-// ClaimEscrow conversions
-impl From<crate::types::ObjectReference> for ClaimEscrow {
-    fn from(shard_ref: crate::types::ObjectReference) -> Self {
-        Self {
-            shard_ref: Some(shard_ref.into()),
-        }
-    }
-}
-
-impl From<crate::types::ObjectReference> for ClaimReward {
-    fn from(target_ref: crate::types::ObjectReference) -> Self {
-        Self {
-            target_ref: Some(target_ref.into()),
-        }
-    }
-}
-
-// ReportScores conversions
-pub struct ReportWinnerArgs {
-    pub shard_ref: crate::types::ObjectReference,
-    pub target_ref: Option<crate::types::ObjectReference>,
-    pub report: Vec<u8>,
-    pub signature: Vec<u8>,
-    pub signers: Vec<String>,
-    pub shard_auth_token: Vec<u8>,
-}
-
-impl From<ReportWinnerArgs> for ReportWinner {
-    fn from(args: ReportWinnerArgs) -> Self {
-        Self {
-            shard_ref: Some(args.shard_ref.into()),
-            target_ref: args.target_ref.map(|r| r.into()),
-            report: Some(args.report.into()),
-            signature: Some(args.signature.into()),
-            signers: args.signers,
-            shard_auth_token: Some(args.shard_auth_token.into()),
         }
     }
 }

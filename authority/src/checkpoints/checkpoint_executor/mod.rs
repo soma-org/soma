@@ -19,11 +19,10 @@ use crate::authority::{AuthorityState, ExecutionEnv};
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::backpressure_manager::BackpressureManager;
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
+use crate::checkpoints::CheckpointStore;
 use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
     load_checkpoint, store_checkpoint_locally,
 };
-use crate::checkpoints::CheckpointStore;
-use crate::encoder_client::EncoderClientService;
 use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
 use crate::global_state_hasher::GlobalStateHasher;
 use futures::StreamExt;

@@ -1897,7 +1897,6 @@ dependencies = [
  "futures",
  "hex",
  "inquire",
- "intelligence",
  "json_to_table",
  "node",
  "object_store",

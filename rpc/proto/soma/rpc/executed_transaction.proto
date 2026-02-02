@@ -8,7 +8,6 @@ import "soma/rpc/effects.proto";
 import "soma/rpc/object.proto";
 import "soma/rpc/signature.proto";
 import "soma/rpc/transaction.proto";
-import "soma/rpc/shard.proto";
 
 message ExecutedTransaction {
   // The digest of this Transaction.

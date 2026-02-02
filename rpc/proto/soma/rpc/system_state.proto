@@ -17,20 +17,16 @@ message SystemState {
   
   // Validator and encoder sets
   optional ValidatorSet validators = 5;
-  optional EncoderSet encoders = 6;
   
   // Report records
-  map<string, ReporterSet> validator_report_records = 7;
-  map<string, ReporterSet> encoder_report_records = 8;
+  map<string, ReporterSet> validator_report_records = 6;
   
   // Emission pool
-  optional EmissionPool emission_pool = 9;
+  optional EmissionPool emission_pool = 7;
 
-  optional uint64 reference_byte_price = 10;
-
-  map<uint64, uint64> target_rewards_per_epoch = 11;
-  map<uint64, uint64> targets_created_per_epoch = 12;
-  map<uint64, bytes> epoch_seeds = 13;
+  map<uint64, uint64> target_rewards_per_epoch = 8;
+  map<uint64, uint64> targets_created_per_epoch = 9;
+  map<uint64, bytes> epoch_seeds = 10;
 }
 
 message ReporterSet {
@@ -60,18 +56,12 @@ message EmissionPool {
 
 message ValidatorSet {
   optional uint64 total_stake = 1;
-  repeated Validator consensus_validators = 2;
-  repeated Validator networking_validators = 3;
-  repeated Validator pending_validators = 4;
-  repeated PendingRemoval pending_removals = 5;
-  map<string, string> staking_pool_mappings = 6; // pool_id -> validator_address
-  map<string, Validator> inactive_validators = 7; // pool_id -> validator
-  map<string, uint64> at_risk_validators = 8; // address -> epochs_at_risk
-}
-
-message PendingRemoval {
-  optional bool is_consensus = 1;
-  optional uint32 index = 2;
+  repeated Validator validators = 2;
+  repeated Validator pending_validators = 3;
+  repeated uint32 pending_removals = 4;
+  map<string, string> staking_pool_mappings = 5; // pool_id -> validator_address
+  map<string, Validator> inactive_validators = 6; // pool_id -> validator
+  map<string, uint64> at_risk_validators = 7; // address -> epochs_at_risk
 }
 
 message Validator {
@@ -82,23 +72,21 @@ message Validator {
   optional string net_address = 5;
   optional string p2p_address = 6;
   optional string primary_address = 7;
-  optional string encoder_validator_address = 8;
   
-  optional uint64 voting_power = 9;
-  optional uint64 commission_rate = 10;
-  optional uint64 next_epoch_stake = 11;
-  optional uint64 next_epoch_commission_rate = 12;
+  optional uint64 voting_power = 8;
+  optional uint64 commission_rate = 9;
+  optional uint64 next_epoch_stake = 10;
+  optional uint64 next_epoch_commission_rate = 11;
   
-  optional StakingPool staking_pool = 13;
+  optional StakingPool staking_pool = 12;
   
   // Next epoch metadata (only if set)
-  optional bytes next_epoch_protocol_pubkey = 14;
-  optional bytes next_epoch_network_pubkey = 15;
-  optional bytes next_epoch_worker_pubkey = 16;
-  optional string next_epoch_net_address = 17;
-  optional string next_epoch_p2p_address = 18;
-  optional string next_epoch_primary_address = 19;
-  optional string next_epoch_encoder_validator_address = 20;
+  optional bytes next_epoch_protocol_pubkey = 13;
+  optional bytes next_epoch_network_pubkey = 14;
+  optional bytes next_epoch_worker_pubkey = 15;
+  optional string next_epoch_net_address = 16;
+  optional string next_epoch_p2p_address = 17;
+  optional string next_epoch_primary_address = 18;
 }
 
 message StakingPool {
@@ -119,38 +107,3 @@ message PoolTokenExchangeRate {
   optional uint64 pool_token_amount = 2;
 }
 
-message EncoderSet {
-  optional uint64 total_stake = 1;
-  repeated Encoder active_encoders = 2;
-  repeated Encoder pending_active_encoders = 3;
-  repeated uint32 pending_removals = 4;
-  map<string, string> staking_pool_mappings = 5; // pool_id -> encoder_address
-  map<string, Encoder> inactive_encoders = 6; // pool_id -> encoder
-  map<string, uint64> at_risk_encoders = 7; // address -> epochs_at_risk
-}
-
-message Encoder {
-  optional string soma_address = 1;
-  optional bytes encoder_pubkey = 2;
-  optional bytes network_pubkey = 3;
-  optional string internal_network_address = 4;
-  optional string external_network_address = 5;
-  optional string object_server_address = 6;
-  optional bytes probe = 7;
-  
-  optional uint64 voting_power = 8;
-  optional uint64 commission_rate = 9;
-  optional uint64 next_epoch_stake = 10;
-  optional uint64 next_epoch_commission_rate = 11;
-  optional uint64 byte_price = 12;
-  optional uint64 next_epoch_byte_price = 13;
-  
-  optional StakingPool staking_pool = 14;
-  
-  // Next epoch metadata (only if set)
-  optional bytes next_epoch_network_pubkey = 15;
-  optional string next_epoch_internal_network_address = 16;
-  optional string next_epoch_external_network_address = 17;
-  optional string next_epoch_object_server_address = 18;
-  optional bytes next_epoch_probe = 19;
-}

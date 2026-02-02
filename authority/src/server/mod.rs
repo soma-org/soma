@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 use std::time::Duration;
 
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 
 use http::HeaderName;
 use tokio_rustls::rustls::ServerConfig;
@@ -14,7 +14,7 @@ use tonic::{
 use tower::{Service, ServiceBuilder, ServiceExt};
 use tower_http::propagate_header::PropagateHeaderLayer;
 use tower_http::set_header::SetRequestHeaderLayer;
-use types::shard_networking::grpc_timeout::GrpcTimeout;
+use types::grpc_timeout::GrpcTimeout;
 use types::{
     client::Config,
     multiaddr::{Multiaddr, Protocol},

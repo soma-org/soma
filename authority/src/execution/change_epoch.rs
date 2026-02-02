@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use types::{
+    SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
@@ -9,7 +10,6 @@ use types::{
     system_state::SystemState,
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
-    SYSTEM_STATE_OBJECT_ID,
 };
 
 use super::{FeeCalculator, TransactionExecutor};
@@ -52,14 +52,14 @@ impl TransactionExecutor for ChangeEpochExecutor {
             })?;
 
         // Process the transaction
-        let (validator_rewards, encoder_rewards) = match kind {
+        let validator_rewards = match kind {
             TransactionKind::ChangeEpoch(change_epoch) => {
                 let next_protocol_config = protocol_config::ProtocolConfig::get_for_version(
                     change_epoch.protocol_version,
                     protocol_config::Chain::Mainnet, // TODO: detect which chain to use here
                 );
 
-                let (validator_rewards, encoder_rewards) = state.advance_epoch(
+                let validator_rewards = state.advance_epoch(
                     change_epoch.epoch,
                     &next_protocol_config,
                     change_epoch.fees,
@@ -67,7 +67,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
                     change_epoch.epoch_randomness,
                 )?;
 
-                Ok((validator_rewards, encoder_rewards))
+                Ok(validator_rewards)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }?;
@@ -78,18 +78,6 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
                 reward,
                 Owner::AddressOwner(validator),
-                tx_digest,
-            );
-            store.create_object(staked_soma_object);
-        }
-
-        // Create StakedSoma objects for encoder rewards
-        for (encoder, reward) in encoder_rewards {
-            // Create StakedSoma object
-            let staked_soma_object = Object::new_staked_soma_object(
-                ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                reward,
-                Owner::AddressOwner(encoder),
                 tx_digest,
             );
             store.create_object(staked_soma_object);

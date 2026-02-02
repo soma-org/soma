@@ -6,7 +6,7 @@ use std::{
 use anyhow::Result;
 use async_trait::async_trait;
 use node::handle::SomaNodeHandle;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use test_cluster::{TestCluster, TestClusterBuilder};
 use tracing::info;
 use types::{
@@ -15,7 +15,7 @@ use types::{
     digests::ObjectDigest,
     effects::{TransactionEffects, TransactionEffectsAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    system_state::{validator::Validator, SystemState},
+    system_state::{SystemState, validator::Validator},
     transaction::{Transaction, TransactionData, TransactionKind},
 };
 use utils::logging::init_tracing;
@@ -105,10 +105,10 @@ impl StressTestRunner {
         let system_state = self.system_state();
         system_state
             .validators
-            .consensus_validators
+            .validators
             .get(
                 self.rng
-                    .gen_range(0..system_state.validators.consensus_validators.len()),
+                    .gen_range(0..system_state.validators.validators.len()),
             )
             .unwrap()
             .clone()

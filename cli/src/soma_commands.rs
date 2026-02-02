@@ -1,20 +1,17 @@
 use crate::{
     client_commands::SomaClientCommands,
-    commands::{
-        EnvCommand, ObjectsCommand, ShardsCommand, SomaValidatorCommand,
-        WalletCommand,
-    },
+    commands::{EnvCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand},
     keytool::KeyToolCommand,
 };
-use anyhow::{anyhow, bail, ensure, Context as _};
+use anyhow::{Context as _, anyhow, bail, ensure};
 use clap::{Command, CommandFactory as _, Parser};
 use colored::Colorize;
 use fastcrypto::traits::KeyPair as _;
 use rand::rngs::OsRng;
 use sdk::{
-    client_config::{SomaClientConfig, SomaEnv},
-    wallet_context::{create_wallet_context, WalletContext, DEFAULT_WALLET_TIMEOUT_SEC},
     SomaClient,
+    client_config::{SomaClientConfig, SomaEnv},
+    wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, WalletContext, create_wallet_context},
 };
 use soma_keys::{
     key_derive::generate_new_key,
@@ -23,7 +20,7 @@ use soma_keys::{
 };
 use std::{
     fs,
-    io::{self, stdout, Write as _},
+    io::{self, Write as _, stdout},
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
 };
@@ -34,13 +31,13 @@ use tracing::info;
 use types::{
     base::SomaAddress,
     config::{
-        genesis_blob_exists,
+        FULL_NODE_DB_PATH, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_FULLNODE_CONFIG,
+        SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG, genesis_blob_exists,
         genesis_config::{GenesisConfig, ValidatorGenesisConfigBuilder},
         network_config::{CommitteeConfig, NetworkConfig},
-        node_config::{default_json_rpc_address, Genesis},
+        node_config::{Genesis, default_json_rpc_address},
         p2p_config::SeedPeer,
-        soma_config_dir, PersistedConfig, FULL_NODE_DB_PATH, SOMA_CLIENT_CONFIG,
-        SOMA_FULLNODE_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
+        soma_config_dir,
     },
     crypto::SignatureScheme,
     digests::TransactionDigest,
@@ -48,7 +45,7 @@ use types::{
     peer_id::PeerId,
 };
 use types::{
-    config::{network_config::ConfigBuilder, Config, SOMA_GENESIS_FILENAME},
+    config::{Config, SOMA_GENESIS_FILENAME, network_config::ConfigBuilder},
     crypto::SomaKeyPair,
 };
 use url::Url;
@@ -171,9 +168,6 @@ pub enum SomaCommand {
         /// Validator address to stake with
         #[clap(long, group = "stake_target")]
         validator: Option<SomaAddress>,
-        /// Encoder address to stake with
-        #[clap(long, group = "stake_target")]
-        encoder: Option<SomaAddress>,
         /// Amount to stake (uses entire coin if not specified)
         #[clap(long)]
         amount: Option<u64>,
@@ -197,42 +191,6 @@ pub enum SomaCommand {
         json: bool,
     },
 
-    /// Embed data on the Soma network
-    #[clap(name = "embed")]
-    Embed {
-        /// URL where data can be downloaded by encoders
-        #[clap(long)]
-        url: String,
-        /// Target embedding to compete against (optional)
-        #[clap(long)]
-        target: Option<ObjectID>,
-        /// Coin for escrow payment (auto-selected if not provided)
-        #[clap(long)]
-        coin: Option<ObjectID>,
-        /// Timeout in seconds when using --wait
-        #[clap(long, default_value_t = 120)]
-        timeout: u64,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
-        json: bool,
-    },
-
-    /// Claim escrow or rewards
-    #[clap(name = "claim")]
-    Claim {
-        /// Shard ID to claim escrow from (for failed/expired shards)
-        #[clap(long, group = "claim_type")]
-        escrow: Option<ObjectID>,
-        /// Target ID to claim reward from (for completed targets)
-        #[clap(long, group = "claim_type")]
-        reward: Option<ObjectID>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
-        json: bool,
-    },
-
     // =========================================================================
     // QUERY COMMANDS
     // =========================================================================
@@ -250,15 +208,6 @@ pub enum SomaCommand {
     Tx {
         /// Transaction digest
         digest: TransactionDigest,
-        #[clap(long, global = true)]
-        json: bool,
-    },
-
-    /// Query shards and embeddings
-    #[clap(name = "shards")]
-    Shards {
-        #[clap(subcommand)]
-        cmd: ShardsCommand,
         #[clap(long, global = true)]
         json: bool,
     },
@@ -287,7 +236,6 @@ pub enum SomaCommand {
     // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
-
     /// A tool for validators and validator candidates
     #[clap(name = "validator")]
     Validator {
@@ -463,22 +411,16 @@ impl SomaCommand {
 
             SomaCommand::Stake {
                 validator,
-                encoder,
+
                 amount,
                 coin,
                 tx_args,
                 json,
             } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::stake::execute_stake(
-                    &mut context,
-                    validator,
-                    encoder,
-                    amount,
-                    coin,
-                    tx_args,
-                )
-                .await?;
+                let result =
+                    commands::stake::execute_stake(&mut context, validator, amount, coin, tx_args)
+                        .await?;
                 result.print(!json);
                 Ok(())
             }
@@ -491,35 +433,6 @@ impl SomaCommand {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
                     commands::stake::execute_unstake(&mut context, staked_soma_id, tx_args).await?;
-                result.print(!json);
-                Ok(())
-            }
-
-            SomaCommand::Embed {
-                url,
-                target,
-                coin,
-                timeout,
-                tx_args,
-                json,
-            } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::embed::execute(&mut context, url, target, coin, timeout, tx_args)
-                        .await?;
-                result.print(!json);
-                Ok(())
-            }
-
-            SomaCommand::Claim {
-                escrow,
-                reward,
-                tx_args,
-                json,
-            } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::claim::execute(&mut context, escrow, reward, tx_args).await?;
                 result.print(!json);
                 Ok(())
             }
@@ -537,13 +450,6 @@ impl SomaCommand {
             SomaCommand::Tx { digest, json } => {
                 let context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::tx::execute(&context, digest).await?;
-                result.print(!json);
-                Ok(())
-            }
-
-            SomaCommand::Shards { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::shards::execute(&mut context, cmd).await?;
                 result.print(!json);
                 Ok(())
             }
@@ -568,7 +474,6 @@ impl SomaCommand {
             // =================================================================
             // OPERATOR COMMANDS
             // =================================================================
-
             SomaCommand::Validator { config, cmd, json } => {
                 let mut context = get_wallet_context(&config).await?;
                 if let Some(cmd) = cmd {
@@ -965,7 +870,6 @@ async fn genesis(
     }
 
     let validator_info = genesis_conf.validator_config_info.take();
-    let networking_validator_info = genesis_conf.networking_validator_config_info.take();
 
     let mut builder = ConfigBuilder::new(soma_config_dir);
     if let Some(epoch_duration_ms) = epoch_duration_ms {
@@ -978,53 +882,12 @@ async fn genesis(
     }
     .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
 
-    let mut network_config = match (validator_info, networking_validator_info) {
-        (Some(mut validators), Some(networking_validators)) => {
-            let networking_validators: Vec<_> = networking_validators
-                .into_iter()
-                .map(|mut v| {
-                    v.is_networking_only = true;
-                    v
-                })
-                .collect();
-            validators.extend(networking_validators);
-
-            builder
-                .with_genesis_config(genesis_conf)
-                .with_validators(validators)
-                .build()
-        }
-        (Some(mut validators), None) => {
-            let networking_validator = ValidatorGenesisConfigBuilder::new()
-                .as_networking_only()
-                .build(&mut OsRng);
-
-            validators.push(networking_validator);
-
-            builder
-                .with_genesis_config(genesis_conf)
-                .with_validators(validators)
-                .build()
-        }
-        (None, Some(networking_validators)) => {
-            let networking_validators: Vec<_> = networking_validators
-                .into_iter()
-                .map(|mut v| {
-                    v.is_networking_only = true;
-                    v
-                })
-                .collect();
-
-            builder
-                .committee(CommitteeConfig::Mixed {
-                    consensus_count: committee_size,
-                    networking_count: NonZeroUsize::new(networking_validators.len())
-                        .unwrap_or(NonZeroUsize::new(1).unwrap()),
-                })
-                .with_genesis_config(genesis_conf)
-                .build()
-        }
-        (None, None) => builder
+    let mut network_config = match validator_info {
+        Some(mut validators) => builder
+            .with_genesis_config(genesis_conf)
+            .with_validators(validators)
+            .build(),
+        None => builder
             .committee(CommitteeConfig::Mixed {
                 consensus_count: committee_size,
                 networking_count: NonZeroUsize::new(1).unwrap(),

@@ -422,18 +422,6 @@ mod _field_impls {
             number: 1i32,
             message_fields: Some(ValidatorCommittee::FIELDS),
         };
-        pub const NEXT_EPOCH_ENCODER_COMMITTEE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_encoder_committee",
-            json_name: "nextEpochEncoderCommittee",
-            number: 2i32,
-            message_fields: Some(EncoderCommittee::FIELDS),
-        };
-        pub const NEXT_EPOCH_NETWORKING_COMMITTEE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_networking_committee",
-            json_name: "nextEpochNetworkingCommittee",
-            number: 3i32,
-            message_fields: Some(NetworkingCommittee::FIELDS),
-        };
         pub const NEXT_EPOCH_PROTOCOL_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_protocol_version",
             json_name: "nextEpochProtocolVersion",
@@ -450,8 +438,6 @@ mod _field_impls {
     impl MessageFields for EndOfEpochData {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::NEXT_EPOCH_VALIDATOR_COMMITTEE_FIELD,
-            Self::NEXT_EPOCH_ENCODER_COMMITTEE_FIELD,
-            Self::NEXT_EPOCH_NETWORKING_COMMITTEE_FIELD,
             Self::NEXT_EPOCH_PROTOCOL_VERSION_FIELD,
             Self::EPOCH_COMMITMENTS_FIELD,
         ];
@@ -481,18 +467,6 @@ mod _field_impls {
         ) -> ValidatorCommitteeFieldPathBuilder {
             self.path.push(EndOfEpochData::NEXT_EPOCH_VALIDATOR_COMMITTEE_FIELD.name);
             ValidatorCommitteeFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_epoch_encoder_committee(
-            mut self,
-        ) -> EncoderCommitteeFieldPathBuilder {
-            self.path.push(EndOfEpochData::NEXT_EPOCH_ENCODER_COMMITTEE_FIELD.name);
-            EncoderCommitteeFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_epoch_networking_committee(
-            mut self,
-        ) -> NetworkingCommitteeFieldPathBuilder {
-            self.path.push(EndOfEpochData::NEXT_EPOCH_NETWORKING_COMMITTEE_FIELD.name);
-            NetworkingCommitteeFieldPathBuilder::new_with_base(self.path)
         }
         pub fn next_epoch_protocol_version(mut self) -> String {
             self.path.push(EndOfEpochData::NEXT_EPOCH_PROTOCOL_VERSION_FIELD.name);
@@ -550,290 +524,6 @@ mod _field_impls {
         pub fn digest(mut self) -> String {
             self.path.push(CheckpointCommitment::DIGEST_FIELD.name);
             self.finish()
-        }
-    }
-    impl EncoderCommittee {
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const MEMBERS_FIELD: &'static MessageField = &MessageField {
-            name: "members",
-            json_name: "members",
-            number: 2i32,
-            message_fields: Some(EncoderCommitteeMember::FIELDS),
-        };
-        pub const SHARD_SIZE_FIELD: &'static MessageField = &MessageField {
-            name: "shard_size",
-            json_name: "shardSize",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const QUORUM_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "quorum_threshold",
-            json_name: "quorumThreshold",
-            number: 4i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for EncoderCommittee {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::EPOCH_FIELD,
-            Self::MEMBERS_FIELD,
-            Self::SHARD_SIZE_FIELD,
-            Self::QUORUM_THRESHOLD_FIELD,
-        ];
-    }
-    impl EncoderCommittee {
-        pub fn path_builder() -> EncoderCommitteeFieldPathBuilder {
-            EncoderCommitteeFieldPathBuilder::new()
-        }
-    }
-    pub struct EncoderCommitteeFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl EncoderCommitteeFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(EncoderCommittee::EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn members(mut self) -> EncoderCommitteeMemberFieldPathBuilder {
-            self.path.push(EncoderCommittee::MEMBERS_FIELD.name);
-            EncoderCommitteeMemberFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn shard_size(mut self) -> String {
-            self.path.push(EncoderCommittee::SHARD_SIZE_FIELD.name);
-            self.finish()
-        }
-        pub fn quorum_threshold(mut self) -> String {
-            self.path.push(EncoderCommittee::QUORUM_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-    }
-    impl EncoderCommitteeMember {
-        pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
-            name: "voting_power",
-            json_name: "votingPower",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const ENCODER_KEY_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_key",
-            json_name: "encoderKey",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const PROBE_FIELD: &'static MessageField = &MessageField {
-            name: "probe",
-            json_name: "probe",
-            number: 3i32,
-            message_fields: Some(DownloadMetadata::FIELDS),
-        };
-        pub const INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "internal_network_address",
-            json_name: "internalNetworkAddress",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "external_network_address",
-            json_name: "externalNetworkAddress",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "object_server_address",
-            json_name: "objectServerAddress",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const NETWORK_KEY_FIELD: &'static MessageField = &MessageField {
-            name: "network_key",
-            json_name: "networkKey",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const HOSTNAME_FIELD: &'static MessageField = &MessageField {
-            name: "hostname",
-            json_name: "hostname",
-            number: 8i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for EncoderCommitteeMember {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::VOTING_POWER_FIELD,
-            Self::ENCODER_KEY_FIELD,
-            Self::PROBE_FIELD,
-            Self::INTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::EXTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::OBJECT_SERVER_ADDRESS_FIELD,
-            Self::NETWORK_KEY_FIELD,
-            Self::HOSTNAME_FIELD,
-        ];
-    }
-    impl EncoderCommitteeMember {
-        pub fn path_builder() -> EncoderCommitteeMemberFieldPathBuilder {
-            EncoderCommitteeMemberFieldPathBuilder::new()
-        }
-    }
-    pub struct EncoderCommitteeMemberFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl EncoderCommitteeMemberFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn voting_power(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::VOTING_POWER_FIELD.name);
-            self.finish()
-        }
-        pub fn encoder_key(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::ENCODER_KEY_FIELD.name);
-            self.finish()
-        }
-        pub fn probe(mut self) -> DownloadMetadataFieldPathBuilder {
-            self.path.push(EncoderCommitteeMember::PROBE_FIELD.name);
-            DownloadMetadataFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn internal_network_address(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::INTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn external_network_address(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::EXTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn object_server_address(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::OBJECT_SERVER_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn network_key(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::NETWORK_KEY_FIELD.name);
-            self.finish()
-        }
-        pub fn hostname(mut self) -> String {
-            self.path.push(EncoderCommitteeMember::HOSTNAME_FIELD.name);
-            self.finish()
-        }
-    }
-    impl NetworkingCommittee {
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const MEMBERS_FIELD: &'static MessageField = &MessageField {
-            name: "members",
-            json_name: "members",
-            number: 2i32,
-            message_fields: Some(NetworkingCommitteeMember::FIELDS),
-        };
-    }
-    impl MessageFields for NetworkingCommittee {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::EPOCH_FIELD,
-            Self::MEMBERS_FIELD,
-        ];
-    }
-    impl NetworkingCommittee {
-        pub fn path_builder() -> NetworkingCommitteeFieldPathBuilder {
-            NetworkingCommitteeFieldPathBuilder::new()
-        }
-    }
-    pub struct NetworkingCommitteeFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl NetworkingCommitteeFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(NetworkingCommittee::EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn members(mut self) -> NetworkingCommitteeMemberFieldPathBuilder {
-            self.path.push(NetworkingCommittee::MEMBERS_FIELD.name);
-            NetworkingCommitteeMemberFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl NetworkingCommitteeMember {
-        pub const AUTHORITY_KEY_FIELD: &'static MessageField = &MessageField {
-            name: "authority_key",
-            json_name: "authorityKey",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const NETWORK_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "network_metadata",
-            json_name: "networkMetadata",
-            number: 2i32,
-            message_fields: Some(ValidatorNetworkMetadata::FIELDS),
-        };
-    }
-    impl MessageFields for NetworkingCommitteeMember {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::AUTHORITY_KEY_FIELD,
-            Self::NETWORK_METADATA_FIELD,
-        ];
-    }
-    impl NetworkingCommitteeMember {
-        pub fn path_builder() -> NetworkingCommitteeMemberFieldPathBuilder {
-            NetworkingCommitteeMemberFieldPathBuilder::new()
-        }
-    }
-    pub struct NetworkingCommitteeMemberFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl NetworkingCommitteeMemberFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn authority_key(mut self) -> String {
-            self.path.push(NetworkingCommitteeMember::AUTHORITY_KEY_FIELD.name);
-            self.finish()
-        }
-        pub fn network_metadata(mut self) -> ValidatorNetworkMetadataFieldPathBuilder {
-            self.path.push(NetworkingCommitteeMember::NETWORK_METADATA_FIELD.name);
-            ValidatorNetworkMetadataFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl TransactionEffects {
@@ -2319,879 +2009,6 @@ mod _field_impls {
             EpochFieldPathBuilder::new_with_base(self.path)
         }
     }
-    impl ShardInfo {
-        pub const SHARD_ID_FIELD: &'static MessageField = &MessageField {
-            name: "shard_id",
-            json_name: "shardId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CREATED_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "created_epoch",
-            json_name: "createdEpoch",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "amount",
-            json_name: "amount",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const DATA_SUBMITTER_FIELD: &'static MessageField = &MessageField {
-            name: "data_submitter",
-            json_name: "dataSubmitter",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const TARGET_FIELD: &'static MessageField = &MessageField {
-            name: "target",
-            json_name: "target",
-            number: 5i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const HAS_WINNER_FIELD: &'static MessageField = &MessageField {
-            name: "has_winner",
-            json_name: "hasWinner",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const WINNING_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "winning_encoder",
-            json_name: "winningEncoder",
-            number: 7i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for ShardInfo {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARD_ID_FIELD,
-            Self::CREATED_EPOCH_FIELD,
-            Self::AMOUNT_FIELD,
-            Self::DATA_SUBMITTER_FIELD,
-            Self::TARGET_FIELD,
-            Self::HAS_WINNER_FIELD,
-            Self::WINNING_ENCODER_FIELD,
-        ];
-    }
-    impl ShardInfo {
-        pub fn path_builder() -> ShardInfoFieldPathBuilder {
-            ShardInfoFieldPathBuilder::new()
-        }
-    }
-    pub struct ShardInfoFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ShardInfoFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shard_id(mut self) -> String {
-            self.path.push(ShardInfo::SHARD_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn created_epoch(mut self) -> String {
-            self.path.push(ShardInfo::CREATED_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn amount(mut self) -> String {
-            self.path.push(ShardInfo::AMOUNT_FIELD.name);
-            self.finish()
-        }
-        pub fn data_submitter(mut self) -> String {
-            self.path.push(ShardInfo::DATA_SUBMITTER_FIELD.name);
-            self.finish()
-        }
-        pub fn target(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ShardInfo::TARGET_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn has_winner(mut self) -> String {
-            self.path.push(ShardInfo::HAS_WINNER_FIELD.name);
-            self.finish()
-        }
-        pub fn winning_encoder(mut self) -> String {
-            self.path.push(ShardInfo::WINNING_ENCODER_FIELD.name);
-            self.finish()
-        }
-    }
-    impl TargetInfo {
-        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
-            name: "target_id",
-            json_name: "targetId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CREATED_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "created_epoch",
-            json_name: "createdEpoch",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const VALID_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "valid_epoch",
-            json_name: "validEpoch",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const ORIGIN_FIELD: &'static MessageField = &MessageField {
-            name: "origin",
-            json_name: "origin",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const CREATOR_FIELD: &'static MessageField = &MessageField {
-            name: "creator",
-            json_name: "creator",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const REWARD_AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "reward_amount",
-            json_name: "rewardAmount",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const HAS_WINNER_FIELD: &'static MessageField = &MessageField {
-            name: "has_winner",
-            json_name: "hasWinner",
-            number: 7i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for TargetInfo {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TARGET_ID_FIELD,
-            Self::CREATED_EPOCH_FIELD,
-            Self::VALID_EPOCH_FIELD,
-            Self::ORIGIN_FIELD,
-            Self::CREATOR_FIELD,
-            Self::REWARD_AMOUNT_FIELD,
-            Self::HAS_WINNER_FIELD,
-        ];
-    }
-    impl TargetInfo {
-        pub fn path_builder() -> TargetInfoFieldPathBuilder {
-            TargetInfoFieldPathBuilder::new()
-        }
-    }
-    pub struct TargetInfoFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl TargetInfoFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn target_id(mut self) -> String {
-            self.path.push(TargetInfo::TARGET_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn created_epoch(mut self) -> String {
-            self.path.push(TargetInfo::CREATED_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn valid_epoch(mut self) -> String {
-            self.path.push(TargetInfo::VALID_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn origin(mut self) -> String {
-            self.path.push(TargetInfo::ORIGIN_FIELD.name);
-            self.finish()
-        }
-        pub fn creator(mut self) -> String {
-            self.path.push(TargetInfo::CREATOR_FIELD.name);
-            self.finish()
-        }
-        pub fn reward_amount(mut self) -> String {
-            self.path.push(TargetInfo::REWARD_AMOUNT_FIELD.name);
-            self.finish()
-        }
-        pub fn has_winner(mut self) -> String {
-            self.path.push(TargetInfo::HAS_WINNER_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsByEpochRequest {
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsByEpochRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::EPOCH_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetShardsByEpochRequest {
-        pub fn path_builder() -> GetShardsByEpochRequestFieldPathBuilder {
-            GetShardsByEpochRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsByEpochRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsByEpochRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(GetShardsByEpochRequest::EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetShardsByEpochRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetShardsByEpochRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsByEpochResponse {
-        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
-            name: "shards",
-            json_name: "shards",
-            number: 1i32,
-            message_fields: Some(ShardInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsByEpochResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARDS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetShardsByEpochResponse {
-        pub fn path_builder() -> GetShardsByEpochResponseFieldPathBuilder {
-            GetShardsByEpochResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsByEpochResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsByEpochResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
-            self.path.push(GetShardsByEpochResponse::SHARDS_FIELD.name);
-            ShardInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetShardsByEpochResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsBySubmitterRequest {
-        pub const SUBMITTER_FIELD: &'static MessageField = &MessageField {
-            name: "submitter",
-            json_name: "submitter",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 4i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsBySubmitterRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SUBMITTER_FIELD,
-            Self::EPOCH_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetShardsBySubmitterRequest {
-        pub fn path_builder() -> GetShardsBySubmitterRequestFieldPathBuilder {
-            GetShardsBySubmitterRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsBySubmitterRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsBySubmitterRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn submitter(mut self) -> String {
-            self.path.push(GetShardsBySubmitterRequest::SUBMITTER_FIELD.name);
-            self.finish()
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(GetShardsBySubmitterRequest::EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetShardsBySubmitterRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetShardsBySubmitterRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsBySubmitterResponse {
-        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
-            name: "shards",
-            json_name: "shards",
-            number: 1i32,
-            message_fields: Some(ShardInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsBySubmitterResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARDS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetShardsBySubmitterResponse {
-        pub fn path_builder() -> GetShardsBySubmitterResponseFieldPathBuilder {
-            GetShardsBySubmitterResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsBySubmitterResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsBySubmitterResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
-            self.path.push(GetShardsBySubmitterResponse::SHARDS_FIELD.name);
-            ShardInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetShardsBySubmitterResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsByEncoderRequest {
-        pub const ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "encoder",
-            json_name: "encoder",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsByEncoderRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ENCODER_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetShardsByEncoderRequest {
-        pub fn path_builder() -> GetShardsByEncoderRequestFieldPathBuilder {
-            GetShardsByEncoderRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsByEncoderRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsByEncoderRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn encoder(mut self) -> String {
-            self.path.push(GetShardsByEncoderRequest::ENCODER_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetShardsByEncoderRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetShardsByEncoderRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetShardsByEncoderResponse {
-        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
-            name: "shards",
-            json_name: "shards",
-            number: 1i32,
-            message_fields: Some(ShardInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetShardsByEncoderResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARDS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetShardsByEncoderResponse {
-        pub fn path_builder() -> GetShardsByEncoderResponseFieldPathBuilder {
-            GetShardsByEncoderResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetShardsByEncoderResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetShardsByEncoderResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
-            self.path.push(GetShardsByEncoderResponse::SHARDS_FIELD.name);
-            ShardInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetShardsByEncoderResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetClaimableEscrowsRequest {
-        pub const CURRENT_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "current_epoch",
-            json_name: "currentEpoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetClaimableEscrowsRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::CURRENT_EPOCH_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetClaimableEscrowsRequest {
-        pub fn path_builder() -> GetClaimableEscrowsRequestFieldPathBuilder {
-            GetClaimableEscrowsRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetClaimableEscrowsRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetClaimableEscrowsRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn current_epoch(mut self) -> String {
-            self.path.push(GetClaimableEscrowsRequest::CURRENT_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetClaimableEscrowsRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetClaimableEscrowsRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetClaimableEscrowsResponse {
-        pub const SHARDS_FIELD: &'static MessageField = &MessageField {
-            name: "shards",
-            json_name: "shards",
-            number: 1i32,
-            message_fields: Some(ShardInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetClaimableEscrowsResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARDS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetClaimableEscrowsResponse {
-        pub fn path_builder() -> GetClaimableEscrowsResponseFieldPathBuilder {
-            GetClaimableEscrowsResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetClaimableEscrowsResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetClaimableEscrowsResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shards(mut self) -> ShardInfoFieldPathBuilder {
-            self.path.push(GetClaimableEscrowsResponse::SHARDS_FIELD.name);
-            ShardInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetClaimableEscrowsResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetValidTargetsRequest {
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetValidTargetsRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::EPOCH_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetValidTargetsRequest {
-        pub fn path_builder() -> GetValidTargetsRequestFieldPathBuilder {
-            GetValidTargetsRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetValidTargetsRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetValidTargetsRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(GetValidTargetsRequest::EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetValidTargetsRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetValidTargetsRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetValidTargetsResponse {
-        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
-            name: "targets",
-            json_name: "targets",
-            number: 1i32,
-            message_fields: Some(TargetInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetValidTargetsResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TARGETS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetValidTargetsResponse {
-        pub fn path_builder() -> GetValidTargetsResponseFieldPathBuilder {
-            GetValidTargetsResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetValidTargetsResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetValidTargetsResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn targets(mut self) -> TargetInfoFieldPathBuilder {
-            self.path.push(GetValidTargetsResponse::TARGETS_FIELD.name);
-            TargetInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetValidTargetsResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetClaimableRewardsRequest {
-        pub const CURRENT_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "current_epoch",
-            json_name: "currentEpoch",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "cursor",
-            json_name: "cursor",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const LIMIT_FIELD: &'static MessageField = &MessageField {
-            name: "limit",
-            json_name: "limit",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetClaimableRewardsRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::CURRENT_EPOCH_FIELD,
-            Self::CURSOR_FIELD,
-            Self::LIMIT_FIELD,
-        ];
-    }
-    impl GetClaimableRewardsRequest {
-        pub fn path_builder() -> GetClaimableRewardsRequestFieldPathBuilder {
-            GetClaimableRewardsRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetClaimableRewardsRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetClaimableRewardsRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn current_epoch(mut self) -> String {
-            self.path.push(GetClaimableRewardsRequest::CURRENT_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn cursor(mut self) -> String {
-            self.path.push(GetClaimableRewardsRequest::CURSOR_FIELD.name);
-            self.finish()
-        }
-        pub fn limit(mut self) -> String {
-            self.path.push(GetClaimableRewardsRequest::LIMIT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetClaimableRewardsResponse {
-        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
-            name: "targets",
-            json_name: "targets",
-            number: 1i32,
-            message_fields: Some(TargetInfo::FIELDS),
-        };
-        pub const NEXT_CURSOR_FIELD: &'static MessageField = &MessageField {
-            name: "next_cursor",
-            json_name: "nextCursor",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetClaimableRewardsResponse {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TARGETS_FIELD,
-            Self::NEXT_CURSOR_FIELD,
-        ];
-    }
-    impl GetClaimableRewardsResponse {
-        pub fn path_builder() -> GetClaimableRewardsResponseFieldPathBuilder {
-            GetClaimableRewardsResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetClaimableRewardsResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetClaimableRewardsResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn targets(mut self) -> TargetInfoFieldPathBuilder {
-            self.path.push(GetClaimableRewardsResponse::TARGETS_FIELD.name);
-            TargetInfoFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_cursor(mut self) -> String {
-            self.path.push(GetClaimableRewardsResponse::NEXT_CURSOR_FIELD.name);
-            self.finish()
-        }
-    }
     impl Object {
         pub const OBJECT_ID_FIELD: &'static MessageField = &MessageField {
             name: "object_id",
@@ -3509,77 +2326,6 @@ mod _field_impls {
         }
         pub fn attributes(mut self) -> String {
             self.path.push(ProtocolConfig::ATTRIBUTES_FIELD.name);
-            self.finish()
-        }
-    }
-    impl Shard {
-        pub const QUORUM_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "quorum_threshold",
-            json_name: "quorumThreshold",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "encoders",
-            json_name: "encoders",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const SEED_FIELD: &'static MessageField = &MessageField {
-            name: "seed",
-            json_name: "seed",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "epoch",
-            json_name: "epoch",
-            number: 4i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for Shard {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::QUORUM_THRESHOLD_FIELD,
-            Self::ENCODERS_FIELD,
-            Self::SEED_FIELD,
-            Self::EPOCH_FIELD,
-        ];
-    }
-    impl Shard {
-        pub fn path_builder() -> ShardFieldPathBuilder {
-            ShardFieldPathBuilder::new()
-        }
-    }
-    pub struct ShardFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ShardFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn quorum_threshold(mut self) -> String {
-            self.path.push(Shard::QUORUM_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn encoders(mut self) -> String {
-            self.path.push(Shard::ENCODERS_FIELD.name);
-            self.finish()
-        }
-        pub fn seed(mut self) -> String {
-            self.path.push(Shard::SEED_FIELD.name);
-            self.finish()
-        }
-        pub fn epoch(mut self) -> String {
-            self.path.push(Shard::EPOCH_FIELD.name);
             self.finish()
         }
     }
@@ -4518,52 +3264,34 @@ mod _field_impls {
             number: 5i32,
             message_fields: Some(ValidatorSet::FIELDS),
         };
-        pub const ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "encoders",
-            json_name: "encoders",
-            number: 6i32,
-            message_fields: Some(EncoderSet::FIELDS),
-        };
         pub const VALIDATOR_REPORT_RECORDS_FIELD: &'static MessageField = &MessageField {
             name: "validator_report_records",
             json_name: "validatorReportRecords",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const ENCODER_REPORT_RECORDS_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_report_records",
-            json_name: "encoderReportRecords",
-            number: 8i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const EMISSION_POOL_FIELD: &'static MessageField = &MessageField {
             name: "emission_pool",
             json_name: "emissionPool",
-            number: 9i32,
+            number: 7i32,
             message_fields: Some(EmissionPool::FIELDS),
-        };
-        pub const REFERENCE_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "reference_byte_price",
-            json_name: "referenceBytePrice",
-            number: 10i32,
-            message_fields: None,
         };
         pub const TARGET_REWARDS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
             name: "target_rewards_per_epoch",
             json_name: "targetRewardsPerEpoch",
-            number: 11i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const TARGETS_CREATED_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
             name: "targets_created_per_epoch",
             json_name: "targetsCreatedPerEpoch",
-            number: 12i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const EPOCH_SEEDS_FIELD: &'static MessageField = &MessageField {
             name: "epoch_seeds",
             json_name: "epochSeeds",
-            number: 13i32,
+            number: 10i32,
             message_fields: None,
         };
     }
@@ -4574,11 +3302,8 @@ mod _field_impls {
             Self::PROTOCOL_VERSION_FIELD,
             Self::PARAMETERS_FIELD,
             Self::VALIDATORS_FIELD,
-            Self::ENCODERS_FIELD,
             Self::VALIDATOR_REPORT_RECORDS_FIELD,
-            Self::ENCODER_REPORT_RECORDS_FIELD,
             Self::EMISSION_POOL_FIELD,
-            Self::REFERENCE_BYTE_PRICE_FIELD,
             Self::TARGET_REWARDS_PER_EPOCH_FIELD,
             Self::TARGETS_CREATED_PER_EPOCH_FIELD,
             Self::EPOCH_SEEDS_FIELD,
@@ -4624,25 +3349,13 @@ mod _field_impls {
             self.path.push(SystemState::VALIDATORS_FIELD.name);
             ValidatorSetFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn encoders(mut self) -> EncoderSetFieldPathBuilder {
-            self.path.push(SystemState::ENCODERS_FIELD.name);
-            EncoderSetFieldPathBuilder::new_with_base(self.path)
-        }
         pub fn validator_report_records(mut self) -> String {
             self.path.push(SystemState::VALIDATOR_REPORT_RECORDS_FIELD.name);
-            self.finish()
-        }
-        pub fn encoder_report_records(mut self) -> String {
-            self.path.push(SystemState::ENCODER_REPORT_RECORDS_FIELD.name);
             self.finish()
         }
         pub fn emission_pool(mut self) -> EmissionPoolFieldPathBuilder {
             self.path.push(SystemState::EMISSION_POOL_FIELD.name);
             EmissionPoolFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn reference_byte_price(mut self) -> String {
-            self.path.push(SystemState::REFERENCE_BYTE_PRICE_FIELD.name);
-            self.finish()
         }
         pub fn target_rewards_per_epoch(mut self) -> String {
             self.path.push(SystemState::TARGET_REWARDS_PER_EPOCH_FIELD.name);
@@ -4919,54 +3632,47 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const CONSENSUS_VALIDATORS_FIELD: &'static MessageField = &MessageField {
-            name: "consensus_validators",
-            json_name: "consensusValidators",
+        pub const VALIDATORS_FIELD: &'static MessageField = &MessageField {
+            name: "validators",
+            json_name: "validators",
             number: 2i32,
-            message_fields: Some(Validator::FIELDS),
-        };
-        pub const NETWORKING_VALIDATORS_FIELD: &'static MessageField = &MessageField {
-            name: "networking_validators",
-            json_name: "networkingValidators",
-            number: 3i32,
             message_fields: Some(Validator::FIELDS),
         };
         pub const PENDING_VALIDATORS_FIELD: &'static MessageField = &MessageField {
             name: "pending_validators",
             json_name: "pendingValidators",
-            number: 4i32,
+            number: 3i32,
             message_fields: Some(Validator::FIELDS),
         };
         pub const PENDING_REMOVALS_FIELD: &'static MessageField = &MessageField {
             name: "pending_removals",
             json_name: "pendingRemovals",
-            number: 5i32,
-            message_fields: Some(PendingRemoval::FIELDS),
+            number: 4i32,
+            message_fields: None,
         };
         pub const STAKING_POOL_MAPPINGS_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool_mappings",
             json_name: "stakingPoolMappings",
-            number: 6i32,
+            number: 5i32,
             message_fields: None,
         };
         pub const INACTIVE_VALIDATORS_FIELD: &'static MessageField = &MessageField {
             name: "inactive_validators",
             json_name: "inactiveValidators",
-            number: 7i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const AT_RISK_VALIDATORS_FIELD: &'static MessageField = &MessageField {
             name: "at_risk_validators",
             json_name: "atRiskValidators",
-            number: 8i32,
+            number: 7i32,
             message_fields: None,
         };
     }
     impl MessageFields for ValidatorSet {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::TOTAL_STAKE_FIELD,
-            Self::CONSENSUS_VALIDATORS_FIELD,
-            Self::NETWORKING_VALIDATORS_FIELD,
+            Self::VALIDATORS_FIELD,
             Self::PENDING_VALIDATORS_FIELD,
             Self::PENDING_REMOVALS_FIELD,
             Self::STAKING_POOL_MAPPINGS_FIELD,
@@ -4998,21 +3704,17 @@ mod _field_impls {
             self.path.push(ValidatorSet::TOTAL_STAKE_FIELD.name);
             self.finish()
         }
-        pub fn consensus_validators(mut self) -> ValidatorFieldPathBuilder {
-            self.path.push(ValidatorSet::CONSENSUS_VALIDATORS_FIELD.name);
-            ValidatorFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn networking_validators(mut self) -> ValidatorFieldPathBuilder {
-            self.path.push(ValidatorSet::NETWORKING_VALIDATORS_FIELD.name);
+        pub fn validators(mut self) -> ValidatorFieldPathBuilder {
+            self.path.push(ValidatorSet::VALIDATORS_FIELD.name);
             ValidatorFieldPathBuilder::new_with_base(self.path)
         }
         pub fn pending_validators(mut self) -> ValidatorFieldPathBuilder {
             self.path.push(ValidatorSet::PENDING_VALIDATORS_FIELD.name);
             ValidatorFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn pending_removals(mut self) -> PendingRemovalFieldPathBuilder {
+        pub fn pending_removals(mut self) -> String {
             self.path.push(ValidatorSet::PENDING_REMOVALS_FIELD.name);
-            PendingRemovalFieldPathBuilder::new_with_base(self.path)
+            self.finish()
         }
         pub fn staking_pool_mappings(mut self) -> String {
             self.path.push(ValidatorSet::STAKING_POOL_MAPPINGS_FIELD.name);
@@ -5024,55 +3726,6 @@ mod _field_impls {
         }
         pub fn at_risk_validators(mut self) -> String {
             self.path.push(ValidatorSet::AT_RISK_VALIDATORS_FIELD.name);
-            self.finish()
-        }
-    }
-    impl PendingRemoval {
-        pub const IS_CONSENSUS_FIELD: &'static MessageField = &MessageField {
-            name: "is_consensus",
-            json_name: "isConsensus",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const INDEX_FIELD: &'static MessageField = &MessageField {
-            name: "index",
-            json_name: "index",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for PendingRemoval {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::IS_CONSENSUS_FIELD,
-            Self::INDEX_FIELD,
-        ];
-    }
-    impl PendingRemoval {
-        pub fn path_builder() -> PendingRemovalFieldPathBuilder {
-            PendingRemovalFieldPathBuilder::new()
-        }
-    }
-    pub struct PendingRemovalFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl PendingRemovalFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn is_consensus(mut self) -> String {
-            self.path.push(PendingRemoval::IS_CONSENSUS_FIELD.name);
-            self.finish()
-        }
-        pub fn index(mut self) -> String {
-            self.path.push(PendingRemoval::INDEX_FIELD.name);
             self.finish()
         }
     }
@@ -5119,82 +3772,70 @@ mod _field_impls {
             number: 7i32,
             message_fields: None,
         };
-        pub const ENCODER_VALIDATOR_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_validator_address",
-            json_name: "encoderValidatorAddress",
-            number: 8i32,
-            message_fields: None,
-        };
         pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
             name: "voting_power",
             json_name: "votingPower",
-            number: 9i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "commission_rate",
             json_name: "commissionRate",
-            number: 10i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_STAKE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_stake",
             json_name: "nextEpochStake",
-            number: 11i32,
+            number: 10i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_commission_rate",
             json_name: "nextEpochCommissionRate",
-            number: 12i32,
+            number: 11i32,
             message_fields: None,
         };
         pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool",
             json_name: "stakingPool",
-            number: 13i32,
+            number: 12i32,
             message_fields: Some(StakingPool::FIELDS),
         };
         pub const NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_protocol_pubkey",
             json_name: "nextEpochProtocolPubkey",
-            number: 14i32,
+            number: 13i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_network_pubkey",
             json_name: "nextEpochNetworkPubkey",
-            number: 15i32,
+            number: 14i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_WORKER_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_worker_pubkey",
             json_name: "nextEpochWorkerPubkey",
-            number: 16i32,
+            number: 15i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_NET_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_net_address",
             json_name: "nextEpochNetAddress",
-            number: 17i32,
+            number: 16i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_P2P_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_p2p_address",
             json_name: "nextEpochP2pAddress",
-            number: 18i32,
+            number: 17i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_PRIMARY_ADDRESS_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_primary_address",
             json_name: "nextEpochPrimaryAddress",
-            number: 19i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_ENCODER_VALIDATOR_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_encoder_validator_address",
-            json_name: "nextEpochEncoderValidatorAddress",
-            number: 20i32,
+            number: 18i32,
             message_fields: None,
         };
     }
@@ -5207,7 +3848,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::ENCODER_VALIDATOR_ADDRESS_FIELD,
             Self::VOTING_POWER_FIELD,
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_STAKE_FIELD,
@@ -5219,7 +3859,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_NET_ADDRESS_FIELD,
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_ENCODER_VALIDATOR_ADDRESS_FIELD,
         ];
     }
     impl Validator {
@@ -5270,10 +3909,6 @@ mod _field_impls {
             self.path.push(Validator::PRIMARY_ADDRESS_FIELD.name);
             self.finish()
         }
-        pub fn encoder_validator_address(mut self) -> String {
-            self.path.push(Validator::ENCODER_VALIDATOR_ADDRESS_FIELD.name);
-            self.finish()
-        }
         pub fn voting_power(mut self) -> String {
             self.path.push(Validator::VOTING_POWER_FIELD.name);
             self.finish()
@@ -5316,10 +3951,6 @@ mod _field_impls {
         }
         pub fn next_epoch_primary_address(mut self) -> String {
             self.path.push(Validator::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_encoder_validator_address(mut self) -> String {
-            self.path.push(Validator::NEXT_EPOCH_ENCODER_VALIDATOR_ADDRESS_FIELD.name);
             self.finish()
         }
     }
@@ -5509,346 +4140,6 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl EncoderSet {
-        pub const TOTAL_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "total_stake",
-            json_name: "totalStake",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const ACTIVE_ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "active_encoders",
-            json_name: "activeEncoders",
-            number: 2i32,
-            message_fields: Some(Encoder::FIELDS),
-        };
-        pub const PENDING_ACTIVE_ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "pending_active_encoders",
-            json_name: "pendingActiveEncoders",
-            number: 3i32,
-            message_fields: Some(Encoder::FIELDS),
-        };
-        pub const PENDING_REMOVALS_FIELD: &'static MessageField = &MessageField {
-            name: "pending_removals",
-            json_name: "pendingRemovals",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const STAKING_POOL_MAPPINGS_FIELD: &'static MessageField = &MessageField {
-            name: "staking_pool_mappings",
-            json_name: "stakingPoolMappings",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const INACTIVE_ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "inactive_encoders",
-            json_name: "inactiveEncoders",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const AT_RISK_ENCODERS_FIELD: &'static MessageField = &MessageField {
-            name: "at_risk_encoders",
-            json_name: "atRiskEncoders",
-            number: 7i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for EncoderSet {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TOTAL_STAKE_FIELD,
-            Self::ACTIVE_ENCODERS_FIELD,
-            Self::PENDING_ACTIVE_ENCODERS_FIELD,
-            Self::PENDING_REMOVALS_FIELD,
-            Self::STAKING_POOL_MAPPINGS_FIELD,
-            Self::INACTIVE_ENCODERS_FIELD,
-            Self::AT_RISK_ENCODERS_FIELD,
-        ];
-    }
-    impl EncoderSet {
-        pub fn path_builder() -> EncoderSetFieldPathBuilder {
-            EncoderSetFieldPathBuilder::new()
-        }
-    }
-    pub struct EncoderSetFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl EncoderSetFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn total_stake(mut self) -> String {
-            self.path.push(EncoderSet::TOTAL_STAKE_FIELD.name);
-            self.finish()
-        }
-        pub fn active_encoders(mut self) -> EncoderFieldPathBuilder {
-            self.path.push(EncoderSet::ACTIVE_ENCODERS_FIELD.name);
-            EncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn pending_active_encoders(mut self) -> EncoderFieldPathBuilder {
-            self.path.push(EncoderSet::PENDING_ACTIVE_ENCODERS_FIELD.name);
-            EncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn pending_removals(mut self) -> String {
-            self.path.push(EncoderSet::PENDING_REMOVALS_FIELD.name);
-            self.finish()
-        }
-        pub fn staking_pool_mappings(mut self) -> String {
-            self.path.push(EncoderSet::STAKING_POOL_MAPPINGS_FIELD.name);
-            self.finish()
-        }
-        pub fn inactive_encoders(mut self) -> String {
-            self.path.push(EncoderSet::INACTIVE_ENCODERS_FIELD.name);
-            self.finish()
-        }
-        pub fn at_risk_encoders(mut self) -> String {
-            self.path.push(EncoderSet::AT_RISK_ENCODERS_FIELD.name);
-            self.finish()
-        }
-    }
-    impl Encoder {
-        pub const SOMA_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "soma_address",
-            json_name: "somaAddress",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const ENCODER_PUBKEY_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_pubkey",
-            json_name: "encoderPubkey",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
-            name: "network_pubkey",
-            json_name: "networkPubkey",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "internal_network_address",
-            json_name: "internalNetworkAddress",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "external_network_address",
-            json_name: "externalNetworkAddress",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "object_server_address",
-            json_name: "objectServerAddress",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const PROBE_FIELD: &'static MessageField = &MessageField {
-            name: "probe",
-            json_name: "probe",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
-            name: "voting_power",
-            json_name: "votingPower",
-            number: 8i32,
-            message_fields: None,
-        };
-        pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "commission_rate",
-            json_name: "commissionRate",
-            number: 9i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_stake",
-            json_name: "nextEpochStake",
-            number: 10i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_commission_rate",
-            json_name: "nextEpochCommissionRate",
-            number: 11i32,
-            message_fields: None,
-        };
-        pub const BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "byte_price",
-            json_name: "bytePrice",
-            number: 12i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_byte_price",
-            json_name: "nextEpochBytePrice",
-            number: 13i32,
-            message_fields: None,
-        };
-        pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
-            name: "staking_pool",
-            json_name: "stakingPool",
-            number: 14i32,
-            message_fields: Some(StakingPool::FIELDS),
-        };
-        pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_network_pubkey",
-            json_name: "nextEpochNetworkPubkey",
-            number: 15i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_internal_network_address",
-            json_name: "nextEpochInternalNetworkAddress",
-            number: 16i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_external_network_address",
-            json_name: "nextEpochExternalNetworkAddress",
-            number: 17i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_object_server_address",
-            json_name: "nextEpochObjectServerAddress",
-            number: 18i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_PROBE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_probe",
-            json_name: "nextEpochProbe",
-            number: 19i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for Encoder {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SOMA_ADDRESS_FIELD,
-            Self::ENCODER_PUBKEY_FIELD,
-            Self::NETWORK_PUBKEY_FIELD,
-            Self::INTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::EXTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::OBJECT_SERVER_ADDRESS_FIELD,
-            Self::PROBE_FIELD,
-            Self::VOTING_POWER_FIELD,
-            Self::COMMISSION_RATE_FIELD,
-            Self::NEXT_EPOCH_STAKE_FIELD,
-            Self::NEXT_EPOCH_COMMISSION_RATE_FIELD,
-            Self::BYTE_PRICE_FIELD,
-            Self::NEXT_EPOCH_BYTE_PRICE_FIELD,
-            Self::STAKING_POOL_FIELD,
-            Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
-            Self::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROBE_FIELD,
-        ];
-    }
-    impl Encoder {
-        pub fn path_builder() -> EncoderFieldPathBuilder {
-            EncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct EncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl EncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn soma_address(mut self) -> String {
-            self.path.push(Encoder::SOMA_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn encoder_pubkey(mut self) -> String {
-            self.path.push(Encoder::ENCODER_PUBKEY_FIELD.name);
-            self.finish()
-        }
-        pub fn network_pubkey(mut self) -> String {
-            self.path.push(Encoder::NETWORK_PUBKEY_FIELD.name);
-            self.finish()
-        }
-        pub fn internal_network_address(mut self) -> String {
-            self.path.push(Encoder::INTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn external_network_address(mut self) -> String {
-            self.path.push(Encoder::EXTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn object_server_address(mut self) -> String {
-            self.path.push(Encoder::OBJECT_SERVER_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn probe(mut self) -> String {
-            self.path.push(Encoder::PROBE_FIELD.name);
-            self.finish()
-        }
-        pub fn voting_power(mut self) -> String {
-            self.path.push(Encoder::VOTING_POWER_FIELD.name);
-            self.finish()
-        }
-        pub fn commission_rate(mut self) -> String {
-            self.path.push(Encoder::COMMISSION_RATE_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_stake(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_STAKE_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_commission_rate(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_COMMISSION_RATE_FIELD.name);
-            self.finish()
-        }
-        pub fn byte_price(mut self) -> String {
-            self.path.push(Encoder::BYTE_PRICE_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_byte_price(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_BYTE_PRICE_FIELD.name);
-            self.finish()
-        }
-        pub fn staking_pool(mut self) -> StakingPoolFieldPathBuilder {
-            self.path.push(Encoder::STAKING_POOL_FIELD.name);
-            StakingPoolFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn next_epoch_network_pubkey(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_NETWORK_PUBKEY_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_internal_network_address(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_external_network_address(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_object_server_address(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_probe(mut self) -> String {
-            self.path.push(Encoder::NEXT_EPOCH_PROBE_FIELD.name);
-            self.finish()
-        }
-    }
     impl Transaction {
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
@@ -5975,107 +4266,35 @@ mod _field_impls {
             number: 9i32,
             message_fields: Some(SetCommissionRate::FIELDS),
         };
-        pub const ADD_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "add_encoder",
-            json_name: "addEncoder",
-            number: 10i32,
-            message_fields: Some(AddEncoder::FIELDS),
-        };
-        pub const REMOVE_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "remove_encoder",
-            json_name: "removeEncoder",
-            number: 11i32,
-            message_fields: Some(RemoveEncoder::FIELDS),
-        };
-        pub const REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "report_encoder",
-            json_name: "reportEncoder",
-            number: 12i32,
-            message_fields: Some(ReportEncoder::FIELDS),
-        };
-        pub const UNDO_REPORT_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "undo_report_encoder",
-            json_name: "undoReportEncoder",
-            number: 13i32,
-            message_fields: Some(UndoReportEncoder::FIELDS),
-        };
-        pub const UPDATE_ENCODER_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "update_encoder_metadata",
-            json_name: "updateEncoderMetadata",
-            number: 14i32,
-            message_fields: Some(UpdateEncoderMetadata::FIELDS),
-        };
-        pub const SET_ENCODER_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "set_encoder_commission_rate",
-            json_name: "setEncoderCommissionRate",
-            number: 15i32,
-            message_fields: Some(SetEncoderCommissionRate::FIELDS),
-        };
-        pub const SET_ENCODER_BYTE_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "set_encoder_byte_price",
-            json_name: "setEncoderBytePrice",
-            number: 16i32,
-            message_fields: Some(SetEncoderBytePrice::FIELDS),
-        };
         pub const TRANSFER_COIN_FIELD: &'static MessageField = &MessageField {
             name: "transfer_coin",
             json_name: "transferCoin",
-            number: 17i32,
+            number: 10i32,
             message_fields: Some(TransferCoin::FIELDS),
         };
         pub const PAY_COINS_FIELD: &'static MessageField = &MessageField {
             name: "pay_coins",
             json_name: "payCoins",
-            number: 18i32,
+            number: 11i32,
             message_fields: Some(PayCoins::FIELDS),
         };
         pub const TRANSFER_OBJECTS_FIELD: &'static MessageField = &MessageField {
             name: "transfer_objects",
             json_name: "transferObjects",
-            number: 19i32,
+            number: 12i32,
             message_fields: Some(TransferObjects::FIELDS),
         };
         pub const ADD_STAKE_FIELD: &'static MessageField = &MessageField {
             name: "add_stake",
             json_name: "addStake",
-            number: 20i32,
+            number: 13i32,
             message_fields: Some(AddStake::FIELDS),
-        };
-        pub const ADD_STAKE_TO_ENCODER_FIELD: &'static MessageField = &MessageField {
-            name: "add_stake_to_encoder",
-            json_name: "addStakeToEncoder",
-            number: 21i32,
-            message_fields: Some(AddStakeToEncoder::FIELDS),
         };
         pub const WITHDRAW_STAKE_FIELD: &'static MessageField = &MessageField {
             name: "withdraw_stake",
             json_name: "withdrawStake",
-            number: 22i32,
+            number: 14i32,
             message_fields: Some(WithdrawStake::FIELDS),
-        };
-        pub const EMBED_DATA_FIELD: &'static MessageField = &MessageField {
-            name: "embed_data",
-            json_name: "embedData",
-            number: 23i32,
-            message_fields: Some(EmbedData::FIELDS),
-        };
-        pub const CLAIM_ESCROW_FIELD: &'static MessageField = &MessageField {
-            name: "claim_escrow",
-            json_name: "claimEscrow",
-            number: 24i32,
-            message_fields: Some(ClaimEscrow::FIELDS),
-        };
-        pub const REPORT_WINNER_FIELD: &'static MessageField = &MessageField {
-            name: "report_winner",
-            json_name: "reportWinner",
-            number: 25i32,
-            message_fields: Some(ReportWinner::FIELDS),
-        };
-        pub const CLAIM_REWARD_FIELD: &'static MessageField = &MessageField {
-            name: "claim_reward",
-            json_name: "claimReward",
-            number: 26i32,
-            message_fields: Some(ClaimReward::FIELDS),
         };
     }
     impl MessageFields for TransactionKind {
@@ -6089,23 +4308,11 @@ mod _field_impls {
             Self::UNDO_REPORT_VALIDATOR_FIELD,
             Self::UPDATE_VALIDATOR_METADATA_FIELD,
             Self::SET_COMMISSION_RATE_FIELD,
-            Self::ADD_ENCODER_FIELD,
-            Self::REMOVE_ENCODER_FIELD,
-            Self::REPORT_ENCODER_FIELD,
-            Self::UNDO_REPORT_ENCODER_FIELD,
-            Self::UPDATE_ENCODER_METADATA_FIELD,
-            Self::SET_ENCODER_COMMISSION_RATE_FIELD,
-            Self::SET_ENCODER_BYTE_PRICE_FIELD,
             Self::TRANSFER_COIN_FIELD,
             Self::PAY_COINS_FIELD,
             Self::TRANSFER_OBJECTS_FIELD,
             Self::ADD_STAKE_FIELD,
-            Self::ADD_STAKE_TO_ENCODER_FIELD,
             Self::WITHDRAW_STAKE_FIELD,
-            Self::EMBED_DATA_FIELD,
-            Self::CLAIM_ESCROW_FIELD,
-            Self::REPORT_WINNER_FIELD,
-            Self::CLAIM_REWARD_FIELD,
         ];
     }
     impl TransactionKind {
@@ -6168,38 +4375,6 @@ mod _field_impls {
             self.path.push(TransactionKind::SET_COMMISSION_RATE_FIELD.name);
             SetCommissionRateFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn add_encoder(mut self) -> AddEncoderFieldPathBuilder {
-            self.path.push(TransactionKind::ADD_ENCODER_FIELD.name);
-            AddEncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn remove_encoder(mut self) -> RemoveEncoderFieldPathBuilder {
-            self.path.push(TransactionKind::REMOVE_ENCODER_FIELD.name);
-            RemoveEncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn report_encoder(mut self) -> ReportEncoderFieldPathBuilder {
-            self.path.push(TransactionKind::REPORT_ENCODER_FIELD.name);
-            ReportEncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn undo_report_encoder(mut self) -> UndoReportEncoderFieldPathBuilder {
-            self.path.push(TransactionKind::UNDO_REPORT_ENCODER_FIELD.name);
-            UndoReportEncoderFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn update_encoder_metadata(
-            mut self,
-        ) -> UpdateEncoderMetadataFieldPathBuilder {
-            self.path.push(TransactionKind::UPDATE_ENCODER_METADATA_FIELD.name);
-            UpdateEncoderMetadataFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn set_encoder_commission_rate(
-            mut self,
-        ) -> SetEncoderCommissionRateFieldPathBuilder {
-            self.path.push(TransactionKind::SET_ENCODER_COMMISSION_RATE_FIELD.name);
-            SetEncoderCommissionRateFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn set_encoder_byte_price(mut self) -> SetEncoderBytePriceFieldPathBuilder {
-            self.path.push(TransactionKind::SET_ENCODER_BYTE_PRICE_FIELD.name);
-            SetEncoderBytePriceFieldPathBuilder::new_with_base(self.path)
-        }
         pub fn transfer_coin(mut self) -> TransferCoinFieldPathBuilder {
             self.path.push(TransactionKind::TRANSFER_COIN_FIELD.name);
             TransferCoinFieldPathBuilder::new_with_base(self.path)
@@ -6216,29 +4391,9 @@ mod _field_impls {
             self.path.push(TransactionKind::ADD_STAKE_FIELD.name);
             AddStakeFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn add_stake_to_encoder(mut self) -> AddStakeToEncoderFieldPathBuilder {
-            self.path.push(TransactionKind::ADD_STAKE_TO_ENCODER_FIELD.name);
-            AddStakeToEncoderFieldPathBuilder::new_with_base(self.path)
-        }
         pub fn withdraw_stake(mut self) -> WithdrawStakeFieldPathBuilder {
             self.path.push(TransactionKind::WITHDRAW_STAKE_FIELD.name);
             WithdrawStakeFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn embed_data(mut self) -> EmbedDataFieldPathBuilder {
-            self.path.push(TransactionKind::EMBED_DATA_FIELD.name);
-            EmbedDataFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn claim_escrow(mut self) -> ClaimEscrowFieldPathBuilder {
-            self.path.push(TransactionKind::CLAIM_ESCROW_FIELD.name);
-            ClaimEscrowFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn report_winner(mut self) -> ReportWinnerFieldPathBuilder {
-            self.path.push(TransactionKind::REPORT_WINNER_FIELD.name);
-            ReportWinnerFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn claim_reward(mut self) -> ClaimRewardFieldPathBuilder {
-            self.path.push(TransactionKind::CLAIM_REWARD_FIELD.name);
-            ClaimRewardFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl AddValidator {
@@ -6278,12 +4433,6 @@ mod _field_impls {
             number: 6i32,
             message_fields: None,
         };
-        pub const ENCODER_VALIDATOR_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_validator_address",
-            json_name: "encoderValidatorAddress",
-            number: 7i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for AddValidator {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -6293,7 +4442,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::ENCODER_VALIDATOR_ADDRESS_FIELD,
         ];
     }
     impl AddValidator {
@@ -6338,10 +4486,6 @@ mod _field_impls {
         }
         pub fn primary_address(mut self) -> String {
             self.path.push(AddValidator::PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn encoder_validator_address(mut self) -> String {
-            self.path.push(AddValidator::ENCODER_VALIDATOR_ADDRESS_FIELD.name);
             self.finish()
         }
     }
@@ -6586,372 +4730,6 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl AddEncoder {
-        pub const ENCODER_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_pubkey_bytes",
-            json_name: "encoderPubkeyBytes",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const NETWORK_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
-            name: "network_pubkey_bytes",
-            json_name: "networkPubkeyBytes",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "internal_network_address",
-            json_name: "internalNetworkAddress",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "external_network_address",
-            json_name: "externalNetworkAddress",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "object_server_address",
-            json_name: "objectServerAddress",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const PROBE_FIELD: &'static MessageField = &MessageField {
-            name: "probe",
-            json_name: "probe",
-            number: 6i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for AddEncoder {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ENCODER_PUBKEY_BYTES_FIELD,
-            Self::NETWORK_PUBKEY_BYTES_FIELD,
-            Self::INTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::EXTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::OBJECT_SERVER_ADDRESS_FIELD,
-            Self::PROBE_FIELD,
-        ];
-    }
-    impl AddEncoder {
-        pub fn path_builder() -> AddEncoderFieldPathBuilder {
-            AddEncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct AddEncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl AddEncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn encoder_pubkey_bytes(mut self) -> String {
-            self.path.push(AddEncoder::ENCODER_PUBKEY_BYTES_FIELD.name);
-            self.finish()
-        }
-        pub fn network_pubkey_bytes(mut self) -> String {
-            self.path.push(AddEncoder::NETWORK_PUBKEY_BYTES_FIELD.name);
-            self.finish()
-        }
-        pub fn internal_network_address(mut self) -> String {
-            self.path.push(AddEncoder::INTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn external_network_address(mut self) -> String {
-            self.path.push(AddEncoder::EXTERNAL_NETWORK_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn object_server_address(mut self) -> String {
-            self.path.push(AddEncoder::OBJECT_SERVER_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn probe(mut self) -> String {
-            self.path.push(AddEncoder::PROBE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl RemoveEncoder {
-        pub const ENCODER_PUBKEY_BYTES_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_pubkey_bytes",
-            json_name: "encoderPubkeyBytes",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for RemoveEncoder {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ENCODER_PUBKEY_BYTES_FIELD,
-        ];
-    }
-    impl RemoveEncoder {
-        pub fn path_builder() -> RemoveEncoderFieldPathBuilder {
-            RemoveEncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct RemoveEncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl RemoveEncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn encoder_pubkey_bytes(mut self) -> String {
-            self.path.push(RemoveEncoder::ENCODER_PUBKEY_BYTES_FIELD.name);
-            self.finish()
-        }
-    }
-    impl ReportEncoder {
-        pub const REPORTEE_FIELD: &'static MessageField = &MessageField {
-            name: "reportee",
-            json_name: "reportee",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for ReportEncoder {
-        const FIELDS: &'static [&'static MessageField] = &[Self::REPORTEE_FIELD];
-    }
-    impl ReportEncoder {
-        pub fn path_builder() -> ReportEncoderFieldPathBuilder {
-            ReportEncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct ReportEncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ReportEncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn reportee(mut self) -> String {
-            self.path.push(ReportEncoder::REPORTEE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl UndoReportEncoder {
-        pub const REPORTEE_FIELD: &'static MessageField = &MessageField {
-            name: "reportee",
-            json_name: "reportee",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for UndoReportEncoder {
-        const FIELDS: &'static [&'static MessageField] = &[Self::REPORTEE_FIELD];
-    }
-    impl UndoReportEncoder {
-        pub fn path_builder() -> UndoReportEncoderFieldPathBuilder {
-            UndoReportEncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct UndoReportEncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl UndoReportEncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn reportee(mut self) -> String {
-            self.path.push(UndoReportEncoder::REPORTEE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl UpdateEncoderMetadata {
-        pub const NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_external_network_address",
-            json_name: "nextEpochExternalNetworkAddress",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_internal_network_address",
-            json_name: "nextEpochInternalNetworkAddress",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_NETWORK_PUBKEY_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_network_pubkey",
-            json_name: "nextEpochNetworkPubkey",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_object_server_address",
-            json_name: "nextEpochObjectServerAddress",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const NEXT_EPOCH_PROBE_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_probe",
-            json_name: "nextEpochProbe",
-            number: 5i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for UpdateEncoderMetadata {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
-            Self::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROBE_FIELD,
-        ];
-    }
-    impl UpdateEncoderMetadata {
-        pub fn path_builder() -> UpdateEncoderMetadataFieldPathBuilder {
-            UpdateEncoderMetadataFieldPathBuilder::new()
-        }
-    }
-    pub struct UpdateEncoderMetadataFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl UpdateEncoderMetadataFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn next_epoch_external_network_address(mut self) -> String {
-            self.path
-                .push(
-                    UpdateEncoderMetadata::NEXT_EPOCH_EXTERNAL_NETWORK_ADDRESS_FIELD.name,
-                );
-            self.finish()
-        }
-        pub fn next_epoch_internal_network_address(mut self) -> String {
-            self.path
-                .push(
-                    UpdateEncoderMetadata::NEXT_EPOCH_INTERNAL_NETWORK_ADDRESS_FIELD.name,
-                );
-            self.finish()
-        }
-        pub fn next_epoch_network_pubkey(mut self) -> String {
-            self.path.push(UpdateEncoderMetadata::NEXT_EPOCH_NETWORK_PUBKEY_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_object_server_address(mut self) -> String {
-            self.path
-                .push(
-                    UpdateEncoderMetadata::NEXT_EPOCH_OBJECT_SERVER_ADDRESS_FIELD.name,
-                );
-            self.finish()
-        }
-        pub fn next_epoch_probe(mut self) -> String {
-            self.path.push(UpdateEncoderMetadata::NEXT_EPOCH_PROBE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl SetEncoderCommissionRate {
-        pub const NEW_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "new_rate",
-            json_name: "newRate",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for SetEncoderCommissionRate {
-        const FIELDS: &'static [&'static MessageField] = &[Self::NEW_RATE_FIELD];
-    }
-    impl SetEncoderCommissionRate {
-        pub fn path_builder() -> SetEncoderCommissionRateFieldPathBuilder {
-            SetEncoderCommissionRateFieldPathBuilder::new()
-        }
-    }
-    pub struct SetEncoderCommissionRateFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl SetEncoderCommissionRateFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn new_rate(mut self) -> String {
-            self.path.push(SetEncoderCommissionRate::NEW_RATE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl SetEncoderBytePrice {
-        pub const NEW_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "new_price",
-            json_name: "newPrice",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for SetEncoderBytePrice {
-        const FIELDS: &'static [&'static MessageField] = &[Self::NEW_PRICE_FIELD];
-    }
-    impl SetEncoderBytePrice {
-        pub fn path_builder() -> SetEncoderBytePriceFieldPathBuilder {
-            SetEncoderBytePriceFieldPathBuilder::new()
-        }
-    }
-    pub struct SetEncoderBytePriceFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl SetEncoderBytePriceFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn new_price(mut self) -> String {
-            self.path.push(SetEncoderBytePrice::NEW_PRICE_FIELD.name);
-            self.finish()
-        }
-    }
     impl TransferCoin {
         pub const COIN_FIELD: &'static MessageField = &MessageField {
             name: "coin",
@@ -7178,66 +4956,6 @@ mod _field_impls {
         }
         pub fn amount(mut self) -> String {
             self.path.push(AddStake::AMOUNT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl AddStakeToEncoder {
-        pub const ENCODER_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_address",
-            json_name: "encoderAddress",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
-            name: "coin_ref",
-            json_name: "coinRef",
-            number: 2i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "amount",
-            json_name: "amount",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for AddStakeToEncoder {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ENCODER_ADDRESS_FIELD,
-            Self::COIN_REF_FIELD,
-            Self::AMOUNT_FIELD,
-        ];
-    }
-    impl AddStakeToEncoder {
-        pub fn path_builder() -> AddStakeToEncoderFieldPathBuilder {
-            AddStakeToEncoderFieldPathBuilder::new()
-        }
-    }
-    pub struct AddStakeToEncoderFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl AddStakeToEncoderFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn encoder_address(mut self) -> String {
-            self.path.push(AddStakeToEncoder::ENCODER_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(AddStakeToEncoder::COIN_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn amount(mut self) -> String {
-            self.path.push(AddStakeToEncoder::AMOUNT_FIELD.name);
             self.finish()
         }
     }
@@ -7590,231 +5308,6 @@ mod _field_impls {
         pub fn mtls(mut self) -> MtlsDownloadMetadataFieldPathBuilder {
             self.path.push(DownloadMetadata::MTLS_FIELD.name);
             MtlsDownloadMetadataFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl EmbedData {
-        pub const DOWNLOAD_METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "download_metadata",
-            json_name: "downloadMetadata",
-            number: 1i32,
-            message_fields: Some(DownloadMetadata::FIELDS),
-        };
-        pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
-            name: "coin_ref",
-            json_name: "coinRef",
-            number: 2i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const TARGET_REF_FIELD: &'static MessageField = &MessageField {
-            name: "target_ref",
-            json_name: "targetRef",
-            number: 3i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for EmbedData {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::DOWNLOAD_METADATA_FIELD,
-            Self::COIN_REF_FIELD,
-            Self::TARGET_REF_FIELD,
-        ];
-    }
-    impl EmbedData {
-        pub fn path_builder() -> EmbedDataFieldPathBuilder {
-            EmbedDataFieldPathBuilder::new()
-        }
-    }
-    pub struct EmbedDataFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl EmbedDataFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn download_metadata(mut self) -> DownloadMetadataFieldPathBuilder {
-            self.path.push(EmbedData::DOWNLOAD_METADATA_FIELD.name);
-            DownloadMetadataFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(EmbedData::COIN_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn target_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(EmbedData::TARGET_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl ClaimEscrow {
-        pub const SHARD_REF_FIELD: &'static MessageField = &MessageField {
-            name: "shard_ref",
-            json_name: "shardRef",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for ClaimEscrow {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SHARD_REF_FIELD];
-    }
-    impl ClaimEscrow {
-        pub fn path_builder() -> ClaimEscrowFieldPathBuilder {
-            ClaimEscrowFieldPathBuilder::new()
-        }
-    }
-    pub struct ClaimEscrowFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ClaimEscrowFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shard_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ClaimEscrow::SHARD_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl ReportWinner {
-        pub const SHARD_REF_FIELD: &'static MessageField = &MessageField {
-            name: "shard_ref",
-            json_name: "shardRef",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const TARGET_REF_FIELD: &'static MessageField = &MessageField {
-            name: "target_ref",
-            json_name: "targetRef",
-            number: 2i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const REPORT_FIELD: &'static MessageField = &MessageField {
-            name: "report",
-            json_name: "report",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const SIGNATURE_FIELD: &'static MessageField = &MessageField {
-            name: "signature",
-            json_name: "signature",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const SIGNERS_FIELD: &'static MessageField = &MessageField {
-            name: "signers",
-            json_name: "signers",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const SHARD_AUTH_TOKEN_FIELD: &'static MessageField = &MessageField {
-            name: "shard_auth_token",
-            json_name: "shardAuthToken",
-            number: 6i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for ReportWinner {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::SHARD_REF_FIELD,
-            Self::TARGET_REF_FIELD,
-            Self::REPORT_FIELD,
-            Self::SIGNATURE_FIELD,
-            Self::SIGNERS_FIELD,
-            Self::SHARD_AUTH_TOKEN_FIELD,
-        ];
-    }
-    impl ReportWinner {
-        pub fn path_builder() -> ReportWinnerFieldPathBuilder {
-            ReportWinnerFieldPathBuilder::new()
-        }
-    }
-    pub struct ReportWinnerFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ReportWinnerFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shard_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ReportWinner::SHARD_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn target_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ReportWinner::TARGET_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn report(mut self) -> String {
-            self.path.push(ReportWinner::REPORT_FIELD.name);
-            self.finish()
-        }
-        pub fn signature(mut self) -> String {
-            self.path.push(ReportWinner::SIGNATURE_FIELD.name);
-            self.finish()
-        }
-        pub fn signers(mut self) -> String {
-            self.path.push(ReportWinner::SIGNERS_FIELD.name);
-            self.finish()
-        }
-        pub fn shard_auth_token(mut self) -> String {
-            self.path.push(ReportWinner::SHARD_AUTH_TOKEN_FIELD.name);
-            self.finish()
-        }
-    }
-    impl ClaimReward {
-        pub const TARGET_REF_FIELD: &'static MessageField = &MessageField {
-            name: "target_ref",
-            json_name: "targetRef",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for ClaimReward {
-        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_REF_FIELD];
-    }
-    impl ClaimReward {
-        pub fn path_builder() -> ClaimRewardFieldPathBuilder {
-            ClaimRewardFieldPathBuilder::new()
-        }
-    }
-    pub struct ClaimRewardFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl ClaimRewardFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn target_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(ClaimReward::TARGET_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ChangeEpoch {
@@ -8218,91 +5711,6 @@ mod _field_impls {
         pub fn transaction(mut self) -> ExecutedTransactionFieldPathBuilder {
             self.path.push(SimulateTransactionResponse::TRANSACTION_FIELD.name);
             ExecutedTransactionFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl InitiateShardWorkRequest {
-        pub const TX_DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "tx_digest",
-            json_name: "txDigest",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const CHECKPOINT_SEQ_FIELD: &'static MessageField = &MessageField {
-            name: "checkpoint_seq",
-            json_name: "checkpointSeq",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for InitiateShardWorkRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TX_DIGEST_FIELD,
-            Self::CHECKPOINT_SEQ_FIELD,
-        ];
-    }
-    impl InitiateShardWorkRequest {
-        pub fn path_builder() -> InitiateShardWorkRequestFieldPathBuilder {
-            InitiateShardWorkRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct InitiateShardWorkRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl InitiateShardWorkRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn tx_digest(mut self) -> String {
-            self.path.push(InitiateShardWorkRequest::TX_DIGEST_FIELD.name);
-            self.finish()
-        }
-        pub fn checkpoint_seq(mut self) -> String {
-            self.path.push(InitiateShardWorkRequest::CHECKPOINT_SEQ_FIELD.name);
-            self.finish()
-        }
-    }
-    impl InitiateShardWorkResponse {
-        pub const SHARD_FIELD: &'static MessageField = &MessageField {
-            name: "shard",
-            json_name: "shard",
-            number: 1i32,
-            message_fields: Some(Shard::FIELDS),
-        };
-    }
-    impl MessageFields for InitiateShardWorkResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SHARD_FIELD];
-    }
-    impl InitiateShardWorkResponse {
-        pub fn path_builder() -> InitiateShardWorkResponseFieldPathBuilder {
-            InitiateShardWorkResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct InitiateShardWorkResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl InitiateShardWorkResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn shard(mut self) -> ShardFieldPathBuilder {
-            self.path.push(InitiateShardWorkResponse::SHARD_FIELD.name);
-            ShardFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl TransactionFee {

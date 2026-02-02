@@ -1,6 +1,6 @@
 use crate::authority::AuthorityState;
 use crate::authority_client::{
-    make_network_authority_clients_with_network_config, AuthorityAPI as _,
+    AuthorityAPI as _, make_network_authority_clients_with_network_config,
 };
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::authority_store_pruner::PrunerWatermarks;
@@ -9,7 +9,7 @@ use crate::checkpoints::causal_order::CausalOrder;
 use crate::checkpoints::checkpoint_output::{CertifiedCheckpointOutput, CheckpointOutput};
 use crate::consensus_handler::SequencedConsensusTransactionKey;
 use crate::consensus_manager::ReplayWaiter;
-use crate::global_state_hasher::{accumulate_effects, GlobalStateHasher};
+use crate::global_state_hasher::{GlobalStateHasher, accumulate_effects};
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
 use diffy::create_patch;
 use fastcrypto::hash::MultisetHash as _;
@@ -31,12 +31,12 @@ use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime};
 use store::Map as _;
 use store::{
-    rocks::{default_db_options, DBMap, DBOptions, ReadWriteOptions},
     DBMapUtils, TypedStoreError,
+    rocks::{DBMap, DBOptions, ReadWriteOptions, default_db_options},
 };
+use tokio::sync::Notify;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
-use tokio::sync::Notify;
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::base::{AuthorityName, ConciseableName as _};
@@ -68,8 +68,8 @@ use types::{
     },
     transaction::TransactionKey,
 };
-use utils::notify_read::NotifyRead;
 use utils::notify_read::CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME;
+use utils::notify_read::NotifyRead;
 
 mod causal_order;
 pub mod checkpoint_executor;
@@ -1293,8 +1293,7 @@ impl CheckpointBuilder {
 
             trace!(
                 "roots for pending checkpoint {:?}: {:?}",
-                pending.details.checkpoint_height,
-                pending.roots,
+                pending.details.checkpoint_height, pending.roots,
             );
 
             let roots = &pending.roots;
@@ -1423,11 +1422,11 @@ impl CheckpointBuilder {
             {
                 if previously_computed_summary.digest() != summary.digest() {
                     panic!(
-                    "Checkpoint {} was previously built with a different result: previously_computed_summary {:?} vs current_summary {:?}",
-                    summary.sequence_number,
-                    previously_computed_summary.digest(),
-                    summary.digest()
-                );
+                        "Checkpoint {} was previously built with a different result: previously_computed_summary {:?} vs current_summary {:?}",
+                        summary.sequence_number,
+                        previously_computed_summary.digest(),
+                        summary.digest()
+                    );
                 }
             }
 
@@ -1697,10 +1696,6 @@ impl CheckpointBuilder {
                     .committee()
                     .clone();
 
-                let encoder_committee = system_state_obj.get_current_epoch_encoder_committee();
-                let networking_committee =
-                    system_state_obj.get_current_epoch_networking_committee();
-
                 // This must happen after the call to augment_epoch_last_checkpoint,
                 // otherwise we will not capture the change_epoch tx.
                 let root_state_digest = {
@@ -1734,8 +1729,6 @@ impl CheckpointBuilder {
 
                 Some(EndOfEpochData {
                     next_epoch_validator_committee: committee,
-                    next_epoch_encoder_committee: encoder_committee,
-                    next_epoch_networking_committee: networking_committee,
                     next_epoch_protocol_version: ProtocolVersion::new(
                         system_state_obj.protocol_version(),
                     ),
@@ -1981,11 +1974,13 @@ impl CheckpointBuilder {
             }
         } else {
             // If there is one consensus commit prologue, it must be the first one in the checkpoint.
-            assert!(txs[0]
-                .as_ref()
-                .unwrap()
-                .transaction_data()
-                .is_consensus_commit_prologue());
+            assert!(
+                txs[0]
+                    .as_ref()
+                    .unwrap()
+                    .transaction_data()
+                    .is_consensus_commit_prologue()
+            );
 
             assert_eq!(ccps[0].digest(), txs[0].as_ref().unwrap().digest());
 
@@ -2705,8 +2700,7 @@ impl CheckpointServiceNotify for CheckpointService {
             if sequence <= highest_verified_checkpoint {
                 trace!(
                     checkpoint_seq = sequence,
-                    "Ignore checkpoint signature from {} - already certified",
-                    signer,
+                    "Ignore checkpoint signature from {} - already certified", signer,
                 );
 
                 return Ok(());

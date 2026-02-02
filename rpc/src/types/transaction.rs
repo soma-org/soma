@@ -110,23 +110,6 @@ pub enum TransactionKind {
         new_rate: u64,
     },
 
-    // Encoder management
-    AddEncoder(AddEncoderArgs),
-    RemoveEncoder(RemoveEncoderArgs),
-    ReportEncoder {
-        reportee: Address,
-    },
-    UndoReportEncoder {
-        reportee: Address,
-    },
-    UpdateEncoderMetadata(UpdateEncoderMetadataArgs),
-    SetEncoderCommissionRate {
-        new_rate: u64,
-    },
-    SetEncoderBytePrice {
-        new_price: u64,
-    },
-
     // Transfers and payments
     TransferCoin {
         coin: ObjectReference,
@@ -149,34 +132,9 @@ pub enum TransactionKind {
         coin_ref: ObjectReference,
         amount: Option<u64>,
     },
-    AddStakeToEncoder {
-        encoder_address: Address,
-        coin_ref: ObjectReference,
-        amount: Option<u64>,
-    },
+
     WithdrawStake {
         staked_soma: ObjectReference,
-    },
-
-    // Shard operations
-    EmbedData {
-        download_metadata: DownloadMetadata,
-        coin_ref: ObjectReference,
-        target_ref: Option<ObjectReference>,
-    },
-    ClaimEscrow {
-        shard_ref: ObjectReference,
-    },
-    ReportWinner {
-        shard_ref: ObjectReference,
-        target_ref: Option<ObjectReference>,
-        report: Vec<u8>, // TODO: should I specify this so that it's easier to get info like scores and embeddings?
-        signature: Vec<u8>,
-        signers: Vec<String>,
-        shard_auth_token: Vec<u8>,
-    },
-    ClaimReward {
-        target_ref: ObjectReference,
     },
 }
 
@@ -190,7 +148,6 @@ pub struct AddValidatorArgs {
     pub net_address: Vec<u8>,
     pub p2p_address: Vec<u8>,
     pub primary_address: Vec<u8>,
-    pub encoder_validator_address: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -206,32 +163,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
-}
-
-// Supporting types for encoder management
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct AddEncoderArgs {
-    pub encoder_pubkey_bytes: Vec<u8>,
-    pub network_pubkey_bytes: Vec<u8>,
-    pub internal_network_address: Vec<u8>,
-    pub external_network_address: Vec<u8>,
-    pub object_server_address: Vec<u8>,
-    pub probe: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct RemoveEncoderArgs {
-    pub encoder_pubkey_bytes: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct UpdateEncoderMetadataArgs {
-    pub next_epoch_external_network_address: Option<Vec<u8>>,
-    pub next_epoch_internal_network_address: Option<Vec<u8>>,
-    pub next_epoch_network_pubkey: Option<Vec<u8>>,
-    pub next_epoch_object_server_address: Option<Vec<u8>>,
-    pub next_epoch_probe: Option<Vec<u8>>,
 }
 
 /// V1 of the consensus commit prologue system transaction

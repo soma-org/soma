@@ -14,7 +14,6 @@ use tracing::info;
 use types::{
     base::AuthorityName,
     config::{
-        encoder_config::{EncoderCommitteeConfig, EncoderConfig, EncoderGenesisConfig},
         genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
         network_config::{
             CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
@@ -94,15 +93,6 @@ impl Swarm {
         &self.network_config
     }
 
-    pub fn encoder_configs(&self) -> impl Iterator<Item = &EncoderConfig> {
-        self.network_config.encoder_configs.iter()
-    }
-
-    /// Return a reference to an encoder config by index.
-    pub fn encoder_config(&self, index: usize) -> Option<&EncoderConfig> {
-        self.network_config.encoder_configs.get(index)
-    }
-
     pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values()
     }
@@ -162,7 +152,6 @@ pub struct SwarmBuilder<R = OsRng> {
     rng: R,
     dir: Option<PathBuf>,
     committee: CommitteeConfig,
-    encoder_committee: EncoderCommitteeConfig,
     genesis_config: Option<GenesisConfig>,
     network_config: Option<NetworkConfig>,
     fullnode_count: usize,
@@ -179,7 +168,6 @@ impl SwarmBuilder {
             rng: OsRng,
             dir: None,
             committee: CommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
-            encoder_committee: EncoderCommitteeConfig::Size(NonZeroUsize::new(1).unwrap()),
             genesis_config: None,
             network_config: None,
             fullnode_count: 0,
@@ -198,7 +186,6 @@ impl<R> SwarmBuilder<R> {
             rng,
             dir: self.dir,
             committee: self.committee,
-            encoder_committee: self.encoder_committee,
             genesis_config: self.genesis_config,
             network_config: self.network_config,
             fullnode_count: self.fullnode_count,
@@ -230,16 +217,6 @@ impl<R> SwarmBuilder<R> {
 
     pub fn with_validators(mut self, validators: Vec<ValidatorGenesisConfig>) -> Self {
         self.committee = CommitteeConfig::Validators(validators);
-        self
-    }
-
-    pub fn encoder_committee_size(mut self, committee_size: NonZeroUsize) -> Self {
-        self.encoder_committee = EncoderCommitteeConfig::Size(committee_size);
-        self
-    }
-
-    pub fn with_encoders(mut self, encoders: Vec<EncoderGenesisConfig>) -> Self {
-        self.encoder_committee = EncoderCommitteeConfig::Encoders(encoders);
         self
     }
 
@@ -363,44 +340,12 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
 
             config_builder
                 .committee(committee)
-                .encoder_committee(self.encoder_committee)
                 .with_supported_protocol_versions_config(
                     self.supported_protocol_versions_config.clone(),
                 )
                 .rng(self.rng)
                 .build()
         });
-
-        let networking_validator_addresses: Vec<Multiaddr> = network_config
-            .validator_configs()
-            .iter()
-            .filter(|c| c.consensus_config.is_none())
-            .map(|c| c.encoder_validator_address.clone())
-            .collect();
-
-        // Now update encoder configs without holding any borrows to validator_configs
-        if !networking_validator_addresses.is_empty() && !network_config.encoder_configs.is_empty()
-        {
-            for (i, encoder_config) in network_config.encoder_configs.iter_mut().enumerate() {
-                let validator_index = i % networking_validator_addresses.len();
-                encoder_config.validator_sync_address =
-                    networking_validator_addresses[validator_index].clone();
-
-                info!("Assigned encoder {} to networking validator", i);
-            }
-        } else if !network_config.encoder_configs.is_empty() {
-            // Fallback: get first validator address
-            if let Some(first_validator_address) = network_config
-                .validator_configs()
-                .first()
-                .map(|c| c.encoder_validator_address.clone())
-            {
-                for encoder_config in network_config.encoder_configs.iter_mut() {
-                    encoder_config.validator_sync_address = first_validator_address.clone();
-                }
-            }
-        }
-
         // Create all validator nodes
         let mut nodes: HashMap<_, _> = network_config
             .validator_configs()

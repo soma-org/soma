@@ -7,21 +7,17 @@ finalized transactions locally, when possible.
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use futures::future::{select, Either, Future};
-use futures::stream::{FuturesUnordered, StreamExt};
 use futures::FutureExt;
-use types::entropy::SimpleVDF;
+use futures::future::{Either, Future, select};
+use futures::stream::{FuturesUnordered, StreamExt};
 use types::envelope::Message as _;
 use types::finality::FinalityProof;
 use types::object::ObjectRef;
-use types::shard::{Input, InputV1, ShardAuthToken, ShardEntropy};
-use types::shard_crypto::digest::Digest;
 use types::storage::write_path_pending_tx_log::WritePathPendingTransactionLog;
-use types::system_state::shard::{Shard, Target};
 use utils::notify_read::NotifyRead;
 
 use protocol_config::Chain;
@@ -31,17 +27,16 @@ use types::config::node_config::NodeConfig;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout, Instant};
-use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
+use tokio::time::{Instant, sleep, timeout};
+use tracing::{Instrument, debug, error, error_span, info, instrument, warn};
 use types::digests::TransactionDigest;
 use types::effects::TransactionEffectsAPI;
 use types::error::{SomaError, SomaResult};
 use types::messages_grpc::{SubmitTxRequest, TxType};
 use types::quorum_driver::{
     EffectsFinalityInfo, ExecuteTransactionRequest, ExecuteTransactionRequestType,
-    ExecuteTransactionResponse, FinalizedEffects, InitiateShardWorkRequest,
-    InitiateShardWorkResponse, IsTransactionExecutedLocally, QuorumDriverEffectsQueueResult,
-    QuorumDriverError, QuorumDriverResult,
+    ExecuteTransactionResponse, FinalizedEffects, IsTransactionExecutedLocally,
+    QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResult,
 };
 use types::system_state::{SystemState, SystemStateTrait as _};
 use types::transaction::{Transaction, TransactionData, TransactionKind, VerifiedTransaction};
@@ -51,11 +46,10 @@ use crate::authority::AuthorityState;
 use crate::authority_aggregator::AuthorityAggregator;
 use crate::authority_client::{AuthorityAPI, NetworkAuthorityClient};
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;
-use crate::encoder_client::EncoderClientService;
 use crate::transaction_driver::reconfig_observer::{OnsiteReconfigObserver, ReconfigObserver};
 use crate::transaction_driver::{
-    choose_transaction_driver_percentage, QuorumTransactionResponse, SubmitTransactionOptions,
-    TransactionDriver, TransactionDriverError,
+    QuorumTransactionResponse, SubmitTransactionOptions, TransactionDriver, TransactionDriverError,
+    choose_transaction_driver_percentage,
 };
 
 // How long to wait for local execution (including parents) before a timeout
@@ -75,8 +69,6 @@ pub struct TransactionOrchestrator<A: Clone> {
     td_allowed_submission_list: Vec<String>,
     td_blocked_submission_list: Vec<String>,
     enable_early_validation: bool,
-    encoder_client: Option<Arc<EncoderClientService>>,
-    vdf: Arc<SimpleVDF>,
 }
 
 impl TransactionOrchestrator<NetworkAuthorityClient> {
@@ -86,7 +78,6 @@ impl TransactionOrchestrator<NetworkAuthorityClient> {
         reconfig_channel: Receiver<SystemState>,
         parent_path: &Path,
         node_config: &NodeConfig,
-        encoder_client: Option<Arc<EncoderClientService>>,
     ) -> Self {
         let observer = OnsiteReconfigObserver::new(
             reconfig_channel,
@@ -99,7 +90,6 @@ impl TransactionOrchestrator<NetworkAuthorityClient> {
             parent_path,
             observer,
             node_config,
-            encoder_client,
         )
     }
 }
@@ -113,10 +103,8 @@ where
         validators: Arc<AuthorityAggregator<A>>,
         validator_state: Arc<AuthorityState>,
         parent_path: &Path,
-
         reconfig_observer: OnsiteReconfigObserver,
         node_config: &NodeConfig,
-        encoder_client: Option<Arc<EncoderClientService>>,
     ) -> Self {
         let notifier = Arc::new(NotifyRead::new());
         let reconfig_observer = Arc::new(reconfig_observer);
@@ -166,10 +154,6 @@ where
             td_allowed_submission_list,
             td_blocked_submission_list,
             enable_early_validation,
-            encoder_client,
-            vdf: Arc::new(SimpleVDF::new(
-                epoch_store.protocol_config().vdf_iterations(),
-            )),
         }
     }
 }
@@ -685,224 +669,6 @@ where
     pub fn clone_authority_aggregator(&self) -> Arc<AuthorityAggregator<A>> {
         self.transaction_driver.authority_aggregator().load_full()
     }
-
-    #[instrument(level = "info", skip_all, fields(tx_digest = ?request.tx_digest, checkpoint_seq = ?request.checkpoint_seq))]
-    pub async fn initiate_shard_work(
-        &self,
-        request: InitiateShardWorkRequest,
-    ) -> Result<InitiateShardWorkResponse, SomaError> {
-        let encoder_client = self
-            .encoder_client
-            .as_ref()
-            .ok_or(SomaError::EncoderServiceUnavailable)?;
-
-        let tx_digest = request.tx_digest;
-        let checkpoint_seq = request.checkpoint_seq;
-
-        // 1. Get the checkpoint and contents
-        let checkpoint = self
-            .validator_state
-            .get_checkpoint_store()
-            .get_checkpoint_by_sequence_number(checkpoint_seq)
-            .map_err(|e| SomaError::Storage(e.to_string()))?
-            .ok_or(SomaError::VerifiedCheckpointNotFound(checkpoint_seq))?;
-
-        let checkpoint_contents = self
-            .validator_state
-            .get_checkpoint_store()
-            .get_checkpoint_contents(&checkpoint.content_digest)
-            .map_err(|e| SomaError::Storage(e.to_string()))?
-            .ok_or(SomaError::CheckpointContentsNotFound(
-                checkpoint.content_digest,
-            ))?;
-
-        // 2. Verify the transaction is in this checkpoint
-        let tx_in_checkpoint = checkpoint_contents
-            .iter()
-            .find(|digests| digests.transaction == tx_digest);
-
-        let expected_effects_digest = tx_in_checkpoint
-            .ok_or_else(|| {
-                SomaError::InvalidRequest(format!(
-                    "Transaction {} not found in checkpoint {}",
-                    tx_digest, checkpoint_seq
-                ))
-            })?
-            .effects;
-
-        // 3. Look up transaction and effects
-        let transaction = self
-            .validator_state
-            .get_transaction_cache_reader()
-            .get_transaction_block(&tx_digest)
-            .ok_or(SomaError::TransactionNotFound { digest: tx_digest })?;
-
-        let effects = self
-            .validator_state
-            .get_transaction_cache_reader()
-            .get_executed_effects(&tx_digest)
-            .ok_or(SomaError::TransactionNotFinalized)?;
-
-        // 4. Verify effects digest matches checkpoint
-        if effects.digest() != expected_effects_digest {
-            return Err(SomaError::InvalidRequest(format!(
-                "Effects digest mismatch: checkpoint has {:?}, local has {:?}",
-                expected_effects_digest,
-                effects.digest()
-            )));
-        }
-
-        // 5. Verify it's an EmbedData transaction and extract refs
-        let (download_metadata, target_ref) = match transaction.transaction_data().kind() {
-            TransactionKind::EmbedData {
-                download_metadata,
-                target_ref,
-                ..
-            } => (download_metadata.clone(), target_ref.clone()),
-            _ => return Err(SomaError::NotEmbedDataTransaction),
-        };
-
-        // 6. Verify transaction succeeded
-        if !effects.status().is_ok() {
-            return Err(SomaError::TransactionFailed(format!(
-                "{:?}",
-                effects.status()
-            )));
-        }
-
-        // 7. Get the created Shard object (version from effects.created() is correct)
-        let created = effects.created();
-        let shard_obj_ref = created
-            .first()
-            .ok_or_else(|| SomaError::InvalidRequest("No created objects in EmbedData tx".into()))?
-            .0;
-
-        let shard_object: Shard = {
-            let obj = self
-                .validator_state
-                .get_object_cache_reader()
-                .get_object_by_key(&shard_obj_ref.0, shard_obj_ref.1)
-                .ok_or_else(|| SomaError::ObjectNotFound {
-                    object_id: shard_obj_ref.0,
-                    version: Some(shard_obj_ref.1),
-                })?;
-
-            obj.as_shard().ok_or_else(|| {
-                SomaError::InvalidRequest("Created Shard object could not be deserialized".into())
-            })?
-        };
-
-        // 8. Load Target at the version actually used during execution
-        let target_object: Option<(ObjectRef, Target)> = if let Some(target_ref) = target_ref {
-            let target = self
-                .validator_state
-                .get_object_cache_reader()
-                .get_object(&target_ref.0) // Gets latest version
-                .ok_or_else(|| SomaError::ObjectNotFound {
-                    object_id: target_ref.0,
-                    version: None,
-                })?;
-
-            Some((
-                target_ref,
-                target.as_target().ok_or_else(|| {
-                    SomaError::InvalidRequest("Target object could not be deserialized".into())
-                })?,
-            ))
-        } else {
-            None
-        };
-
-        let checkpoint_epoch = checkpoint.epoch();
-        let current_epoch = self
-            .validator_state
-            .load_epoch_store_one_call_per_task()
-            .epoch();
-
-        let encoder_committee =
-            if checkpoint_epoch == current_epoch || checkpoint_epoch + 1 == current_epoch {
-                let system_state = self
-                    .validator_state
-                    .get_object_cache_reader()
-                    .get_system_state_object()
-                    .map_err(|e| SomaError::SystemStateReadError(e.to_string()))?;
-                system_state.get_current_epoch_encoder_committee()
-            } else {
-                // Too old - reject
-                return Err(SomaError::InvalidRequest(format!(
-                    "Transaction from epoch {} is too old. Current epoch is {}. \
-             Only current and previous epoch transactions are supported.",
-                    checkpoint_epoch, current_epoch
-                )));
-            };
-
-        encoder_client.update_encoder_committee(&encoder_committee);
-
-        // Generate Merkle inclusion proof
-        let inclusion_proof =
-            checkpoint_contents.generate_inclusion_proof(&tx_digest, &effects.digest())?;
-
-        // 10. Build finality proof
-        let finality_proof = FinalityProof::new(
-            (*transaction).clone().into_inner(),
-            effects.clone(),
-            checkpoint.clone().into_inner(),
-            inclusion_proof,
-        );
-
-        // 11. Compute VDF
-        let checkpoint_digest = finality_proof.checkpoint_digest().clone();
-        let vdf = self.vdf.clone();
-
-        let (checkpoint_entropy, entropy_proof) =
-            tokio::task::spawn_blocking(move || vdf.get_entropy(&checkpoint_digest))
-                .await
-                .map_err(|e| SomaError::FailedVDF(format!("VDF task panicked: {}", e)))?
-                .map_err(|e| SomaError::FailedVDF(e.to_string()))?;
-
-        // 12. Compute shard selection
-        let shard_entropy = ShardEntropy::new(
-            download_metadata.metadata().clone(),
-            checkpoint_entropy.clone(),
-        );
-        let shard_seed = Digest::new(&shard_entropy)
-            .map_err(|e| SomaError::ShardSamplingError(e.to_string()))?;
-
-        let shard = encoder_committee
-            .sample_shard(shard_seed)
-            .map_err(|e| SomaError::ShardSamplingError(e.to_string()))?;
-
-        // 13. Build shard auth token
-        let shard_auth_token = ShardAuthToken::new(
-            finality_proof,
-            checkpoint_entropy,
-            entropy_proof,
-            shard_obj_ref,
-        );
-
-        // 14. Build the full Input with on-chain objects
-        let input = Input::V1(InputV1::new(
-            shard_auth_token.clone(),
-            download_metadata.clone(),
-            shard_object,
-            target_object,
-        ));
-
-        // 15. Send to shard members
-        let encoders = shard.encoders();
-
-        encoder_client
-            .send_to_shard(encoders, input, Duration::from_secs(30))
-            .await
-            .map_err(|e| {
-                SomaError::RpcError(
-                    "encoder_shard".into(),
-                    format!("Failed to contact shard: {}", e),
-                )
-            })?;
-
-        Ok(InitiateShardWorkResponse { shard })
-    }
 }
 
 #[async_trait::async_trait]
@@ -925,13 +691,6 @@ where
     ) -> Result<SimulateTransactionResult, SomaError> {
         self.validator_state
             .simulate_transaction(transaction, checks)
-    }
-
-    async fn initiate_shard_work(
-        &self,
-        request: InitiateShardWorkRequest,
-    ) -> Result<InitiateShardWorkResponse, SomaError> {
-        self.initiate_shard_work(request).await
     }
 }
 

@@ -257,8 +257,6 @@ impl From<crate::types::EndOfEpochData> for EndOfEpochData {
     fn from(
         crate::types::EndOfEpochData {
             next_epoch_validator_committee,
-            next_epoch_encoder_committee,
-            next_epoch_networking_committee,
             next_epoch_protocol_version,
 
             epoch_commitments,
@@ -266,8 +264,7 @@ impl From<crate::types::EndOfEpochData> for EndOfEpochData {
     ) -> Self {
         Self {
             next_epoch_validator_committee: Some(next_epoch_validator_committee.into()),
-            next_epoch_encoder_committee: Some(next_epoch_encoder_committee.into()),
-            next_epoch_networking_committee: Some(next_epoch_networking_committee.into()),
+
             next_epoch_protocol_version: Some(next_epoch_protocol_version),
 
             epoch_commitments: epoch_commitments.into_iter().map(Into::into).collect(),
@@ -281,8 +278,7 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
     fn try_from(
         EndOfEpochData {
             next_epoch_validator_committee,
-            next_epoch_encoder_committee,
-            next_epoch_networking_committee,
+
             next_epoch_protocol_version,
 
             epoch_commitments,
@@ -298,185 +294,11 @@ impl TryFrom<&EndOfEpochData> for crate::types::EndOfEpochData {
                 .clone()
                 .try_into()
                 .map_err(|e| TryFromProtoError::invalid("next_epoch_validator_committee", e))?,
-            next_epoch_encoder_committee: next_epoch_encoder_committee
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("next_epoch_encoder_committee"))?
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("next_epoch_encoder_committee", e))?,
-            next_epoch_networking_committee: next_epoch_networking_committee
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("next_epoch_networking_committee"))?
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("next_epoch_networking_committee", e))?,
             next_epoch_protocol_version,
             epoch_commitments: epoch_commitments
                 .iter()
                 .map(TryInto::try_into)
                 .collect::<Result<_, _>>()?,
-        })
-    }
-}
-
-//
-// EncoderCommittee
-//
-
-impl From<crate::types::EncoderCommittee> for EncoderCommittee {
-    fn from(value: crate::types::EncoderCommittee) -> Self {
-        Self {
-            epoch: Some(value.epoch),
-            members: value.members.into_iter().map(Into::into).collect(),
-            shard_size: Some(value.shard_size),
-            quorum_threshold: Some(value.quorum_threshold),
-        }
-    }
-}
-
-impl TryFrom<&EncoderCommittee> for crate::types::EncoderCommittee {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &EncoderCommittee) -> Result<Self, Self::Error> {
-        Ok(Self {
-            epoch: value
-                .epoch
-                .ok_or_else(|| TryFromProtoError::missing("epoch"))?,
-            members: value
-                .members
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-            shard_size: value
-                .shard_size
-                .ok_or_else(|| TryFromProtoError::missing("shard_size"))?,
-            quorum_threshold: value
-                .quorum_threshold
-                .ok_or_else(|| TryFromProtoError::missing("quorum_threshold"))?,
-        })
-    }
-}
-
-//
-// EncoderCommitteeMember
-//
-
-impl From<crate::types::EncoderCommitteeMember> for EncoderCommitteeMember {
-    fn from(value: crate::types::EncoderCommitteeMember) -> Self {
-        Self {
-            voting_power: Some(value.voting_power),
-            encoder_key: Some(value.encoder_key.into()),
-            probe: Some(value.probe.into()),
-            internal_network_address: Some(value.internal_network_address),
-            external_network_address: Some(value.external_network_address),
-            object_server_address: Some(value.object_server_address),
-            network_key: Some(value.network_key.into()),
-            hostname: Some(value.hostname),
-        }
-    }
-}
-
-impl TryFrom<&EncoderCommitteeMember> for crate::types::EncoderCommitteeMember {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &EncoderCommitteeMember) -> Result<Self, Self::Error> {
-        Ok(Self {
-            voting_power: value
-                .voting_power
-                .ok_or_else(|| TryFromProtoError::missing("voting_power"))?,
-            encoder_key: value
-                .encoder_key
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("encoder_key"))?
-                .into(),
-            probe: value
-                .probe
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("probe"))?
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("probe", e))?,
-            internal_network_address: value
-                .internal_network_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("internal_network_address"))?,
-            external_network_address: value
-                .external_network_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("external_network_address"))?,
-            object_server_address: value
-                .object_server_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("object_server_address"))?,
-            network_key: value
-                .network_key
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("network_key"))?
-                .into(),
-            hostname: value
-                .hostname
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("hostname"))?,
-        })
-    }
-}
-
-//
-// NetworkingCommittee
-//
-
-impl From<crate::types::NetworkingCommittee> for NetworkingCommittee {
-    fn from(value: crate::types::NetworkingCommittee) -> Self {
-        Self {
-            epoch: Some(value.epoch),
-            members: value.members.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl TryFrom<&NetworkingCommittee> for crate::types::NetworkingCommittee {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &NetworkingCommittee) -> Result<Self, Self::Error> {
-        Ok(Self {
-            epoch: value
-                .epoch
-                .ok_or_else(|| TryFromProtoError::missing("epoch"))?,
-            members: value
-                .members
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        })
-    }
-}
-
-//
-// NetworkingCommitteeMember
-//
-
-impl From<crate::types::NetworkingCommitteeMember> for NetworkingCommitteeMember {
-    fn from(value: crate::types::NetworkingCommitteeMember) -> Self {
-        Self {
-            authority_key: Some(value.authority_key.into()),
-            network_metadata: Some(value.network_metadata.into()),
-        }
-    }
-}
-
-impl TryFrom<&NetworkingCommitteeMember> for crate::types::NetworkingCommitteeMember {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &NetworkingCommitteeMember) -> Result<Self, Self::Error> {
-        Ok(Self {
-            authority_key: value
-                .authority_key
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("authority_key"))?
-                .into(),
-            network_metadata: value
-                .network_metadata
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("network_metadata"))?
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("network_metadata", e))?,
         })
     }
 }

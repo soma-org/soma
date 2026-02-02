@@ -6,5 +6,4 @@ use types::{
 };
 
 // Re-export SDK types for convenience in tests
-pub use rpc::api::client::{ShardCompletionInfo, ShardError};
 pub use sdk::SomaClient;

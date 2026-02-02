@@ -31,58 +31,11 @@ pub struct EndOfEpochData {
     /// The set of Validators that will be in the ValidatorCommittee for the next epoch.
     pub next_epoch_validator_committee: ValidatorCommittee,
 
-    /// The encoder committee for the next epoch.
-    pub next_epoch_encoder_committee: EncoderCommittee,
-
-    /// The networking committee for the next epoch.
-    pub next_epoch_networking_committee: NetworkingCommittee,
-
     /// The protocol version that is in effect during the next epoch.
     pub next_epoch_protocol_version: ProtocolVersion,
 
     /// Commitments to epoch specific state (e.g. live object set)
     pub epoch_commitments: Vec<CheckpointCommitment>,
-}
-
-/// Encoder committee for an epoch
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct EncoderCommittee {
-    pub epoch: EpochId,
-    pub members: Vec<EncoderCommitteeMember>,
-    pub shard_size: u32,
-    pub quorum_threshold: u32,
-}
-
-/// Combines Encoder info with EncoderNetworkMetadata
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct EncoderCommitteeMember {
-    // From Encoder
-    pub voting_power: u64,
-    pub encoder_key: Vec<u8>, // EncoderPublicKey (BLS)
-    pub probe: DownloadMetadata,
-
-    // From EncoderNetworkMetadata
-    pub internal_network_address: String,
-    pub external_network_address: String,
-    pub object_server_address: String,
-    pub network_key: Vec<u8>, // NetworkPublicKey (Ed25519)
-    pub hostname: String,
-}
-
-/// Networking committee for an epoch
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct NetworkingCommittee {
-    pub epoch: EpochId,
-    pub members: Vec<NetworkingCommitteeMember>,
-}
-
-/// A member of a networking committee with full authority information
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct NetworkingCommitteeMember {
-    /// The BLS12381 public key bytes (becomes AuthorityName)
-    pub authority_key: Vec<u8>,
-    /// Network metadata for this validator
-    pub network_metadata: ValidatorNetworkMetadata,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]

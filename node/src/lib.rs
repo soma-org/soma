@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
 use authority::{
     authority::{AuthorityState, ExecutionEnv},
@@ -14,15 +14,14 @@ use authority::{
     backpressure_manager::BackpressureManager,
     cache::build_execution_cache,
     checkpoints::{
-        checkpoint_executor::{CheckpointExecutor, StopReason},
         CheckpointService, CheckpointStore, SendCheckpointToStateSync, SubmitCheckpointToConsensus,
+        checkpoint_executor::{CheckpointExecutor, StopReason},
     },
     consensus_adapter::{ConsensusAdapter, ConsensusClient},
     consensus_handler::ConsensusHandlerInitializer,
     consensus_manager::{ConsensusManager, UpdatableConsensusClient},
     consensus_store_pruner::ConsensusStorePruner,
     consensus_validator::TxValidator,
-    encoder_client::EncoderClientService,
     execution_scheduler::SchedulingSource,
     global_state_hasher::GlobalStateHasher,
     reconfiguration::ReconfigurationInitiator,
@@ -35,13 +34,9 @@ use authority::{
     transaction_orchestrator::TransactionOrchestrator,
     validator_tx_finalizer::ValidatorTxFinalizer,
 };
-use encoder_validator_api::{
-    service::EncoderValidatorService,
-    tonic_gen::encoder_validator_api_server::EncoderValidatorApiServer,
-};
-use futures::{future::BoxFuture, TryFutureExt};
+use futures::{TryFutureExt, future::BoxFuture};
 use parking_lot::RwLock;
-use rpc::api::{subscription::SubscriptionService, ServerVersion};
+use rpc::api::{ServerVersion, subscription::SubscriptionService};
 
 use store::rocks::default_db_options;
 use sync::builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle};
@@ -56,11 +51,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::{
-    sync::{broadcast, mpsc::Sender, oneshot, Mutex},
+    sync::{Mutex, broadcast, mpsc::Sender, oneshot},
     task::JoinHandle,
     time::sleep,
 };
-use tracing::{debug, error, error_span, info, warn, Instrument};
+use tracing::{Instrument, debug, error, error_span, info, warn};
 use types::{
     base::AuthorityName,
     client::Config,
@@ -80,8 +75,8 @@ use types::{
         channel_manager::{ChannelManager, ChannelManagerRequest},
     },
     system_state::{
-        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
         SystemState, SystemStateTrait,
+        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
     },
     transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
 };
@@ -198,9 +193,6 @@ pub struct SomaNode {
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
 
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
-
-    encoder_validator_server_handle: Mutex<Option<JoinHandle<Result<()>>>>,
-    encoder_client_service: Option<Arc<EncoderClientService>>,
 }
 
 impl SomaNode {
@@ -457,16 +449,6 @@ impl SomaNode {
         let (end_of_epoch_channel, end_of_epoch_receiver) =
             broadcast::channel(config.end_of_epoch_broadcast_channel_capacity);
 
-        let encoder_client_service = if is_full_node {
-            // Only fullnodes send to encoders, not validators
-            Some(Arc::new(EncoderClientService::new(
-                config.protocol_key_pair().copy(),
-                config.network_key_pair(),
-            )))
-        } else {
-            None
-        };
-
         let transaction_orchestrator = if is_full_node && run_with_range.is_none() {
             Some(Arc::new(TransactionOrchestrator::new_with_auth_aggregator(
                 auth_agg.load_full(),
@@ -474,7 +456,6 @@ impl SomaNode {
                 end_of_epoch_receiver,
                 &config.db_path(),
                 &config,
-                encoder_client_service.clone(),
             )))
         } else {
             None
@@ -528,16 +509,6 @@ impl SomaNode {
         // setup shutdown channel
         let (shutdown_channel, _) = broadcast::channel::<Option<RunWithRange>>(1);
 
-        let encoder_validator_server_handle = if is_full_node {
-            info!("Starting encoder validator service for fullnode");
-            Some(
-                Self::start_grpc_encoder_service(&config, state.clone(), checkpoint_store.clone())
-                    .await?,
-            )
-        } else {
-            None
-        };
-
         let node = Self {
             config,
             validator_components: Mutex::new(validator_components),
@@ -553,8 +524,6 @@ impl SomaNode {
             auth_agg,
             subscription_service_checkpoint_sender,
 
-            encoder_validator_server_handle: Mutex::new(encoder_validator_server_handle),
-            encoder_client_service,
             // connection_monitor_status,
             #[cfg(msim)]
             sim_state: Default::default(),
@@ -1012,36 +981,6 @@ impl SomaNode {
         self.state.clone()
     }
 
-    async fn start_grpc_encoder_service(
-        config: &NodeConfig,
-        state: Arc<AuthorityState>,
-        checkpoint_store: Arc<CheckpointStore>,
-    ) -> Result<tokio::task::JoinHandle<Result<()>>> {
-        let encoder_validator_service =
-            EncoderValidatorService::new(state.clone(), checkpoint_store.clone());
-
-        let server_conf = Config::new();
-        let mut server_builder = ServerBuilder::from_config(&server_conf);
-
-        server_builder =
-            server_builder.add_service(EncoderValidatorApiServer::new(encoder_validator_service));
-
-        let tls_config = soma_tls::create_rustls_server_config(
-            config.network_key_pair().clone().private_key().into_inner(),
-            "soma-encoder-sync".to_string(),
-        );
-
-        let server = server_builder
-            .bind(&config.encoder_validator_address(), Some(tls_config))
-            .await
-            .map_err(|err| anyhow!(err.to_string()))?;
-        let local_addr = server.local_addr();
-        info!("Encoder validator service listening on {local_addr}");
-        let grpc_server = tokio::spawn(server.serve().map_err(Into::into));
-
-        Ok(grpc_server)
-    }
-
     /// This function awaits the completion of checkpoint execution of the current epoch,
     /// after which it initiates reconfiguration of the entire system.
     pub async fn monitor_reconfiguration(
@@ -1122,12 +1061,6 @@ impl SomaNode {
                         err
                     );
                 }
-            }
-
-            if let Some(encoder_client) = &self.encoder_client_service {
-                let encoder_committee = latest_system_state.get_current_epoch_encoder_committee();
-                info!("Updating encoder committee after reconfiguration");
-                encoder_client.update_encoder_committee(&encoder_committee);
             }
 
             let new_epoch_start_state = latest_system_state.into_epoch_start_state();

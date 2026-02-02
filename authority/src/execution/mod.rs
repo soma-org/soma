@@ -2,10 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
-use encoder::EncoderExecutor;
 use object::ObjectExecutor;
-use prepare_gas::{calculate_and_deduct_remaining_fees, prepare_gas, GasPreparationResult};
-use shard::ShardExecutor;
+use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
@@ -14,8 +12,8 @@ use types::{
     committee::EpochId,
     digests::TransactionDigest,
     effects::{
-        object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
         ExecutionFailureStatus, ExecutionStatus, TransactionEffects,
+        object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
     },
     error::{ExecutionError, ExecutionResult, SomaError, SomaResult},
     execution::ExecutionOrEarlyError,
@@ -32,10 +30,8 @@ use validator::ValidatorExecutor;
 
 mod change_epoch;
 mod coin;
-mod encoder;
 mod object;
 mod prepare_gas;
-mod shard;
 mod staking;
 mod system;
 mod validator;
@@ -284,15 +280,6 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::SetCommissionRate { .. }
         | TransactionKind::UpdateValidatorMetadata(_) => Box::new(ValidatorExecutor::new()),
 
-        // Encoder management transactions
-        TransactionKind::AddEncoder(_)
-        | TransactionKind::RemoveEncoder { .. }
-        | TransactionKind::ReportEncoder { .. }
-        | TransactionKind::UndoReportEncoder { .. }
-        | TransactionKind::SetEncoderCommissionRate { .. }
-        | TransactionKind::SetEncoderBytePrice { .. }
-        | TransactionKind::UpdateEncoderMetadata(_) => Box::new(EncoderExecutor::new()),
-
         // System transactions
         TransactionKind::ChangeEpoch(_) => Box::new(ChangeEpochExecutor::new()),
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
@@ -305,15 +292,9 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
         // Staking transactions - both validator and encoder staking
-        TransactionKind::AddStake { .. }
-        | TransactionKind::WithdrawStake { .. }
-        | TransactionKind::AddStakeToEncoder { .. } => Box::new(StakingExecutor::new()),
-
-        // Shard transactions
-        TransactionKind::EmbedData { .. }
-        | TransactionKind::ClaimEscrow { .. }
-        | TransactionKind::ReportWinner { .. }
-        | TransactionKind::ClaimReward { .. } => Box::new(ShardExecutor::new()),
+        TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
+            Box::new(StakingExecutor::new())
+        }
     }
 }
 

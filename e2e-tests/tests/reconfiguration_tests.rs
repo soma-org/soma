@@ -13,7 +13,7 @@ use types::{
         VALIDATOR_CONSENSUS_VERY_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
     },
     config::genesis_config::{
-        AccountConfig, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder, DEFAULT_GAS_AMOUNT,
+        AccountConfig, DEFAULT_GAS_AMOUNT, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
     },
     crypto::{KeypairTraits, SomaKeyPair},
     system_state::SystemStateTrait,
@@ -84,9 +84,10 @@ async fn test_reconfig_with_committee_change_basic() {
     test_cluster.wait_for_epoch_all_nodes(1).await;
 
     new_validator_handle.with(|node| {
-        assert!(node
-            .state()
-            .is_validator(&node.state().epoch_store_for_testing()));
+        assert!(
+            node.state()
+                .is_validator(&node.state().epoch_store_for_testing())
+        );
     });
 
     execute_remove_validator_tx(&test_cluster, &new_validator_handle).await;
@@ -252,7 +253,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
                 system_state.validators.total_stake,
                 system_state
                     .validators
-                    .consensus_validators
+                    .validators
                     .iter()
                     .map(|v| v.metadata.soma_address)
                     .collect::<Vec<_>>(),
@@ -311,7 +312,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             .validators;
 
         let candidate = system_state
-            .consensus_validators
+            .validators
             .iter()
             .find(|v| v.metadata.soma_address == address);
 
@@ -353,7 +354,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             .validators;
 
         let candidate = system_state
-            .consensus_validators
+            .validators
             .iter()
             .find(|v| v.metadata.soma_address == address)
             .unwrap()
@@ -380,7 +381,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
                 .get_system_state_object_for_testing()
                 .expect("Should be able to get SystemState")
                 .validators
-                .consensus_validators
+                .validators
                 .len(),
             initial_num_validators
         )
@@ -430,7 +431,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             (
                 system_state.total_stake,
                 system_state
-                    .consensus_validators
+                    .validators
                     .iter()
                     .map(|v| v.metadata.soma_address)
                     .collect::<Vec<_>>(),
@@ -492,7 +493,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
             .validators
-            .consensus_validators
+            .validators
             .iter()
             .map(|v| v.metadata.soma_address)
             .collect::<Vec<_>>();
@@ -569,8 +570,6 @@ async fn execute_add_validator_transactions(
                 net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
                 p2p_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
                 primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                encoder_validator_address: bcs::to_bytes(&new_validator.encoder_validator_address)
-                    .unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
             vec![gas_object],

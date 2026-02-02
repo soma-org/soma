@@ -37,14 +37,14 @@ use types::{
     }, checkpoints::{
         CheckpointContents, CheckpointSequenceNumber, CheckpointSignatureMessage,
         CheckpointSummary, ECMHLiveObjectSetDigest, GlobalStateHash,
-    }, committee::{Authority, Committee, EpochId, NetworkingCommittee}, consensus::{
+    }, committee::{Authority, Committee, EpochId}, consensus::{
         AuthorityCapabilities, ConsensusCommitPrologue, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef, validator_set::ValidatorSet
     }, crypto::{
         AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
         GenericSignature, Signer,
     }, digests::{ChainIdentifier, TransactionDigest, TransactionEffectsDigest}, effects::{
         self, ExecutionFailureStatus, ExecutionStatus, TransactionEffects, UnchangedSharedKind, object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut}
-    }, encoder_committee::EncoderCommittee, envelope::TrustedEnvelope, error::{ExecutionError, SomaError, SomaResult}, mutex_table::{MutexGuard, MutexTable}, object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version}, storage::{InputKey, object_store::ObjectStore}, system_state::{
+    },  envelope::TrustedEnvelope, error::{ExecutionError, SomaError, SomaResult}, mutex_table::{MutexGuard, MutexTable}, object::{Object, ObjectData, ObjectID, ObjectRef, ObjectType, Owner, Version}, storage::{InputKey, object_store::ObjectStore}, system_state::{
         self, SystemState, SystemStateTrait, epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait}, get_system_state
     }, temporary_store::{InnerTemporaryStore, SharedInput, TemporaryStore}, transaction::{
         self, CertifiedTransaction, InputObjectKind, InputObjects, ObjectReadResult,
@@ -720,10 +720,6 @@ impl AuthorityPerEpochStore {
 
     pub fn epoch(&self) -> EpochId {
         self.committee.epoch
-    }
-
-    pub fn reference_byte_price(&self) -> u64 {
-        self.epoch_start_state().reference_byte_price()
     }
 
     pub fn get_state_hash_for_checkpoint(
