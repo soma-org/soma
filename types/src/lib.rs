@@ -10,18 +10,14 @@ pub mod consensus;
 pub mod crypto;
 pub mod digests;
 pub mod effects;
-pub mod encoder_committee;
-pub mod encoder_info;
-pub mod encoder_validator;
-pub mod entropy;
 pub mod envelope;
 pub mod error;
-pub mod evaluation;
 pub mod execution;
 pub mod finality;
 pub mod full_checkpoint_content;
 pub mod genesis;
 pub mod genesis_builder;
+pub mod grpc_timeout;
 pub mod intent;
 pub mod messages_grpc;
 pub mod metadata;
@@ -32,15 +28,9 @@ pub mod object;
 pub mod parameters;
 pub mod peer_id;
 pub mod quorum_driver;
-pub mod report;
 pub(crate) mod serde;
-pub mod shard;
-pub mod shard_crypto;
-pub mod shard_networking;
-pub mod shard_verifier;
 pub mod signature_verification;
 pub mod storage;
-pub mod submission;
 pub mod supported_protocol_versions;
 pub mod sync;
 pub mod system_state;
@@ -55,7 +45,7 @@ pub mod unit_tests;
 pub mod validator_info;
 
 use base::SomaAddress;
-use object::{ObjectID, Version, OBJECT_START_VERSION};
+use object::{OBJECT_START_VERSION, ObjectID, Version};
 
 macro_rules! built_in_ids {
     ($($addr:ident / $id:ident = $init:expr);* $(;)?) => {

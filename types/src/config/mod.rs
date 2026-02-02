@@ -1,7 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,6 @@ use tracing::trace;
 use crate::multiaddr::Multiaddr;
 
 pub mod certificate_deny_config;
-pub mod encoder_config;
 pub mod genesis_config;
 pub mod local_ip_utils;
 pub mod network_config;

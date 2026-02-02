@@ -30,8 +30,6 @@ pub struct EpochStartSystemState {
     /// The active validators at the start of the epoch
     pub active_validators: Vec<EpochStartValidatorInfo>,
 
-    pub reference_byte_price: u64,
-
     pub protocol_version: u64,
 
     pub fee_parameters: FeeParameters,
@@ -44,7 +42,6 @@ impl EpochStartSystemState {
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
         active_validators: Vec<EpochStartValidatorInfo>,
-        reference_byte_price: u64,
         fee_parameters: FeeParameters,
     ) -> Self {
         Self {
@@ -53,7 +50,6 @@ impl EpochStartSystemState {
             epoch_start_timestamp_ms,
             epoch_duration_ms,
             active_validators,
-            reference_byte_price,
             fee_parameters,
         }
     }
@@ -68,7 +64,6 @@ impl EpochStartSystemState {
         Self {
             epoch,
             protocol_version: ProtocolVersion::MAX.as_u64(),
-            reference_byte_price: 0, //crate::transaction::DEFAULT_BYTE_PRICE, // TODO: define this
             epoch_start_timestamp_ms: 0,
             epoch_duration_ms: 1000,
             active_validators: vec![],
@@ -96,10 +91,6 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
         ProtocolVersion::new(self.protocol_version)
     }
 
-    fn reference_byte_price(&self) -> u64 {
-        self.reference_byte_price
-    }
-
     fn get_validator_addresses(&self) -> Vec<SomaAddress> {
         self.active_validators
             .iter()
@@ -120,7 +111,7 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
                             consensus_address: validator.p2p_address.clone(),
                             network_address: validator.net_address.clone(),
                             primary_address: validator.primary_address.clone(),
-                            encoder_validator_address: validator.encoder_validator_address.clone(),
+
                             protocol_key: ProtocolPublicKey::new(
                                 validator.worker_pubkey.clone().into_inner(),
                             ),
@@ -214,9 +205,6 @@ pub trait EpochStartSystemStateTrait {
     /// Get a mapping from authority names to hostnames
     fn get_authority_names_to_hostnames(&self) -> HashMap<AuthorityName, String>;
 
-    /// Get the reference byte price for the epoch
-    fn reference_byte_price(&self) -> u64;
-
     fn protocol_version(&self) -> ProtocolVersion;
 }
 
@@ -242,8 +230,6 @@ pub struct EpochStartValidatorInfo {
 
     /// The primary address for validator services
     pub primary_address: Multiaddr,
-
-    pub encoder_validator_address: Multiaddr,
 
     /// The validator's voting power in the consensus protocol
     pub voting_power: VotingPower,

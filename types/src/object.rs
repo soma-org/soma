@@ -1,29 +1,24 @@
 use crate::base::HexAccountAddress;
 use crate::metadata::{DownloadMetadata, Metadata};
-use crate::shard_crypto::digest::Digest;
-use crate::system_state::shard::TargetOrigin;
 use crate::{
-    base::{FullObjectID, FullObjectRef, SomaAddress, SOMA_ADDRESS_LENGTH},
+    base::{FullObjectID, FullObjectRef, SOMA_ADDRESS_LENGTH, SomaAddress},
     committee::EpochId,
-    crypto::{default_hash, DefaultHash},
+    crypto::{DefaultHash, default_hash},
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
     serde::Readable,
-    system_state::{
-        shard::{Shard, Target},
-        staking::StakedSoma,
-    },
+    system_state::staking::StakedSoma,
 };
 use anyhow::anyhow;
 use fastcrypto::{
-    encoding::{decode_bytes_hex, Encoding, Hex},
+    encoding::{Encoding, Hex, decode_bytes_hex},
     hash::HashFunction,
     traits::AllowedRng,
 };
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_with::{serde_as, Bytes, DeserializeAs, SerializeAs};
+use serde_with::{Bytes, DeserializeAs, SerializeAs, serde_as};
 use std::{
     cmp::max,
     fmt::{Display, Formatter},
@@ -404,85 +399,6 @@ impl Object {
             None
         }
     }
-
-    /// Create a new Shard object
-    pub fn new_shard(
-        id: ObjectID,
-        input_download_metadata: DownloadMetadata,
-        amount: u64,
-        created_epoch: EpochId,
-        data_submitter: SomaAddress,
-        target: Option<ObjectRef>,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let shard = Shard {
-            input_download_metadata,
-            amount,
-            created_epoch,
-            data_submitter,
-            target,
-            winning_encoder: None,
-            embeddings_download_metadata: None,
-            evaluation_scores: None,
-            target_scores: None,
-            summary_embedding: None,
-            sampled_embedding: None,
-        };
-
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Shard,
-            Version::MIN,
-            bcs::to_bytes(&shard).unwrap(),
-        );
-
-        Self::new(data, owner, previous_transaction)
-    }
-
-    /// Extract Shard from an Object
-    pub fn as_shard(&self) -> Option<Shard> {
-        if *self.data.object_type() == ObjectType::Shard {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Create a new Target object
-    pub fn new_target(
-        id: ObjectID,
-        origin: TargetOrigin,
-        created_epoch: EpochId,
-        target_embedding: Vec<u8>,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let target = Target {
-            origin,
-            created_epoch,
-            target_embedding,
-            winning_shard: None,
-        };
-
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Target,
-            Version::MIN,
-            bcs::to_bytes(&target).unwrap(),
-        );
-
-        Self::new(data, owner, previous_transaction)
-    }
-
-    /// Extract Target from an Object
-    pub fn as_target(&self) -> Option<Target> {
-        if *self.data.object_type() == ObjectType::Target {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
 }
 
 impl std::ops::Deref for Object {
@@ -641,10 +557,6 @@ pub enum ObjectType {
     Coin,
     /// Represents an owned Staked Soma object
     StakedSoma,
-    /// Represents a shard object
-    Shard,
-    /// Represents a target object
-    Target,
 }
 
 impl fmt::Display for ObjectType {
@@ -653,8 +565,6 @@ impl fmt::Display for ObjectType {
             ObjectType::SystemState => write!(f, "SystemState"),
             ObjectType::Coin => write!(f, "Coin"),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
-            ObjectType::Shard => write!(f, "Shard"),
-            ObjectType::Target => write!(f, "Target"),
         }
     }
 }
@@ -667,9 +577,6 @@ impl FromStr for ObjectType {
             "SystemState" => Ok(ObjectType::SystemState),
             "Coin" => Ok(ObjectType::Coin),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
-            "Shard" => Ok(ObjectType::Shard),
-            "Target" => Ok(ObjectType::Target),
-
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

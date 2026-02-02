@@ -5,7 +5,7 @@ use crate::{
     base::SomaAddress,
     config::Config,
     crypto::{
-        get_key_pair_from_rng, AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair,
+        AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
     },
     multiaddr::Multiaddr,
 };
@@ -25,12 +25,10 @@ pub struct ValidatorGenesisConfig {
     pub network_address: Multiaddr,
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
-    pub encoder_validator_address: Multiaddr,
     pub rpc_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
     pub commission_rate: u64,
-    pub is_networking_only: bool,
 }
 
 impl Clone for ValidatorGenesisConfig {
@@ -43,11 +41,9 @@ impl Clone for ValidatorGenesisConfig {
             network_address: self.network_address.clone(),
             consensus_address: self.consensus_address.clone(),
             p2p_address: self.p2p_address.clone(),
-            encoder_validator_address: self.encoder_validator_address.clone(),
             rpc_address: self.rpc_address.clone(),
             stake: self.stake.clone(),
             commission_rate: self.commission_rate.clone(),
-            is_networking_only: self.is_networking_only.clone(),
         }
     }
 }
@@ -62,7 +58,6 @@ pub struct AccountConfig {
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct GenesisConfig {
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
-    pub networking_validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
     pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
 }
@@ -154,7 +149,6 @@ impl GenesisConfig {
                     recipient_address: address,
                     amount_shannons: *a,
                     staked_with_validator: None,
-                    staked_with_encoder: None,
                 });
             });
         }
@@ -228,29 +222,22 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (
-            network_address,
-            consensus_address,
-            p2p_address,
-            encoder_validator_address,
-            rpc_address,
-        ) = if let Some(offset) = self.port_offset {
-            (
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
-                local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
-            )
-        } else {
-            (
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-                local_ip_utils::new_tcp_address_for_testing(&ip),
-            )
-        };
+        let (network_address, consensus_address, p2p_address, rpc_address) =
+            if let Some(offset) = self.port_offset {
+                (
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
+                )
+            } else {
+                (
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
+                )
+            };
 
         ValidatorGenesisConfig {
             key_pair: protocol_key_pair,
@@ -260,11 +247,9 @@ impl ValidatorGenesisConfigBuilder {
             network_address,
             consensus_address,
             p2p_address,
-            encoder_validator_address,
             rpc_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
-            is_networking_only: self.is_networking_only.unwrap_or(false),
         }
     }
 }
@@ -286,10 +271,6 @@ pub struct GenesisCeremonyParameters {
     /// The amount of rewards to be drawn down per distribution.
     #[serde(default = "GenesisCeremonyParameters::default_emission_per_epoch")]
     pub emission_per_epoch: u64,
-
-    /// Seed target embeddings (if empty, random embeddings will be generated)
-    #[serde(default)]
-    pub seed_target_embeddings: Vec<Vec<u8>>,
 }
 
 impl GenesisCeremonyParameters {
@@ -299,7 +280,6 @@ impl GenesisCeremonyParameters {
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
             emission_per_epoch: Self::default_emission_per_epoch(),
-            seed_target_embeddings: vec![],
         }
     }
 
@@ -335,7 +315,6 @@ pub struct TokenAllocation {
 
     /// Indicates if this allocation should be staked at genesis and with which validator
     pub staked_with_validator: Option<SomaAddress>,
-    pub staked_with_encoder: Option<SomaAddress>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -413,10 +392,6 @@ impl TokenDistributionSchedule {
             emission_fund_allocation.staked_with_validator.is_none(),
             "Can't stake the emission fund",
         );
-        assert!(
-            emission_fund_allocation.staked_with_encoder.is_none(),
-            "Can't stake the emission fund",
-        );
 
         let schedule = Self {
             emission_fund_shannons: emission_fund_allocation.amount_shannons,
@@ -439,7 +414,6 @@ impl TokenDistributionSchedule {
             recipient_address: SomaAddress::default(),
             amount_shannons: self.emission_fund_shannons,
             staked_with_validator: None,
-            staked_with_encoder: None,
         })?;
 
         Ok(())

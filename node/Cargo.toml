@@ -14,7 +14,6 @@ arc-swap.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
 msim.workspace = true
-encoder-validator-api.workspace = true
 soma-http.workspace = true
 axum.workspace = true
 rpc.workspace = true

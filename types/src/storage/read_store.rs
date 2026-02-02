@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use store::TypedStoreError;
 
 use crate::{
-    balance_change::{derive_balance_changes, BalanceChange},
+    balance_change::{BalanceChange, derive_balance_changes},
     base::SomaAddress,
     checkpoints::{
         CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
@@ -17,9 +17,7 @@ use crate::{
     effects::TransactionEffects,
     full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet},
     object::{Object, ObjectID, ObjectRef, ObjectType, Version},
-    shard_crypto::keys::EncoderPublicKey,
     storage::ObjectKey,
-    system_state::shard::{Shard, Target, TargetOrigin},
     transaction::VerifiedTransaction,
 };
 
@@ -513,37 +511,7 @@ pub trait RpcIndexes: Send + Sync {
     fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
 
     fn get_highest_indexed_checkpoint_seq_number(&self)
-        -> Result<Option<CheckpointSequenceNumber>>;
-
-    // =========================================================================
-    // SHARD QUERY METHODS
-    // =========================================================================
-
-    /// Get all shards created in a specific epoch
-    fn get_shards_by_epoch(&self, epoch: EpochId) -> Result<Vec<ShardIndexInfo>>;
-
-    /// Get shards submitted by a specific address, optionally filtered by epoch
-    fn get_shards_by_submitter(
-        &self,
-        submitter: SomaAddress,
-        epoch: Option<EpochId>,
-    ) -> Result<Vec<ShardIndexInfo>>;
-
-    /// Get shards won by a specific encoder
-    fn get_shards_by_encoder(&self, encoder: &EncoderPublicKey) -> Result<Vec<ShardIndexInfo>>;
-
-    /// Get claimable escrows (shards where created_epoch + 2 <= current_epoch)
-    fn get_claimable_escrows(&self, current_epoch: EpochId) -> Result<Vec<ShardIndexInfo>>;
-
-    // =========================================================================
-    // TARGET QUERY METHODS
-    // =========================================================================
-
-    /// Get all targets valid for competition in the given epoch
-    fn get_valid_targets(&self, epoch: EpochId) -> Result<Vec<TargetIndexInfo>>;
-
-    /// Get claimable rewards (targets where created_epoch + 2 <= current_epoch)
-    fn get_claimable_rewards(&self, current_epoch: EpochId) -> Result<Vec<TargetIndexInfo>>;
+    -> Result<Option<CheckpointSequenceNumber>>;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -599,97 +567,4 @@ pub struct EpochInfo {
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct BalanceInfo {
     pub balance: u64,
-}
-
-/// Cached info about a shard
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct ShardIndexInfo {
-    pub shard_id: ObjectID,
-    pub created_epoch: EpochId,
-    pub amount: u64,
-    pub data_submitter: SomaAddress,
-    pub target: Option<ObjectRef>,
-    pub has_winner: bool,
-    pub winning_encoder: Option<EncoderPublicKey>,
-}
-
-impl ShardIndexInfo {
-    pub fn from_shard(shard_id: ObjectID, shard: &Shard) -> Self {
-        Self {
-            shard_id,
-            created_epoch: shard.created_epoch,
-            amount: shard.amount,
-            data_submitter: shard.data_submitter,
-            target: shard.target.clone(),
-            has_winner: shard.winning_encoder.is_some(),
-            winning_encoder: shard.winning_encoder.clone(),
-        }
-    }
-
-    /// Check if escrow can be claimed (current_epoch >= created_epoch + 2)
-    pub fn is_escrow_claimable(&self, current_epoch: EpochId) -> bool {
-        current_epoch >= self.created_epoch + 2
-    }
-}
-
-/// Cached info about a target
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct TargetIndexInfo {
-    pub target_id: ObjectID,
-    pub created_epoch: EpochId,
-    pub valid_epoch: EpochId,
-    pub origin: TargetOriginType,
-    pub creator: Option<SomaAddress>,
-    pub reward_amount: Option<u64>,
-    pub has_winner: bool,
-}
-
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub enum TargetOriginType {
-    System,
-    User,
-    Genesis,
-}
-
-impl TargetIndexInfo {
-    pub fn from_target(target_id: ObjectID, target: &Target) -> Self {
-        let (origin, creator, reward_amount, valid_epoch) = match &target.origin {
-            TargetOrigin::System => (
-                TargetOriginType::System,
-                None,
-                None,
-                target.created_epoch + 1,
-            ),
-            TargetOrigin::User {
-                creator,
-                reward_amount,
-            } => (
-                TargetOriginType::User,
-                Some(*creator),
-                Some(*reward_amount),
-                target.created_epoch + 1,
-            ),
-            TargetOrigin::Genesis { reward_amount } => (
-                TargetOriginType::Genesis,
-                None,
-                Some(*reward_amount),
-                target.created_epoch,
-            ),
-        };
-
-        Self {
-            target_id,
-            created_epoch: target.created_epoch,
-            valid_epoch,
-            origin,
-            creator,
-            reward_amount,
-            has_winner: target.winning_shard.is_some(),
-        }
-    }
-
-    /// Check if reward can be claimed (current_epoch >= created_epoch + 2)
-    pub fn is_reward_claimable(&self, current_epoch: EpochId) -> bool {
-        current_epoch >= self.created_epoch + 2
-    }
 }

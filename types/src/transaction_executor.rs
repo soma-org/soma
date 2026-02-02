@@ -5,10 +5,7 @@ use crate::{
     error::{ExecutionError, ExecutionResult, SomaError},
     full_checkpoint_content::ObjectSet,
     object::{Object, ObjectID},
-    quorum_driver::{
-        ExecuteTransactionRequest, ExecuteTransactionResponse, InitiateShardWorkRequest,
-        InitiateShardWorkResponse, QuorumDriverError,
-    },
+    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionResponse, QuorumDriverError},
     transaction::TransactionData,
 };
 
@@ -27,14 +24,6 @@ pub trait TransactionExecutor: Send + Sync {
         transaction: TransactionData,
         checks: TransactionChecks,
     ) -> Result<SimulateTransactionResult, SomaError>;
-
-    /// Initiate shard work for a finalized EmbedData transaction.
-    /// This computes the VDF, selects the appropriate shard, and sends
-    /// the shard auth token to the encoder shard members.
-    async fn initiate_shard_work(
-        &self,
-        request: InitiateShardWorkRequest,
-    ) -> Result<InitiateShardWorkResponse, SomaError>;
 }
 
 pub struct SimulateTransactionResult {

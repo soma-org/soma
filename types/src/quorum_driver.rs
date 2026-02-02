@@ -4,7 +4,6 @@ use std::time::Duration;
 use crate::base::AuthorityName;
 use crate::committee::EpochId;
 
-use crate::shard::{Shard, ShardAuthToken};
 use crate::{
     effects::SignedTransactionEffects,
     transaction::{CertifiedTransaction, SignedTransaction, Transaction},
@@ -155,18 +154,6 @@ pub struct ExecuteTransactionResponse {
     pub input_objects: Option<Vec<Object>>,
     // Output objects will only be populated in the happy path
     pub output_objects: Option<Vec<Object>>,
-}
-
-pub struct InitiateShardWorkRequest {
-    /// The EmbedData transaction digest
-    pub tx_digest: TransactionDigest,
-    /// The checkpoint sequence number where the transaction was finalized
-    pub checkpoint_seq: CheckpointSequenceNumber,
-}
-
-pub struct InitiateShardWorkResponse {
-    /// Shard
-    pub shard: Shard,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

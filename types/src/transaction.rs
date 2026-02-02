@@ -8,30 +8,26 @@ use crate::{
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
     metadata::{DownloadMetadata, Metadata},
-    shard::Shard,
-    shard_crypto::{
-        digest::Digest,
-        keys::{EncoderAggregateSignature, EncoderPublicKey},
-    },
 };
 use fastcrypto::{
     hash::HashFunction,
     traits::{Signer, ToFromBytes},
 };
 use itertools::{Either, Itertools};
-use nonempty::{nonempty, NonEmpty};
+use nonempty::{NonEmpty, nonempty};
 use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 use crate::{
+    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
     base::{AuthorityName, SizeOneVec, SomaAddress},
     committee::{Committee, EpochId},
     consensus::ConsensusCommitPrologue,
     crypto::{
-        default_hash, AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
+        AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
         AuthorityStrongQuorumSignInfo, DefaultHash, Ed25519SomaSignature, EmptySignInfo,
-        GenericSignature, Signature, SomaSignatureInner,
+        GenericSignature, Signature, SomaSignatureInner, default_hash,
     },
     digests::{CertificateDigest, ConsensusCommitDigest, TransactionDigest},
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
@@ -39,7 +35,6 @@ use crate::{
     intent::{Intent, IntentMessage, IntentScope},
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
     temporary_store::SharedInput,
-    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
 };
 use tap::Pipe;
 
@@ -82,26 +77,7 @@ pub enum TransactionKind {
     SetCommissionRate {
         new_rate: u64,
     },
-    // Encoder management transactions
-    AddEncoder(AddEncoderArgs),
-    RemoveEncoder(RemoveEncoderArgs),
 
-    // Encoder reporting
-    ReportEncoder {
-        reportee: SomaAddress,
-    },
-    UndoReportEncoder {
-        reportee: SomaAddress,
-    },
-
-    // Encoder metadata
-    UpdateEncoderMetadata(UpdateEncoderMetadataArgs),
-    SetEncoderCommissionRate {
-        new_rate: u64,
-    },
-    SetEncoderBytePrice {
-        new_price: u64,
-    },
     // Coin and object transactions
     TransferCoin {
         coin: ObjectRef,
@@ -123,34 +99,8 @@ pub enum TransactionKind {
         coin_ref: ObjectRef,
         amount: Option<u64>, // Optional to allow staking entire coin
     },
-    AddStakeToEncoder {
-        encoder_address: SomaAddress,
-        coin_ref: ObjectRef,
-        amount: Option<u64>,
-    },
     WithdrawStake {
         staked_soma: ObjectRef,
-    },
-
-    // Shard txs
-    EmbedData {
-        download_metadata: DownloadMetadata,
-        coin_ref: ObjectRef,
-        target_ref: Option<ObjectRef>,
-    },
-    ClaimEscrow {
-        shard_ref: ObjectRef,
-    },
-    ReportWinner {
-        shard_ref: ObjectRef,
-        target_ref: Option<ObjectRef>,
-        report: Vec<u8>, // BCS Serialized Report (will contain both sampled and summary)
-        signature: Vec<u8>, // BCS serialized EncoderAggregateSignature (BLS)
-        signers: Vec<EncoderPublicKey>,
-        shard_auth_token: Vec<u8>, // BCS Serialized ShardAuthToken
-    },
-    ClaimReward {
-        target_ref: ObjectRef,
     },
 }
 
@@ -182,8 +132,6 @@ pub struct AddValidatorArgs {
     pub p2p_address: Vec<u8>,
     /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
-
-    pub encoder_validator_address: Vec<u8>,
 }
 
 /// # RemoveValidatorArgs
@@ -282,25 +230,10 @@ impl TransactionKind {
         )
     }
 
-    pub fn is_encoder_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::AddEncoder(_)
-                | TransactionKind::RemoveEncoder { .. }
-                | TransactionKind::ReportEncoder { .. }
-                | TransactionKind::UndoReportEncoder { .. }
-                | TransactionKind::SetEncoderCommissionRate { .. }
-                | TransactionKind::UpdateEncoderMetadata(_)
-                | TransactionKind::SetEncoderBytePrice { .. }
-        )
-    }
-
     pub fn is_staking_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::AddStake { .. }
-                | TransactionKind::AddStakeToEncoder { .. }
-                | TransactionKind::WithdrawStake { .. }
+            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. }
         )
     }
 
@@ -309,30 +242,7 @@ impl TransactionKind {
     }
 
     pub fn requires_system_state(&self) -> bool {
-        self.is_validator_tx()
-            || self.is_epoch_change()
-            || self.is_staking_tx()
-            || self.is_encoder_tx()
-            || self.is_shard_tx()
-    }
-
-    pub fn is_shard_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::EmbedData { .. }
-                | TransactionKind::ClaimEscrow { .. }
-                | TransactionKind::ReportWinner { .. }
-                | TransactionKind::ClaimReward { .. }
-        )
-    }
-
-    pub fn is_embed_tx(&self) -> bool {
-        matches!(self, TransactionKind::EmbedData { .. })
-    }
-
-    /// Returns true if this transaction requires consensus sequencing for finality proof
-    pub fn requires_consensus_finality(&self) -> bool {
-        self.is_embed_tx()
+        self.is_validator_tx() || self.is_epoch_change() || self.is_staking_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -359,54 +269,6 @@ impl TransactionKind {
 
         // Add transaction-specific shared objects
         match self {
-            // EmbedData: target is read-only (just referencing which target to aim for)
-            TransactionKind::EmbedData {
-                target_ref: Some(target),
-                ..
-            } => {
-                objects.push(SharedInputObject {
-                    id: target.0,
-                    initial_shared_version: target.1,
-                    mutable: false, // read-only when creating a shard
-                });
-            }
-            // ClaimEscrow: shard is mutated (escrow state changes)
-            TransactionKind::ClaimEscrow { shard_ref } => {
-                objects.push(SharedInputObject {
-                    id: shard_ref.0,
-                    initial_shared_version: shard_ref.1,
-                    mutable: true,
-                });
-            }
-            // ReportWinner: shard is mutated (winner, scores, embeddings set)
-            TransactionKind::ReportWinner {
-                shard_ref,
-                target_ref,
-                ..
-            } => {
-                // Shard is mutated (winner, scores, embeddings set)
-                objects.push(SharedInputObject {
-                    id: shard_ref.0,
-                    initial_shared_version: shard_ref.1,
-                    mutable: true,
-                });
-                // Target (if present) is mutated (winning_shard may be updated)
-                if let Some(target) = target_ref {
-                    objects.push(SharedInputObject {
-                        id: target.0,
-                        initial_shared_version: target.1,
-                        mutable: true,
-                    });
-                }
-            }
-            // ClaimReward: target is mutated (winning_shard updated, funds distributed)
-            TransactionKind::ClaimReward { target_ref } => {
-                objects.push(SharedInputObject {
-                    id: target_ref.0,
-                    initial_shared_version: target_ref.1,
-                    mutable: true,
-                });
-            }
             _ => {}
         }
 
@@ -447,60 +309,11 @@ impl TransactionKind {
             TransactionKind::AddStake { coin_ref, .. } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
             }
-            TransactionKind::AddStakeToEncoder { coin_ref, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-            }
+
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }
-            TransactionKind::EmbedData {
-                coin_ref,
-                target_ref,
-                ..
-            } => {
-                // Coin is owned by sender, used for escrow payment
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-                // Target (if specified) is shared, read-only access
-                if let Some(target) = target_ref {
-                    input_objects.push(InputObjectKind::SharedObject {
-                        id: target.0,
-                        initial_shared_version: target.1,
-                        mutable: false,
-                    });
-                }
-            }
-            TransactionKind::ClaimEscrow { shard_ref } => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: shard_ref.0,
-                    initial_shared_version: shard_ref.1,
-                    mutable: true,
-                });
-            }
-            TransactionKind::ReportWinner {
-                shard_ref,
-                target_ref,
-                ..
-            } => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: shard_ref.0,
-                    initial_shared_version: shard_ref.1,
-                    mutable: true,
-                });
-                if let Some(target) = target_ref {
-                    input_objects.push(InputObjectKind::SharedObject {
-                        id: target.0,
-                        initial_shared_version: target.1,
-                        mutable: true,
-                    });
-                }
-            }
-            TransactionKind::ClaimReward { target_ref } => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: target_ref.0,
-                    initial_shared_version: target_ref.1,
-                    mutable: true,
-                });
-            }
+
             _ => {}
         }
 
@@ -879,10 +692,6 @@ impl TransactionData {
 
     fn contains_shared_object(&self) -> bool {
         self.kind.shared_input_objects().next().is_some()
-    }
-
-    pub fn requires_consensus_finality(&self) -> bool {
-        self.kind.requires_consensus_finality()
     }
 
     pub fn shared_input_objects(&self) -> Vec<SharedInputObject> {

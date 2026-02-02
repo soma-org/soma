@@ -12,9 +12,7 @@ members = [
   "intelligence",
   "soma-http",
   "soma-tls",
-  "vdf",
   "objects",
-  "encoder-validator-api",
   "bin-version",
   "soma-keys",
   "rpc",
@@ -93,7 +91,6 @@ utils = { path = "utils" }
 node = { path = "node" }
 test-cluster = { path = "test-cluster" }
 sync = { path = "sync" }
-encoder-validator-api = { path = "encoder-validator-api" }
 bin-version = { path = "bin-version" }
 soma-keys = { path = "soma-keys" }
 rpc = { path = "rpc" }
@@ -172,11 +169,7 @@ tower = { version = "0.5", features = [
   "limit",
 ] } # 0.4.12
 hyper = { version = "1.8.1", features = ["http1", "http2"] } # 1
-hyper-util = { version = "0.1", features = [
-  "tokio",
-  "server-auto",
-  "service",
-] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "service"] }
 tokio-rustls = { version = "0.26", default-features = false, features = [
   "tls12",
   "ring",
@@ -199,12 +192,9 @@ prost-types = "0.14.3"
 # ENCODER-ONLY DEPENDENCIES
 encoder = { path = "encoder" }
 intelligence = { path = "intelligence" }
-vdf = { path = "vdf" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
-soma-network = { path = "soma-network" }
 objects = { path = "objects" }
-test-encoder-cluster = { path = "test-encoder-cluster" }
 arrgen = { path = "arrgen" }
 probes = { path = "probes" }
 

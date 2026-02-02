@@ -8,3 +8,5 @@ pub mod stores;
 pub const MIN_PART_SIZE: u64 = 5 * 1024 * 1024;
 /// Cloud providers typically have a max multipart part size
 pub const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
+
+pub const CERTIFICATE_NAME: &str = "soma-objects";

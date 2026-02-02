@@ -16,11 +16,6 @@ use crate::{
     committee::Epoch,
     crypto::{NetworkKeyPair, NetworkPublicKey, NetworkSignature},
     error::{ShardError, ShardResult, SharedError, SharedResult},
-    shard::Shard,
-    shard_crypto::{
-        digest::Digest,
-        scope::{Scope, ScopedMessage},
-    },
 };
 
 type SizeInBytes = usize;
@@ -28,44 +23,26 @@ type SizeInBytes = usize;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum ObjectPath {
     Uploads(Checksum),
-    Inputs(Epoch, Digest<Shard>, Checksum),
-    Embeddings(Epoch, Digest<Shard>, Checksum),
+
     Probes(Epoch, Checksum),
-    Tmp(Epoch, Digest<Shard>, Uuid),
 }
 
 impl ObjectPath {
     pub fn path(&self) -> Path {
         match self {
             Self::Uploads(checksum) => Path::from(format!("uploads/{}", checksum)),
-            Self::Inputs(epoch, shard_digest, checksum) => Path::from(format!(
-                "epochs/{}/shards/{}/inputs/{}",
-                epoch, shard_digest, checksum
-            )),
-            Self::Embeddings(epoch, shard_digest, checksum) => Path::from(format!(
-                "epochs/{}/shards/{}/embeddings/{}",
-                epoch, shard_digest, checksum
-            )),
+
             Self::Probes(epoch, checksum) => {
                 Path::from(format!("epochs/{}/probes/{}", epoch, checksum))
             }
-            Self::Tmp(epoch, shard_digest, uuid) => Path::from(format!(
-                "epochs/{}/shards/{}/tmp/{}",
-                epoch, shard_digest, uuid
-            )),
         }
     }
 
-    pub fn new_tmp(epoch: Epoch, shard_digest: Digest<Shard>) -> Self {
-        Self::Tmp(epoch, shard_digest, Uuid::new_v4())
-    }
     pub fn etag(&self) -> String {
         match self {
             Self::Uploads(checksum) => checksum.to_string(),
-            Self::Inputs(_, _, checksum) => checksum.to_string(),
-            Self::Embeddings(_, _, checksum) => checksum.to_string(),
+
             Self::Probes(_, checksum) => checksum.to_string(),
-            Self::Tmp(_, _, uuid) => uuid.to_string(),
         }
     }
 }

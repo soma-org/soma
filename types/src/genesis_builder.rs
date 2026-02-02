@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use camino::Utf8Path;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
 use fastcrypto::traits::{KeyPair as _, ToFromBytes};
@@ -8,26 +8,23 @@ use protocol_config::ProtocolVersion;
 use tracing::trace;
 
 use crate::base::ExecutionDigests;
-use crate::config::encoder_config::EncoderGenesisConfig;
 use crate::config::genesis_config::{
-    GenesisCeremonyParameters, TokenDistributionSchedule, ValidatorGenesisConfig,
-    TOTAL_SUPPLY_SHANNONS,
+    GenesisCeremonyParameters, TOTAL_SUPPLY_SHANNONS, TokenDistributionSchedule,
+    ValidatorGenesisConfig,
 };
 use crate::crypto::AuthoritySignInfoTrait as _;
-use crate::encoder_info::GenesisEncoderInfo;
 use crate::envelope::Message as _;
 use crate::intent::{IntentMessage, IntentScope};
 use crate::object::{ObjectData, ObjectType, Version};
-use crate::system_state::encoder::{Encoder, EncoderMetadata};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
-use crate::system_state::shard::{Target, TargetOrigin};
 use crate::system_state::staking::StakingPool;
 use crate::system_state::validator::{Validator, ValidatorMetadata};
-use crate::system_state::{get_system_state, FeeParameters};
+use crate::system_state::{FeeParameters, get_system_state};
 use crate::transaction::InputObjects;
 use crate::tx_fee::TransactionFee;
 use crate::validator_info::GenesisValidatorInfo;
 use crate::{
+    SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary},
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo},
@@ -39,16 +36,12 @@ use crate::{
     system_state::{SystemState, SystemStateTrait},
     temporary_store::TemporaryStore,
     transaction::{Transaction, VerifiedTransaction},
-    SYSTEM_STATE_OBJECT_ID,
 };
 use std::collections::BTreeSet;
 
 const GENESIS_BUILDER_COMMITTEE_DIR: &str = "committee";
-const GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR: &str = "networking-committee";
-const GENESIS_BUILDER_ENCODERS_DIR: &str = "encoders";
 const GENESIS_BUILDER_PARAMETERS_FILE: &str = "parameters";
 const GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE: &str = "token-distribution-schedule";
-const GENESIS_BUILDER_SEED_TARGETS_FILE: &str = "seed-target-embeddings";
 const GENESIS_BUILDER_SIGNATURE_DIR: &str = "signatures";
 const GENESIS_BUILDER_UNSIGNED_GENESIS_FILE: &str = "unsigned-genesis";
 
@@ -56,9 +49,6 @@ pub struct GenesisBuilder {
     parameters: GenesisCeremonyParameters,
     token_distribution_schedule: Option<TokenDistributionSchedule>,
     validators: Vec<GenesisValidatorInfo>,
-    networking_validators: Vec<GenesisValidatorInfo>,
-    encoders: Vec<GenesisEncoderInfo>,
-    seed_target_embeddings: Vec<Vec<u8>>,
     signatures: BTreeMap<AuthorityPublicKeyBytes, AuthoritySignInfo>,
     built_genesis: Option<UnsignedGenesis>,
 }
@@ -75,9 +65,7 @@ impl GenesisBuilder {
             parameters: GenesisCeremonyParameters::default(),
             token_distribution_schedule: None,
             validators: Vec::new(),
-            networking_validators: Vec::new(),
-            encoders: Vec::new(),
-            seed_target_embeddings: Vec::new(),
+
             signatures: BTreeMap::new(),
             built_genesis: None,
         }
@@ -102,11 +90,6 @@ impl GenesisBuilder {
         self
     }
 
-    pub fn with_seed_target_embeddings(mut self, embeddings: Vec<Vec<u8>>) -> Self {
-        self.seed_target_embeddings = embeddings;
-        self
-    }
-
     /// Add a consensus validator from GenesisValidatorInfo (ceremony workflow)
     pub fn add_validator(mut self, validator: GenesisValidatorInfo) -> Self {
         self.validators.push(validator);
@@ -116,14 +99,6 @@ impl GenesisBuilder {
 
     /// Add a networking-only validator from GenesisValidatorInfo
     pub fn add_networking_validator(mut self, validator: GenesisValidatorInfo) -> Self {
-        self.networking_validators.push(validator);
-        self.built_genesis = None;
-        self
-    }
-
-    /// Add an encoder from GenesisEncoderInfo (ceremony workflow)
-    pub fn add_encoder(mut self, encoder: GenesisEncoderInfo) -> Self {
-        self.encoders.push(encoder);
         self.built_genesis = None;
         self
     }
@@ -144,43 +119,8 @@ impl GenesisBuilder {
         self
     }
 
-    /// Add networking validators from ValidatorGenesisConfig (local testing workflow)
-    pub fn with_networking_validator_configs(
-        mut self,
-        configs: Vec<ValidatorGenesisConfig>,
-    ) -> Self {
-        use crate::crypto::AuthoritySignature;
-        use crate::validator_info::ValidatorInfo;
-
-        for config in configs {
-            let info = ValidatorInfo::from(&config);
-
-            self.networking_validators
-                .push(GenesisValidatorInfo { info });
-        }
-        self.built_genesis = None;
-        self
-    }
-
-    /// Add encoders from EncoderGenesisConfig (local testing workflow)
-    pub fn with_encoder_configs(mut self, configs: Vec<EncoderGenesisConfig>) -> Self {
-        for config in configs {
-            self.encoders.push(GenesisEncoderInfo::from(&config));
-        }
-        self.built_genesis = None;
-        self
-    }
-
     pub fn validators(&self) -> &[GenesisValidatorInfo] {
         &self.validators
-    }
-
-    pub fn networking_validators(&self) -> &[GenesisValidatorInfo] {
-        &self.networking_validators
-    }
-
-    pub fn encoders(&self) -> &[GenesisEncoderInfo] {
-        &self.encoders
     }
 
     pub fn unsigned_genesis_checkpoint(&self) -> Option<UnsignedGenesis> {
@@ -270,28 +210,10 @@ impl GenesisBuilder {
             })?;
         }
 
-        for validator in &self.networking_validators {
-            validator.validate().with_context(|| {
-                format!(
-                    "metadata for networking validator {} is invalid",
-                    validator.info.account_address
-                )
-            })?;
-        }
-
-        for encoder in &self.encoders {
-            encoder.validate().with_context(|| {
-                format!("metadata for encoder {} is invalid", encoder.info.name)
-            })?;
-        }
-
         if let Some(schedule) = &self.token_distribution_schedule {
             schedule.validate();
             schedule.check_all_stake_operations_are_for_valid_validators(
-                self.validators
-                    .iter()
-                    .chain(self.networking_validators.iter().map(|v| v))
-                    .map(|v| v.info.account_address),
+                self.validators.iter().map(|v| v.info.account_address),
             );
         }
 
@@ -308,7 +230,7 @@ impl GenesisBuilder {
 
         assert_eq!(
             self.validators.len(),
-            system_state.validators.consensus_validators.len(),
+            system_state.validators.validators.len(),
             "Validator count mismatch"
         );
 
@@ -363,16 +285,6 @@ impl GenesisBuilder {
             None
         };
 
-        // Load seed target embeddings if present
-        let seed_targets_file = path.join(GENESIS_BUILDER_SEED_TARGETS_FILE);
-        let seed_target_embeddings: Vec<Vec<u8>> = if seed_targets_file.exists() {
-            let bytes = fs::read(&seed_targets_file)?;
-            serde_yaml::from_slice(&bytes)
-                .context("unable to deserialize seed target embeddings")?
-        } else {
-            Vec::new()
-        };
-
         // Load validators
         let mut validators = Vec::new();
         let committee_dir = path.join(GENESIS_BUILDER_COMMITTEE_DIR);
@@ -389,45 +301,6 @@ impl GenesisBuilder {
                         format!("unable to load validator info for {}", validator_path)
                     })?;
                 validators.push(validator_info);
-            }
-        }
-
-        // Load networking validators
-        let mut networking_validators = Vec::new();
-        let networking_committee_dir = path.join(GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR);
-        if networking_committee_dir.exists() {
-            for entry in networking_committee_dir.read_dir_utf8()? {
-                let entry = entry?;
-                if entry.file_name().starts_with('.') {
-                    continue;
-                }
-                let validator_path = entry.path();
-                let validator_bytes = fs::read(validator_path)?;
-                let validator_info: GenesisValidatorInfo = serde_yaml::from_slice(&validator_bytes)
-                    .with_context(|| {
-                        format!(
-                            "unable to load networking validator info for {}",
-                            validator_path
-                        )
-                    })?;
-                networking_validators.push(validator_info);
-            }
-        }
-
-        // Load encoders
-        let mut encoders = Vec::new();
-        let encoders_dir = path.join(GENESIS_BUILDER_ENCODERS_DIR);
-        if encoders_dir.exists() {
-            for entry in encoders_dir.read_dir_utf8()? {
-                let entry = entry?;
-                if entry.file_name().starts_with('.') {
-                    continue;
-                }
-                let encoder_path = entry.path();
-                let encoder_bytes = fs::read(encoder_path)?;
-                let encoder_info: GenesisEncoderInfo = serde_yaml::from_slice(&encoder_bytes)
-                    .with_context(|| format!("unable to load encoder info for {}", encoder_path))?;
-                encoders.push(encoder_info);
             }
         }
 
@@ -453,9 +326,6 @@ impl GenesisBuilder {
             parameters,
             token_distribution_schedule,
             validators,
-            networking_validators,
-            encoders,
-            seed_target_embeddings,
             signatures,
             built_genesis: None,
         };
@@ -498,15 +368,6 @@ impl GenesisBuilder {
             )?)?;
         }
 
-        // Write seed target embeddings if present
-        if !self.seed_target_embeddings.is_empty() {
-            let seed_targets_file = path.join(GENESIS_BUILDER_SEED_TARGETS_FILE);
-            fs::write(
-                seed_targets_file,
-                serde_yaml::to_string(&self.seed_target_embeddings)?,
-            )?;
-        }
-
         // Write validators
         let committee_dir = path.join(GENESIS_BUILDER_COMMITTEE_DIR);
         fs::create_dir_all(&committee_dir)?;
@@ -515,28 +376,6 @@ impl GenesisBuilder {
             fs::write(
                 committee_dir.join(&validator.info.account_address.to_string()),
                 validator_bytes,
-            )?;
-        }
-
-        // Write networking validators
-        let networking_committee_dir = path.join(GENESIS_BUILDER_NETWORKING_COMMITTEE_DIR);
-        fs::create_dir_all(&networking_committee_dir)?;
-        for validator in &self.networking_validators {
-            let validator_bytes = serde_yaml::to_string(validator)?;
-            fs::write(
-                networking_committee_dir.join(&validator.info.account_address.to_string()),
-                validator_bytes,
-            )?;
-        }
-
-        // Write encoders
-        let encoders_dir = path.join(GENESIS_BUILDER_ENCODERS_DIR);
-        fs::create_dir_all(&encoders_dir)?;
-        for encoder in &self.encoders {
-            let encoder_bytes = serde_yaml::to_string(encoder)?;
-            fs::write(
-                encoders_dir.join(&encoder.info.account_address.to_string()),
-                encoder_bytes,
             )?;
         }
 
@@ -591,14 +430,12 @@ impl GenesisBuilder {
                         net_address: v.info.network_address.clone(),
                         p2p_address: v.info.p2p_address.clone(),
                         primary_address: v.info.primary_address.clone(),
-                        encoder_validator_address: v.info.encoder_validator_address.clone(),
                         next_epoch_protocol_pubkey: None,
                         next_epoch_network_pubkey: None,
                         next_epoch_net_address: None,
                         next_epoch_p2p_address: None,
                         next_epoch_primary_address: None,
                         next_epoch_worker_pubkey: None,
-                        next_epoch_encoder_validator_address: None,
                     },
                     voting_power: 0, // Will be set by set_voting_power()
                     staking_pool: StakingPool::new(ObjectID::random()),
@@ -609,69 +446,9 @@ impl GenesisBuilder {
             })
             .collect();
 
-        let networking_validators: Vec<Validator> = self
-            .networking_validators
-            .iter()
-            .map(|v| Validator {
-                metadata: ValidatorMetadata {
-                    soma_address: v.info.account_address,
-                    protocol_pubkey: BLS12381PublicKey::from_bytes(v.info.protocol_key.as_bytes())
-                        .expect("Invalid protocol key"),
-                    network_pubkey: v.info.network_key.clone(),
-                    worker_pubkey: v.info.worker_key.clone(),
-                    net_address: v.info.network_address.clone(),
-                    p2p_address: v.info.p2p_address.clone(),
-                    primary_address: v.info.primary_address.clone(),
-                    encoder_validator_address: v.info.encoder_validator_address.clone(),
-                    next_epoch_protocol_pubkey: None,
-                    next_epoch_network_pubkey: None,
-                    next_epoch_net_address: None,
-                    next_epoch_p2p_address: None,
-                    next_epoch_primary_address: None,
-                    next_epoch_worker_pubkey: None,
-                    next_epoch_encoder_validator_address: None,
-                },
-                voting_power: 0,
-                staking_pool: StakingPool::new(ObjectID::random()),
-                commission_rate: v.info.commission_rate,
-                next_epoch_stake: 0,
-                next_epoch_commission_rate: v.info.commission_rate,
-            })
-            .collect();
-
-        let encoders: Vec<Encoder> = self
-            .encoders
-            .iter()
-            .map(|e| Encoder {
-                metadata: EncoderMetadata {
-                    soma_address: e.info.account_address,
-                    encoder_pubkey: e.info.encoder_pubkey.clone(),
-                    network_pubkey: e.info.network_key.clone(),
-                    internal_network_address: e.info.internal_network_address.clone(),
-                    external_network_address: e.info.external_network_address.clone(),
-                    object_server_address: e.info.object_address.clone(),
-                    probe: e.probe.clone(),
-                    next_epoch_network_pubkey: None,
-                    next_epoch_internal_network_address: None,
-                    next_epoch_external_network_address: None,
-                    next_epoch_object_server_address: None,
-                    next_epoch_probe: None,
-                },
-                voting_power: 0,
-                staking_pool: StakingPool::new(ObjectID::random()),
-                commission_rate: e.info.commission_rate,
-                next_epoch_stake: 0,
-                next_epoch_commission_rate: e.info.commission_rate,
-                byte_price: e.info.byte_price,
-                next_epoch_byte_price: e.info.byte_price,
-            })
-            .collect();
-
         // Create system state
         let mut system_state = SystemState::create(
             validators,
-            networking_validators,
-            encoders,
             self.parameters.protocol_version.as_u64(),
             self.parameters.chain_start_timestamp_ms,
             &protocol_config,
@@ -701,22 +478,6 @@ impl GenesisBuilder {
                         TransactionDigest::default(),
                     );
                     objects.push(staked_object);
-                } else if let Some(encoder) = allocation.staked_with_encoder {
-                    let staked_soma = system_state
-                        .request_add_encoder_stake_at_genesis(
-                            allocation.recipient_address,
-                            encoder,
-                            allocation.amount_shannons,
-                        )
-                        .expect("Failed to stake in encoder at genesis");
-
-                    let staked_object = Object::new_staked_soma_object(
-                        ObjectID::random(),
-                        staked_soma,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(staked_object);
                 } else {
                     let coin_object = Object::new_coin(
                         ObjectID::random(),
@@ -729,64 +490,8 @@ impl GenesisBuilder {
             }
         }
 
-        // Create seed targets
-        if !self.seed_target_embeddings.is_empty() {
-            let emission_per_epoch = self.parameters.emission_per_epoch;
-            let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
-            let seed_reward_pool = (emission_per_epoch * target_allocation_bps) / 10_000;
-
-            let seed_count = self.seed_target_embeddings.len() as u64;
-            let reward_per_target = seed_reward_pool / seed_count;
-
-            for (i, embedding) in self.seed_target_embeddings.iter().enumerate() {
-                let target = Target {
-                    origin: TargetOrigin::Genesis {
-                        reward_amount: reward_per_target,
-                    },
-                    created_epoch: 0,
-                    target_embedding: embedding.clone(),
-                    winning_shard: None,
-                };
-
-                let target_object = Object::new(
-                    ObjectData::new_with_id(
-                        ObjectID::derive_id(TransactionDigest::default(), i as u64),
-                        ObjectType::Target,
-                        Version::MIN,
-                        bcs::to_bytes(&target).unwrap(),
-                    ),
-                    Owner::Shared {
-                        initial_shared_version: Version::new(),
-                    },
-                    TransactionDigest::default(),
-                );
-                objects.push(target_object);
-            }
-
-            system_state.emission_pool.balance = system_state
-                .emission_pool
-                .balance
-                .saturating_sub(seed_reward_pool);
-
-            let remainder = seed_reward_pool % seed_count;
-            if remainder > 0 {
-                system_state.emission_pool.balance += remainder;
-            }
-
-            tracing::info!(
-                "Genesis: Created {} seed targets with {} reward each",
-                seed_count,
-                reward_per_target
-            );
-        }
-
-        // Set voting power and build committees
+        // Set voting power and build committee
         system_state.validators.set_voting_power();
-        system_state.encoders.set_voting_power();
-
-        let current_committees =
-            system_state.build_committees_for_epoch(0, protocol_config.vdf_iterations());
-        system_state.committees[1] = Some(current_committees);
 
         // Create system state object
         let state_object = Object::new(

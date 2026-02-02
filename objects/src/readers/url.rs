@@ -3,7 +3,7 @@ use bytes::Bytes;
 use quick_cache::sync::Cache;
 use reqwest::Client;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use soma_tls::create_rustls_client_config;
 use std::{ops::Range, sync::Arc, time::Duration};
 use tracing::info;
@@ -12,11 +12,10 @@ use types::{
     error::{ObjectError, ObjectResult},
     metadata::{DownloadMetadata, MtlsDownloadMetadataAPI},
     parameters::HttpParameters,
-    shard_networking::CERTIFICATE_NAME,
 };
 use url::Url;
 
-use crate::readers::ObjectReader;
+use crate::{CERTIFICATE_NAME, readers::ObjectReader};
 
 #[derive(Clone)]
 pub struct ObjectHttpClient {

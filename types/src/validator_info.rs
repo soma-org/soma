@@ -21,7 +21,6 @@ pub struct ValidatorInfo {
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub primary_address: Multiaddr,
-    pub encoder_validator_address: Multiaddr,
 }
 
 impl ValidatorInfo {
@@ -51,10 +50,6 @@ impl ValidatorInfo {
 
     pub fn primary_address(&self) -> &Multiaddr {
         &self.primary_address
-    }
-
-    pub fn encoder_validator_address(&self) -> &Multiaddr {
-        &self.encoder_validator_address
     }
 
     pub fn p2p_address(&self) -> &Multiaddr {
@@ -89,15 +84,6 @@ impl GenesisValidatorInfo {
         }
         if self.info.primary_address.len() > MAX_VALIDATOR_METADATA_LENGTH {
             bail!("primary address must be <= {MAX_VALIDATOR_METADATA_LENGTH} bytes long");
-        }
-
-        if !self.info.encoder_validator_address.to_string().is_ascii() {
-            bail!("encoder_validator_address must be ascii");
-        }
-        if self.info.encoder_validator_address.len() > MAX_VALIDATOR_METADATA_LENGTH {
-            bail!(
-                "encoder_validator_address must be <= {MAX_VALIDATOR_METADATA_LENGTH} bytes long"
-            );
         }
 
         if self.info.commission_rate > 10000 {
@@ -135,7 +121,6 @@ impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for ValidatorI
             network_address: config.network_address.clone(),
             p2p_address: config.p2p_address.clone(),
             primary_address: config.consensus_address.clone(), // consensus_address maps to primary_address
-            encoder_validator_address: config.encoder_validator_address.clone(),
             commission_rate: config.commission_rate,
         }
     }
@@ -160,7 +145,6 @@ impl From<GenesisValidatorInfo> for GenesisValidatorMetadata {
             network_address: info.network_address,
             p2p_address: info.p2p_address,
             primary_address: info.primary_address,
-            encoder_validator_address: info.encoder_validator_address,
         }
     }
 }
@@ -176,5 +160,4 @@ pub struct GenesisValidatorMetadata {
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub primary_address: Multiaddr,
-    pub encoder_validator_address: Multiaddr,
 }

@@ -1,13 +1,12 @@
 use crate::{
     base::{AuthorityName, ConciseableName, TimestampMs},
     checkpoints::{CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest},
-    committee::{EpochId, NetworkingCommittee},
-    consensus::block::{BlockRef, TransactionIndex, PING_TRANSACTION_INDEX},
+    committee::EpochId,
+    consensus::block::{BlockRef, PING_TRANSACTION_INDEX, TransactionIndex},
     crypto::AuthorityPublicKeyBytes,
     digests::{
         AdditionalConsensusStateDigest, CheckpointDigest, ConsensusCommitDigest, TransactionDigest,
     },
-    encoder_committee::EncoderCommittee,
     error::SomaError,
     supported_protocol_versions::{SupportedProtocolVersions, SupportedProtocolVersionsWithHashes},
     transaction::{CertifiedTransaction, Transaction},
@@ -381,26 +380,12 @@ pub struct ConsensusCommitPrologue {
 }
 
 pub trait EndOfEpochAPI: Send + Sync + 'static {
-    fn get_next_epoch_state(
-        &self,
-    ) -> Option<(
-        ValidatorSet,
-        EncoderCommittee,
-        NetworkingCommittee,
-        ECMHLiveObjectSetDigest,
-        u64,
-    )>;
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>;
 }
 
 pub struct TestEpochStore {
     /// The next epoch state, if one has been computed
-    pub next_epoch_state: Option<(
-        ValidatorSet,
-        EncoderCommittee,
-        NetworkingCommittee,
-        ECMHLiveObjectSetDigest,
-        u64,
-    )>,
+    pub next_epoch_state: Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>,
 }
 
 impl TestEpochStore {
@@ -410,30 +395,13 @@ impl TestEpochStore {
         }
     }
 
-    pub fn set_next_epoch_state(
-        &mut self,
-        state: (
-            ValidatorSet,
-            EncoderCommittee,
-            NetworkingCommittee,
-            ECMHLiveObjectSetDigest,
-            u64,
-        ),
-    ) {
+    pub fn set_next_epoch_state(&mut self, state: (ValidatorSet, ECMHLiveObjectSetDigest, u64)) {
         self.next_epoch_state = Some(state);
     }
 }
 
 impl EndOfEpochAPI for TestEpochStore {
-    fn get_next_epoch_state(
-        &self,
-    ) -> Option<(
-        ValidatorSet,
-        EncoderCommittee,
-        NetworkingCommittee,
-        ECMHLiveObjectSetDigest,
-        u64,
-    )> {
+    fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)> {
         self.next_epoch_state.clone()
     }
 }

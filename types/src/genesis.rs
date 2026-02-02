@@ -12,20 +12,17 @@ use crate::{
     checkpoints::{
         CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary, VerifiedCheckpoint,
     },
-    committee::{
-        AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkingCommittee,
-    },
+    committee::{AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId},
     consensus::{
-        block::{Block, BlockDigest, BlockRef, SignedBlock, VerifiedBlock, GENESIS_ROUND},
-        commit::{CommitDigest, CommitRef, CommittedSubDag},
         ConsensusTransaction,
+        block::{Block, BlockDigest, BlockRef, GENESIS_ROUND, SignedBlock, VerifiedBlock},
+        commit::{CommitDigest, CommitRef, CommittedSubDag},
     },
     crypto::DefaultHash,
     effects::{self, TransactionEffects},
-    encoder_committee::EncoderCommittee,
     error::SomaResult,
     object::{Object, ObjectID},
-    system_state::{get_system_state, SystemState, SystemStateTrait},
+    system_state::{SystemState, SystemStateTrait, get_system_state},
     transaction::{CertifiedTransaction, Transaction},
 };
 
@@ -111,15 +108,6 @@ impl Genesis {
 
     pub fn epoch(&self) -> EpochId {
         0
-    }
-
-    pub fn encoder_committee(&self) -> EncoderCommittee {
-        self.system_object().get_current_epoch_encoder_committee()
-    }
-
-    pub fn networking_committee(&self) -> NetworkingCommittee {
-        self.system_object()
-            .get_current_epoch_networking_committee()
     }
 
     pub fn committee_with_network(&self) -> CommitteeWithNetworkMetadata {

@@ -2,19 +2,14 @@ use crate::base::{AuthorityName, ConciseableName};
 use crate::checksum::Checksum;
 
 use crate::crypto::{
-    get_key_pair_from_rng, random_committee_key_pairs_of_size, AuthorityKeyPair,
-    AuthorityPublicKey, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair, ProtocolPublicKey,
-    DIGEST_LENGTH,
+    AuthorityKeyPair, AuthorityPublicKey, DIGEST_LENGTH, NetworkKeyPair, NetworkPublicKey,
+    ProtocolKeyPair, ProtocolPublicKey, get_key_pair_from_rng, random_committee_key_pairs_of_size,
 };
 use crate::crypto::{AuthoritySignature, DefaultHash as DefaultHashFunction};
 use crate::digests::TransactionDigest;
-use crate::encoder_committee::Encoder;
 use crate::error::{ConsensusError, ConsensusResult, SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
 use crate::multiaddr::Multiaddr;
-use crate::shard::{Shard, ShardEntropy};
-use crate::shard_crypto::digest::Digest;
-use crate::shard_crypto::keys::EncoderPublicKey;
 use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::{KeyPair, Signer, VerifyingKey};
@@ -93,79 +88,10 @@ pub const VALIDATOR_CONSENSUS_LOW_POWER: u64 = 8;
 // TODO: consider making this .02 or .01
 pub const VALIDATOR_CONSENSUS_VERY_LOW_POWER: u64 = 4;
 
-/// Minimum amount of voting power required to become a networking validator
-/// This is the minimum stake required to communicate with validators and encoders
-/// 0.01% of voting power
-pub const VALIDATOR_NETWORKING_MIN_POWER: u64 = 1;
-
 /// A validator can have stake below `validator_low_stake_threshold`
 /// for this many epochs before being kicked out.
 pub const VALIDATOR_LOW_STAKE_GRACE_PERIOD: u64 = 7;
 
-/// Minimum amount of voting power required to become a encoder
-/// .12% of voting power
-// TODO: consider making this .06 or .03
-pub const ENCODER_MIN_POWER: u64 = 12;
-
-/// Low voting power threshold for encoders
-/// Encoders below this threshold fall into the "at risk" group.
-/// .08% of voting power
-// TODO: consider making this .04 or .02
-pub const ENCODER_LOW_POWER: u64 = 8;
-
-/// Very low voting power threshold for encoders
-/// Encoders below this threshold will be removed immediately at epoch change.
-/// .04% of voting power
-// TODO: consider making this .02 or .01
-pub const ENCODER_VERY_LOW_POWER: u64 = 4;
-
-/// A encoder can have stake below `eoder_low_stake_threshold`
-/// for this many epochs before being kicked out.
-pub const ENCODER_LOW_STAKE_GRACE_PERIOD: u64 = 7;
-
-/// Represents a committee of validators for a specific epoch.
-///
-/// The Committee structure tracks validator membership, voting power distribution,
-/// authority metadata, and provides operations for validator selection and threshold
-/// verification.
-///
-/// ## Thread Safety
-/// This structure is immutable after creation and can be safely shared across threads
-/// using Arc<Committee>.
-///
-/// ## Examples
-///
-/// ```
-/// # use std::collections::BTreeMap;
-/// # type EpochId = u64;
-/// # type AuthorityName = [u8; 32];
-/// # type VotingPower = u64;
-/// # struct Authority {}
-/// # struct Committee { epoch: EpochId, voting_rights: Vec<(AuthorityName, VotingPower)> }
-/// # impl Committee {
-/// #     fn new(_: EpochId, _: BTreeMap<AuthorityName, VotingPower>, _: BTreeMap<AuthorityName, Authority>) -> Self {
-/// #         Committee { epoch: 0, voting_rights: vec![] }
-/// #     }
-/// #     fn quorum_threshold(&self) -> VotingPower { 6667 }
-/// #     fn stake(&self, _: &AuthorityName) -> VotingPower { 1000 }
-/// # }
-/// # let mut voting_rights = BTreeMap::new();
-/// # let mut authorities = BTreeMap::new();
-/// # voting_rights.insert([0; 32], 5000);
-/// # voting_rights.insert([1; 32], 5000);
-/// // Create a committee for epoch 1
-/// let committee = Committee::new(1, voting_rights, authorities);
-///
-/// // Check if a certificate has reached quorum
-/// # let certificate_stake = 7000;
-/// if certificate_stake >= committee.quorum_threshold() {
-///     // Certificate has quorum and can be trusted
-/// }
-///
-/// // Get an authority's voting power
-/// # let authority_name = [0; 32];
-/// let stake = committee.stake(&authority_name);
-/// ```
 #[derive(Clone, Debug, Serialize, Deserialize, Eq)]
 pub struct Committee {
     /// The epoch this committee is active for
@@ -199,7 +125,7 @@ impl Committee {
 
         voting_rights_vec.sort_by_key(|(a, _)| *a);
         let total_votes: VotingPower = voting_rights_vec.iter().map(|(_, votes)| *votes).sum();
-        // TODO: assert_eq!(total_votes, TOTAL_VOTING_POWER); This doesn't add up to TOTAL because of the networking committee
+        assert_eq!(total_votes, TOTAL_VOTING_POWER);
 
         let (expanded_keys, index_map) = Self::load_inner(&voting_rights_vec);
 
@@ -502,12 +428,13 @@ impl CommitteeTrait<AuthorityName> for Committee {
             (Vec::new(), restricted.collect())
         };
 
-        let mut result: Vec<AuthorityName> = Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
-        .map(|name| name.clone())
-        .collect();
+        let mut result: Vec<AuthorityName> =
+            Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
+                .map(|name| name.clone())
+                .collect();
 
-        let rest_sampled = Self::choose_multiple_weighted(&rest, rest.len(), rng)
-        .map(|name| name.clone());
+        let rest_sampled =
+            Self::choose_multiple_weighted(&rest, rest.len(), rng).map(|name| name.clone());
 
         result.extend(rest_sampled);
         result
@@ -581,7 +508,6 @@ pub struct NetworkMetadata {
     pub consensus_address: Multiaddr,
     pub network_address: Multiaddr,
     pub primary_address: Multiaddr,
-    pub encoder_validator_address: Multiaddr,
 
     // Added fields from ValidatorMetadata
     pub protocol_key: ProtocolPublicKey,
@@ -727,93 +653,6 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
     fn index_mut(&mut self, index: AuthorityIndex) -> &mut Self::Output {
         self.get_mut(index.value()).unwrap()
     }
-}
-
-/// Represents a committee of networking validators for a specific epoch.
-///
-/// NetworkingCommittee includes all validators with sufficient stake to participate
-/// in network communications, serving as DDOS protection. This is a superset of
-/// consensus validators and includes networking-only validators.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct NetworkingCommittee {
-    /// The epoch this committee is active for
-    pub epoch: EpochId,
-
-    /// Mapping of authority names to their network metadata
-    /// Note: We don't store voting power here as networking validators
-    /// don't participate in consensus decisions
-    pub members: BTreeMap<AuthorityName, NetworkMetadata>,
-}
-/// Digest of networking committee, used for signing
-#[derive(Serialize, Deserialize)]
-pub struct NetworkingCommitteeDigest([u8; DIGEST_LENGTH]);
-
-impl NetworkingCommittee {
-    /// Creates a new networking committee for the specified epoch
-    pub fn new(epoch: EpochId, members: BTreeMap<AuthorityName, NetworkMetadata>) -> Self {
-        Self { epoch, members }
-    }
-
-    /// Get the epoch this committee is active for
-    pub fn epoch(&self) -> EpochId {
-        self.epoch
-    }
-
-    /// Get all networking committee members
-    pub fn members(&self) -> &BTreeMap<AuthorityName, NetworkMetadata> {
-        &self.members
-    }
-
-    /// Check if a validator is in the networking committee
-    pub fn contains(&self, name: &AuthorityName) -> bool {
-        self.members.contains_key(name)
-    }
-
-    /// Get network metadata for a specific validator
-    pub fn get_metadata(&self, name: &AuthorityName) -> Option<&NetworkMetadata> {
-        self.members.get(name)
-    }
-
-    /// Get the total number of networking participants
-    pub fn size(&self) -> usize {
-        self.members.len()
-    }
-
-    /// Compute the digest of the networking committee for signing
-    pub fn compute_digest(&self) -> ConsensusResult<NetworkingCommitteeDigest> {
-        let mut hasher = DefaultHashFunction::new();
-        hasher.update(bcs::to_bytes(self).map_err(ConsensusError::SerializationFailure)?);
-        Ok(NetworkingCommitteeDigest(hasher.finalize().into()))
-    }
-
-    /// Sign the networking committee with the given keypair
-    pub fn sign(&self, keypair: &AuthorityKeyPair) -> ConsensusResult<AuthoritySignature> {
-        let digest = self.compute_digest()?;
-        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
-            .map_err(ConsensusError::SerializationFailure)?;
-        Ok(keypair.sign(&message))
-    }
-
-    /// Verify a signature on the networking committee
-    pub fn verify_signature(
-        &self,
-        signature: &AuthoritySignature,
-        public_key: &AuthorityPublicKey,
-    ) -> ConsensusResult<()> {
-        let digest = self.compute_digest()?;
-        let message = bcs::to_bytes(&to_networking_committee_intent(digest))
-            .map_err(ConsensusError::SerializationFailure)?;
-        public_key
-            .verify(&message, signature)
-            .map_err(ConsensusError::SignatureVerificationFailure)
-    }
-}
-
-/// Wrap a NetworkingCommitteeDigest in the intent message
-pub fn to_networking_committee_intent(
-    digest: NetworkingCommitteeDigest,
-) -> IntentMessage<NetworkingCommitteeDigest> {
-    IntentMessage::new(Intent::soma_app(IntentScope::NetworkingCommittee), digest)
 }
 
 /// Creates a committee for local testing, and the corresponding key pairs for the authorities.

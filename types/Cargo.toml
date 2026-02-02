@@ -38,7 +38,6 @@ prost.workspace = true
 bytes.workspace = true
 soma-tls.workspace = true
 strum_macros.workspace = true
-vdf.workspace = true
 strum.workspace = true
 tokio-util.workspace = true
 quick_cache.workspace = true
@@ -74,11 +73,7 @@ webpki = { version = "0.102", package = "rustls-webpki", features = [
   "std",
 ] }
 x509-parser = "0.16.0"
-reqwest = { version = "0.12", features = [
-  "http2",
-  "json",
-  "rustls-tls",
-] }
+reqwest = { version = "0.12", features = ["http2", "json", "rustls-tls"] }
 axum = { version = "0.7.9", features = [
   "tokio",
   "http1",

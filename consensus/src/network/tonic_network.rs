@@ -8,12 +8,12 @@ use std::{
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{stream, Stream, StreamExt as _};
+use futures::{Stream, StreamExt as _, stream};
 use parking_lot::RwLock;
 use soma_http::ServerHandle;
 use soma_tls::AllowPublicKeys;
-use tokio_stream::{iter, Iter};
-use tonic::{codec::CompressionEncoding, Request, Response, Streaming};
+use tokio_stream::{Iter, iter};
+use tonic::{Request, Response, Streaming, codec::CompressionEncoding};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, error, info, trace, warn};
 use types::committee::AuthorityIndex;
@@ -27,11 +27,11 @@ use types::error::{ConsensusError, ConsensusResult};
 use types::multiaddr::{Multiaddr, Protocol};
 
 use super::{
+    BlockStream, ExtendedSerializedBlock, NetworkClient, NetworkManager, NetworkService,
     tonic_gen::{
         consensus_service_client::ConsensusServiceClient,
         consensus_service_server::ConsensusService,
     },
-    BlockStream, ExtendedSerializedBlock, NetworkClient, NetworkManager, NetworkService,
 };
 use crate::network::{
     tonic_gen::consensus_service_server::ConsensusServiceServer, tonic_tls::certificate_server_name,
@@ -724,7 +724,7 @@ impl<S: NetworkService> NetworkManager<S> for TonicManager {
                     .on_failure(DefaultOnFailure::new().level(tracing::Level::DEBUG)),
             )
             .layer_fn(|service| {
-                types::shard_networking::grpc_timeout::GrpcTimeout::new(
+                types::grpc_timeout::GrpcTimeout::new(
                     service,
                     // This should only bound the unary and initial response time,
                     // not the duration of streaming responses.

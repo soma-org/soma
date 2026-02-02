@@ -35,7 +35,6 @@ msim.workspace = true
 tonic-health.workspace = true
 store.workspace = true
 tempfile.workspace = true
-objects.workspace = true
 object_store.workspace = true
 url.workspace = true
 pin-project-lite.workspace = true

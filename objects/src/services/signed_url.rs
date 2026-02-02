@@ -8,7 +8,6 @@ use types::{
     metadata::{
         DownloadMetadata, Metadata, MtlsDownloadMetadata, MtlsDownloadMetadataV1, ObjectPath,
     },
-    shard_crypto::scope::{Scope, ScopedMessage},
 };
 use url::Url;
 
@@ -38,7 +37,8 @@ impl SignedParams {
             prefix: prefix.clone(),
             expires,
         };
-        let msg = bcs::to_bytes(&ScopedMessage::new(Scope::SignedUrl, inner)).unwrap();
+        let msg = bcs::to_bytes(&[0; 8]).unwrap();
+        // TODO: let msg = bcs::to_bytes(&ScopedMessage::new(Scope::SignedUrl, inner)).unwrap();
         let signature = signer.sign(&msg);
         Self {
             prefix,
@@ -52,8 +52,10 @@ impl SignedParams {
             prefix: self.prefix.clone(),
             expires: self.expires,
         };
-        let msg = bcs::to_bytes(&ScopedMessage::new(Scope::SignedUrl, inner))
-            .map_err(|e| SharedError::FastCrypto(e.to_string()))?;
+        let msg = bcs::to_bytes(&[0; 8]).unwrap();
+
+        // TODO: let msg = bcs::to_bytes(&ScopedMessage::new(Scope::SignedUrl, inner))
+        //     .map_err(|e| SharedError::FastCrypto(e.to_string()))?;
         verifier
             .verify(&msg, &self.signature)
             .map_err(|e| SharedError::FastCrypto(e.to_string()))

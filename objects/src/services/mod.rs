@@ -1,20 +1,21 @@
 pub mod signed_url;
 use axum::{
+    Router,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, HeaderMap, Response, StatusCode},
+    http::{HeaderMap, Response, StatusCode, header},
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use object_store::{GetOptions, GetRange, ObjectStore};
 use soma_http::{PeerCertificates, ServerHandle};
-use soma_tls::{public_key_from_certificate, AllowPublicKeys};
+use soma_tls::{AllowPublicKeys, public_key_from_certificate};
 use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tracing::{info, warn};
+use types::error::ObjectResult;
 use types::{
     checksum::Checksum,
     committee::Epoch,
@@ -22,13 +23,10 @@ use types::{
     metadata::ObjectPath,
     multiaddr::Multiaddr,
     parameters::HttpParameters,
-    shard::Shard,
-    shard_crypto::digest::Digest,
     sync::to_socket_addr,
 };
-use types::{error::ObjectResult, shard_networking::CERTIFICATE_NAME};
 
-use crate::services::signed_url::SignedParams;
+use crate::{CERTIFICATE_NAME, services::signed_url::SignedParams};
 
 pub struct ObjectService<S: ObjectStore> {
     object_store: Arc<S>,
@@ -54,38 +52,8 @@ impl<S: ObjectStore> ObjectService<S> {
 
     fn router(self) -> Router {
         Router::new()
-            .route(
-                "/epochs/{epoch}/shards/{shard}/embeddings/{checksum}",
-                get(Self::embeddings),
-            )
             .route("/epochs/{epoch}/probes/{checksum}", get(Self::probes))
-            .route(
-                "/epochs/{epoch}/shards/{shard}/inputs/{checksum}",
-                get(Self::inputs),
-            )
             .with_state(self)
-    }
-
-    pub async fn embeddings(
-        Path((epoch, shard, checksum)): Path<(Epoch, Digest<Shard>, Checksum)>,
-        Query(params): Query<SignedParams>,
-        peer_certificates: axum::Extension<PeerCertificates>,
-        headers: HeaderMap,
-        State(Self {
-            object_store,
-            own_key,
-        }): State<Self>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Embeddings(epoch, shard, checksum);
-        Self::serve_object(
-            object_store,
-            own_key,
-            path,
-            params,
-            peer_certificates,
-            headers,
-        )
-        .await
     }
 
     pub async fn probes(
@@ -99,28 +67,6 @@ impl<S: ObjectStore> ObjectService<S> {
         }): State<Self>,
     ) -> Result<impl IntoResponse, StatusCode> {
         let path = ObjectPath::Probes(epoch, checksum);
-        Self::serve_object(
-            object_store,
-            own_key,
-            path,
-            params,
-            peer_certificates,
-            headers,
-        )
-        .await
-    }
-
-    pub async fn inputs(
-        Path((epoch, shard, checksum)): Path<(Epoch, Digest<Shard>, Checksum)>,
-        Query(params): Query<SignedParams>,
-        peer_certificates: axum::Extension<PeerCertificates>,
-        headers: HeaderMap,
-        State(Self {
-            object_store,
-            own_key,
-        }): State<Self>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let path = ObjectPath::Inputs(epoch, shard, checksum);
         Self::serve_object(
             object_store,
             own_key,
@@ -326,13 +272,13 @@ impl Drop for ObjectServiceManager {
 #[cfg(test)]
 mod http_tests {
     use crate::readers::url::ObjectHttpClient;
-    use crate::{downloader::ObjectDownloader, readers::url::ObjectHttpReader, MIN_PART_SIZE};
+    use crate::{MIN_PART_SIZE, downloader::ObjectDownloader, readers::url::ObjectHttpReader};
 
     use super::*;
     use bytes::Bytes;
     use fastcrypto::hash::HashFunction;
     use object_store::memory::InMemory;
-    use rand::{rngs::OsRng, RngCore};
+    use rand::{RngCore, rngs::OsRng};
     use soma_tls::AllowPublicKeys;
     use std::{collections::BTreeSet, net::SocketAddr};
     use std::{net::TcpListener, sync::Arc};
@@ -340,8 +286,8 @@ mod http_tests {
     use tokio::sync::Semaphore;
     use types::{
         checksum::Checksum,
-        committee::get_available_local_address,
         committee::Epoch,
+        committee::get_available_local_address,
         crypto::{DefaultHash, NetworkKeyPair, NetworkPublicKey},
         error::ObjectError,
         metadata::{
@@ -349,7 +295,6 @@ mod http_tests {
             ObjectPath,
         },
         parameters::HttpParameters,
-        shard_crypto::digest::Digest,
         sync::to_host_port_str,
     };
     use url::Url;
@@ -380,7 +325,7 @@ mod http_tests {
     }
 
     fn init_tracing() {
-        use tracing_subscriber::{fmt, EnvFilter};
+        use tracing_subscriber::{EnvFilter, fmt};
 
         let _ = fmt()
             .with_env_filter(EnvFilter::from_default_env()) // Respects RUST_LOG

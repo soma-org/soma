@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod delegation_tests {
     use crate::{
-        base::{dbg_addr, SomaAddress},
+        base::{SomaAddress, dbg_addr},
         config::genesis_config::SHANNONS_PER_SOMA,
         effects::ExecutionFailureStatus,
         error::SomaError,
         system_state::{
+            SystemParameters, SystemState,
             staking::StakedSoma,
             test_utils::{
                 self, add_validator, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
@@ -14,7 +15,6 @@ mod delegation_tests {
                 validator_stake_amount,
             },
             validator::Validator,
-            SystemParameters, SystemState,
         },
     };
     use std::collections::BTreeMap;
@@ -48,7 +48,7 @@ mod delegation_tests {
             create_validator_for_testing(validator_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, vec![], 1000, 0)
+        create_test_system_state(validators, 1000, 0)
     }
 
     // Helper to set up a test system state with subsidy
@@ -58,7 +58,7 @@ mod delegation_tests {
             create_validator_for_testing(validator_addr_2(), 100 * SHANNONS_PER_SOMA),
         ];
 
-        create_test_system_state(validators, vec![], 400, 0)
+        create_test_system_state(validators, 400, 0)
     }
 
     // Helper to remove a validator candidate
@@ -296,9 +296,11 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Verify validator is no longer active
-        assert!(!system_state
-            .validators
-            .is_active_validator(validator_addr_1()));
+        assert!(
+            !system_state
+                .validators
+                .is_active_validator(validator_addr_1())
+        );
 
         // Try to add stake to the inactive validator - should fail
         let result = system_state.request_add_stake(
@@ -436,7 +438,7 @@ mod delegation_tests {
         // Check exchange rates
         let validator = system_state
             .validators
-            .consensus_validators
+            .validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_addr_2())
             .expect("Validator not found");

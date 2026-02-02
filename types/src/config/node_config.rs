@@ -3,10 +3,10 @@ use crate::{
     checkpoints::CheckpointSequenceNumber,
     committee::EpochId,
     config::{
-        certificate_deny_config::CertificateDenyConfig, local_ip_utils,
+        Config, certificate_deny_config::CertificateDenyConfig, local_ip_utils,
         object_store_config::ObjectStoreConfig, rpc_config::RpcConfig,
         transaction_deny_config::TransactionDenyConfig,
-        validator_client_monitor_config::ValidatorClientMonitorConfig, Config,
+        validator_client_monitor_config::ValidatorClientMonitorConfig,
     },
     crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
     multiaddr::Multiaddr,
@@ -14,8 +14,8 @@ use crate::{
     peer_id::PeerId,
     supported_protocol_versions::SupportedProtocolVersions,
 };
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use fastcrypto::{
     encoding::{Encoding, Hex},
     traits::{EncodeDecodeBase64, KeyPair},
@@ -79,8 +79,6 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub p2p_config: P2pConfig,
-
-    pub encoder_validator_address: Multiaddr,
 
     #[serde(default = "default_rpc_address")]
     pub rpc_address: SocketAddr,
@@ -183,10 +181,6 @@ impl NodeConfig {
 
     pub fn soma_address(&self) -> SomaAddress {
         (&self.account_key_pair.keypair().public()).into()
-    }
-
-    pub fn encoder_validator_address(&self) -> &Multiaddr {
-        &self.encoder_validator_address
     }
 
     pub fn rpc(&self) -> Option<&crate::config::rpc_config::RpcConfig> {
@@ -631,20 +625,16 @@ impl ValidatorConfigBuilder {
         let consensus_address = validator.consensus_address;
         let consensus_db_path = config_directory.join(CONSENSUS_DB_NAME).join(key_path);
 
-        let consensus_config = if validator.is_networking_only {
-            None
-        } else {
-            Some(ConsensusConfig {
-                db_path: consensus_db_path.clone(),
-                address: consensus_address,
-                db_pruner_period_secs: None,
-                db_retention_epochs: None,
-                submit_delay_step_override_millis: None,
-                max_submit_position: None,
-                max_pending_transactions: None,
-                parameters: None,
-            })
-        };
+        let consensus_config = Some(ConsensusConfig {
+            db_path: consensus_db_path.clone(),
+            address: consensus_address,
+            db_pruner_period_secs: None,
+            db_retention_epochs: None,
+            submit_delay_step_override_millis: None,
+            max_submit_position: None,
+            max_pending_transactions: None,
+            parameters: None,
+        });
 
         let p2p_config = {
             P2pConfig {
@@ -684,7 +674,6 @@ impl ValidatorConfigBuilder {
             consensus_db_path,
             network_address,
             genesis: Genesis::new(genesis),
-            encoder_validator_address: validator.encoder_validator_address,
             rpc_address: validator.rpc_address.to_socket_addr().unwrap(),
             rpc: Some(RpcConfig {
                 ..Default::default()
@@ -732,7 +721,6 @@ pub fn get_key_path(key_pair: &AuthorityKeyPair) -> String {
 pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";
 pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
-pub const ENCODERS_DB_NAME: &str = "encoders_db";
 
 // RunWithRange is used to specify the ending epoch/checkpoint to process.
 // this is intended for use with disaster recovery debugging and verification workflows, never in normal operations

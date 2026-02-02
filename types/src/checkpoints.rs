@@ -3,17 +3,16 @@ use crate::{
         AuthorityName, ExecutionData, ExecutionDigests, FullObjectRef, SequenceNumber,
         VerifiedExecutionData,
     },
-    committee::{Committee, EpochId, NetworkingCommittee, StakeUnit},
+    committee::{Committee, EpochId, StakeUnit},
     crypto::{
-        default_hash, get_key_pair, AggregateAuthoritySignature, AuthoritySignInfo,
-        AuthoritySignInfoTrait as _, AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair,
+        AggregateAuthoritySignature, AuthoritySignInfo, AuthoritySignInfoTrait as _,
+        AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair, default_hash, get_key_pair,
     },
     digests::{
         CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest,
         ObjectDigest, TransactionDigest, TransactionEffectsDigest,
     },
     effects::{TransactionEffects, TransactionEffectsAPI as _},
-    encoder_committee::EncoderCommittee,
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
     error::{SomaError, SomaResult},
     full_checkpoint_content::CheckpointData,
@@ -275,12 +274,6 @@ pub struct EndOfEpochData {
     /// The validator committee for the next epoch, including network metadata
     pub next_epoch_validator_committee: Committee,
 
-    /// The encoder committee for the next epoch
-    pub next_epoch_encoder_committee: EncoderCommittee,
-
-    /// The networking committee for the next epoch
-    pub next_epoch_networking_committee: NetworkingCommittee,
-
     /// The protocol version that is in effect during the epoch that starts immediately after this
     ///checkpoint.
     pub next_epoch_protocol_version: ProtocolVersion,
@@ -451,7 +444,14 @@ impl CertifiedCheckpointSummary {
         if let Some(contents) = contents {
             let content_digest = *contents.digest();
             if !(content_digest == self.data().content_digest) {
-                return Err(SomaError::GenericAuthorityError{error:format!("Checkpoint contents digest mismatch: summary={:?}, received content digest {:?}, received {} transactions", self.data(), content_digest, contents.size())});
+                return Err(SomaError::GenericAuthorityError {
+                    error: format!(
+                        "Checkpoint contents digest mismatch: summary={:?}, received content digest {:?}, received {} transactions",
+                        self.data(),
+                        content_digest,
+                        contents.size()
+                    ),
+                });
             }
         }
 
