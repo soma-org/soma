@@ -949,10 +949,8 @@ pub enum InferenceError {
     ReqwestError(reqwest::Error),
 }
 
-pub type EvaluationResult<T> = Result<T, EvaluationError>;
-
 #[derive(Clone, Debug, Error, IntoStaticStr)]
-pub enum EvaluationError {
+pub enum ModelError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to connect as client: {0:?}")]
@@ -967,21 +965,11 @@ pub enum EvaluationError {
     StorageFailure(String),
     #[error("Safetensors failed: {0}")]
     SafeTensorsFailure(String),
+    #[error("Failed type verification: {0}")]
+    FailedTypeVerification(String),
 }
 
-pub type IntelligenceResult<T> = Result<T, IntelligenceError>;
-
-#[derive(Debug, Error, IntoStaticStr)]
-pub enum IntelligenceError {
-    #[error("Error deserializing type: {0}")]
-    MalformedType(bcs::Error),
-    #[error("Error serializing: {0}")]
-    SerializationFailure(bcs::Error),
-    #[error("Reqwest error: {0}")]
-    ReqwestError(reqwest::Error),
-    #[error("Parse error: {0}")]
-    ParseError(String),
-}
+pub type ModelResult<T> = Result<T, ModelError>;
 
 /// Types of SomaError.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, IntoStaticStr)]

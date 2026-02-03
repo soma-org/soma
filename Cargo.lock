@@ -4915,40 +4915,8 @@ dependencies = [
 name = "intelligence"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "base64 0.22.1",
- "bcs",
- "burn",
- "bytes",
- "enum_dispatch",
- "fastcrypto",
- "futures",
- "memmap2",
- "ndarray",
- "numpy",
- "object_store",
- "probes",
- "prost 0.14.3",
- "rand 0.8.5",
- "reqwest",
- "safetensors 0.5.3",
- "serde",
- "soma-http",
- "strum_macros 0.27.2",
- "tempdir",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util 0.7.18",
- "tonic 0.14.3",
  "tonic-build 0.14.3",
- "tonic-prost",
  "tonic-prost-build",
- "tower 0.5.3",
- "tower-http 0.5.2",
- "tracing",
- "types",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -5615,6 +5583,18 @@ name = "moddef"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0b3262dc837d2513fe2ef31ff8461352ef932dcca31ba0c0abe33547cf6b9b"
+
+[[package]]
+name = "models"
+version = "1.0.0"
+dependencies = [
+ "arrgen",
+ "burn",
+ "ndarray",
+ "num-traits",
+ "safetensors 0.5.3",
+ "types",
+]
 
 [[package]]
 name = "moka"
@@ -6651,18 +6631,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "353e1ca18966c16d9deb1c69278edbc5f194139612772bd9537af60ac231e1e6"
 dependencies = [
  "elliptic-curve",
-]
-
-[[package]]
-name = "probes"
-version = "1.0.0"
-dependencies = [
- "arrgen",
- "burn",
- "ndarray",
- "num-traits",
- "safetensors 0.5.3",
- "types",
 ]
 
 [[package]]

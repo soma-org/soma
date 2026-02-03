@@ -7,40 +7,10 @@ edition = "2024"
 safetensors = []
 
 [dependencies]
-bcs.workspace = true
-serde.workspace = true
-enum_dispatch.workspace = true
-numpy.workspace = true
-ndarray.workspace = true
-bytes.workspace = true
-tonic.workspace = true
-prost.workspace = true
-async-trait.workspace = true
-strum_macros.workspace = true
-thiserror.workspace = true
-tower-http.workspace = true
-tower.workspace = true
-tracing.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
-soma-http.workspace = true
-safetensors.workspace = true
-memmap2.workspace = true
-types.workspace = true
-rand.workspace = true
-reqwest.workspace = true
-base64.workspace = true
-object_store.workspace = true
-uuid.workspace = true
-tonic-prost.workspace = true
-url.workspace = true
-fastcrypto.workspace = true
-futures.workspace = true
-burn.workspace = true
-probes.workspace = true
+
 
 [dev-dependencies]
-tempdir = "0.3"
+
 
 [build-dependencies]
 tonic-build.workspace = true
