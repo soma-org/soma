@@ -13,90 +13,9 @@ use probes::v1::probe::{Probe, ProbeConfig};
 use std::{marker::PhantomData, time::Duration};
 use types::{
     error::EvaluationResult,
-    evaluation::{EvaluationInput, EvaluationInputAPI, EvaluationOutput},
-    metadata::MetadataAPI,
 };
 use std::sync::Arc;
 
-// async fn load_data(
-//         &self,
-//         object_path: &ObjectPath,
-//         download_metadata: &DownloadMetadata,
-//         cancellation: CancellationToken,
-//     ) -> ShardResult<()> {
-//         if self
-//             .ephemeral_store
-//             .object_store()
-//             .head(&object_path.path())
-//             .await
-//             .is_ok()
-//         {
-//             return Ok(());
-//         }
-
-//         // Check persistent.
-//         if self
-//             .persistent_store
-//             .object_store()
-//             .head(&object_path.path())
-//             .await
-//             .is_ok()
-//         {
-//             let reader = Arc::new(ObjectStoreReader::new(
-//                 self.persistent_store.object_store().clone(),
-//                 object_path.clone(),
-//             ));
-//             self.downloader
-//                 .download(
-//                     reader,
-//                     self.ephemeral_store.object_store().clone(),
-//                     object_path.clone(),
-//                     download_metadata.metadata().clone(),
-//                 )
-//                 .await
-//                 .map_err(ShardError::ObjectError)?;
-//             return Ok(());
-//         }
-
-//         // In msim tests, data may be at a different path (e.g., uploads/xxx instead of inputs/xxx).
-//         // Check if data exists at the URL path in the store and copy to expected location.
-//         #[cfg(msim)]
-//         {
-//             use object_store::path::Path as ObjPath;
-//             use types::error::ObjectError;
-
-//             let url_path = ObjPath::from(download_metadata.url().path().trim_start_matches('/'));
-//             if let Ok(result) = self.persistent_store.object_store().get(&url_path).await {
-//                 if let Ok(bytes) = result.bytes().await {
-//                     self.ephemeral_store
-//                         .object_store()
-//                         .put(&object_path.path(), bytes.into())
-//                         .await
-//                         .map_err(|e| ShardError::ObjectError(ObjectError::ObjectStoreError(e)))?;
-//                     return Ok(());
-//                 }
-//             }
-//         }
-
-//         let reader = Arc::new(
-//             self.object_http_client
-//                 .get_reader(download_metadata)
-//                 .await
-//                 .map_err(ShardError::ObjectError)?,
-//         );
-
-//         self.downloader
-//             .download(
-//                 reader,
-//                 self.ephemeral_store.object_store().clone(),
-//                 object_path.clone(),
-//                 download_metadata.metadata().clone(),
-//             )
-//             .await
-//             .map_err(ShardError::ObjectError)?;
-
-//         Ok(())
-//     }
 pub struct Evaluator<ES: ObjectStore, PS: ObjectStore, E: EphemeralStore<ES>, P: PersistentStore<PS>> {
     persistent_store: P,
     ephemeral_store: E,
@@ -131,21 +50,6 @@ impl<ES: ObjectStore, PS: ObjectStore, E: EphemeralStore<ES>, P: PersistentStore
         input: EvaluationInput,
         timeout: Duration,
     ) -> EvaluationResult<EvaluationOutput> {
-        let buffer = self
-            .ephemeral_store
-            .buffer_object(input.embedding_object_path().clone())
-            .await
-            .unwrap();
-
-        let (_size, metadata) = safetensors::SafeTensors::read_metadata(buffer.as_ref()).unwrap();
-        let st = safetensors::SafeTensors::deserialize(buffer.as_ref()).unwrap();
-
-        let indexed_tensors = IndexedTensors::new(
-            metadata,
-            st,
-            input.input_download_metadata().metadata().size() as u64,
-        )
-        .unwrap();
 
         let probe_buffer = self
             .ephemeral_store

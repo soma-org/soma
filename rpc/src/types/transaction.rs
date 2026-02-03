@@ -45,32 +45,14 @@ pub enum Metadata {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct DefaultDownloadMetadataV1 {
-    pub url: Url, // Changed from String to Url
+pub struct ManifestV1 {
+    pub url: Url,
     pub metadata: Metadata,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub enum DefaultDownloadMetadata {
-    V1(DefaultDownloadMetadataV1),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct MtlsDownloadMetadataV1 {
-    pub peer: Vec<u8>,
-    pub url: Url, // Changed from String to Url
-    pub metadata: Metadata,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub enum MtlsDownloadMetadata {
-    V1(MtlsDownloadMetadataV1),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub enum DownloadMetadata {
-    Default(DefaultDownloadMetadata),
-    Mtls(MtlsDownloadMetadata),
+pub enum Manifest {
+    V1(ManifestV1),
 }
 
 /// Transaction type

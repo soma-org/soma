@@ -22,7 +22,6 @@ use types::config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG};
 use types::crypto::{Signature, SomaKeyPair};
 use types::digests::{ObjectDigest, TransactionDigest};
 use types::intent::Intent;
-use types::metadata::DownloadMetadata;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::transaction::{Transaction, TransactionData, TransactionKind};
 

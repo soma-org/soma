@@ -10,7 +10,8 @@ use fastcrypto::traits::ToFromBytes;
 use types::base::SomaAddress;
 use types::crypto::SomaSignature;
 use types::envelope::Message as _;
-use types::metadata::MetadataAPI as _;
+use types::metadata::{ManifestAPI, MetadataAPI};
+use url::Url;
 
 //
 // TransactionFee
@@ -1422,6 +1423,8 @@ impl From<simulate_transaction_request::TransactionChecks>
     }
 }
 
+// ///////////////////////////////////////////
+
 impl From<types::metadata::Metadata> for Metadata {
     fn from(value: types::metadata::Metadata) -> Self {
         let mut message = Self::default();
@@ -1483,114 +1486,63 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
     }
 }
 
-impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
-    fn from(value: types::metadata::DownloadMetadata) -> Self {
-        use download_metadata::Kind;
-        use types::metadata::{DefaultDownloadMetadataAPI, MetadataAPI, MtlsDownloadMetadataAPI};
-
-        let kind = match value {
-            types::metadata::DownloadMetadata::Default(dm) => {
-                Kind::Default(DefaultDownloadMetadata {
-                    version: Some(default_download_metadata::Version::V1(
-                        DefaultDownloadMetadataV1 {
-                            url: Some(dm.url().to_string()),
-                            metadata: Some(dm.metadata().clone().into()),
-                        },
-                    )),
-                })
+// ///////////////////////////////////////////
+impl From<types::metadata::Manifest> for Manifest {
+    fn from(value: types::metadata::Manifest) -> Self {
+        let mut message = Self::default();
+        match value {
+            types::metadata::Manifest::V1(v1) => {
+                let mut proto_v1 = ManifestV1::default();
+                proto_v1.url = Some(v1.url().to_string());
+                proto_v1.metadata = Some(v1.metadata().clone().into());
+                message.version = Some(crate::proto::soma::manifest::Version::V1(proto_v1));
             }
-            types::metadata::DownloadMetadata::Mtls(dm) => Kind::Mtls(MtlsDownloadMetadata {
-                version: Some(mtls_download_metadata::Version::V1(
-                    MtlsDownloadMetadataV1 {
-                        peer: Some(dm.peer().to_bytes().to_vec().into()),
-                        url: Some(dm.url().to_string()),
-                        metadata: Some(dm.metadata().clone().into()),
-                    },
-                )),
-            }),
-        };
-
-        DownloadMetadata { kind: Some(kind) }
+        }
+        message
     }
 }
 
-impl TryFrom<&DownloadMetadata> for types::metadata::DownloadMetadata {
+// Add this conversion for Manifest
+impl TryFrom<&Manifest> for types::metadata::Manifest {
     type Error = TryFromProtoError;
 
-    fn try_from(value: &DownloadMetadata) -> Result<Self, Self::Error> {
-        use download_metadata::Kind;
+    fn try_from(value: &crate::proto::soma::Manifest) -> Result<Self, Self::Error> {
+        use crate::proto::soma::manifest::Version;
 
         match value
-            .kind
+            .version
             .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("kind"))?
+            .ok_or_else(|| TryFromProtoError::missing("manifest version"))?
         {
-            Kind::Default(dm) => {
-                let v1 = match dm
-                    .version
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?
-                {
-                    default_download_metadata::Version::V1(v1) => v1,
-                };
-
-                let url = v1
-                    .url
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?
-                    .parse()
+            Version::V1(v1) => {
+                let url = Url::parse(v1
+                    .url.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("url"))?.as_str()
+                    )
                     .map_err(|e| TryFromProtoError::invalid("url", e))?;
+
                 let metadata = v1
-                    .metadata
-                    .as_ref()
+                    .metadata.as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("metadata"))?
-                    .try_into()?;
+                    .try_into()
+                    .map_err(|e| TryFromProtoError::invalid("metadata", e))?;
 
-                Ok(types::metadata::DownloadMetadata::Default(
-                    types::metadata::DefaultDownloadMetadata::V1(
-                        types::metadata::DefaultDownloadMetadataV1::new(url, metadata),
-                    ),
-                ))
-            }
-            Kind::Mtls(dm) => {
-                let v1 = match dm
-                    .version
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?
-                {
-                    mtls_download_metadata::Version::V1(v1) => v1,
-                };
-
-                let peer_bytes = v1
-                    .peer
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("peer"))?;
-                let network_pubkey = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(peer_bytes)
-                    .map_err(|e| TryFromProtoError::invalid("peer", e))?;
-                let peer = types::crypto::NetworkPublicKey::new(network_pubkey);
-
-                let url = v1
-                    .url
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
-                let metadata = v1
-                    .metadata
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
-                    .try_into()?;
-
-                Ok(types::metadata::DownloadMetadata::Mtls(
-                    types::metadata::MtlsDownloadMetadata::V1(
-                        types::metadata::MtlsDownloadMetadataV1::new(peer, url, metadata),
-                    ),
+                Ok(types::metadata::Manifest::V1(
+                    types::metadata::ManifestV1::new(url, metadata),
                 ))
             }
         }
     }
 }
 
+// Also add the owned version
+impl TryFrom<Manifest> for types::metadata::Manifest {
+    type Error = TryFromProtoError;
+
+    fn try_from(value: Manifest) -> Result<Self, Self::Error> {
+        (&value).try_into()
+    }
+}
 //
 // CheckpointSummary
 //

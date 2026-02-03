@@ -131,36 +131,16 @@ message MetadataV1 {
   optional uint64 size = 2;      // Size in bytes
 }
 
-message DefaultDownloadMetadataV1 {
+message Manifest {
+  oneof version {
+    ManifestV1 v1 = 1;
+  }
+}
+
+message ManifestV1 {
   optional string url = 1;
   optional Metadata metadata = 2;
 }
-
-message DefaultDownloadMetadata {
-  oneof version {
-    DefaultDownloadMetadataV1 v1 = 1;
-  }
-}
-
-message MtlsDownloadMetadataV1 {
-  optional bytes peer = 1;  // NetworkPublicKey bytes
-  optional string url = 2;
-  optional Metadata metadata = 3;
-}
-
-message MtlsDownloadMetadata {
-  oneof version {
-    MtlsDownloadMetadataV1 v1 = 1;
-  }
-}
-
-message DownloadMetadata {
-  oneof kind {
-    DefaultDownloadMetadata default = 1;
-    MtlsDownloadMetadata mtls = 2;
-  }
-}
-
 
 
 // System transaction used to change the epoch.

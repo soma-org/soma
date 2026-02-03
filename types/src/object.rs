@@ -1,5 +1,4 @@
 use crate::base::HexAccountAddress;
-use crate::metadata::{DownloadMetadata, Metadata};
 use crate::{
     base::{FullObjectID, FullObjectRef, SOMA_ADDRESS_LENGTH, SomaAddress},
     committee::EpochId,

@@ -6,10 +6,6 @@ use std::{
 use crate::{
     checksum::Checksum,
     crypto::DefaultHash,
-    metadata::{
-        DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
-        ObjectPath,
-    },
 };
 use emission::EmissionPool;
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};

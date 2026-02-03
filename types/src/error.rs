@@ -1194,8 +1194,8 @@ pub enum ShardError {
     #[error("Digest failure: {0}")]
     DigestFailure(SharedError),
 
-    #[error("Object error: {0}")]
-    ObjectError(ObjectError),
+    #[error("Blob error: {0}")]
+    BlobError(BlobError),
 
     #[error("Object store error: {0}")]
     ObjectStoreError(object_store::Error),
@@ -1338,7 +1338,7 @@ pub enum ShardError {
 pub type ShardResult<T> = Result<T, ShardError>;
 
 #[derive(Debug, Error, IntoStaticStr)]
-pub enum ObjectError {
+pub enum BlobError {
     #[error("fast crypto error: {0}")]
     FastCrypto(String),
     #[error("reqwest error: {0}")]
@@ -1376,7 +1376,7 @@ pub enum ObjectError {
     #[error("Timeout hit ")]
     Timeout,
 }
-pub type ObjectResult<T> = Result<T, ObjectError>;
+pub type BlobResult<T> = Result<T, BlobError>;
 
 pub type InferenceResult<T> = Result<T, InferenceError>;
 

@@ -3512,13 +3512,54 @@ mod _getter_impls {
             self
         }
     }
-    impl DefaultDownloadMetadataV1 {
+    impl Manifest {
+        pub const fn const_default() -> Self {
+            Self { version: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Manifest = Manifest::const_default();
+            &DEFAULT
+        }
+        pub fn v1(&self) -> &ManifestV1 {
+            if let Some(manifest::Version::V1(field)) = &self.version {
+                field as _
+            } else {
+                ManifestV1::default_instance() as _
+            }
+        }
+        pub fn v1_opt(&self) -> Option<&ManifestV1> {
+            if let Some(manifest::Version::V1(field)) = &self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_opt_mut(&mut self) -> Option<&mut ManifestV1> {
+            if let Some(manifest::Version::V1(field)) = &mut self.version {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn v1_mut(&mut self) -> &mut ManifestV1 {
+            if self.v1_opt_mut().is_none() {
+                self.version = Some(manifest::Version::V1(ManifestV1::default()));
+            }
+            self.v1_opt_mut().unwrap()
+        }
+        pub fn with_v1(mut self, field: ManifestV1) -> Self {
+            self.version = Some(manifest::Version::V1(field.into()));
+            self
+        }
+    }
+    impl ManifestV1 {
         pub const fn const_default() -> Self {
             Self { url: None, metadata: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: DefaultDownloadMetadataV1 = DefaultDownloadMetadataV1::const_default();
+            static DEFAULT: ManifestV1 = ManifestV1::const_default();
             &DEFAULT
         }
         pub fn with_url(mut self, field: String) -> Self {
@@ -3542,215 +3583,6 @@ mod _getter_impls {
         }
         pub fn with_metadata(mut self, field: Metadata) -> Self {
             self.metadata = Some(field.into());
-            self
-        }
-    }
-    impl DefaultDownloadMetadata {
-        pub const fn const_default() -> Self {
-            Self { version: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: DefaultDownloadMetadata = DefaultDownloadMetadata::const_default();
-            &DEFAULT
-        }
-        pub fn v1(&self) -> &DefaultDownloadMetadataV1 {
-            if let Some(default_download_metadata::Version::V1(field)) = &self.version {
-                field as _
-            } else {
-                DefaultDownloadMetadataV1::default_instance() as _
-            }
-        }
-        pub fn v1_opt(&self) -> Option<&DefaultDownloadMetadataV1> {
-            if let Some(default_download_metadata::Version::V1(field)) = &self.version {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn v1_opt_mut(&mut self) -> Option<&mut DefaultDownloadMetadataV1> {
-            if let Some(default_download_metadata::Version::V1(field)) = &mut self
-                .version
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn v1_mut(&mut self) -> &mut DefaultDownloadMetadataV1 {
-            if self.v1_opt_mut().is_none() {
-                self.version = Some(
-                    default_download_metadata::Version::V1(
-                        DefaultDownloadMetadataV1::default(),
-                    ),
-                );
-            }
-            self.v1_opt_mut().unwrap()
-        }
-        pub fn with_v1(mut self, field: DefaultDownloadMetadataV1) -> Self {
-            self.version = Some(default_download_metadata::Version::V1(field.into()));
-            self
-        }
-    }
-    impl MtlsDownloadMetadataV1 {
-        pub const fn const_default() -> Self {
-            Self {
-                peer: None,
-                url: None,
-                metadata: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: MtlsDownloadMetadataV1 = MtlsDownloadMetadataV1::const_default();
-            &DEFAULT
-        }
-        pub fn with_peer(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.peer = Some(field.into());
-            self
-        }
-        pub fn with_url(mut self, field: String) -> Self {
-            self.url = Some(field.into());
-            self
-        }
-        pub fn metadata(&self) -> &Metadata {
-            self.metadata
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Metadata::default_instance() as _)
-        }
-        pub fn metadata_opt(&self) -> Option<&Metadata> {
-            self.metadata.as_ref().map(|field| field as _)
-        }
-        pub fn metadata_opt_mut(&mut self) -> Option<&mut Metadata> {
-            self.metadata.as_mut().map(|field| field as _)
-        }
-        pub fn metadata_mut(&mut self) -> &mut Metadata {
-            self.metadata.get_or_insert_default()
-        }
-        pub fn with_metadata(mut self, field: Metadata) -> Self {
-            self.metadata = Some(field.into());
-            self
-        }
-    }
-    impl MtlsDownloadMetadata {
-        pub const fn const_default() -> Self {
-            Self { version: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: MtlsDownloadMetadata = MtlsDownloadMetadata::const_default();
-            &DEFAULT
-        }
-        pub fn v1(&self) -> &MtlsDownloadMetadataV1 {
-            if let Some(mtls_download_metadata::Version::V1(field)) = &self.version {
-                field as _
-            } else {
-                MtlsDownloadMetadataV1::default_instance() as _
-            }
-        }
-        pub fn v1_opt(&self) -> Option<&MtlsDownloadMetadataV1> {
-            if let Some(mtls_download_metadata::Version::V1(field)) = &self.version {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn v1_opt_mut(&mut self) -> Option<&mut MtlsDownloadMetadataV1> {
-            if let Some(mtls_download_metadata::Version::V1(field)) = &mut self.version {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn v1_mut(&mut self) -> &mut MtlsDownloadMetadataV1 {
-            if self.v1_opt_mut().is_none() {
-                self.version = Some(
-                    mtls_download_metadata::Version::V1(
-                        MtlsDownloadMetadataV1::default(),
-                    ),
-                );
-            }
-            self.v1_opt_mut().unwrap()
-        }
-        pub fn with_v1(mut self, field: MtlsDownloadMetadataV1) -> Self {
-            self.version = Some(mtls_download_metadata::Version::V1(field.into()));
-            self
-        }
-    }
-    impl DownloadMetadata {
-        pub const fn const_default() -> Self {
-            Self { kind: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: DownloadMetadata = DownloadMetadata::const_default();
-            &DEFAULT
-        }
-        pub fn default(&self) -> &DefaultDownloadMetadata {
-            if let Some(download_metadata::Kind::Default(field)) = &self.kind {
-                field as _
-            } else {
-                DefaultDownloadMetadata::default_instance() as _
-            }
-        }
-        pub fn default_opt(&self) -> Option<&DefaultDownloadMetadata> {
-            if let Some(download_metadata::Kind::Default(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn default_opt_mut(&mut self) -> Option<&mut DefaultDownloadMetadata> {
-            if let Some(download_metadata::Kind::Default(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn default_mut(&mut self) -> &mut DefaultDownloadMetadata {
-            if self.default_opt_mut().is_none() {
-                self.kind = Some(
-                    download_metadata::Kind::Default(DefaultDownloadMetadata::default()),
-                );
-            }
-            self.default_opt_mut().unwrap()
-        }
-        pub fn with_default(mut self, field: DefaultDownloadMetadata) -> Self {
-            self.kind = Some(download_metadata::Kind::Default(field.into()));
-            self
-        }
-        pub fn mtls(&self) -> &MtlsDownloadMetadata {
-            if let Some(download_metadata::Kind::Mtls(field)) = &self.kind {
-                field as _
-            } else {
-                MtlsDownloadMetadata::default_instance() as _
-            }
-        }
-        pub fn mtls_opt(&self) -> Option<&MtlsDownloadMetadata> {
-            if let Some(download_metadata::Kind::Mtls(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn mtls_opt_mut(&mut self) -> Option<&mut MtlsDownloadMetadata> {
-            if let Some(download_metadata::Kind::Mtls(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn mtls_mut(&mut self) -> &mut MtlsDownloadMetadata {
-            if self.mtls_opt_mut().is_none() {
-                self.kind = Some(
-                    download_metadata::Kind::Mtls(MtlsDownloadMetadata::default()),
-                );
-            }
-            self.mtls_opt_mut().unwrap()
-        }
-        pub fn with_mtls(mut self, field: MtlsDownloadMetadata) -> Self {
-            self.kind = Some(download_metadata::Kind::Mtls(field.into()));
             self
         }
     }

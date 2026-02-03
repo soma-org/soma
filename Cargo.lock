@@ -1076,6 +1076,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "blobs"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "axum 0.8.8",
+ "axum-server",
+ "base64 0.22.1",
+ "bcs",
+ "bytes",
+ "fastcrypto",
+ "futures",
+ "memmap2",
+ "object_store",
+ "parking_lot 0.12.5",
+ "quick_cache",
+ "rand 0.8.5",
+ "reqwest",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "serde",
+ "serde_urlencoded",
+ "soma-http",
+ "soma-tls",
+ "strum_macros 0.27.2",
+ "tempdir",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util 0.7.18",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "types",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1900,7 +1938,6 @@ dependencies = [
  "json_to_table",
  "node",
  "object_store",
- "objects",
  "protocol-config",
  "rand 0.8.5",
  "reqwest",
@@ -4917,7 +4954,6 @@ dependencies = [
  "ndarray",
  "numpy",
  "object_store",
- "objects",
  "probes",
  "prost 0.14.3",
  "rand 0.8.5",
@@ -5866,7 +5902,6 @@ dependencies = [
  "http",
  "msim",
  "object_store",
- "objects",
  "parking_lot 0.12.5",
  "protocol-config",
  "rpc",
@@ -6179,44 +6214,6 @@ dependencies = [
  "tracing",
  "url",
  "walkdir",
-]
-
-[[package]]
-name = "objects"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "async-trait",
- "axum 0.8.8",
- "axum-server",
- "base64 0.22.1",
- "bcs",
- "bytes",
- "fastcrypto",
- "futures",
- "memmap2",
- "object_store",
- "parking_lot 0.12.5",
- "quick_cache",
- "rand 0.8.5",
- "reqwest",
- "reqwest-middleware",
- "reqwest-retry",
- "serde",
- "serde_urlencoded",
- "soma-http",
- "soma-tls",
- "strum_macros 0.27.2",
- "tempdir",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util 0.7.18",
- "tower-http 0.5.2",
- "tracing",
- "tracing-subscriber",
- "types",
- "url",
- "uuid",
 ]
 
 [[package]]

@@ -78,8 +78,7 @@ pub use transaction::Transaction;
 pub use transaction::TransactionKind;
 pub use transaction::UpdateValidatorMetadataArgs;
 pub use transaction::{
-    DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
-    MtlsDownloadMetadata, MtlsDownloadMetadataV1,
+    Manifest, ManifestV1, Metadata, MetadataV1,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

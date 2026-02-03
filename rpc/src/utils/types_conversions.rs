@@ -9,7 +9,7 @@ use tap::Pipe;
 use tracing::info;
 use types::{
     crypto::{DIGEST_LENGTH, SomaSignature},
-    metadata::MetadataAPI as _,
+    metadata::{ManifestAPI, MetadataAPI as _},
     multiaddr::Multiaddr,
 };
 
@@ -1354,66 +1354,38 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
     }
 }
 
-impl From<types::metadata::DownloadMetadata> for DownloadMetadata {
-    fn from(value: types::metadata::DownloadMetadata) -> Self {
-        use types::metadata::{DefaultDownloadMetadataAPI, MetadataAPI, MtlsDownloadMetadataAPI};
-
+impl From<types::metadata::Manifest> for Manifest {
+    fn from(value: types::metadata::Manifest) -> Self {
         match value {
-            types::metadata::DownloadMetadata::Default(dm) => {
-                DownloadMetadata::Default(DefaultDownloadMetadata::V1(DefaultDownloadMetadataV1 {
-                    url: dm.url().clone(),
-                    metadata: dm.metadata().clone().into(),
-                }))
-            }
-            types::metadata::DownloadMetadata::Mtls(dm) => {
-                DownloadMetadata::Mtls(MtlsDownloadMetadata::V1(MtlsDownloadMetadataV1 {
-                    peer: dm.peer().to_bytes().to_vec(),
-                    url: dm.url().clone(),
-                    metadata: dm.metadata().clone().into(),
-                }))
-            }
+            types::metadata::Manifest::V1(v1) => Manifest::V1(ManifestV1 {
+                url: v1
+                    .url().clone(),
+                metadata: v1.metadata().clone().into(),
+            }),
         }
     }
 }
 
-impl TryFrom<DownloadMetadata> for types::metadata::DownloadMetadata {
+impl TryFrom<Manifest> for types::metadata::Manifest {
     type Error = SdkTypeConversionError;
 
-    fn try_from(value: DownloadMetadata) -> Result<Self, Self::Error> {
+    fn try_from(value: Manifest) -> Result<Self, Self::Error> {
         match value {
-            DownloadMetadata::Default(dm) => match dm {
-                DefaultDownloadMetadata::V1(v1) => {
-                    let url = v1.url.clone();
-                    let metadata = v1.metadata.try_into()?;
-                    Ok(types::metadata::DownloadMetadata::Default(
-                        types::metadata::DefaultDownloadMetadata::V1(
-                            types::metadata::DefaultDownloadMetadataV1::new(url, metadata),
-                        ),
-                    ))
-                }
-            },
-            DownloadMetadata::Mtls(dm) => match dm {
-                MtlsDownloadMetadata::V1(v1) => {
-                    // Parse the network key
-                    let network_key = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&v1.peer)
-                        .map_err(|e| {
-                        SdkTypeConversionError(format!("Invalid peer key: {}", e))
-                    })?;
-                    let peer = types::crypto::NetworkPublicKey::new(network_key);
+            Manifest::V1(v1) => {
+                let url = v1.url.clone();
 
-                    let url = v1.url.clone();
-                    let metadata = v1.metadata.try_into()?;
-                    Ok(types::metadata::DownloadMetadata::Mtls(
-                        types::metadata::MtlsDownloadMetadata::V1(
-                            types::metadata::MtlsDownloadMetadataV1::new(peer, url, metadata),
-                        ),
-                    ))
-                }
-            },
+                let metadata = v1
+                    .metadata
+                    .try_into()
+                    .map_err(|e| SdkTypeConversionError(format!("Invalid size: {}", e)))?;
+
+                Ok(types::metadata::Manifest::V1(
+                    types::metadata::ManifestV1::new(url, metadata),
+                ))
+            }
         }
     }
 }
-
 // ============================================================================
 // TransactionEffectsDigest conversions
 // ============================================================================

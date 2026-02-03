@@ -12,7 +12,7 @@ members = [
   "intelligence",
   "soma-http",
   "soma-tls",
-  "objects",
+  "blobs",
   "bin-version",
   "soma-keys",
   "rpc",
@@ -194,7 +194,7 @@ encoder = { path = "encoder" }
 intelligence = { path = "intelligence" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
-objects = { path = "objects" }
+blobs = { path = "blobs" }
 arrgen = { path = "arrgen" }
 probes = { path = "probes" }
 

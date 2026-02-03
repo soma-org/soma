@@ -7,7 +7,6 @@ edition = "2024"
 safetensors = []
 
 [dependencies]
-objects.workspace = true
 bcs.workspace = true
 serde.workspace = true
 enum_dispatch.workspace = true

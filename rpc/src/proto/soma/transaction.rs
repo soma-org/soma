@@ -3,6 +3,7 @@ use crate::proto::TryFromProtoError;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 use tap::Pipe;
+use url::Url;
 
 impl From<crate::types::Metadata> for Metadata {
     fn from(value: crate::types::Metadata) -> Self {
@@ -54,123 +55,57 @@ impl TryFrom<&Metadata> for crate::types::Metadata {
     }
 }
 
-impl From<crate::types::DownloadMetadata> for DownloadMetadata {
-    fn from(value: crate::types::DownloadMetadata) -> Self {
-        use download_metadata::Kind;
+impl From<crate::types::Manifest> for Manifest {
+    fn from(value: crate::types::Manifest) -> Self {
+        use manifest::Version;
 
-        let kind = match value {
-            crate::types::DownloadMetadata::Default(dm) => Kind::Default(dm.into()),
-            crate::types::DownloadMetadata::Mtls(dm) => Kind::Mtls(dm.into()),
-        };
-
-        DownloadMetadata { kind: Some(kind) }
-    }
-}
-impl From<crate::types::DefaultDownloadMetadata> for DefaultDownloadMetadata {
-    fn from(value: crate::types::DefaultDownloadMetadata) -> Self {
-        use default_download_metadata::Version;
-
+        let mut message = Self::default();
         match value {
-            crate::types::DefaultDownloadMetadata::V1(v1) => DefaultDownloadMetadata {
-                version: Some(Version::V1(DefaultDownloadMetadataV1 {
-                    url: Some(v1.url.to_string()), // Url -> String
-                    metadata: Some(v1.metadata.into()),
-                })),
-            },
+            crate::types::Manifest::V1(v1) => {
+                let mut proto_v1 = ManifestV1::default();
+                proto_v1.url = Some(v1.url.into());
+                proto_v1.metadata = Some(v1.metadata.into());
+                message.version = Some(Version::V1(proto_v1));
+            }
         }
+        message
     }
 }
 
-impl From<crate::types::MtlsDownloadMetadata> for MtlsDownloadMetadata {
-    fn from(value: crate::types::MtlsDownloadMetadata) -> Self {
-        use mtls_download_metadata::Version;
-
-        match value {
-            crate::types::MtlsDownloadMetadata::V1(v1) => MtlsDownloadMetadata {
-                version: Some(Version::V1(MtlsDownloadMetadataV1 {
-                    peer: Some(v1.peer.into()),
-                    url: Some(v1.url.to_string()), // Url -> String
-                    metadata: Some(v1.metadata.into()),
-                })),
-            },
-        }
-    }
-}
-
-impl TryFrom<&DownloadMetadata> for crate::types::DownloadMetadata {
+impl TryFrom<&Manifest> for crate::types::Manifest {
     type Error = TryFromProtoError;
 
-    fn try_from(value: &DownloadMetadata) -> Result<Self, Self::Error> {
-        use download_metadata::Kind;
-
-        match value
-            .kind
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("kind"))?
-        {
-            Kind::Default(dm) => Ok(Self::Default(dm.try_into()?)),
-            Kind::Mtls(dm) => Ok(Self::Mtls(dm.try_into()?)),
-        }
-    }
-}
-
-impl TryFrom<&DefaultDownloadMetadata> for crate::types::DefaultDownloadMetadata {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &DefaultDownloadMetadata) -> Result<Self, Self::Error> {
-        use default_download_metadata::Version;
+    fn try_from(value: &Manifest) -> Result<Self, Self::Error> {
+        use manifest::Version;
 
         match value
             .version
             .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("version"))?
+            .ok_or_else(|| TryFromProtoError::missing("Manifest version"))?
         {
-            Version::V1(v1) => Ok(Self::V1(crate::types::DefaultDownloadMetadataV1 {
-                url: v1
-                    .url
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?
-                    .parse() // String -> Url
-                    .map_err(|e| TryFromProtoError::invalid("url", e))?,
-                metadata: v1
+            Version::V1(v1) => {
+                let url = Url::parse(
+                    v1.url
+                        .clone()
+                        .ok_or_else(|| TryFromProtoError::missing("url"))?
+                        .as_str(),
+                )
+                .map_err(|e| TryFromProtoError::invalid("url", e))?;
+
+                let metadata = &v1
                     .metadata
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
-                    .try_into()?,
-            })),
-        }
-    }
-}
-
-impl TryFrom<&MtlsDownloadMetadata> for crate::types::MtlsDownloadMetadata {
-    type Error = TryFromProtoError;
-
-    fn try_from(value: &MtlsDownloadMetadata) -> Result<Self, Self::Error> {
-        use mtls_download_metadata::Version;
-
-        match value
-            .version
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("version"))?
-        {
-            Version::V1(v1) => Ok(Self::V1(crate::types::MtlsDownloadMetadataV1 {
-                peer: v1
-                    .peer
                     .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("peer"))?
-                    .to_vec(),
-                url: v1
-                    .url
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?
-                    .parse() // String -> Url
-                    .map_err(|e| TryFromProtoError::invalid("url", e))?,
-                metadata: v1
-                    .metadata
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?
-                    .try_into()?,
-            })),
+                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?;
+
+                let metadata = metadata.try_into().map_err(|_| {
+                    TryFromProtoError::invalid("checksum", "invalid checksum length")
+                })?;
+
+                Ok(crate::types::Manifest::V1(crate::types::ManifestV1 {
+                    url,
+                    metadata,
+                }))
+            }
         }
     }
 }

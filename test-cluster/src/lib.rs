@@ -42,10 +42,6 @@ use types::{
     effects::TransactionEffects,
     error::SomaResult,
     genesis::Genesis,
-    metadata::{
-        DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
-        ObjectPath,
-    },
     object::ObjectRef,
     peer_id::PeerId,
     supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},

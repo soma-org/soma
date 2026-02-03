@@ -5080,7 +5080,43 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl DefaultDownloadMetadataV1 {
+    impl Manifest {
+        pub const V1_FIELD: &'static MessageField = &MessageField {
+            name: "v1",
+            json_name: "v1",
+            number: 1i32,
+            message_fields: Some(ManifestV1::FIELDS),
+        };
+    }
+    impl MessageFields for Manifest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::V1_FIELD];
+    }
+    impl Manifest {
+        pub fn path_builder() -> ManifestFieldPathBuilder {
+            ManifestFieldPathBuilder::new()
+        }
+    }
+    pub struct ManifestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ManifestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn v1(mut self) -> ManifestV1FieldPathBuilder {
+            self.path.push(Manifest::V1_FIELD.name);
+            ManifestV1FieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ManifestV1 {
         pub const URL_FIELD: &'static MessageField = &MessageField {
             name: "url",
             json_name: "url",
@@ -5094,21 +5130,21 @@ mod _field_impls {
             message_fields: Some(Metadata::FIELDS),
         };
     }
-    impl MessageFields for DefaultDownloadMetadataV1 {
+    impl MessageFields for ManifestV1 {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::URL_FIELD,
             Self::METADATA_FIELD,
         ];
     }
-    impl DefaultDownloadMetadataV1 {
-        pub fn path_builder() -> DefaultDownloadMetadataV1FieldPathBuilder {
-            DefaultDownloadMetadataV1FieldPathBuilder::new()
+    impl ManifestV1 {
+        pub fn path_builder() -> ManifestV1FieldPathBuilder {
+            ManifestV1FieldPathBuilder::new()
         }
     }
-    pub struct DefaultDownloadMetadataV1FieldPathBuilder {
+    pub struct ManifestV1FieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl DefaultDownloadMetadataV1FieldPathBuilder {
+    impl ManifestV1FieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -5121,193 +5157,12 @@ mod _field_impls {
             self.path.join(".")
         }
         pub fn url(mut self) -> String {
-            self.path.push(DefaultDownloadMetadataV1::URL_FIELD.name);
+            self.path.push(ManifestV1::URL_FIELD.name);
             self.finish()
         }
         pub fn metadata(mut self) -> MetadataFieldPathBuilder {
-            self.path.push(DefaultDownloadMetadataV1::METADATA_FIELD.name);
+            self.path.push(ManifestV1::METADATA_FIELD.name);
             MetadataFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl DefaultDownloadMetadata {
-        pub const V1_FIELD: &'static MessageField = &MessageField {
-            name: "v1",
-            json_name: "v1",
-            number: 1i32,
-            message_fields: Some(DefaultDownloadMetadataV1::FIELDS),
-        };
-    }
-    impl MessageFields for DefaultDownloadMetadata {
-        const FIELDS: &'static [&'static MessageField] = &[Self::V1_FIELD];
-    }
-    impl DefaultDownloadMetadata {
-        pub fn path_builder() -> DefaultDownloadMetadataFieldPathBuilder {
-            DefaultDownloadMetadataFieldPathBuilder::new()
-        }
-    }
-    pub struct DefaultDownloadMetadataFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl DefaultDownloadMetadataFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn v1(mut self) -> DefaultDownloadMetadataV1FieldPathBuilder {
-            self.path.push(DefaultDownloadMetadata::V1_FIELD.name);
-            DefaultDownloadMetadataV1FieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl MtlsDownloadMetadataV1 {
-        pub const PEER_FIELD: &'static MessageField = &MessageField {
-            name: "peer",
-            json_name: "peer",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const URL_FIELD: &'static MessageField = &MessageField {
-            name: "url",
-            json_name: "url",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const METADATA_FIELD: &'static MessageField = &MessageField {
-            name: "metadata",
-            json_name: "metadata",
-            number: 3i32,
-            message_fields: Some(Metadata::FIELDS),
-        };
-    }
-    impl MessageFields for MtlsDownloadMetadataV1 {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::PEER_FIELD,
-            Self::URL_FIELD,
-            Self::METADATA_FIELD,
-        ];
-    }
-    impl MtlsDownloadMetadataV1 {
-        pub fn path_builder() -> MtlsDownloadMetadataV1FieldPathBuilder {
-            MtlsDownloadMetadataV1FieldPathBuilder::new()
-        }
-    }
-    pub struct MtlsDownloadMetadataV1FieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl MtlsDownloadMetadataV1FieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn peer(mut self) -> String {
-            self.path.push(MtlsDownloadMetadataV1::PEER_FIELD.name);
-            self.finish()
-        }
-        pub fn url(mut self) -> String {
-            self.path.push(MtlsDownloadMetadataV1::URL_FIELD.name);
-            self.finish()
-        }
-        pub fn metadata(mut self) -> MetadataFieldPathBuilder {
-            self.path.push(MtlsDownloadMetadataV1::METADATA_FIELD.name);
-            MetadataFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl MtlsDownloadMetadata {
-        pub const V1_FIELD: &'static MessageField = &MessageField {
-            name: "v1",
-            json_name: "v1",
-            number: 1i32,
-            message_fields: Some(MtlsDownloadMetadataV1::FIELDS),
-        };
-    }
-    impl MessageFields for MtlsDownloadMetadata {
-        const FIELDS: &'static [&'static MessageField] = &[Self::V1_FIELD];
-    }
-    impl MtlsDownloadMetadata {
-        pub fn path_builder() -> MtlsDownloadMetadataFieldPathBuilder {
-            MtlsDownloadMetadataFieldPathBuilder::new()
-        }
-    }
-    pub struct MtlsDownloadMetadataFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl MtlsDownloadMetadataFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn v1(mut self) -> MtlsDownloadMetadataV1FieldPathBuilder {
-            self.path.push(MtlsDownloadMetadata::V1_FIELD.name);
-            MtlsDownloadMetadataV1FieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl DownloadMetadata {
-        pub const DEFAULT_FIELD: &'static MessageField = &MessageField {
-            name: "default",
-            json_name: "default",
-            number: 1i32,
-            message_fields: Some(DefaultDownloadMetadata::FIELDS),
-        };
-        pub const MTLS_FIELD: &'static MessageField = &MessageField {
-            name: "mtls",
-            json_name: "mtls",
-            number: 2i32,
-            message_fields: Some(MtlsDownloadMetadata::FIELDS),
-        };
-    }
-    impl MessageFields for DownloadMetadata {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::DEFAULT_FIELD,
-            Self::MTLS_FIELD,
-        ];
-    }
-    impl DownloadMetadata {
-        pub fn path_builder() -> DownloadMetadataFieldPathBuilder {
-            DownloadMetadataFieldPathBuilder::new()
-        }
-    }
-    pub struct DownloadMetadataFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl DownloadMetadataFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn default(mut self) -> DefaultDownloadMetadataFieldPathBuilder {
-            self.path.push(DownloadMetadata::DEFAULT_FIELD.name);
-            DefaultDownloadMetadataFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn mtls(mut self) -> MtlsDownloadMetadataFieldPathBuilder {
-            self.path.push(DownloadMetadata::MTLS_FIELD.name);
-            MtlsDownloadMetadataFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ChangeEpoch {

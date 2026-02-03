@@ -20,7 +20,6 @@ bip32.workspace = true
 tabled.workspace = true
 json_to_table.workspace = true
 reqwest = { workspace = true, features = ["blocking"] }
-objects.workspace = true
 soma-tls.workspace = true
 rand.workspace = true
 bytes.workspace = true

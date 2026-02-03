@@ -1,30 +1,25 @@
-use crate::{readers::ObjectReader, MAX_PART_SIZE, MIN_PART_SIZE};
+use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE, readers::BlobReader};
 use bytes::Bytes;
 use fastcrypto::hash::HashFunction;
 use object_store::{ObjectStore, PutPayload};
 use std::{collections::HashMap, ops::Range, sync::Arc, time::Duration};
 use tokio::{
-    sync::{mpsc, OwnedSemaphorePermit, Semaphore},
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
     task::{JoinHandle, JoinSet},
 };
-use types::{
-    checksum::Checksum,
-    crypto::DefaultHash,
-    error::ObjectError,
-    metadata::{Metadata, ObjectPath},
-};
-use types::{error::ObjectResult, metadata::MetadataAPI};
+use types::{checksum::Checksum, crypto::DefaultHash, error::BlobError, metadata::Metadata};
+use types::{error::BlobResult, metadata::MetadataAPI};
 
-pub struct ObjectDownloader {
+pub struct BlobDownloader {
     semaphore: Arc<Semaphore>,
     chunk_size: u64,
     ns_per_byte: u16,
 }
 
-impl ObjectDownloader {
-    pub fn new(semaphore: Arc<Semaphore>, chunk_size: u64, ns_per_byte: u16) -> ObjectResult<Self> {
+impl BlobDownloader {
+    pub fn new(semaphore: Arc<Semaphore>, chunk_size: u64, ns_per_byte: u16) -> BlobResult<Self> {
         if chunk_size < MIN_PART_SIZE || chunk_size > MAX_PART_SIZE {
-            return Err(ObjectError::VerificationError(
+            return Err(BlobError::VerificationError(
                 "invalid chunk size".to_string(),
             ));
         }
@@ -54,12 +49,12 @@ impl ObjectDownloader {
 
     pub async fn download(
         &self,
-        reader: Arc<dyn ObjectReader>,
+        reader: Arc<dyn BlobReader>,
         storage: Arc<dyn ObjectStore>,
-        object_path: ObjectPath,
+        blob_path: BlobPath,
         metadata: Metadata,
-    ) -> ObjectResult<()> {
-        if storage.head(&object_path.path()).await.is_ok() {
+    ) -> BlobResult<()> {
+        if storage.head(&blob_path.path()).await.is_ok() {
             return Ok(());
         }
 
@@ -80,22 +75,22 @@ impl ObjectDownloader {
             println!("{}", bytes.len());
             println!("{}", metadata.size());
             if computed_checksum != metadata.checksum() || bytes.len() != metadata.size() {
-                return Err(ObjectError::VerificationError(
+                return Err(BlobError::VerificationError(
                     "verification failed".to_string(),
                 ));
             }
 
             println!("this ran");
             storage
-                .put(&object_path.path(), bytes.into())
+                .put(&blob_path.path(), bytes.into())
                 .await
-                .map_err(ObjectError::ObjectStoreError)?;
+                .map_err(BlobError::ObjectStoreError)?;
         } else {
             let mut total_downloaded = 0u64;
             let ranges = Self::generate_ranges(metadata.size() as u64, self.chunk_size);
             let num_parts = ranges.len();
             let (tx, mut rx) =
-                mpsc::channel::<(usize, OwnedSemaphorePermit, JoinHandle<ObjectResult<Bytes>>)>(
+                mpsc::channel::<(usize, OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>)>(
                     ranges.len(),
                 );
             let semaphore = self.semaphore.clone();
@@ -107,7 +102,7 @@ impl ObjectDownloader {
                         .clone()
                         .acquire_owned()
                         .await
-                        .map_err(|e| ObjectError::ReadError(e.to_string()))?;
+                        .map_err(|e| BlobError::ReadError(e.to_string()))?;
 
                     let reader = reader_clone.clone();
                     let num_bytes = range.end - range.start;
@@ -117,21 +112,19 @@ impl ObjectDownloader {
                         tokio::spawn(async move { reader.get_range(range_clone, timeout).await });
 
                     if tx.send((idx, permit, get_handle)).await.is_err() {
-                        return Err(ObjectError::ReadError("Receiver dropped".to_string()));
+                        return Err(BlobError::ReadError("Receiver dropped".to_string()));
                     }
                 }
                 Ok(())
             });
 
             let mut multipart = storage
-                .put_multipart(&object_path.path())
+                .put_multipart(&blob_path.path())
                 .await
-                .map_err(ObjectError::ObjectStoreError)?;
+                .map_err(BlobError::ObjectStoreError)?;
 
-            let mut buffer: HashMap<
-                usize,
-                (OwnedSemaphorePermit, JoinHandle<ObjectResult<Bytes>>),
-            > = HashMap::new();
+            let mut buffer: HashMap<usize, (OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>)> =
+                HashMap::new();
             let mut next_idx = 0;
             let mut put_join_set = JoinSet::new();
 
@@ -141,14 +134,14 @@ impl ObjectDownloader {
                 while let Some((permit, get_handle)) = buffer.remove(&next_idx) {
                     let bytes = get_handle
                         .await
-                        .map_err(|e| ObjectError::ReadError(e.to_string()))?
-                        .map_err(|e| ObjectError::NetworkRequest(e.to_string()))?;
+                        .map_err(|e| BlobError::ReadError(e.to_string()))?
+                        .map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
 
                     hasher.update(&bytes);
                     total_downloaded += bytes.len() as u64;
                     let put_fut = multipart.put_part(PutPayload::from_bytes(bytes));
                     put_join_set.spawn(async move {
-                        let result = put_fut.await.map_err(ObjectError::ObjectStoreError);
+                        let result = put_fut.await.map_err(BlobError::ObjectStoreError);
                         drop(permit);
                         result
                     });
@@ -159,7 +152,7 @@ impl ObjectDownloader {
 
             if next_idx != num_parts {
                 let _ = multipart.abort().await;
-                return Err(ObjectError::ReadError(
+                return Err(BlobError::ReadError(
                     "Missing parts at end of transfer".into(),
                 ));
             }
@@ -173,7 +166,7 @@ impl ObjectDownloader {
                 || total_downloaded != metadata.size() as u64
             {
                 let _ = multipart.abort().await;
-                return Err(ObjectError::VerificationError(
+                return Err(BlobError::VerificationError(
                     "verification failed".to_string(),
                 ));
             }
@@ -187,7 +180,7 @@ impl ObjectDownloader {
                     }
                     Err(join_err) => {
                         let _ = multipart.abort().await;
-                        return Err(ObjectError::ReadError(join_err.to_string()));
+                        return Err(BlobError::ReadError(join_err.to_string()));
                     }
                 }
             }
@@ -195,11 +188,11 @@ impl ObjectDownloader {
             multipart
                 .complete()
                 .await
-                .map_err(ObjectError::ObjectStoreError)?;
+                .map_err(BlobError::ObjectStoreError)?;
 
             driver
                 .await
-                .map_err(|e| ObjectError::ReadError(e.to_string()))??;
+                .map_err(|e| BlobError::ReadError(e.to_string()))??;
         }
 
         Ok(())
@@ -207,7 +200,7 @@ impl ObjectDownloader {
 }
 #[cfg(test)]
 mod tests {
-    use crate::readers::store::ObjectStoreReader;
+    use crate::{BlobPath, readers::store::BlobStoreReader};
 
     use super::*;
     use fastcrypto::hash::HashFunction;
@@ -216,7 +209,7 @@ mod tests {
     use types::{
         checksum::Checksum,
         crypto::DefaultHash,
-        metadata::{Metadata, MetadataV1, ObjectPath},
+        metadata::{Metadata, MetadataV1},
     };
 
     #[tokio::test]
@@ -232,12 +225,12 @@ mod tests {
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
         let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
 
-        let object_path = ObjectPath::Probes(0, checksum);
+        let blob_path = BlobPath::Data(0, checksum);
 
         // Source store (with data)
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         source_store
-            .put(&object_path.path(), data.clone().into())
+            .put(&blob_path.path(), data.clone().into())
             .await
             .unwrap();
 
@@ -245,27 +238,24 @@ mod tests {
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
 
         // Reader from source
-        let reader = Arc::new(ObjectStoreReader::new(
-            source_store.clone(),
-            object_path.clone(),
-        ));
+        let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
 
         // Downloader
-        let downloader = ObjectDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
+        let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
         // Perform download
         downloader
             .download(
                 reader,
                 dest_store.clone(),
-                object_path.clone(),
+                blob_path.clone(),
                 metadata.clone(),
             )
             .await
             .unwrap();
 
         // Verify object exists in destination
-        let result = dest_store.get(&object_path.path()).await.unwrap();
+        let result = dest_store.get(&blob_path.path()).await.unwrap();
         let downloaded_bytes = result.bytes().await.unwrap();
         assert_eq!(downloaded_bytes.to_vec(), data);
     }
@@ -285,12 +275,12 @@ mod tests {
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
 
         let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
-        let object_path = ObjectPath::Probes(1, checksum);
+        let blob_path = BlobPath::Data(1, checksum);
 
         // Source store
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         source_store
-            .put(&object_path.path(), data.clone().into())
+            .put(&blob_path.path(), data.clone().into())
             .await
             .unwrap();
 
@@ -298,27 +288,24 @@ mod tests {
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
 
         // Reader
-        let reader = Arc::new(ObjectStoreReader::new(
-            source_store.clone(),
-            object_path.clone(),
-        ));
+        let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
 
         // Downloader
-        let downloader = ObjectDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
+        let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
         // Download
         downloader
             .download(
                 reader,
                 dest_store.clone(),
-                object_path.clone(),
+                blob_path.clone(),
                 metadata.clone(),
             )
             .await
             .unwrap();
 
         // Verify
-        let result = dest_store.get(&object_path.path()).await.unwrap();
+        let result = dest_store.get(&blob_path.path()).await.unwrap();
         let downloaded_bytes = result.bytes().await.unwrap();
         assert_eq!(downloaded_bytes.to_vec(), data);
     }
@@ -333,33 +320,33 @@ mod tests {
         hasher.update(&data);
         let checksum = Checksum::new_from_hash(hasher.finalize().into());
         let metadata = Metadata::V1(MetadataV1::new(checksum, data.len()));
-        let object_path = ObjectPath::Probes(2, checksum);
+        let blob_path = BlobPath::Data(2, checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         source_store
-            .put(&object_path.path(), data.clone().into())
+            .put(&blob_path.path(), data.clone().into())
             .await
             .unwrap();
 
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         // Pre-populate destination so download should skip
         dest_store
-            .put(&object_path.path(), data.clone().into())
+            .put(&blob_path.path(), data.clone().into())
             .await
             .unwrap();
 
-        let reader = Arc::new(ObjectStoreReader::new(source_store, object_path.clone()));
+        let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
         let concurrency = Arc::new(Semaphore::new(2));
-        let downloader = ObjectDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
+        let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
         // Should succeed and skip download
         downloader
-            .download(reader, dest_store.clone(), object_path.clone(), metadata)
+            .download(reader, dest_store.clone(), blob_path.clone(), metadata)
             .await
             .unwrap();
 
         // Data should still be correct
-        let result = dest_store.get(&object_path.path()).await.unwrap();
+        let result = dest_store.get(&blob_path.path()).await.unwrap();
         assert_eq!(result.bytes().await.unwrap().to_vec(), data);
     }
 
@@ -376,24 +363,24 @@ mod tests {
         // Use wrong checksum
         let wrong_checksum = Checksum::new_from_hash(DefaultHash::digest(b"wrong").into());
         let metadata = Metadata::V1(MetadataV1::new(wrong_checksum, data.len()));
-        let object_path = ObjectPath::Probes(3, wrong_checksum);
+        let blob_path = BlobPath::Data(3, wrong_checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         source_store
-            .put(&object_path.path(), data.into())
+            .put(&blob_path.path(), data.into())
             .await
             .unwrap();
 
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        let reader = Arc::new(ObjectStoreReader::new(source_store, object_path.clone()));
+        let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
         let concurrency = Arc::new(Semaphore::new(2));
-        let downloader = ObjectDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
+        let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
         let err = downloader
-            .download(reader, dest_store.clone(), object_path, metadata)
+            .download(reader, dest_store.clone(), blob_path, metadata)
             .await
             .unwrap_err();
 
-        assert!(matches!(err, ObjectError::VerificationError(_)));
+        assert!(matches!(err, BlobError::VerificationError(_)));
     }
 }

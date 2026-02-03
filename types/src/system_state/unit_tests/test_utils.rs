@@ -1,7 +1,4 @@
 use crate::checksum::Checksum;
-use crate::metadata::{
-    DefaultDownloadMetadata, DefaultDownloadMetadataV1, DownloadMetadata, Metadata, MetadataV1,
-};
 use crate::{
     base::SomaAddress,
     committee::TOTAL_VOTING_POWER,

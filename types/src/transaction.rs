@@ -7,7 +7,6 @@ use crate::{
     base::FullObjectID,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
-    metadata::{DownloadMetadata, Metadata},
 };
 use fastcrypto::{
     hash::HashFunction,
