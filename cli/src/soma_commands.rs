@@ -34,8 +34,8 @@ use types::{
         FULL_NODE_DB_PATH, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_FULLNODE_CONFIG,
         SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG, genesis_blob_exists,
         genesis_config::{GenesisConfig, ValidatorGenesisConfigBuilder},
-        network_config::{CommitteeConfig, NetworkConfig},
-        node_config::{Genesis, default_json_rpc_address},
+        network_config::NetworkConfig,
+        node_config::{FullnodeConfigBuilder, Genesis, default_json_rpc_address},
         p2p_config::SeedPeer,
         soma_config_dir,
     },
@@ -900,18 +900,16 @@ async fn genesis(
     }
     .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
 
-    let mut network_config = match validator_info {
-        Some(mut validators) => builder
+    let mut network_config = if let Some(validators) = validator_info {
+        builder
             .with_genesis_config(genesis_conf)
             .with_validators(validators)
-            .build(),
-        None => builder
-            .committee(CommitteeConfig::Mixed {
-                consensus_count: committee_size,
-                networking_count: NonZeroUsize::new(1).unwrap(),
-            })
+            .build()
+    } else {
+        builder
+            .committee_size(committee_size)
             .with_genesis_config(genesis_conf)
-            .build(),
+            .build()
     };
 
     let mut keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
@@ -931,27 +929,41 @@ async fn genesis(
     info!("Client keystore is stored in {:?}.", keystore_path);
 
     for (i, validator) in network_config.validator_configs().iter().enumerate() {
-        let config_type = if validator.consensus_config.is_some() {
-            "validator"
-        } else {
-            "networking_validator"
-        };
-        let path = soma_config_dir.join(format!("{}_{}.yaml", config_type, i));
+        let path = soma_config_dir.join(format!("validator_{}.yaml", i));
         validator.save(&path)?;
-        info!("{} config saved to {:?}", config_type, path);
+        info!("Validator config saved to {:?}", path);
     }
 
-    if let Some(networking_validator) = network_config
+    // Build a separate fullnode config using FullnodeConfigBuilder
+    let seed_peers: Vec<SeedPeer> = network_config
         .validator_configs()
         .iter()
-        .find(|c| c.consensus_config.is_none())
-    {
-        networking_validator.save(soma_config_dir.join(SOMA_FULLNODE_CONFIG))?;
-        info!(
-            "Networking validator config saved as fullnode config in {:?}",
-            soma_config_dir.join(SOMA_FULLNODE_CONFIG)
-        );
-    }
+        .filter_map(|config| {
+            let p2p_address = config.p2p_config.external_address.clone()?;
+            Some(SeedPeer {
+                peer_id: Some(PeerId(
+                    config
+                        .network_key_pair()
+                        .public()
+                        .into_inner()
+                        .0
+                        .to_bytes(),
+                )),
+                address: p2p_address,
+            })
+        })
+        .collect();
+
+    let fullnode_config = FullnodeConfigBuilder::new()
+        .with_config_directory(FULL_NODE_DB_PATH.into())
+        .with_rpc_addr(default_json_rpc_address())
+        .build(network_config.genesis.clone(), seed_peers);
+
+    fullnode_config.save(soma_config_dir.join(SOMA_FULLNODE_CONFIG))?;
+    info!(
+        "Fullnode config saved in {:?}",
+        soma_config_dir.join(SOMA_FULLNODE_CONFIG)
+    );
 
     let mut client_config = if client_path.exists() {
         PersistedConfig::read(&client_path)?
@@ -963,15 +975,10 @@ async fn genesis(
         client_config.active_address = active_address;
     }
 
-    let rpc_address = network_config
-        .validator_configs()
-        .iter()
-        .find(|c| c.consensus_config.is_none())
-        .or_else(|| network_config.validator_configs().first())
-        .map(|c| c.rpc_address)
-        .unwrap_or_else(default_json_rpc_address);
-
-    let rpc = format!("http://{}:{}", rpc_address.ip(), rpc_address.port());
+    let rpc = socket_addr_to_url(fullnode_config.rpc_address)?
+        .to_string()
+        .trim_end_matches("/")
+        .to_string();
 
     client_config.add_env(SomaEnv {
         alias: "localnet".to_string(),
