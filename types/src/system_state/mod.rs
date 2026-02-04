@@ -159,10 +159,14 @@ impl SystemState {
         protocol_config: &ProtocolConfig,
         emission_fund: u64,
         emission_per_epoch: u64,
+        epoch_duration_ms_override: Option<u64>,
     ) -> Self {
         // Create Emission Pool
         let emission_pool = EmissionPool::new(emission_fund, emission_per_epoch);
-        let parameters = protocol_config.build_system_parameters(None);
+        let mut parameters = protocol_config.build_system_parameters(None);
+        if let Some(epoch_duration_ms) = epoch_duration_ms_override {
+            parameters.epoch_duration_ms = epoch_duration_ms;
+        }
         let mut validators = ValidatorSet::new(validators);
 
         for validator in &mut validators.validators {

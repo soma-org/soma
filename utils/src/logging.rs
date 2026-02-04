@@ -343,7 +343,8 @@ pub fn init_tracing() {
             .with(layer)
             .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug")));
 
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Failed to set global default subscriber");
+        // Ignore error if a global default subscriber has already been set
+        // (e.g., by a previous test in the same process).
+        let _ = tracing::subscriber::set_global_default(subscriber);
     });
 }

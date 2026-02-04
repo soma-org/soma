@@ -394,6 +394,7 @@ pub fn create_test_system_state(
         &protocol_config,
         stake_subsidy_fund,
         emission_per_epoch * SHANNONS_PER_SOMA,
+        None,
     );
     // Override target_reward_allocation_bps to 0 so 100% of fees go to validators.
     // This decouples validator/delegation/reward tests from the mining reward split.

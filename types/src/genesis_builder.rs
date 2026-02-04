@@ -499,6 +499,7 @@ impl GenesisBuilder {
                 .map(|s| s.emission_fund_shannons)
                 .unwrap_or(0),
             self.parameters.emission_per_epoch,
+            Some(self.parameters.epoch_duration_ms),
         );
 
         // Add genesis models (skip commit-reveal, created directly as active)
