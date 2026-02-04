@@ -35,10 +35,18 @@ pub enum ExecutionError {
     ValidatorAlreadyRemoved,
     AdvancedToWrongEpoch,
 
-    // Encoder errors
-    DuplicateEncoder,
-    NotAnEncoder,
-    EncoderAlreadyRemoved,
+    // Model errors
+    ModelNotFound,
+    NotModelOwner,
+    ModelNotActive,
+    ModelNotPending,
+    ModelAlreadyInactive,
+    ModelRevealEpochMismatch,
+    ModelWeightsUrlMismatch,
+    ModelNoPendingUpdate,
+    ModelArchitectureVersionMismatch,
+    ModelCommissionRateTooHigh,
+    ModelMinStakeNotMet,
 
     // Coin errors
     InsufficientCoinBalance,
@@ -46,7 +54,6 @@ pub enum ExecutionError {
 
     // Staking errors
     ValidatorNotFound,
-    EncoderNotFound,
     StakingPoolNotFound,
     CannotReportOneself,
     ReportRecordNotFound,

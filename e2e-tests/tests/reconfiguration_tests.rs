@@ -568,8 +568,8 @@ async fn execute_add_validator_transactions(
                 worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
                     .unwrap(),
                 net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                p2p_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
-                primary_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
+                p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
+                primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
             }),
             (&new_validator.account_key_pair.public()).into(),
             vec![gas_object],

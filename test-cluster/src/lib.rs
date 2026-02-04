@@ -29,7 +29,8 @@ use types::{
     config::{
         Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
         genesis_config::{
-            AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, ValidatorGenesisConfig,
+            AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, GenesisModelConfig,
+            ValidatorGenesisConfig,
         },
         local_ip_utils,
         network_config::{
@@ -459,7 +460,6 @@ impl TestCluster {
 
 pub struct TestClusterBuilder {
     num_validators: Option<usize>,
-    num_encoders: Option<usize>,
     genesis_config: Option<GenesisConfig>,
     network_config: Option<NetworkConfig>,
     validators: Option<Vec<ValidatorGenesisConfig>>,
@@ -470,7 +470,6 @@ impl TestClusterBuilder {
     pub fn new() -> Self {
         TestClusterBuilder {
             num_validators: None,
-            num_encoders: None,
             genesis_config: None,
             network_config: None,
             validators: None,
@@ -636,6 +635,11 @@ impl TestClusterBuilder {
             self.genesis_config = Some(GenesisConfig::for_local_testing());
         }
         self.genesis_config.as_mut().unwrap()
+    }
+
+    pub fn with_genesis_models(mut self, models: Vec<GenesisModelConfig>) -> Self {
+        self.get_or_init_genesis_config().genesis_models = models;
+        self
     }
 
     pub fn with_validator_candidates(

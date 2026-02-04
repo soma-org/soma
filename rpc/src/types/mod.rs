@@ -9,7 +9,6 @@ mod execution_status;
 mod fee;
 mod hash;
 mod object;
-mod shard;
 mod transaction;
 
 pub use address::Address;
@@ -66,7 +65,6 @@ pub use object::ObjectReference;
 pub use object::ObjectType;
 pub use object::Owner;
 pub use object::Version;
-pub use shard::Shard;
 pub use transaction::AddValidatorArgs;
 pub use transaction::ChangeEpoch;
 pub use transaction::ConsensusCommitPrologue;
@@ -78,7 +76,8 @@ pub use transaction::Transaction;
 pub use transaction::TransactionKind;
 pub use transaction::UpdateValidatorMetadataArgs;
 pub use transaction::{
-    Manifest, ManifestV1, Metadata, MetadataV1,
+    CommitModelArgs, CommitModelUpdateArgs, Manifest, ManifestV1, Metadata, MetadataV1,
+    ModelWeightsManifest, RevealModelArgs, RevealModelUpdateArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

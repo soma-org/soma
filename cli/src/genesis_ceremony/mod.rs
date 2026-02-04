@@ -7,8 +7,12 @@ use protocol_config::ProtocolVersion;
 use soma_keys::keypair_file::read_authority_keypair_from_file;
 use std::path::PathBuf;
 use types::{
-    config::SOMA_GENESIS_FILENAME, crypto::AuthorityKeyPair, envelope::Message as _,
-    genesis::UnsignedGenesis, genesis_builder::GenesisBuilder,
+    config::SOMA_GENESIS_FILENAME,
+    config::genesis_config::GenesisModelConfig,
+    crypto::AuthorityKeyPair,
+    envelope::Message as _,
+    genesis::UnsignedGenesis,
+    genesis_builder::GenesisBuilder,
     validator_info::GenesisValidatorInfo,
 };
 
@@ -53,6 +57,20 @@ pub enum CeremonyCommand {
 
     /// List all validators in the ceremony
     ListValidators,
+
+    /// Add a seed model from a YAML config file
+    ///
+    /// The model config file should contain: owner, model_id, weights_manifest,
+    /// weights_url_commitment, weights_commitment, architecture_version,
+    /// commission_rate, and initial_stake fields.
+    AddModel {
+        /// Path to the model config YAML file
+        #[clap(name = "model-config-path")]
+        file: PathBuf,
+    },
+
+    /// List all seed models in the ceremony
+    ListModels,
 
     /// Build the unsigned genesis checkpoint
     ///
@@ -128,6 +146,47 @@ pub fn run(cmd: Ceremony) -> Result<()> {
                 writer.write_record([
                     &v.info.account_address.to_string(),
                     &Hex::encode(v.info.protocol_key.as_bytes()),
+                ])?;
+            }
+            writer.flush()?;
+        }
+
+        CeremonyCommand::AddModel { file } => {
+            let mut builder = GenesisBuilder::load(&dir)?;
+
+            let model_config: GenesisModelConfig = load_model_config(&file)?;
+            let model_id = model_config.model_id;
+
+            builder = builder.add_model(model_config);
+            builder.save(&dir)?;
+
+            println!("Added seed model {} from {}", model_id, file.display());
+        }
+
+        CeremonyCommand::ListModels => {
+            let builder = GenesisBuilder::load(&dir)?;
+
+            let models = builder.genesis_models();
+
+            println!("Seed Models ({}):", models.len());
+            println!("{:-<80}", "");
+
+            let mut writer = csv::Writer::from_writer(std::io::stdout());
+            writer.write_record([
+                "model-id",
+                "owner",
+                "architecture-version",
+                "commission-rate",
+                "initial-stake",
+            ])?;
+
+            for m in models {
+                writer.write_record([
+                    &m.model_id.to_string(),
+                    &m.owner.to_string(),
+                    &m.architecture_version.to_string(),
+                    &m.commission_rate.to_string(),
+                    &m.initial_stake.to_string(),
                 ])?;
             }
             writer.flush()?;
@@ -222,4 +281,10 @@ fn load_validator_info(path: &PathBuf) -> Result<GenesisValidatorInfo> {
     let bytes = std::fs::read(path)?;
     serde_yaml::from_slice(&bytes)
         .map_err(|e| anyhow::anyhow!("Failed to parse validator info from {:?}: {}", path, e))
+}
+
+fn load_model_config(path: &PathBuf) -> Result<GenesisModelConfig> {
+    let bytes = std::fs::read(path)?;
+    serde_yaml::from_slice(&bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to parse model config from {:?}: {}", path, e))
 }

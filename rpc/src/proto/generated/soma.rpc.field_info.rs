@@ -3294,6 +3294,12 @@ mod _field_impls {
             number: 10i32,
             message_fields: None,
         };
+        pub const MODEL_REGISTRY_FIELD: &'static MessageField = &MessageField {
+            name: "model_registry",
+            json_name: "modelRegistry",
+            number: 11i32,
+            message_fields: Some(ModelRegistry::FIELDS),
+        };
     }
     impl MessageFields for SystemState {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3307,6 +3313,7 @@ mod _field_impls {
             Self::TARGET_REWARDS_PER_EPOCH_FIELD,
             Self::TARGETS_CREATED_PER_EPOCH_FIELD,
             Self::EPOCH_SEEDS_FIELD,
+            Self::MODEL_REGISTRY_FIELD,
         ];
     }
     impl SystemState {
@@ -3369,6 +3376,10 @@ mod _field_impls {
             self.path.push(SystemState::EPOCH_SEEDS_FIELD.name);
             self.finish()
         }
+        pub fn model_registry(mut self) -> ModelRegistryFieldPathBuilder {
+            self.path.push(SystemState::MODEL_REGISTRY_FIELD.name);
+            ModelRegistryFieldPathBuilder::new_with_base(self.path)
+        }
     }
     impl ReporterSet {
         pub const REPORTERS_FIELD: &'static MessageField = &MessageField {
@@ -3413,28 +3424,34 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const VDF_ITERATIONS_FIELD: &'static MessageField = &MessageField {
-            name: "vdf_iterations",
-            json_name: "vdfIterations",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const TARGET_SELECTION_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_selection_rate_bps",
-            json_name: "targetSelectionRateBps",
-            number: 3i32,
-            message_fields: None,
-        };
         pub const TARGET_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
             name: "target_reward_allocation_bps",
             json_name: "targetRewardAllocationBps",
             number: 4i32,
             message_fields: None,
         };
-        pub const ENCODER_TALLY_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "encoder_tally_slash_rate_bps",
-            json_name: "encoderTallySlashRateBps",
-            number: 5i32,
+        pub const MODEL_MIN_STAKE_FIELD: &'static MessageField = &MessageField {
+            name: "model_min_stake",
+            json_name: "modelMinStake",
+            number: 14i32,
+            message_fields: None,
+        };
+        pub const MODEL_ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "model_architecture_version",
+            json_name: "modelArchitectureVersion",
+            number: 15i32,
+            message_fields: None,
+        };
+        pub const MODEL_REVEAL_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "model_reveal_slash_rate_bps",
+            json_name: "modelRevealSlashRateBps",
+            number: 16i32,
+            message_fields: None,
+        };
+        pub const MODEL_TALLY_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "model_tally_slash_rate_bps",
+            json_name: "modelTallySlashRateBps",
+            number: 17i32,
             message_fields: None,
         };
         pub const TARGET_EPOCH_FEE_COLLECTION_FIELD: &'static MessageField = &MessageField {
@@ -3479,20 +3496,15 @@ mod _field_impls {
             number: 12i32,
             message_fields: None,
         };
-        pub const CLAIM_INCENTIVE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "claim_incentive_bps",
-            json_name: "claimIncentiveBps",
-            number: 13i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for SystemParameters {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_DURATION_MS_FIELD,
-            Self::VDF_ITERATIONS_FIELD,
-            Self::TARGET_SELECTION_RATE_BPS_FIELD,
             Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
-            Self::ENCODER_TALLY_SLASH_RATE_BPS_FIELD,
+            Self::MODEL_MIN_STAKE_FIELD,
+            Self::MODEL_ARCHITECTURE_VERSION_FIELD,
+            Self::MODEL_REVEAL_SLASH_RATE_BPS_FIELD,
+            Self::MODEL_TALLY_SLASH_RATE_BPS_FIELD,
             Self::TARGET_EPOCH_FEE_COLLECTION_FIELD,
             Self::BASE_FEE_FIELD,
             Self::WRITE_OBJECT_FEE_FIELD,
@@ -3500,7 +3512,6 @@ mod _field_impls {
             Self::MIN_VALUE_FEE_BPS_FIELD,
             Self::MAX_VALUE_FEE_BPS_FIELD,
             Self::FEE_ADJUSTMENT_RATE_BPS_FIELD,
-            Self::CLAIM_INCENTIVE_BPS_FIELD,
         ];
     }
     impl SystemParameters {
@@ -3527,20 +3538,24 @@ mod _field_impls {
             self.path.push(SystemParameters::EPOCH_DURATION_MS_FIELD.name);
             self.finish()
         }
-        pub fn vdf_iterations(mut self) -> String {
-            self.path.push(SystemParameters::VDF_ITERATIONS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_selection_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_SELECTION_RATE_BPS_FIELD.name);
-            self.finish()
-        }
         pub fn target_reward_allocation_bps(mut self) -> String {
             self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
             self.finish()
         }
-        pub fn encoder_tally_slash_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::ENCODER_TALLY_SLASH_RATE_BPS_FIELD.name);
+        pub fn model_min_stake(mut self) -> String {
+            self.path.push(SystemParameters::MODEL_MIN_STAKE_FIELD.name);
+            self.finish()
+        }
+        pub fn model_architecture_version(mut self) -> String {
+            self.path.push(SystemParameters::MODEL_ARCHITECTURE_VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn model_reveal_slash_rate_bps(mut self) -> String {
+            self.path.push(SystemParameters::MODEL_REVEAL_SLASH_RATE_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn model_tally_slash_rate_bps(mut self) -> String {
+            self.path.push(SystemParameters::MODEL_TALLY_SLASH_RATE_BPS_FIELD.name);
             self.finish()
         }
         pub fn target_epoch_fee_collection(mut self) -> String {
@@ -3569,10 +3584,6 @@ mod _field_impls {
         }
         pub fn fee_adjustment_rate_bps(mut self) -> String {
             self.path.push(SystemParameters::FEE_ADJUSTMENT_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn claim_incentive_bps(mut self) -> String {
-            self.path.push(SystemParameters::CLAIM_INCENTIVE_BPS_FIELD.name);
             self.finish()
         }
     }
@@ -4140,6 +4151,236 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl Model {
+        pub const OWNER_FIELD: &'static MessageField = &MessageField {
+            name: "owner",
+            json_name: "owner",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "architecture_version",
+            json_name: "architectureVersion",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_url_commitment",
+            json_name: "weightsUrlCommitment",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_commitment",
+            json_name: "weightsCommitment",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const COMMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "commit_epoch",
+            json_name: "commitEpoch",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "weights_manifest",
+            json_name: "weightsManifest",
+            number: 6i32,
+            message_fields: Some(ModelWeightsManifest::FIELDS),
+        };
+        pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
+            name: "staking_pool",
+            json_name: "stakingPool",
+            number: 7i32,
+            message_fields: Some(StakingPool::FIELDS),
+        };
+        pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "commission_rate",
+            json_name: "commissionRate",
+            number: 8i32,
+            message_fields: None,
+        };
+        pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_commission_rate",
+            json_name: "nextEpochCommissionRate",
+            number: 9i32,
+            message_fields: None,
+        };
+        pub const PENDING_UPDATE_FIELD: &'static MessageField = &MessageField {
+            name: "pending_update",
+            json_name: "pendingUpdate",
+            number: 10i32,
+            message_fields: Some(PendingModelUpdate::FIELDS),
+        };
+    }
+    impl MessageFields for Model {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OWNER_FIELD,
+            Self::ARCHITECTURE_VERSION_FIELD,
+            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::COMMIT_EPOCH_FIELD,
+            Self::WEIGHTS_MANIFEST_FIELD,
+            Self::STAKING_POOL_FIELD,
+            Self::COMMISSION_RATE_FIELD,
+            Self::NEXT_EPOCH_COMMISSION_RATE_FIELD,
+            Self::PENDING_UPDATE_FIELD,
+        ];
+    }
+    impl Model {
+        pub fn path_builder() -> ModelFieldPathBuilder {
+            ModelFieldPathBuilder::new()
+        }
+    }
+    pub struct ModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn owner(mut self) -> String {
+            self.path.push(Model::OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn architecture_version(mut self) -> String {
+            self.path.push(Model::ARCHITECTURE_VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_url_commitment(mut self) -> String {
+            self.path.push(Model::WEIGHTS_URL_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_commitment(mut self) -> String {
+            self.path.push(Model::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn commit_epoch(mut self) -> String {
+            self.path.push(Model::COMMIT_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
+            self.path.push(Model::WEIGHTS_MANIFEST_FIELD.name);
+            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn staking_pool(mut self) -> StakingPoolFieldPathBuilder {
+            self.path.push(Model::STAKING_POOL_FIELD.name);
+            StakingPoolFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn commission_rate(mut self) -> String {
+            self.path.push(Model::COMMISSION_RATE_FIELD.name);
+            self.finish()
+        }
+        pub fn next_epoch_commission_rate(mut self) -> String {
+            self.path.push(Model::NEXT_EPOCH_COMMISSION_RATE_FIELD.name);
+            self.finish()
+        }
+        pub fn pending_update(mut self) -> PendingModelUpdateFieldPathBuilder {
+            self.path.push(Model::PENDING_UPDATE_FIELD.name);
+            PendingModelUpdateFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ModelRegistry {
+        pub const ACTIVE_MODELS_FIELD: &'static MessageField = &MessageField {
+            name: "active_models",
+            json_name: "activeModels",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const PENDING_MODELS_FIELD: &'static MessageField = &MessageField {
+            name: "pending_models",
+            json_name: "pendingModels",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const STAKING_POOL_MAPPINGS_FIELD: &'static MessageField = &MessageField {
+            name: "staking_pool_mappings",
+            json_name: "stakingPoolMappings",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const INACTIVE_MODELS_FIELD: &'static MessageField = &MessageField {
+            name: "inactive_models",
+            json_name: "inactiveModels",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const TOTAL_MODEL_STAKE_FIELD: &'static MessageField = &MessageField {
+            name: "total_model_stake",
+            json_name: "totalModelStake",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const MODEL_REPORT_RECORDS_FIELD: &'static MessageField = &MessageField {
+            name: "model_report_records",
+            json_name: "modelReportRecords",
+            number: 6i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ModelRegistry {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::ACTIVE_MODELS_FIELD,
+            Self::PENDING_MODELS_FIELD,
+            Self::STAKING_POOL_MAPPINGS_FIELD,
+            Self::INACTIVE_MODELS_FIELD,
+            Self::TOTAL_MODEL_STAKE_FIELD,
+            Self::MODEL_REPORT_RECORDS_FIELD,
+        ];
+    }
+    impl ModelRegistry {
+        pub fn path_builder() -> ModelRegistryFieldPathBuilder {
+            ModelRegistryFieldPathBuilder::new()
+        }
+    }
+    pub struct ModelRegistryFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ModelRegistryFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn active_models(mut self) -> String {
+            self.path.push(ModelRegistry::ACTIVE_MODELS_FIELD.name);
+            self.finish()
+        }
+        pub fn pending_models(mut self) -> String {
+            self.path.push(ModelRegistry::PENDING_MODELS_FIELD.name);
+            self.finish()
+        }
+        pub fn staking_pool_mappings(mut self) -> String {
+            self.path.push(ModelRegistry::STAKING_POOL_MAPPINGS_FIELD.name);
+            self.finish()
+        }
+        pub fn inactive_models(mut self) -> String {
+            self.path.push(ModelRegistry::INACTIVE_MODELS_FIELD.name);
+            self.finish()
+        }
+        pub fn total_model_stake(mut self) -> String {
+            self.path.push(ModelRegistry::TOTAL_MODEL_STAKE_FIELD.name);
+            self.finish()
+        }
+        pub fn model_report_records(mut self) -> String {
+            self.path.push(ModelRegistry::MODEL_REPORT_RECORDS_FIELD.name);
+            self.finish()
+        }
+    }
     impl Transaction {
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
@@ -4296,6 +4537,60 @@ mod _field_impls {
             number: 14i32,
             message_fields: Some(WithdrawStake::FIELDS),
         };
+        pub const COMMIT_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "commit_model",
+            json_name: "commitModel",
+            number: 15i32,
+            message_fields: Some(CommitModel::FIELDS),
+        };
+        pub const REVEAL_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "reveal_model",
+            json_name: "revealModel",
+            number: 16i32,
+            message_fields: Some(RevealModel::FIELDS),
+        };
+        pub const COMMIT_MODEL_UPDATE_FIELD: &'static MessageField = &MessageField {
+            name: "commit_model_update",
+            json_name: "commitModelUpdate",
+            number: 17i32,
+            message_fields: Some(CommitModelUpdate::FIELDS),
+        };
+        pub const REVEAL_MODEL_UPDATE_FIELD: &'static MessageField = &MessageField {
+            name: "reveal_model_update",
+            json_name: "revealModelUpdate",
+            number: 18i32,
+            message_fields: Some(RevealModelUpdate::FIELDS),
+        };
+        pub const ADD_STAKE_TO_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "add_stake_to_model",
+            json_name: "addStakeToModel",
+            number: 19i32,
+            message_fields: Some(AddStakeToModel::FIELDS),
+        };
+        pub const SET_MODEL_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "set_model_commission_rate",
+            json_name: "setModelCommissionRate",
+            number: 20i32,
+            message_fields: Some(SetModelCommissionRate::FIELDS),
+        };
+        pub const DEACTIVATE_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "deactivate_model",
+            json_name: "deactivateModel",
+            number: 21i32,
+            message_fields: Some(DeactivateModel::FIELDS),
+        };
+        pub const REPORT_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "report_model",
+            json_name: "reportModel",
+            number: 22i32,
+            message_fields: Some(ReportModel::FIELDS),
+        };
+        pub const UNDO_REPORT_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "undo_report_model",
+            json_name: "undoReportModel",
+            number: 23i32,
+            message_fields: Some(UndoReportModel::FIELDS),
+        };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -4313,6 +4608,15 @@ mod _field_impls {
             Self::TRANSFER_OBJECTS_FIELD,
             Self::ADD_STAKE_FIELD,
             Self::WITHDRAW_STAKE_FIELD,
+            Self::COMMIT_MODEL_FIELD,
+            Self::REVEAL_MODEL_FIELD,
+            Self::COMMIT_MODEL_UPDATE_FIELD,
+            Self::REVEAL_MODEL_UPDATE_FIELD,
+            Self::ADD_STAKE_TO_MODEL_FIELD,
+            Self::SET_MODEL_COMMISSION_RATE_FIELD,
+            Self::DEACTIVATE_MODEL_FIELD,
+            Self::REPORT_MODEL_FIELD,
+            Self::UNDO_REPORT_MODEL_FIELD,
         ];
     }
     impl TransactionKind {
@@ -4394,6 +4698,44 @@ mod _field_impls {
         pub fn withdraw_stake(mut self) -> WithdrawStakeFieldPathBuilder {
             self.path.push(TransactionKind::WITHDRAW_STAKE_FIELD.name);
             WithdrawStakeFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn commit_model(mut self) -> CommitModelFieldPathBuilder {
+            self.path.push(TransactionKind::COMMIT_MODEL_FIELD.name);
+            CommitModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn reveal_model(mut self) -> RevealModelFieldPathBuilder {
+            self.path.push(TransactionKind::REVEAL_MODEL_FIELD.name);
+            RevealModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn commit_model_update(mut self) -> CommitModelUpdateFieldPathBuilder {
+            self.path.push(TransactionKind::COMMIT_MODEL_UPDATE_FIELD.name);
+            CommitModelUpdateFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn reveal_model_update(mut self) -> RevealModelUpdateFieldPathBuilder {
+            self.path.push(TransactionKind::REVEAL_MODEL_UPDATE_FIELD.name);
+            RevealModelUpdateFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn add_stake_to_model(mut self) -> AddStakeToModelFieldPathBuilder {
+            self.path.push(TransactionKind::ADD_STAKE_TO_MODEL_FIELD.name);
+            AddStakeToModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn set_model_commission_rate(
+            mut self,
+        ) -> SetModelCommissionRateFieldPathBuilder {
+            self.path.push(TransactionKind::SET_MODEL_COMMISSION_RATE_FIELD.name);
+            SetModelCommissionRateFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn deactivate_model(mut self) -> DeactivateModelFieldPathBuilder {
+            self.path.push(TransactionKind::DEACTIVATE_MODEL_FIELD.name);
+            DeactivateModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn report_model(mut self) -> ReportModelFieldPathBuilder {
+            self.path.push(TransactionKind::REPORT_MODEL_FIELD.name);
+            ReportModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn undo_report_model(mut self) -> UndoReportModelFieldPathBuilder {
+            self.path.push(TransactionKind::UNDO_REPORT_MODEL_FIELD.name);
+            UndoReportModelFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl AddValidator {
@@ -5163,6 +5505,594 @@ mod _field_impls {
         pub fn metadata(mut self) -> MetadataFieldPathBuilder {
             self.path.push(ManifestV1::METADATA_FIELD.name);
             MetadataFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ModelWeightsManifest {
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
+            number: 1i32,
+            message_fields: Some(Manifest::FIELDS),
+        };
+        pub const DECRYPTION_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key",
+            json_name: "decryptionKey",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ModelWeightsManifest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MANIFEST_FIELD,
+            Self::DECRYPTION_KEY_FIELD,
+        ];
+    }
+    impl ModelWeightsManifest {
+        pub fn path_builder() -> ModelWeightsManifestFieldPathBuilder {
+            ModelWeightsManifestFieldPathBuilder::new()
+        }
+    }
+    pub struct ModelWeightsManifestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ModelWeightsManifestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(ModelWeightsManifest::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn decryption_key(mut self) -> String {
+            self.path.push(ModelWeightsManifest::DECRYPTION_KEY_FIELD.name);
+            self.finish()
+        }
+    }
+    impl PendingModelUpdate {
+        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_url_commitment",
+            json_name: "weightsUrlCommitment",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_commitment",
+            json_name: "weightsCommitment",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const COMMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "commit_epoch",
+            json_name: "commitEpoch",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for PendingModelUpdate {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::COMMIT_EPOCH_FIELD,
+        ];
+    }
+    impl PendingModelUpdate {
+        pub fn path_builder() -> PendingModelUpdateFieldPathBuilder {
+            PendingModelUpdateFieldPathBuilder::new()
+        }
+    }
+    pub struct PendingModelUpdateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl PendingModelUpdateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn weights_url_commitment(mut self) -> String {
+            self.path.push(PendingModelUpdate::WEIGHTS_URL_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_commitment(mut self) -> String {
+            self.path.push(PendingModelUpdate::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn commit_epoch(mut self) -> String {
+            self.path.push(PendingModelUpdate::COMMIT_EPOCH_FIELD.name);
+            self.finish()
+        }
+    }
+    impl CommitModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_url_commitment",
+            json_name: "weightsUrlCommitment",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_commitment",
+            json_name: "weightsCommitment",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
+            name: "architecture_version",
+            json_name: "architectureVersion",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const STAKE_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "stake_amount",
+            json_name: "stakeAmount",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "commission_rate",
+            json_name: "commissionRate",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const STAKING_POOL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "staking_pool_id",
+            json_name: "stakingPoolId",
+            number: 7i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for CommitModel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::ARCHITECTURE_VERSION_FIELD,
+            Self::STAKE_AMOUNT_FIELD,
+            Self::COMMISSION_RATE_FIELD,
+            Self::STAKING_POOL_ID_FIELD,
+        ];
+    }
+    impl CommitModel {
+        pub fn path_builder() -> CommitModelFieldPathBuilder {
+            CommitModelFieldPathBuilder::new()
+        }
+    }
+    pub struct CommitModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl CommitModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(CommitModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_url_commitment(mut self) -> String {
+            self.path.push(CommitModel::WEIGHTS_URL_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_commitment(mut self) -> String {
+            self.path.push(CommitModel::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn architecture_version(mut self) -> String {
+            self.path.push(CommitModel::ARCHITECTURE_VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn stake_amount(mut self) -> String {
+            self.path.push(CommitModel::STAKE_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn commission_rate(mut self) -> String {
+            self.path.push(CommitModel::COMMISSION_RATE_FIELD.name);
+            self.finish()
+        }
+        pub fn staking_pool_id(mut self) -> String {
+            self.path.push(CommitModel::STAKING_POOL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RevealModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "weights_manifest",
+            json_name: "weightsManifest",
+            number: 2i32,
+            message_fields: Some(ModelWeightsManifest::FIELDS),
+        };
+    }
+    impl MessageFields for RevealModel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::WEIGHTS_MANIFEST_FIELD,
+        ];
+    }
+    impl RevealModel {
+        pub fn path_builder() -> RevealModelFieldPathBuilder {
+            RevealModelFieldPathBuilder::new()
+        }
+    }
+    pub struct RevealModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RevealModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(RevealModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
+            self.path.push(RevealModel::WEIGHTS_MANIFEST_FIELD.name);
+            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl CommitModelUpdate {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_url_commitment",
+            json_name: "weightsUrlCommitment",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_commitment",
+            json_name: "weightsCommitment",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for CommitModelUpdate {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::WEIGHTS_COMMITMENT_FIELD,
+        ];
+    }
+    impl CommitModelUpdate {
+        pub fn path_builder() -> CommitModelUpdateFieldPathBuilder {
+            CommitModelUpdateFieldPathBuilder::new()
+        }
+    }
+    pub struct CommitModelUpdateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl CommitModelUpdateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(CommitModelUpdate::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_url_commitment(mut self) -> String {
+            self.path.push(CommitModelUpdate::WEIGHTS_URL_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_commitment(mut self) -> String {
+            self.path.push(CommitModelUpdate::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RevealModelUpdate {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "weights_manifest",
+            json_name: "weightsManifest",
+            number: 2i32,
+            message_fields: Some(ModelWeightsManifest::FIELDS),
+        };
+    }
+    impl MessageFields for RevealModelUpdate {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::WEIGHTS_MANIFEST_FIELD,
+        ];
+    }
+    impl RevealModelUpdate {
+        pub fn path_builder() -> RevealModelUpdateFieldPathBuilder {
+            RevealModelUpdateFieldPathBuilder::new()
+        }
+    }
+    pub struct RevealModelUpdateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RevealModelUpdateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(RevealModelUpdate::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
+            self.path.push(RevealModelUpdate::WEIGHTS_MANIFEST_FIELD.name);
+            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl AddStakeToModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
+            name: "coin_ref",
+            json_name: "coinRef",
+            number: 2i32,
+            message_fields: Some(ObjectReference::FIELDS),
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for AddStakeToModel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::COIN_REF_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
+    }
+    impl AddStakeToModel {
+        pub fn path_builder() -> AddStakeToModelFieldPathBuilder {
+            AddStakeToModelFieldPathBuilder::new()
+        }
+    }
+    pub struct AddStakeToModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl AddStakeToModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(AddStakeToModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
+            self.path.push(AddStakeToModel::COIN_REF_FIELD.name);
+            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(AddStakeToModel::AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl SetModelCommissionRate {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const NEW_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "new_rate",
+            json_name: "newRate",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for SetModelCommissionRate {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
+            Self::NEW_RATE_FIELD,
+        ];
+    }
+    impl SetModelCommissionRate {
+        pub fn path_builder() -> SetModelCommissionRateFieldPathBuilder {
+            SetModelCommissionRateFieldPathBuilder::new()
+        }
+    }
+    pub struct SetModelCommissionRateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SetModelCommissionRateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(SetModelCommissionRate::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn new_rate(mut self) -> String {
+            self.path.push(SetModelCommissionRate::NEW_RATE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl DeactivateModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for DeactivateModel {
+        const FIELDS: &'static [&'static MessageField] = &[Self::MODEL_ID_FIELD];
+    }
+    impl DeactivateModel {
+        pub fn path_builder() -> DeactivateModelFieldPathBuilder {
+            DeactivateModelFieldPathBuilder::new()
+        }
+    }
+    pub struct DeactivateModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl DeactivateModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(DeactivateModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl ReportModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ReportModel {
+        const FIELDS: &'static [&'static MessageField] = &[Self::MODEL_ID_FIELD];
+    }
+    impl ReportModel {
+        pub fn path_builder() -> ReportModelFieldPathBuilder {
+            ReportModelFieldPathBuilder::new()
+        }
+    }
+    pub struct ReportModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ReportModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(ReportModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl UndoReportModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for UndoReportModel {
+        const FIELDS: &'static [&'static MessageField] = &[Self::MODEL_ID_FIELD];
+    }
+    impl UndoReportModel {
+        pub fn path_builder() -> UndoReportModelFieldPathBuilder {
+            UndoReportModelFieldPathBuilder::new()
+        }
+    }
+    pub struct UndoReportModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl UndoReportModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(UndoReportModel::MODEL_ID_FIELD.name);
+            self.finish()
         }
     }
     impl ChangeEpoch {

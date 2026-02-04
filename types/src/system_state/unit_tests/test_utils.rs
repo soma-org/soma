@@ -3,9 +3,12 @@ use crate::{
     base::SomaAddress,
     committee::TOTAL_VOTING_POWER,
     config::genesis_config::SHANNONS_PER_SOMA,
-    crypto::{self, AuthorityKeyPair, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair},
+    crypto::{self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair},
+    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
+    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
+    model::{ModelId, ModelWeightsManifest},
     multiaddr::Multiaddr,
     object::ObjectID,
     system_state::{
@@ -18,6 +21,7 @@ use crate::{
 use fastcrypto::{
     bls12381,
     ed25519::Ed25519PublicKey,
+    hash::HashFunction as _,
     traits::{KeyPair, ToFromBytes},
 };
 use protocol_config::ProtocolVersion;
@@ -132,7 +136,9 @@ pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> u64 {
         .expect("Failed to withdraw stake")
 }
 
-// Helper function to distribute rewards and advance epoch
+// Helper function to distribute rewards and advance epoch.
+// `reward_amount` is in SOMA and represents the total transaction fees for the epoch.
+// Tests set target_reward_allocation_bps=0 so 100% of fees go to validators.
 pub fn advance_epoch_with_reward_amounts(
     system_state: &mut SystemState,
     reward_amount: u64,
@@ -164,7 +170,8 @@ pub fn advance_epoch_with_reward_amounts(
     validator_stakes.add_commission_rewards(next_epoch, rewards);
 }
 
-// Helper function to advance epoch with reward amounts and slashing rates
+// Helper function to advance epoch with reward amounts and slashing rates.
+// `reward_amount` is in SOMA and represents the total transaction fees for the epoch.
 pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     system_state: &mut SystemState,
     reward_amount: u64,
@@ -178,10 +185,13 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     let new_timestamp =
         system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
 
-    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+    let mut protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
         protocol_config::Chain::Mainnet,
     );
+
+    // Override the slashing rate with the test-specified value
+    protocol_config.set_reward_slashing_rate_bps_for_testing(reward_slashing_rate);
 
     // Advance the epoch
     let rewards = system_state
@@ -377,14 +387,18 @@ pub fn create_test_system_state(
     let epoch_start_timestamp_ms = 1000;
     let stake_subsidy_fund = supply_amount * SHANNONS_PER_SOMA;
 
-    SystemState::create(
+    let mut state = SystemState::create(
         validators,
         ProtocolVersion::MAX.as_u64(),
         epoch_start_timestamp_ms,
         &protocol_config,
         stake_subsidy_fund,
         emission_per_epoch * SHANNONS_PER_SOMA,
-    )
+    );
+    // Override target_reward_allocation_bps to 0 so 100% of fees go to validators.
+    // This decouples validator/delegation/reward tests from the mining reward split.
+    state.parameters.target_reward_allocation_bps = 0;
+    state
 }
 
 /// Setup a system state with specified validator addresses
@@ -398,7 +412,9 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
     create_test_system_state(validators, 1000, 0)
 }
 
-/// Advance epoch with rewards
+/// Advance epoch with rewards.
+/// `reward_amount` is in shannons and represents the total transaction fees for the epoch.
+/// Tests set target_reward_allocation_bps=0 so 100% of fees go to validators.
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
@@ -471,4 +487,120 @@ pub fn stake_plus_current_rewards_for_validator(
         }
     }
     None
+}
+
+// ===== Model test helpers =====
+
+/// Build a `ModelWeightsUrlCommitment` that matches the hash of the given URL string.
+pub fn url_commitment_for(url_str: &str) -> ModelWeightsUrlCommitment {
+    let mut hasher = DefaultHash::default();
+    hasher.update(url_str.as_bytes());
+    let hash = hasher.finalize();
+    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
+    ModelWeightsUrlCommitment::new(bytes)
+}
+
+/// Build a dummy `ModelWeightsManifest` whose URL matches the given commitment.
+pub fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
+    let url = Url::parse(url_str).expect("Invalid URL in test helper");
+    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
+    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
+    ModelWeightsManifest {
+        manifest,
+        decryption_key: DecryptionKey::new([0xAA; 32]),
+    }
+}
+
+/// Commit a model into `pending_models`. Returns the StakedSoma receipt.
+/// Uses a deterministic test URL derived from model_id to generate matching commitments.
+pub fn commit_model(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: ModelId,
+    stake_amount: u64,
+) -> StakedSoma {
+    commit_model_with_commission(system_state, owner, model_id, stake_amount, 0)
+}
+
+/// Commit a model with a specified commission rate.
+pub fn commit_model_with_commission(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: ModelId,
+    stake_amount: u64,
+    commission_rate: u64,
+) -> StakedSoma {
+    let url_str = format!("https://example.com/models/{}", model_id);
+    let url_commitment = url_commitment_for(&url_str);
+    let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
+    let staking_pool_id = ObjectID::random();
+
+    system_state
+        .request_commit_model(
+            owner,
+            model_id,
+            url_commitment,
+            weights_commitment,
+            system_state.parameters.model_architecture_version,
+            stake_amount,
+            commission_rate,
+            staking_pool_id,
+        )
+        .expect("Failed to commit model")
+}
+
+/// Reveal a previously committed model (moves pending -> active).
+/// Must be called in `commit_epoch + 1`.
+pub fn reveal_model(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: &ModelId,
+) {
+    let url_str = format!("https://example.com/models/{}", model_id);
+    let manifest = make_weights_manifest(&url_str);
+
+    system_state
+        .request_reveal_model(owner, model_id, manifest)
+        .expect("Failed to reveal model");
+}
+
+/// Commit a model update for an active model.
+/// Uses a deterministic "update" URL derived from model_id.
+pub fn commit_model_update(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: &ModelId,
+) {
+    let url_str = format!("https://example.com/models/{}/update", model_id);
+    let url_commitment = url_commitment_for(&url_str);
+    let weights_commitment = ModelWeightsCommitment::new([0xCC; 32]);
+
+    system_state
+        .request_commit_model_update(owner, model_id, url_commitment, weights_commitment)
+        .expect("Failed to commit model update");
+}
+
+/// Reveal a pending model update.
+pub fn reveal_model_update(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: &ModelId,
+) {
+    let url_str = format!("https://example.com/models/{}/update", model_id);
+    let manifest = make_weights_manifest(&url_str);
+
+    system_state
+        .request_reveal_model_update(owner, model_id, manifest)
+        .expect("Failed to reveal model update");
+}
+
+/// Stake to a model (any sender). Amount is in SOMA (not shannons).
+pub fn stake_with_model(
+    system_state: &mut SystemState,
+    model_id: &ModelId,
+    amount: u64,
+) -> StakedSoma {
+    system_state
+        .request_add_stake_to_model(model_id, amount * SHANNONS_PER_SOMA)
+        .expect("Failed to stake with model")
 }

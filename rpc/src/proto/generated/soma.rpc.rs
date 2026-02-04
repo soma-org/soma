@@ -623,20 +623,18 @@ pub mod execution_error {
         ValidatorAlreadyRemoved = 9,
         /// Advancing to unexpected epoch
         AdvancedToWrongEpoch = 10,
-        /// Adding an encoder that already exists
-        DuplicateEncoder = 11,
-        /// Removing an encoder that doesn't exist
-        NotAnEncoder = 12,
-        /// Removing an encoder already removed
-        EncoderAlreadyRemoved = 13,
+        /// Model not found
+        ModelNotFound = 11,
+        /// Sender is not the model owner
+        NotModelOwner = 12,
+        /// Model is not in active state
+        ModelNotActive = 13,
         /// Insufficient coin balance for requested operation.
         InsufficientCoinBalance = 14,
         /// Coin balance overflowed an u64.
         CoinBalanceOverflow = 15,
         /// Validator not found
         ValidatorNotFound = 16,
-        /// Encoder not found
-        EncoderNotFound = 17,
         /// Staking pool not found
         StakingPoolNotFound = 18,
         /// Validator cannot report oneself
@@ -648,6 +646,22 @@ pub mod execution_error {
         SharedObjectCongestion = 23,
         /// Other error.
         OtherError = 24,
+        /// Model is not in pending (committed) state
+        ModelNotPending = 25,
+        /// Model is already inactive
+        ModelAlreadyInactive = 26,
+        /// Model reveal epoch mismatch
+        ModelRevealEpochMismatch = 27,
+        /// Model weights URL commitment mismatch
+        ModelWeightsUrlMismatch = 28,
+        /// Model has no pending update
+        ModelNoPendingUpdate = 29,
+        /// Model architecture version mismatch
+        ModelArchitectureVersionMismatch = 30,
+        /// Model commission rate exceeds maximum
+        ModelCommissionRateTooHigh = 31,
+        /// Model minimum stake requirement not met
+        ModelMinStakeNotMet = 32,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -667,13 +681,12 @@ pub mod execution_error {
                 Self::NotAValidator => "NOT_A_VALIDATOR",
                 Self::ValidatorAlreadyRemoved => "VALIDATOR_ALREADY_REMOVED",
                 Self::AdvancedToWrongEpoch => "ADVANCED_TO_WRONG_EPOCH",
-                Self::DuplicateEncoder => "DUPLICATE_ENCODER",
-                Self::NotAnEncoder => "NOT_AN_ENCODER",
-                Self::EncoderAlreadyRemoved => "ENCODER_ALREADY_REMOVED",
+                Self::ModelNotFound => "MODEL_NOT_FOUND",
+                Self::NotModelOwner => "NOT_MODEL_OWNER",
+                Self::ModelNotActive => "MODEL_NOT_ACTIVE",
                 Self::InsufficientCoinBalance => "INSUFFICIENT_COIN_BALANCE",
                 Self::CoinBalanceOverflow => "COIN_BALANCE_OVERFLOW",
                 Self::ValidatorNotFound => "VALIDATOR_NOT_FOUND",
-                Self::EncoderNotFound => "ENCODER_NOT_FOUND",
                 Self::StakingPoolNotFound => "STAKING_POOL_NOT_FOUND",
                 Self::CannotReportOneself => "CANNOT_REPORT_ONESELF",
                 Self::ReportRecordNotFound => "REPORT_RECORD_NOT_FOUND",
@@ -681,6 +694,16 @@ pub mod execution_error {
                 Self::CertificateDenied => "CERTIFICATE_DENIED",
                 Self::SharedObjectCongestion => "SHARED_OBJECT_CONGESTION",
                 Self::OtherError => "OTHER_ERROR",
+                Self::ModelNotPending => "MODEL_NOT_PENDING",
+                Self::ModelAlreadyInactive => "MODEL_ALREADY_INACTIVE",
+                Self::ModelRevealEpochMismatch => "MODEL_REVEAL_EPOCH_MISMATCH",
+                Self::ModelWeightsUrlMismatch => "MODEL_WEIGHTS_URL_MISMATCH",
+                Self::ModelNoPendingUpdate => "MODEL_NO_PENDING_UPDATE",
+                Self::ModelArchitectureVersionMismatch => {
+                    "MODEL_ARCHITECTURE_VERSION_MISMATCH"
+                }
+                Self::ModelCommissionRateTooHigh => "MODEL_COMMISSION_RATE_TOO_HIGH",
+                Self::ModelMinStakeNotMet => "MODEL_MIN_STAKE_NOT_MET",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -697,13 +720,12 @@ pub mod execution_error {
                 "NOT_A_VALIDATOR" => Some(Self::NotAValidator),
                 "VALIDATOR_ALREADY_REMOVED" => Some(Self::ValidatorAlreadyRemoved),
                 "ADVANCED_TO_WRONG_EPOCH" => Some(Self::AdvancedToWrongEpoch),
-                "DUPLICATE_ENCODER" => Some(Self::DuplicateEncoder),
-                "NOT_AN_ENCODER" => Some(Self::NotAnEncoder),
-                "ENCODER_ALREADY_REMOVED" => Some(Self::EncoderAlreadyRemoved),
+                "MODEL_NOT_FOUND" => Some(Self::ModelNotFound),
+                "NOT_MODEL_OWNER" => Some(Self::NotModelOwner),
+                "MODEL_NOT_ACTIVE" => Some(Self::ModelNotActive),
                 "INSUFFICIENT_COIN_BALANCE" => Some(Self::InsufficientCoinBalance),
                 "COIN_BALANCE_OVERFLOW" => Some(Self::CoinBalanceOverflow),
                 "VALIDATOR_NOT_FOUND" => Some(Self::ValidatorNotFound),
-                "ENCODER_NOT_FOUND" => Some(Self::EncoderNotFound),
                 "STAKING_POOL_NOT_FOUND" => Some(Self::StakingPoolNotFound),
                 "CANNOT_REPORT_ONESELF" => Some(Self::CannotReportOneself),
                 "REPORT_RECORD_NOT_FOUND" => Some(Self::ReportRecordNotFound),
@@ -711,6 +733,18 @@ pub mod execution_error {
                 "CERTIFICATE_DENIED" => Some(Self::CertificateDenied),
                 "SHARED_OBJECT_CONGESTION" => Some(Self::SharedObjectCongestion),
                 "OTHER_ERROR" => Some(Self::OtherError),
+                "MODEL_NOT_PENDING" => Some(Self::ModelNotPending),
+                "MODEL_ALREADY_INACTIVE" => Some(Self::ModelAlreadyInactive),
+                "MODEL_REVEAL_EPOCH_MISMATCH" => Some(Self::ModelRevealEpochMismatch),
+                "MODEL_WEIGHTS_URL_MISMATCH" => Some(Self::ModelWeightsUrlMismatch),
+                "MODEL_NO_PENDING_UPDATE" => Some(Self::ModelNoPendingUpdate),
+                "MODEL_ARCHITECTURE_VERSION_MISMATCH" => {
+                    Some(Self::ModelArchitectureVersionMismatch)
+                }
+                "MODEL_COMMISSION_RATE_TOO_HIGH" => {
+                    Some(Self::ModelCommissionRateTooHigh)
+                }
+                "MODEL_MIN_STAKE_NOT_MET" => Some(Self::ModelMinStakeNotMet),
                 _ => None,
             }
         }
@@ -2806,7 +2840,7 @@ pub struct SystemState {
     /// System parameters
     #[prost(message, optional, tag = "4")]
     pub parameters: ::core::option::Option<SystemParameters>,
-    /// Validator and encoder sets
+    /// Validator set
     #[prost(message, optional, tag = "5")]
     pub validators: ::core::option::Option<ValidatorSet>,
     /// Report records
@@ -2824,6 +2858,9 @@ pub struct SystemState {
     pub targets_created_per_epoch: ::prost::alloc::collections::BTreeMap<u64, u64>,
     #[prost(btree_map = "uint64, bytes", tag = "10")]
     pub epoch_seeds: ::prost::alloc::collections::BTreeMap<u64, ::prost::bytes::Bytes>,
+    /// Model registry
+    #[prost(message, optional, tag = "11")]
+    pub model_registry: ::core::option::Option<ModelRegistry>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2836,14 +2873,18 @@ pub struct ReporterSet {
 pub struct SystemParameters {
     #[prost(uint64, optional, tag = "1")]
     pub epoch_duration_ms: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "2")]
-    pub vdf_iterations: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "3")]
-    pub target_selection_rate_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "4")]
     pub target_reward_allocation_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "5")]
-    pub encoder_tally_slash_rate_bps: ::core::option::Option<u64>,
+    /// Model parameters
+    #[prost(uint64, optional, tag = "14")]
+    pub model_min_stake: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "15")]
+    pub model_architecture_version: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "16")]
+    pub model_reveal_slash_rate_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "17")]
+    pub model_tally_slash_rate_bps: ::core::option::Option<u64>,
+    /// Fee parameters
     #[prost(uint64, optional, tag = "6")]
     pub target_epoch_fee_collection: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "7")]
@@ -2858,8 +2899,6 @@ pub struct SystemParameters {
     pub max_value_fee_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "12")]
     pub fee_adjustment_rate_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "13")]
-    pub claim_incentive_bps: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -2977,6 +3016,77 @@ pub struct PoolTokenExchangeRate {
     #[prost(uint64, optional, tag = "2")]
     pub pool_token_amount: ::core::option::Option<u64>,
 }
+/// A registered model in the mining system.
+/// Status derived from fields (same pattern as validators):
+///    Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
+///    Active:    weights_manifest present, staking_pool.deactivation_epoch absent
+///    Inactive:  staking_pool.deactivation_epoch present
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Model {
+    /// SomaAddress hex
+    #[prost(string, optional, tag = "1")]
+    pub owner: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub architecture_version: ::core::option::Option<u64>,
+    /// 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "5")]
+    pub commit_epoch: ::core::option::Option<u64>,
+    /// absent while committed
+    #[prost(message, optional, tag = "6")]
+    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
+    #[prost(message, optional, tag = "7")]
+    pub staking_pool: ::core::option::Option<StakingPool>,
+    #[prost(uint64, optional, tag = "8")]
+    pub commission_rate: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "9")]
+    pub next_epoch_commission_rate: ::core::option::Option<u64>,
+    /// absent if no update in flight
+    #[prost(message, optional, tag = "10")]
+    pub pending_update: ::core::option::Option<PendingModelUpdate>,
+}
+/// Registry of all models in the mining system.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModelRegistry {
+    /// ModelId (ObjectID hex) -> Model
+    #[prost(btree_map = "string, message", tag = "1")]
+    pub active_models: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        Model,
+    >,
+    /// ModelId (ObjectID hex) -> Model
+    #[prost(btree_map = "string, message", tag = "2")]
+    pub pending_models: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        Model,
+    >,
+    /// pool ObjectID hex -> ModelId hex
+    #[prost(btree_map = "string, string", tag = "3")]
+    pub staking_pool_mappings: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+    /// ModelId (ObjectID hex) -> Model
+    #[prost(btree_map = "string, message", tag = "4")]
+    pub inactive_models: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        Model,
+    >,
+    #[prost(uint64, optional, tag = "5")]
+    pub total_model_stake: ::core::option::Option<u64>,
+    /// ModelId hex -> reporter addresses
+    #[prost(btree_map = "string, message", tag = "6")]
+    pub model_report_records: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ReporterSet,
+    >,
+}
 /// A transaction.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2997,7 +3107,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3040,6 +3150,25 @@ pub mod transaction_kind {
         AddStake(super::AddStake),
         #[prost(message, tag = "14")]
         WithdrawStake(super::WithdrawStake),
+        /// Model transactions
+        #[prost(message, tag = "15")]
+        CommitModel(super::CommitModel),
+        #[prost(message, tag = "16")]
+        RevealModel(super::RevealModel),
+        #[prost(message, tag = "17")]
+        CommitModelUpdate(super::CommitModelUpdate),
+        #[prost(message, tag = "18")]
+        RevealModelUpdate(super::RevealModelUpdate),
+        #[prost(message, tag = "19")]
+        AddStakeToModel(super::AddStakeToModel),
+        #[prost(message, tag = "20")]
+        SetModelCommissionRate(super::SetModelCommissionRate),
+        #[prost(message, tag = "21")]
+        DeactivateModel(super::DeactivateModel),
+        #[prost(message, tag = "22")]
+        ReportModel(super::ReportModel),
+        #[prost(message, tag = "23")]
+        UndoReportModel(super::UndoReportModel),
     }
 }
 #[non_exhaustive]
@@ -3189,6 +3318,110 @@ pub struct ManifestV1 {
     pub url: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag = "2")]
     pub metadata: ::core::option::Option<Metadata>,
+}
+/// Model weights manifest: URL + metadata + decryption key.
+/// Used by RevealModel and RevealModelUpdate transactions, and by Model in system state.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModelWeightsManifest {
+    #[prost(message, optional, tag = "1")]
+    pub manifest: ::core::option::Option<Manifest>,
+    /// 32-byte AES-256 key
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
+}
+/// Pending update to an active model's weights (commit phase).
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PendingModelUpdate {
+    /// 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "1")]
+    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "3")]
+    pub commit_epoch: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommitModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "4")]
+    pub architecture_version: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub stake_amount: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "6")]
+    pub commission_rate: ::core::option::Option<u64>,
+    #[prost(string, optional, tag = "7")]
+    pub staking_pool_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevealModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommitModelUpdate {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevealModelUpdate {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AddStakeToModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub coin_ref: ::core::option::Option<ObjectReference>,
+    #[prost(uint64, optional, tag = "3")]
+    pub amount: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetModelCommissionRate {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub new_rate: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeactivateModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UndoReportModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// System transaction used to change the epoch.
 #[non_exhaustive]

@@ -1,14 +1,9 @@
-use std::{
-    cmp::Ordering,
-};
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use url::Url;
 
-use crate::{
-    checksum::Checksum,
-    error::{SharedError, SharedResult},
-};
+use crate::checksum::Checksum;
 
 type SizeInBytes = usize;
 
@@ -89,22 +84,4 @@ impl ManifestAPI for ManifestV1 {
 #[enum_dispatch(ManifestAPI)]
 pub enum Manifest {
     V1(ManifestV1),
-}
-
-pub fn verify_metadata(metadata: &Metadata, max_size: Option<SizeInBytes>) -> SharedResult<()> {
-    if metadata.size() == 0 {
-        return Err(SharedError::ValidationError("Size must be non-zero".into()));
-    }
-
-    // Check max size if specified
-    if let Some(max_size) = max_size {
-        if metadata.size() > max_size {
-            return Err(SharedError::ValidationError(format!(
-                "Size {} exceeds maximum allowed size {}",
-                metadata.size(),
-                max_size
-            )));
-        }
-    }
-    Ok(())
 }

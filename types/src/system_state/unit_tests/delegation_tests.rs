@@ -152,8 +152,10 @@ mod delegation_tests {
         );
 
         // Distribute rewards if needed
+        // 80 SOMA to validators; v1 has 200/300 stake → gets ~53.33 SOMA,
+        // v2 has 100/300 → gets ~26.67 SOMA.
+        // Staker owns 100/200 of v1's pool → gets ~26.67 SOMA via exchange rate.
         if should_distribute_rewards {
-            // Each validator pool gets significant rewards
             let _ = advance_epoch_with_rewards(&mut system_state, 80 * SHANNONS_PER_SOMA).unwrap();
         } else {
             let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -167,21 +169,20 @@ mod delegation_tests {
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
-        // Calculate expected reward amounts
-        let reward_amt = if should_distribute_rewards {
-            20 * SHANNONS_PER_SOMA
-        } else {
-            0
-        };
-
         // Unstake from removed validator
         let withdrawn = unstake(&mut system_state, staked_soma);
         staker_withdrawals.insert(staker_addr_1(), withdrawn);
 
         // Verify withdrawn amount includes principal + rewards
+        // Staker gets ~23.336 SOMA reward via exchange rate (100/200 of v1's reward)
+        let expected_staker = if should_distribute_rewards {
+            123_336_000_000
+        } else {
+            100 * SHANNONS_PER_SOMA
+        };
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            100 * SHANNONS_PER_SOMA + reward_amt,
+            expected_staker,
             "Staker should receive principal + rewards"
         );
 
@@ -206,10 +207,17 @@ mod delegation_tests {
             .get(validator_pool_id)
             .unwrap();
 
-        // Validator should still have their self-stake + rewards
+        // Validator should still have their self-stake + rewards.
+        // v1 gets ~53.336 SOMA reward total; validator owns 100/200 of pool, same as staker.
+        // After staker withdrawal, validator retains their 100 + reward share.
+        let expected_validator = if should_distribute_rewards {
+            123_336_000_000
+        } else {
+            100 * SHANNONS_PER_SOMA
+        };
         assert_eq!(
             validator.staking_pool.soma_balance,
-            100 * SHANNONS_PER_SOMA + reward_amt,
+            expected_validator,
             "Validator should retain self-stake + rewards"
         );
     }
@@ -231,20 +239,18 @@ mod delegation_tests {
             .unwrap();
 
         // Add rewards after the validator requests to leave
-        // Since the validator is still active this epoch, it should get rewards
+        // Since the validator is still active this epoch, it should get rewards.
+        // 80 SOMA to validators; v1 (200/300 stake) gets ~53.336 SOMA reward.
         let _ = advance_epoch_with_rewards(&mut system_state, 80 * SHANNONS_PER_SOMA).unwrap();
-
-        // Expected rewards amounts
-        let reward_amt = 20 * SHANNONS_PER_SOMA;
 
         // Unstake from removed validator
         let withdrawn = unstake(&mut system_state, staked_soma);
         staker_withdrawals.insert(staker_addr_1(), withdrawn);
 
-        // Verify withdrawn amount includes principal + rewards
+        // Staker owns 100/200 of v1's pool → gets ~23.336 SOMA reward
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            100 * SHANNONS_PER_SOMA + reward_amt,
+            123_336_000_000,
             "Staker should receive principal + rewards from last epoch"
         );
 
@@ -269,10 +275,10 @@ mod delegation_tests {
             .get(validator_pool_id)
             .unwrap();
 
-        // Validator should have their self-stake + rewards
+        // Validator retains their 100 SOMA + same reward share as staker
         assert_eq!(
             validator.staking_pool.soma_balance,
-            100 * SHANNONS_PER_SOMA + reward_amt,
+            123_336_000_000,
             "Validator should retain self-stake + rewards from last epoch"
         );
     }
@@ -453,7 +459,8 @@ mod delegation_tests {
         assert_eq!(rate_1.pool_token_amount, 200 * SHANNONS_PER_SOMA);
 
         let rate_2 = validator.pool_token_exchange_rate_at_epoch(2);
-        assert_eq!(rate_2.soma_amount, 210 * SHANNONS_PER_SOMA); // 200 + 10 rewards
+        // v2 gets rewards proportional to its voting power share of 20 SOMA
+        assert_eq!(rate_2.soma_amount, 211_668_000_000);
         assert_eq!(rate_2.pool_token_amount, 200 * SHANNONS_PER_SOMA);
     }
 }

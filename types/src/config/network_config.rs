@@ -66,10 +66,6 @@ pub enum CommitteeConfig {
     /// Indicates that a committee should be deterministically generated, using the provided rng
     /// as a source of randomness as well as generating deterministic network port information.
     Deterministic((NonZeroUsize, Option<Vec<SomaKeyPair>>)),
-    Mixed {
-        consensus_count: NonZeroUsize,
-        networking_count: NonZeroUsize,
-    },
 }
 
 pub type SupportedProtocolVersionsCallback = Arc<
@@ -282,35 +278,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 }
                 configs
             }
-            CommitteeConfig::Mixed {
-                consensus_count,
-                networking_count,
-            } => {
-                let mut configs = vec![];
-
-                // Generate consensus validators
-                let (_, consensus_keys) =
-                    Committee::new_simple_test_committee_of_size(consensus_count.get());
-                for (i, authority_key) in consensus_keys.into_iter().enumerate() {
-                    // let port_offset = 8000 + i * 10;
-                    let builder =
-                        ValidatorGenesisConfigBuilder::new().with_protocol_key_pair(authority_key);
-                    // .with_ip("127.0.0.1".to_owned())
-                    // .with_deterministic_ports(port_offset as u16);
-                    configs.push(builder.build(&mut rng));
-                }
-
-                // Generate networking validators
-                for i in 0..networking_count.get() {
-                    let builder = ValidatorGenesisConfigBuilder::new()
-                        // .with_ip("127.0.0.1".to_owned())
-                        // .with_deterministic_ports(port_offset as u16)
-                        .as_networking_only(); // Mark as networking-only
-                    configs.push(builder.build(&mut rng));
-                }
-
-                configs
-            }
         };
 
         let mut genesis_config = self
@@ -341,14 +308,29 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     recipient_address: address,
                     amount_shannons: DEFAULT_GAS_AMOUNT * 10,
                     staked_with_validator: None,
+                    staked_with_model: None,
                 };
                 let stake = TokenAllocation {
                     recipient_address: address,
                     amount_shannons: validator.stake,
                     staked_with_validator: Some(address),
+                    staked_with_model: None,
                 };
                 builder.add_allocation(gas_coin);
                 builder.add_allocation(stake);
+            }
+
+            // Add allocations for genesis model stakes
+            for model in &genesis_config.genesis_models {
+                if model.initial_stake > 0 {
+                    let stake = TokenAllocation {
+                        recipient_address: model.owner,
+                        amount_shannons: model.initial_stake,
+                        staked_with_validator: None,
+                        staked_with_model: Some(model.model_id),
+                    };
+                    builder.add_allocation(stake);
+                }
             }
 
             builder.build()
@@ -358,7 +340,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let mut genesis_builder = GenesisBuilder::new()
             .with_parameters(genesis_config.parameters.clone())
             .with_validator_configs(all_validators.clone())
-            .with_token_distribution_schedule(token_distribution_schedule);
+            .with_token_distribution_schedule(token_distribution_schedule)
+            .with_genesis_models(genesis_config.genesis_models);
 
         let consensus_keypairs: Vec<AuthorityKeyPair> = all_validators
             .clone()

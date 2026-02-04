@@ -709,6 +709,144 @@ impl ValidatorConfigBuilder {
     // }
 }
 
+/// Builder for fullnode NodeConfig. Creates a node that is NOT in the validator committee
+/// and does NOT participate in consensus. It connects to the network via seed peers and
+/// syncs state via the state sync protocol.
+#[derive(Clone, Default)]
+pub struct FullnodeConfigBuilder {
+    config_directory: Option<PathBuf>,
+    rpc_port: Option<u16>,
+    rpc_addr: Option<SocketAddr>,
+    rpc_config: Option<RpcConfig>,
+    supported_protocol_versions: Option<SupportedProtocolVersions>,
+}
+
+impl FullnodeConfigBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_config_directory(mut self, config_directory: PathBuf) -> Self {
+        self.config_directory = Some(config_directory);
+        self
+    }
+
+    pub fn with_rpc_port(mut self, rpc_port: u16) -> Self {
+        assert!(
+            self.rpc_addr.is_none(),
+            "Cannot set both rpc_port and rpc_addr"
+        );
+        self.rpc_port = Some(rpc_port);
+        self
+    }
+
+    pub fn with_rpc_addr(mut self, rpc_addr: SocketAddr) -> Self {
+        assert!(
+            self.rpc_port.is_none(),
+            "Cannot set both rpc_port and rpc_addr"
+        );
+        self.rpc_addr = Some(rpc_addr);
+        self
+    }
+
+    pub fn with_rpc_config(mut self, rpc_config: RpcConfig) -> Self {
+        self.rpc_config = Some(rpc_config);
+        self
+    }
+
+    pub fn with_supported_protocol_versions(
+        mut self,
+        supported_protocol_versions: SupportedProtocolVersions,
+    ) -> Self {
+        self.supported_protocol_versions = Some(supported_protocol_versions);
+        self
+    }
+
+    pub fn build(self, genesis: crate::genesis::Genesis, seed_peers: Vec<SeedPeer>) -> NodeConfig {
+        use crate::crypto::get_key_pair_from_rng;
+        use fastcrypto::traits::KeyPair;
+        use rand::rngs::OsRng;
+
+        let mut rng = OsRng;
+
+        // Generate independent keypairs — this node is NOT in the validator committee
+        let protocol_key_pair: AuthorityKeyPair = get_key_pair_from_rng(&mut rng).1;
+        let network_key_pair: NetworkKeyPair =
+            NetworkKeyPair::new(get_key_pair_from_rng(&mut rng).1);
+        let worker_key_pair: NetworkKeyPair =
+            NetworkKeyPair::new(get_key_pair_from_rng(&mut rng).1);
+        let account_key_pair: SomaKeyPair =
+            SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1);
+
+        let key_path = get_key_path(&protocol_key_pair);
+        let config_directory = self
+            .config_directory
+            .unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
+
+        let db_path = config_directory.join(FULL_NODE_DB_PATH).join(&key_path);
+        let consensus_db_path = config_directory.join(CONSENSUS_DB_NAME).join(&key_path);
+
+        let ip = local_ip_utils::get_new_ip();
+        let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+        let p2p_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+
+        let rpc_address = if let Some(addr) = self.rpc_addr {
+            addr
+        } else if let Some(port) = self.rpc_port {
+            let ip_addr: std::net::IpAddr = ip.parse().unwrap();
+            SocketAddr::new(ip_addr, port)
+        } else {
+            let ip_addr: std::net::IpAddr = ip.parse().unwrap();
+            let port = local_ip_utils::get_available_port(&ip);
+            SocketAddr::new(ip_addr, port)
+        };
+
+        let p2p_config = P2pConfig {
+            external_address: Some(p2p_address),
+            seed_peers,
+            state_sync: Some(StateSyncConfig {
+                checkpoint_content_timeout_ms: Some(10_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        NodeConfig {
+            protocol_key_pair: AuthorityKeyPairWithPath::new(protocol_key_pair),
+            network_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
+                network_key_pair.into_inner(),
+            )),
+            account_key_pair: KeyPairWithPath::new(account_key_pair),
+            worker_key_pair: KeyPairWithPath::new(SomaKeyPair::Ed25519(
+                worker_key_pair.into_inner(),
+            )),
+            db_path,
+            consensus_db_path,
+            network_address,
+            genesis: Genesis::new(genesis),
+            rpc_address,
+            rpc: self.rpc_config.or(Some(RpcConfig::default())),
+            checkpoint_executor_config: CheckpointExecutorConfig::default(),
+            state_archive_read_config: None,
+            consensus_config: None, // Fullnodes do not participate in consensus
+            authority_store_pruning_config: AuthorityStorePruningConfig::default(),
+            end_of_epoch_broadcast_channel_capacity: 128,
+            p2p_config,
+            state_debug_dump_config: Default::default(),
+            validator_client_monitor_config: None,
+            chain_override_for_testing: None,
+            run_with_range: None,
+            supported_protocol_versions: self.supported_protocol_versions,
+            expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
+            execution_cache: ExecutionCacheConfig::default(),
+            fork_recovery: None,
+            transaction_driver_config: Some(TransactionDriverConfig::default()),
+            transaction_deny_config: Default::default(),
+            certificate_deny_config: Default::default(),
+        }
+    }
+}
+
 /// Given a validator keypair, return a path that can be used to identify the validator.
 pub fn get_key_path(key_pair: &AuthorityKeyPair) -> String {
     let public_key: AuthorityPublicKeyBytes = key_pair.public().into();

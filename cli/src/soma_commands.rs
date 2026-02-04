@@ -1,6 +1,6 @@
 use crate::{
     client_commands::SomaClientCommands,
-    commands::{EnvCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand},
+    commands::{EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand},
     keytool::KeyToolCommand,
 };
 use anyhow::{Context as _, anyhow, bail, ensure};
@@ -162,12 +162,15 @@ pub enum SomaCommand {
         json: bool,
     },
 
-    /// Stake SOMA with a validator or encoder
+    /// Stake SOMA with a validator or model
     #[clap(name = "stake")]
     Stake {
         /// Validator address to stake with
         #[clap(long, group = "stake_target")]
         validator: Option<SomaAddress>,
+        /// Model ID to stake with
+        #[clap(long, group = "stake_target")]
+        model: Option<ObjectID>,
         /// Amount to stake (uses entire coin if not specified)
         #[clap(long)]
         amount: Option<u64>,
@@ -243,6 +246,15 @@ pub enum SomaCommand {
         config: SomaEnvConfig,
         #[clap(subcommand)]
         cmd: Option<SomaValidatorCommand>,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Manage models (commit, reveal, update, deactivate, query)
+    #[clap(name = "model")]
+    Model {
+        #[clap(subcommand)]
+        cmd: ModelCommand,
         #[clap(long, global = true)]
         json: bool,
     },
@@ -411,7 +423,7 @@ impl SomaCommand {
 
             SomaCommand::Stake {
                 validator,
-
+                model,
                 amount,
                 coin,
                 tx_args,
@@ -419,7 +431,7 @@ impl SomaCommand {
             } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
-                    commands::stake::execute_stake(&mut context, validator, amount, coin, tx_args)
+                    commands::stake::execute_stake(&mut context, validator, model, amount, coin, tx_args)
                         .await?;
                 result.print(!json);
                 Ok(())
@@ -488,6 +500,12 @@ impl SomaCommand {
                     app.build();
                     app.find_subcommand_mut("validator").unwrap().print_help()?;
                 }
+                Ok(())
+            }
+
+            SomaCommand::Model { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                cmd.execute(&mut context).await?.print(!json);
                 Ok(())
             }
 

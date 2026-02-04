@@ -1,7 +1,7 @@
 # Soma
 
 ```
-RUSTFLAGS="--cfg msim" RUST_BACKTRACE=full cargo test -p e2e-tests --test encoder_committee_tests
+RUSTFLAGS="--cfg msim" RUST_BACKTRACE=full cargo test -p e2e-tests --test model_tests
 ```
 
 ```

@@ -22,3 +22,6 @@ anyhow.workspace = true
 rpc.workspace = true
 sdk.workspace = true
 prost-types.workspace = true
+fastcrypto.workspace = true
+url.workspace = true
+protocol-config.workspace = true

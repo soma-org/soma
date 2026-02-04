@@ -102,8 +102,8 @@ data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
 
-msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim" }
-msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98", package = "msim-macros" }
+msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
+msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }
 tokio-stream = { version = "0.1.18", features = ["sync", "net"] }
 futures = "0.3.31"
 itertools = "0.13.0"
@@ -189,8 +189,6 @@ prost-build = "0.14.3"
 prost-types = "0.14.3"
 
 
-# ENCODER-ONLY DEPENDENCIES
-encoder = { path = "encoder" }
 intelligence = { path = "intelligence" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
@@ -298,5 +296,5 @@ uuid = { version = "1.20.0", features = ["v4", "serde"] }
 fixed = { version = "1.30.0", features = ["serde"] }
 
 [patch.crates-io]
-tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "45b88cffa3f50d6f2022d0b422ca4a077ac96a98" }
+tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7" }
 # SHARED DEPENDENCIES

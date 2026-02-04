@@ -26,10 +26,12 @@ use types::{
     },
     tx_fee::TransactionFee,
 };
+use model::ModelExecutor;
 use validator::ValidatorExecutor;
 
 mod change_epoch;
 mod coin;
+mod model;
 mod object;
 mod prepare_gas;
 mod staking;
@@ -291,10 +293,21 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         }
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
-        // Staking transactions - both validator and encoder staking
+        // Staking transactions - both validator and model staking
         TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
             Box::new(StakingExecutor::new())
         }
+
+        // Model transactions
+        TransactionKind::CommitModel(_)
+        | TransactionKind::RevealModel(_)
+        | TransactionKind::CommitModelUpdate(_)
+        | TransactionKind::RevealModelUpdate(_)
+        | TransactionKind::AddStakeToModel { .. }
+        | TransactionKind::SetModelCommissionRate { .. }
+        | TransactionKind::DeactivateModel { .. }
+        | TransactionKind::ReportModel { .. }
+        | TransactionKind::UndoReportModel { .. } => Box::new(ModelExecutor::new()),
     }
 }
 

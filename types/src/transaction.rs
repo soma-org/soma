@@ -6,7 +6,11 @@ use std::{
 use crate::{
     base::FullObjectID,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
-    digests::{AdditionalConsensusStateDigest, SenderSignedDataDigest},
+    digests::{
+        AdditionalConsensusStateDigest, ModelWeightsCommitment, ModelWeightsUrlCommitment,
+        SenderSignedDataDigest,
+    },
+    model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
 };
 use fastcrypto::{
     hash::HashFunction,
@@ -101,6 +105,30 @@ pub enum TransactionKind {
     WithdrawStake {
         staked_soma: ObjectRef,
     },
+
+    // Model transactions
+    CommitModel(CommitModelArgs),
+    RevealModel(RevealModelArgs),
+    CommitModelUpdate(CommitModelUpdateArgs),
+    RevealModelUpdate(RevealModelUpdateArgs),
+    AddStakeToModel {
+        model_id: ModelId,
+        coin_ref: ObjectRef,
+        amount: Option<u64>,
+    },
+    SetModelCommissionRate {
+        model_id: ModelId,
+        new_rate: u64,
+    },
+    DeactivateModel {
+        model_id: ModelId,
+    },
+    ReportModel {
+        model_id: ModelId,
+    },
+    UndoReportModel {
+        model_id: ModelId,
+    },
 }
 
 /// # AddValidatorArgs
@@ -184,27 +212,33 @@ impl Default for UpdateValidatorMetadataArgs {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct AddEncoderArgs {
-    pub encoder_pubkey_bytes: Vec<u8>,
-    pub network_pubkey_bytes: Vec<u8>,
-    pub internal_network_address: Vec<u8>,
-    pub external_network_address: Vec<u8>,
-    pub object_server_address: Vec<u8>,
-    pub probe: Vec<u8>,
+pub struct CommitModelArgs {
+    pub model_id: ModelId,
+    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    pub weights_commitment: ModelWeightsCommitment,
+    pub architecture_version: ArchitectureVersion,
+    pub stake_amount: u64,
+    pub commission_rate: u64,
+    pub staking_pool_id: ObjectID,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct RemoveEncoderArgs {
-    pub encoder_pubkey_bytes: Vec<u8>,
+pub struct RevealModelArgs {
+    pub model_id: ModelId,
+    pub weights_manifest: ModelWeightsManifest,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct UpdateEncoderMetadataArgs {
-    pub next_epoch_external_network_address: Option<Vec<u8>>,
-    pub next_epoch_internal_network_address: Option<Vec<u8>>,
-    pub next_epoch_network_pubkey: Option<Vec<u8>>,
-    pub next_epoch_object_server_address: Option<Vec<u8>>,
-    pub next_epoch_probe: Option<Vec<u8>>,
+pub struct CommitModelUpdateArgs {
+    pub model_id: ModelId,
+    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    pub weights_commitment: ModelWeightsCommitment,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct RevealModelUpdateArgs {
+    pub model_id: ModelId,
+    pub weights_manifest: ModelWeightsManifest,
 }
 
 impl TransactionKind {
@@ -236,12 +270,30 @@ impl TransactionKind {
         )
     }
 
+    pub fn is_model_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::CommitModel(_)
+                | TransactionKind::RevealModel(_)
+                | TransactionKind::CommitModelUpdate(_)
+                | TransactionKind::RevealModelUpdate(_)
+                | TransactionKind::AddStakeToModel { .. }
+                | TransactionKind::SetModelCommissionRate { .. }
+                | TransactionKind::DeactivateModel { .. }
+                | TransactionKind::ReportModel { .. }
+                | TransactionKind::UndoReportModel { .. }
+        )
+    }
+
     pub fn is_end_of_epoch_tx(&self) -> bool {
         matches!(self, TransactionKind::ChangeEpoch(_))
     }
 
     pub fn requires_system_state(&self) -> bool {
-        self.is_validator_tx() || self.is_epoch_change() || self.is_staking_tx()
+        self.is_validator_tx()
+            || self.is_epoch_change()
+            || self.is_staking_tx()
+            || self.is_model_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -311,6 +363,10 @@ impl TransactionKind {
 
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
+            }
+
+            TransactionKind::AddStakeToModel { coin_ref, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
             }
 
             _ => {}

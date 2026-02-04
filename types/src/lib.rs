@@ -1,4 +1,3 @@
-pub mod actors;
 pub mod balance_change;
 pub mod base;
 pub mod checkpoints;
@@ -21,6 +20,7 @@ pub mod grpc_timeout;
 pub mod intent;
 pub mod messages_grpc;
 pub mod metadata;
+pub mod model;
 pub mod multiaddr;
 pub mod multisig;
 pub mod mutex_table;

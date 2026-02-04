@@ -15,7 +15,7 @@ message SystemState {
   // System parameters
   optional SystemParameters parameters = 4;
   
-  // Validator and encoder sets
+  // Validator set
   optional ValidatorSet validators = 5;
   
   // Report records
@@ -27,6 +27,9 @@ message SystemState {
   map<uint64, uint64> target_rewards_per_epoch = 8;
   map<uint64, uint64> targets_created_per_epoch = 9;
   map<uint64, bytes> epoch_seeds = 10;
+
+  // Model registry
+  optional ModelRegistry model_registry = 11;
 }
 
 message ReporterSet {
@@ -35,10 +38,13 @@ message ReporterSet {
 
 message SystemParameters {
   optional uint64 epoch_duration_ms = 1;
-  optional uint64 vdf_iterations = 2;
-  optional uint64 target_selection_rate_bps = 3;
   optional uint64 target_reward_allocation_bps = 4;
-  optional uint64 encoder_tally_slash_rate_bps = 5;
+  // Model parameters
+  optional uint64 model_min_stake = 14;
+  optional uint64 model_architecture_version = 15;
+  optional uint64 model_reveal_slash_rate_bps = 16;
+  optional uint64 model_tally_slash_rate_bps = 17;
+  // Fee parameters
   optional uint64 target_epoch_fee_collection = 6;
   optional uint64 base_fee = 7;
   optional uint64 write_object_fee = 8;
@@ -46,7 +52,6 @@ message SystemParameters {
   optional uint64 min_value_fee_bps = 10;
   optional uint64 max_value_fee_bps = 11;
   optional uint64 fee_adjustment_rate_bps = 12;
-  optional uint64 claim_incentive_bps = 13;
 }
 
 message EmissionPool {
@@ -105,5 +110,33 @@ message StakingPool {
 message PoolTokenExchangeRate {
   optional uint64 soma_amount = 1;
   optional uint64 pool_token_amount = 2;
+}
+
+// A registered model in the mining system.
+// Status derived from fields (same pattern as validators):
+//   Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
+//   Active:    weights_manifest present, staking_pool.deactivation_epoch absent
+//   Inactive:  staking_pool.deactivation_epoch present
+message Model {
+  optional string owner = 1;                              // SomaAddress hex
+  optional uint64 architecture_version = 2;
+  optional bytes weights_url_commitment = 3;              // 32-byte digest
+  optional bytes weights_commitment = 4;                  // 32-byte digest
+  optional uint64 commit_epoch = 5;
+  optional ModelWeightsManifest weights_manifest = 6;     // absent while committed
+  optional StakingPool staking_pool = 7;
+  optional uint64 commission_rate = 8;
+  optional uint64 next_epoch_commission_rate = 9;
+  optional PendingModelUpdate pending_update = 10;        // absent if no update in flight
+}
+
+// Registry of all models in the mining system.
+message ModelRegistry {
+  map<string, Model> active_models = 1;              // ModelId (ObjectID hex) -> Model
+  map<string, Model> pending_models = 2;             // ModelId (ObjectID hex) -> Model
+  map<string, string> staking_pool_mappings = 3;     // pool ObjectID hex -> ModelId hex
+  map<string, Model> inactive_models = 4;            // ModelId (ObjectID hex) -> Model
+  optional uint64 total_model_stake = 5;
+  map<string, ReporterSet> model_report_records = 6; // ModelId hex -> reporter addresses
 }
 

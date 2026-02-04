@@ -9,8 +9,8 @@ use tracing::trace;
 
 use crate::base::ExecutionDigests;
 use crate::config::genesis_config::{
-    GenesisCeremonyParameters, TOTAL_SUPPLY_SHANNONS, TokenDistributionSchedule,
-    ValidatorGenesisConfig,
+    GenesisCeremonyParameters, GenesisModelConfig, TOTAL_SUPPLY_SHANNONS,
+    TokenDistributionSchedule, ValidatorGenesisConfig,
 };
 use crate::crypto::AuthoritySignInfoTrait as _;
 use crate::envelope::Message as _;
@@ -40,6 +40,7 @@ use crate::{
 use std::collections::BTreeSet;
 
 const GENESIS_BUILDER_COMMITTEE_DIR: &str = "committee";
+const GENESIS_BUILDER_MODELS_DIR: &str = "models";
 const GENESIS_BUILDER_PARAMETERS_FILE: &str = "parameters";
 const GENESIS_BUILDER_TOKEN_DISTRIBUTION_SCHEDULE_FILE: &str = "token-distribution-schedule";
 const GENESIS_BUILDER_SIGNATURE_DIR: &str = "signatures";
@@ -49,6 +50,7 @@ pub struct GenesisBuilder {
     parameters: GenesisCeremonyParameters,
     token_distribution_schedule: Option<TokenDistributionSchedule>,
     validators: Vec<GenesisValidatorInfo>,
+    genesis_models: Vec<GenesisModelConfig>,
     signatures: BTreeMap<AuthorityPublicKeyBytes, AuthoritySignInfo>,
     built_genesis: Option<UnsignedGenesis>,
 }
@@ -65,7 +67,7 @@ impl GenesisBuilder {
             parameters: GenesisCeremonyParameters::default(),
             token_distribution_schedule: None,
             validators: Vec::new(),
-
+            genesis_models: Vec::new(),
             signatures: BTreeMap::new(),
             built_genesis: None,
         }
@@ -113,8 +115,26 @@ impl GenesisBuilder {
         self
     }
 
+    /// Add seed models to be created at genesis (skip commit-reveal).
+    pub fn with_genesis_models(mut self, models: Vec<GenesisModelConfig>) -> Self {
+        self.genesis_models = models;
+        self.built_genesis = None;
+        self
+    }
+
+    /// Add a single seed model to be created at genesis (ceremony workflow).
+    pub fn add_model(mut self, model: GenesisModelConfig) -> Self {
+        self.genesis_models.push(model);
+        self.built_genesis = None;
+        self
+    }
+
     pub fn validators(&self) -> &[GenesisValidatorInfo] {
         &self.validators
+    }
+
+    pub fn genesis_models(&self) -> &[GenesisModelConfig] {
+        &self.genesis_models
     }
 
     pub fn unsigned_genesis_checkpoint(&self) -> Option<UnsignedGenesis> {
@@ -298,6 +318,25 @@ impl GenesisBuilder {
             }
         }
 
+        // Load genesis models
+        let mut genesis_models = Vec::new();
+        let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
+        if models_dir.exists() {
+            for entry in models_dir.read_dir_utf8()? {
+                let entry = entry?;
+                if entry.file_name().starts_with('.') {
+                    continue;
+                }
+                let model_path = entry.path();
+                let model_bytes = fs::read(model_path)?;
+                let model_config: GenesisModelConfig = serde_yaml::from_slice(&model_bytes)
+                    .with_context(|| {
+                        format!("unable to load genesis model config for {}", model_path)
+                    })?;
+                genesis_models.push(model_config);
+            }
+        }
+
         // Load signatures
         let mut signatures = BTreeMap::new();
         let signature_dir = path.join(GENESIS_BUILDER_SIGNATURE_DIR);
@@ -320,6 +359,7 @@ impl GenesisBuilder {
             parameters,
             token_distribution_schedule,
             validators,
+            genesis_models,
             signatures,
             built_genesis: None,
         };
@@ -371,6 +411,14 @@ impl GenesisBuilder {
                 committee_dir.join(&validator.info.account_address.to_string()),
                 validator_bytes,
             )?;
+        }
+
+        // Write genesis models
+        let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
+        fs::create_dir_all(&models_dir)?;
+        for model in &self.genesis_models {
+            let model_bytes = serde_yaml::to_string(model)?;
+            fs::write(models_dir.join(model.model_id.to_string()), model_bytes)?;
         }
 
         // Write signatures
@@ -453,6 +501,19 @@ impl GenesisBuilder {
             self.parameters.emission_per_epoch,
         );
 
+        // Add genesis models (skip commit-reveal, created directly as active)
+        for model_config in &self.genesis_models {
+            system_state.add_model_at_genesis(
+                model_config.model_id,
+                model_config.owner,
+                model_config.weights_manifest.clone(),
+                model_config.weights_url_commitment,
+                model_config.weights_commitment,
+                model_config.architecture_version,
+                model_config.commission_rate,
+            );
+        }
+
         // Process token allocations
         if let Some(schedule) = &self.token_distribution_schedule {
             for allocation in &schedule.allocations {
@@ -463,7 +524,22 @@ impl GenesisBuilder {
                             validator,
                             allocation.amount_shannons,
                         )
-                        .expect("Failed to stake at genesis");
+                        .expect("Failed to stake with validator at genesis");
+
+                    let staked_object = Object::new_staked_soma_object(
+                        ObjectID::random(),
+                        staked_soma,
+                        Owner::AddressOwner(allocation.recipient_address),
+                        TransactionDigest::default(),
+                    );
+                    objects.push(staked_object);
+                } else if let Some(model_id) = allocation.staked_with_model {
+                    let staked_soma = system_state
+                        .request_add_stake_to_model_at_genesis(
+                            &model_id,
+                            allocation.amount_shannons,
+                        )
+                        .expect("Failed to stake with model at genesis");
 
                     let staked_object = Object::new_staked_soma_object(
                         ObjectID::random(),

@@ -57,14 +57,16 @@ mod rewards_distribution_tests {
         advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
 
         // Validator total stake should increase by their share of rewards
+        // Voting power: v1=1500, v2=2500, v3=3000, v4=3000
+        // Rewards (100 SOMA): v1=15, v2=25, v3=30, v4=30
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                125 * SHANNONS_PER_SOMA,
-                225 * SHANNONS_PER_SOMA,
-                325 * SHANNONS_PER_SOMA,
-                425 * SHANNONS_PER_SOMA,
+                115_000_000_000,
+                225_000_000_000,
+                330_000_000_000,
+                430_000_000_000,
             ],
         );
 
@@ -82,15 +84,17 @@ mod rewards_distribution_tests {
         // Distribute more rewards (100 SOMA)
         advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
 
-        // Even though validator 2 has more stake, rewards should respect voting power cap
+        // Voting power recalculated after v2's large stake increase:
+        // v1=1304, v2=3174, v3=2486, v4=3036
+        // Rewards (100 SOMA): v1=13.04, v2=31.74, v3=24.86, v4=30.36
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                150 * SHANNONS_PER_SOMA,
-                970 * SHANNONS_PER_SOMA,
-                350 * SHANNONS_PER_SOMA,
-                450 * SHANNONS_PER_SOMA,
+                128_040_000_000,
+                976_740_000_000,
+                354_860_000_000,
+                460_360_000_000,
             ],
         );
     }
@@ -109,14 +113,16 @@ mod rewards_distribution_tests {
         advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
 
         // Validator total stake should increase by their share of rewards
+        // Voting power: v1=1500, v2=2500, v3=3000, v4=3000
+        // Rewards (100 SOMA): v1=15, v2=25, v3=30, v4=30
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                100_000_025 * SHANNONS_PER_SOMA,
+                100_000_015 * SHANNONS_PER_SOMA,
                 200_000_025 * SHANNONS_PER_SOMA,
-                300_000_025 * SHANNONS_PER_SOMA,
-                400_000_025 * SHANNONS_PER_SOMA,
+                300_000_030 * SHANNONS_PER_SOMA,
+                400_000_030 * SHANNONS_PER_SOMA,
             ],
         );
     }
@@ -165,15 +171,21 @@ mod rewards_distribution_tests {
         advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
 
         // Verify validator self-stake amounts after rewards
-        // Self-stake should grow proportionally
+        // Self-stake grows proportionally to their share of the pool
+        // Voting power: v1=2452, v2=2452, v3=2451, v4=2645
+        // Pool rewards: v1=29.424, v2=29.424, v3=29.412, v4=31.740 SOMA
+        // v1 self: 100/300 * 29.424 = 9.808 → 109.808
+        // v2 self: 200/300 * 29.424 = 19.616 → 219.616
+        // v3 self: 300/300 * 29.412 = 29.412 → 329.412
+        // v4 self: 400/400 * 31.740 = 31.740 → 431.740
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                110 * SHANNONS_PER_SOMA,
-                220 * SHANNONS_PER_SOMA,
-                330 * SHANNONS_PER_SOMA,
-                430 * SHANNONS_PER_SOMA,
+                109_808_000_000,
+                219_616_000_000,
+                329_412_000_000,
+                431_740_000_000,
             ],
             &validator_stakes,
         );
@@ -189,21 +201,21 @@ mod rewards_distribution_tests {
         advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
 
         // Staker 1 should have received rewards proportional to their stake
-        // Verify the withdrawal includes principal + rewards
+        // Withdrawal: 200 SOMA principal + 200/300 * 29.424 SOMA reward = 219.616 SOMA
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            220 * SHANNONS_PER_SOMA
+            219_616_000_000
         );
 
-        // Validator self-stake amounts should increase with their share of rewards
+        // Validator self-stake amounts after second round of 120 SOMA rewards
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                140 * SHANNONS_PER_SOMA,
-                240 * SHANNONS_PER_SOMA,
-                360 * SHANNONS_PER_SOMA,
-                460 * SHANNONS_PER_SOMA,
+                139_268_000_000,
+                239_256_000_000,
+                358_860_000_000,
+                463_372_000_000,
             ],
             &validator_stakes,
         );
@@ -215,7 +227,7 @@ mod rewards_distribution_tests {
         // Verify staker 2's first withdrawal includes rewards
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            120 * SHANNONS_PER_SOMA
+            119_628_000_000
         );
 
         // Distribute more rewards (40 SOMA)
@@ -230,7 +242,7 @@ mod rewards_distribution_tests {
 
         // Verify total withdrawal amount for staker 2
         let staker_2_balance = total_soma_balance(&staker_withdrawals, staker_addr_2());
-        assert_eq!(staker_2_balance, 728108108107);
+        assert_eq!(staker_2_balance, 728_841_438_157);
     }
 
     #[test]
@@ -299,22 +311,28 @@ mod rewards_distribution_tests {
         advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
 
         // Check non-self stake amounts
+        // v1 (0% commission): non-self = 100/200 * 22.488 = 11.244 → 111.244
+        // v2 (20% commission): staker_reward = 32.508 * 0.8 = 26.0064, non-self = 100/300 * 26.0064 = 8.6688 → 108.6688
         assert_validator_non_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![115 * SHANNONS_PER_SOMA, 108 * SHANNONS_PER_SOMA, 0, 0],
+            vec![111_244_000_000, 108_668_800_000, 0, 0],
             &validator_stakes,
         );
 
         // Check validator self stake amounts
+        // v1: self 100/200 * 22.488 = 11.244 → 111.244
+        // v2: self 200/300 * 26.0064 + 6.5016 commission = 17.3376 + 6.5016 = 23.8392 → 223.8392
+        // v3: 300 + 32.496 = 332.496
+        // v4: 400 + 32.508 = 432.508
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                115 * SHANNONS_PER_SOMA,
-                222 * SHANNONS_PER_SOMA,
-                330 * SHANNONS_PER_SOMA,
-                430 * SHANNONS_PER_SOMA,
+                111_244_000_000,
+                223_839_200_000,
+                332_496_000_000,
+                432_508_000_000,
             ],
             &validator_stakes,
         );
@@ -328,15 +346,15 @@ mod rewards_distribution_tests {
         // Distribute more rewards (240 SOMA)
         advance_epoch_with_reward_amounts(&mut system_state, 240, &mut validator_stakes);
 
-        // Verify total stake amounts
+        // Verify total stake amounts after 240 SOMA more rewards
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                290 * SHANNONS_PER_SOMA,
-                390 * SHANNONS_PER_SOMA,
-                390 * SHANNONS_PER_SOMA,
-                490 * SHANNONS_PER_SOMA,
+                267_800_000_000,
+                397_404_000_000,
+                397_392_000_000,
+                497_404_000_000,
             ],
         );
 
@@ -345,10 +363,10 @@ mod rewards_distribution_tests {
             &system_state,
             validator_addrs(),
             vec![
-                148 * SHANNONS_PER_SOMA,
-                266290909091,
-                390 * SHANNONS_PER_SOMA,
-                490 * SHANNONS_PER_SOMA,
+                136_165_600_000,
+                271_767_980_095,
+                397_392_000_000,
+                497_404_000_000,
             ],
             &validator_stakes,
         );
@@ -356,7 +374,7 @@ mod rewards_distribution_tests {
         assert_validator_non_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![142 * SHANNONS_PER_SOMA, 123709090909, 0, 0],
+            vec![131_634_400_000, 125_636_019_905, 0, 0],
             &validator_stakes,
         );
     }
@@ -396,15 +414,16 @@ mod rewards_distribution_tests {
             &mut validator_stakes,
         );
 
-        // Validator 2 should have 10% of rewards slashed
+        // Validator 2 should have 10% of rewards slashed (reward_slashing_rate=1000 bps)
+        // v2 reported by quorum → 10% of v2's reward redistributed to others
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                565 * SHANNONS_PER_SOMA,
-                740 * SHANNONS_PER_SOMA,
-                1230 * SHANNONS_PER_SOMA,
-                1330 * SHANNONS_PER_SOMA,
+                449_853_258_537,
+                785_144_000_000,
+                1_311_102_053_490,
+                1_411_475_429_433,
             ],
             &validator_stakes,
         );
@@ -416,16 +435,16 @@ mod rewards_distribution_tests {
         staker_withdrawals.insert(staker_addr_1(), withdrawn_1);
         staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
 
-        // Staker 1 should get full rewards
+        // Staker 1 gets full rewards (same share as v1 self-stake)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            565 * SHANNONS_PER_SOMA
+            449_853_258_537
         );
 
-        // Staker 2 should have slashed rewards
+        // Staker 2 gets reduced rewards (v2 was slashed 10%)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            370 * SHANNONS_PER_SOMA
+            392_572_000_000
         );
     }
 
@@ -460,15 +479,16 @@ mod rewards_distribution_tests {
             &mut validator_stakes,
         );
 
-        // Validator 2 should have all rewards slashed
+        // Validator 2 should have all rewards slashed (reward_slashing_rate=10000 bps = 100%)
+        // v2's entire reward redistributed to other validators
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
             vec![
-                700 * SHANNONS_PER_SOMA,
-                200 * SHANNONS_PER_SOMA,
-                1500 * SHANNONS_PER_SOMA,
-                1600 * SHANNONS_PER_SOMA,
+                562_652_585_379,
+                200_000_000_000,
+                1_637_100_534_906,
+                1_737_594_294_335,
             ],
             &validator_stakes,
         );
@@ -480,16 +500,16 @@ mod rewards_distribution_tests {
         staker_withdrawals.insert(staker_addr_1(), withdrawn_1);
         staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
 
-        // Staker 1 should get additional rewards
+        // Staker 1 gets enhanced rewards (redistribution from slashed v2)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            700 * SHANNONS_PER_SOMA
+            562_652_585_379
         );
 
-        // Staker 2 should only get principal back with no rewards
+        // Staker 2 only gets principal back (v2 was 100% slashed on rewards)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            100 * SHANNONS_PER_SOMA
+            100_000_000_000
         );
     }
 
@@ -541,10 +561,12 @@ mod rewards_distribution_tests {
             .find(|v| v.metadata.soma_address == validator_addr_1())
             .expect("Validator 1 not found");
 
+        // Verify total stake in validator 1's pool
+        // Rewards are proportional to voting power, not equal splits
         assert_eq!(
             validator_1.staking_pool.soma_balance,
-            140 * 23 * SHANNONS_PER_SOMA,
-            "Expected validator 1 to have 140 * 23 SOMA"
+            3_264_872_000_000,
+            "Unexpected validator 1 pool balance"
         );
 
         // Withdraw all stakes at once
@@ -563,26 +585,21 @@ mod rewards_distribution_tests {
         }
 
         // Verify staker balances after withdrawals
-        // Staker 1's first stake was active for 3 epochs (60 SOMA rewards)
-        // and second stake active for 1 epoch (10 SOMA rewards)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()) / SHANNONS_PER_SOMA,
-            220 + 130 + 20 * 3 + 10,
+            435,
             "Incorrect withdrawal amount for staker 1"
         );
 
-        // Staker 2's stake was active for 2 epochs (80 SOMA rewards)
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_2()) / SHANNONS_PER_SOMA,
-            480 + 40 * 2,
+            580,
             "Incorrect withdrawal amount for staker 2"
         );
 
-        // Staker 3's first stake was active for 1 epoch (30 SOMA rewards)
-        // and second stake had no rewards
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_3()) / SHANNONS_PER_SOMA,
-            390 + 280 + 30,
+            708,
             "Incorrect withdrawal amount for staker 3"
         );
 
@@ -596,7 +613,7 @@ mod rewards_distribution_tests {
         // Advance epoch one more time
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
 
-        // Verify validator pool now only has the validator's original stake
+        // Verify validator pool after all withdrawals
         let validator_1 = system_state
             .validators
             .validators
@@ -606,8 +623,8 @@ mod rewards_distribution_tests {
 
         assert_eq!(
             validator_1.staking_pool.soma_balance,
-            140 * SHANNONS_PER_SOMA,
-            "Expected validator 1 to have 140 SOMA after all withdrawals"
+            140_929_659_227,
+            "Unexpected validator 1 pool after all withdrawals"
         );
     }
 

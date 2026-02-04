@@ -55,6 +55,17 @@ message TransactionKind {
     AddStake add_stake = 13;
 
     WithdrawStake withdraw_stake = 14;
+
+    // Model transactions
+    CommitModel commit_model = 15;
+    RevealModel reveal_model = 16;
+    CommitModelUpdate commit_model_update = 17;
+    RevealModelUpdate reveal_model_update = 18;
+    AddStakeToModel add_stake_to_model = 19;
+    SetModelCommissionRate set_model_commission_rate = 20;
+    DeactivateModel deactivate_model = 21;
+    ReportModel report_model = 22;
+    UndoReportModel undo_report_model = 23;
   }
 }
 
@@ -140,6 +151,71 @@ message Manifest {
 message ManifestV1 {
   optional string url = 1;
   optional Metadata metadata = 2;
+}
+
+// Model weights manifest: URL + metadata + decryption key.
+// Used by RevealModel and RevealModelUpdate transactions, and by Model in system state.
+message ModelWeightsManifest {
+  optional Manifest manifest = 1;
+  optional bytes decryption_key = 2;     // 32-byte AES-256 key
+}
+
+// Pending update to an active model's weights (commit phase).
+message PendingModelUpdate {
+  optional bytes weights_url_commitment = 1;  // 32-byte digest
+  optional bytes weights_commitment = 2;      // 32-byte digest
+  optional uint64 commit_epoch = 3;
+}
+
+// Model transaction messages
+
+message CommitModel {
+  optional string model_id = 1;
+  optional bytes weights_url_commitment = 2;
+  optional bytes weights_commitment = 3;
+  optional uint64 architecture_version = 4;
+  optional uint64 stake_amount = 5;
+  optional uint64 commission_rate = 6;
+  optional string staking_pool_id = 7;
+}
+
+message RevealModel {
+  optional string model_id = 1;
+  optional ModelWeightsManifest weights_manifest = 2;
+}
+
+message CommitModelUpdate {
+  optional string model_id = 1;
+  optional bytes weights_url_commitment = 2;
+  optional bytes weights_commitment = 3;
+}
+
+message RevealModelUpdate {
+  optional string model_id = 1;
+  optional ModelWeightsManifest weights_manifest = 2;
+}
+
+message AddStakeToModel {
+  optional string model_id = 1;
+  optional ObjectReference coin_ref = 2;
+  optional uint64 amount = 3;
+}
+
+message SetModelCommissionRate {
+  optional string model_id = 1;
+  optional uint64 new_rate = 2;
+}
+
+message DeactivateModel {
+  optional string model_id = 1;
+}
+
+message ReportModel {
+  optional string model_id = 1;
+}
+
+message UndoReportModel {
+  optional string model_id = 1;
 }
 
 

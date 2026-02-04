@@ -1,22 +1,24 @@
 use anyhow::{Result, anyhow, bail};
 use sdk::wallet_context::WalletContext;
 use types::base::SomaAddress;
+use types::model::ModelId;
 use types::object::ObjectID;
 use types::transaction::TransactionKind;
 
 use crate::client_commands::TxProcessingArgs;
 use crate::response::{ClientCommandResponse, TransactionResponse};
 
-/// Execute the stake command (stake SOMA with a validator or encoder)
+/// Execute the stake command (stake SOMA with a validator or model)
 pub async fn execute_stake(
     context: &mut WalletContext,
     validator: Option<SomaAddress>,
+    model: Option<ModelId>,
     amount: Option<u64>,
     coin: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
-    if validator.is_none() {
-        bail!("Must specify --validator");
+    if validator.is_none() && model.is_none() {
+        bail!("Must specify --validator or --model");
     }
 
     let sender = context.active_address()?;
@@ -41,6 +43,12 @@ pub async fn execute_stake(
     let kind = if let Some(validator_address) = validator {
         TransactionKind::AddStake {
             address: validator_address,
+            coin_ref,
+            amount,
+        }
+    } else if let Some(model_id) = model {
+        TransactionKind::AddStakeToModel {
+            model_id,
             coin_ref,
             amount,
         }

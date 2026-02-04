@@ -1,39 +1,9 @@
-//! # Transaction Effects Module
-//!
-//! ## Overview
-//! This module defines the structures and types that represent the effects and outcomes of
-//! transaction execution in the Soma blockchain. It captures all state changes resulting from
-//! transaction processing, including object creation, modification, and deletion.
-//!
-//! ## Responsibilities
-//! - Define the structure of transaction effects and their serialization format
-//! - Track object state changes (created, modified, deleted objects)
-//! - Represent execution status (success or failure with reason)
-//! - Manage shared object access patterns and versioning
-//! - Support verification of transaction effects through authority signatures
-//!
-//! ## Component Relationships
-//! - Used by the Authority module to record and communicate transaction outcomes
-//! - Consumed by clients to understand transaction results
-//! - Utilized by the consensus module to track dependencies between transactions
-//! - Provides input to the storage layer for state updates
-//!
-//! ## Key Workflows
-//! 1. Transaction execution produces TransactionEffects detailing all state changes
-//! 2. Effects are signed by authorities and aggregated into certificates
-//! 3. Certified effects are used to update the global state and notify clients
-//!
-//! ## Design Patterns
-//! - Envelope pattern: Effects are wrapped in envelopes with different signature types
-//! - Immutable data structures: All effect types are immutable once created
-//! - Verification chain: Effects can be verified against committee signatures
-
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,
 };
 
-use crate::{base::ExecutionDigests, error::ShardError};
+use crate::base::ExecutionDigests;
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -43,15 +13,15 @@ use crate::{
     committee::{Committee, EpochId},
     consensus::block::BlockRef,
     crypto::{
-        default_hash, AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo,
-        EmptySignInfo,
+        AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo, EmptySignInfo,
+        default_hash,
     },
     digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
     envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
     error::{SomaError, SomaResult},
     intent::{Intent, IntentScope},
     object::{
-        ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest, OBJECT_START_VERSION,
+        OBJECT_START_VERSION, ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest,
     },
     storage::WriteKind,
     temporary_store::SharedInput,
@@ -775,19 +745,40 @@ pub enum ExecutionFailureStatus {
     AdvancedToWrongEpoch,
 
     //
-    // Encoder errors
+    // Model errors
     //
-    /// Error when attempting to add a encoder that already exists
-    #[error("Cannot add encoder that is already active or pending")]
-    DuplicateEncoder,
+    #[error("Model not found.")]
+    ModelNotFound,
 
-    /// Error when trying to remove a encoder that doesn't exist
-    #[error("Cannot remove encoder that is not active")]
-    NotAnEncoder,
+    #[error("Sender is not the model owner.")]
+    NotModelOwner,
 
-    /// Error when trying to remove a encoder that was already removed
-    #[error("Cannot remove encoder that is already removed")]
-    EncoderAlreadyRemoved,
+    #[error("Model is not in active state.")]
+    ModelNotActive,
+
+    #[error("Model is not in pending (committed) state.")]
+    ModelNotPending,
+
+    #[error("Model is already inactive.")]
+    ModelAlreadyInactive,
+
+    #[error("Model reveal epoch mismatch: must reveal in the epoch after commit.")]
+    ModelRevealEpochMismatch,
+
+    #[error("Model weights URL commitment mismatch.")]
+    ModelWeightsUrlMismatch,
+
+    #[error("Model has no pending update.")]
+    ModelNoPendingUpdate,
+
+    #[error("Model architecture version mismatch.")]
+    ModelArchitectureVersionMismatch,
+
+    #[error("Model commission rate exceeds maximum (10000 bps).")]
+    ModelCommissionRateTooHigh,
+
+    #[error("Model minimum stake requirement not met.")]
+    ModelMinStakeNotMet,
 
     //
     // Coin errors
@@ -805,9 +796,6 @@ pub enum ExecutionFailureStatus {
     //
     #[error("Validator not found.")]
     ValidatorNotFound,
-
-    #[error("Encoder not found.")]
-    EncoderNotFound,
 
     #[error("Staking Pool not found.")]
     StakingPoolNotFound,

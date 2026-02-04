@@ -84,13 +84,20 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::NotAValidator => (ExecutionErrorKind::NotAValidator, None),
             E::ValidatorAlreadyRemoved => (ExecutionErrorKind::ValidatorAlreadyRemoved, None),
             E::AdvancedToWrongEpoch => (ExecutionErrorKind::AdvancedToWrongEpoch, None),
-            E::DuplicateEncoder => (ExecutionErrorKind::DuplicateEncoder, None),
-            E::NotAnEncoder => (ExecutionErrorKind::NotAnEncoder, None),
-            E::EncoderAlreadyRemoved => (ExecutionErrorKind::EncoderAlreadyRemoved, None),
+            E::ModelNotFound => (ExecutionErrorKind::ModelNotFound, None),
+            E::NotModelOwner => (ExecutionErrorKind::NotModelOwner, None),
+            E::ModelNotActive => (ExecutionErrorKind::ModelNotActive, None),
+            E::ModelNotPending => (ExecutionErrorKind::ModelNotPending, None),
+            E::ModelAlreadyInactive => (ExecutionErrorKind::ModelAlreadyInactive, None),
+            E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
+            E::ModelWeightsUrlMismatch => (ExecutionErrorKind::ModelWeightsUrlMismatch, None),
+            E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
+            E::ModelArchitectureVersionMismatch => (ExecutionErrorKind::ModelArchitectureVersionMismatch, None),
+            E::ModelCommissionRateTooHigh => (ExecutionErrorKind::ModelCommissionRateTooHigh, None),
+            E::ModelMinStakeNotMet => (ExecutionErrorKind::ModelMinStakeNotMet, None),
             E::InsufficientCoinBalance => (ExecutionErrorKind::InsufficientCoinBalance, None),
             E::CoinBalanceOverflow => (ExecutionErrorKind::CoinBalanceOverflow, None),
             E::ValidatorNotFound => (ExecutionErrorKind::ValidatorNotFound, None),
-            E::EncoderNotFound => (ExecutionErrorKind::EncoderNotFound, None),
             E::StakingPoolNotFound => (ExecutionErrorKind::StakingPoolNotFound, None),
             E::CannotReportOneself => (ExecutionErrorKind::CannotReportOneself, None),
             E::ReportRecordNotFound => (ExecutionErrorKind::ReportRecordNotFound, None),
@@ -521,6 +528,54 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
             }),
+
+            // Model transactions
+            K::CommitModel(args) => Kind::CommitModel(CommitModel {
+                model_id: Some(args.model_id.to_string()),
+                weights_url_commitment: Some(args.weights_url_commitment.into_inner().to_vec().into()),
+                weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
+                architecture_version: Some(args.architecture_version),
+                stake_amount: Some(args.stake_amount),
+                commission_rate: Some(args.commission_rate),
+                staking_pool_id: Some(args.staking_pool_id.to_string()),
+            }),
+            K::RevealModel(args) => Kind::RevealModel(RevealModel {
+                model_id: Some(args.model_id.to_string()),
+                weights_manifest: Some(args.weights_manifest.into()),
+            }),
+            K::CommitModelUpdate(args) => Kind::CommitModelUpdate(CommitModelUpdate {
+                model_id: Some(args.model_id.to_string()),
+                weights_url_commitment: Some(args.weights_url_commitment.into_inner().to_vec().into()),
+                weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
+            }),
+            K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
+                model_id: Some(args.model_id.to_string()),
+                weights_manifest: Some(args.weights_manifest.into()),
+            }),
+            K::AddStakeToModel {
+                model_id,
+                coin_ref,
+                amount,
+            } => Kind::AddStakeToModel(AddStakeToModel {
+                model_id: Some(model_id.to_string()),
+                coin_ref: Some(object_ref_to_proto(coin_ref)),
+                amount,
+            }),
+            K::SetModelCommissionRate { model_id, new_rate } => {
+                Kind::SetModelCommissionRate(SetModelCommissionRate {
+                    model_id: Some(model_id.to_string()),
+                    new_rate: Some(new_rate),
+                })
+            }
+            K::DeactivateModel { model_id } => Kind::DeactivateModel(DeactivateModel {
+                model_id: Some(model_id.to_string()),
+            }),
+            K::ReportModel { model_id } => Kind::ReportModel(ReportModel {
+                model_id: Some(model_id.to_string()),
+            }),
+            K::UndoReportModel { model_id } => Kind::UndoReportModel(UndoReportModel {
+                model_id: Some(model_id.to_string()),
+            }),
         };
 
         let mut message = Self::default();
@@ -819,10 +874,15 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         let validator_report_records =
             convert_report_records(proto_state.validator_report_records)?;
 
-        let vdf_iterations = parameters.vdf_iterations;
+        // Convert model registry
+        let model_registry = proto_state
+            .model_registry
+            .map(|mr| mr.try_into())
+            .transpose()?
+            .unwrap_or_default();
 
         // Build initial committees
-        let mut system_state = types::system_state::SystemState {
+        let system_state = types::system_state::SystemState {
             epoch,
             protocol_version,
             epoch_start_timestamp_ms,
@@ -832,6 +892,8 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             validator_report_records,
 
             emission_pool,
+
+            model_registry,
 
             target_rewards_per_epoch,
             targets_created_per_epoch,
@@ -850,18 +912,21 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             epoch_duration_ms: proto_params
                 .epoch_duration_ms
                 .ok_or("Missing epoch_duration_ms")?,
-            vdf_iterations: proto_params
-                .vdf_iterations
-                .ok_or("Missing vdf_iterations")?,
-            target_selection_rate_bps: proto_params
-                .target_selection_rate_bps
-                .ok_or("Missing target_selection_rate_bps")?,
             target_reward_allocation_bps: proto_params
                 .target_reward_allocation_bps
                 .ok_or("Missing target_reward_allocation_bps")?,
-            encoder_tally_slash_rate_bps: proto_params
-                .encoder_tally_slash_rate_bps
-                .ok_or("Missing encoder_tally_slash_rate_bps")?,
+            model_min_stake: proto_params
+                .model_min_stake
+                .ok_or("Missing model_min_stake")?,
+            model_architecture_version: proto_params
+                .model_architecture_version
+                .ok_or("Missing model_architecture_version")?,
+            model_reveal_slash_rate_bps: proto_params
+                .model_reveal_slash_rate_bps
+                .ok_or("Missing model_reveal_slash_rate_bps")?,
+            model_tally_slash_rate_bps: proto_params
+                .model_tally_slash_rate_bps
+                .ok_or("Missing model_tally_slash_rate_bps")?,
             target_epoch_fee_collection: proto_params
                 .target_epoch_fee_collection
                 .ok_or("Missing target_epoch_fee_collection")?,
@@ -879,9 +944,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             fee_adjustment_rate_bps: proto_params
                 .fee_adjustment_rate_bps
                 .ok_or("Missing fee_adjustment_rate_bps")?,
-            claim_incentive_bps: proto_params
-                .claim_incentive_bps
-                .ok_or("Missing claim_incentive_bps")?,
         })
     }
 }
@@ -1197,6 +1259,7 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             target_rewards_per_epoch: domain_state.target_rewards_per_epoch,
             targets_created_per_epoch: domain_state.targets_created_per_epoch,
             epoch_seeds,
+            model_registry: Some(domain_state.model_registry.try_into()?),
         })
     }
 }
@@ -1207,10 +1270,11 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     fn try_from(domain_params: protocol_config::SystemParameters) -> Result<Self, Self::Error> {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
-            vdf_iterations: Some(domain_params.vdf_iterations),
-            target_selection_rate_bps: Some(domain_params.target_selection_rate_bps),
             target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
-            encoder_tally_slash_rate_bps: Some(domain_params.encoder_tally_slash_rate_bps),
+            model_min_stake: Some(domain_params.model_min_stake),
+            model_architecture_version: Some(domain_params.model_architecture_version),
+            model_reveal_slash_rate_bps: Some(domain_params.model_reveal_slash_rate_bps),
+            model_tally_slash_rate_bps: Some(domain_params.model_tally_slash_rate_bps),
             target_epoch_fee_collection: Some(domain_params.target_epoch_fee_collection),
             base_fee: Some(domain_params.base_fee),
             write_object_fee: Some(domain_params.write_object_fee),
@@ -1218,7 +1282,6 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             min_value_fee_bps: Some(domain_params.min_value_fee_bps),
             max_value_fee_bps: Some(domain_params.max_value_fee_bps),
             fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
-            claim_incentive_bps: Some(domain_params.claim_incentive_bps),
         })
     }
 }
@@ -1404,6 +1467,313 @@ fn convert_report_records_to_proto(
             Ok((key, ReporterSet { reporters }))
         })
         .collect()
+}
+
+//
+// ModelWeightsManifest
+//
+
+impl From<types::model::ModelWeightsManifest> for ModelWeightsManifest {
+    fn from(value: types::model::ModelWeightsManifest) -> Self {
+        Self {
+            manifest: Some(value.manifest.into()),
+            decryption_key: Some(value.decryption_key.as_bytes().to_vec().into()),
+        }
+    }
+}
+
+impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
+    type Error = String;
+
+    fn try_from(proto: ModelWeightsManifest) -> Result<Self, Self::Error> {
+        let manifest = proto
+            .manifest
+            .ok_or("Missing manifest")?
+            .try_into()
+            .map_err(|e: TryFromProtoError| e.to_string())?;
+
+        let key_bytes: Vec<u8> = proto
+            .decryption_key
+            .ok_or("Missing decryption_key")?
+            .into();
+        let key_array: [u8; 32] = key_bytes
+            .try_into()
+            .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
+
+        Ok(types::model::ModelWeightsManifest {
+            manifest,
+            decryption_key: types::crypto::DecryptionKey::new(key_array),
+        })
+    }
+}
+
+//
+// PendingModelUpdate
+//
+
+impl From<types::model::PendingModelUpdate> for PendingModelUpdate {
+    fn from(value: types::model::PendingModelUpdate) -> Self {
+        Self {
+            weights_url_commitment: Some(value.weights_url_commitment.into_inner().to_vec().into()),
+            weights_commitment: Some(value.weights_commitment.into_inner().to_vec().into()),
+            commit_epoch: Some(value.commit_epoch),
+        }
+    }
+}
+
+impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
+    type Error = String;
+
+    fn try_from(proto: PendingModelUpdate) -> Result<Self, Self::Error> {
+        let url_bytes: Vec<u8> = proto
+            .weights_url_commitment
+            .ok_or("Missing weights_url_commitment")?
+            .into();
+        let url_array: [u8; 32] = url_bytes
+            .try_into()
+            .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
+
+        let wt_bytes: Vec<u8> = proto
+            .weights_commitment
+            .ok_or("Missing weights_commitment")?
+            .into();
+        let wt_array: [u8; 32] = wt_bytes
+            .try_into()
+            .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+
+        Ok(types::model::PendingModelUpdate {
+            weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(url_array),
+            weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+            commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
+        })
+    }
+}
+
+//
+// Model
+//
+
+impl TryFrom<types::model::Model> for Model {
+    type Error = String;
+
+    fn try_from(domain: types::model::Model) -> Result<Self, Self::Error> {
+        Ok(Model {
+            owner: Some(domain.owner.to_string()),
+            architecture_version: Some(domain.architecture_version),
+            weights_url_commitment: Some(
+                domain.weights_url_commitment.into_inner().to_vec().into(),
+            ),
+            weights_commitment: Some(domain.weights_commitment.into_inner().to_vec().into()),
+            commit_epoch: Some(domain.commit_epoch),
+            weights_manifest: domain.weights_manifest.map(Into::into),
+            staking_pool: Some(domain.staking_pool.try_into()?),
+            commission_rate: Some(domain.commission_rate),
+            next_epoch_commission_rate: Some(domain.next_epoch_commission_rate),
+            pending_update: domain.pending_update.map(Into::into),
+        })
+    }
+}
+
+impl TryFrom<Model> for types::model::Model {
+    type Error = String;
+
+    fn try_from(proto: Model) -> Result<Self, Self::Error> {
+        let owner = proto
+            .owner
+            .ok_or("Missing owner")?
+            .parse()
+            .map_err(|_| "Invalid SomaAddress".to_string())?;
+
+        let url_bytes: Vec<u8> = proto
+            .weights_url_commitment
+            .ok_or("Missing weights_url_commitment")?
+            .into();
+        let url_array: [u8; 32] = url_bytes
+            .try_into()
+            .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
+
+        let wt_bytes: Vec<u8> = proto
+            .weights_commitment
+            .ok_or("Missing weights_commitment")?
+            .into();
+        let wt_array: [u8; 32] = wt_bytes
+            .try_into()
+            .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+
+        let weights_manifest = proto
+            .weights_manifest
+            .map(TryInto::try_into)
+            .transpose()?;
+
+        let staking_pool = proto
+            .staking_pool
+            .ok_or("Missing staking_pool")?
+            .try_into()?;
+
+        let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
+
+        Ok(types::model::Model {
+            owner,
+            architecture_version: proto
+                .architecture_version
+                .ok_or("Missing architecture_version")?,
+            weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(url_array),
+            weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+            commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
+            weights_manifest,
+            staking_pool,
+            commission_rate: proto.commission_rate.ok_or("Missing commission_rate")?,
+            next_epoch_commission_rate: proto
+                .next_epoch_commission_rate
+                .ok_or("Missing next_epoch_commission_rate")?,
+            pending_update,
+        })
+    }
+}
+
+//
+// ModelRegistry
+//
+
+impl TryFrom<types::system_state::model_registry::ModelRegistry> for ModelRegistry {
+    type Error = String;
+
+    fn try_from(
+        domain: types::system_state::model_registry::ModelRegistry,
+    ) -> Result<Self, Self::Error> {
+        let active_models = domain
+            .active_models
+            .into_iter()
+            .map(|(id, model)| {
+                let proto_model: Model = model.try_into()?;
+                Ok((id.to_string(), proto_model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let pending_models = domain
+            .pending_models
+            .into_iter()
+            .map(|(id, model)| {
+                let proto_model: Model = model.try_into()?;
+                Ok((id.to_string(), proto_model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let staking_pool_mappings = domain
+            .staking_pool_mappings
+            .into_iter()
+            .map(|(pool_id, model_id)| (pool_id.to_string(), model_id.to_string()))
+            .collect();
+
+        let inactive_models = domain
+            .inactive_models
+            .into_iter()
+            .map(|(id, model)| {
+                let proto_model: Model = model.try_into()?;
+                Ok((id.to_string(), proto_model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let model_report_records = domain
+            .model_report_records
+            .into_iter()
+            .map(|(k, v)| {
+                let key = k.to_string();
+                let reporters = v.into_iter().map(|r| r.to_string()).collect();
+                Ok((key, ReporterSet { reporters }))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        Ok(ModelRegistry {
+            active_models,
+            pending_models,
+            staking_pool_mappings,
+            inactive_models,
+            total_model_stake: Some(domain.total_model_stake),
+            model_report_records,
+        })
+    }
+}
+
+impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegistry {
+    type Error = String;
+
+    fn try_from(proto: ModelRegistry) -> Result<Self, Self::Error> {
+        let active_models = proto
+            .active_models
+            .into_iter()
+            .map(|(k, v)| {
+                let id = k
+                    .parse()
+                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let model: types::model::Model = v.try_into()?;
+                Ok((id, model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let pending_models = proto
+            .pending_models
+            .into_iter()
+            .map(|(k, v)| {
+                let id = k
+                    .parse()
+                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let model: types::model::Model = v.try_into()?;
+                Ok((id, model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let staking_pool_mappings = proto
+            .staking_pool_mappings
+            .into_iter()
+            .map(|(k, v)| {
+                let pool_id = k
+                    .parse()
+                    .map_err(|_| "Invalid ObjectID".to_string())?;
+                let model_id = v
+                    .parse()
+                    .map_err(|_| "Invalid ModelId".to_string())?;
+                Ok((pool_id, model_id))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let inactive_models = proto
+            .inactive_models
+            .into_iter()
+            .map(|(k, v)| {
+                let id = k
+                    .parse()
+                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let model: types::model::Model = v.try_into()?;
+                Ok((id, model))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let model_report_records = proto
+            .model_report_records
+            .into_iter()
+            .map(|(k, v)| {
+                let model_id = k
+                    .parse()
+                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let reporters = v
+                    .reporters
+                    .into_iter()
+                    .map(|r| r.parse().map_err(|_| "Invalid SomaAddress".to_string()))
+                    .collect::<Result<BTreeSet<_>, _>>()?;
+                Ok((model_id, reporters))
+            })
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        Ok(types::system_state::model_registry::ModelRegistry {
+            active_models,
+            pending_models,
+            staking_pool_mappings,
+            inactive_models,
+            total_model_stake: proto.total_model_stake.ok_or("Missing total_model_stake")?,
+            model_report_records,
+        })
+    }
 }
 
 //

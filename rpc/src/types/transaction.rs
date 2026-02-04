@@ -118,6 +118,30 @@ pub enum TransactionKind {
     WithdrawStake {
         staked_soma: ObjectReference,
     },
+
+    // Model transactions
+    CommitModel(CommitModelArgs),
+    RevealModel(RevealModelArgs),
+    CommitModelUpdate(CommitModelUpdateArgs),
+    RevealModelUpdate(RevealModelUpdateArgs),
+    AddStakeToModel {
+        model_id: Address,
+        coin_ref: ObjectReference,
+        amount: Option<u64>,
+    },
+    SetModelCommissionRate {
+        model_id: Address,
+        new_rate: u64,
+    },
+    DeactivateModel {
+        model_id: Address,
+    },
+    ReportModel {
+        model_id: Address,
+    },
+    UndoReportModel {
+        model_id: Address,
+    },
 }
 
 // Supporting types for validator management
@@ -145,6 +169,44 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
+}
+
+// Supporting types for model transactions
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct ModelWeightsManifest {
+    pub manifest: Manifest,
+    pub decryption_key: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CommitModelArgs {
+    pub model_id: Address,
+    pub weights_url_commitment: Vec<u8>,
+    pub weights_commitment: Vec<u8>,
+    pub architecture_version: u64,
+    pub stake_amount: u64,
+    pub commission_rate: u64,
+    pub staking_pool_id: Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RevealModelArgs {
+    pub model_id: Address,
+    pub weights_manifest: ModelWeightsManifest,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CommitModelUpdateArgs {
+    pub model_id: Address,
+    pub weights_url_commitment: Vec<u8>,
+    pub weights_commitment: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RevealModelUpdateArgs {
+    pub model_id: Address,
+    pub weights_manifest: ModelWeightsManifest,
 }
 
 /// V1 of the consensus commit prologue system transaction

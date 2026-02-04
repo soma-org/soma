@@ -95,7 +95,3 @@ rstest = "0.16.0"
 lru = "0.10"
 csv = "1.4.0"
 fixed.workspace = true
-
-[build-dependencies]
-tonic-build.workspace = true
-tonic-prost-build.workspace = true

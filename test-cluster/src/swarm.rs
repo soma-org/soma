@@ -19,9 +19,11 @@ use types::{
             CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
             SupportedProtocolVersionsCallback,
         },
-        node_config::NodeConfig,
+        node_config::{FullnodeConfigBuilder, NodeConfig},
+        p2p_config::SeedPeer,
     },
     multiaddr::Multiaddr,
+    peer_id::PeerId,
     supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
 };
 
@@ -318,52 +320,87 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             SwarmDirectory::new_temporary()
         };
 
-        let mut network_config = self.network_config.unwrap_or_else(|| {
+        let network_config = self.network_config.unwrap_or_else(|| {
             let mut config_builder = ConfigBuilder::new(dir.as_ref());
 
             if let Some(genesis_config) = self.genesis_config {
                 config_builder = config_builder.with_genesis_config(genesis_config);
             }
 
-            // Automatically add networking validators if fullnode_count > 0
-            let committee = if self.fullnode_count > 0 {
-                match self.committee {
-                    CommitteeConfig::Size(consensus_size) => CommitteeConfig::Mixed {
-                        consensus_count: consensus_size,
-                        networking_count: NonZeroUsize::new(self.fullnode_count).unwrap(),
-                    },
-                    other => other, // Keep as-is for other variants
-                }
-            } else {
-                self.committee
-            };
-
             config_builder
-                .committee(committee)
+                .committee(self.committee)
                 .with_supported_protocol_versions_config(
                     self.supported_protocol_versions_config.clone(),
                 )
                 .rng(self.rng)
                 .build()
         });
-        // Create all validator nodes
+
+        // Create validator nodes
         let mut nodes: HashMap<_, _> = network_config
             .validator_configs()
             .iter()
             .map(|config| {
-                let node_type = if config.consensus_config.is_some() {
-                    "consensus validator"
-                } else {
-                    "networking validator"
-                };
                 info!(
-                    "SwarmBuilder configuring {} {}",
-                    node_type,
+                    "SwarmBuilder configuring validator {}",
                     config.protocol_public_key()
                 );
                 (config.protocol_public_key(), Node::new(config.to_owned()))
             })
             .collect();
+
+        // Create fullnode nodes using FullnodeConfigBuilder
+        if self.fullnode_count > 0 {
+            // Extract seed peers from validator configs
+            let seed_peers: Vec<SeedPeer> = network_config
+                .validator_configs()
+                .iter()
+                .filter_map(|config| {
+                    let p2p_address = config.p2p_config.external_address.clone()?;
+                    Some(SeedPeer {
+                        peer_id: Some(PeerId(
+                            config
+                                .network_key_pair()
+                                .public()
+                                .into_inner()
+                                .0
+                                .to_bytes(),
+                        )),
+                        address: p2p_address,
+                    })
+                })
+                .collect();
+
+            let genesis = network_config.genesis.clone();
+
+            for i in 0..self.fullnode_count {
+                let mut builder = FullnodeConfigBuilder::new()
+                    .with_config_directory(dir.as_ref().to_path_buf());
+
+                if let Some(rpc_addr) = self.fullnode_rpc_addr {
+                    builder = builder.with_rpc_addr(rpc_addr);
+                } else if let Some(rpc_port) = self.fullnode_rpc_port {
+                    builder = builder.with_rpc_port(rpc_port);
+                }
+
+                if let Some(ref rpc_config) = self.fullnode_rpc_config {
+                    builder = builder.with_rpc_config(rpc_config.clone());
+                }
+
+                let fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
+
+                info!(
+                    "SwarmBuilder configuring fullnode {} ({})",
+                    i,
+                    fullnode_config.protocol_public_key()
+                );
+
+                nodes.insert(
+                    fullnode_config.protocol_public_key(),
+                    Node::new(fullnode_config),
+                );
+            }
+        }
 
         Swarm {
             network_config,

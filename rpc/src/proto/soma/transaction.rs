@@ -269,6 +269,60 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 .into(),
             ),
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
+
+            // Model transactions
+            CommitModel(args) => Kind::CommitModel(super::CommitModel {
+                model_id: Some(args.model_id.to_string()),
+                weights_url_commitment: Some(args.weights_url_commitment.clone().into()),
+                weights_commitment: Some(args.weights_commitment.clone().into()),
+                architecture_version: Some(args.architecture_version),
+                stake_amount: Some(args.stake_amount),
+                commission_rate: Some(args.commission_rate),
+                staking_pool_id: Some(args.staking_pool_id.to_string()),
+            }),
+            RevealModel(args) => Kind::RevealModel(super::RevealModel {
+                model_id: Some(args.model_id.to_string()),
+                weights_manifest: Some(super::ModelWeightsManifest {
+                    manifest: Some(args.weights_manifest.manifest.clone().into()),
+                    decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
+                }),
+            }),
+            CommitModelUpdate(args) => Kind::CommitModelUpdate(super::CommitModelUpdate {
+                model_id: Some(args.model_id.to_string()),
+                weights_url_commitment: Some(args.weights_url_commitment.clone().into()),
+                weights_commitment: Some(args.weights_commitment.clone().into()),
+            }),
+            RevealModelUpdate(args) => Kind::RevealModelUpdate(super::RevealModelUpdate {
+                model_id: Some(args.model_id.to_string()),
+                weights_manifest: Some(super::ModelWeightsManifest {
+                    manifest: Some(args.weights_manifest.manifest.clone().into()),
+                    decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
+                }),
+            }),
+            AddStakeToModel {
+                model_id,
+                coin_ref,
+                amount,
+            } => Kind::AddStakeToModel(super::AddStakeToModel {
+                model_id: Some(model_id.to_string()),
+                coin_ref: Some(coin_ref.into()),
+                amount,
+            }),
+            SetModelCommissionRate { model_id, new_rate } => {
+                Kind::SetModelCommissionRate(super::SetModelCommissionRate {
+                    model_id: Some(model_id.to_string()),
+                    new_rate: Some(new_rate),
+                })
+            }
+            DeactivateModel { model_id } => Kind::DeactivateModel(super::DeactivateModel {
+                model_id: Some(model_id.to_string()),
+            }),
+            ReportModel { model_id } => Kind::ReportModel(super::ReportModel {
+                model_id: Some(model_id.to_string()),
+            }),
+            UndoReportModel { model_id } => Kind::UndoReportModel(super::UndoReportModel {
+                model_id: Some(model_id.to_string()),
+            }),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -388,6 +442,162 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("staked_soma"))?
                     .try_into()?,
+            },
+
+            // Model transactions
+            Kind::CommitModel(args) => Self::CommitModel(crate::types::CommitModelArgs {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                weights_url_commitment: args
+                    .weights_url_commitment
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("weights_url_commitment"))?
+                    .to_vec(),
+                weights_commitment: args
+                    .weights_commitment
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("weights_commitment"))?
+                    .to_vec(),
+                architecture_version: args
+                    .architecture_version
+                    .ok_or_else(|| TryFromProtoError::missing("architecture_version"))?,
+                stake_amount: args
+                    .stake_amount
+                    .ok_or_else(|| TryFromProtoError::missing("stake_amount"))?,
+                commission_rate: args
+                    .commission_rate
+                    .ok_or_else(|| TryFromProtoError::missing("commission_rate"))?,
+                staking_pool_id: args
+                    .staking_pool_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("staking_pool_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("staking_pool_id", e))?,
+            }),
+            Kind::RevealModel(args) => {
+                let manifest = args
+                    .weights_manifest
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("weights_manifest"))?;
+                Self::RevealModel(crate::types::RevealModelArgs {
+                    model_id: args
+                        .model_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                    weights_manifest: crate::types::ModelWeightsManifest {
+                        manifest: manifest
+                            .manifest
+                            .as_ref()
+                            .ok_or_else(|| TryFromProtoError::missing("manifest"))?
+                            .try_into()?,
+                        decryption_key: manifest
+                            .decryption_key
+                            .as_ref()
+                            .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
+                            .to_vec(),
+                    },
+                })
+            }
+            Kind::CommitModelUpdate(args) => {
+                Self::CommitModelUpdate(crate::types::CommitModelUpdateArgs {
+                    model_id: args
+                        .model_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                    weights_url_commitment: args
+                        .weights_url_commitment
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("weights_url_commitment"))?
+                        .to_vec(),
+                    weights_commitment: args
+                        .weights_commitment
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("weights_commitment"))?
+                        .to_vec(),
+                })
+            }
+            Kind::RevealModelUpdate(args) => {
+                let manifest = args
+                    .weights_manifest
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("weights_manifest"))?;
+                Self::RevealModelUpdate(crate::types::RevealModelUpdateArgs {
+                    model_id: args
+                        .model_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                    weights_manifest: crate::types::ModelWeightsManifest {
+                        manifest: manifest
+                            .manifest
+                            .as_ref()
+                            .ok_or_else(|| TryFromProtoError::missing("manifest"))?
+                            .try_into()?,
+                        decryption_key: manifest
+                            .decryption_key
+                            .as_ref()
+                            .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
+                            .to_vec(),
+                    },
+                })
+            }
+            Kind::AddStakeToModel(args) => Self::AddStakeToModel {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                coin_ref: args
+                    .coin_ref
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
+                    .try_into()?,
+                amount: args.amount,
+            },
+            Kind::SetModelCommissionRate(args) => Self::SetModelCommissionRate {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                new_rate: args
+                    .new_rate
+                    .ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
+            },
+            Kind::DeactivateModel(args) => Self::DeactivateModel {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+            },
+            Kind::ReportModel(args) => Self::ReportModel {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+            },
+            Kind::UndoReportModel(args) => Self::UndoReportModel {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
             },
         }
         .pipe(Ok)

@@ -196,16 +196,21 @@ pub struct ProtocolConfig {
     /// 3f+1 must vote), while 0bps would indicate that 2f+1 is sufficient.
     buffer_stake_for_protocol_upgrade_bps: Option<u64>,
 
-    /// Number of iterations to run vdf for shard randomness.
-    vdf_iterations: Option<u64>,
     epoch_duration_ms: Option<u64>,
 
     // === Reward/Emission Parameters ===
-    target_selection_rate_bps: Option<u64>,
     target_reward_allocation_bps: Option<u64>,
-    encoder_tally_slash_rate_bps: Option<u64>,
     reward_slashing_rate_bps: Option<u64>,
-    claim_incentive_bps: Option<u64>,
+
+    // === Model Parameters ===
+    /// Minimum stake required to commit a new model (in shannons)
+    model_min_stake: Option<u64>,
+    /// Required architecture version for new model commits
+    model_architecture_version: Option<u64>,
+    /// Slash rate (bps) for models that fail to reveal after commit (e.g. 5000 = 50%)
+    model_reveal_slash_rate_bps: Option<u64>,
+    /// Slash rate (bps) for models removed via tally reports (e.g. 9500 = 95%)
+    model_tally_slash_rate_bps: Option<u64>,
 
     // === Fee Parameters ===
     target_epoch_fee_collection: Option<u64>,
@@ -287,15 +292,17 @@ impl ProtocolConfig {
 
             buffer_stake_for_protocol_upgrade_bps: Some(5000),
 
-            vdf_iterations: Some(1000),
             epoch_duration_ms: Some(24 * 60 * 60), // 1 day
 
             // Reward parameters
-            target_selection_rate_bps: Some(2500),    // 25%
             target_reward_allocation_bps: Some(7000), // 70%
-            encoder_tally_slash_rate_bps: Some(9500), // 95%
             reward_slashing_rate_bps: Some(5000),     // 50%
-            claim_incentive_bps: Some(500),           // 5% - adjust as needed
+
+            // Model parameters
+            model_min_stake: Some(1_000_000_000),     // 1 SOMA (in shannons)
+            model_architecture_version: Some(1),
+            model_reveal_slash_rate_bps: Some(5000),  // 50%
+            model_tally_slash_rate_bps: Some(9500),   // 95%
 
             // Fee parameters
             target_epoch_fee_collection: Some(1_000_000_000),
@@ -330,8 +337,6 @@ impl ProtocolConfig {
         if cfg!(msim) {
             // Trigger GC more often.
             cfg.consensus_gc_depth = Some(5);
-
-            cfg.vdf_iterations = Some(1);
 
             cfg.epoch_duration_ms = Some(1000 * 60);
         }
@@ -399,10 +404,11 @@ impl ProtocolConfig {
     pub fn build_system_parameters(&self, current_value_fee_bps: Option<u64>) -> SystemParameters {
         SystemParameters {
             epoch_duration_ms: self.epoch_duration_ms(),
-            vdf_iterations: self.vdf_iterations(),
-            target_selection_rate_bps: self.target_selection_rate_bps(),
             target_reward_allocation_bps: self.target_reward_allocation_bps(),
-            encoder_tally_slash_rate_bps: self.encoder_tally_slash_rate_bps(),
+            model_min_stake: self.model_min_stake(),
+            model_architecture_version: self.model_architecture_version(),
+            model_reveal_slash_rate_bps: self.model_reveal_slash_rate_bps(),
+            model_tally_slash_rate_bps: self.model_tally_slash_rate_bps(),
             target_epoch_fee_collection: self.target_epoch_fee_collection(),
             base_fee: self.base_fee(),
             write_object_fee: self.write_object_fee(),
@@ -411,7 +417,6 @@ impl ProtocolConfig {
             min_value_fee_bps: self.min_value_fee_bps(),
             max_value_fee_bps: self.max_value_fee_bps(),
             fee_adjustment_rate_bps: self.fee_adjustment_rate_bps(),
-            claim_incentive_bps: self.claim_incentive_bps(),
         }
     }
 }
@@ -421,13 +426,18 @@ pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
 
-    pub vdf_iterations: u64,
-
-    pub target_selection_rate_bps: u64,
-
+    /// Percentage of epoch rewards allocated to mining targets (bps, e.g. 7000 = 70%)
     pub target_reward_allocation_bps: u64,
 
-    pub encoder_tally_slash_rate_bps: u64,
+    // === Model Parameters ===
+    /// Minimum stake required to commit a new model (in shannons)
+    pub model_min_stake: u64,
+    /// Required architecture version for new model commits
+    pub model_architecture_version: u64,
+    /// Slash rate for models that fail to reveal after commit (bps, e.g. 5000 = 50%)
+    pub model_reveal_slash_rate_bps: u64,
+    /// Slash rate for models removed via tally reports (bps, e.g. 9500 = 95%)
+    pub model_tally_slash_rate_bps: u64,
 
     // === Fee Parameters ===
     /// Target fee collection per epoch (network adjusts fees to hit this)
@@ -450,6 +460,4 @@ pub struct SystemParameters {
 
     /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
     pub fee_adjustment_rate_bps: u64,
-
-    pub claim_incentive_bps: u64,
 }

@@ -53,7 +53,7 @@ Unlike the previous 3-epoch wave pipeline, the new system operates continuously:
 
 ---
 
-## Phase 1: Core Removals
+## Phase 1: Core Removals — COMPLETE ✓
 
 **Goal:** Codebase compiles without encoder infrastructure.
 
@@ -181,9 +181,11 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 
 ---
 
-## Phase 3: Model Registry with Staking
+## Phase 3: Model Registry with Staking — COMPLETE ✓
 
 **Goal:** Anyone can register models with staking, using simple commit-reveal flow.
+
+**Status:** Fully implemented and tested. All types, executor, CLI, RPC, genesis bootstrap, unit tests (18), and E2E tests (2) are passing.
 
 ### 3.1 Create Model Type
 
@@ -374,7 +376,7 @@ pub struct GenesisModelConfig {
 - `encrypted_weights_url` and `decryption_key` set directly
 - Required: At least 1 model in genesis for target generation
 
-**Gate:** E2E test for model commit → reveal → active lifecycle
+**Gate:** ✓ E2E tests passing: `test_genesis_model_bootstrap` and `test_model_commit_reveal_round_trip` in `e2e-tests/tests/model_tests.rs`. Run with `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test model_tests`.
 
 ---
 
@@ -1125,27 +1127,27 @@ pub async fn initiate_challenge(&self, ...) -> Result<ObjectID>;
 
 ## Quick Reference: Files to Create
 
-| Crate | File | Contents |
-|-------|------|----------|
-| types | `threshold_bls.rs` | EncryptedKeyShare, ThresholdKeyShares, DecryptedKeyShare |
-| types | `crypto/threshold.rs` | ThresholdBls implementation |
-| types | `model.rs` | Model, ModelId, ModelRegistry |
-| types | `knn_index.rs` | kNNIndex for model selection |
-| types | `target.rs` | Target, TargetStatus, TargetState |
-| types | `submission.rs` | Submission (new version with hash-commit-reveal) |
-| types | `challenge.rs` | Challenge, ChallengeType, ChallengeVerdict |
-| authority | `execution/model.rs` | Model tx executor |
-| authority | `execution/target.rs` | Target generation |
-| authority | `execution/submission.rs` | Submission tx executor |
-| authority | `execution/challenge.rs` | Challenge tx executor |
-| authority | `challenge_audit.rs` | Validator audit service |
-| inference-engine | `lib.rs` | Crate root |
-| inference-engine | `engine.rs` | InferenceEngineAPI trait |
-| inference-engine | `service.rs` | InferenceService |
-| cli | `commands/model.rs` | Model CLI |
-| cli | `commands/submit.rs` | Submission CLI |
-| cli | `commands/verify.rs` | Verification CLI |
-| cli | `commands/challenge.rs` | Challenge CLI |
+| Crate | File | Contents | Status |
+|-------|------|----------|--------|
+| types | `model.rs` | Model, ModelId, ModelRegistry | ✓ Created |
+| types | `system_state/model_registry.rs` | ModelRegistry | ✓ Created |
+| types | `system_state/unit_tests/model_tests.rs` | 18 model unit tests | ✓ Created |
+| authority | `execution/model.rs` | Model tx executor | ✓ Created |
+| cli | `commands/model.rs` | Model CLI | ✓ Created |
+| e2e-tests | `tests/model_tests.rs` | 2 E2E model tests | ✓ Created |
+| types | `target.rs` | Target, TargetStatus, TargetState | Pending (Phase 4) |
+| types | `submission.rs` | Submission (new version with hash-commit-reveal) | Pending (Phase 5) |
+| types | `challenge.rs` | Challenge, ChallengeType, ChallengeVerdict | Pending (Phase 7) |
+| authority | `execution/target.rs` | Target generation | Pending (Phase 4) |
+| authority | `execution/submission.rs` | Submission tx executor | Pending (Phase 5) |
+| authority | `execution/challenge.rs` | Challenge tx executor | Pending (Phase 7) |
+| authority | `challenge_audit.rs` | Validator audit service | Pending (Phase 7) |
+| inference-engine | `lib.rs` | Crate root | Pending (Phase 6) |
+| inference-engine | `engine.rs` | InferenceEngineAPI trait | Pending (Phase 6) |
+| inference-engine | `service.rs` | InferenceService | Pending (Phase 6) |
+| cli | `commands/submit.rs` | Submission CLI | Pending (Phase 5) |
+| cli | `commands/verify.rs` | Verification CLI | Pending (Phase 6) |
+| cli | `commands/challenge.rs` | Challenge CLI | Pending (Phase 7) |
 
 ## Quick Reference: Files to Modify
 

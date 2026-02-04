@@ -408,6 +408,66 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             TK::WithdrawStake { staked_soma } => TransactionKind::WithdrawStake {
                 staked_soma: staked_soma.into(),
             },
+
+            // Model transactions
+            TK::CommitModel(args) => TransactionKind::CommitModel(CommitModelArgs {
+                model_id: args.model_id.into(),
+                weights_url_commitment: args.weights_url_commitment.into_inner().to_vec(),
+                weights_commitment: args.weights_commitment.into_inner().to_vec(),
+                architecture_version: args.architecture_version,
+                stake_amount: args.stake_amount,
+                commission_rate: args.commission_rate,
+                staking_pool_id: args.staking_pool_id.into(),
+            }),
+
+            TK::RevealModel(args) => TransactionKind::RevealModel(RevealModelArgs {
+                model_id: args.model_id.into(),
+                weights_manifest: args.weights_manifest.into(),
+            }),
+
+            TK::CommitModelUpdate(args) => {
+                TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
+                    model_id: args.model_id.into(),
+                    weights_url_commitment: args.weights_url_commitment.into_inner().to_vec(),
+                    weights_commitment: args.weights_commitment.into_inner().to_vec(),
+                })
+            }
+
+            TK::RevealModelUpdate(args) => {
+                TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
+                    model_id: args.model_id.into(),
+                    weights_manifest: args.weights_manifest.into(),
+                })
+            }
+
+            TK::AddStakeToModel {
+                model_id,
+                coin_ref,
+                amount,
+            } => TransactionKind::AddStakeToModel {
+                model_id: model_id.into(),
+                coin_ref: coin_ref.into(),
+                amount,
+            },
+
+            TK::SetModelCommissionRate { model_id, new_rate } => {
+                TransactionKind::SetModelCommissionRate {
+                    model_id: model_id.into(),
+                    new_rate,
+                }
+            }
+
+            TK::DeactivateModel { model_id } => TransactionKind::DeactivateModel {
+                model_id: model_id.into(),
+            },
+
+            TK::ReportModel { model_id } => TransactionKind::ReportModel {
+                model_id: model_id.into(),
+            },
+
+            TK::UndoReportModel { model_id } => TransactionKind::UndoReportModel {
+                model_id: model_id.into(),
+            },
         })
     }
 }
@@ -528,6 +588,94 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             TransactionKind::WithdrawStake { staked_soma } => TK::WithdrawStake {
                 staked_soma: staked_soma.into(),
+            },
+
+            // Model transactions
+            TransactionKind::CommitModel(args) => {
+                TK::CommitModel(types::transaction::CommitModelArgs {
+                    model_id: args.model_id.into(),
+                    weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
+                        args.weights_url_commitment
+                            .try_into()
+                            .map_err(|_| SdkTypeConversionError(
+                                "weights_url_commitment must be 32 bytes".into(),
+                            ))?,
+                    ),
+                    weights_commitment: types::digests::ModelWeightsCommitment::new(
+                        args.weights_commitment
+                            .try_into()
+                            .map_err(|_| SdkTypeConversionError(
+                                "weights_commitment must be 32 bytes".into(),
+                            ))?,
+                    ),
+                    architecture_version: args.architecture_version,
+                    stake_amount: args.stake_amount,
+                    commission_rate: args.commission_rate,
+                    staking_pool_id: args.staking_pool_id.into(),
+                })
+            }
+
+            TransactionKind::RevealModel(args) => {
+                TK::RevealModel(types::transaction::RevealModelArgs {
+                    model_id: args.model_id.into(),
+                    weights_manifest: args.weights_manifest.try_into()?,
+                })
+            }
+
+            TransactionKind::CommitModelUpdate(args) => {
+                TK::CommitModelUpdate(types::transaction::CommitModelUpdateArgs {
+                    model_id: args.model_id.into(),
+                    weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
+                        args.weights_url_commitment
+                            .try_into()
+                            .map_err(|_| SdkTypeConversionError(
+                                "weights_url_commitment must be 32 bytes".into(),
+                            ))?,
+                    ),
+                    weights_commitment: types::digests::ModelWeightsCommitment::new(
+                        args.weights_commitment
+                            .try_into()
+                            .map_err(|_| SdkTypeConversionError(
+                                "weights_commitment must be 32 bytes".into(),
+                            ))?,
+                    ),
+                })
+            }
+
+            TransactionKind::RevealModelUpdate(args) => {
+                TK::RevealModelUpdate(types::transaction::RevealModelUpdateArgs {
+                    model_id: args.model_id.into(),
+                    weights_manifest: args.weights_manifest.try_into()?,
+                })
+            }
+
+            TransactionKind::AddStakeToModel {
+                model_id,
+                coin_ref,
+                amount,
+            } => TK::AddStakeToModel {
+                model_id: model_id.into(),
+                coin_ref: coin_ref.into(),
+                amount,
+            },
+
+            TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
+                TK::SetModelCommissionRate {
+                    model_id: model_id.into(),
+                    new_rate,
+                }
+            }
+
+            TransactionKind::DeactivateModel { model_id } => TK::DeactivateModel {
+                model_id: model_id.into(),
+            },
+
+            TransactionKind::ReportModel { model_id } => TK::ReportModel {
+                model_id: model_id.into(),
+            },
+
+            TransactionKind::UndoReportModel { model_id } => TK::UndoReportModel {
+                model_id: model_id.into(),
             },
         })
     }
@@ -1113,11 +1261,17 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::AdvancedToWrongEpoch => {
                 Self::AdvancedToWrongEpoch
             }
-            types::effects::ExecutionFailureStatus::DuplicateEncoder => Self::DuplicateEncoder,
-            types::effects::ExecutionFailureStatus::NotAnEncoder => Self::NotAnEncoder,
-            types::effects::ExecutionFailureStatus::EncoderAlreadyRemoved => {
-                Self::EncoderAlreadyRemoved
-            }
+            types::effects::ExecutionFailureStatus::ModelNotFound => Self::ModelNotFound,
+            types::effects::ExecutionFailureStatus::NotModelOwner => Self::NotModelOwner,
+            types::effects::ExecutionFailureStatus::ModelNotActive => Self::ModelNotActive,
+            types::effects::ExecutionFailureStatus::ModelNotPending => Self::ModelNotPending,
+            types::effects::ExecutionFailureStatus::ModelAlreadyInactive => Self::ModelAlreadyInactive,
+            types::effects::ExecutionFailureStatus::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
+            types::effects::ExecutionFailureStatus::ModelWeightsUrlMismatch => Self::ModelWeightsUrlMismatch,
+            types::effects::ExecutionFailureStatus::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
+            types::effects::ExecutionFailureStatus::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
+            types::effects::ExecutionFailureStatus::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
+            types::effects::ExecutionFailureStatus::ModelMinStakeNotMet => Self::ModelMinStakeNotMet,
             types::effects::ExecutionFailureStatus::InsufficientCoinBalance => {
                 Self::InsufficientCoinBalance
             }
@@ -1125,7 +1279,6 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Self::CoinBalanceOverflow
             }
             types::effects::ExecutionFailureStatus::ValidatorNotFound => Self::ValidatorNotFound,
-            types::effects::ExecutionFailureStatus::EncoderNotFound => Self::EncoderNotFound,
             types::effects::ExecutionFailureStatus::StakingPoolNotFound => {
                 Self::StakingPoolNotFound
             }
@@ -1177,10 +1330,18 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::ValidatorAlreadyRemoved => Self::ValidatorAlreadyRemoved,
             ExecutionError::AdvancedToWrongEpoch => Self::AdvancedToWrongEpoch,
 
-            // Encoder errors
-            ExecutionError::DuplicateEncoder => Self::DuplicateEncoder,
-            ExecutionError::NotAnEncoder => Self::NotAnEncoder,
-            ExecutionError::EncoderAlreadyRemoved => Self::EncoderAlreadyRemoved,
+            // Model errors
+            ExecutionError::ModelNotFound => Self::ModelNotFound,
+            ExecutionError::NotModelOwner => Self::NotModelOwner,
+            ExecutionError::ModelNotActive => Self::ModelNotActive,
+            ExecutionError::ModelNotPending => Self::ModelNotPending,
+            ExecutionError::ModelAlreadyInactive => Self::ModelAlreadyInactive,
+            ExecutionError::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
+            ExecutionError::ModelWeightsUrlMismatch => Self::ModelWeightsUrlMismatch,
+            ExecutionError::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
+            ExecutionError::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
+            ExecutionError::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
+            ExecutionError::ModelMinStakeNotMet => Self::ModelMinStakeNotMet,
 
             // Coin errors
             ExecutionError::InsufficientCoinBalance => Self::InsufficientCoinBalance,
@@ -1188,7 +1349,6 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
 
             // Staking errors
             ExecutionError::ValidatorNotFound => Self::ValidatorNotFound,
-            ExecutionError::EncoderNotFound => Self::EncoderNotFound,
             ExecutionError::StakingPoolNotFound => Self::StakingPoolNotFound,
             ExecutionError::CannotReportOneself => Self::CannotReportOneself,
             ExecutionError::ReportRecordNotFound => Self::ReportRecordNotFound,
@@ -1386,6 +1546,36 @@ impl TryFrom<Manifest> for types::metadata::Manifest {
         }
     }
 }
+
+// ============================================================================
+// ModelWeightsManifest conversions
+// ============================================================================
+
+impl From<types::model::ModelWeightsManifest> for ModelWeightsManifest {
+    fn from(value: types::model::ModelWeightsManifest) -> Self {
+        Self {
+            manifest: value.manifest.into(),
+            decryption_key: value.decryption_key.as_bytes().to_vec(),
+        }
+    }
+}
+
+impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
+    type Error = SdkTypeConversionError;
+
+    fn try_from(value: ModelWeightsManifest) -> Result<Self, Self::Error> {
+        let manifest = value.manifest.try_into()?;
+        let key_array: [u8; 32] = value
+            .decryption_key
+            .try_into()
+            .map_err(|_| SdkTypeConversionError("decryption_key must be 32 bytes".into()))?;
+        Ok(Self {
+            manifest,
+            decryption_key: types::crypto::DecryptionKey::new(key_array),
+        })
+    }
+}
+
 // ============================================================================
 // TransactionEffectsDigest conversions
 // ============================================================================

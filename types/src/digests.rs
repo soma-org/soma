@@ -884,6 +884,134 @@ impl fmt::UpperHex for CheckpointContentsDigest {
     }
 }
 
+/// Commitment to model weights: hash(decrypted_weights).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct ModelWeightsCommitment(Digest);
+
+impl ModelWeightsCommitment {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for ModelWeightsCommitment {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for ModelWeightsCommitment {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<ModelWeightsCommitment> for [u8; 32] {
+    fn from(digest: ModelWeightsCommitment) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for ModelWeightsCommitment {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for ModelWeightsCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for ModelWeightsCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ModelWeightsCommitment")
+            .field(&self.0)
+            .finish()
+    }
+}
+
+/// Commitment to encrypted weights URL: hash(encrypted_weights_url).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct ModelWeightsUrlCommitment(Digest);
+
+impl ModelWeightsUrlCommitment {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for ModelWeightsUrlCommitment {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for ModelWeightsUrlCommitment {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<ModelWeightsUrlCommitment> for [u8; 32] {
+    fn from(digest: ModelWeightsUrlCommitment) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for ModelWeightsUrlCommitment {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for ModelWeightsUrlCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for ModelWeightsUrlCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ModelWeightsUrlCommitment")
+            .field(&self.0)
+            .finish()
+    }
+}
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]

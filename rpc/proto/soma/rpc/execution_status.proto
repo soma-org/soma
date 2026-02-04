@@ -58,17 +58,17 @@ message ExecutionError {
     ADVANCED_TO_WRONG_EPOCH = 10;
 
     //
-    // Encoder errors.
+    // Model errors.
     //
 
-    // Adding an encoder that already exists
-    DUPLICATE_ENCODER = 11;
+    // Model not found
+    MODEL_NOT_FOUND = 11;
 
-    // Removing an encoder that doesn't exist
-    NOT_AN_ENCODER = 12;
+    // Sender is not the model owner
+    NOT_MODEL_OWNER = 12;
 
-    // Removing an encoder already removed
-    ENCODER_ALREADY_REMOVED = 13;
+    // Model is not in active state
+    MODEL_NOT_ACTIVE = 13;
 
     //
     // Coin errors.
@@ -87,9 +87,6 @@ message ExecutionError {
     // Validator not found
     VALIDATOR_NOT_FOUND = 16;
 
-    // Encoder not found
-    ENCODER_NOT_FOUND = 17;
-
     // Staking pool not found
     STAKING_POOL_NOT_FOUND = 18;
 
@@ -98,7 +95,6 @@ message ExecutionError {
 
     // Unreported record cannot be undone
     REPORT_RECORD_NOT_FOUND = 20;
-
 
     //
     // Other errors.
@@ -112,6 +108,34 @@ message ExecutionError {
 
     // Other error.
     OTHER_ERROR = 24;
+
+    //
+    // Additional model errors.
+    //
+
+    // Model is not in pending (committed) state
+    MODEL_NOT_PENDING = 25;
+
+    // Model is already inactive
+    MODEL_ALREADY_INACTIVE = 26;
+
+    // Model reveal epoch mismatch
+    MODEL_REVEAL_EPOCH_MISMATCH = 27;
+
+    // Model weights URL commitment mismatch
+    MODEL_WEIGHTS_URL_MISMATCH = 28;
+
+    // Model has no pending update
+    MODEL_NO_PENDING_UPDATE = 29;
+
+    // Model architecture version mismatch
+    MODEL_ARCHITECTURE_VERSION_MISMATCH = 30;
+
+    // Model commission rate exceeds maximum
+    MODEL_COMMISSION_RATE_TOO_HIGH = 31;
+
+    // Model minimum stake requirement not met
+    MODEL_MIN_STAKE_NOT_MET = 32;
   }
 
   optional ExecutionErrorKind kind = 2;

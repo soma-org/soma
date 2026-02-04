@@ -289,9 +289,26 @@ mod tests {
         let server_keypair = Ed25519KeyPair::generate(&mut rng);
         let server_certificate = SelfSignedCertificate::new(server_keypair.private(), "localhost");
 
+        // Build a rustls ClientConfig using aws-lc-rs as the crypto provider.
+        // The default ring provider does not support Ed25519 TLS identity keys.
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store
+            .add(server_certificate.rustls_certificate())
+            .unwrap();
+        let client_tls_config = rustls::ClientConfig::builder_with_provider(
+            rustls::crypto::aws_lc_rs::default_provider().into(),
+        )
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(root_store)
+        .with_client_auth_cert(
+            vec![client_certificate.rustls_certificate()],
+            client_certificate.rustls_private_key(),
+        )
+        .unwrap();
+
         let client = reqwest::Client::builder()
-            .add_root_certificate(server_certificate.reqwest_certificate())
-            .identity(client_certificate.reqwest_identity())
+            .use_preconfigured_tls(client_tls_config)
             .https_only(true)
             .build()
             .unwrap();

@@ -7,7 +7,10 @@ use crate::{
     crypto::{
         AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
     },
+    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
+    model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
     multiaddr::Multiaddr,
+    object::ObjectID,
 };
 use anyhow::Result;
 use fastcrypto::traits::KeyPair as _;
@@ -48,6 +51,40 @@ impl Clone for ValidatorGenesisConfig {
     }
 }
 
+/// Configuration for a seed model created at genesis.
+///
+/// Genesis models skip the commit-reveal lifecycle and are created directly as active
+/// with `activation_epoch = Some(0)`. This mirrors how genesis validators skip the
+/// `AddValidator` transaction and are created directly as active.
+///
+/// The staking pool ID is generated at build time (same as validators).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GenesisModelConfig {
+    /// Owner address for the model
+    pub owner: SomaAddress,
+    /// Pre-assigned model ID (used as key in ModelRegistry maps and for token allocation routing)
+    pub model_id: ModelId,
+    /// Revealed weights (skip commit-reveal at genesis)
+    pub weights_manifest: ModelWeightsManifest,
+    /// Commitment to the encrypted weights URL (stored for integrity)
+    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    /// Commitment to the decrypted model weights (stored for integrity)
+    pub weights_commitment: ModelWeightsCommitment,
+    /// Architecture version (must match protocol config)
+    pub architecture_version: ArchitectureVersion,
+    /// Commission rate in basis points (max 10000)
+    pub commission_rate: u64,
+    /// Initial stake from the model owner (defaults to model_min_stake: 1 SOMA).
+    /// Translated into a TokenAllocation with `staked_with_model` during genesis building.
+    #[serde(default = "default_model_stake")]
+    pub initial_stake: u64,
+}
+
+fn default_model_stake() -> u64 {
+    // 1 SOMA in shannons — matches protocol config model_min_stake default
+    1_000_000_000
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AccountConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +97,8 @@ pub struct GenesisConfig {
     pub validator_config_info: Option<Vec<ValidatorGenesisConfig>>,
     pub parameters: GenesisCeremonyParameters,
     pub accounts: Vec<AccountConfig>,
+    #[serde(default)]
+    pub genesis_models: Vec<GenesisModelConfig>,
 }
 
 pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000_000_000_000;
@@ -149,6 +188,7 @@ impl GenesisConfig {
                     recipient_address: address,
                     amount_shannons: *a,
                     staked_with_validator: None,
+                    staked_with_model: None,
                 });
             });
         }
@@ -164,7 +204,6 @@ pub struct ValidatorGenesisConfigBuilder {
     protocol_key_pair: Option<AuthorityKeyPair>,
     account_key_pair: Option<SomaKeyPair>,
     ip: Option<String>,
-    is_networking_only: Option<bool>,
     /// If set, the validator will use deterministic addresses based on the port offset.
     /// This is useful for benchmarking.
     port_offset: Option<u16>,
@@ -188,11 +227,6 @@ impl ValidatorGenesisConfigBuilder {
 
     pub fn with_ip(mut self, ip: String) -> Self {
         self.ip = Some(ip);
-        self
-    }
-
-    pub fn as_networking_only(mut self) -> Self {
-        self.is_networking_only = Some(true);
         self
     }
 
@@ -315,6 +349,10 @@ pub struct TokenAllocation {
 
     /// Indicates if this allocation should be staked at genesis and with which validator
     pub staked_with_validator: Option<SomaAddress>,
+
+    /// Indicates if this allocation should be staked at genesis and with which model
+    #[serde(default)]
+    pub staked_with_model: Option<ModelId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,7 +428,11 @@ impl TokenDistributionSchedule {
         );
         assert!(
             emission_fund_allocation.staked_with_validator.is_none(),
-            "Can't stake the emission fund",
+            "Can't stake the emission fund with a validator",
+        );
+        assert!(
+            emission_fund_allocation.staked_with_model.is_none(),
+            "Can't stake the emission fund with a model",
         );
 
         let schedule = Self {
@@ -414,6 +456,7 @@ impl TokenDistributionSchedule {
             recipient_address: SomaAddress::default(),
             amount_shannons: self.emission_fund_shannons,
             staked_with_validator: None,
+            staked_with_model: None,
         })?;
 
         Ok(())

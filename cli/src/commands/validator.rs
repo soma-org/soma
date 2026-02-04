@@ -23,6 +23,7 @@ use types::{
     base::SomaAddress,
     config::node_config::DEFAULT_COMMISSION_RATE,
     crypto::{AuthorityPublicKey, NetworkPublicKey, Signable},
+    model::ModelId,
     multiaddr::Multiaddr,
     object::{ObjectID, ObjectRef, Owner},
     system_state::{SystemState, validator::Validator},
@@ -158,6 +159,22 @@ pub enum SomaValidatorCommand {
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
+
+    /// Report or un-report a model (validators only)
+    ///
+    /// Active validators can report misbehaving models. If reports reach
+    /// 2f+1 quorum at epoch boundary, the model is slashed and deactivated.
+    #[clap(name = "report-model")]
+    ReportModel {
+        /// The model ID to report
+        #[clap(name = "model-id")]
+        model_id: ModelId,
+        /// If true, undo an existing report
+        #[clap(long, default_value_t = false)]
+        undo_report: bool,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -286,6 +303,22 @@ impl SomaValidatorCommand {
                     TransactionKind::ReportValidator {
                         reportee: reportee_address,
                     }
+                };
+                execute_or_serialize(context, sender, kind, tx_args.into()).await
+            }
+
+            SomaValidatorCommand::ReportModel {
+                model_id,
+                undo_report,
+                tx_args,
+            } => {
+                // Only active validators can report models
+                check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
+
+                let kind = if undo_report {
+                    TransactionKind::UndoReportModel { model_id }
+                } else {
+                    TransactionKind::ReportModel { model_id }
                 };
                 execute_or_serialize(context, sender, kind, tx_args.into()).await
             }

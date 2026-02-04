@@ -1,27 +1,25 @@
 # Soma Monorepo Architecture Guide
 
-This document provides a comprehensive overview of the Soma blockchain and distributed encoding network. It is intended for developers who need to understand the system architecture to orchestrate refactoring or major changes.
+This document provides a comprehensive overview of the Soma blockchain and its redesign toward a continuous mining competition. It is intended for developers who need to understand the system architecture to orchestrate implementation work.
 
 ## Table of Contents
 1. [System Overview](#system-overview)
-2. [Crate Organization](#crate-organization)
-3. [Core Data Model](#core-data-model)
-4. [Validator Flow (Transaction Execution)](#validator-flow-transaction-execution)
-5. [Encoder Flow (Embedding Generation)](#encoder-flow-embedding-generation)
-6. [User Experience (CLI/SDK/RPC)](#user-experience-clisdkrpc)
+2. [Current State (Post-Cleanup)](#current-state-post-cleanup)
+3. [Redesign Overview](#redesign-overview)
+4. [Crate Organization](#crate-organization)
+5. [Core Data Model (Current)](#core-data-model-current)
+6. [Validator Flow (Transaction Execution)](#validator-flow-transaction-execution)
 7. [Key Architectural Patterns](#key-architectural-patterns)
-8. [File Reference](#file-reference)
+8. [Implementation Roadmap](#implementation-roadmap)
+9. [File Reference](#file-reference)
 
 ---
 
 ## System Overview
 
-Soma is a **dual-layer consensus system** combining:
+Soma is a **BFT consensus blockchain** (Mysticeti) currently being redesigned from a dual-layer encoder system into a **continuous mining competition** where data miners race to fill targets using registered models.
 
-1. **Validator Consensus Layer**: Traditional BFT consensus (Mysticeti) for transaction ordering and finality
-2. **Encoder Evaluation Layer**: Distributed ML-based evaluation of data embeddings through stake-weighted shard competition
-
-### High-Level Architecture
+### Current Architecture (Post-Cleanup)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -29,49 +27,92 @@ Soma is a **dual-layer consensus system** combining:
 │                     CLI / SDK / RPC (gRPC + JSON)                       │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-┌──────────────────────────────────┐  ┌──────────────────────────────────┐
-│         FULLNODE LAYER           │  │        ENCODER NETWORK           │
-│  ┌────────────────────────────┐  │  │  ┌────────────────────────────┐  │
-│  │    Transaction Orchestrator │  │  │  │     Encoder Node           │  │
-│  │    (submission + finality)  │  │  │  │  ┌──────────────────────┐  │  │
-│  └────────────────────────────┘  │  │  │  │  Commit-Reveal        │  │  │
-│               │                  │  │  │  │  Consensus Pipeline   │  │  │
-│               ▼                  │  │  │  └──────────────────────┘  │  │
-│  ┌────────────────────────────┐  │  │  │  ┌──────────────────────┐  │  │
-│  │      Authority State        │  │  │  │  │  Intelligence        │  │  │
-│  │  (execution + caching)      │  │  │  │  │  (inference/eval)    │  │  │
-│  └────────────────────────────┘  │  │  │  └──────────────────────┘  │  │
-│               │                  │  │  │  ┌──────────────────────┐  │  │
-│               ▼                  │  │  │  │  Probes (ML models)   │  │  │
-│  ┌────────────────────────────┐  │  │  │  └──────────────────────┘  │  │
-│  │    Consensus Manager        │  │  │  └────────────────────────┘  │
-│  │    (Mysticeti BFT)          │  │  └──────────────────────────────┘
-│  └────────────────────────────┘  │
-│               │                  │
-│               ▼                  │           ▲
-│  ┌────────────────────────────┐  │           │
-│  │    Checkpoint Service       │◄─┼───────────┘
-│  │    (finality + sync)        │  │   encoder-validator-api
-│  └────────────────────────────┘  │   (committee sync)
-└──────────────────────────────────┘
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          FULLNODE LAYER                                   │
+│  ┌────────────────────────────┐  ┌────────────────────────────────────┐  │
+│  │    Transaction Orchestrator │  │      Authority State               │  │
+│  │    (submission + finality)  │  │  (execution + caching)             │  │
+│  └────────────────────────────┘  └────────────────────────────────────┘  │
+│               │                                    │                     │
+│               ▼                                    ▼                     │
+│  ┌────────────────────────────┐  ┌────────────────────────────────────┐  │
+│  │    Consensus Manager        │  │    Checkpoint Service              │  │
+│  │    (Mysticeti BFT)          │  │    (finality + sync)               │  │
+│  └────────────────────────────┘  └────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow Summary
+The old encoder network, shard system, VDF randomness, and encoder-validator API have all been removed. The codebase is a clean validator-only chain ready for the new mining system.
 
-1. **User submits data** via `soma embed --url <data_url>`
-2. **Transaction** enters validator consensus → checkpoint finality
-3. **FinalityProof** sent to selected encoder shard (via ShardAuthToken)
-4. **Encoders compete** through commit-reveal consensus to produce best embedding
-5. **Winner reported** back to chain via ReportWinner transaction
-6. **Rewards distributed** to winning encoder and data submitter
+---
+
+## Current State (Post-Cleanup)
+
+The encoder/shard infrastructure has been fully removed across three cleanup commits:
+
+- `02ddf68` - Removed encoder-related crates, upgraded packages, moved to Rust 2024
+- `508f3ad` - Removed VDF, enc-val-api crates. Removed shard & encoder things from types and system state
+- `d704d9e` - Cleaned authority, rpc, node, sdk, and cli of old encoder and shard related things
+
+### What Was Removed
+
+| Component | Status |
+|-----------|--------|
+| `encoder/` crate | Deleted |
+| `encoder-validator-api/` crate | Deleted |
+| `test-encoder-cluster/` crate | Deleted |
+| `vdf/` crate | Deleted |
+| All shard types (`shard.rs`, `shard_networking/`, `shard_crypto/`, etc.) | Deleted |
+| All encoder types (`encoder_committee.rs`, `encoder_info.rs`, `encoder_validator/`, etc.) | Deleted |
+| System state encoder/shard fields | Deleted |
+| Encoder/shard transaction variants (11 variants removed) | Deleted |
+| Authority encoder client and shard/encoder executors | Deleted |
+| CLI encoder commands | Deleted |
+
+### What Remains (Post Phase 3)
+
+The chain is a validator blockchain with a model registry system:
+
+- **24 transaction types**: Genesis, ConsensusCommitPrologue, ChangeEpoch, validator management (6), coin/object operations (3), staking (2), model management (9)
+- **SystemState** with validators, emission pool, parameters, epoch seeds, model registry
+- **Model system**: Commit-reveal lifecycle, staking pools, delegation, epoch-boundary processing
+- **Full consensus pipeline**: Mysticeti BFT → checkpoint finality → state sync
+- **RPC/CLI/SDK**: Functional for balance, send, stake, validator, and model operations
+
+### Minor Cleanup Leftovers
+
+- `intelligence/`, `probes/`, `arrgen/` crates still in workspace (retained for future use by inference engine)
+
+---
+
+## Redesign Overview
+
+The system is being redesigned from an encoder shard competition into a **continuous mining competition**. Full details in [REDESIGN.md](REDESIGN.md), implementation plan in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+
+### New System at a Glance
+
+| Aspect | Old (Encoder) | New (Mining + Challenge) |
+|--------|---------------|--------------------------|
+| **Model Privacy** | Private per-encoder probes | Commit-reveal: commit epoch N, reveal epoch N+1 |
+| **Model Selection** | VDF-based random assignment | Stake-weighted random selection |
+| **Verification** | Every shard evaluated by committee | Optimistic: only challenged submissions audited |
+| **Competition** | Encoder shards race | Miners race to fill targets (first valid commit wins) |
+| **Rewards** | Winning encoder + submitter | Miner (50%) + Model owner (30%) + Validators (20%) |
+
+### New Data Flow
+
+1. **Model Registration**: Model owners commit model weights (epoch N) → reveal (epoch N+1) → model becomes active
+2. **Target Generation**: Targets generated continuously; each selects one model via stake-weighted sampling with a difficulty-controlled radius
+3. **Mining**: Miners find data that embeds within target radius → hash-commit → ~30s reveal window → first valid commit wins
+4. **Challenge**: Hits challengeable through epoch N+1; validators audit on challenge; 2f+1 vote resolves
+5. **Rewards**: At epoch N+1 end, confirmed hits split epoch emissions (50% miner / 30% model / 20% validators)
 
 ---
 
 ## Crate Organization
 
-### Core Infrastructure (32 crates total)
+### Current Workspace (25 crates)
 
 | Category | Crate | Purpose |
 |----------|-------|---------|
@@ -81,10 +122,6 @@ Soma is a **dual-layer consensus system** combining:
 | **Consensus** | `consensus` | Mysticeti BFT consensus implementation |
 | | `authority` | Validator state, execution engine, transaction orchestration |
 | | `node` | Fullnode orchestration (starts all components) |
-| **Encoder System** | `encoder` | Encoder node with commit-reveal pipeline |
-| | `intelligence` | ML inference and evaluation services |
-| | `probes` | Transformer probe model (Rust/Burn implementation) |
-| | `encoder-validator-api` | gRPC API for encoder-validator committee sync |
 | **Storage** | `store` | RocksDB-backed persistent storage |
 | | `store-derive` | Derive macros for storage traits |
 | | `objects` | Object storage abstraction (S3, GCS, Azure, HTTP) |
@@ -96,16 +133,16 @@ Soma is a **dual-layer consensus system** combining:
 | **User Interface** | `cli` | Command-line interface (`soma` binary) |
 | | `sdk` | Rust client SDK |
 | | `python-sdk` | Python bindings (PyO3) |
+| **ML (retained)** | `intelligence` | ML inference and evaluation services |
+| | `probes` | Transformer probe model (Rust/Burn implementation) |
 | **Utilities** | `utils` | Shared utilities (compression, logging, codec) |
-| | `vdf` | Verifiable Delay Functions (Wesolowski) |
 | | `data-ingestion` | Data ingestion pipelines |
-| **Python** | `python-probes` | JAX/Flax probe implementation (training) |
 | | `arrgen` | Deterministic array generation for testing |
+| | `bin-version` | Binary version information |
 | **Testing** | `test-cluster` | Validator cluster simulation |
-| | `test-encoder-cluster` | Encoder cluster simulation |
 | | `e2e-tests` | End-to-end integration tests |
 
-### Dependency Graph (Simplified)
+### Dependency Graph
 
 ```
                     ┌──────────────┐
@@ -117,33 +154,31 @@ Soma is a **dual-layer consensus system** combining:
          ▼                 ▼                 ▼
    ┌──────────┐     ┌──────────┐      ┌──────────┐
    │  store   │     │  crypto  │      │   rpc    │
-   └────┬─────┘     └────┬─────┘      └────┬─────┘
-        │                │                 │
-        └────────────────┼─────────────────┘
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-        ┌──────────┐         ┌──────────┐
-        │authority │         │ encoder  │
-        └────┬─────┘         └────┬─────┘
-             │                    │
-             ▼                    ▼
-        ┌──────────┐         ┌──────────────┐
-        │   node   │         │ intelligence │
-        └────┬─────┘         └──────────────┘
-             │
-             ▼
-        ┌──────────┐
-        │   cli    │
-        └──────────┘
+   └────┬─────┘     └──────────┘      └────┬─────┘
+        │                                  │
+        └──────────────┬───────────────────┘
+                       │
+                       ▼
+                 ┌──────────┐
+                 │authority │
+                 └────┬─────┘
+                      │
+                      ▼
+                 ┌──────────┐
+                 │   node   │
+                 └────┬─────┘
+                      │
+                      ▼
+                 ┌──────────┐
+                 │   cli    │
+                 └──────────┘
 ```
 
 ---
 
-## Core Data Model
+## Core Data Model (Current)
 
-### Transaction Types (26 total)
+### Transaction Types (24 total)
 
 Located in [types/src/transaction.rs](types/src/transaction.rs)
 
@@ -156,20 +191,22 @@ Located in [types/src/transaction.rs](types/src/transaction.rs)
 - `AddValidator`, `RemoveValidator`, `UpdateValidatorMetadata`
 - `SetCommissionRate`, `ReportValidator`, `UndoReportValidator`
 
-**Encoder Management:**
-- `AddEncoder`, `RemoveEncoder`, `UpdateEncoderMetadata`
-- `SetEncoderCommissionRate`, `SetEncoderBytePrice`
-- `ReportEncoder`, `UndoReportEncoder`
-
-**User Operations:**
+**Coin/Object Operations:**
 - `TransferCoin`, `PayCoins`, `TransferObjects`
-- `AddStake`, `AddStakeToEncoder`, `WithdrawStake`
 
-**Shard Operations:**
-- `EmbedData` - Submit data for encoding
-- `ClaimEscrow` - Claim failed shard escrow
-- `ReportWinner` - Report shard winner
-- `ClaimReward` - Claim target reward
+**Staking:**
+- `AddStake`, `WithdrawStake`
+
+**Model Management (9):**
+- `CommitModel` - Register a new model (commit phase)
+- `RevealModel` - Reveal model weights (reveal phase)
+- `CommitModelUpdate` - Commit updated weights for an active model
+- `RevealModelUpdate` - Reveal updated weights
+- `AddStakeToModel` - Stake tokens to a model's staking pool
+- `SetModelCommissionRate` - Set model's commission rate for next epoch
+- `DeactivateModel` - Voluntarily deactivate a model
+- `ReportModel` - Active validator reports a model
+- `UndoReportModel` - Remove a model report
 
 ### Object Model
 
@@ -190,44 +227,8 @@ Object
 
 | Object | Purpose | Mutability |
 |--------|---------|------------|
-| `SystemState` | Global blockchain state, validators, encoders, staking | Mutable |
-| `Shard` | Individual shard with escrow and winner info | Mutable |
-| `Target` | Competition target with reward | Mutable |
-| `StakedSoma` | User's staked tokens | Mutable |
-
-### Shard Data Flow
-
-```
-EmbedData Transaction
-        │
-        ▼
-┌───────────────────┐
-│   ShardInput      │ ← Created object (owned by system)
-│   - download_meta │
-│   - amount        │
-│   - submitter     │
-│   - target (opt)  │
-└───────────────────┘
-        │
-        │ FinalityProof + VDF
-        ▼
-┌───────────────────┐
-│   ShardAuthToken  │ ← Proves tx finality to encoders
-│   - finality_proof│
-│   - checkpoint_ent│
-│   - vdf_proof     │
-│   - shard_ref     │
-└───────────────────┘
-        │
-        │ Encoder competition
-        ▼
-┌───────────────────┐
-│   Shard (final)   │ ← Updated with winner
-│   - winning_enc   │
-│   - embeddings    │
-│   - eval_scores   │
-└───────────────────┘
-```
+| `SystemState` | Global blockchain state, validators, staking, emissions, model registry | Mutable |
+| `StakedSoma` | User's staked tokens (for validators or models) | Mutable |
 
 ---
 
@@ -250,8 +251,7 @@ SomaNode::start(config)
     │
     ├─ IF FULLNODE:
     │   ├─ Start RPC servers (gRPC + JSON)
-    │   ├─ Start TransactionOrchestrator
-    │   └─ Start EncoderValidatorService
+    │   └─ Start TransactionOrchestrator
     │
     └─ Spawn reconfiguration monitor (runs forever)
 ```
@@ -281,8 +281,9 @@ Transaction Received
 ┌───────────────────────────────────────────┐
 │  3. Execute Transaction                   │
 │     - Dispatch to type-specific executor  │
-│     - ValidatorExecutor, EncoderExecutor  │
-│     - CoinExecutor, ShardExecutor, etc.   │
+│     - ValidatorExecutor, CoinExecutor     │
+│     - StakingExecutor, ModelExecutor      │
+│     - SystemExecutor                      │
 └───────────────────────────────────────────┘
         │
         ▼
@@ -331,7 +332,7 @@ ExecutionDriver
 
 ### Epoch Reconfiguration
 
-Located in [node/src/lib.rs:1047](node/src/lib.rs) - `monitor_reconfiguration()`
+Located in `node/src/lib.rs` - `monitor_reconfiguration()`
 
 ```
 End of Epoch Detected
@@ -355,242 +356,9 @@ Reconfigure State
 
 ---
 
-## Encoder Flow (Embedding Generation)
-
-### Encoder Node Architecture
-
-Located in [encoder/src/core/encoder_node.rs](encoder/src/core/encoder_node.rs)
-
-```
-EncoderNode
-    │
-    ├─ Context (epoch committees, config)
-    ├─ Storage (RocksDB for shard state)
-    │
-    ├─ Network Services:
-    │   ├─ External Service (receives inputs from fullnodes)
-    │   ├─ Internal Service (peer-to-peer with other encoders)
-    │   └─ Object Service (HTTP server for data download)
-    │
-    ├─ ML Services:
-    │   ├─ Inference Network Manager
-    │   └─ Evaluation Network Manager
-    │
-    └─ Pipeline Actors (one per consensus stage):
-        ├─ InputProcessor
-        ├─ CommitProcessor
-        ├─ CommitVotesProcessor
-        ├─ RevealProcessor
-        ├─ EvaluationProcessor
-        └─ ReportVoteProcessor
-```
-
-### Commit-Reveal Consensus Pipeline
-
-This is the core encoding workflow. Located in [encoder/src/pipelines/](encoder/src/pipelines/)
-
-```
-                        ┌─────────────────────────────────┐
-                        │       INPUT STAGE               │
-                        │  - Receive ShardAuthToken       │
-                        │  - Verify shard membership      │
-                        │  - Download input data          │
-                        │  - Run inference → embeddings   │
-                        │  - Run evaluation → scores      │
-                        │  - Create Submission            │
-                        │  - Broadcast Commit (hash)      │
-                        └───────────────┬─────────────────┘
-                                        │
-                                        ▼
-                        ┌─────────────────────────────────┐
-                        │       COMMIT STAGE              │
-                        │  - Collect commits from peers   │
-                        │  - Wait for quorum (2f+1)       │
-                        │  - Start timer (min 5 sec)      │
-                        └───────────────┬─────────────────┘
-                                        │
-                                        ▼
-                        ┌─────────────────────────────────┐
-                        │    COMMIT_VOTES STAGE           │
-                        │  - Broadcast CommitVotes        │
-                        │  - Aggregate acceptance votes   │
-                        │  - Determine ACCEPTED/REJECTED  │
-                        │    for each encoder             │
-                        └───────────────┬─────────────────┘
-                                        │
-                                        ▼
-                        ┌─────────────────────────────────┐
-                        │       REVEAL STAGE              │
-                        │  - Broadcast full Submission    │
-                        │  - Verify reveals match commits │
-                        │  - Wait for quorum of reveals   │
-                        └───────────────┬─────────────────┘
-                                        │
-                                        ▼
-                        ┌─────────────────────────────────┐
-                        │     EVALUATION STAGE            │
-                        │  - Re-evaluate top submissions  │
-                        │  - Verify reported scores       │
-                        │  - Pick highest-scoring winner  │
-                        │  - Create signed Report         │
-                        │  - Broadcast ReportVote         │
-                        └───────────────┬─────────────────┘
-                                        │
-                                        ▼
-                        ┌─────────────────────────────────┐
-                        │    REPORT_VOTES STAGE           │
-                        │  - Collect ReportVotes          │
-                        │  - Aggregate BLS signatures     │
-                        │  - Submit ReportWinner tx       │
-                        │  - Cleanup shard state          │
-                        └─────────────────────────────────┘
-```
-
-### Shard Selection
-
-Located in [types/src/encoder_committee.rs](types/src/encoder_committee.rs)
-
-```rust
-// Deterministic weighted random sampling
-EncoderCommittee::sample_shard(seed: &Digest<ShardEntropy>) -> Shard {
-    // 1. Use seed to initialize RNG
-    // 2. Sample `shard_size` encoders weighted by stake
-    // 3. Return Shard with quorum_threshold = 2f+1
-}
-```
-
-### Intelligence Services
-
-Located in [intelligence/src/](intelligence/src/)
-
-**Inference Service:**
-- Takes input data → produces embeddings
-- Supports mock or external JSON/HTTP inference engines
-- Returns `InferenceOutput` with embedding download metadata
-
-**Evaluation Service:**
-- Takes embeddings + probe model → computes scores
-- Uses Burn framework with WGPU backend
-- Returns `EvaluationScores`: flow_matching, sig_reg, compression, composite
-
-### Probe Architecture
-
-Located in [probes/src/v1/](probes/src/v1/)
-
-```
-Probe (Pre-norm Transformer)
-├── Encoder (4 layers)
-│   └── Layer (repeated 4x)
-│       ├── LayerNorm (norm_1)
-│       ├── MultiHeadAttention (8 heads, 1024 dim)
-│       │   ├── Query: Linear(1024 → 1024)
-│       │   ├── Key:   Linear(1024 → 1024)
-│       │   ├── Value: Linear(1024 → 1024)
-│       │   └── Output: Linear(1024 → 1024)
-│       ├── LayerNorm (norm_2)
-│       └── PositionWiseFeedForward
-│           ├── Linear(1024 → 4096)
-│           ├── GELU activation
-│           └── Linear(4096 → 1024)
-└── SIGReg (Signature Regularization Loss)
-```
-
-**V1 Hyperparameters:**
-- `EMBEDDING_DIM = 1024`
-- `NUM_HEADS = 8`
-- `NUM_LAYERS = 4`
-- `MAX_SEQ_LEN = 256`
-- `PWFF_HIDDEN_DIM = 4096`
-
----
-
-## User Experience (CLI/SDK/RPC)
-
-### CLI Commands
-
-Located in [cli/src/](cli/src/)
-
-**User Operations:**
-```bash
-soma balance [ADDRESS]              # Check balance
-soma send --to <ADDR> --amount <N>  # Transfer SOMA
-soma transfer --to <ADDR> --object-id <ID>  # Transfer object
-soma pay --recipients <A1,A2> --amounts <N1,N2>  # Multi-pay
-soma stake --validator <ADDR>       # Stake with validator
-soma stake --encoder <ADDR>         # Stake with encoder
-soma unstake <STAKED_ID>            # Withdraw stake
-soma embed --url <DATA_URL>         # Submit data for encoding
-soma claim --escrow <SHARD_ID>      # Claim failed escrow
-soma claim --reward <TARGET_ID>     # Claim target reward
-```
-
-**Query Commands:**
-```bash
-soma objects get <ID>               # Get object
-soma objects list [OWNER]           # List owned objects
-soma tx <DIGEST>                    # Get transaction
-soma shards status <ID>             # Shard status
-soma shards list --submitter <ADDR> # List shards by submitter
-```
-
-**Operator Commands:**
-```bash
-soma validator start --config <PATH>
-soma validator join-committee <INFO_PATH>
-soma validator leave-committee
-soma encoder start --config <PATH>
-soma encoder join-committee <INFO_PATH> --probe-url <URL>
-```
-
-### SDK Usage
-
-Located in [sdk/src/](sdk/src/)
-
-```rust
-// Initialize client
-let client = SomaClientBuilder::default()
-    .request_timeout(Duration::from_secs(60))
-    .build_testnet()
-    .await?;
-
-// Build and execute transaction
-let tx_data = builder.build_transaction_data(sender, kind, gas_ref).await?;
-let tx = context.sign_transaction(&tx_data).await;
-let response = client.execute_transaction(&tx).await?;
-
-// Wait for finality
-let (response, completion) = client
-    .execute_embed_data_and_wait_for_completion(&tx, timeout)
-    .await?;
-```
-
-### RPC Services
-
-Located in [rpc/src/](rpc/src/)
-
-**LedgerService (11 methods):**
-- `GetServiceInfo`, `GetObject`, `BatchGetObjects`
-- `GetTransaction`, `BatchGetTransactions`
-- `GetCheckpoint`, `GetEpoch`
-- `GetShardsByEpoch`, `GetShardsBySubmitter`, `GetShardsByEncoder`
-- `GetClaimableEscrows`, `GetValidTargets`, `GetClaimableRewards`
-
-**StateService (2 methods):**
-- `ListOwnedObjects`, `GetBalance`
-
-**TransactionExecutionService (3 methods):**
-- `ExecuteTransaction`, `SimulateTransaction`, `InitiateShardWork`
-
-**SubscriptionService (1 method):**
-- `SubscribeCheckpoints` (streaming)
-
----
-
 ## Key Architectural Patterns
 
 ### 1. Envelope Pattern (Signatures)
-
-Used throughout for authenticated messages:
 
 ```rust
 struct Envelope<T: Message, S: Signature> {
@@ -605,10 +373,10 @@ type CertifiedCheckpoint = Envelope<CheckpointSummary, AuthorityStrongQuorumSign
 ### 2. Versioned Types (Protocol Evolution)
 
 ```rust
-#[enum_dispatch(SubmissionAPI)]
-pub enum Submission {
-    V1(SubmissionV1),
-    // Future: V2(SubmissionV2),
+#[enum_dispatch(SomeAPI)]
+pub enum SomeType {
+    V1(SomeTypeV1),
+    // Future: V2(SomeTypeV2),
 }
 ```
 
@@ -621,16 +389,23 @@ struct AuthorityState {
 }
 ```
 
-### 4. Actor-Based Concurrency
+### 4. FullnodeConfigBuilder (Test Infrastructure)
 
-Encoder pipeline uses bounded actor queues:
+Fullnodes in test clusters are created independently from validators using `FullnodeConfigBuilder` in `types/src/config/node_config.rs`. This replaces the previous `CommitteeConfig::Mixed` approach which incorrectly added fullnodes to the validator committee.
 
 ```rust
-struct ActorManager<T: Actor> {
-    sender: mpsc::Sender<T::Input>,
-    // Buffer size: 100, process one at a time
-}
+let fullnode_config = FullnodeConfigBuilder::new()
+    .with_config_directory(dir)
+    .build(genesis, seed_peers);
+// fullnode_config.consensus_config == None → node runs as fullnode
 ```
+
+Key details:
+- Generates independent keypairs (not in validator committee)
+- Sets `consensus_config = None` so the node runs as a fullnode
+- In msim, uses `local_ip_utils::get_new_ip()` for unique simulated IPs (`10.10.0.X`)
+- Connects to validators via `seed_peers` extracted from validator configs
+- Used by `SwarmBuilder::build()` in `test-cluster/src/swarm.rs`
 
 ### 5. Finality Proofs (Off-Chain Verification)
 
@@ -643,38 +418,86 @@ struct FinalityProof {
 }
 ```
 
-### 6. Stake-Weighted Selection
+---
 
-```rust
-impl EncoderCommittee {
-    fn sample_shard(&self, seed: &Digest) -> Shard {
-        // Weighted random sampling by voting_power
-        // Deterministic given seed (VDF output)
-    }
-}
-```
+## Implementation Roadmap
+
+Phases 1 (cleanup) and 3 (model registry) are complete. The remaining phases from [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md):
+
+### Phase 2: Step-Decay Emissions
+Update `EmissionPool` with step-decay schedule (subsidy period + decrease rate). Split emissions 20% validators / 80% target winner pool.
+
+### Phase 3: Model Registry with Staking — COMPLETE ✓
+`Model` type with commit-reveal flow. `ModelRegistry` in SystemState. 9 model transactions with `ModelExecutor`. Genesis bootstrap with seed models. Full CLI (`soma model commit|reveal|list|info|stake`). RPC proto integration. 18 unit tests + 2 E2E tests passing.
+
+### Phase 4: Target Generation
+New `Target` type with deterministic embedding generation and stake-weighted model selection. `TargetState` and `DifficultyStats` in SystemState. Continuous generation: new target spawns when previous is filled. Genesis creates initial targets.
+
+### Phase 5: Submission System
+New `Submission` type with hash-commit-reveal. First valid commit wins. ~30s reveal window. Lazy cleanup of expired commits. `HitTracking` in SystemState. New transactions: `CommitSubmission`, `RevealSubmission`, `ClaimBond`. CLI: `soma submit commit|reveal|claim-bond`.
+
+### Phase 6: Inference Engine
+New `inference-engine/` crate wrapping `probes/`. Shared by miners (CLI), challengers, and validators. Deterministic f32 inference with fixed-point comparisons.
+
+### Phase 7: Challenge System
+New `Challenge` type with `ScoreFraud` and `DataFraud` types. Validator audit service downloads data, re-runs inference, votes. 2f+1 quorum resolves. New transactions: `InitiateChallenge`, `ResolveChallengeAudit`. CLI: `soma challenge initiate|list|info`.
+
+### Phase 8: Reward Distribution & Difficulty Adjustment
+At epoch N+1 end: close challenge window for epoch N, distribute rewards for confirmed hits, adjust difficulty radius based on average hit time.
+
+### Phase 9: Error Handling
+New `ExecutionFailureStatus` variants for model, target, submission, challenge, and bond errors.
+
+### Phase 10: RPC & SDK Updates
+Index tables for models, targets, submissions, challenges. New proto query methods. SDK client methods for full flow.
+
+### Phase 11: Polish & Testnet
+Comprehensive E2E tests, documentation, testnet deployment with seed models.
 
 ---
 
 ## File Reference
 
-### Critical Files for Refactoring
+### Current Critical Files
 
 | Area | File | Description |
 |------|------|-------------|
-| **Transactions** | [types/src/transaction.rs](types/src/transaction.rs) | All 26 transaction types |
-| **Execution** | [authority/src/execution/mod.rs](authority/src/execution/mod.rs) | Transaction execution pipeline |
-| **Type Executors** | [authority/src/execution/shard.rs](authority/src/execution/shard.rs) | Shard-specific execution |
-| **System State** | [types/src/system_state/mod.rs](types/src/system_state/mod.rs) | Global state management |
-| **Shard Types** | [types/src/shard.rs](types/src/shard.rs) | Shard, ShardAuthToken, Input |
-| **Encoder Committee** | [types/src/encoder_committee.rs](types/src/encoder_committee.rs) | Shard sampling, committee |
-| **Finality** | [types/src/finality.rs](types/src/finality.rs) | FinalityProof, inclusion proofs |
-| **Report/Submission** | [types/src/report.rs](types/src/report.rs), [submission.rs](types/src/submission.rs) | Encoder outputs |
-| **Encoder Pipeline** | [encoder/src/pipelines/](encoder/src/pipelines/) | All 6 consensus stages |
-| **Intelligence** | [intelligence/src/evaluation/](intelligence/src/evaluation/) | ML evaluation logic |
-| **Probes** | [probes/src/v1/](probes/src/v1/) | Transformer model |
-| **RPC Proto** | [rpc/src/proto/](rpc/src/proto/) | All protobuf definitions |
+| **Transactions** | [types/src/transaction.rs](types/src/transaction.rs) | 24 transaction types (system, validator, coin, staking, model) |
+| **Execution** | [authority/src/execution/mod.rs](authority/src/execution/mod.rs) | Transaction execution pipeline + executor dispatch |
+| **Executors** | [authority/src/execution/validator.rs](authority/src/execution/validator.rs) | Validator management |
+| | [authority/src/execution/coin.rs](authority/src/execution/coin.rs) | Coin operations |
+| | [authority/src/execution/staking.rs](authority/src/execution/staking.rs) | Staking operations |
+| | [authority/src/execution/model.rs](authority/src/execution/model.rs) | Model management (9 transaction types) |
+| | [authority/src/execution/change_epoch.rs](authority/src/execution/change_epoch.rs) | Epoch transitions (incl. model epoch processing) |
+| **Model Types** | [types/src/model.rs](types/src/model.rs) | Model, ModelId, ModelWeightsDownload, PendingModelUpdate |
+| | [types/src/system_state/model_registry.rs](types/src/system_state/model_registry.rs) | ModelRegistry (active, pending, inactive models) |
+| **System State** | [types/src/system_state/mod.rs](types/src/system_state/mod.rs) | Global state (validators, emissions, parameters, model registry) |
+| **Config** | [types/src/config/node_config.rs](types/src/config/node_config.rs) | ValidatorConfigBuilder + FullnodeConfigBuilder |
+| | [types/src/config/network_config.rs](types/src/config/network_config.rs) | Network/committee configuration |
+| | [types/src/config/genesis_config.rs](types/src/config/genesis_config.rs) | Genesis config (validators, models, token allocations) |
+| **Genesis** | [types/src/genesis_builder.rs](types/src/genesis_builder.rs) | Genesis state creation (validators + seed models) |
+| **Finality** | [types/src/finality.rs](types/src/finality.rs) | FinalityProof, inclusion proofs (generic) |
 | **Node Bootstrap** | [node/src/lib.rs](node/src/lib.rs) | Fullnode/validator startup |
+| **Consensus** | [authority/src/consensus_handler.rs](authority/src/consensus_handler.rs) | Consensus commit handling |
+| **Testing** | [test-cluster/src/lib.rs](test-cluster/src/lib.rs) | TestCluster for E2E tests |
+| | [test-cluster/src/swarm.rs](test-cluster/src/swarm.rs) | SwarmBuilder (validators + fullnodes via FullnodeConfigBuilder) |
+| **RPC Proto** | [rpc/src/proto/](rpc/src/proto/) | Protobuf definitions (incl. model messages) |
+| **CLI** | [cli/src/commands/model.rs](cli/src/commands/model.rs) | Model CLI commands |
+
+### Files to Create (Next Phases)
+
+| Crate | File | Phase | Contents |
+|-------|------|-------|----------|
+| types | `target.rs` | 4 | Target, TargetStatus, TargetState |
+| types | `submission.rs` | 5 | Submission (hash-commit-reveal) |
+| types | `challenge.rs` | 7 | Challenge, ChallengeType, ChallengeVerdict |
+| authority | `execution/target.rs` | 4 | Target generation |
+| authority | `execution/submission.rs` | 5 | Submission transaction executor |
+| authority | `execution/challenge.rs` | 7 | Challenge transaction executor |
+| authority | `challenge_audit.rs` | 7 | Validator audit service |
+| new crate | `inference-engine/` | 6 | Shared inference engine wrapping probes |
+| cli | `commands/submit.rs` | 5 | Submission CLI commands |
+| cli | `commands/challenge.rs` | 7 | Challenge CLI commands |
 
 ### Testing Entry Points
 
@@ -682,17 +505,68 @@ impl EncoderCommittee {
 |-----------|----------|
 | Unit Tests | Each crate's `tests/` directory |
 | Integration | [e2e-tests/](e2e-tests/) |
-| Cluster Simulation | [test-cluster/](test-cluster/), [test-encoder-cluster/](test-encoder-cluster/) |
-| Python Tests | [python-probes/tests/](python-probes/tests/) |
+| Cluster Simulation | [test-cluster/](test-cluster/) |
 
 ### Configuration Files
 
 | File | Purpose |
 |------|---------|
-| `Cargo.toml` | Workspace configuration (32 crates) |
+| `Cargo.toml` | Workspace configuration (25 crates) |
 | `rustfmt.toml` | Code formatting |
 | `flake.nix` | Nix development environment |
 | `pyproject.toml` | Python project configuration |
+| `REDESIGN.md` | Full redesign specification |
+| `IMPLEMENTATION_PLAN.md` | Phased implementation plan (Phases 1, 3 complete) |
+
+---
+
+## CLI Commands (Current)
+
+Located in [cli/src/](cli/src/)
+
+**User Operations:**
+```bash
+soma balance [ADDRESS]              # Check balance
+soma send --to <ADDR> --amount <N>  # Transfer SOMA
+soma transfer --to <ADDR> --object-id <ID>  # Transfer object
+soma pay --recipients <A1,A2> --amounts <N1,N2>  # Multi-pay
+soma stake --validator <ADDR>       # Stake with validator
+soma stake --model <MODEL_ID>       # Stake with model
+soma unstake <STAKED_ID>            # Withdraw stake
+```
+
+**Model Operations:**
+```bash
+soma model commit --model-id <ID> --weights-url-commitment <HASH> --weights-commitment <HASH> --architecture-version <N> --stake-amount <N>
+soma model reveal --model-id <ID> --weights-url <URL> --weights-checksum <HASH> --weights-size <N> --decryption-key <KEY>
+soma model update-commit --model-id <ID> --weights-url-commitment <HASH> --weights-commitment <HASH>
+soma model update-reveal --model-id <ID> --weights-url <URL> --weights-checksum <HASH> --weights-size <N> --decryption-key <KEY>
+soma model deactivate --model-id <ID>
+soma model set-commission-rate --model-id <ID> --rate <BPS>
+soma model info <ID>                # Query model details
+soma model list                     # List all models
+```
+
+**Query Commands:**
+```bash
+soma objects get <ID>               # Get object
+soma objects list [OWNER]           # List owned objects
+soma tx <DIGEST>                    # Get transaction
+```
+
+**Operator Commands:**
+```bash
+soma validator start --config <PATH>
+soma validator join-committee <INFO_PATH>
+soma validator leave-committee
+soma validator report-model <MODEL_ID>  # Report a model (validators only)
+```
+
+**Genesis Ceremony:**
+```bash
+soma genesis-ceremony add-model <YAML>  # Add seed model to genesis
+soma genesis-ceremony list-models       # List seed models
+```
 
 ---
 
@@ -701,17 +575,18 @@ impl EncoderCommittee {
 | Term | Definition |
 |------|------------|
 | **Authority** | A validator node participating in consensus |
+| **Challenge** | (New) A dispute against a mining submission, resolved by validator audit |
 | **Checkpoint** | A certified snapshot of executed transactions |
-| **Encoder** | A node that generates embeddings and participates in shard consensus |
-| **Epoch** | A period of time with fixed validator/encoder committees |
+| **Epoch** | A period of time with fixed validator committees |
 | **Finality** | Transaction is irreversibly committed (in a certified checkpoint) |
-| **Probe** | A transformer model used to evaluate embedding quality |
+| **Hit** | (New) A confirmed valid submission within a target's radius |
+| **Miner** | (New) A participant who finds data matching targets |
+| **Model** | (New) A registered ML model with staked weight, used for embedding computation |
+| **Probe** | A transformer model used to evaluate embedding quality (implementation in `probes/`) |
 | **Quorum** | 2f+1 participants (where f is max Byzantine failures) |
-| **Shard** | A subset of encoders selected to process a data submission |
-| **ShardAuthToken** | Proof of transaction finality for encoder shard work |
 | **StakedSoma** | User's staked tokens (earns rewards, enables delegation) |
-| **Target** | A competition goal with associated reward |
-| **VDF** | Verifiable Delay Function (provides unpredictable randomness) |
+| **Submission** | (New) A miner's hash-committed claim to have filled a target |
+| **Target** | (New) A generated embedding point with radius that miners compete to fill |
 
 ---
 
@@ -721,22 +596,17 @@ impl EncoderCommittee {
 # Build all crates
 cargo build --release
 
-# Run tests
+# Run unit tests
 cargo test
-
-# Run specific crate tests
 cargo test -p types
-cargo test -p encoder
+cargo test -p authority
 
-# Build Python probes
-cd python-probes && pip install -e .
+# Run E2E tests (require msim simulator)
+RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test model_tests
 
-# Run Python tests
-pytest python-probes/tests/
+# Build with msim (for test-cluster, e2e-tests)
+RUSTFLAGS="--cfg msim" cargo build -p e2e-tests -p test-cluster
 
 # Start local network
 cargo run --bin soma -- start --force-regenesis
-
-# Run E2E tests
-cargo test -p e2e-tests
 ```
