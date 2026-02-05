@@ -66,6 +66,10 @@ message TransactionKind {
     DeactivateModel deactivate_model = 21;
     ReportModel report_model = 22;
     UndoReportModel undo_report_model = 23;
+
+    // Submission transactions
+    SubmitData submit_data = 24;
+    ClaimRewards claim_rewards = 25;
   }
 }
 
@@ -265,4 +269,48 @@ message ConsensusCommitPrologue {
   // Digest of any additional state computed by the consensus handler.
   // Used to detect forking bugs as early as possible.
   optional string additional_state_digest = 6;
+}
+
+// Submit data to a target in the mining competition.
+message SubmitData {
+  // Target ID (ObjectID hex string)
+  optional string target_id = 1;
+
+  // Field 2 reserved (was target_initial_shared_version, now a protocol constant)
+  reserved 2;
+
+  // Commitment to raw data: hash(data_bytes), 32-byte digest
+  optional bytes data_commitment = 3;
+
+  // Manifest for submitted data
+  optional SubmissionManifest data_manifest = 4;
+
+  // Model ID used for submission (must be in target's model_ids)
+  optional string model_id = 5;
+
+  // Pre-computed embedding (fixed-point i64 values)
+  repeated int64 embedding = 6;
+
+  // Distance score (fixed-point i64, lower is better)
+  optional int64 distance_score = 7;
+
+  // Reconstruction error score (MSE, fixed-point u64, lower is better)
+  optional uint64 reconstruction_score = 8;
+
+  // Bond coin reference
+  optional ObjectReference bond_coin = 9;
+}
+
+// Claim rewards from a filled or expired target.
+message ClaimRewards {
+  // Target ID (ObjectID hex string)
+  optional string target_id = 1;
+
+  // Field 2 reserved (was target_initial_shared_version, now a protocol constant)
+  reserved 2;
+}
+
+// Manifest for submitted data (URL + metadata).
+message SubmissionManifest {
+  optional Manifest manifest = 1;
 }

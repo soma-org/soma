@@ -2039,6 +2039,111 @@ mod _getter_impls {
             self
         }
     }
+    impl GetTargetRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetTargetRequest = GetTargetRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+    }
+    impl GetTargetResponse {
+        pub const fn const_default() -> Self {
+            Self { target: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetTargetResponse = GetTargetResponse::const_default();
+            &DEFAULT
+        }
+        pub fn target(&self) -> &Target {
+            self.target
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Target::default_instance() as _)
+        }
+        pub fn target_opt(&self) -> Option<&Target> {
+            self.target.as_ref().map(|field| field as _)
+        }
+        pub fn target_opt_mut(&mut self) -> Option<&mut Target> {
+            self.target.as_mut().map(|field| field as _)
+        }
+        pub fn target_mut(&mut self) -> &mut Target {
+            self.target.get_or_insert_default()
+        }
+        pub fn with_target(mut self, field: Target) -> Self {
+            self.target = Some(field.into());
+            self
+        }
+    }
+    impl ListTargetsRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                status_filter: None,
+                epoch_filter: None,
+                page_size: None,
+                page_token: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListTargetsRequest = ListTargetsRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_status_filter(mut self, field: String) -> Self {
+            self.status_filter = Some(field.into());
+            self
+        }
+        pub fn with_epoch_filter(mut self, field: u64) -> Self {
+            self.epoch_filter = Some(field.into());
+            self
+        }
+        pub fn with_page_size(mut self, field: u32) -> Self {
+            self.page_size = Some(field.into());
+            self
+        }
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
+            self
+        }
+    }
+    impl ListTargetsResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                targets: Vec::new(),
+                next_page_token: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListTargetsResponse = ListTargetsResponse::const_default();
+            &DEFAULT
+        }
+        pub fn targets(&self) -> &[Target] {
+            &self.targets
+        }
+        pub fn targets_mut(&mut self) -> &mut Vec<Target> {
+            &mut self.targets
+        }
+        pub fn with_targets(mut self, field: Vec<Target>) -> Self {
+            self.targets = field;
+            self
+        }
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
+            self
+        }
+    }
     impl SubscribeCheckpointsRequest {
         pub const fn const_default() -> Self {
             Self { read_mask: None }
@@ -2095,9 +2200,7 @@ mod _getter_impls {
                 validators: None,
                 validator_report_records: std::collections::BTreeMap::new(),
                 emission_pool: None,
-                target_rewards_per_epoch: std::collections::BTreeMap::new(),
-                targets_created_per_epoch: std::collections::BTreeMap::new(),
-                epoch_seeds: std::collections::BTreeMap::new(),
+                target_state: None,
                 model_registry: None,
             }
         }
@@ -2175,6 +2278,25 @@ mod _getter_impls {
             self.emission_pool = Some(field.into());
             self
         }
+        pub fn target_state(&self) -> &TargetState {
+            self.target_state
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| TargetState::default_instance() as _)
+        }
+        pub fn target_state_opt(&self) -> Option<&TargetState> {
+            self.target_state.as_ref().map(|field| field as _)
+        }
+        pub fn target_state_opt_mut(&mut self) -> Option<&mut TargetState> {
+            self.target_state.as_mut().map(|field| field as _)
+        }
+        pub fn target_state_mut(&mut self) -> &mut TargetState {
+            self.target_state.get_or_insert_default()
+        }
+        pub fn with_target_state(mut self, field: TargetState) -> Self {
+            self.target_state = Some(field.into());
+            self
+        }
         pub fn model_registry(&self) -> &ModelRegistry {
             self.model_registry
                 .as_ref()
@@ -2219,7 +2341,7 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 epoch_duration_ms: None,
-                target_reward_allocation_bps: None,
+                validator_reward_allocation_bps: None,
                 model_min_stake: None,
                 model_architecture_version: None,
                 model_reveal_slash_rate_bps: None,
@@ -2231,6 +2353,23 @@ mod _getter_impls {
                 min_value_fee_bps: None,
                 max_value_fee_bps: None,
                 fee_adjustment_rate_bps: None,
+                target_models_per_target: None,
+                target_embedding_dim: None,
+                target_initial_distance_threshold: None,
+                target_initial_reconstruction_threshold: None,
+                target_reward_allocation_bps: None,
+                target_hit_rate_target_bps: None,
+                target_hit_rate_ema_decay_bps: None,
+                target_difficulty_adjustment_rate_bps: None,
+                target_max_distance_threshold: None,
+                target_min_distance_threshold: None,
+                target_max_reconstruction_threshold: None,
+                target_min_reconstruction_threshold: None,
+                target_initial_targets_per_epoch: None,
+                target_miner_reward_share_bps: None,
+                target_model_reward_share_bps: None,
+                target_claimer_incentive_bps: None,
+                submission_bond_per_byte: None,
             }
         }
         #[doc(hidden)]
@@ -2242,8 +2381,8 @@ mod _getter_impls {
             self.epoch_duration_ms = Some(field.into());
             self
         }
-        pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
-            self.target_reward_allocation_bps = Some(field.into());
+        pub fn with_validator_reward_allocation_bps(mut self, field: u64) -> Self {
+            self.validator_reward_allocation_bps = Some(field.into());
             self
         }
         pub fn with_model_min_stake(mut self, field: u64) -> Self {
@@ -2288,6 +2427,77 @@ mod _getter_impls {
         }
         pub fn with_fee_adjustment_rate_bps(mut self, field: u64) -> Self {
             self.fee_adjustment_rate_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_models_per_target(mut self, field: u64) -> Self {
+            self.target_models_per_target = Some(field.into());
+            self
+        }
+        pub fn with_target_embedding_dim(mut self, field: u64) -> Self {
+            self.target_embedding_dim = Some(field.into());
+            self
+        }
+        pub fn with_target_initial_distance_threshold(mut self, field: i64) -> Self {
+            self.target_initial_distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_initial_reconstruction_threshold(
+            mut self,
+            field: u64,
+        ) -> Self {
+            self.target_initial_reconstruction_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
+            self.target_reward_allocation_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_hit_rate_target_bps(mut self, field: u64) -> Self {
+            self.target_hit_rate_target_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_hit_rate_ema_decay_bps(mut self, field: u64) -> Self {
+            self.target_hit_rate_ema_decay_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_difficulty_adjustment_rate_bps(mut self, field: u64) -> Self {
+            self.target_difficulty_adjustment_rate_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_max_distance_threshold(mut self, field: i64) -> Self {
+            self.target_max_distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_min_distance_threshold(mut self, field: i64) -> Self {
+            self.target_min_distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_max_reconstruction_threshold(mut self, field: u64) -> Self {
+            self.target_max_reconstruction_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_min_reconstruction_threshold(mut self, field: u64) -> Self {
+            self.target_min_reconstruction_threshold = Some(field.into());
+            self
+        }
+        pub fn with_target_initial_targets_per_epoch(mut self, field: u64) -> Self {
+            self.target_initial_targets_per_epoch = Some(field.into());
+            self
+        }
+        pub fn with_target_miner_reward_share_bps(mut self, field: u64) -> Self {
+            self.target_miner_reward_share_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_model_reward_share_bps(mut self, field: u64) -> Self {
+            self.target_model_reward_share_bps = Some(field.into());
+            self
+        }
+        pub fn with_target_claimer_incentive_bps(mut self, field: u64) -> Self {
+            self.target_claimer_incentive_bps = Some(field.into());
+            self
+        }
+        pub fn with_submission_bond_per_byte(mut self, field: u64) -> Self {
+            self.submission_bond_per_byte = Some(field.into());
             self
         }
     }
@@ -2694,6 +2904,212 @@ mod _getter_impls {
         }
         pub fn with_total_model_stake(mut self, field: u64) -> Self {
             self.total_model_stake = Some(field.into());
+            self
+        }
+    }
+    impl TargetState {
+        pub const fn const_default() -> Self {
+            Self {
+                distance_threshold: None,
+                reconstruction_threshold: None,
+                targets_generated_this_epoch: None,
+                hits_this_epoch: None,
+                hit_rate_ema_bps: None,
+                reward_per_target: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: TargetState = TargetState::const_default();
+            &DEFAULT
+        }
+        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+            self.distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_reconstruction_threshold(mut self, field: u64) -> Self {
+            self.reconstruction_threshold = Some(field.into());
+            self
+        }
+        pub fn with_targets_generated_this_epoch(mut self, field: u64) -> Self {
+            self.targets_generated_this_epoch = Some(field.into());
+            self
+        }
+        pub fn with_hits_this_epoch(mut self, field: u64) -> Self {
+            self.hits_this_epoch = Some(field.into());
+            self
+        }
+        pub fn with_hit_rate_ema_bps(mut self, field: u64) -> Self {
+            self.hit_rate_ema_bps = Some(field.into());
+            self
+        }
+        pub fn with_reward_per_target(mut self, field: u64) -> Self {
+            self.reward_per_target = Some(field.into());
+            self
+        }
+    }
+    impl Target {
+        pub const fn const_default() -> Self {
+            Self {
+                id: None,
+                embedding: Vec::new(),
+                model_ids: Vec::new(),
+                distance_threshold: None,
+                reconstruction_threshold: None,
+                reward_pool: None,
+                generation_epoch: None,
+                status: None,
+                fill_epoch: None,
+                miner: None,
+                winning_model_id: None,
+                winning_model_owner: None,
+                bond_amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Target = Target::const_default();
+            &DEFAULT
+        }
+        pub fn with_id(mut self, field: String) -> Self {
+            self.id = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[i64] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+            self.embedding = field;
+            self
+        }
+        pub fn model_ids(&self) -> &[String] {
+            &self.model_ids
+        }
+        pub fn model_ids_mut(&mut self) -> &mut Vec<String> {
+            &mut self.model_ids
+        }
+        pub fn with_model_ids(mut self, field: Vec<String>) -> Self {
+            self.model_ids = field;
+            self
+        }
+        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+            self.distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_reconstruction_threshold(mut self, field: u64) -> Self {
+            self.reconstruction_threshold = Some(field.into());
+            self
+        }
+        pub fn with_reward_pool(mut self, field: u64) -> Self {
+            self.reward_pool = Some(field.into());
+            self
+        }
+        pub fn with_generation_epoch(mut self, field: u64) -> Self {
+            self.generation_epoch = Some(field.into());
+            self
+        }
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
+            self
+        }
+        pub fn with_fill_epoch(mut self, field: u64) -> Self {
+            self.fill_epoch = Some(field.into());
+            self
+        }
+        pub fn with_miner(mut self, field: String) -> Self {
+            self.miner = Some(field.into());
+            self
+        }
+        pub fn with_winning_model_id(mut self, field: String) -> Self {
+            self.winning_model_id = Some(field.into());
+            self
+        }
+        pub fn with_winning_model_owner(mut self, field: String) -> Self {
+            self.winning_model_owner = Some(field.into());
+            self
+        }
+        pub fn with_bond_amount(mut self, field: u64) -> Self {
+            self.bond_amount = Some(field.into());
+            self
+        }
+    }
+    impl Submission {
+        pub const fn const_default() -> Self {
+            Self {
+                miner: None,
+                data_commitment: None,
+                data_manifest: None,
+                model_id: None,
+                embedding: Vec::new(),
+                distance_score: None,
+                reconstruction_score: None,
+                bond_amount: None,
+                submit_epoch: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Submission = Submission::const_default();
+            &DEFAULT
+        }
+        pub fn with_miner(mut self, field: String) -> Self {
+            self.miner = Some(field.into());
+            self
+        }
+        pub fn with_data_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.data_commitment = Some(field.into());
+            self
+        }
+        pub fn data_manifest(&self) -> &SubmissionManifest {
+            self.data_manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| SubmissionManifest::default_instance() as _)
+        }
+        pub fn data_manifest_opt(&self) -> Option<&SubmissionManifest> {
+            self.data_manifest.as_ref().map(|field| field as _)
+        }
+        pub fn data_manifest_opt_mut(&mut self) -> Option<&mut SubmissionManifest> {
+            self.data_manifest.as_mut().map(|field| field as _)
+        }
+        pub fn data_manifest_mut(&mut self) -> &mut SubmissionManifest {
+            self.data_manifest.get_or_insert_default()
+        }
+        pub fn with_data_manifest(mut self, field: SubmissionManifest) -> Self {
+            self.data_manifest = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[i64] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+            self.embedding = field;
+            self
+        }
+        pub fn with_distance_score(mut self, field: i64) -> Self {
+            self.distance_score = Some(field.into());
+            self
+        }
+        pub fn with_reconstruction_score(mut self, field: u64) -> Self {
+            self.reconstruction_score = Some(field.into());
+            self
+        }
+        pub fn with_bond_amount(mut self, field: u64) -> Self {
+            self.bond_amount = Some(field.into());
+            self
+        }
+        pub fn with_submit_epoch(mut self, field: u64) -> Self {
+            self.submit_epoch = Some(field.into());
             self
         }
     }
@@ -3584,6 +4000,72 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::UndoReportModel(field.into()));
             self
         }
+        pub fn submit_data(&self) -> &SubmitData {
+            if let Some(transaction_kind::Kind::SubmitData(field)) = &self.kind {
+                field as _
+            } else {
+                SubmitData::default_instance() as _
+            }
+        }
+        pub fn submit_data_opt(&self) -> Option<&SubmitData> {
+            if let Some(transaction_kind::Kind::SubmitData(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn submit_data_opt_mut(&mut self) -> Option<&mut SubmitData> {
+            if let Some(transaction_kind::Kind::SubmitData(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn submit_data_mut(&mut self) -> &mut SubmitData {
+            if self.submit_data_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::SubmitData(SubmitData::default()),
+                );
+            }
+            self.submit_data_opt_mut().unwrap()
+        }
+        pub fn with_submit_data(mut self, field: SubmitData) -> Self {
+            self.kind = Some(transaction_kind::Kind::SubmitData(field.into()));
+            self
+        }
+        pub fn claim_rewards(&self) -> &ClaimRewards {
+            if let Some(transaction_kind::Kind::ClaimRewards(field)) = &self.kind {
+                field as _
+            } else {
+                ClaimRewards::default_instance() as _
+            }
+        }
+        pub fn claim_rewards_opt(&self) -> Option<&ClaimRewards> {
+            if let Some(transaction_kind::Kind::ClaimRewards(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_rewards_opt_mut(&mut self) -> Option<&mut ClaimRewards> {
+            if let Some(transaction_kind::Kind::ClaimRewards(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_rewards_mut(&mut self) -> &mut ClaimRewards {
+            if self.claim_rewards_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ClaimRewards(ClaimRewards::default()),
+                );
+            }
+            self.claim_rewards_opt_mut().unwrap()
+        }
+        pub fn with_claim_rewards(mut self, field: ClaimRewards) -> Self {
+            self.kind = Some(transaction_kind::Kind::ClaimRewards(field.into()));
+            self
+        }
     }
     impl AddValidator {
         pub const fn const_default() -> Self {
@@ -4464,6 +4946,136 @@ mod _getter_impls {
         }
         pub fn with_additional_state_digest(mut self, field: String) -> Self {
             self.additional_state_digest = Some(field.into());
+            self
+        }
+    }
+    impl SubmitData {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                data_commitment: None,
+                data_manifest: None,
+                model_id: None,
+                embedding: Vec::new(),
+                distance_score: None,
+                reconstruction_score: None,
+                bond_coin: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SubmitData = SubmitData::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_data_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.data_commitment = Some(field.into());
+            self
+        }
+        pub fn data_manifest(&self) -> &SubmissionManifest {
+            self.data_manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| SubmissionManifest::default_instance() as _)
+        }
+        pub fn data_manifest_opt(&self) -> Option<&SubmissionManifest> {
+            self.data_manifest.as_ref().map(|field| field as _)
+        }
+        pub fn data_manifest_opt_mut(&mut self) -> Option<&mut SubmissionManifest> {
+            self.data_manifest.as_mut().map(|field| field as _)
+        }
+        pub fn data_manifest_mut(&mut self) -> &mut SubmissionManifest {
+            self.data_manifest.get_or_insert_default()
+        }
+        pub fn with_data_manifest(mut self, field: SubmissionManifest) -> Self {
+            self.data_manifest = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[i64] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+            self.embedding = field;
+            self
+        }
+        pub fn with_distance_score(mut self, field: i64) -> Self {
+            self.distance_score = Some(field.into());
+            self
+        }
+        pub fn with_reconstruction_score(mut self, field: u64) -> Self {
+            self.reconstruction_score = Some(field.into());
+            self
+        }
+        pub fn bond_coin(&self) -> &ObjectReference {
+            self.bond_coin
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn bond_coin_opt(&self) -> Option<&ObjectReference> {
+            self.bond_coin.as_ref().map(|field| field as _)
+        }
+        pub fn bond_coin_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.bond_coin.as_mut().map(|field| field as _)
+        }
+        pub fn bond_coin_mut(&mut self) -> &mut ObjectReference {
+            self.bond_coin.get_or_insert_default()
+        }
+        pub fn with_bond_coin(mut self, field: ObjectReference) -> Self {
+            self.bond_coin = Some(field.into());
+            self
+        }
+    }
+    impl ClaimRewards {
+        pub const fn const_default() -> Self {
+            Self { target_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ClaimRewards = ClaimRewards::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+    }
+    impl SubmissionManifest {
+        pub const fn const_default() -> Self {
+            Self { manifest: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SubmissionManifest = SubmissionManifest::const_default();
+            &DEFAULT
+        }
+        pub fn manifest(&self) -> &Manifest {
+            self.manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Manifest::default_instance() as _)
+        }
+        pub fn manifest_opt(&self) -> Option<&Manifest> {
+            self.manifest.as_ref().map(|field| field as _)
+        }
+        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
+            self.manifest.as_mut().map(|field| field as _)
+        }
+        pub fn manifest_mut(&mut self) -> &mut Manifest {
+            self.manifest.get_or_insert_default()
+        }
+        pub fn with_manifest(mut self, field: Manifest) -> Self {
+            self.manifest = Some(field.into());
             self
         }
     }

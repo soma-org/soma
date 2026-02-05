@@ -781,6 +781,64 @@ pub enum ExecutionFailureStatus {
     ModelMinStakeNotMet,
 
     //
+    // Target errors
+    //
+    #[error("No active models available for target generation.")]
+    NoActiveModels,
+
+    #[error("Target not found.")]
+    TargetNotFound,
+
+    #[error("Target is not open for submissions.")]
+    TargetNotOpen,
+
+    #[error(
+        "Target expired: generation_epoch={generation_epoch}, current_epoch={current_epoch}"
+    )]
+    TargetExpired {
+        generation_epoch: EpochId,
+        current_epoch: EpochId,
+    },
+
+    #[error("Target is not filled.")]
+    TargetNotFilled,
+
+    #[error(
+        "Challenge window still open: fill_epoch={fill_epoch}, current_epoch={current_epoch}"
+    )]
+    ChallengeWindowOpen {
+        fill_epoch: EpochId,
+        current_epoch: EpochId,
+    },
+
+    #[error("Target rewards have already been claimed.")]
+    TargetAlreadyClaimed,
+
+    //
+    // Submission errors
+    //
+    #[error("Model {model_id} is not assigned to target {target_id}.")]
+    ModelNotInTarget {
+        model_id: ObjectID,
+        target_id: ObjectID,
+    },
+
+    #[error("Embedding dimension mismatch: expected {expected}, got {actual}.")]
+    EmbeddingDimensionMismatch { expected: u64, actual: u64 },
+
+    #[error("Distance score {score} exceeds threshold {threshold}.")]
+    DistanceExceedsThreshold { score: i64, threshold: i64 },
+
+    #[error("Reconstruction score {score} exceeds threshold {threshold}.")]
+    ReconstructionExceedsThreshold { score: u64, threshold: u64 },
+
+    #[error("Insufficient bond: required {required}, provided {provided}.")]
+    InsufficientBond { required: u64, provided: u64 },
+
+    #[error("Insufficient emission pool balance.")]
+    InsufficientEmissionBalance,
+
+    //
     // Coin errors
     //
     /// Account doesn't have enough coins to complete the operation

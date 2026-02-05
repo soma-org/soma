@@ -178,6 +178,18 @@ impl SomaClient {
         client.get_latest_system_state().await
     }
 
+    /// List targets with optional filtering by status and epoch.
+    ///
+    /// Returns a paginated list of targets. Use `status_filter` to filter by "open", "filled", or "claimed".
+    /// Use `epoch_filter` to filter by generation epoch.
+    pub async fn list_targets(
+        &self,
+        request: impl tonic::IntoRequest<rpc::proto::soma::ListTargetsRequest>,
+    ) -> Result<rpc::proto::soma::ListTargetsResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.list_targets(request).await
+    }
+
     /// Get epoch information
     pub async fn get_epoch(
         &self,

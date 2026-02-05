@@ -187,6 +187,65 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 
 **Status:** Fully implemented and tested. All types, executor, CLI, RPC, genesis bootstrap, unit tests (18), and E2E tests (2) are passing.
 
+---
+
+## Phase 4: Target Generation — COMPLETE ✓
+
+**Goal:** Continuous target generation with model selection at genesis and epoch boundaries.
+
+**Status:** Fully implemented and tested. Target types, genesis bootstrap, epoch boundary target issuance, difficulty adjustment via hit-rate EMA, and 6 E2E tests are passing.
+
+### 4.1 Implemented
+
+- **Target type** (`types/src/target.rs`): `Target`, `TargetId`, `TargetStatus`, `Embedding = Array1<i64>`, `generate_target()`, `select_models_uniform()`, `deterministic_embedding()`, `make_target_seed()`
+- **TargetState** (`types/src/system_state/target_state.rs`): 6 fields - `distance_threshold`, `reconstruction_threshold`, `targets_generated_this_epoch`, `hits_this_epoch`, `hit_rate_ema_bps`, `reward_per_target`
+- **Object infrastructure**: `ObjectType::Target`, `Object::new_target_object()`, `Object::as_target()`
+- **Genesis bootstrap**: Seed targets created as shared objects when active models exist
+- **Epoch boundary**: `advance_epoch_targets()` issues new targets, adjusts difficulty via hit-rate EMA
+- **Protocol config**: All target parameters in `SystemParameters`
+- **Unit tests**: 17 tests in `types/src/system_state/unit_tests/target_tests.rs`
+
+### 4.2 Key Design Decisions
+
+- **Hit-rate EMA for difficulty adjustment** (not time-based): Uses `hits_this_epoch / targets_generated_this_epoch` with EMA across epochs. Avoids `commit_timestamp_ms` which caused effects digest mismatches during checkpoint replay.
+- **Uniform random model selection** (stake-weighting deferred): Models selected uniformly at random from active models.
+- **Deterministic embedding via arrgen**: Uses `arrgen::normal_array` with seed derived from `tx_digest + creation_num`.
+
+**Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test target_tests` — 6 tests passing
+
+---
+
+## Phase 5: Data Submission — COMPLETE ✓
+
+**Goal:** Single-transaction submission flow with bond, rewards, and permissionless claiming.
+
+**Status:** Fully implemented and tested. Submission types, SubmitData and ClaimRewards transactions, full executor implementation, reward distribution, and 6 E2E tests are passing.
+
+### 5.1 Implemented
+
+- **Submission type** (`types/src/submission.rs`): `Submission`, `SubmissionId`, `SubmissionManifest`
+- **DataCommitment** (`types/src/digests.rs`): Newtype around `Digest` for data hash
+- **Transactions**: `SubmitData(SubmitDataArgs)`, `ClaimRewards(ClaimRewardsArgs)`
+- **SubmissionExecutor** (`authority/src/execution/submission.rs`): Full implementation
+  - `execute_submit_data()`: Validates submission, fills target, records hit, spawns replacement
+  - `execute_claim_rewards()`: Validates challenge window, distributes rewards, returns bond
+- **Target fields for rewards**: `miner`, `winning_model_id`, `winning_model_owner`, `bond_amount`
+- **Reward parameters**: `target_miner_reward_share_bps` (50%), `target_model_reward_share_bps` (30%), `target_claimer_incentive_bps` (1%)
+- **CLI**: `soma submit data`, `soma claim`, `soma target list|info|difficulty`
+- **RPC**: GetTarget handler, ListTargets handler (stub index)
+- **Unit tests**: 14 tests in `types/src/system_state/unit_tests/submission_tests.rs`
+- **E2E tests**: 6 tests in `e2e-tests/tests/target_tests.rs`
+
+### 5.2 Key Design Decisions
+
+- **Single-transaction submission** (no commit-reveal): Simplifies flow, front-running protection deferred
+- **Permissionless claiming**: Anyone can claim rewards after challenge window, claimer earns incentive fee
+- **100% reward distribution**: Miner (50%) + Model owner (30%) + Claimer (1%) + remainder to miner
+- **Bond scales with data size**: `bond = submission_bond_per_byte * data_size`
+- **Epoch-scoped targets with spawn-on-fill**: Targets expire at epoch boundary, filling spawns 1 replacement
+
+**Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test target_tests` — 6 tests passing
+
 ### 3.1 Create Model Type
 
 New file `types/src/model.rs`:
@@ -379,260 +438,6 @@ pub struct GenesisModelConfig {
 **Gate:** ✓ E2E tests passing: `test_genesis_model_bootstrap` and `test_model_commit_reveal_round_trip` in `e2e-tests/tests/model_tests.rs`. Run with `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test model_tests`.
 
 ---
-
-## Phase 4: Target Generation
-
-**Goal:** Continuous target generation with stake-weighted model selection.
-
-### 4.1 Create Target Type
-
-New file `types/src/target.rs`:
-```rust
-pub struct Target {
-    pub id: ObjectID,
-    pub embedding: Vec<f32>,
-    pub model_id: ModelId,             // Single model selected via stake-weighted sampling
-    pub radius: f32,                   // Current difficulty radius
-    pub generation_epoch: EpochId,
-    pub generation_timestamp_ms: u64,  // For difficulty adjustment calculation
-
-    // State
-    pub status: TargetStatus,
-    pub winning_submission_id: Option<ObjectID>,
-}
-
-pub enum TargetStatus {
-    Open,
-    Filled { fill_epoch: EpochId },
-    Challenged,
-}
-```
-
-Note: Targets no longer have individual `reward_pool` fields. Rewards are calculated at epoch N+1 boundary as `epoch_emissions * target_share_bps / num_confirmed_hits`.
-```
-
-### 4.2 Add Target State to SystemState
-
-In `types/src/system_state/mod.rs`:
-```rust
-pub struct TargetState {
-    /// Currently open targets
-    pub open_target_ids: BTreeSet<ObjectID>,
-
-    /// Filled targets awaiting challenge window close
-    pub filled_target_ids: BTreeSet<ObjectID>,
-
-    /// Current difficulty radius
-    pub current_radius: f32,
-
-    /// Target index counter for seed generation
-    pub target_index: u64,
-}
-
-/// Tracks difficulty adjustment statistics per epoch
-pub struct DifficultyStats {
-    /// Sum of hit times (reveal_timestamp - generation_timestamp) for confirmed hits
-    pub total_hit_time_ms: u64,
-    /// Number of confirmed hits this epoch (for computing average)
-    pub confirmed_hit_count: u64,
-}
-```
-
-Note: `DifficultyStats` is updated during reward distribution at epoch N+1 end, then used to adjust radius.
-
-### 4.3 Implement Target Generation
-
-In `authority/src/execution/target.rs`:
-
-**generate_target()** (called when previous target filled):
-```rust
-// 1. Compute seed = checkpoint_contents_digest || target_index || nonce
-// 2. Generate embedding = deterministic_gaussian(seed, embedding_dim)
-// 3. Select model via stake-weighted random sampling from active models
-// 4. Create Target with status = Open, generation_timestamp_ms = current_timestamp
-// 5. Increment target_index
-```
-
-**stake_weighted_model_selection():**
-```rust
-// Similar to encoder shard selection, but for models:
-// 1. Use seed to initialize RNG
-// 2. Sample 1 model weighted by staking_pool.soma_balance
-// 3. Return selected model_id
-```
-
-Note: No reward pool allocation per target. Rewards are computed at epoch end from total emissions.
-
-### 4.4 Add Protocol Config
-
-```rust
-target_generation_budget_per_epoch: Option<u64>,
-initial_radius: Option<f32>,
-min_radius: Option<f32>,
-max_radius: Option<f32>,
-target_hit_time_ms: Option<u64>,
-radius_adjustment_rate: Option<f32>,
-```
-
-### 4.5 Initial Target Generation at Genesis
-
-Genesis must create initial targets for mining to begin:
-
-```rust
-// In genesis transaction execution:
-// 1. Verify at least 1 active model exists
-// 2. Generate initial_target_count targets using genesis block digest as seed
-// 3. Each target gets generation_timestamp_ms = genesis_timestamp
-```
-
-**Genesis Config:**
-```rust
-pub struct GenesisTargetConfig {
-    pub initial_target_count: u64,  // Number of targets to create at genesis
-}
-```
-
-**Gate:** E2E test for target generation, stake-weighted model selection
-
----
-
-## Phase 5: Submission System
-
-**Goal:** Hash-commit-reveal submission flow with first-wins semantics.
-
-### 5.1 Create Submission Type
-
-New file `types/src/submission.rs`:
-```rust
-pub struct Submission {
-    pub id: ObjectID,
-    pub target_id: ObjectID,
-    pub miner: SomaAddress,
-
-    // Committed state
-    pub commitment: Digest<SubmissionReveal>,  // hash(data_hash || embedding || nonce)
-    pub commit_timestamp_ms: u64,              // From consensus commit prologue
-    pub bond_amount: u64,
-
-    // Revealed state (None until reveal)
-    pub data_hash: Option<Digest<Vec<u8>>>,
-    pub data_url: Option<String>,
-    pub embedding: Option<Vec<f32>>,           // Provided by submitter, verified by validators on challenge
-    pub distance: Option<f32>,                 // Computed from embedding during reveal
-    pub reveal_epoch: Option<EpochId>,
-    pub reveal_timestamp_ms: Option<u64>,      // For difficulty adjustment
-}
-```
-
-Note: `embedding` is provided by the submitter in the reveal. Transaction executor only verifies the L2 distance computation. Validators re-compute the embedding only during challenge audit. `model_id` is not stored since it's always the target's assigned model.
-
-### 5.2 Add Hit Tracking to SystemState
-
-```rust
-pub struct HitTracking {
-    /// Hits by epoch: epoch -> submission_ids
-    pub hits: BTreeMap<EpochId, BTreeSet<ObjectID>>,
-
-    /// Slashed submissions (persists for bond claim prevention)
-    pub slashed_submissions: BTreeSet<ObjectID>,
-
-    /// Active challenges: submission_id -> challenge_id
-    /// Used to check "no active challenge exists" and for timeout cleanup
-    pub pending_challenges: BTreeMap<ObjectID, ObjectID>,
-}
-```
-
-Note: `HitTracking` is part of `SystemState`. `pending_challenges` is cleaned up during ChangeEpoch when challenge windows close.
-
-### 5.3 Add Submission Transactions
-
-In `types/src/transaction.rs`:
-```rust
-/// Commit a submission (hash only)
-CommitSubmission {
-    target_id: ObjectID,
-    commitment: Digest<SubmissionReveal>,  // hash(data_hash || embedding || nonce)
-    bond_coin: ObjectRef,
-},
-
-/// Reveal submission data
-RevealSubmission {
-    target_id: ObjectID,
-    data_hash: Digest<Vec<u8>>,            // Hash of data (data hosted off-chain)
-    data_url: String,                       // URL where data is hosted for challenge verification
-    embedding: Vec<f32>,                    // Pre-computed embedding (verified on challenge only)
-    nonce: [u8; 32],
-},
-
-/// Claim bond after challenge period
-ClaimBond {
-    submission_id: ObjectRef,
-},
-```
-
-Note: Submitter provides `embedding` directly. The transaction executor computes `distance = ||embedding - target.embedding||` and validates `distance < radius`. Full embedding verification (re-running inference) happens only during challenge audit. The model used is the target's assigned model.
-
-### 5.4 Implement Submission Executor
-
-New file `authority/src/execution/submission.rs`:
-
-**CommitSubmission:**
-1. Validate target exists
-2. If target status is `Filled`:
-   - Get existing submission from `target.winning_submission_id`
-   - If `existing.reveal_timestamp_ms.is_none()` and `current_timestamp_ms > existing.commit_timestamp_ms + reveal_window_ms`:
-     - Slash existing submission's bond to EmissionPool
-     - Set target status to `Open`
-     - Clear `target.winning_submission_id`
-   - Else: reject (target already filled with valid/pending commitment)
-3. Validate target status is now `Open`
-4. Validate bond >= `submission_min_bond`
-5. Create Submission as **shared object** with revealed fields = None, `commit_timestamp_ms` = current timestamp
-6. Lock bond
-7. Set target status to `Filled { fill_epoch: current_epoch }`
-8. Set `target.winning_submission_id` to new submission
-9. Generate replacement target (calls target generation)
-
-**RevealSubmission:**
-1. Validate submission exists with matching commitment
-2. Validate within reveal window: `current_timestamp_ms <= commit_timestamp_ms + reveal_window_ms`
-3. Validate `hash(data_hash || embedding || nonce) == commitment`
-4. Compute distance = ||embedding - target.embedding|| (L2 norm, simple float computation)
-5. Validate distance < target.radius
-6. Set revealed fields on submission including `reveal_timestamp_ms`
-7. Add to hits[current_epoch]
-
-Note: Embedding is trusted at reveal time. Validators only re-compute embedding during challenge audit to verify it matches what the model produces.
-
-**Reveal Timeout:**
-- Handled lazily via CommitSubmission (see above)
-- No separate timeout transaction or background cleanup needed
-- Expired commitments are cleaned up when the next miner commits to the same target
-
-**ClaimBond:**
-1. Validate challenge period ended: `current_epoch > reveal_epoch + 1`
-2. Validate submission not in slashed_submissions
-3. Transfer bond_amount to miner
-
-### 5.5 Add Protocol Config
-
-```rust
-submission_min_bond: Option<u64>,
-reveal_window_ms: Option<u64>,      // ~30,000ms (30 seconds)
-distance_epsilon: Option<f32>,      // Tolerance for floating-point distance comparisons
-```
-
-### 5.6 Add CLI Commands
-
-New file `cli/src/commands/submit.rs`:
-- `soma submit commit --target <ID> --data <FILE> --model <MODEL_ID>`
-  - Computes embedding, distance, generates commitment, submits
-- `soma submit reveal --target <ID> --data <FILE> --model <MODEL_ID> --nonce <NONCE>`
-- `soma submit list [--miner <ADDR>] [--target <ID>]`
-- `soma submit info <ID>`
-- `soma submit claim-bond --submission <ID>`
-
-**Gate:** E2E test for commit → reveal → hit recording
 
 ---
 
@@ -1135,17 +940,25 @@ pub async fn initiate_challenge(&self, ...) -> Result<ObjectID>;
 | authority | `execution/model.rs` | Model tx executor | ✓ Created |
 | cli | `commands/model.rs` | Model CLI | ✓ Created |
 | e2e-tests | `tests/model_tests.rs` | 2 E2E model tests | ✓ Created |
-| types | `target.rs` | Target, TargetStatus, TargetState | Pending (Phase 4) |
-| types | `submission.rs` | Submission (new version with hash-commit-reveal) | Pending (Phase 5) |
+| types | `target.rs` | Target, TargetStatus, generate_target() | ✓ Created |
+| types | `system_state/target_state.rs` | TargetState (6 fields) | ✓ Created |
+| types | `system_state/unit_tests/target_tests.rs` | 17 target unit tests | ✓ Created |
+| types | `submission.rs` | Submission, SubmissionManifest | ✓ Created |
+| types | `system_state/unit_tests/submission_tests.rs` | 14 submission unit tests | ✓ Created |
+| authority | `execution/submission.rs` | Submission tx executor | ✓ Created |
+| cli | `commands/submit.rs` | `soma submit data` CLI | ✓ Created |
+| cli | `commands/claim.rs` | `soma claim` CLI | ✓ Created |
+| cli | `commands/target.rs` | `soma target list|info|difficulty` CLI | ✓ Created |
+| rpc | `api/grpc/state_service/get_target.rs` | GetTarget RPC handler | ✓ Created |
+| rpc | `api/grpc/state_service/list_targets.rs` | ListTargets RPC handler (stub) | ✓ Created |
+| rpc | `proto/soma/target.rs` | Target proto Merge impl | ✓ Created |
+| e2e-tests | `tests/target_tests.rs` | 6 E2E target tests | ✓ Created |
 | types | `challenge.rs` | Challenge, ChallengeType, ChallengeVerdict | Pending (Phase 7) |
-| authority | `execution/target.rs` | Target generation | Pending (Phase 4) |
-| authority | `execution/submission.rs` | Submission tx executor | Pending (Phase 5) |
 | authority | `execution/challenge.rs` | Challenge tx executor | Pending (Phase 7) |
 | authority | `challenge_audit.rs` | Validator audit service | Pending (Phase 7) |
 | inference-engine | `lib.rs` | Crate root | Pending (Phase 6) |
 | inference-engine | `engine.rs` | InferenceEngineAPI trait | Pending (Phase 6) |
 | inference-engine | `service.rs` | InferenceService | Pending (Phase 6) |
-| cli | `commands/submit.rs` | Submission CLI | Pending (Phase 5) |
 | cli | `commands/verify.rs` | Verification CLI | Pending (Phase 6) |
 | cli | `commands/challenge.rs` | Challenge CLI | Pending (Phase 7) |
 

@@ -3148,6 +3148,222 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl GetTargetRequest {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
+            name: "read_mask",
+            json_name: "readMask",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetTargetRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGET_ID_FIELD,
+            Self::READ_MASK_FIELD,
+        ];
+    }
+    impl GetTargetRequest {
+        pub fn path_builder() -> GetTargetRequestFieldPathBuilder {
+            GetTargetRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetTargetRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetTargetRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target_id(mut self) -> String {
+            self.path.push(GetTargetRequest::TARGET_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn read_mask(mut self) -> String {
+            self.path.push(GetTargetRequest::READ_MASK_FIELD.name);
+            self.finish()
+        }
+    }
+    impl GetTargetResponse {
+        pub const TARGET_FIELD: &'static MessageField = &MessageField {
+            name: "target",
+            json_name: "target",
+            number: 1i32,
+            message_fields: Some(Target::FIELDS),
+        };
+    }
+    impl MessageFields for GetTargetResponse {
+        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_FIELD];
+    }
+    impl GetTargetResponse {
+        pub fn path_builder() -> GetTargetResponseFieldPathBuilder {
+            GetTargetResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetTargetResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetTargetResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target(mut self) -> TargetFieldPathBuilder {
+            self.path.push(GetTargetResponse::TARGET_FIELD.name);
+            TargetFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ListTargetsRequest {
+        pub const STATUS_FILTER_FIELD: &'static MessageField = &MessageField {
+            name: "status_filter",
+            json_name: "statusFilter",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const EPOCH_FILTER_FIELD: &'static MessageField = &MessageField {
+            name: "epoch_filter",
+            json_name: "epochFilter",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PAGE_SIZE_FIELD: &'static MessageField = &MessageField {
+            name: "page_size",
+            json_name: "pageSize",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "page_token",
+            json_name: "pageToken",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
+            name: "read_mask",
+            json_name: "readMask",
+            number: 5i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListTargetsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::STATUS_FILTER_FIELD,
+            Self::EPOCH_FILTER_FIELD,
+            Self::PAGE_SIZE_FIELD,
+            Self::PAGE_TOKEN_FIELD,
+            Self::READ_MASK_FIELD,
+        ];
+    }
+    impl ListTargetsRequest {
+        pub fn path_builder() -> ListTargetsRequestFieldPathBuilder {
+            ListTargetsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct ListTargetsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListTargetsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn status_filter(mut self) -> String {
+            self.path.push(ListTargetsRequest::STATUS_FILTER_FIELD.name);
+            self.finish()
+        }
+        pub fn epoch_filter(mut self) -> String {
+            self.path.push(ListTargetsRequest::EPOCH_FILTER_FIELD.name);
+            self.finish()
+        }
+        pub fn page_size(mut self) -> String {
+            self.path.push(ListTargetsRequest::PAGE_SIZE_FIELD.name);
+            self.finish()
+        }
+        pub fn page_token(mut self) -> String {
+            self.path.push(ListTargetsRequest::PAGE_TOKEN_FIELD.name);
+            self.finish()
+        }
+        pub fn read_mask(mut self) -> String {
+            self.path.push(ListTargetsRequest::READ_MASK_FIELD.name);
+            self.finish()
+        }
+    }
+    impl ListTargetsResponse {
+        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
+            name: "targets",
+            json_name: "targets",
+            number: 1i32,
+            message_fields: Some(Target::FIELDS),
+        };
+        pub const NEXT_PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "next_page_token",
+            json_name: "nextPageToken",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListTargetsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGETS_FIELD,
+            Self::NEXT_PAGE_TOKEN_FIELD,
+        ];
+    }
+    impl ListTargetsResponse {
+        pub fn path_builder() -> ListTargetsResponseFieldPathBuilder {
+            ListTargetsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct ListTargetsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListTargetsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn targets(mut self) -> TargetFieldPathBuilder {
+            self.path.push(ListTargetsResponse::TARGETS_FIELD.name);
+            TargetFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_page_token(mut self) -> String {
+            self.path.push(ListTargetsResponse::NEXT_PAGE_TOKEN_FIELD.name);
+            self.finish()
+        }
+    }
     impl SubscribeCheckpointsRequest {
         pub const READ_MASK_FIELD: &'static MessageField = &MessageField {
             name: "read_mask",
@@ -3276,23 +3492,11 @@ mod _field_impls {
             number: 7i32,
             message_fields: Some(EmissionPool::FIELDS),
         };
-        pub const TARGET_REWARDS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "target_rewards_per_epoch",
-            json_name: "targetRewardsPerEpoch",
-            number: 8i32,
-            message_fields: None,
-        };
-        pub const TARGETS_CREATED_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "targets_created_per_epoch",
-            json_name: "targetsCreatedPerEpoch",
-            number: 9i32,
-            message_fields: None,
-        };
-        pub const EPOCH_SEEDS_FIELD: &'static MessageField = &MessageField {
-            name: "epoch_seeds",
-            json_name: "epochSeeds",
-            number: 10i32,
-            message_fields: None,
+        pub const TARGET_STATE_FIELD: &'static MessageField = &MessageField {
+            name: "target_state",
+            json_name: "targetState",
+            number: 12i32,
+            message_fields: Some(TargetState::FIELDS),
         };
         pub const MODEL_REGISTRY_FIELD: &'static MessageField = &MessageField {
             name: "model_registry",
@@ -3310,9 +3514,7 @@ mod _field_impls {
             Self::VALIDATORS_FIELD,
             Self::VALIDATOR_REPORT_RECORDS_FIELD,
             Self::EMISSION_POOL_FIELD,
-            Self::TARGET_REWARDS_PER_EPOCH_FIELD,
-            Self::TARGETS_CREATED_PER_EPOCH_FIELD,
-            Self::EPOCH_SEEDS_FIELD,
+            Self::TARGET_STATE_FIELD,
             Self::MODEL_REGISTRY_FIELD,
         ];
     }
@@ -3364,17 +3566,9 @@ mod _field_impls {
             self.path.push(SystemState::EMISSION_POOL_FIELD.name);
             EmissionPoolFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn target_rewards_per_epoch(mut self) -> String {
-            self.path.push(SystemState::TARGET_REWARDS_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn targets_created_per_epoch(mut self) -> String {
-            self.path.push(SystemState::TARGETS_CREATED_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn epoch_seeds(mut self) -> String {
-            self.path.push(SystemState::EPOCH_SEEDS_FIELD.name);
-            self.finish()
+        pub fn target_state(mut self) -> TargetStateFieldPathBuilder {
+            self.path.push(SystemState::TARGET_STATE_FIELD.name);
+            TargetStateFieldPathBuilder::new_with_base(self.path)
         }
         pub fn model_registry(mut self) -> ModelRegistryFieldPathBuilder {
             self.path.push(SystemState::MODEL_REGISTRY_FIELD.name);
@@ -3424,83 +3618,185 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const TARGET_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_reward_allocation_bps",
-            json_name: "targetRewardAllocationBps",
-            number: 4i32,
+        pub const VALIDATOR_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "validator_reward_allocation_bps",
+            json_name: "validatorRewardAllocationBps",
+            number: 2i32,
             message_fields: None,
         };
         pub const MODEL_MIN_STAKE_FIELD: &'static MessageField = &MessageField {
             name: "model_min_stake",
             json_name: "modelMinStake",
-            number: 14i32,
+            number: 3i32,
             message_fields: None,
         };
         pub const MODEL_ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "model_architecture_version",
             json_name: "modelArchitectureVersion",
-            number: 15i32,
+            number: 4i32,
             message_fields: None,
         };
         pub const MODEL_REVEAL_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "model_reveal_slash_rate_bps",
             json_name: "modelRevealSlashRateBps",
-            number: 16i32,
+            number: 5i32,
             message_fields: None,
         };
         pub const MODEL_TALLY_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "model_tally_slash_rate_bps",
             json_name: "modelTallySlashRateBps",
-            number: 17i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const TARGET_EPOCH_FEE_COLLECTION_FIELD: &'static MessageField = &MessageField {
             name: "target_epoch_fee_collection",
             json_name: "targetEpochFeeCollection",
-            number: 6i32,
+            number: 7i32,
             message_fields: None,
         };
         pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
             name: "base_fee",
             json_name: "baseFee",
-            number: 7i32,
+            number: 8i32,
             message_fields: None,
         };
         pub const WRITE_OBJECT_FEE_FIELD: &'static MessageField = &MessageField {
             name: "write_object_fee",
             json_name: "writeObjectFee",
-            number: 8i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "value_fee_bps",
             json_name: "valueFeeBps",
-            number: 9i32,
+            number: 10i32,
             message_fields: None,
         };
         pub const MIN_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "min_value_fee_bps",
             json_name: "minValueFeeBps",
-            number: 10i32,
+            number: 11i32,
             message_fields: None,
         };
         pub const MAX_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "max_value_fee_bps",
             json_name: "maxValueFeeBps",
-            number: 11i32,
+            number: 12i32,
             message_fields: None,
         };
         pub const FEE_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
             name: "fee_adjustment_rate_bps",
             json_name: "feeAdjustmentRateBps",
-            number: 12i32,
+            number: 13i32,
+            message_fields: None,
+        };
+        pub const TARGET_MODELS_PER_TARGET_FIELD: &'static MessageField = &MessageField {
+            name: "target_models_per_target",
+            json_name: "targetModelsPerTarget",
+            number: 14i32,
+            message_fields: None,
+        };
+        pub const TARGET_EMBEDDING_DIM_FIELD: &'static MessageField = &MessageField {
+            name: "target_embedding_dim",
+            json_name: "targetEmbeddingDim",
+            number: 15i32,
+            message_fields: None,
+        };
+        pub const TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_initial_distance_threshold",
+            json_name: "targetInitialDistanceThreshold",
+            number: 16i32,
+            message_fields: None,
+        };
+        pub const TARGET_INITIAL_RECONSTRUCTION_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_initial_reconstruction_threshold",
+            json_name: "targetInitialReconstructionThreshold",
+            number: 17i32,
+            message_fields: None,
+        };
+        pub const TARGET_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_reward_allocation_bps",
+            json_name: "targetRewardAllocationBps",
+            number: 18i32,
+            message_fields: None,
+        };
+        pub const TARGET_HIT_RATE_TARGET_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_hit_rate_target_bps",
+            json_name: "targetHitRateTargetBps",
+            number: 19i32,
+            message_fields: None,
+        };
+        pub const TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_hit_rate_ema_decay_bps",
+            json_name: "targetHitRateEmaDecayBps",
+            number: 20i32,
+            message_fields: None,
+        };
+        pub const TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_difficulty_adjustment_rate_bps",
+            json_name: "targetDifficultyAdjustmentRateBps",
+            number: 21i32,
+            message_fields: None,
+        };
+        pub const TARGET_MAX_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_max_distance_threshold",
+            json_name: "targetMaxDistanceThreshold",
+            number: 22i32,
+            message_fields: None,
+        };
+        pub const TARGET_MIN_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_min_distance_threshold",
+            json_name: "targetMinDistanceThreshold",
+            number: 23i32,
+            message_fields: None,
+        };
+        pub const TARGET_MAX_RECONSTRUCTION_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_max_reconstruction_threshold",
+            json_name: "targetMaxReconstructionThreshold",
+            number: 24i32,
+            message_fields: None,
+        };
+        pub const TARGET_MIN_RECONSTRUCTION_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "target_min_reconstruction_threshold",
+            json_name: "targetMinReconstructionThreshold",
+            number: 25i32,
+            message_fields: None,
+        };
+        pub const TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "target_initial_targets_per_epoch",
+            json_name: "targetInitialTargetsPerEpoch",
+            number: 26i32,
+            message_fields: None,
+        };
+        pub const TARGET_MINER_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_miner_reward_share_bps",
+            json_name: "targetMinerRewardShareBps",
+            number: 28i32,
+            message_fields: None,
+        };
+        pub const TARGET_MODEL_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_model_reward_share_bps",
+            json_name: "targetModelRewardShareBps",
+            number: 29i32,
+            message_fields: None,
+        };
+        pub const TARGET_CLAIMER_INCENTIVE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_claimer_incentive_bps",
+            json_name: "targetClaimerIncentiveBps",
+            number: 30i32,
+            message_fields: None,
+        };
+        pub const SUBMISSION_BOND_PER_BYTE_FIELD: &'static MessageField = &MessageField {
+            name: "submission_bond_per_byte",
+            json_name: "submissionBondPerByte",
+            number: 31i32,
             message_fields: None,
         };
     }
     impl MessageFields for SystemParameters {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_DURATION_MS_FIELD,
-            Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
+            Self::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD,
             Self::MODEL_MIN_STAKE_FIELD,
             Self::MODEL_ARCHITECTURE_VERSION_FIELD,
             Self::MODEL_REVEAL_SLASH_RATE_BPS_FIELD,
@@ -3512,6 +3808,23 @@ mod _field_impls {
             Self::MIN_VALUE_FEE_BPS_FIELD,
             Self::MAX_VALUE_FEE_BPS_FIELD,
             Self::FEE_ADJUSTMENT_RATE_BPS_FIELD,
+            Self::TARGET_MODELS_PER_TARGET_FIELD,
+            Self::TARGET_EMBEDDING_DIM_FIELD,
+            Self::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD,
+            Self::TARGET_INITIAL_RECONSTRUCTION_THRESHOLD_FIELD,
+            Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
+            Self::TARGET_HIT_RATE_TARGET_BPS_FIELD,
+            Self::TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD,
+            Self::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD,
+            Self::TARGET_MAX_DISTANCE_THRESHOLD_FIELD,
+            Self::TARGET_MIN_DISTANCE_THRESHOLD_FIELD,
+            Self::TARGET_MAX_RECONSTRUCTION_THRESHOLD_FIELD,
+            Self::TARGET_MIN_RECONSTRUCTION_THRESHOLD_FIELD,
+            Self::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD,
+            Self::TARGET_MINER_REWARD_SHARE_BPS_FIELD,
+            Self::TARGET_MODEL_REWARD_SHARE_BPS_FIELD,
+            Self::TARGET_CLAIMER_INCENTIVE_BPS_FIELD,
+            Self::SUBMISSION_BOND_PER_BYTE_FIELD,
         ];
     }
     impl SystemParameters {
@@ -3538,8 +3851,8 @@ mod _field_impls {
             self.path.push(SystemParameters::EPOCH_DURATION_MS_FIELD.name);
             self.finish()
         }
-        pub fn target_reward_allocation_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
+        pub fn validator_reward_allocation_bps(mut self) -> String {
+            self.path.push(SystemParameters::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD.name);
             self.finish()
         }
         pub fn model_min_stake(mut self) -> String {
@@ -3584,6 +3897,84 @@ mod _field_impls {
         }
         pub fn fee_adjustment_rate_bps(mut self) -> String {
             self.path.push(SystemParameters::FEE_ADJUSTMENT_RATE_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_models_per_target(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_MODELS_PER_TARGET_FIELD.name);
+            self.finish()
+        }
+        pub fn target_embedding_dim(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_EMBEDDING_DIM_FIELD.name);
+            self.finish()
+        }
+        pub fn target_initial_distance_threshold(mut self) -> String {
+            self.path
+                .push(SystemParameters::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn target_initial_reconstruction_threshold(mut self) -> String {
+            self.path
+                .push(
+                    SystemParameters::TARGET_INITIAL_RECONSTRUCTION_THRESHOLD_FIELD.name,
+                );
+            self.finish()
+        }
+        pub fn target_reward_allocation_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_hit_rate_target_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_HIT_RATE_TARGET_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_hit_rate_ema_decay_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_difficulty_adjustment_rate_bps(mut self) -> String {
+            self.path
+                .push(
+                    SystemParameters::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD.name,
+                );
+            self.finish()
+        }
+        pub fn target_max_distance_threshold(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_MAX_DISTANCE_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn target_min_distance_threshold(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_MIN_DISTANCE_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn target_max_reconstruction_threshold(mut self) -> String {
+            self.path
+                .push(SystemParameters::TARGET_MAX_RECONSTRUCTION_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn target_min_reconstruction_threshold(mut self) -> String {
+            self.path
+                .push(SystemParameters::TARGET_MIN_RECONSTRUCTION_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn target_initial_targets_per_epoch(mut self) -> String {
+            self.path
+                .push(SystemParameters::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn target_miner_reward_share_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_MINER_REWARD_SHARE_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_model_reward_share_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_MODEL_REWARD_SHARE_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn target_claimer_incentive_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_CLAIMER_INCENTIVE_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn submission_bond_per_byte(mut self) -> String {
+            self.path.push(SystemParameters::SUBMISSION_BOND_PER_BYTE_FIELD.name);
             self.finish()
         }
     }
@@ -4381,6 +4772,395 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl TargetState {
+        pub const DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "distance_threshold",
+            json_name: "distanceThreshold",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const RECONSTRUCTION_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "reconstruction_threshold",
+            json_name: "reconstructionThreshold",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const TARGETS_GENERATED_THIS_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "targets_generated_this_epoch",
+            json_name: "targetsGeneratedThisEpoch",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const HITS_THIS_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "hits_this_epoch",
+            json_name: "hitsThisEpoch",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const HIT_RATE_EMA_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "hit_rate_ema_bps",
+            json_name: "hitRateEmaBps",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const REWARD_PER_TARGET_FIELD: &'static MessageField = &MessageField {
+            name: "reward_per_target",
+            json_name: "rewardPerTarget",
+            number: 6i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for TargetState {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::DISTANCE_THRESHOLD_FIELD,
+            Self::RECONSTRUCTION_THRESHOLD_FIELD,
+            Self::TARGETS_GENERATED_THIS_EPOCH_FIELD,
+            Self::HITS_THIS_EPOCH_FIELD,
+            Self::HIT_RATE_EMA_BPS_FIELD,
+            Self::REWARD_PER_TARGET_FIELD,
+        ];
+    }
+    impl TargetState {
+        pub fn path_builder() -> TargetStateFieldPathBuilder {
+            TargetStateFieldPathBuilder::new()
+        }
+    }
+    pub struct TargetStateFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TargetStateFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn distance_threshold(mut self) -> String {
+            self.path.push(TargetState::DISTANCE_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn reconstruction_threshold(mut self) -> String {
+            self.path.push(TargetState::RECONSTRUCTION_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn targets_generated_this_epoch(mut self) -> String {
+            self.path.push(TargetState::TARGETS_GENERATED_THIS_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn hits_this_epoch(mut self) -> String {
+            self.path.push(TargetState::HITS_THIS_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn hit_rate_ema_bps(mut self) -> String {
+            self.path.push(TargetState::HIT_RATE_EMA_BPS_FIELD.name);
+            self.finish()
+        }
+        pub fn reward_per_target(mut self) -> String {
+            self.path.push(TargetState::REWARD_PER_TARGET_FIELD.name);
+            self.finish()
+        }
+    }
+    impl Target {
+        pub const ID_FIELD: &'static MessageField = &MessageField {
+            name: "id",
+            json_name: "id",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const MODEL_IDS_FIELD: &'static MessageField = &MessageField {
+            name: "model_ids",
+            json_name: "modelIds",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "distance_threshold",
+            json_name: "distanceThreshold",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const RECONSTRUCTION_THRESHOLD_FIELD: &'static MessageField = &MessageField {
+            name: "reconstruction_threshold",
+            json_name: "reconstructionThreshold",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const REWARD_POOL_FIELD: &'static MessageField = &MessageField {
+            name: "reward_pool",
+            json_name: "rewardPool",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const GENERATION_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "generation_epoch",
+            json_name: "generationEpoch",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const STATUS_FIELD: &'static MessageField = &MessageField {
+            name: "status",
+            json_name: "status",
+            number: 9i32,
+            message_fields: None,
+        };
+        pub const FILL_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "fill_epoch",
+            json_name: "fillEpoch",
+            number: 10i32,
+            message_fields: None,
+        };
+        pub const MINER_FIELD: &'static MessageField = &MessageField {
+            name: "miner",
+            json_name: "miner",
+            number: 11i32,
+            message_fields: None,
+        };
+        pub const WINNING_MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "winning_model_id",
+            json_name: "winningModelId",
+            number: 12i32,
+            message_fields: None,
+        };
+        pub const WINNING_MODEL_OWNER_FIELD: &'static MessageField = &MessageField {
+            name: "winning_model_owner",
+            json_name: "winningModelOwner",
+            number: 13i32,
+            message_fields: None,
+        };
+        pub const BOND_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "bond_amount",
+            json_name: "bondAmount",
+            number: 14i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for Target {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::ID_FIELD,
+            Self::EMBEDDING_FIELD,
+            Self::MODEL_IDS_FIELD,
+            Self::DISTANCE_THRESHOLD_FIELD,
+            Self::RECONSTRUCTION_THRESHOLD_FIELD,
+            Self::REWARD_POOL_FIELD,
+            Self::GENERATION_EPOCH_FIELD,
+            Self::STATUS_FIELD,
+            Self::FILL_EPOCH_FIELD,
+            Self::MINER_FIELD,
+            Self::WINNING_MODEL_ID_FIELD,
+            Self::WINNING_MODEL_OWNER_FIELD,
+            Self::BOND_AMOUNT_FIELD,
+        ];
+    }
+    impl Target {
+        pub fn path_builder() -> TargetFieldPathBuilder {
+            TargetFieldPathBuilder::new()
+        }
+    }
+    pub struct TargetFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TargetFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn id(mut self) -> String {
+            self.path.push(Target::ID_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(Target::EMBEDDING_FIELD.name);
+            self.finish()
+        }
+        pub fn model_ids(mut self) -> String {
+            self.path.push(Target::MODEL_IDS_FIELD.name);
+            self.finish()
+        }
+        pub fn distance_threshold(mut self) -> String {
+            self.path.push(Target::DISTANCE_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn reconstruction_threshold(mut self) -> String {
+            self.path.push(Target::RECONSTRUCTION_THRESHOLD_FIELD.name);
+            self.finish()
+        }
+        pub fn reward_pool(mut self) -> String {
+            self.path.push(Target::REWARD_POOL_FIELD.name);
+            self.finish()
+        }
+        pub fn generation_epoch(mut self) -> String {
+            self.path.push(Target::GENERATION_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn status(mut self) -> String {
+            self.path.push(Target::STATUS_FIELD.name);
+            self.finish()
+        }
+        pub fn fill_epoch(mut self) -> String {
+            self.path.push(Target::FILL_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn miner(mut self) -> String {
+            self.path.push(Target::MINER_FIELD.name);
+            self.finish()
+        }
+        pub fn winning_model_id(mut self) -> String {
+            self.path.push(Target::WINNING_MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn winning_model_owner(mut self) -> String {
+            self.path.push(Target::WINNING_MODEL_OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn bond_amount(mut self) -> String {
+            self.path.push(Target::BOND_AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl Submission {
+        pub const MINER_FIELD: &'static MessageField = &MessageField {
+            name: "miner",
+            json_name: "miner",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const DATA_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "data_commitment",
+            json_name: "dataCommitment",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const DATA_MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "data_manifest",
+            json_name: "dataManifest",
+            number: 3i32,
+            message_fields: Some(SubmissionManifest::FIELDS),
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const DISTANCE_SCORE_FIELD: &'static MessageField = &MessageField {
+            name: "distance_score",
+            json_name: "distanceScore",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const RECONSTRUCTION_SCORE_FIELD: &'static MessageField = &MessageField {
+            name: "reconstruction_score",
+            json_name: "reconstructionScore",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const BOND_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "bond_amount",
+            json_name: "bondAmount",
+            number: 8i32,
+            message_fields: None,
+        };
+        pub const SUBMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "submit_epoch",
+            json_name: "submitEpoch",
+            number: 9i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for Submission {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MINER_FIELD,
+            Self::DATA_COMMITMENT_FIELD,
+            Self::DATA_MANIFEST_FIELD,
+            Self::MODEL_ID_FIELD,
+            Self::EMBEDDING_FIELD,
+            Self::DISTANCE_SCORE_FIELD,
+            Self::RECONSTRUCTION_SCORE_FIELD,
+            Self::BOND_AMOUNT_FIELD,
+            Self::SUBMIT_EPOCH_FIELD,
+        ];
+    }
+    impl Submission {
+        pub fn path_builder() -> SubmissionFieldPathBuilder {
+            SubmissionFieldPathBuilder::new()
+        }
+    }
+    pub struct SubmissionFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SubmissionFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn miner(mut self) -> String {
+            self.path.push(Submission::MINER_FIELD.name);
+            self.finish()
+        }
+        pub fn data_commitment(mut self) -> String {
+            self.path.push(Submission::DATA_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn data_manifest(mut self) -> SubmissionManifestFieldPathBuilder {
+            self.path.push(Submission::DATA_MANIFEST_FIELD.name);
+            SubmissionManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(Submission::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(Submission::EMBEDDING_FIELD.name);
+            self.finish()
+        }
+        pub fn distance_score(mut self) -> String {
+            self.path.push(Submission::DISTANCE_SCORE_FIELD.name);
+            self.finish()
+        }
+        pub fn reconstruction_score(mut self) -> String {
+            self.path.push(Submission::RECONSTRUCTION_SCORE_FIELD.name);
+            self.finish()
+        }
+        pub fn bond_amount(mut self) -> String {
+            self.path.push(Submission::BOND_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn submit_epoch(mut self) -> String {
+            self.path.push(Submission::SUBMIT_EPOCH_FIELD.name);
+            self.finish()
+        }
+    }
     impl Transaction {
         pub const DIGEST_FIELD: &'static MessageField = &MessageField {
             name: "digest",
@@ -4591,6 +5371,18 @@ mod _field_impls {
             number: 23i32,
             message_fields: Some(UndoReportModel::FIELDS),
         };
+        pub const SUBMIT_DATA_FIELD: &'static MessageField = &MessageField {
+            name: "submit_data",
+            json_name: "submitData",
+            number: 24i32,
+            message_fields: Some(SubmitData::FIELDS),
+        };
+        pub const CLAIM_REWARDS_FIELD: &'static MessageField = &MessageField {
+            name: "claim_rewards",
+            json_name: "claimRewards",
+            number: 25i32,
+            message_fields: Some(ClaimRewards::FIELDS),
+        };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -4617,6 +5409,8 @@ mod _field_impls {
             Self::DEACTIVATE_MODEL_FIELD,
             Self::REPORT_MODEL_FIELD,
             Self::UNDO_REPORT_MODEL_FIELD,
+            Self::SUBMIT_DATA_FIELD,
+            Self::CLAIM_REWARDS_FIELD,
         ];
     }
     impl TransactionKind {
@@ -4736,6 +5530,14 @@ mod _field_impls {
         pub fn undo_report_model(mut self) -> UndoReportModelFieldPathBuilder {
             self.path.push(TransactionKind::UNDO_REPORT_MODEL_FIELD.name);
             UndoReportModelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn submit_data(mut self) -> SubmitDataFieldPathBuilder {
+            self.path.push(TransactionKind::SUBMIT_DATA_FIELD.name);
+            SubmitDataFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn claim_rewards(mut self) -> ClaimRewardsFieldPathBuilder {
+            self.path.push(TransactionKind::CLAIM_REWARDS_FIELD.name);
+            ClaimRewardsFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl AddValidator {
@@ -6304,6 +7106,193 @@ mod _field_impls {
         pub fn additional_state_digest(mut self) -> String {
             self.path.push(ConsensusCommitPrologue::ADDITIONAL_STATE_DIGEST_FIELD.name);
             self.finish()
+        }
+    }
+    impl SubmitData {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const DATA_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "data_commitment",
+            json_name: "dataCommitment",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DATA_MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "data_manifest",
+            json_name: "dataManifest",
+            number: 4i32,
+            message_fields: Some(SubmissionManifest::FIELDS),
+        };
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 5i32,
+            message_fields: None,
+        };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 6i32,
+            message_fields: None,
+        };
+        pub const DISTANCE_SCORE_FIELD: &'static MessageField = &MessageField {
+            name: "distance_score",
+            json_name: "distanceScore",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const RECONSTRUCTION_SCORE_FIELD: &'static MessageField = &MessageField {
+            name: "reconstruction_score",
+            json_name: "reconstructionScore",
+            number: 8i32,
+            message_fields: None,
+        };
+        pub const BOND_COIN_FIELD: &'static MessageField = &MessageField {
+            name: "bond_coin",
+            json_name: "bondCoin",
+            number: 9i32,
+            message_fields: Some(ObjectReference::FIELDS),
+        };
+    }
+    impl MessageFields for SubmitData {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGET_ID_FIELD,
+            Self::DATA_COMMITMENT_FIELD,
+            Self::DATA_MANIFEST_FIELD,
+            Self::MODEL_ID_FIELD,
+            Self::EMBEDDING_FIELD,
+            Self::DISTANCE_SCORE_FIELD,
+            Self::RECONSTRUCTION_SCORE_FIELD,
+            Self::BOND_COIN_FIELD,
+        ];
+    }
+    impl SubmitData {
+        pub fn path_builder() -> SubmitDataFieldPathBuilder {
+            SubmitDataFieldPathBuilder::new()
+        }
+    }
+    pub struct SubmitDataFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SubmitDataFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target_id(mut self) -> String {
+            self.path.push(SubmitData::TARGET_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn data_commitment(mut self) -> String {
+            self.path.push(SubmitData::DATA_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn data_manifest(mut self) -> SubmissionManifestFieldPathBuilder {
+            self.path.push(SubmitData::DATA_MANIFEST_FIELD.name);
+            SubmissionManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn model_id(mut self) -> String {
+            self.path.push(SubmitData::MODEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(SubmitData::EMBEDDING_FIELD.name);
+            self.finish()
+        }
+        pub fn distance_score(mut self) -> String {
+            self.path.push(SubmitData::DISTANCE_SCORE_FIELD.name);
+            self.finish()
+        }
+        pub fn reconstruction_score(mut self) -> String {
+            self.path.push(SubmitData::RECONSTRUCTION_SCORE_FIELD.name);
+            self.finish()
+        }
+        pub fn bond_coin(mut self) -> ObjectReferenceFieldPathBuilder {
+            self.path.push(SubmitData::BOND_COIN_FIELD.name);
+            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ClaimRewards {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ClaimRewards {
+        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_ID_FIELD];
+    }
+    impl ClaimRewards {
+        pub fn path_builder() -> ClaimRewardsFieldPathBuilder {
+            ClaimRewardsFieldPathBuilder::new()
+        }
+    }
+    pub struct ClaimRewardsFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ClaimRewardsFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target_id(mut self) -> String {
+            self.path.push(ClaimRewards::TARGET_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl SubmissionManifest {
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
+            number: 1i32,
+            message_fields: Some(Manifest::FIELDS),
+        };
+    }
+    impl MessageFields for SubmissionManifest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::MANIFEST_FIELD];
+    }
+    impl SubmissionManifest {
+        pub fn path_builder() -> SubmissionManifestFieldPathBuilder {
+            SubmissionManifestFieldPathBuilder::new()
+        }
+    }
+    pub struct SubmissionManifestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SubmissionManifestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(SubmissionManifest::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl ExecuteTransactionRequest {

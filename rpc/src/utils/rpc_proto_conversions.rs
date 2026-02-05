@@ -106,6 +106,21 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ExecutionCancelledDueToSharedObjectCongestion => {
                 (ExecutionErrorKind::SharedObjectCongestion, None)
             }
+            // Target errors
+            E::NoActiveModels => (ExecutionErrorKind::NoActiveModels, None),
+            E::TargetNotFound => (ExecutionErrorKind::TargetNotFound, None),
+            E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
+            E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
+            E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
+            E::ChallengeWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
+            // Submission errors
+            E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
+            E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
+            E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
+            E::ReconstructionExceedsThreshold { .. } => (ExecutionErrorKind::ReconstructionExceedsThreshold, None),
+            E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
+            E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
         };
 
@@ -576,6 +591,22 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::UndoReportModel { model_id } => Kind::UndoReportModel(UndoReportModel {
                 model_id: Some(model_id.to_string()),
             }),
+            // Submission transactions
+            K::SubmitData(args) => Kind::SubmitData(SubmitData {
+                target_id: Some(args.target_id.to_string()),
+                data_commitment: Some(args.data_commitment.into_inner().to_vec().into()),
+                data_manifest: Some(crate::proto::soma::SubmissionManifest {
+                    manifest: Some(args.data_manifest.manifest.into()),
+                }),
+                model_id: Some(args.model_id.to_string()),
+                embedding: args.embedding.to_vec(),
+                distance_score: Some(args.distance_score),
+                reconstruction_score: Some(args.reconstruction_score),
+                bond_coin: Some(object_ref_to_proto(args.bond_coin)),
+            }),
+            K::ClaimRewards(args) => Kind::ClaimRewards(ClaimRewards {
+                target_id: Some(args.target_id.to_string()),
+            }),
         };
 
         let mut message = Self::default();
@@ -861,15 +892,6 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             .ok_or("Missing emission_pool")?
             .try_into()?;
 
-        // Convert map fields
-        let target_rewards_per_epoch = proto_state.target_rewards_per_epoch;
-        let targets_created_per_epoch = proto_state.targets_created_per_epoch;
-        let epoch_seeds = proto_state
-            .epoch_seeds
-            .into_iter()
-            .map(|(k, v)| (k, v.to_vec()))
-            .collect();
-
         // Convert validator report records
         let validator_report_records =
             convert_report_records(proto_state.validator_report_records)?;
@@ -878,6 +900,13 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         let model_registry = proto_state
             .model_registry
             .map(|mr| mr.try_into())
+            .transpose()?
+            .unwrap_or_default();
+
+        // Convert target state
+        let target_state = proto_state
+            .target_state
+            .map(|ts| ts.try_into())
             .transpose()?
             .unwrap_or_default();
 
@@ -895,9 +924,7 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
             model_registry,
 
-            target_rewards_per_epoch,
-            targets_created_per_epoch,
-            epoch_seeds,
+            target_state,
         };
 
         Ok(system_state)
@@ -912,9 +939,9 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             epoch_duration_ms: proto_params
                 .epoch_duration_ms
                 .ok_or("Missing epoch_duration_ms")?,
-            target_reward_allocation_bps: proto_params
-                .target_reward_allocation_bps
-                .ok_or("Missing target_reward_allocation_bps")?,
+            validator_reward_allocation_bps: proto_params
+                .validator_reward_allocation_bps
+                .ok_or("Missing validator_reward_allocation_bps")?,
             model_min_stake: proto_params
                 .model_min_stake
                 .ok_or("Missing model_min_stake")?,
@@ -944,6 +971,60 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             fee_adjustment_rate_bps: proto_params
                 .fee_adjustment_rate_bps
                 .ok_or("Missing fee_adjustment_rate_bps")?,
+            // Target/Mining parameters
+            target_models_per_target: proto_params
+                .target_models_per_target
+                .ok_or("Missing target_models_per_target")?,
+            target_embedding_dim: proto_params
+                .target_embedding_dim
+                .ok_or("Missing target_embedding_dim")?,
+            target_initial_distance_threshold: proto_params
+                .target_initial_distance_threshold
+                .ok_or("Missing target_initial_distance_threshold")?,
+            target_initial_reconstruction_threshold: proto_params
+                .target_initial_reconstruction_threshold
+                .ok_or("Missing target_initial_reconstruction_threshold")?,
+            target_reward_allocation_bps: proto_params
+                .target_reward_allocation_bps
+                .ok_or("Missing target_reward_allocation_bps")?,
+            target_hit_rate_target_bps: proto_params
+                .target_hit_rate_target_bps
+                .ok_or("Missing target_hit_rate_target_bps")?,
+            target_hit_rate_ema_decay_bps: proto_params
+                .target_hit_rate_ema_decay_bps
+                .ok_or("Missing target_hit_rate_ema_decay_bps")?,
+            target_difficulty_adjustment_rate_bps: proto_params
+                .target_difficulty_adjustment_rate_bps
+                .ok_or("Missing target_difficulty_adjustment_rate_bps")?,
+            target_max_distance_threshold: proto_params
+                .target_max_distance_threshold
+                .ok_or("Missing target_max_distance_threshold")?,
+            target_min_distance_threshold: proto_params
+                .target_min_distance_threshold
+                .ok_or("Missing target_min_distance_threshold")?,
+            target_max_reconstruction_threshold: proto_params
+                .target_max_reconstruction_threshold
+                .ok_or("Missing target_max_reconstruction_threshold")?,
+            target_min_reconstruction_threshold: proto_params
+                .target_min_reconstruction_threshold
+                .ok_or("Missing target_min_reconstruction_threshold")?,
+            target_initial_targets_per_epoch: proto_params
+                .target_initial_targets_per_epoch
+                .ok_or("Missing target_initial_targets_per_epoch")?,
+            // Reward distribution parameters
+            target_miner_reward_share_bps: proto_params
+                .target_miner_reward_share_bps
+                .ok_or("Missing target_miner_reward_share_bps")?,
+            target_model_reward_share_bps: proto_params
+                .target_model_reward_share_bps
+                .ok_or("Missing target_model_reward_share_bps")?,
+            target_claimer_incentive_bps: proto_params
+                .target_claimer_incentive_bps
+                .ok_or("Missing target_claimer_incentive_bps")?,
+            // Submission parameters
+            submission_bond_per_byte: proto_params
+                .submission_bond_per_byte
+                .ok_or("Missing submission_bond_per_byte")?,
         })
     }
 }
@@ -1241,13 +1322,6 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
         let validator_report_records =
             convert_report_records_to_proto(domain_state.validator_report_records)?;
 
-        // Convert epoch_seeds: BTreeMap<u64, Vec<u8>> -> BTreeMap<u64, Bytes>
-        let epoch_seeds = domain_state
-            .epoch_seeds
-            .into_iter()
-            .map(|(k, v)| (k, v.into()))
-            .collect();
-
         Ok(SystemState {
             epoch: Some(domain_state.epoch),
             protocol_version: Some(domain_state.protocol_version),
@@ -1256,10 +1330,44 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             validators: Some(domain_state.validators.try_into()?),
             validator_report_records,
             emission_pool: Some(domain_state.emission_pool.try_into()?),
-            target_rewards_per_epoch: domain_state.target_rewards_per_epoch,
-            targets_created_per_epoch: domain_state.targets_created_per_epoch,
-            epoch_seeds,
+            target_state: Some(domain_state.target_state.into()),
             model_registry: Some(domain_state.model_registry.try_into()?),
+        })
+    }
+}
+
+//
+// TargetState conversions
+//
+
+impl From<types::system_state::target_state::TargetState> for TargetState {
+    fn from(domain: types::system_state::target_state::TargetState) -> Self {
+        TargetState {
+            distance_threshold: Some(domain.distance_threshold),
+            reconstruction_threshold: Some(domain.reconstruction_threshold),
+            targets_generated_this_epoch: Some(domain.targets_generated_this_epoch),
+            hits_this_epoch: Some(domain.hits_this_epoch),
+            hit_rate_ema_bps: Some(domain.hit_rate_ema_bps),
+            reward_per_target: Some(domain.reward_per_target),
+        }
+    }
+}
+
+impl TryFrom<TargetState> for types::system_state::target_state::TargetState {
+    type Error = String;
+
+    fn try_from(proto: TargetState) -> Result<Self, Self::Error> {
+        Ok(types::system_state::target_state::TargetState {
+            distance_threshold: proto.distance_threshold.ok_or("Missing distance_threshold")?,
+            reconstruction_threshold: proto
+                .reconstruction_threshold
+                .ok_or("Missing reconstruction_threshold")?,
+            targets_generated_this_epoch: proto
+                .targets_generated_this_epoch
+                .ok_or("Missing targets_generated_this_epoch")?,
+            hits_this_epoch: proto.hits_this_epoch.ok_or("Missing hits_this_epoch")?,
+            hit_rate_ema_bps: proto.hit_rate_ema_bps.ok_or("Missing hit_rate_ema_bps")?,
+            reward_per_target: proto.reward_per_target.ok_or("Missing reward_per_target")?,
         })
     }
 }
@@ -1270,7 +1378,7 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     fn try_from(domain_params: protocol_config::SystemParameters) -> Result<Self, Self::Error> {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
-            target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
+            validator_reward_allocation_bps: Some(domain_params.validator_reward_allocation_bps),
             model_min_stake: Some(domain_params.model_min_stake),
             model_architecture_version: Some(domain_params.model_architecture_version),
             model_reveal_slash_rate_bps: Some(domain_params.model_reveal_slash_rate_bps),
@@ -1282,6 +1390,26 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             min_value_fee_bps: Some(domain_params.min_value_fee_bps),
             max_value_fee_bps: Some(domain_params.max_value_fee_bps),
             fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
+            // Target/Mining parameters
+            target_models_per_target: Some(domain_params.target_models_per_target),
+            target_embedding_dim: Some(domain_params.target_embedding_dim),
+            target_initial_distance_threshold: Some(domain_params.target_initial_distance_threshold),
+            target_initial_reconstruction_threshold: Some(domain_params.target_initial_reconstruction_threshold),
+            target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
+            target_hit_rate_target_bps: Some(domain_params.target_hit_rate_target_bps),
+            target_hit_rate_ema_decay_bps: Some(domain_params.target_hit_rate_ema_decay_bps),
+            target_difficulty_adjustment_rate_bps: Some(domain_params.target_difficulty_adjustment_rate_bps),
+            target_max_distance_threshold: Some(domain_params.target_max_distance_threshold),
+            target_min_distance_threshold: Some(domain_params.target_min_distance_threshold),
+            target_max_reconstruction_threshold: Some(domain_params.target_max_reconstruction_threshold),
+            target_min_reconstruction_threshold: Some(domain_params.target_min_reconstruction_threshold),
+            target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
+            // Reward distribution parameters
+            target_miner_reward_share_bps: Some(domain_params.target_miner_reward_share_bps),
+            target_model_reward_share_bps: Some(domain_params.target_model_reward_share_bps),
+            target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
+            // Submission parameters
+            submission_bond_per_byte: Some(domain_params.submission_bond_per_byte),
         })
     }
 }

@@ -1012,6 +1012,68 @@ impl fmt::Debug for ModelWeightsUrlCommitment {
     }
 }
 
+/// Commitment to submitted data: hash(raw_data_bytes).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct DataCommitment(Digest);
+
+impl DataCommitment {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for DataCommitment {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for DataCommitment {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<DataCommitment> for [u8; 32] {
+    fn from(digest: DataCommitment) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for DataCommitment {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for DataCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for DataCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("DataCommitment").field(&self.0).finish()
+    }
+}
+
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]

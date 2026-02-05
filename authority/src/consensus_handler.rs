@@ -1183,6 +1183,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 #[derive(Clone)]
 pub(crate) struct ExecutionSchedulerSender {
     // Using unbounded channel to avoid blocking consensus commit and transaction handler.
+    // Tuple: (transactions, assigned_versions, scheduling_source)
     sender: mpsc::UnboundedSender<(Vec<Schedulable>, AssignedTxAndVersions, SchedulingSource)>,
 }
 
@@ -1228,14 +1229,12 @@ impl ExecutionSchedulerSender {
                 .into_iter()
                 .map(|txn| {
                     let key = txn.key();
-                    (
-                        txn,
-                        ExecutionEnv::new()
-                            .with_scheduling_source(scheduling_source)
-                            .with_assigned_versions(
-                                assigned_versions.get(&key).cloned().unwrap_or_default(),
-                            ),
-                    )
+                    let env = ExecutionEnv::new()
+                        .with_scheduling_source(scheduling_source)
+                        .with_assigned_versions(
+                            assigned_versions.get(&key).cloned().unwrap_or_default(),
+                        );
+                    (txn, env)
                 })
                 .collect();
             execution_scheduler.enqueue(txns, &epoch_store);

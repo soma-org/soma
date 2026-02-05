@@ -792,6 +792,8 @@ pub enum ObjectContent {
     Coin { balance: u64 },
     StakedSoma(StakedSomaDisplay),
     SystemState,
+    Target,
+    Submission,
     Unknown,
 }
 
@@ -845,6 +847,8 @@ impl ObjectOutput {
                 })
             }),
             ObjectType::SystemState => Some(ObjectContent::SystemState),
+            ObjectType::Target => Some(ObjectContent::Target),
+            ObjectType::Submission => Some(ObjectContent::Submission),
         }
     }
 }
@@ -929,6 +933,20 @@ impl Display for ObjectOutput {
                         f,
                         "{}",
                         "System State object (use specialized queries for details)".dimmed()
+                    )?;
+                }
+                ObjectContent::Target => {
+                    writeln!(
+                        f,
+                        "{}",
+                        "Target object (use 'soma target info <id>' for details)".dimmed()
+                    )?;
+                }
+                ObjectContent::Submission => {
+                    writeln!(
+                        f,
+                        "{}",
+                        "Submission object".dimmed()
                     )?;
                 }
                 ObjectContent::Unknown => {}

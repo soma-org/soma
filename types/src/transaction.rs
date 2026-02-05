@@ -7,10 +7,12 @@ use crate::{
     base::FullObjectID,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{
-        AdditionalConsensusStateDigest, ModelWeightsCommitment, ModelWeightsUrlCommitment,
-        SenderSignedDataDigest,
+        AdditionalConsensusStateDigest, DataCommitment, ModelWeightsCommitment,
+        ModelWeightsUrlCommitment, SenderSignedDataDigest,
     },
     model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
+    submission::SubmissionManifest,
+    target::{Embedding, TargetId},
 };
 use fastcrypto::{
     hash::HashFunction,
@@ -129,6 +131,10 @@ pub enum TransactionKind {
     UndoReportModel {
         model_id: ModelId,
     },
+
+    // Submission transactions
+    SubmitData(SubmitDataArgs),
+    ClaimRewards(ClaimRewardsArgs),
 }
 
 /// # AddValidatorArgs
@@ -241,6 +247,45 @@ pub struct RevealModelUpdateArgs {
     pub weights_manifest: ModelWeightsManifest,
 }
 
+/// Arguments for a data submission to a target.
+///
+/// This is a single-transaction submission (no commit-reveal) where the miner
+/// provides all required data upfront. Front-running mitigation is deferred to
+/// future versions.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct SubmitDataArgs {
+    /// Target to submit against (shared object ID)
+    pub target_id: TargetId,
+
+    /// Commitment to the raw data: hash(data_bytes)
+    pub data_commitment: DataCommitment,
+
+    /// Manifest for submitted data (URL + checksum + size)
+    pub data_manifest: SubmissionManifest,
+
+    /// Which model the miner chose from the target's model_ids
+    pub model_id: ModelId,
+
+    /// Pre-computed embedding (fixed-point i64)
+    pub embedding: Embedding,
+
+    /// Distance score (fixed-point, scale DISTANCE_SCALE). Lower is better.
+    pub distance_score: i64,
+
+    /// Reconstruction error score (MSE, fixed-point). Lower is better.
+    pub reconstruction_score: u64,
+
+    /// Coin to use for bond payment (must cover submission_bond_per_byte * data_manifest.size)
+    pub bond_coin: ObjectRef,
+}
+
+/// Arguments for claiming rewards from a filled or expired target.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct ClaimRewardsArgs {
+    /// Target to claim rewards from
+    pub target_id: TargetId,
+}
+
 impl TransactionKind {
     pub fn is_system_tx(&self) -> bool {
         matches!(
@@ -289,11 +334,19 @@ impl TransactionKind {
         matches!(self, TransactionKind::ChangeEpoch(_))
     }
 
+    pub fn is_submission_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_)
+        )
+    }
+
     pub fn requires_system_state(&self) -> bool {
         self.is_validator_tx()
             || self.is_epoch_change()
             || self.is_staking_tx()
             || self.is_model_tx()
+            || self.is_submission_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -320,6 +373,20 @@ impl TransactionKind {
 
         // Add transaction-specific shared objects
         match self {
+            TransactionKind::SubmitData(args) => {
+                objects.push(SharedInputObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::ClaimRewards(args) => {
+                objects.push(SharedInputObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
             _ => {}
         }
 
@@ -367,6 +434,26 @@ impl TransactionKind {
 
             TransactionKind::AddStakeToModel { coin_ref, .. } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
+            }
+
+            TransactionKind::SubmitData(args) => {
+                // Add bond coin as owned object
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.bond_coin));
+                // Add target as shared object
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::ClaimRewards(args) => {
+                // Add target as shared object
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
             }
 
             _ => {}

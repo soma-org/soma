@@ -7,6 +7,7 @@ use crate::{
     error::{SomaError, SomaResult},
     serde::Readable,
     system_state::staking::StakedSoma,
+    target::Target,
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -398,6 +399,78 @@ impl Object {
             None
         }
     }
+
+    /// Create a new Object containing a Target.
+    ///
+    /// Targets are shared objects with `initial_shared_version` set to `Version::new()`.
+    /// This matches how SystemState and other shared objects are created at genesis.
+    ///
+    /// Note: The object data version is set to `Version::MIN` because TemporaryStore
+    /// will assign the lamport timestamp later.
+    pub fn new_target_object(
+        id: ObjectID,
+        target: Target,
+        previous_transaction: TransactionDigest,
+    ) -> Object {
+        // Serialize Target to bytes
+        let target_bytes = bcs::to_bytes(&target).unwrap();
+
+        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
+        let data = ObjectData::new_with_id(id, ObjectType::Target, Version::MIN, target_bytes);
+
+        // Targets are shared objects - any address can submit to them
+        // Use Version::new() as the initial shared version (matches genesis pattern)
+        let owner = Owner::Shared {
+            initial_shared_version: Version::new(),
+        };
+
+        Object::new(data, owner, previous_transaction)
+    }
+
+    /// Extract Target from an Object
+    pub fn as_target(&self) -> Option<Target> {
+        if *self.data.object_type() == ObjectType::Target {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Create a new Object containing a Submission.
+    ///
+    /// Submissions are shared objects associated with a target.
+    pub fn new_submission_object(
+        id: ObjectID,
+        submission: crate::submission::Submission,
+        previous_transaction: TransactionDigest,
+    ) -> Object {
+        // Serialize Submission to bytes
+        let submission_bytes = bcs::to_bytes(&submission).unwrap();
+
+        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Submission,
+            Version::MIN,
+            submission_bytes,
+        );
+
+        // Submissions are shared objects - use Version::new() as initial shared version
+        let owner = Owner::Shared {
+            initial_shared_version: Version::new(),
+        };
+
+        Object::new(data, owner, previous_transaction)
+    }
+
+    /// Extract Submission from an Object
+    pub fn as_submission(&self) -> Option<crate::submission::Submission> {
+        if *self.data.object_type() == ObjectType::Submission {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -556,6 +629,10 @@ pub enum ObjectType {
     Coin,
     /// Represents an owned Staked Soma object
     StakedSoma,
+    /// Represents a mining target object
+    Target,
+    /// Represents a data submission to a target
+    Submission,
 }
 
 impl fmt::Display for ObjectType {
@@ -564,6 +641,8 @@ impl fmt::Display for ObjectType {
             ObjectType::SystemState => write!(f, "SystemState"),
             ObjectType::Coin => write!(f, "Coin"),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
+            ObjectType::Target => write!(f, "Target"),
+            ObjectType::Submission => write!(f, "Submission"),
         }
     }
 }
@@ -576,6 +655,8 @@ impl FromStr for ObjectType {
             "SystemState" => Ok(ObjectType::SystemState),
             "Coin" => Ok(ObjectType::Coin),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
+            "Target" => Ok(ObjectType::Target),
+            "Submission" => Ok(ObjectType::Submission),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

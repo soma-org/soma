@@ -69,6 +69,23 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ModelCommissionRateTooHigh => (ExecutionErrorKind::ModelCommissionRateTooHigh, None),
             E::ModelMinStakeNotMet => (ExecutionErrorKind::ModelMinStakeNotMet, None),
 
+            // Target errors
+            E::NoActiveModels => (ExecutionErrorKind::NoActiveModels, None),
+            E::TargetNotFound => (ExecutionErrorKind::TargetNotFound, None),
+            E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
+            E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
+            E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
+            E::ChallengeWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
+
+            // Submission errors
+            E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
+            E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
+            E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
+            E::ReconstructionExceedsThreshold { .. } => (ExecutionErrorKind::ReconstructionExceedsThreshold, None),
+            E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
+            E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
+
             E::InsufficientCoinBalance => (ExecutionErrorKind::InsufficientCoinBalance, None),
             E::CoinBalanceOverflow => (ExecutionErrorKind::CoinBalanceOverflow, None),
 
@@ -209,6 +226,44 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::ModelArchitectureVersionMismatch => Ok(Self::ModelArchitectureVersionMismatch),
             K::ModelCommissionRateTooHigh => Ok(Self::ModelCommissionRateTooHigh),
             K::ModelMinStakeNotMet => Ok(Self::ModelMinStakeNotMet),
+
+            // Target errors
+            K::NoActiveModels => Ok(Self::NoActiveModels),
+            K::TargetNotFound => Ok(Self::TargetNotFound),
+            K::TargetNotOpen => Ok(Self::TargetNotOpen),
+            K::TargetExpired => Ok(Self::TargetExpired {
+                generation_epoch: 0,
+                current_epoch: 0,
+            }),
+            K::TargetNotFilled => Ok(Self::TargetNotFilled),
+            K::ChallengeWindowOpen => Ok(Self::ChallengeWindowOpen {
+                fill_epoch: 0,
+                current_epoch: 0,
+            }),
+            K::TargetAlreadyClaimed => Ok(Self::TargetAlreadyClaimed),
+
+            // Submission errors
+            K::ModelNotInTarget => Ok(Self::ModelNotInTarget {
+                model_id: crate::types::Address::new([0u8; 32]),
+                target_id: crate::types::Address::new([0u8; 32]),
+            }),
+            K::EmbeddingDimensionMismatch => Ok(Self::EmbeddingDimensionMismatch {
+                expected: 0,
+                actual: 0,
+            }),
+            K::DistanceExceedsThreshold => Ok(Self::DistanceExceedsThreshold {
+                score: 0,
+                threshold: 0,
+            }),
+            K::ReconstructionExceedsThreshold => Ok(Self::ReconstructionExceedsThreshold {
+                score: 0,
+                threshold: 0,
+            }),
+            K::InsufficientBond => Ok(Self::InsufficientBond {
+                required: 0,
+                provided: 0,
+            }),
+            K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),
 
             K::InsufficientCoinBalance => Ok(Self::InsufficientCoinBalance),
             K::CoinBalanceOverflow => Ok(Self::CoinBalanceOverflow),

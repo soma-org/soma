@@ -285,6 +285,21 @@ impl Client {
         })
     }
 
+    /// List targets with optional filtering by status and epoch.
+    ///
+    /// Returns a paginated list of targets. Use `status_filter` to filter by "open", "filled", or "claimed".
+    /// Use `epoch_filter` to filter by generation epoch.
+    pub async fn list_targets(
+        &mut self,
+        request: impl tonic::IntoRequest<proto::ListTargetsRequest>,
+    ) -> Result<proto::ListTargetsResponse> {
+        self.0
+            .state_client()
+            .list_targets(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self

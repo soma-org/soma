@@ -172,6 +172,8 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::SystemState => "SystemState".to_string(),
             crate::types::ObjectType::Coin => "Coin".to_string(),
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
+            crate::types::ObjectType::Target => "Target".to_string(),
+            crate::types::ObjectType::Submission => "Submission".to_string(),
         }
     }
 }
@@ -184,6 +186,8 @@ impl FromStr for crate::types::ObjectType {
             "SystemState" => Ok(Self::SystemState),
             "Coin" => Ok(Self::Coin),
             "StakedSoma" => Ok(Self::StakedSoma),
+            "Target" => Ok(Self::Target),
+            "Submission" => Ok(Self::Submission),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

@@ -162,4 +162,6 @@ pub enum ObjectType {
     SystemState,
     Coin,
     StakedSoma,
+    Target,
+    Submission,
 }

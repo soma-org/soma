@@ -55,6 +55,8 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::SystemState => ObjectType::SystemState,
             types::object::ObjectType::Coin => ObjectType::Coin,
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
+            types::object::ObjectType::Target => ObjectType::Target,
+            types::object::ObjectType::Submission => ObjectType::Submission,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -80,6 +82,8 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::SystemState => types::object::ObjectType::SystemState,
             ObjectType::Coin => types::object::ObjectType::Coin,
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
+            ObjectType::Target => types::object::ObjectType::Target,
+            ObjectType::Submission => types::object::ObjectType::Submission,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -468,6 +472,24 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             TK::UndoReportModel { model_id } => TransactionKind::UndoReportModel {
                 model_id: model_id.into(),
             },
+
+            // Submission transactions
+            TK::SubmitData(args) => TransactionKind::SubmitData(SubmitDataArgs {
+                target_id: args.target_id.into(),
+                data_commitment: args.data_commitment.into_inner().to_vec(),
+                data_manifest: SubmissionManifest {
+                    manifest: args.data_manifest.manifest.into(),
+                },
+                model_id: args.model_id.into(),
+                embedding: args.embedding.to_vec(),
+                distance_score: args.distance_score,
+                reconstruction_score: args.reconstruction_score,
+                bond_coin: args.bond_coin.into(),
+            }),
+
+            TK::ClaimRewards(args) => TransactionKind::ClaimRewards(ClaimRewardsArgs {
+                target_id: args.target_id.into(),
+            }),
         })
     }
 }
@@ -677,6 +699,33 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::UndoReportModel { model_id } => TK::UndoReportModel {
                 model_id: model_id.into(),
             },
+
+            // Submission transactions
+            TransactionKind::SubmitData(args) => {
+                let data_commitment_array: [u8; 32] = args
+                    .data_commitment
+                    .try_into()
+                    .map_err(|_| SdkTypeConversionError("data_commitment must be 32 bytes".into()))?;
+                let data_manifest = types::submission::SubmissionManifest::new(args.data_manifest.manifest.try_into()?);
+                let embedding = ndarray::Array1::from_vec(args.embedding);
+
+                TK::SubmitData(types::transaction::SubmitDataArgs {
+                    target_id: args.target_id.into(),
+                    // target_initial_shared_version is ignored from proto - use protocol constant
+                    data_commitment: types::digests::DataCommitment::new(data_commitment_array),
+                    data_manifest,
+                    model_id: args.model_id.into(),
+                    embedding,
+                    distance_score: args.distance_score,
+                    reconstruction_score: args.reconstruction_score,
+                    bond_coin: args.bond_coin.into(),
+                })
+            }
+
+            TransactionKind::ClaimRewards(args) => TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
+                target_id: args.target_id.into(),
+                // target_initial_shared_version is ignored from proto - use protocol constant
+            }),
         })
     }
 }
@@ -1272,6 +1321,51 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
             types::effects::ExecutionFailureStatus::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
             types::effects::ExecutionFailureStatus::ModelMinStakeNotMet => Self::ModelMinStakeNotMet,
+
+            // Target errors
+            types::effects::ExecutionFailureStatus::NoActiveModels => Self::NoActiveModels,
+            types::effects::ExecutionFailureStatus::TargetNotFound => Self::TargetNotFound,
+            types::effects::ExecutionFailureStatus::TargetNotOpen => Self::TargetNotOpen,
+            types::effects::ExecutionFailureStatus::TargetExpired {
+                generation_epoch,
+                current_epoch,
+            } => Self::TargetExpired {
+                generation_epoch,
+                current_epoch,
+            },
+            types::effects::ExecutionFailureStatus::TargetNotFilled => Self::TargetNotFilled,
+            types::effects::ExecutionFailureStatus::ChallengeWindowOpen {
+                fill_epoch,
+                current_epoch,
+            } => Self::ChallengeWindowOpen {
+                fill_epoch,
+                current_epoch,
+            },
+            types::effects::ExecutionFailureStatus::TargetAlreadyClaimed => Self::TargetAlreadyClaimed,
+
+            // Submission errors
+            types::effects::ExecutionFailureStatus::ModelNotInTarget { model_id, target_id } => {
+                Self::ModelNotInTarget {
+                    model_id: model_id.into(),
+                    target_id: target_id.into(),
+                }
+            }
+            types::effects::ExecutionFailureStatus::EmbeddingDimensionMismatch { expected, actual } => {
+                Self::EmbeddingDimensionMismatch { expected, actual }
+            }
+            types::effects::ExecutionFailureStatus::DistanceExceedsThreshold { score, threshold } => {
+                Self::DistanceExceedsThreshold { score, threshold }
+            }
+            types::effects::ExecutionFailureStatus::ReconstructionExceedsThreshold { score, threshold } => {
+                Self::ReconstructionExceedsThreshold { score, threshold }
+            }
+            types::effects::ExecutionFailureStatus::InsufficientBond { required, provided } => {
+                Self::InsufficientBond { required, provided }
+            }
+            types::effects::ExecutionFailureStatus::InsufficientEmissionBalance => {
+                Self::InsufficientEmissionBalance
+            }
+
             types::effects::ExecutionFailureStatus::InsufficientCoinBalance => {
                 Self::InsufficientCoinBalance
             }
@@ -1342,6 +1436,46 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
             ExecutionError::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
             ExecutionError::ModelMinStakeNotMet => Self::ModelMinStakeNotMet,
+
+            // Target errors
+            ExecutionError::NoActiveModels => Self::NoActiveModels,
+            ExecutionError::TargetNotFound => Self::TargetNotFound,
+            ExecutionError::TargetNotOpen => Self::TargetNotOpen,
+            ExecutionError::TargetExpired {
+                generation_epoch,
+                current_epoch,
+            } => Self::TargetExpired {
+                generation_epoch,
+                current_epoch,
+            },
+            ExecutionError::TargetNotFilled => Self::TargetNotFilled,
+            ExecutionError::ChallengeWindowOpen {
+                fill_epoch,
+                current_epoch,
+            } => Self::ChallengeWindowOpen {
+                fill_epoch,
+                current_epoch,
+            },
+            ExecutionError::TargetAlreadyClaimed => Self::TargetAlreadyClaimed,
+
+            // Submission errors
+            ExecutionError::ModelNotInTarget { model_id, target_id } => Self::ModelNotInTarget {
+                model_id: model_id.into(),
+                target_id: target_id.into(),
+            },
+            ExecutionError::EmbeddingDimensionMismatch { expected, actual } => {
+                Self::EmbeddingDimensionMismatch { expected, actual }
+            }
+            ExecutionError::DistanceExceedsThreshold { score, threshold } => {
+                Self::DistanceExceedsThreshold { score, threshold }
+            }
+            ExecutionError::ReconstructionExceedsThreshold { score, threshold } => {
+                Self::ReconstructionExceedsThreshold { score, threshold }
+            }
+            ExecutionError::InsufficientBond { required, provided } => {
+                Self::InsufficientBond { required, provided }
+            }
+            ExecutionError::InsufficientEmissionBalance => Self::InsufficientEmissionBalance,
 
             // Coin errors
             ExecutionError::InsufficientCoinBalance => Self::InsufficientCoinBalance,

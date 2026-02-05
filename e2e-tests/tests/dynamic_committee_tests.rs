@@ -382,7 +382,7 @@ async fn fuzz_dynamic_committee() {
     let mut initial_committee = runner
         .system_state()
         .validators
-        .active_validators
+        .validators
         .iter()
         .map(|v| (v.metadata.soma_address, v.voting_power))
         .collect::<Vec<_>>();
@@ -395,7 +395,7 @@ async fn fuzz_dynamic_committee() {
 
     // Collect information about total stake of validators, and then check if each validator's
     // voting power is the right % of the total stake.
-    let active_validators = runner.system_state().validators.active_validators;
+    let active_validators = runner.system_state().validators.validators;
     let total_stake = active_validators
         .iter()
         .fold(0, |acc, v| acc + v.staking_pool.soma_balance);
@@ -430,7 +430,7 @@ async fn fuzz_dynamic_committee() {
     let mut post_epoch_committee = runner
         .system_state()
         .validators
-        .active_validators
+        .validators
         .iter()
         .map(|v| (v.metadata.soma_address, v.voting_power))
         .collect::<Vec<_>>();

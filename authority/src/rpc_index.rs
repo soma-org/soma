@@ -30,7 +30,7 @@ use types::{
     object::{Object, ObjectID, ObjectType, Owner, Version},
 };
 
-const CURRENT_DB_VERSION: u64 = 1;
+const CURRENT_DB_VERSION: u64 = 2; // Bumped for target index support
 const BALANCE_FLUSH_THRESHOLD: usize = 10_000;
 
 fn bulk_ingestion_write_options() -> WriteOptions {
@@ -101,6 +101,15 @@ fn balance_compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> Decision
         Decision::Remove
     } else {
         Decision::Keep
+    }
+}
+
+/// Convert a TargetStatus to a string for indexing.
+fn target_status_string(status: &types::target::TargetStatus) -> String {
+    match status {
+        types::target::TargetStatus::Open => "open".to_string(),
+        types::target::TargetStatus::Filled { .. } => "filled".to_string(),
+        types::target::TargetStatus::Claimed => "claimed".to_string(),
     }
 }
 
@@ -209,7 +218,7 @@ impl BalanceIndexInfo {
 impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
     fn from(index_info: BalanceIndexInfo) -> Self {
         // Note: We represent balance deltas as i128 to simplify merging positive and negative updates.
-        // Be aware: Move doesn’t enforce a one-time-witness (OTW) pattern when creating a Supply<T>.
+        // Be aware: Move doesn't enforce a one-time-witness (OTW) pattern when creating a Supply<T>.
         // Anyone can call `sui::balance::create_supply` and mint unbounded supply, potentially pushing
         // total balances over u64::MAX. To avoid crashing the indexer, we clamp the merged value instead
         // of panicking on overflow. This has the unfortunate consequence of making bugs in the index
@@ -217,6 +226,21 @@ impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
         let balance = index_info.balance_delta.clamp(0, u64::MAX as i128) as u64;
         types::storage::read_store::BalanceInfo { balance }
     }
+}
+
+/// Key for the target index table.
+/// Ordered by (status, generation_epoch, target_id) to allow efficient filtering and pagination.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct TargetIndexKey {
+    pub status: String,
+    pub generation_epoch: u64,
+    pub target_id: ObjectID,
+}
+
+/// Value stored in the target index table.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct TargetIndexInfo {
+    pub version: Version,
 }
 
 /// RocksDB tables for the RpcIndexStore
@@ -265,6 +289,12 @@ struct IndexStoreTables {
     ///
     /// Allows looking up balances by owner address and coin type.
     balance: DBMap<BalanceKey, BalanceIndexInfo>,
+
+    /// An index of Targets.
+    ///
+    /// Allows efficient iteration over targets filtered by status and/or epoch.
+    /// Key is (status, generation_epoch, target_id) for efficient range scans.
+    targets: DBMap<TargetIndexKey, TargetIndexInfo>,
 }
 
 impl IndexStoreTables {
@@ -577,6 +607,40 @@ impl IndexStoreTables {
 
             // determine changes from changed objects
             for (object, old_object) in tx.changed_objects() {
+                // Handle target index updates for Target objects
+                if object.type_() == &ObjectType::Target {
+                    // Remove old target index entry if this is an update
+                    if let Some(old_obj) = old_object {
+                        if let Ok(old_target) =
+                            bcs::from_bytes::<types::target::Target>(old_obj.data.contents())
+                        {
+                            let old_status = target_status_string(&old_target.status);
+                            let old_key = TargetIndexKey {
+                                status: old_status,
+                                generation_epoch: old_target.generation_epoch,
+                                target_id: old_obj.id(),
+                            };
+                            batch.delete_batch(&self.targets, [old_key])?;
+                        }
+                    }
+
+                    // Add new target index entry
+                    if let Ok(target) =
+                        bcs::from_bytes::<types::target::Target>(object.data.contents())
+                    {
+                        let status = target_status_string(&target.status);
+                        let key = TargetIndexKey {
+                            status,
+                            generation_epoch: target.generation_epoch,
+                            target_id: object.id(),
+                        };
+                        let info = TargetIndexInfo {
+                            version: object.version(),
+                        };
+                        batch.insert_batch(&self.targets, [(key, info)])?;
+                    }
+                }
+
                 if let Some(old_object) = old_object {
                     match old_object.owner() {
                         Owner::AddressOwner(owner) => {
@@ -697,6 +761,57 @@ impl IndexStoreTables {
             }))
     }
 
+    /// Iterate over targets, optionally filtered by status and/or epoch.
+    fn targets_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        cursor: Option<types::storage::read_store::TargetInfo>,
+    ) -> Result<
+        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        // If status_filter is provided, we can seek directly to that status prefix
+        // Otherwise, we need to scan all statuses
+        let lower_bound = cursor.map(|c| TargetIndexKey {
+            status: c.status,
+            generation_epoch: c.generation_epoch,
+            target_id: c.target_id,
+        });
+
+        let status_filter_clone = status_filter.clone();
+        let iter = self
+            .targets
+            .safe_iter_with_bounds(lower_bound, None)
+            .filter_map(move |item| {
+                match item {
+                    Ok((key, info)) => {
+                        // Apply status filter if specified
+                        if let Some(ref filter) = status_filter_clone {
+                            if &key.status != filter {
+                                return None;
+                            }
+                        }
+                        // Apply epoch filter if specified
+                        if let Some(epoch) = epoch_filter {
+                            if key.generation_epoch != epoch {
+                                return None;
+                            }
+                        }
+                        Some(Ok(types::storage::read_store::TargetInfo {
+                            target_id: key.target_id,
+                            version: info.version,
+                            status: key.status,
+                            generation_epoch: key.generation_epoch,
+                        }))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            });
+
+        Ok(iter)
+    }
+
     /// Index a single executed transaction's object changes immediately after execution.
     /// This mirrors the checkpoint-based `index_objects` but for a single transaction.
     fn index_executed_tx_objects(
@@ -738,6 +853,44 @@ impl IndexStoreTables {
         // Process all changed objects
         for (oref, owner, kind) in effects.all_changed_objects() {
             let id = &oref.0;
+
+            // Handle Target index updates
+            if let Some(new_object) = written.get(id) {
+                if new_object.type_() == &ObjectType::Target {
+                    // Remove old target index entry if this is an update
+                    if matches!(kind, WriteKind::Mutate) {
+                        if let Some(old_object) = input_objects.get(id) {
+                            if let Ok(old_target) =
+                                bcs::from_bytes::<types::target::Target>(old_object.data.contents())
+                            {
+                                let old_status = target_status_string(&old_target.status);
+                                let old_key = TargetIndexKey {
+                                    status: old_status,
+                                    generation_epoch: old_target.generation_epoch,
+                                    target_id: *id,
+                                };
+                                batch.delete_batch(&self.targets, [old_key])?;
+                            }
+                        }
+                    }
+
+                    // Add new target index entry
+                    if let Ok(target) =
+                        bcs::from_bytes::<types::target::Target>(new_object.data.contents())
+                    {
+                        let status = target_status_string(&target.status);
+                        let key = TargetIndexKey {
+                            status,
+                            generation_epoch: target.generation_epoch,
+                            target_id: *id,
+                        };
+                        let info = TargetIndexInfo {
+                            version: new_object.version(),
+                        };
+                        batch.insert_batch(&self.targets, [(key, info)])?;
+                    }
+                }
+            }
 
             // For mutated objects, handle old owner removal if owner changed
             if matches!(kind, WriteKind::Mutate) {
@@ -1195,6 +1348,18 @@ impl RpcIndexStore {
         self.tables.watermark.get(&Watermark::Indexed)
     }
 
+    pub fn targets_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        cursor: Option<types::storage::read_store::TargetInfo>,
+    ) -> Result<
+        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        self.tables.targets_iter(status_filter, epoch_filter, cursor)
+    }
+
     /// Index a transaction immediately after execution (before checkpoint finalization).
     /// This updates the owner and balance indexes in real-time.
     pub fn index_executed_tx(
@@ -1235,6 +1400,25 @@ impl<'a> ParMakeLiveObjectIndexer for RpcParLiveObjectSetIndexer<'a> {
 
 impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
     fn index_object(&mut self, object: Object) -> Result<(), StorageError> {
+        // Index Target objects (shared objects)
+        if object.type_() == &ObjectType::Target {
+            if let Ok(target) =
+                bcs::from_bytes::<types::target::Target>(object.data.contents())
+            {
+                let status = target_status_string(&target.status);
+                let key = TargetIndexKey {
+                    status,
+                    generation_epoch: target.generation_epoch,
+                    target_id: object.id(),
+                };
+                let info = TargetIndexInfo {
+                    version: object.version(),
+                };
+                self.batch
+                    .insert_batch(&self.tables.targets, [(key, info)])?;
+            }
+        }
+
         match object.owner {
             // Owner Index
             Owner::AddressOwner(owner) => {

@@ -323,6 +323,23 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             UndoReportModel { model_id } => Kind::UndoReportModel(super::UndoReportModel {
                 model_id: Some(model_id.to_string()),
             }),
+
+            // Submission transactions
+            SubmitData(args) => Kind::SubmitData(super::SubmitData {
+                target_id: Some(args.target_id.to_string()),
+                data_commitment: Some(args.data_commitment.clone().into()),
+                data_manifest: Some(super::SubmissionManifest {
+                    manifest: Some(args.data_manifest.manifest.clone().into()),
+                }),
+                model_id: Some(args.model_id.to_string()),
+                embedding: args.embedding.clone(),
+                distance_score: Some(args.distance_score),
+                reconstruction_score: Some(args.reconstruction_score),
+                bond_coin: Some(args.bond_coin.clone().into()),
+            }),
+            ClaimRewards(args) => Kind::ClaimRewards(super::ClaimRewards {
+                target_id: Some(args.target_id.to_string()),
+            }),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -599,6 +616,60 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
             },
+
+            // Submission transactions
+            Kind::SubmitData(args) => {
+                let data_manifest = args
+                    .data_manifest
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("data_manifest"))?;
+                Self::SubmitData(crate::types::SubmitDataArgs {
+                    target_id: args
+                        .target_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("target_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
+                    data_commitment: args
+                        .data_commitment
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("data_commitment"))?
+                        .to_vec(),
+                    data_manifest: crate::types::SubmissionManifest {
+                        manifest: data_manifest
+                            .manifest
+                            .as_ref()
+                            .ok_or_else(|| TryFromProtoError::missing("manifest"))?
+                            .try_into()?,
+                    },
+                    model_id: args
+                        .model_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                    embedding: args.embedding.clone(),
+                    distance_score: args
+                        .distance_score
+                        .ok_or_else(|| TryFromProtoError::missing("distance_score"))?,
+                    reconstruction_score: args
+                        .reconstruction_score
+                        .ok_or_else(|| TryFromProtoError::missing("reconstruction_score"))?,
+                    bond_coin: args
+                        .bond_coin
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("bond_coin"))?
+                        .try_into()?,
+                })
+            }
+            Kind::ClaimRewards(args) => Self::ClaimRewards(crate::types::ClaimRewardsArgs {
+                target_id: args
+                    .target_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("target_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
+            }),
         }
         .pipe(Ok)
     }

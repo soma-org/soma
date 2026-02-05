@@ -6,6 +6,7 @@ use std::{
 use crate::{checksum::Checksum, crypto::DefaultHash, metadata::ManifestAPI as _};
 use emission::EmissionPool;
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
+use target_state::TargetState;
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519::Ed25519PublicKey,
@@ -48,6 +49,7 @@ pub mod emission;
 pub mod epoch_start;
 pub mod model_registry;
 pub mod staking;
+pub mod target_state;
 pub mod validator;
 
 #[cfg(test)]
@@ -59,6 +61,12 @@ mod model_tests;
 #[cfg(test)]
 #[path = "unit_tests/rewards_distribution_tests.rs"]
 mod rewards_distribution_tests;
+#[cfg(test)]
+#[path = "unit_tests/submission_tests.rs"]
+mod submission_tests;
+#[cfg(test)]
+#[path = "unit_tests/target_tests.rs"]
+mod target_tests;
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 pub mod test_utils;
@@ -141,14 +149,8 @@ pub struct SystemState {
 
     pub emission_pool: EmissionPool,
 
-    /// Map of epoch -> reward amount per target for that epoch
-    pub target_rewards_per_epoch: BTreeMap<EpochId, u64>,
-
-    /// Count of targets created per epoch (for reward calculation)
-    pub targets_created_per_epoch: BTreeMap<EpochId, u64>,
-
-    /// Epoch seeds for deterministic randomness
-    pub epoch_seeds: BTreeMap<EpochId, Vec<u8>>,
+    /// Lightweight coordination state for target generation and difficulty
+    pub target_state: TargetState,
 }
 
 impl SystemState {
@@ -173,7 +175,13 @@ impl SystemState {
             validator.activate(0);
         }
 
-        let mut system_state = Self {
+        // Initialize target state with initial thresholds from parameters
+        let target_state = TargetState::new(
+            parameters.target_initial_distance_threshold,
+            parameters.target_initial_reconstruction_threshold,
+        );
+
+        Self {
             epoch: 0,
             validators,
             protocol_version,
@@ -182,12 +190,8 @@ impl SystemState {
             validator_report_records: BTreeMap::new(),
             model_registry: ModelRegistry::new(),
             emission_pool,
-            target_rewards_per_epoch: BTreeMap::new(),
-            targets_created_per_epoch: BTreeMap::new(),
-            epoch_seeds: BTreeMap::new(),
-        };
-
-        system_state
+            target_state,
+        }
     }
 
     pub fn request_add_validator(
@@ -1048,24 +1052,23 @@ impl SystemState {
         {
             total_rewards += self.emission_pool.advance_epoch();
         }
-        // 3. Generate and store epoch seed for deterministic randomness
-        let epoch_seed = self.generate_epoch_seed(new_epoch, &epoch_randomness);
-        self.set_epoch_seed(new_epoch, epoch_seed);
-
         // Adjust fees for next epoch BEFORE processing rewards
         self.adjust_value_fee(epoch_total_transaction_fees);
 
-        // 6. Increment epoch
+        // 3. Increment epoch
         self.epoch = new_epoch;
 
-        // 7. Allocate rewards: targets vs validators
-        let target_allocation =
-            (total_rewards * self.parameters.target_reward_allocation_bps) / BPS_DENOMINATOR;
-        let validator_allocation = total_rewards - target_allocation;
+        // 4. Allocate rewards: validators get their share, remainder funds target pool
+        // Note: Target rewards are pre-allocated at target creation time from emission pool,
+        // so we only allocate validator rewards here.
+        let validator_allocation_bps = self.parameters.validator_reward_allocation_bps;
+        let validator_allocation = (total_rewards * validator_allocation_bps) / BPS_DENOMINATOR;
+        let _remainder = total_rewards - validator_allocation;
+        // The remainder could be added back to emission_pool if desired, but for now
+        // target rewards are funded directly from emission_pool at target creation time.
 
-        // 8. Calculate and store target rewards for the PREVIOUS epoch
-        // Targets created in prev_epoch are valid in new_epoch, claimable in new_epoch + 1
-        self.calculate_target_rewards(prev_epoch, target_allocation);
+        // 5. Advance target state for new epoch (difficulty adjustment + reward calculation)
+        self.advance_epoch_targets();
 
         // 9. Process validator rewards (minimal - just for consensus participation)
         let mut validator_reward_pool = validator_allocation;
@@ -1090,87 +1093,115 @@ impl SystemState {
         Ok(validator_rewards)
     }
 
-    fn generate_epoch_seed(&self, epoch: EpochId, state_hash_digest: &[u8]) -> Vec<u8> {
-        let mut hasher = DefaultHash::default();
-        hasher.update(&epoch.to_le_bytes());
-        hasher.update(state_hash_digest);
-
-        // Chain with previous seed for continuity
-        if epoch > 0 {
-            if let Some(prev_seed) = self.epoch_seeds.get(&(epoch - 1)) {
-                hasher.update(prev_seed);
-            }
-        }
-
-        hasher.finalize().to_vec()
-    }
-
-    /// Return funds to the emissions pool (used when system targets have no valid winner)
+    /// Return funds to the emissions pool (used when targets expire unfilled)
     pub fn return_to_emissions_pool(&mut self, amount: u64) {
         self.emission_pool.balance += amount;
     }
 
-    /// Increment the target count for a given epoch
-    pub fn increment_target_count(&mut self, epoch: EpochId) {
-        *self.targets_created_per_epoch.entry(epoch).or_insert(0) += 1;
+    /// Calculate the reward per target for the upcoming epoch.
+    /// Based on target_reward_allocation_bps of epoch emissions divided by estimated targets.
+    ///
+    /// Uses target_initial_targets_per_epoch as the estimate for number of targets.
+    pub fn calculate_reward_per_target(&self) -> u64 {
+        let epoch_emissions = self.emission_pool.emission_per_epoch;
+        let target_allocation_bps = self.parameters.target_reward_allocation_bps;
+        let target_emissions = (epoch_emissions * target_allocation_bps) / BPS_DENOMINATOR;
+
+        // Use initial targets per epoch as the estimate
+        let estimated_targets = self.parameters.target_initial_targets_per_epoch.max(1);
+
+        target_emissions / estimated_targets
     }
 
-    /// Get the epoch seed for deterministic randomness
-    pub fn get_epoch_seed(&self, epoch: EpochId) -> Option<Vec<u8>> {
-        self.epoch_seeds.get(&epoch).cloned()
-    }
+    /// Adjust difficulty thresholds based on hit rate for the epoch.
+    /// Called during epoch transition in advance_epoch_targets().
+    ///
+    /// Hit rate = hits_this_epoch / targets_generated_this_epoch
+    /// If hit_rate_ema > target_rate: make harder (decrease thresholds)
+    /// If hit_rate_ema < target_rate: make easier (increase thresholds)
+    ///
+    /// Uses an EMA of hit rate across epochs for smoother adjustments.
+    pub fn adjust_difficulty(&mut self) {
+        let target_hit_rate_bps = self.parameters.target_hit_rate_target_bps;
+        let decay_bps = self.parameters.target_hit_rate_ema_decay_bps;
 
-    /// Set the epoch seed (called during epoch transitions)
-    pub fn set_epoch_seed(&mut self, epoch: EpochId, seed: Vec<u8>) {
-        self.epoch_seeds.insert(epoch, seed);
-    }
+        // Update the EMA with this epoch's hit rate
+        let ema_bps = self.target_state.update_hit_rate_ema(decay_bps);
 
-    /// Get the reward amount per target for a given epoch
-    /// This should be calculated based on emissions allocated for that epoch
-    /// divided by the number of targets created
-    pub fn get_target_reward(&self, epoch: EpochId) -> Option<u64> {
-        // First check if we have a pre-calculated reward
-        if let Some(&reward) = self.target_rewards_per_epoch.get(&epoch) {
-            return Some(reward);
-        }
-
-        // If not pre-calculated, we can't determine it retroactively
-        // (this shouldn't happen if calculate_target_rewards is called at epoch end)
-        None
-    }
-
-    /// Calculate and store target rewards for an epoch
-    /// Should be called during epoch transition after all targets for that epoch are known
-    pub fn calculate_target_rewards(&mut self, epoch: EpochId, total_target_emissions: u64) {
-        let target_count = self
-            .targets_created_per_epoch
-            .get(&epoch)
-            .copied()
-            .unwrap_or(0);
-
-        if target_count == 0 {
-            // No targets created, return emissions to pool
-            self.emission_pool.balance += total_target_emissions;
-            info!(
-                "No targets in epoch {}, returning {} to emission pool",
-                epoch, total_target_emissions
-            );
+        // Skip adjustment if still in bootstrap mode (EMA is 0)
+        if ema_bps == 0 {
+            info!("Difficulty adjustment skipped: bootstrap mode (no hit data yet)");
             return;
         }
 
-        let reward_per_target = total_target_emissions / target_count;
-        self.target_rewards_per_epoch
-            .insert(epoch, reward_per_target);
+        let adjustment_rate = self.parameters.target_difficulty_adjustment_rate_bps;
+        let min_distance = self.parameters.target_min_distance_threshold;
+        let max_distance = self.parameters.target_max_distance_threshold;
+        let min_reconstruction = self.parameters.target_min_reconstruction_threshold;
+        let max_reconstruction = self.parameters.target_max_reconstruction_threshold;
 
-        // Handle remainder - return to emissions pool
-        let remainder = total_target_emissions % target_count;
-        if remainder > 0 {
-            self.emission_pool.balance += remainder;
-        }
+        // Calculate adjustment factor based on EMA
+        // If ema > target_rate, we're too easy → decrease thresholds (harder)
+        // If ema < target_rate, we're too hard → increase thresholds (easier)
+        let adjustment_factor = if ema_bps > target_hit_rate_bps {
+            // Too easy - make harder (decrease thresholds)
+            // factor < 1.0
+            let decrease_pct =
+                (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as i64;
+            decrease_pct
+        } else {
+            // Too hard - make easier (increase thresholds)
+            // factor > 1.0
+            let increase_pct = (BPS_DENOMINATOR + adjustment_rate) as i64;
+            increase_pct
+        };
+
+        // Apply adjustment to distance threshold
+        let new_distance = (self.target_state.distance_threshold * adjustment_factor)
+            / BPS_DENOMINATOR as i64;
+        self.target_state.distance_threshold = new_distance.clamp(min_distance, max_distance);
+
+        // Apply adjustment to reconstruction threshold
+        let new_reconstruction = (self.target_state.reconstruction_threshold as i64
+            * adjustment_factor)
+            / BPS_DENOMINATOR as i64;
+        self.target_state.reconstruction_threshold =
+            (new_reconstruction as u64).clamp(min_reconstruction, max_reconstruction);
 
         info!(
-            "Epoch {} target rewards: {} per target ({} targets, {} total)",
-            epoch, reward_per_target, target_count, total_target_emissions
+            "Difficulty adjusted: distance={}, reconstruction={} (ema={}bps, target={}bps, hits={}, targets={})",
+            self.target_state.distance_threshold,
+            self.target_state.reconstruction_threshold,
+            ema_bps,
+            target_hit_rate_bps,
+            self.target_state.hits_this_epoch,
+            self.target_state.targets_generated_this_epoch
+        );
+    }
+
+    /// Called at epoch boundary to update target state for the new epoch.
+    ///
+    /// 1. Adjust difficulty based on hit rate from the previous epoch
+    /// 2. Reset epoch counters for the new epoch
+    /// 3. Calculate reward_per_target for the new epoch
+    ///
+    /// Note: Actual target objects are separate shared objects.
+    /// This only updates the coordination state in SystemState.
+    pub fn advance_epoch_targets(&mut self) {
+        // 1. Adjust difficulty thresholds based on last epoch's hit rate
+        self.adjust_difficulty();
+
+        // 2. Reset epoch counters for the new epoch
+        self.target_state.reset_epoch_counters();
+
+        // 3. Calculate and set reward_per_target for new epoch
+        self.target_state.reward_per_target = self.calculate_reward_per_target();
+
+        info!(
+            "Target state advanced: reward_per_target={}, distance_threshold={}, reconstruction_threshold={}",
+            self.target_state.reward_per_target,
+            self.target_state.distance_threshold,
+            self.target_state.reconstruction_threshold
         );
     }
 

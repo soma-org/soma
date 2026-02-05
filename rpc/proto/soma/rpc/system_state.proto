@@ -24,9 +24,8 @@ message SystemState {
   // Emission pool
   optional EmissionPool emission_pool = 7;
 
-  map<uint64, uint64> target_rewards_per_epoch = 8;
-  map<uint64, uint64> targets_created_per_epoch = 9;
-  map<uint64, bytes> epoch_seeds = 10;
+  // Target state (difficulty thresholds, EMAs, reward per target)
+  optional TargetState target_state = 12;
 
   // Model registry
   optional ModelRegistry model_registry = 11;
@@ -38,20 +37,45 @@ message ReporterSet {
 
 message SystemParameters {
   optional uint64 epoch_duration_ms = 1;
-  optional uint64 target_reward_allocation_bps = 4;
+  optional uint64 validator_reward_allocation_bps = 2;
+
   // Model parameters
-  optional uint64 model_min_stake = 14;
-  optional uint64 model_architecture_version = 15;
-  optional uint64 model_reveal_slash_rate_bps = 16;
-  optional uint64 model_tally_slash_rate_bps = 17;
+  optional uint64 model_min_stake = 3;
+  optional uint64 model_architecture_version = 4;
+  optional uint64 model_reveal_slash_rate_bps = 5;
+  optional uint64 model_tally_slash_rate_bps = 6;
+
   // Fee parameters
-  optional uint64 target_epoch_fee_collection = 6;
-  optional uint64 base_fee = 7;
-  optional uint64 write_object_fee = 8;
-  optional uint64 value_fee_bps = 9;
-  optional uint64 min_value_fee_bps = 10;
-  optional uint64 max_value_fee_bps = 11;
-  optional uint64 fee_adjustment_rate_bps = 12;
+  optional uint64 target_epoch_fee_collection = 7;
+  optional uint64 base_fee = 8;
+  optional uint64 write_object_fee = 9;
+  optional uint64 value_fee_bps = 10;
+  optional uint64 min_value_fee_bps = 11;
+  optional uint64 max_value_fee_bps = 12;
+  optional uint64 fee_adjustment_rate_bps = 13;
+
+  // Target/Mining parameters
+  optional uint64 target_models_per_target = 14;
+  optional uint64 target_embedding_dim = 15;
+  optional int64 target_initial_distance_threshold = 16;
+  optional uint64 target_initial_reconstruction_threshold = 17;
+  optional uint64 target_reward_allocation_bps = 18;
+  optional uint64 target_hit_rate_target_bps = 19;
+  optional uint64 target_hit_rate_ema_decay_bps = 20;
+  optional uint64 target_difficulty_adjustment_rate_bps = 21;
+  optional int64 target_max_distance_threshold = 22;
+  optional int64 target_min_distance_threshold = 23;
+  optional uint64 target_max_reconstruction_threshold = 24;
+  optional uint64 target_min_reconstruction_threshold = 25;
+  optional uint64 target_initial_targets_per_epoch = 26;
+
+  // Reward distribution parameters
+  optional uint64 target_miner_reward_share_bps = 28;
+  optional uint64 target_model_reward_share_bps = 29;
+  optional uint64 target_claimer_incentive_bps = 30;
+
+  // Submission parameters
+  optional uint64 submission_bond_per_byte = 31;
 }
 
 message EmissionPool {
@@ -138,5 +162,103 @@ message ModelRegistry {
   map<string, Model> inactive_models = 4;            // ModelId (ObjectID hex) -> Model
   optional uint64 total_model_stake = 5;
   map<string, ReporterSet> model_report_records = 6; // ModelId hex -> reporter addresses
+}
+
+// Target state coordination (stored in SystemState).
+// Tracks difficulty thresholds and statistics for target generation.
+message TargetState {
+  // Current distance threshold for new targets (fixed-point i64)
+  optional int64 distance_threshold = 1;
+
+  // Current reconstruction error threshold (MSE, fixed-point u64)
+  optional uint64 reconstruction_threshold = 2;
+
+  // Count of targets generated this epoch
+  optional uint64 targets_generated_this_epoch = 3;
+
+  // Count of successful hits this epoch
+  optional uint64 hits_this_epoch = 4;
+
+  // EMA of hit rate across epochs (bps, 0-10000)
+  // 0 indicates bootstrap mode (no data yet)
+  optional uint64 hit_rate_ema_bps = 5;
+
+  // Reward per target for current epoch (in shannons)
+  optional uint64 reward_per_target = 6;
+}
+
+// A target in the Soma mining competition.
+// Targets are shared objects that miners compete to fill.
+message Target {
+  // Target ID (ObjectID hex)
+  optional string id = 1;
+
+  // Center embedding point (fixed-point i64 values)
+  repeated int64 embedding = 2;
+
+  // Models assigned to this target (ModelId hex strings)
+  repeated string model_ids = 3;
+
+  // Distance threshold (fixed-point i64)
+  optional int64 distance_threshold = 4;
+
+  // Reconstruction error threshold (MSE, fixed-point u64)
+  optional uint64 reconstruction_threshold = 5;
+
+  // Pre-allocated reward amount (in shannons)
+  optional uint64 reward_pool = 6;
+
+  // Epoch in which this target was generated
+  optional uint64 generation_epoch = 7;
+
+  // Reserved: field 8 was generation_timestamp_ms (removed)
+
+  // Status: "open", "filled", or "claimed"
+  optional string status = 9;
+
+  // Fill epoch (only present if status is "filled")
+  optional uint64 fill_epoch = 10;
+
+  // Miner address who filled (only present if filled)
+  optional string miner = 11;
+
+  // Model used by the miner (only present if filled)
+  optional string winning_model_id = 12;
+
+  // Model owner address at fill time (only present if filled)
+  optional string winning_model_owner = 13;
+
+  // Bond amount held (in shannons, only present if filled)
+  optional uint64 bond_amount = 14;
+}
+
+// A data submission to a target.
+message Submission {
+  // Miner address
+  optional string miner = 1;
+
+  // Commitment to raw data: hash(data_bytes), 32-byte digest
+  optional bytes data_commitment = 2;
+
+  // Manifest for submitted data
+  optional SubmissionManifest data_manifest = 3;
+
+  // Model ID used for this submission
+  optional string model_id = 4;
+
+  // Embedding vector (fixed-point i64 values)
+  repeated int64 embedding = 5;
+
+  // Distance score reported by submitter (fixed-point i64)
+  optional int64 distance_score = 6;
+
+  // Reconstruction error (MSE) reported by submitter (fixed-point u64)
+  optional uint64 reconstruction_score = 7;
+
+  // Bond amount locked (in shannons)
+  optional uint64 bond_amount = 8;
+
+  // Epoch when submission was made
+  optional uint64 submit_epoch = 9;
 }
 

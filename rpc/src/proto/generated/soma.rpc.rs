@@ -662,6 +662,32 @@ pub mod execution_error {
         ModelCommissionRateTooHigh = 31,
         /// Model minimum stake requirement not met
         ModelMinStakeNotMet = 32,
+        /// No active models available for target generation
+        NoActiveModels = 33,
+        /// Target not found
+        TargetNotFound = 34,
+        /// Target is not open for submissions
+        TargetNotOpen = 35,
+        /// Target has expired
+        TargetExpired = 36,
+        /// Target is not filled
+        TargetNotFilled = 37,
+        /// Challenge window is still open
+        ChallengeWindowOpen = 38,
+        /// Target rewards have already been claimed
+        TargetAlreadyClaimed = 39,
+        /// Model is not assigned to target
+        ModelNotInTarget = 40,
+        /// Embedding dimension mismatch
+        EmbeddingDimensionMismatch = 41,
+        /// Distance score exceeds threshold
+        DistanceExceedsThreshold = 42,
+        /// Reconstruction score exceeds threshold
+        ReconstructionExceedsThreshold = 43,
+        /// Insufficient bond for submission
+        InsufficientBond = 44,
+        /// Insufficient emission pool balance
+        InsufficientEmissionBalance = 45,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -704,6 +730,21 @@ pub mod execution_error {
                 }
                 Self::ModelCommissionRateTooHigh => "MODEL_COMMISSION_RATE_TOO_HIGH",
                 Self::ModelMinStakeNotMet => "MODEL_MIN_STAKE_NOT_MET",
+                Self::NoActiveModels => "NO_ACTIVE_MODELS",
+                Self::TargetNotFound => "TARGET_NOT_FOUND",
+                Self::TargetNotOpen => "TARGET_NOT_OPEN",
+                Self::TargetExpired => "TARGET_EXPIRED",
+                Self::TargetNotFilled => "TARGET_NOT_FILLED",
+                Self::ChallengeWindowOpen => "CHALLENGE_WINDOW_OPEN",
+                Self::TargetAlreadyClaimed => "TARGET_ALREADY_CLAIMED",
+                Self::ModelNotInTarget => "MODEL_NOT_IN_TARGET",
+                Self::EmbeddingDimensionMismatch => "EMBEDDING_DIMENSION_MISMATCH",
+                Self::DistanceExceedsThreshold => "DISTANCE_EXCEEDS_THRESHOLD",
+                Self::ReconstructionExceedsThreshold => {
+                    "RECONSTRUCTION_EXCEEDS_THRESHOLD"
+                }
+                Self::InsufficientBond => "INSUFFICIENT_BOND",
+                Self::InsufficientEmissionBalance => "INSUFFICIENT_EMISSION_BALANCE",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -745,6 +786,23 @@ pub mod execution_error {
                     Some(Self::ModelCommissionRateTooHigh)
                 }
                 "MODEL_MIN_STAKE_NOT_MET" => Some(Self::ModelMinStakeNotMet),
+                "NO_ACTIVE_MODELS" => Some(Self::NoActiveModels),
+                "TARGET_NOT_FOUND" => Some(Self::TargetNotFound),
+                "TARGET_NOT_OPEN" => Some(Self::TargetNotOpen),
+                "TARGET_EXPIRED" => Some(Self::TargetExpired),
+                "TARGET_NOT_FILLED" => Some(Self::TargetNotFilled),
+                "CHALLENGE_WINDOW_OPEN" => Some(Self::ChallengeWindowOpen),
+                "TARGET_ALREADY_CLAIMED" => Some(Self::TargetAlreadyClaimed),
+                "MODEL_NOT_IN_TARGET" => Some(Self::ModelNotInTarget),
+                "EMBEDDING_DIMENSION_MISMATCH" => Some(Self::EmbeddingDimensionMismatch),
+                "DISTANCE_EXCEEDS_THRESHOLD" => Some(Self::DistanceExceedsThreshold),
+                "RECONSTRUCTION_EXCEEDS_THRESHOLD" => {
+                    Some(Self::ReconstructionExceedsThreshold)
+                }
+                "INSUFFICIENT_BOND" => Some(Self::InsufficientBond),
+                "INSUFFICIENT_EMISSION_BALANCE" => {
+                    Some(Self::InsufficientEmissionBalance)
+                }
                 _ => None,
             }
         }
@@ -2086,6 +2144,63 @@ pub struct ListOwnedObjectsResponse {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
+/// Request message for `StateService.GetTarget`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTargetRequest {
+    /// Required. The target ID (ObjectID hex string).
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, all fields are returned.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+/// Response message for `StateService.GetTarget`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetTargetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub target: ::core::option::Option<Target>,
+}
+/// Request message for `StateService.ListTargets`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListTargetsRequest {
+    /// Optional status filter: "open", "filled", or "claimed".
+    /// If not specified, returns targets of all statuses.
+    #[prost(string, optional, tag = "1")]
+    pub status_filter: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional epoch filter. If specified, only returns targets with
+    /// generation_epoch equal to this value.
+    #[prost(uint64, optional, tag = "2")]
+    pub epoch_filter: ::core::option::Option<u64>,
+    /// The maximum number of entries to return. The service may return fewer.
+    /// If unspecified, at most `50` entries will be returned.
+    /// The maximum value is `1000`; values above `1000` will be coerced to `1000`.
+    #[prost(uint32, optional, tag = "3")]
+    pub page_size: ::core::option::Option<u32>,
+    /// A page token, received from a previous `ListTargets` call.
+    /// Provide this to retrieve the subsequent page.
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub page_token: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Mask specifying which fields to read on each target.
+    /// If no mask is specified, all fields are returned.
+    #[prost(message, optional, tag = "5")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+/// Response message for `StateService.ListTargets`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListTargetsResponse {
+    /// Page of targets matching the filters.
+    #[prost(message, repeated, tag = "1")]
+    pub targets: ::prost::alloc::vec::Vec<Target>,
+    /// A token, which can be sent as `page_token` to retrieve the next page.
+    /// If this field is omitted, there are no subsequent pages.
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
+}
 /// Generated client implementations.
 pub mod state_service_client {
     #![allow(
@@ -2225,6 +2340,54 @@ pub mod state_service_client {
                 .insert(GrpcMethod::new("soma.rpc.StateService", "GetBalance"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_target(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetTargetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTargetResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.StateService/GetTarget",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.StateService", "GetTarget"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list_targets(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListTargetsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTargetsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.StateService/ListTargets",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.StateService", "ListTargets"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -2252,6 +2415,20 @@ pub mod state_service_server {
             request: tonic::Request<super::GetBalanceRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetBalanceResponse>,
+            tonic::Status,
+        >;
+        async fn get_target(
+            &self,
+            request: tonic::Request<super::GetTargetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetTargetResponse>,
+            tonic::Status,
+        >;
+        async fn list_targets(
+            &self,
+            request: tonic::Request<super::ListTargetsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListTargetsResponse>,
             tonic::Status,
         >;
     }
@@ -2407,6 +2584,96 @@ pub mod state_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetBalanceSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.StateService/GetTarget" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetTargetSvc<T: StateService>(pub Arc<T>);
+                    impl<
+                        T: StateService,
+                    > tonic::server::UnaryService<super::GetTargetRequest>
+                    for GetTargetSvc<T> {
+                        type Response = super::GetTargetResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetTargetRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StateService>::get_target(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetTargetSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.StateService/ListTargets" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListTargetsSvc<T: StateService>(pub Arc<T>);
+                    impl<
+                        T: StateService,
+                    > tonic::server::UnaryService<super::ListTargetsRequest>
+                    for ListTargetsSvc<T> {
+                        type Response = super::ListTargetsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListTargetsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StateService>::list_targets(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListTargetsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -2852,12 +3119,9 @@ pub struct SystemState {
     /// Emission pool
     #[prost(message, optional, tag = "7")]
     pub emission_pool: ::core::option::Option<EmissionPool>,
-    #[prost(btree_map = "uint64, uint64", tag = "8")]
-    pub target_rewards_per_epoch: ::prost::alloc::collections::BTreeMap<u64, u64>,
-    #[prost(btree_map = "uint64, uint64", tag = "9")]
-    pub targets_created_per_epoch: ::prost::alloc::collections::BTreeMap<u64, u64>,
-    #[prost(btree_map = "uint64, bytes", tag = "10")]
-    pub epoch_seeds: ::prost::alloc::collections::BTreeMap<u64, ::prost::bytes::Bytes>,
+    /// Target state (difficulty thresholds, EMAs, reward per target)
+    #[prost(message, optional, tag = "12")]
+    pub target_state: ::core::option::Option<TargetState>,
     /// Model registry
     #[prost(message, optional, tag = "11")]
     pub model_registry: ::core::option::Option<ModelRegistry>,
@@ -2873,32 +3137,69 @@ pub struct ReporterSet {
 pub struct SystemParameters {
     #[prost(uint64, optional, tag = "1")]
     pub epoch_duration_ms: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "4")]
-    pub target_reward_allocation_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub validator_reward_allocation_bps: ::core::option::Option<u64>,
     /// Model parameters
-    #[prost(uint64, optional, tag = "14")]
+    #[prost(uint64, optional, tag = "3")]
     pub model_min_stake: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "15")]
+    #[prost(uint64, optional, tag = "4")]
     pub model_architecture_version: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "16")]
+    #[prost(uint64, optional, tag = "5")]
     pub model_reveal_slash_rate_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "17")]
+    #[prost(uint64, optional, tag = "6")]
     pub model_tally_slash_rate_bps: ::core::option::Option<u64>,
     /// Fee parameters
-    #[prost(uint64, optional, tag = "6")]
-    pub target_epoch_fee_collection: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "7")]
-    pub base_fee: ::core::option::Option<u64>,
+    pub target_epoch_fee_collection: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "8")]
-    pub write_object_fee: ::core::option::Option<u64>,
+    pub base_fee: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "9")]
-    pub value_fee_bps: ::core::option::Option<u64>,
+    pub write_object_fee: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "10")]
-    pub min_value_fee_bps: ::core::option::Option<u64>,
+    pub value_fee_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "11")]
-    pub max_value_fee_bps: ::core::option::Option<u64>,
+    pub min_value_fee_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "12")]
+    pub max_value_fee_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "13")]
     pub fee_adjustment_rate_bps: ::core::option::Option<u64>,
+    /// Target/Mining parameters
+    #[prost(uint64, optional, tag = "14")]
+    pub target_models_per_target: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "15")]
+    pub target_embedding_dim: ::core::option::Option<u64>,
+    #[prost(int64, optional, tag = "16")]
+    pub target_initial_distance_threshold: ::core::option::Option<i64>,
+    #[prost(uint64, optional, tag = "17")]
+    pub target_initial_reconstruction_threshold: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "18")]
+    pub target_reward_allocation_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "19")]
+    pub target_hit_rate_target_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "20")]
+    pub target_hit_rate_ema_decay_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "21")]
+    pub target_difficulty_adjustment_rate_bps: ::core::option::Option<u64>,
+    #[prost(int64, optional, tag = "22")]
+    pub target_max_distance_threshold: ::core::option::Option<i64>,
+    #[prost(int64, optional, tag = "23")]
+    pub target_min_distance_threshold: ::core::option::Option<i64>,
+    #[prost(uint64, optional, tag = "24")]
+    pub target_max_reconstruction_threshold: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "25")]
+    pub target_min_reconstruction_threshold: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "26")]
+    pub target_initial_targets_per_epoch: ::core::option::Option<u64>,
+    /// Reward distribution parameters
+    #[prost(uint64, optional, tag = "28")]
+    pub target_miner_reward_share_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "29")]
+    pub target_model_reward_share_bps: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "30")]
+    pub target_claimer_incentive_bps: ::core::option::Option<u64>,
+    /// Submission parameters
+    #[prost(uint64, optional, tag = "31")]
+    pub submission_bond_per_byte: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -3087,6 +3388,108 @@ pub struct ModelRegistry {
         ReporterSet,
     >,
 }
+/// Target state coordination (stored in SystemState).
+/// Tracks difficulty thresholds and statistics for target generation.
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TargetState {
+    /// Current distance threshold for new targets (fixed-point i64)
+    #[prost(int64, optional, tag = "1")]
+    pub distance_threshold: ::core::option::Option<i64>,
+    /// Current reconstruction error threshold (MSE, fixed-point u64)
+    #[prost(uint64, optional, tag = "2")]
+    pub reconstruction_threshold: ::core::option::Option<u64>,
+    /// Count of targets generated this epoch
+    #[prost(uint64, optional, tag = "3")]
+    pub targets_generated_this_epoch: ::core::option::Option<u64>,
+    /// Count of successful hits this epoch
+    #[prost(uint64, optional, tag = "4")]
+    pub hits_this_epoch: ::core::option::Option<u64>,
+    /// EMA of hit rate across epochs (bps, 0-10000)
+    /// 0 indicates bootstrap mode (no data yet)
+    #[prost(uint64, optional, tag = "5")]
+    pub hit_rate_ema_bps: ::core::option::Option<u64>,
+    /// Reward per target for current epoch (in shannons)
+    #[prost(uint64, optional, tag = "6")]
+    pub reward_per_target: ::core::option::Option<u64>,
+}
+/// A target in the Soma mining competition.
+/// Targets are shared objects that miners compete to fill.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Target {
+    /// Target ID (ObjectID hex)
+    #[prost(string, optional, tag = "1")]
+    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Center embedding point (fixed-point i64 values)
+    #[prost(int64, repeated, tag = "2")]
+    pub embedding: ::prost::alloc::vec::Vec<i64>,
+    /// Models assigned to this target (ModelId hex strings)
+    #[prost(string, repeated, tag = "3")]
+    pub model_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Distance threshold (fixed-point i64)
+    #[prost(int64, optional, tag = "4")]
+    pub distance_threshold: ::core::option::Option<i64>,
+    /// Reconstruction error threshold (MSE, fixed-point u64)
+    #[prost(uint64, optional, tag = "5")]
+    pub reconstruction_threshold: ::core::option::Option<u64>,
+    /// Pre-allocated reward amount (in shannons)
+    #[prost(uint64, optional, tag = "6")]
+    pub reward_pool: ::core::option::Option<u64>,
+    /// Epoch in which this target was generated
+    #[prost(uint64, optional, tag = "7")]
+    pub generation_epoch: ::core::option::Option<u64>,
+    /// Status: "open", "filled", or "claimed"
+    #[prost(string, optional, tag = "9")]
+    pub status: ::core::option::Option<::prost::alloc::string::String>,
+    /// Fill epoch (only present if status is "filled")
+    #[prost(uint64, optional, tag = "10")]
+    pub fill_epoch: ::core::option::Option<u64>,
+    /// Miner address who filled (only present if filled)
+    #[prost(string, optional, tag = "11")]
+    pub miner: ::core::option::Option<::prost::alloc::string::String>,
+    /// Model used by the miner (only present if filled)
+    #[prost(string, optional, tag = "12")]
+    pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Model owner address at fill time (only present if filled)
+    #[prost(string, optional, tag = "13")]
+    pub winning_model_owner: ::core::option::Option<::prost::alloc::string::String>,
+    /// Bond amount held (in shannons, only present if filled)
+    #[prost(uint64, optional, tag = "14")]
+    pub bond_amount: ::core::option::Option<u64>,
+}
+/// A data submission to a target.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Submission {
+    /// Miner address
+    #[prost(string, optional, tag = "1")]
+    pub miner: ::core::option::Option<::prost::alloc::string::String>,
+    /// Commitment to raw data: hash(data_bytes), 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub data_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Manifest for submitted data
+    #[prost(message, optional, tag = "3")]
+    pub data_manifest: ::core::option::Option<SubmissionManifest>,
+    /// Model ID used for this submission
+    #[prost(string, optional, tag = "4")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Embedding vector (fixed-point i64 values)
+    #[prost(int64, repeated, tag = "5")]
+    pub embedding: ::prost::alloc::vec::Vec<i64>,
+    /// Distance score reported by submitter (fixed-point i64)
+    #[prost(int64, optional, tag = "6")]
+    pub distance_score: ::core::option::Option<i64>,
+    /// Reconstruction error (MSE) reported by submitter (fixed-point u64)
+    #[prost(uint64, optional, tag = "7")]
+    pub reconstruction_score: ::core::option::Option<u64>,
+    /// Bond amount locked (in shannons)
+    #[prost(uint64, optional, tag = "8")]
+    pub bond_amount: ::core::option::Option<u64>,
+    /// Epoch when submission was made
+    #[prost(uint64, optional, tag = "9")]
+    pub submit_epoch: ::core::option::Option<u64>,
+}
 /// A transaction.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3107,7 +3510,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3169,6 +3572,11 @@ pub mod transaction_kind {
         ReportModel(super::ReportModel),
         #[prost(message, tag = "23")]
         UndoReportModel(super::UndoReportModel),
+        /// Submission transactions
+        #[prost(message, tag = "24")]
+        SubmitData(super::SubmitData),
+        #[prost(message, tag = "25")]
+        ClaimRewards(super::ClaimRewards),
     }
 }
 #[non_exhaustive]
@@ -3475,6 +3883,50 @@ pub struct ConsensusCommitPrologue {
     /// Used to detect forking bugs as early as possible.
     #[prost(string, optional, tag = "6")]
     pub additional_state_digest: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Submit data to a target in the mining competition.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubmitData {
+    /// Target ID (ObjectID hex string)
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Commitment to raw data: hash(data_bytes), 32-byte digest
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub data_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Manifest for submitted data
+    #[prost(message, optional, tag = "4")]
+    pub data_manifest: ::core::option::Option<SubmissionManifest>,
+    /// Model ID used for submission (must be in target's model_ids)
+    #[prost(string, optional, tag = "5")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Pre-computed embedding (fixed-point i64 values)
+    #[prost(int64, repeated, tag = "6")]
+    pub embedding: ::prost::alloc::vec::Vec<i64>,
+    /// Distance score (fixed-point i64, lower is better)
+    #[prost(int64, optional, tag = "7")]
+    pub distance_score: ::core::option::Option<i64>,
+    /// Reconstruction error score (MSE, fixed-point u64, lower is better)
+    #[prost(uint64, optional, tag = "8")]
+    pub reconstruction_score: ::core::option::Option<u64>,
+    /// Bond coin reference
+    #[prost(message, optional, tag = "9")]
+    pub bond_coin: ::core::option::Option<ObjectReference>,
+}
+/// Claim rewards from a filled or expired target.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClaimRewards {
+    /// Target ID (ObjectID hex string)
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Manifest for submitted data (URL + metadata).
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SubmissionManifest {
+    #[prost(message, optional, tag = "1")]
+    pub manifest: ::core::option::Option<Manifest>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -22,6 +22,8 @@ pub mod messages_grpc;
 pub mod metadata;
 pub mod model;
 pub mod multiaddr;
+pub mod submission;
+pub mod target;
 pub mod multisig;
 pub mod mutex_table;
 pub mod object;
@@ -68,4 +70,10 @@ built_in_ids! {
     SYSTEM_STATE_ADDRESS / SYSTEM_STATE_OBJECT_ID = 0x5;
 }
 
+/// The initial shared version for the SystemState object created at genesis.
+/// After genesis execution, the lamport timestamp is Version(1) = OBJECT_START_VERSION.
 pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
+
+/// The initial shared version for Target objects created at genesis.
+/// All targets are created at genesis with the same lamport timestamp.
+pub const TARGET_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;

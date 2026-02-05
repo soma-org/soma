@@ -138,7 +138,7 @@ pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> u64 {
 
 // Helper function to distribute rewards and advance epoch.
 // `reward_amount` is in SOMA and represents the total transaction fees for the epoch.
-// Tests set target_reward_allocation_bps=0 so 100% of fees go to validators.
+// Tests set validator_reward_allocation_bps=10000 so 100% of fees go to validators.
 pub fn advance_epoch_with_reward_amounts(
     system_state: &mut SystemState,
     reward_amount: u64,
@@ -396,9 +396,9 @@ pub fn create_test_system_state(
         emission_per_epoch * SHANNONS_PER_SOMA,
         None,
     );
-    // Override target_reward_allocation_bps to 0 so 100% of fees go to validators.
+    // Set validator_reward_allocation_bps to 100% so all fees go to validators.
     // This decouples validator/delegation/reward tests from the mining reward split.
-    state.parameters.target_reward_allocation_bps = 0;
+    state.parameters.validator_reward_allocation_bps = 10000; // 100%
     state
 }
 
@@ -415,7 +415,7 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 
 /// Advance epoch with rewards.
 /// `reward_amount` is in shannons and represents the total transaction fees for the epoch.
-/// Tests set target_reward_allocation_bps=0 so 100% of fees go to validators.
+/// Tests set validator_reward_allocation_bps=10000 so 100% of fees go to validators.
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,

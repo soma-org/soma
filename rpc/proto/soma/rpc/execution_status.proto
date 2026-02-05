@@ -136,6 +136,53 @@ message ExecutionError {
 
     // Model minimum stake requirement not met
     MODEL_MIN_STAKE_NOT_MET = 32;
+
+    //
+    // Target errors.
+    //
+
+    // No active models available for target generation
+    NO_ACTIVE_MODELS = 33;
+
+    // Target not found
+    TARGET_NOT_FOUND = 34;
+
+    // Target is not open for submissions
+    TARGET_NOT_OPEN = 35;
+
+    // Target has expired
+    TARGET_EXPIRED = 36;
+
+    // Target is not filled
+    TARGET_NOT_FILLED = 37;
+
+    // Challenge window is still open
+    CHALLENGE_WINDOW_OPEN = 38;
+
+    // Target rewards have already been claimed
+    TARGET_ALREADY_CLAIMED = 39;
+
+    //
+    // Submission errors.
+    //
+
+    // Model is not assigned to target
+    MODEL_NOT_IN_TARGET = 40;
+
+    // Embedding dimension mismatch
+    EMBEDDING_DIMENSION_MISMATCH = 41;
+
+    // Distance score exceeds threshold
+    DISTANCE_EXCEEDS_THRESHOLD = 42;
+
+    // Reconstruction score exceeds threshold
+    RECONSTRUCTION_EXCEEDS_THRESHOLD = 43;
+
+    // Insufficient bond for submission
+    INSUFFICIENT_BOND = 44;
+
+    // Insufficient emission pool balance
+    INSUFFICIENT_EMISSION_BALANCE = 45;
   }
 
   optional ExecutionErrorKind kind = 2;

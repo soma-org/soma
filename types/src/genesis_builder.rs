@@ -20,6 +20,7 @@ use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::staking::StakingPool;
 use crate::system_state::validator::{Validator, ValidatorMetadata};
 use crate::system_state::{FeeParameters, get_system_state};
+use crate::target::{generate_target, make_target_seed};
 use crate::transaction::InputObjects;
 use crate::tx_fee::TransactionFee;
 use crate::validator_info::GenesisValidatorInfo;
@@ -563,6 +564,83 @@ impl GenesisBuilder {
 
         // Set voting power and build committee
         system_state.validators.set_voting_power();
+
+        // Generate seed targets at genesis (after models are active)
+        // Only generate targets if we have at least one active model
+        if !system_state.model_registry.active_models.is_empty() {
+            // Calculate initial reward_per_target for genesis
+            // Use emission_per_epoch * target_allocation_bps as the pool, divided by estimated targets
+            let emission_per_epoch = system_state.emission_pool.emission_per_epoch;
+            let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
+            let bps_denominator: u64 = 10000;
+            let target_allocation =
+                (emission_per_epoch * target_allocation_bps) / bps_denominator;
+
+            // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
+            let initial_target_count = system_state.parameters.target_initial_targets_per_epoch;
+            let estimated_targets = initial_target_count.saturating_mul(2).max(1);
+            system_state.target_state.reward_per_target = target_allocation / estimated_targets;
+
+            let genesis_digest = TransactionDigest::default();
+            let models_per_target = system_state.parameters.target_models_per_target;
+            let embedding_dim = system_state.parameters.target_embedding_dim;
+            let reward_per_target = system_state.target_state.reward_per_target;
+
+            for i in 0..initial_target_count {
+                // Check emission pool has enough balance
+                if system_state.emission_pool.balance < reward_per_target {
+                    tracing::warn!(
+                        "Emission pool depleted at genesis, stopping target generation at {}",
+                        i
+                    );
+                    break;
+                }
+
+                let seed = make_target_seed(&genesis_digest, i);
+
+                let target = generate_target(
+                    seed,
+                    &system_state.model_registry,
+                    &system_state.target_state,
+                    models_per_target,
+                    embedding_dim,
+                    0, // epoch 0
+                );
+
+                // Record target generation for difficulty tracking
+                system_state.target_state.record_target_generated();
+
+                match target {
+                    Ok(t) => {
+                        // Fund reward from emission pool
+                        system_state.emission_pool.balance -= reward_per_target;
+
+                        // Create target as shared object
+                        let target_id = ObjectID::random();
+                        let target_object = Object::new_target_object(
+                            target_id,
+                            t,
+                            genesis_digest,
+                        );
+                        objects.push(target_object);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to generate genesis target {}: {:?}",
+                            i,
+                            e
+                        );
+                        break;
+                    }
+                }
+            }
+
+            tracing::info!(
+                "Generated {} seed targets at genesis with reward_per_target={}",
+                objects.iter().filter(|o| *o.type_() == ObjectType::Target).count(),
+                reward_per_target
+            );
+        }
 
         // Create system state object
         let state_object = Object::new(

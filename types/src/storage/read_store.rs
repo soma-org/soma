@@ -512,6 +512,19 @@ pub trait RpcIndexes: Send + Sync {
 
     fn get_highest_indexed_checkpoint_seq_number(&self)
     -> Result<Option<CheckpointSequenceNumber>>;
+
+    /// Iterate over Target objects with optional filtering by status and epoch.
+    ///
+    /// # Arguments
+    /// * `status_filter` - Optional filter: "open", "filled", or "claimed"
+    /// * `epoch_filter` - Optional filter by generation_epoch
+    /// * `cursor` - Optional cursor for pagination
+    fn targets_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        cursor: Option<TargetInfo>,
+    ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, TypedStoreError>> + '_>>;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -521,6 +534,15 @@ pub struct OwnedObjectInfo {
     pub balance: Option<u64>,
     pub object_id: ObjectID,
     pub version: Version,
+}
+
+/// Information about a Target for indexing and pagination.
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TargetInfo {
+    pub target_id: ObjectID,
+    pub version: Version,
+    pub status: String,
+    pub generation_epoch: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]

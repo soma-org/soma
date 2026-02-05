@@ -27,6 +27,7 @@ use types::{
     tx_fee::TransactionFee,
 };
 use model::ModelExecutor;
+use submission::SubmissionExecutor;
 use validator::ValidatorExecutor;
 
 mod change_epoch;
@@ -35,6 +36,7 @@ mod model;
 mod object;
 mod prepare_gas;
 mod staking;
+mod submission;
 mod system;
 mod validator;
 
@@ -308,6 +310,11 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::DeactivateModel { .. }
         | TransactionKind::ReportModel { .. }
         | TransactionKind::UndoReportModel { .. } => Box::new(ModelExecutor::new()),
+
+        // Submission transactions
+        TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_) => {
+            Box::new(SubmissionExecutor::new())
+        }
     }
 }
 

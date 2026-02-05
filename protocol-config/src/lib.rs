@@ -199,7 +199,8 @@ pub struct ProtocolConfig {
     epoch_duration_ms: Option<u64>,
 
     // === Reward/Emission Parameters ===
-    target_reward_allocation_bps: Option<u64>,
+    /// Percentage of epoch rewards allocated to validators (bps, e.g. 7000 = 70%)
+    validator_reward_allocation_bps: Option<u64>,
     reward_slashing_rate_bps: Option<u64>,
 
     // === Model Parameters ===
@@ -220,6 +221,50 @@ pub struct ProtocolConfig {
     min_value_fee_bps: Option<u64>,
     max_value_fee_bps: Option<u64>,
     fee_adjustment_rate_bps: Option<u64>,
+
+    // === Target/Mining Parameters ===
+    /// Number of models assigned to each target (uniformly random selection)
+    target_models_per_target: Option<u64>,
+    /// Dimension of target embedding vectors
+    target_embedding_dim: Option<u64>,
+    /// Initial distance threshold for new targets (fixed-point, scale DISTANCE_SCALE)
+    target_initial_distance_threshold: Option<i64>,
+    /// Initial reconstruction error threshold for new targets (MSE, fixed-point)
+    target_initial_reconstruction_threshold: Option<u64>,
+    /// Percentage of epoch emissions allocated to targets (bps, e.g. 8000 = 80%)
+    target_reward_allocation_bps: Option<u64>,
+    /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
+    /// Difficulty adjusts toward this rate. Higher rate = make easier, lower = harder.
+    target_hit_rate_target_bps: Option<u64>,
+    /// Decay factor for hit rate EMA (bps, e.g. 9000 = 90% decay means 10% weight on new data)
+    /// Higher decay = smoother/slower adjustments; lower = more responsive.
+    target_hit_rate_ema_decay_bps: Option<u64>,
+    /// Difficulty adjustment rate per epoch (bps, e.g. 500 = 5% max change)
+    target_difficulty_adjustment_rate_bps: Option<u64>,
+    /// Maximum distance threshold (cap for difficulty decrease)
+    target_max_distance_threshold: Option<i64>,
+    /// Minimum distance threshold (floor for difficulty increase)
+    target_min_distance_threshold: Option<i64>,
+    /// Maximum reconstruction threshold (cap)
+    target_max_reconstruction_threshold: Option<u64>,
+    /// Minimum reconstruction threshold (floor)
+    target_min_reconstruction_threshold: Option<u64>,
+    /// Number of targets to issue at genesis and at each epoch start
+    target_initial_targets_per_epoch: Option<u64>,
+
+    // === Reward Distribution Parameters ===
+    /// Percentage of target reward allocated to the miner (bps, e.g. 5000 = 50%)
+    target_miner_reward_share_bps: Option<u64>,
+    /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
+    target_model_reward_share_bps: Option<u64>,
+    /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
+    target_claimer_incentive_bps: Option<u64>,
+
+    // === Submission Parameters ===
+    /// Bond per byte of submitted data (in shannons)
+    /// Bond is held on the Target and returned to miner on successful claim,
+    /// or forfeited to emission pool on successful challenge.
+    submission_bond_per_byte: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -295,7 +340,7 @@ impl ProtocolConfig {
             epoch_duration_ms: Some(24 * 60 * 60), // 1 day
 
             // Reward parameters
-            target_reward_allocation_bps: Some(7000), // 70%
+            validator_reward_allocation_bps: Some(7000), // 70% of validator rewards
             reward_slashing_rate_bps: Some(5000),     // 50%
 
             // Model parameters
@@ -313,8 +358,31 @@ impl ProtocolConfig {
             max_value_fee_bps: Some(100),    // 1%
             fee_adjustment_rate_bps: Some(1250), // 12.5%
 
-                                             // When adding a new constant, set it to None in the earliest version, like this:
-                                             // new_constant: None,
+            // Target/Mining parameters
+            target_models_per_target: Some(3),           // 3 models per target
+            target_embedding_dim: Some(768),             // Standard transformer embedding dim
+            target_initial_distance_threshold: Some(1_000_000), // Fixed-point distance
+            target_initial_reconstruction_threshold: Some(500_000), // Fixed-point MSE
+            target_reward_allocation_bps: Some(8000),    // 80% of emissions to targets
+            target_hit_rate_target_bps: Some(8000),      // 80% target hit rate
+            target_hit_rate_ema_decay_bps: Some(9000),   // 90% decay (10% weight on new data)
+            target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
+            target_max_distance_threshold: Some(10_000_000), // Max distance (easiest)
+            target_min_distance_threshold: Some(100_000),    // Min distance (hardest)
+            target_max_reconstruction_threshold: Some(5_000_000), // Max reconstruction (easiest)
+            target_min_reconstruction_threshold: Some(50_000),    // Min reconstruction (hardest)
+            target_initial_targets_per_epoch: Some(20),   // 20 targets at genesis and each epoch start
+
+            // Reward distribution parameters
+            target_miner_reward_share_bps: Some(5000),   // 50% to miner
+            target_model_reward_share_bps: Some(3000),   // 30% to model owner
+            target_claimer_incentive_bps: Some(100),     // 1% to claimer as incentive
+
+            // Submission parameters
+            submission_bond_per_byte: Some(10),          // 10 shannons per byte
+
+            // When adding a new constant, set it to None in the earliest version, like this:
+            // new_constant: None,
         };
         for cur in 2..=version.0 {
             match cur {
@@ -404,7 +472,7 @@ impl ProtocolConfig {
     pub fn build_system_parameters(&self, current_value_fee_bps: Option<u64>) -> SystemParameters {
         SystemParameters {
             epoch_duration_ms: self.epoch_duration_ms(),
-            target_reward_allocation_bps: self.target_reward_allocation_bps(),
+            validator_reward_allocation_bps: self.validator_reward_allocation_bps(),
             model_min_stake: self.model_min_stake(),
             model_architecture_version: self.model_architecture_version(),
             model_reveal_slash_rate_bps: self.model_reveal_slash_rate_bps(),
@@ -417,8 +485,27 @@ impl ProtocolConfig {
             min_value_fee_bps: self.min_value_fee_bps(),
             max_value_fee_bps: self.max_value_fee_bps(),
             fee_adjustment_rate_bps: self.fee_adjustment_rate_bps(),
+            // Target/Mining parameters
+            target_models_per_target: self.target_models_per_target(),
+            target_embedding_dim: self.target_embedding_dim(),
+            target_initial_distance_threshold: self.target_initial_distance_threshold(),
+            target_initial_reconstruction_threshold: self.target_initial_reconstruction_threshold(),
+            target_reward_allocation_bps: self.target_reward_allocation_bps(),
+            target_hit_rate_target_bps: self.target_hit_rate_target_bps(),
+            target_hit_rate_ema_decay_bps: self.target_hit_rate_ema_decay_bps(),
+            target_difficulty_adjustment_rate_bps: self.target_difficulty_adjustment_rate_bps(),
+            target_max_distance_threshold: self.target_max_distance_threshold(),
+            target_min_distance_threshold: self.target_min_distance_threshold(),
+            target_max_reconstruction_threshold: self.target_max_reconstruction_threshold(),
+            target_min_reconstruction_threshold: self.target_min_reconstruction_threshold(),
+            target_initial_targets_per_epoch: self.target_initial_targets_per_epoch(),
+            target_miner_reward_share_bps: self.target_miner_reward_share_bps(),
+            target_model_reward_share_bps: self.target_model_reward_share_bps(),
+            target_claimer_incentive_bps: self.target_claimer_incentive_bps(),
+            submission_bond_per_byte: self.submission_bond_per_byte(),
         }
     }
+
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -426,8 +513,8 @@ pub struct SystemParameters {
     /// The duration of an epoch, in milliseconds.
     pub epoch_duration_ms: u64,
 
-    /// Percentage of epoch rewards allocated to mining targets (bps, e.g. 7000 = 70%)
-    pub target_reward_allocation_bps: u64,
+    /// Percentage of epoch rewards allocated to validators (bps, e.g. 7000 = 70%)
+    pub validator_reward_allocation_bps: u64,
 
     // === Model Parameters ===
     /// Minimum stake required to commit a new model (in shannons)
@@ -460,4 +547,47 @@ pub struct SystemParameters {
 
     /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
     pub fee_adjustment_rate_bps: u64,
+
+    // === Target/Mining Parameters ===
+    /// Number of models assigned to each target
+    pub target_models_per_target: u64,
+    /// Dimension of target embedding vectors
+    pub target_embedding_dim: u64,
+    /// Initial distance threshold for new targets (fixed-point)
+    pub target_initial_distance_threshold: i64,
+    /// Initial reconstruction error threshold for new targets (MSE, fixed-point)
+    pub target_initial_reconstruction_threshold: u64,
+    /// Percentage of epoch emissions allocated to targets (bps)
+    pub target_reward_allocation_bps: u64,
+    /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
+    /// Difficulty adjusts toward this rate.
+    pub target_hit_rate_target_bps: u64,
+    /// Decay factor for hit rate EMA (bps, e.g. 9000 = 90% decay)
+    pub target_hit_rate_ema_decay_bps: u64,
+    /// Difficulty adjustment rate per epoch (bps)
+    pub target_difficulty_adjustment_rate_bps: u64,
+    /// Maximum distance threshold (cap)
+    pub target_max_distance_threshold: i64,
+    /// Minimum distance threshold (floor)
+    pub target_min_distance_threshold: i64,
+    /// Maximum reconstruction threshold (cap)
+    pub target_max_reconstruction_threshold: u64,
+    /// Minimum reconstruction threshold (floor)
+    pub target_min_reconstruction_threshold: u64,
+    /// Number of targets to issue at genesis and at each epoch start
+    pub target_initial_targets_per_epoch: u64,
+
+    // === Reward Distribution Parameters ===
+    /// Percentage of target reward allocated to the miner (bps, e.g. 5000 = 50%)
+    pub target_miner_reward_share_bps: u64,
+    /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
+    pub target_model_reward_share_bps: u64,
+    /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
+    pub target_claimer_incentive_bps: u64,
+
+    // === Submission Parameters ===
+    /// Bond per byte of submitted data (in shannons)
+    /// Bond is held on the Target and returned to miner on successful claim,
+    /// or forfeited to emission pool on successful challenge.
+    pub submission_bond_per_byte: u64,
 }

@@ -6,12 +6,15 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/struct.proto";
 import "soma/rpc/executed_transaction.proto";
 import "soma/rpc/object.proto";
+import "soma/rpc/system_state.proto";
 import "soma/rpc/transaction.proto";
 
 
 service StateService {
   rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetTarget(GetTargetRequest) returns (GetTargetResponse);
+  rpc ListTargets(ListTargetsRequest) returns (ListTargetsResponse);
 }
 
 // Request message for `LiveDataService.GetBalance`.
@@ -56,6 +59,55 @@ message ListOwnedObjectsRequest {
 message ListOwnedObjectsResponse {
   // Page of dynamic fields owned by the specified parent.
   repeated Object objects = 1;
+
+  // A token, which can be sent as `page_token` to retrieve the next page.
+  // If this field is omitted, there are no subsequent pages.
+  optional bytes next_page_token = 2;
+}
+
+// Request message for `StateService.GetTarget`.
+message GetTargetRequest {
+  // Required. The target ID (ObjectID hex string).
+  optional string target_id = 1;
+
+  // Mask specifying which fields to read.
+  // If no mask is specified, all fields are returned.
+  optional google.protobuf.FieldMask read_mask = 2;
+}
+
+// Response message for `StateService.GetTarget`.
+message GetTargetResponse {
+  optional Target target = 1;
+}
+
+// Request message for `StateService.ListTargets`.
+message ListTargetsRequest {
+  // Optional status filter: "open", "filled", or "claimed".
+  // If not specified, returns targets of all statuses.
+  optional string status_filter = 1;
+
+  // Optional epoch filter. If specified, only returns targets with
+  // generation_epoch equal to this value.
+  optional uint64 epoch_filter = 2;
+
+  // The maximum number of entries to return. The service may return fewer.
+  // If unspecified, at most `50` entries will be returned.
+  // The maximum value is `1000`; values above `1000` will be coerced to `1000`.
+  optional uint32 page_size = 3;
+
+  // A page token, received from a previous `ListTargets` call.
+  // Provide this to retrieve the subsequent page.
+  optional bytes page_token = 4;
+
+  // Mask specifying which fields to read on each target.
+  // If no mask is specified, all fields are returned.
+  optional google.protobuf.FieldMask read_mask = 5;
+}
+
+// Response message for `StateService.ListTargets`.
+message ListTargetsResponse {
+  // Page of targets matching the filters.
+  repeated Target targets = 1;
 
   // A token, which can be sent as `page_token` to retrieve the next page.
   // If this field is omitted, there are no subsequent pages.

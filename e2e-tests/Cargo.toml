@@ -25,3 +25,5 @@ prost-types.workspace = true
 fastcrypto.workspace = true
 url.workspace = true
 protocol-config.workspace = true
+ndarray.workspace = true
+authority.workspace = true

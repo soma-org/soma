@@ -142,6 +142,10 @@ pub enum TransactionKind {
     UndoReportModel {
         model_id: Address,
     },
+
+    // Submission transactions
+    SubmitData(SubmitDataArgs),
+    ClaimRewards(ClaimRewardsArgs),
 }
 
 // Supporting types for validator management
@@ -207,6 +211,31 @@ pub struct CommitModelUpdateArgs {
 pub struct RevealModelUpdateArgs {
     pub model_id: Address,
     pub weights_manifest: ModelWeightsManifest,
+}
+
+// Supporting types for submission transactions
+
+/// Manifest for submitted data (URL + metadata, no encryption key)
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SubmissionManifest {
+    pub manifest: Manifest,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SubmitDataArgs {
+    pub target_id: Address,
+    pub data_commitment: Vec<u8>,
+    pub data_manifest: SubmissionManifest,
+    pub model_id: Address,
+    pub embedding: Vec<i64>,
+    pub distance_score: i64,
+    pub reconstruction_score: u64,
+    pub bond_coin: ObjectReference,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct ClaimRewardsArgs {
+    pub target_id: Address,
 }
 
 /// V1 of the consensus commit prologue system transaction
