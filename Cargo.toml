@@ -18,7 +18,7 @@ members = [
   "rpc",
   "sdk",
   "python-sdk",
-  "probes",
+  "models",
   "arrgen",
   "store",
   "store-derive",
@@ -194,7 +194,7 @@ soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 blobs = { path = "blobs" }
 arrgen = { path = "arrgen" }
-probes = { path = "probes" }
+models = { path = "models" }
 
 
 # external deps
