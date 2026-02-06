@@ -4864,6 +4864,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "inference"
+version = "0.1.0"
+dependencies = [
+ "blobs",
+ "burn",
+ "models",
+ "serde",
+ "tonic-build 0.14.3",
+ "tonic-prost-build",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4911,14 +4923,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
-]
-
-[[package]]
-name = "intelligence"
-version = "0.1.0"
-dependencies = [
- "tonic-build 0.14.3",
- "tonic-prost-build",
 ]
 
 [[package]]

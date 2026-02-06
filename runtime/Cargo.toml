@@ -1,16 +1,15 @@
 [package]
-name = "intelligence"
+name = "inference"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-safetensors = []
-
 [dependencies]
-
+blobs.workspace = true
+burn.workspace = true
+models.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
-
 
 [build-dependencies]
 tonic-build.workspace = true
