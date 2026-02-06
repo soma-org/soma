@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use bip32::DerivationPath;
 use clap::Parser;
 use sdk::wallet_context::WalletContext;
@@ -81,27 +81,15 @@ pub async fn execute(
                 addresses.sort_by(|a, b| a.0.cmp(&b.0));
             }
 
-            Ok(ClientCommandResponse::Addresses(AddressesOutput {
-                active_address,
-                addresses,
-            }))
+            Ok(ClientCommandResponse::Addresses(AddressesOutput { active_address, addresses }))
         }
 
-        WalletCommand::New {
-            key_scheme,
-            alias,
-            derivation_path,
-            word_length,
-        } => {
+        WalletCommand::New { key_scheme, alias, derivation_path, word_length } => {
             let (address, keypair, scheme, phrase) =
                 key_derive::generate_new_key(key_scheme, derivation_path, word_length)
                     .map_err(|e| anyhow!("Failed to generate new key: {}", e))?;
 
-            context
-                .config
-                .keystore
-                .import(alias.clone(), keypair)
-                .await?;
+            context.config.keystore.import(alias.clone(), keypair).await?;
 
             let alias = match alias {
                 Some(a) => a,
@@ -137,10 +125,7 @@ pub async fn execute(
             context.config.active_address = Some(resolved);
             context.config.save()?;
 
-            Ok(ClientCommandResponse::Switch(SwitchOutput {
-                address: Some(resolved),
-                env: None,
-            }))
+            Ok(ClientCommandResponse::Switch(SwitchOutput { address: Some(resolved), env: None }))
         }
     }
 }

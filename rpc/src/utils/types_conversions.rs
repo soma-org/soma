@@ -94,11 +94,7 @@ impl TryFrom<Object> for types::object::Object {
             value.contents,
         );
 
-        Ok(types::object::Object::new(
-            data,
-            value.owner.into(),
-            value.previous_transaction.into(),
-        ))
+        Ok(types::object::Object::new(data, value.owner.into(), value.previous_transaction.into()))
     }
 }
 
@@ -164,10 +160,7 @@ impl TryFrom<UserSignature> for types::crypto::GenericSignature {
             UserSignature::Simple(simple) => {
                 // Convert SimpleSignature to types::crypto::Signature
                 let signature = match simple {
-                    SimpleSignature::Ed25519 {
-                        signature,
-                        public_key,
-                    } => {
+                    SimpleSignature::Ed25519 { signature, public_key } => {
                         // Create the Ed25519SomaSignature format: [flag][signature][public_key]
                         let mut full_bytes = Vec::with_capacity(
                             1 + Ed25519Signature::LENGTH + Ed25519PublicKey::LENGTH,
@@ -220,10 +213,7 @@ impl From<types::multisig::MultiSig> for MultisigAggregatedSignature {
             .get_sigs()
             .iter()
             .cloned()
-            .map(|sig| {
-                sig.try_into()
-                    .expect("CompressedSignature conversion should not fail")
-            })
+            .map(|sig| sig.try_into().expect("CompressedSignature conversion should not fail"))
             .collect();
 
         let bitmap = value.get_bitmap();
@@ -234,10 +224,8 @@ impl From<types::multisig::MultiSig> for MultisigAggregatedSignature {
             .pubkeys()
             .iter()
             .map(|(pk, weight)| {
-                let public_key: MultisigMemberPublicKey = pk
-                    .clone()
-                    .try_into()
-                    .expect("PublicKey conversion should not fail");
+                let public_key: MultisigMemberPublicKey =
+                    pk.clone().try_into().expect("PublicKey conversion should not fail");
                 MultisigMember::new(public_key, *weight)
             })
             .collect();
@@ -280,10 +268,7 @@ impl TryFrom<SimpleSignature> for types::crypto::Signature {
 
     fn try_from(value: SimpleSignature) -> Result<Self, Self::Error> {
         match value {
-            SimpleSignature::Ed25519 {
-                signature,
-                public_key,
-            } => {
+            SimpleSignature::Ed25519 { signature, public_key } => {
                 // Combine signature and public key bytes with the scheme flag
                 let mut bytes = Vec::with_capacity(
                     1 + signature.as_bytes().len() + public_key.as_bytes().len(),
@@ -296,9 +281,7 @@ impl TryFrom<SimpleSignature> for types::crypto::Signature {
                     .map(types::crypto::Signature::Ed25519SomaSignature)
                     .map_err(|e| SdkTypeConversionError(e.to_string()))
             }
-            _ => Err(SdkTypeConversionError(
-                "Unsupported signature scheme".to_string(),
-            )),
+            _ => Err(SdkTypeConversionError("Unsupported signature scheme".to_string())),
         }
     }
 }
@@ -351,13 +334,13 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 pubkey_bytes: args.pubkey_bytes,
             }),
 
-            TK::ReportValidator { reportee } => TransactionKind::ReportValidator {
-                reportee: reportee.into(),
-            },
+            TK::ReportValidator { reportee } => {
+                TransactionKind::ReportValidator { reportee: reportee.into() }
+            }
 
-            TK::UndoReportValidator { reportee } => TransactionKind::UndoReportValidator {
-                reportee: reportee.into(),
-            },
+            TK::UndoReportValidator { reportee } => {
+                TransactionKind::UndoReportValidator { reportee: reportee.into() }
+            }
 
             TK::UpdateValidatorMetadata(args) => {
                 TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs {
@@ -373,21 +356,13 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             TK::SetCommissionRate { new_rate } => TransactionKind::SetCommissionRate { new_rate },
 
             // Transfer operations
-            TK::TransferCoin {
-                coin,
-                amount,
-                recipient,
-            } => TransactionKind::TransferCoin {
+            TK::TransferCoin { coin, amount, recipient } => TransactionKind::TransferCoin {
                 coin: coin.into(),
                 amount,
                 recipient: recipient.into(),
             },
 
-            TK::PayCoins {
-                coins,
-                amounts,
-                recipients,
-            } => TransactionKind::PayCoins {
+            TK::PayCoins { coins, amounts, recipients } => TransactionKind::PayCoins {
                 coins: coins.into_iter().map(Into::into).collect(),
                 amounts,
                 recipients: recipients.into_iter().map(Into::into).collect(),
@@ -399,19 +374,15 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             },
 
             // Staking operations
-            TK::AddStake {
-                address,
-                coin_ref,
-                amount,
-            } => TransactionKind::AddStake {
+            TK::AddStake { address, coin_ref, amount } => TransactionKind::AddStake {
                 address: address.into(),
                 coin_ref: coin_ref.into(),
                 amount,
             },
 
-            TK::WithdrawStake { staked_soma } => TransactionKind::WithdrawStake {
-                staked_soma: staked_soma.into(),
-            },
+            TK::WithdrawStake { staked_soma } => {
+                TransactionKind::WithdrawStake { staked_soma: staked_soma.into() }
+            }
 
             // Model transactions
             TK::CommitModel(args) => TransactionKind::CommitModel(CommitModelArgs {
@@ -444,42 +415,35 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 })
             }
 
-            TK::AddStakeToModel {
-                model_id,
-                coin_ref,
-                amount,
-            } => TransactionKind::AddStakeToModel {
-                model_id: model_id.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
-
-            TK::SetModelCommissionRate { model_id, new_rate } => {
-                TransactionKind::SetModelCommissionRate {
+            TK::AddStakeToModel { model_id, coin_ref, amount } => {
+                TransactionKind::AddStakeToModel {
                     model_id: model_id.into(),
-                    new_rate,
+                    coin_ref: coin_ref.into(),
+                    amount,
                 }
             }
 
-            TK::DeactivateModel { model_id } => TransactionKind::DeactivateModel {
-                model_id: model_id.into(),
-            },
+            TK::SetModelCommissionRate { model_id, new_rate } => {
+                TransactionKind::SetModelCommissionRate { model_id: model_id.into(), new_rate }
+            }
 
-            TK::ReportModel { model_id } => TransactionKind::ReportModel {
-                model_id: model_id.into(),
-            },
+            TK::DeactivateModel { model_id } => {
+                TransactionKind::DeactivateModel { model_id: model_id.into() }
+            }
 
-            TK::UndoReportModel { model_id } => TransactionKind::UndoReportModel {
-                model_id: model_id.into(),
-            },
+            TK::ReportModel { model_id } => {
+                TransactionKind::ReportModel { model_id: model_id.into() }
+            }
+
+            TK::UndoReportModel { model_id } => {
+                TransactionKind::UndoReportModel { model_id: model_id.into() }
+            }
 
             // Submission transactions
             TK::SubmitData(args) => TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: args.target_id.into(),
                 data_commitment: args.data_commitment.into_inner().to_vec(),
-                data_manifest: SubmissionManifest {
-                    manifest: args.data_manifest.manifest.into(),
-                },
+                data_manifest: SubmissionManifest { manifest: args.data_manifest.manifest.into() },
                 model_id: args.model_id.into(),
                 embedding: args.embedding.to_vec(),
                 distance_score: args.distance_score,
@@ -487,9 +451,9 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 bond_coin: args.bond_coin.into(),
             }),
 
-            TK::ClaimRewards(args) => TransactionKind::ClaimRewards(ClaimRewardsArgs {
-                target_id: args.target_id.into(),
-            }),
+            TK::ClaimRewards(args) => {
+                TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: args.target_id.into() })
+            }
         })
     }
 }
@@ -550,13 +514,13 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
-            TransactionKind::ReportValidator { reportee } => TK::ReportValidator {
-                reportee: reportee.into(),
-            },
+            TransactionKind::ReportValidator { reportee } => {
+                TK::ReportValidator { reportee: reportee.into() }
+            }
 
-            TransactionKind::UndoReportValidator { reportee } => TK::UndoReportValidator {
-                reportee: reportee.into(),
-            },
+            TransactionKind::UndoReportValidator { reportee } => {
+                TK::UndoReportValidator { reportee: reportee.into() }
+            }
 
             TransactionKind::UpdateValidatorMetadata(args) => {
                 TK::UpdateValidatorMetadata(types::transaction::UpdateValidatorMetadataArgs {
@@ -572,21 +536,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
 
             // Transfer operations
-            TransactionKind::TransferCoin {
-                coin,
-                amount,
-                recipient,
-            } => TK::TransferCoin {
-                coin: coin.into(),
-                amount,
-                recipient: recipient.into(),
-            },
+            TransactionKind::TransferCoin { coin, amount, recipient } => {
+                TK::TransferCoin { coin: coin.into(), amount, recipient: recipient.into() }
+            }
 
-            TransactionKind::PayCoins {
-                coins,
-                amounts,
-                recipients,
-            } => TK::PayCoins {
+            TransactionKind::PayCoins { coins, amounts, recipients } => TK::PayCoins {
                 coins: coins.into_iter().map(Into::into).collect(),
                 amounts,
                 recipients: recipients.into_iter().map(Into::into).collect(),
@@ -598,37 +552,27 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             },
 
             // Staking operations
-            TransactionKind::AddStake {
-                address,
-                coin_ref,
-                amount,
-            } => TK::AddStake {
-                address: address.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
+            TransactionKind::AddStake { address, coin_ref, amount } => {
+                TK::AddStake { address: address.into(), coin_ref: coin_ref.into(), amount }
+            }
 
-            TransactionKind::WithdrawStake { staked_soma } => TK::WithdrawStake {
-                staked_soma: staked_soma.into(),
-            },
+            TransactionKind::WithdrawStake { staked_soma } => {
+                TK::WithdrawStake { staked_soma: staked_soma.into() }
+            }
 
             // Model transactions
             TransactionKind::CommitModel(args) => {
                 TK::CommitModel(types::transaction::CommitModelArgs {
                     model_id: args.model_id.into(),
                     weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
-                        args.weights_url_commitment
-                            .try_into()
-                            .map_err(|_| SdkTypeConversionError(
-                                "weights_url_commitment must be 32 bytes".into(),
-                            ))?,
+                        args.weights_url_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("weights_url_commitment must be 32 bytes".into())
+                        })?,
                     ),
                     weights_commitment: types::digests::ModelWeightsCommitment::new(
-                        args.weights_commitment
-                            .try_into()
-                            .map_err(|_| SdkTypeConversionError(
-                                "weights_commitment must be 32 bytes".into(),
-                            ))?,
+                        args.weights_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("weights_commitment must be 32 bytes".into())
+                        })?,
                     ),
                     architecture_version: args.architecture_version,
                     stake_amount: args.stake_amount,
@@ -648,18 +592,14 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 TK::CommitModelUpdate(types::transaction::CommitModelUpdateArgs {
                     model_id: args.model_id.into(),
                     weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
-                        args.weights_url_commitment
-                            .try_into()
-                            .map_err(|_| SdkTypeConversionError(
-                                "weights_url_commitment must be 32 bytes".into(),
-                            ))?,
+                        args.weights_url_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("weights_url_commitment must be 32 bytes".into())
+                        })?,
                     ),
                     weights_commitment: types::digests::ModelWeightsCommitment::new(
-                        args.weights_commitment
-                            .try_into()
-                            .map_err(|_| SdkTypeConversionError(
-                                "weights_commitment must be 32 bytes".into(),
-                            ))?,
+                        args.weights_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("weights_commitment must be 32 bytes".into())
+                        })?,
                     ),
                 })
             }
@@ -671,42 +611,35 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
-            TransactionKind::AddStakeToModel {
-                model_id,
-                coin_ref,
-                amount,
-            } => TK::AddStakeToModel {
-                model_id: model_id.into(),
-                coin_ref: coin_ref.into(),
-                amount,
-            },
-
-            TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
-                TK::SetModelCommissionRate {
-                    model_id: model_id.into(),
-                    new_rate,
-                }
+            TransactionKind::AddStakeToModel { model_id, coin_ref, amount } => {
+                TK::AddStakeToModel { model_id: model_id.into(), coin_ref: coin_ref.into(), amount }
             }
 
-            TransactionKind::DeactivateModel { model_id } => TK::DeactivateModel {
-                model_id: model_id.into(),
-            },
+            TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
+                TK::SetModelCommissionRate { model_id: model_id.into(), new_rate }
+            }
 
-            TransactionKind::ReportModel { model_id } => TK::ReportModel {
-                model_id: model_id.into(),
-            },
+            TransactionKind::DeactivateModel { model_id } => {
+                TK::DeactivateModel { model_id: model_id.into() }
+            }
 
-            TransactionKind::UndoReportModel { model_id } => TK::UndoReportModel {
-                model_id: model_id.into(),
-            },
+            TransactionKind::ReportModel { model_id } => {
+                TK::ReportModel { model_id: model_id.into() }
+            }
+
+            TransactionKind::UndoReportModel { model_id } => {
+                TK::UndoReportModel { model_id: model_id.into() }
+            }
 
             // Submission transactions
             TransactionKind::SubmitData(args) => {
-                let data_commitment_array: [u8; 32] = args
-                    .data_commitment
-                    .try_into()
-                    .map_err(|_| SdkTypeConversionError("data_commitment must be 32 bytes".into()))?;
-                let data_manifest = types::submission::SubmissionManifest::new(args.data_manifest.manifest.try_into()?);
+                let data_commitment_array: [u8; 32] =
+                    args.data_commitment.try_into().map_err(|_| {
+                        SdkTypeConversionError("data_commitment must be 32 bytes".into())
+                    })?;
+                let data_manifest = types::submission::SubmissionManifest::new(
+                    args.data_manifest.manifest.try_into()?,
+                );
                 let embedding = ndarray::Array1::from_vec(args.embedding);
 
                 TK::SubmitData(types::transaction::SubmitDataArgs {
@@ -722,10 +655,12 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
-            TransactionKind::ClaimRewards(args) => TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
-                target_id: args.target_id.into(),
-                // target_initial_shared_version is ignored from proto - use protocol constant
-            }),
+            TransactionKind::ClaimRewards(args) => {
+                TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
+                    target_id: args.target_id.into(),
+                    // target_initial_shared_version is ignored from proto - use protocol constant
+                })
+            }
         })
     }
 }
@@ -841,11 +776,7 @@ impl<const T: bool> From<types::crypto::AuthorityQuorumSignInfo<T>>
     for ValidatorAggregatedSignature
 {
     fn from(value: types::crypto::AuthorityQuorumSignInfo<T>) -> Self {
-        let types::crypto::AuthorityQuorumSignInfo {
-            epoch,
-            signature,
-            signers_map,
-        } = value;
+        let types::crypto::AuthorityQuorumSignInfo { epoch, signature, signers_map } = value;
 
         Self {
             epoch,
@@ -859,11 +790,7 @@ impl<const T: bool> From<ValidatorAggregatedSignature>
     for types::crypto::AuthorityQuorumSignInfo<T>
 {
     fn from(value: ValidatorAggregatedSignature) -> Self {
-        let ValidatorAggregatedSignature {
-            epoch,
-            signature,
-            bitmap,
-        } = value;
+        let ValidatorAggregatedSignature { epoch, signature, bitmap } = value;
 
         Self {
             epoch,
@@ -878,9 +805,9 @@ impl From<types::object::Owner> for Owner {
     fn from(value: types::object::Owner) -> Self {
         match value {
             types::object::Owner::AddressOwner(address) => Self::Address(address.into()),
-            types::object::Owner::Shared {
-                initial_shared_version,
-            } => Self::Shared(initial_shared_version.value()),
+            types::object::Owner::Shared { initial_shared_version } => {
+                Self::Shared(initial_shared_version.value())
+            }
             types::object::Owner::Immutable => Self::Immutable,
         }
     }
@@ -945,15 +872,10 @@ impl TryFrom<SignedTransaction> for types::transaction::SenderSignedData {
     fn try_from(value: SignedTransaction) -> Result<Self, Self::Error> {
         let tx_data: types::transaction::TransactionData = value.transaction.try_into()?;
 
-        let signatures: Vec<types::crypto::GenericSignature> = value
-            .signatures
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let signatures: Vec<types::crypto::GenericSignature> =
+            value.signatures.into_iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        Ok(types::transaction::SenderSignedData::new(
-            tx_data, signatures,
-        ))
+        Ok(types::transaction::SenderSignedData::new(tx_data, signatures))
     }
 }
 
@@ -1063,10 +985,7 @@ impl From<types::committee::Committee> for ValidatorCommittee {
             })
             .collect();
 
-        ValidatorCommittee {
-            epoch: value.epoch,
-            members,
-        }
+        ValidatorCommittee { epoch: value.epoch, members }
     }
 }
 
@@ -1179,20 +1098,17 @@ impl From<types::effects::UnchangedSharedKind> for UnchangedSharedKind {
     fn from(value: types::effects::UnchangedSharedKind) -> Self {
         match value {
             types::effects::UnchangedSharedKind::ReadOnlyRoot((version, digest)) => {
-                Self::ReadOnlyRoot {
-                    version: version.value(),
-                    digest: digest.into(),
-                }
+                Self::ReadOnlyRoot { version: version.value(), digest: digest.into() }
             }
-            types::effects::UnchangedSharedKind::MutateDeleted(version) => Self::MutateDeleted {
-                version: version.value(),
-            },
-            types::effects::UnchangedSharedKind::ReadDeleted(version) => Self::ReadDeleted {
-                version: version.value(),
-            },
-            types::effects::UnchangedSharedKind::Cancelled(version) => Self::Canceled {
-                version: version.value(),
-            },
+            types::effects::UnchangedSharedKind::MutateDeleted(version) => {
+                Self::MutateDeleted { version: version.value() }
+            }
+            types::effects::UnchangedSharedKind::ReadDeleted(version) => {
+                Self::ReadDeleted { version: version.value() }
+            }
+            types::effects::UnchangedSharedKind::Cancelled(version) => {
+                Self::Canceled { version: version.value() }
+            }
         }
     }
 }
@@ -1202,11 +1118,7 @@ impl From<types::effects::object_change::ObjectIn> for ObjectIn {
         match value {
             types::effects::object_change::ObjectIn::NotExist => Self::NotExist,
             types::effects::object_change::ObjectIn::Exist(((version, digest), owner)) => {
-                Self::Exist {
-                    version: version.value(),
-                    digest: digest.into(),
-                    owner: owner.into(),
-                }
+                Self::Exist { version: version.value(), digest: digest.into(), owner: owner.into() }
             }
         }
     }
@@ -1217,10 +1129,7 @@ impl From<types::effects::object_change::ObjectOut> for ObjectOut {
         match value {
             types::effects::object_change::ObjectOut::NotExist => Self::NotExist,
             types::effects::object_change::ObjectOut::ObjectWrite((digest, owner)) => {
-                Self::ObjectWrite {
-                    digest: digest.into(),
-                    owner: owner.into(),
-                }
+                Self::ObjectWrite { digest: digest.into(), owner: owner.into() }
             }
         }
     }
@@ -1240,11 +1149,7 @@ impl From<ObjectIn> for types::effects::object_change::ObjectIn {
     fn from(value: ObjectIn) -> Self {
         match value {
             ObjectIn::NotExist => Self::NotExist,
-            ObjectIn::Exist {
-                version,
-                digest,
-                owner,
-            } => Self::Exist((
+            ObjectIn::Exist { version, digest, owner } => Self::Exist((
                 (types::object::Version::from_u64(version), digest.into()),
                 owner.into(),
             )),
@@ -1407,9 +1312,9 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 expected_owner: object_id.into(), // TODO: change this
                 actual_owner: Some(object_id.into()), // TODO: change this
             },
-            ExecutionError::ObjectNotFound { object_id } => Self::ObjectNotFound {
-                object_id: object_id.into(),
-            },
+            ExecutionError::ObjectNotFound { object_id } => {
+                Self::ObjectNotFound { object_id: object_id.into() }
+            }
             ExecutionError::InvalidObjectType { object_id } => Self::InvalidObjectType {
                 object_id: object_id.into(),
                 expected_type: types::object::ObjectType::Coin, // TODO: change this
@@ -1433,7 +1338,9 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
             ExecutionError::ModelWeightsUrlMismatch => Self::ModelWeightsUrlMismatch,
             ExecutionError::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
-            ExecutionError::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
+            ExecutionError::ModelArchitectureVersionMismatch => {
+                Self::ModelArchitectureVersionMismatch
+            }
             ExecutionError::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
             ExecutionError::ModelMinStakeNotMet => Self::ModelMinStakeNotMet,
 
@@ -1441,28 +1348,19 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::NoActiveModels => Self::NoActiveModels,
             ExecutionError::TargetNotFound => Self::TargetNotFound,
             ExecutionError::TargetNotOpen => Self::TargetNotOpen,
-            ExecutionError::TargetExpired {
-                generation_epoch,
-                current_epoch,
-            } => Self::TargetExpired {
-                generation_epoch,
-                current_epoch,
-            },
+            ExecutionError::TargetExpired { generation_epoch, current_epoch } => {
+                Self::TargetExpired { generation_epoch, current_epoch }
+            }
             ExecutionError::TargetNotFilled => Self::TargetNotFilled,
-            ExecutionError::ChallengeWindowOpen {
-                fill_epoch,
-                current_epoch,
-            } => Self::ChallengeWindowOpen {
-                fill_epoch,
-                current_epoch,
-            },
+            ExecutionError::ChallengeWindowOpen { fill_epoch, current_epoch } => {
+                Self::ChallengeWindowOpen { fill_epoch, current_epoch }
+            }
             ExecutionError::TargetAlreadyClaimed => Self::TargetAlreadyClaimed,
 
             // Submission errors
-            ExecutionError::ModelNotInTarget { model_id, target_id } => Self::ModelNotInTarget {
-                model_id: model_id.into(),
-                target_id: target_id.into(),
-            },
+            ExecutionError::ModelNotInTarget { model_id, target_id } => {
+                Self::ModelNotInTarget { model_id: model_id.into(), target_id: target_id.into() }
+            }
             ExecutionError::EmbeddingDimensionMismatch { expected, actual } => {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
@@ -1500,9 +1398,9 @@ impl From<types::effects::ExecutionStatus> for ExecutionStatus {
     fn from(value: types::effects::ExecutionStatus) -> Self {
         match value {
             types::effects::ExecutionStatus::Success => Self::Success,
-            types::effects::ExecutionStatus::Failure { error } => Self::Failure {
-                error: error.into(),
-            },
+            types::effects::ExecutionStatus::Failure { error } => {
+                Self::Failure { error: error.into() }
+            }
         }
     }
 }
@@ -1511,9 +1409,7 @@ impl From<ExecutionStatus> for types::effects::ExecutionStatus {
     fn from(value: ExecutionStatus) -> Self {
         match value {
             ExecutionStatus::Success => Self::Success,
-            ExecutionStatus::Failure { error } => Self::Failure {
-                error: error.into(),
-            },
+            ExecutionStatus::Failure { error } => Self::Failure { error: error.into() },
         }
     }
 }
@@ -1522,14 +1418,10 @@ impl From<types::checkpoints::CheckpointCommitment> for CheckpointCommitment {
     fn from(value: types::checkpoints::CheckpointCommitment) -> Self {
         match value {
             types::checkpoints::CheckpointCommitment::ECMHLiveObjectSetDigest(digest) => {
-                Self::EcmhLiveObjectSet {
-                    digest: digest.digest.into(),
-                }
+                Self::EcmhLiveObjectSet { digest: digest.digest.into() }
             }
             types::checkpoints::CheckpointCommitment::CheckpointArtifactsDigest(digest) => {
-                Self::CheckpointArtifacts {
-                    digest: digest.into(),
-                }
+                Self::CheckpointArtifacts { digest: digest.into() }
             }
         }
     }
@@ -1615,11 +1507,7 @@ impl From<types::metadata::Metadata> for Metadata {
     fn from(value: types::metadata::Metadata) -> Self {
         match value {
             types::metadata::Metadata::V1(v1) => Metadata::V1(MetadataV1 {
-                checksum: v1
-                    .checksum()
-                    .as_bytes()
-                    .try_into()
-                    .expect("checksum should be 32 bytes"),
+                checksum: v1.checksum().as_bytes().try_into().expect("checksum should be 32 bytes"),
                 size: v1.size() as u64,
             }),
         }
@@ -1640,9 +1528,7 @@ impl TryFrom<Metadata> for types::metadata::Metadata {
                     .try_into()
                     .map_err(|e| SdkTypeConversionError(format!("Invalid size: {}", e)))?;
 
-                Ok(types::metadata::Metadata::V1(
-                    types::metadata::MetadataV1::new(checksum, size),
-                ))
+                Ok(types::metadata::Metadata::V1(types::metadata::MetadataV1::new(checksum, size)))
             }
         }
     }
@@ -1652,8 +1538,7 @@ impl From<types::metadata::Manifest> for Manifest {
     fn from(value: types::metadata::Manifest) -> Self {
         match value {
             types::metadata::Manifest::V1(v1) => Manifest::V1(ManifestV1 {
-                url: v1
-                    .url().clone(),
+                url: v1.url().clone(),
                 metadata: v1.metadata().clone().into(),
             }),
         }
@@ -1673,9 +1558,7 @@ impl TryFrom<Manifest> for types::metadata::Manifest {
                     .try_into()
                     .map_err(|e| SdkTypeConversionError(format!("Invalid size: {}", e)))?;
 
-                Ok(types::metadata::Manifest::V1(
-                    types::metadata::ManifestV1::new(url, metadata),
-                ))
+                Ok(types::metadata::Manifest::V1(types::metadata::ManifestV1::new(url, metadata)))
             }
         }
     }
@@ -1703,10 +1586,7 @@ impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
             .decryption_key
             .try_into()
             .map_err(|_| SdkTypeConversionError("decryption_key must be 32 bytes".into()))?;
-        Ok(Self {
-            manifest,
-            decryption_key: types::crypto::DecryptionKey::new(key_array),
-        })
+        Ok(Self { manifest, decryption_key: types::crypto::DecryptionKey::new(key_array) })
     }
 }
 
@@ -1772,11 +1652,7 @@ impl TryFrom<types::checkpoints::EndOfEpochData> for crate::types::EndOfEpochDat
             next_epoch_validator_committee: value.next_epoch_validator_committee.into(),
 
             next_epoch_protocol_version: value.next_epoch_protocol_version.as_u64(),
-            epoch_commitments: value
-                .epoch_commitments
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            epoch_commitments: value.epoch_commitments.into_iter().map(Into::into).collect(),
         })
     }
 }
@@ -1794,11 +1670,7 @@ impl TryFrom<crate::types::EndOfEpochData> for types::checkpoints::EndOfEpochDat
             next_epoch_protocol_version: value.next_epoch_protocol_version.into(),
             next_epoch_validator_committee,
 
-            epoch_commitments: value
-                .epoch_commitments
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            epoch_commitments: value.epoch_commitments.into_iter().map(Into::into).collect(),
         })
     }
 }
@@ -1866,10 +1738,7 @@ impl TryFrom<types::checkpoints::CertifiedCheckpointSummary>
         let checkpoint: crate::types::CheckpointSummary = value.data().clone().try_into()?;
         let signature: ValidatorAggregatedSignature = value.auth_sig().clone().into();
 
-        Ok(Self {
-            checkpoint,
-            signature,
-        })
+        Ok(Self { checkpoint, signature })
     }
 }
 
@@ -1882,11 +1751,9 @@ impl TryFrom<crate::types::SignedCheckpointSummary>
         let checkpoint: types::checkpoints::CheckpointSummary = value.checkpoint.try_into()?;
         let auth_sig: types::crypto::AuthorityStrongQuorumSignInfo = value.signature.into();
 
-        Ok(
-            types::checkpoints::CertifiedCheckpointSummary::new_from_data_and_sig(
-                checkpoint, auth_sig,
-            ),
-        )
+        Ok(types::checkpoints::CertifiedCheckpointSummary::new_from_data_and_sig(
+            checkpoint, auth_sig,
+        ))
     }
 }
 
@@ -1941,12 +1808,10 @@ impl TryFrom<crate::types::CheckpointContents> for types::checkpoints::Checkpoin
             })
             .collect();
 
-        Ok(
-            types::checkpoints::CheckpointContents::new_with_digests_and_signatures(
-                execution_digests,
-                user_signatures?,
-            ),
-        )
+        Ok(types::checkpoints::CheckpointContents::new_with_digests_and_signatures(
+            execution_digests,
+            user_signatures?,
+        ))
     }
 }
 

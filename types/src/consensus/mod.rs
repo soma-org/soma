@@ -60,11 +60,7 @@ impl ConsensusPosition {
     // We reserve the max index for the "ping" transaction. This transaction is not included in the block, but we are
     // simulating by assuming its position in the block as the max index.
     pub fn ping(epoch: EpochId, block: BlockRef) -> Self {
-        Self {
-            epoch,
-            block,
-            index: PING_TRANSACTION_INDEX,
-        }
+        Self { epoch, block, index: PING_TRANSACTION_INDEX }
     }
 }
 
@@ -111,11 +107,7 @@ impl ConsensusTransaction {
                 format!("Certified({})", cert.digest())
             }
             ConsensusTransactionKind::CheckpointSignature(data) => {
-                format!(
-                    "CkptSig({}, {})",
-                    data.summary.sequence_number,
-                    data.summary.digest()
-                )
+                format!("CkptSig({}, {})", data.summary.sequence_number, data.summary.digest())
             }
             ConsensusTransactionKind::EndOfPublish(..) => "EOP".to_string(),
             ConsensusTransactionKind::UserTransaction(tx) => {
@@ -159,20 +151,13 @@ impl Debug for ConsensusTransactionKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Certificate(digest) => write!(f, "Certificate({:?})", digest),
-            Self::CheckpointSignature(name, seq, digest) => write!(
-                f,
-                "CheckpointSignature({:?}, {:?}, {:?})",
-                name.concise(),
-                seq,
-                digest
-            ),
+            Self::CheckpointSignature(name, seq, digest) => {
+                write!(f, "CheckpointSignature({:?}, {:?}, {:?})", name.concise(), seq, digest)
+            }
             Self::EndOfPublish(name) => write!(f, "EndOfPublish({:?})", name.concise()),
-            Self::CapabilityNotification(name, generation) => write!(
-                f,
-                "CapabilityNotification({:?}, {:?})",
-                name.concise(),
-                generation
-            ),
+            Self::CapabilityNotification(name, generation) => {
+                write!(f, "CapabilityNotification({:?}, {:?})", name.concise(), generation)
+            }
         }
     }
 }
@@ -199,10 +184,7 @@ impl Debug for AuthorityCapabilities {
         f.debug_struct("AuthorityCapabilities")
             .field("authority", &self.authority.concise())
             .field("generation", &self.generation)
-            .field(
-                "supported_protocol_versions",
-                &self.supported_protocol_versions,
-            )
+            .field("supported_protocol_versions", &self.supported_protocol_versions)
             .finish()
     }
 }
@@ -253,40 +235,28 @@ impl ConsensusTransaction {
         tx_digest.hash(&mut hasher);
         authority.hash(&mut hasher);
         let tracking_id = hasher.finish().to_le_bytes();
-        Self {
-            tracking_id,
-            kind: ConsensusTransactionKind::UserTransaction(Box::new(tx)),
-        }
+        Self { tracking_id, kind: ConsensusTransactionKind::UserTransaction(Box::new(tx)) }
     }
 
     pub fn new_checkpoint_signature_message(data: CheckpointSignatureMessage) -> Self {
         let mut hasher = DefaultHasher::new();
         data.summary.auth_sig().signature.hash(&mut hasher);
         let tracking_id = hasher.finish().to_le_bytes();
-        Self {
-            tracking_id,
-            kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)),
-        }
+        Self { tracking_id, kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)) }
     }
 
     pub fn new_capability_notification(capabilities: AuthorityCapabilities) -> Self {
         let mut hasher = DefaultHasher::new();
         capabilities.hash(&mut hasher);
         let tracking_id = hasher.finish().to_le_bytes();
-        Self {
-            tracking_id,
-            kind: ConsensusTransactionKind::CapabilityNotification(capabilities),
-        }
+        Self { tracking_id, kind: ConsensusTransactionKind::CapabilityNotification(capabilities) }
     }
 
     pub fn new_end_of_publish(authority: AuthorityName) -> Self {
         let mut hasher = DefaultHasher::new();
         authority.hash(&mut hasher);
         let tracking_id = hasher.finish().to_le_bytes();
-        Self {
-            tracking_id,
-            kind: ConsensusTransactionKind::EndOfPublish(authority),
-        }
+        Self { tracking_id, kind: ConsensusTransactionKind::EndOfPublish(authority) }
     }
 
     pub fn new_mysticeti_certificate(
@@ -307,9 +277,7 @@ impl ConsensusTransaction {
     }
 
     pub fn get_tracking_id(&self) -> u64 {
-        (&self.tracking_id[..])
-            .read_u64::<BigEndian>()
-            .unwrap_or_default()
+        (&self.tracking_id[..]).read_u64::<BigEndian>().unwrap_or_default()
     }
 
     pub fn key(&self) -> ConsensusTransactionKey {
@@ -390,9 +358,7 @@ pub struct TestEpochStore {
 
 impl TestEpochStore {
     pub fn new() -> Self {
-        Self {
-            next_epoch_state: None,
-        }
+        Self { next_epoch_state: None }
     }
 
     pub fn set_next_epoch_state(&mut self, state: (ValidatorSet, ECMHLiveObjectSetDigest, u64)) {

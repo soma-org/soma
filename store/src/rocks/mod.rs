@@ -146,9 +146,7 @@ impl Database {
                 Ok(db.get(cf_name, key).map(GetResult::InMemory))
             }
 
-            _ => Err(TypedStoreError::RocksDBError(
-                "typed store invariant violation".to_string(),
-            )),
+            _ => Err(TypedStoreError::RocksDBError("typed store invariant violation".to_string())),
         }
     }
 
@@ -220,9 +218,7 @@ impl Database {
                 db.delete(cf_name, key.as_ref());
                 Ok(())
             }
-            _ => Err(TypedStoreError::RocksDBError(
-                "typed store invariant violation".to_string(),
-            )),
+            _ => Err(TypedStoreError::RocksDBError("typed store invariant violation".to_string())),
         };
         #[allow(clippy::let_and_return)]
         ret
@@ -250,9 +246,7 @@ impl Database {
                 db.put(cf_name, key, value);
                 Ok(())
             }
-            _ => Err(TypedStoreError::RocksDBError(
-                "typed store invariant violation".to_string(),
-            )),
+            _ => Err(TypedStoreError::RocksDBError("typed store invariant violation".to_string())),
         };
         #[allow(clippy::let_and_return)]
         ret
@@ -268,9 +262,7 @@ impl Database {
             // [`rocksdb::DBWithThreadMode::key_may_exist_cf`] can have false positives,
             // but no false negatives. We use it to short-circuit the absent case
             Storage::Rocks(rocks) => {
-                rocks
-                    .underlying
-                    .key_may_exist_cf_opt(&rocks_cf(rocks, cf_name), key, readopts)
+                rocks.underlying.key_may_exist_cf_opt(&rocks_cf(rocks, cf_name), key, readopts)
             }
             _ => true,
         }
@@ -310,9 +302,7 @@ impl Database {
         end: Option<K>,
     ) {
         if let Storage::Rocks(rocksdb) = &self.storage {
-            rocksdb
-                .underlying
-                .compact_range_cf(&rocks_cf(rocksdb, cf_name), start, end);
+            rocksdb.underlying.compact_range_cf(&rocks_cf(rocksdb, cf_name), start, end);
         }
     }
 
@@ -404,9 +394,7 @@ impl<K, V> DBMap<K, V> {
         rw_options: &ReadWriteOptions,
         is_deprecated: bool,
     ) -> Result<Self, TypedStoreError> {
-        let cf_key = opt_cf
-            .unwrap_or(rocksdb::DEFAULT_COLUMN_FAMILY_NAME)
-            .to_owned();
+        let cf_key = opt_cf.unwrap_or(rocksdb::DEFAULT_COLUMN_FAMILY_NAME).to_owned();
         Ok(DBMap::new(
             db.clone(),
             rw_options,
@@ -435,8 +423,7 @@ impl<K, V> DBMap<K, V> {
     pub fn compact_range<J: Serialize>(&self, start: &J, end: &J) -> Result<(), TypedStoreError> {
         let from_buf = be_fix_int_ser(start);
         let to_buf = be_fix_int_ser(end);
-        self.db
-            .compact_range_cf(&self.cf, Some(from_buf), Some(to_buf));
+        self.db.compact_range_cf(&self.cf, Some(from_buf), Some(to_buf));
         Ok(())
     }
 
@@ -466,11 +453,7 @@ impl<K, V> DBMap<K, V> {
             .into_iter()
             .collect();
         let entries = results?;
-        let entry_size = entries
-            .iter()
-            .flatten()
-            .map(|entry| entry.len())
-            .sum::<usize>();
+        let entry_size = entries.iter().flatten().map(|entry| entry.len()).sum::<usize>();
 
         Ok(entries)
     }
@@ -504,14 +487,8 @@ impl<K, V> DBMap<K, V> {
         V: Serialize + DeserializeOwned,
     {
         let (it_lower_bound, it_upper_bound) = iterator_bounds_with_range::<K>((
-            lower_bound
-                .as_ref()
-                .map(Bound::Included)
-                .unwrap_or(Bound::Unbounded),
-            upper_bound
-                .as_ref()
-                .map(Bound::Included)
-                .unwrap_or(Bound::Unbounded),
+            lower_bound.as_ref().map(Bound::Included).unwrap_or(Bound::Unbounded),
+            upper_bound.as_ref().map(Bound::Included).unwrap_or(Bound::Unbounded),
         ));
         match &self.db.storage {
             Storage::Rocks(db) => {
@@ -521,9 +498,7 @@ impl<K, V> DBMap<K, V> {
                     it_upper_bound,
                 );
                 let upper_bound_key = upper_bound.as_ref().map(|k| be_fix_int_ser(&k));
-                let db_iter = db
-                    .underlying
-                    .raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
+                let db_iter = db.underlying.raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
 
                 let iter = SafeIter::new(self.cf.clone(), db_iter);
                 Ok(Box::new(SafeRevIter::new(iter, upper_bound_key)))
@@ -558,10 +533,7 @@ impl DBBatch {
     ///
     /// Use `open_cf` to get the DB reference or an existing open database.
     pub fn new(dbref: &Arc<Database>, batch: StorageWriteBatch) -> Self {
-        DBBatch {
-            database: dbref.clone(),
-            batch,
-        }
+        DBBatch { database: dbref.clone(), batch }
     }
 
     /// Consume the batch and write its operations to the database
@@ -596,24 +568,22 @@ impl DBBatch {
             return Err(TypedStoreError::CrossDBBatch);
         }
 
-        purged_vals
-            .into_iter()
-            .try_for_each::<_, Result<_, TypedStoreError>>(|k| {
-                let k_buf = be_fix_int_ser(k.borrow());
-                match (&mut self.batch, &db.column_family) {
-                    (StorageWriteBatch::Rocks(b), ColumnFamily::Rocks(name)) => {
-                        b.delete_cf(&rocks_cf_from_db(&self.database, name)?, k_buf)
-                    }
-                    (StorageWriteBatch::InMemory(b), ColumnFamily::InMemory(name)) => {
-                        b.delete_cf(name, k_buf)
-                    }
-
-                    _ => Err(TypedStoreError::RocksDBError(
-                        "typed store invariant violation".to_string(),
-                    ))?,
+        purged_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|k| {
+            let k_buf = be_fix_int_ser(k.borrow());
+            match (&mut self.batch, &db.column_family) {
+                (StorageWriteBatch::Rocks(b), ColumnFamily::Rocks(name)) => {
+                    b.delete_cf(&rocks_cf_from_db(&self.database, name)?, k_buf)
                 }
-                Ok(())
-            })?;
+                (StorageWriteBatch::InMemory(b), ColumnFamily::InMemory(name)) => {
+                    b.delete_cf(name, k_buf)
+                }
+
+                _ => Err(TypedStoreError::RocksDBError(
+                    "typed store invariant violation".to_string(),
+                ))?,
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -640,11 +610,7 @@ impl DBBatch {
         let to_buf = be_fix_int_ser(to);
 
         if let StorageWriteBatch::Rocks(b) = &mut self.batch {
-            b.delete_range_cf(
-                &rocks_cf_from_db(&self.database, db.cf_name())?,
-                from_buf,
-                to_buf,
-            );
+            b.delete_range_cf(&rocks_cf_from_db(&self.database, db.cf_name())?, from_buf, to_buf);
         }
         Ok(())
     }
@@ -659,36 +625,34 @@ impl DBBatch {
             return Err(TypedStoreError::CrossDBBatch);
         }
         let mut total = 0usize;
-        new_vals
-            .into_iter()
-            .try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
-                let k_buf = be_fix_int_ser(k.borrow());
-                let v_buf = bcs::to_bytes(v.borrow()).map_err(typed_store_err_from_bcs_err)?;
-                total += k_buf.len() + v_buf.len();
-                if db.opts.log_value_hash {
-                    let key_hash = default_hash(&k_buf);
-                    let value_hash = default_hash(&v_buf);
-                    debug!(
-                        "Insert to DB table: {:?}, key_hash: {:?}, value_hash: {:?}",
-                        db.cf_name(),
-                        key_hash,
-                        value_hash
-                    );
+        new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
+            let k_buf = be_fix_int_ser(k.borrow());
+            let v_buf = bcs::to_bytes(v.borrow()).map_err(typed_store_err_from_bcs_err)?;
+            total += k_buf.len() + v_buf.len();
+            if db.opts.log_value_hash {
+                let key_hash = default_hash(&k_buf);
+                let value_hash = default_hash(&v_buf);
+                debug!(
+                    "Insert to DB table: {:?}, key_hash: {:?}, value_hash: {:?}",
+                    db.cf_name(),
+                    key_hash,
+                    value_hash
+                );
+            }
+            match (&mut self.batch, &db.column_family) {
+                (StorageWriteBatch::Rocks(b), ColumnFamily::Rocks(name)) => {
+                    b.put_cf(&rocks_cf_from_db(&self.database, name)?, k_buf, v_buf)
                 }
-                match (&mut self.batch, &db.column_family) {
-                    (StorageWriteBatch::Rocks(b), ColumnFamily::Rocks(name)) => {
-                        b.put_cf(&rocks_cf_from_db(&self.database, name)?, k_buf, v_buf)
-                    }
-                    (StorageWriteBatch::InMemory(b), ColumnFamily::InMemory(name)) => {
-                        b.put_cf(name, k_buf, v_buf)
-                    }
+                (StorageWriteBatch::InMemory(b), ColumnFamily::InMemory(name)) => {
+                    b.put_cf(name, k_buf, v_buf)
+                }
 
-                    _ => Err(TypedStoreError::RocksDBError(
-                        "typed store invariant violation".to_string(),
-                    ))?,
-                }
-                Ok(())
-            })?;
+                _ => Err(TypedStoreError::RocksDBError(
+                    "typed store invariant violation".to_string(),
+                ))?,
+            }
+            Ok(())
+        })?;
 
         Ok(self)
     }
@@ -701,21 +665,17 @@ impl DBBatch {
         if !Arc::ptr_eq(&db.db, &self.database) {
             return Err(TypedStoreError::CrossDBBatch);
         }
-        new_vals
-            .into_iter()
-            .try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
-                let k_buf = be_fix_int_ser(k.borrow());
-                let v_buf = bcs::to_bytes(v.borrow()).map_err(typed_store_err_from_bcs_err)?;
-                match &mut self.batch {
-                    StorageWriteBatch::Rocks(b) => b.merge_cf(
-                        &rocks_cf_from_db(&self.database, db.cf_name())?,
-                        k_buf,
-                        v_buf,
-                    ),
-                    _ => unimplemented!("merge operator is only implemented for RocksDB"),
+        new_vals.into_iter().try_for_each::<_, Result<_, TypedStoreError>>(|(k, v)| {
+            let k_buf = be_fix_int_ser(k.borrow());
+            let v_buf = bcs::to_bytes(v.borrow()).map_err(typed_store_err_from_bcs_err)?;
+            match &mut self.batch {
+                StorageWriteBatch::Rocks(b) => {
+                    b.merge_cf(&rocks_cf_from_db(&self.database, db.cf_name())?, k_buf, v_buf)
                 }
-                Ok(())
-            })?;
+                _ => unimplemented!("merge operator is only implemented for RocksDB"),
+            }
+            Ok(())
+        })?;
         Ok(self)
     }
 }
@@ -732,10 +692,7 @@ where
         let key_buf = be_fix_int_ser(key);
         let readopts = self.opts.readopts();
         Ok(self.db.key_may_exist_cf(&self.cf, &key_buf, &readopts)
-            && self
-                .db
-                .get(&self.column_family, &key_buf, &readopts)?
-                .is_some())
+            && self.db.get(&self.column_family, &key_buf, &readopts)?.is_some())
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -753,9 +710,7 @@ where
     #[instrument(level = "trace", skip_all, err)]
     fn get(&self, key: &K) -> Result<Option<V>, TypedStoreError> {
         let key_buf = be_fix_int_ser(key);
-        let res = self
-            .db
-            .get(&self.column_family, &key_buf, &self.opts.readopts())?;
+        let res = self.db.get(&self.column_family, &key_buf, &self.opts.readopts())?;
 
         match res {
             Some(data) => {
@@ -807,11 +762,8 @@ where
     #[instrument(level = "trace", skip_all, err)]
     fn schedule_delete_all(&self) -> Result<(), TypedStoreError> {
         let first_key = self.safe_iter().next().transpose()?.map(|(k, _v)| k);
-        let last_key = self
-            .reversed_safe_iter_with_bounds(None, None)?
-            .next()
-            .transpose()?
-            .map(|(k, _v)| k);
+        let last_key =
+            self.reversed_safe_iter_with_bounds(None, None)?.next().transpose()?.map(|(k, _v)| k);
         if let Some((first_key, last_key)) = first_key.zip(last_key) {
             let mut batch = self.batch();
             batch.schedule_delete_range(self, &first_key, &last_key)?;
@@ -846,9 +798,7 @@ where
             Storage::Rocks(db) => {
                 let readopts =
                     rocks_util::apply_range_bounds(self.opts.readopts(), lower_bound, upper_bound);
-                let db_iter = db
-                    .underlying
-                    .raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
+                let db_iter = db.underlying.raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
 
                 Box::new(SafeIter::new(self.cf.clone(), db_iter))
             }
@@ -862,9 +812,7 @@ where
             Storage::Rocks(db) => {
                 let readopts =
                     rocks_util::apply_range_bounds(self.opts.readopts(), lower_bound, upper_bound);
-                let db_iter = db
-                    .underlying
-                    .raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
+                let db_iter = db.underlying.raw_iterator_cf_opt(&rocks_cf(db, &self.cf), readopts);
                 Box::new(SafeIter::new(self.cf.clone(), db_iter))
             }
             Storage::InMemory(db) => db.iterator(&self.cf, lower_bound, upper_bound, false),
@@ -884,9 +832,9 @@ where
         let values_parsed: Result<Vec<_>, TypedStoreError> = results
             .into_iter()
             .map(|value_byte| match value_byte {
-                Some(data) => Ok(Some(
-                    bcs::from_bytes(&data).map_err(typed_store_err_from_bcs_err)?,
-                )),
+                Some(data) => {
+                    Ok(Some(bcs::from_bytes(&data).map_err(typed_store_err_from_bcs_err)?))
+                }
                 None => Ok(None),
             })
             .collect();
@@ -924,10 +872,7 @@ where
     #[instrument(level = "trace", skip_all, err)]
     fn try_catch_up_with_primary(&self) -> Result<(), Self::Error> {
         if let Storage::Rocks(rocks) = &self.db.storage {
-            rocks
-                .underlying
-                .try_catch_up_with_primary()
-                .map_err(typed_store_err_from_rocks_err)?;
+            rocks.underlying.try_catch_up_with_primary().map_err(typed_store_err_from_rocks_err)?;
         }
         Ok(())
     }
@@ -958,14 +903,11 @@ pub fn open_cf_opts<P: AsRef<Path>>(
             rocksdb::DBWithThreadMode::<MultiThreaded>::open_cf_descriptors(
                 &options,
                 path,
-                cfs.into_iter()
-                    .map(|(name, opts)| ColumnFamilyDescriptor::new(name, opts)),
+                cfs.into_iter().map(|(name, opts)| ColumnFamilyDescriptor::new(name, opts)),
             )
             .map_err(typed_store_err_from_rocks_err)?
         };
-        Ok(Arc::new(Database::new(Storage::Rocks(RocksDB {
-            underlying: rocksdb,
-        }))))
+        Ok(Arc::new(Database::new(Storage::Rocks(RocksDB { underlying: rocksdb }))))
     })
 }
 
@@ -1020,22 +962,17 @@ pub fn open_cf_opts_secondary<P: AsRef<Path>>(
                     .map(|(name, opts)| ColumnFamilyDescriptor::new(*name, (*opts).clone())),
             )
             .map_err(typed_store_err_from_rocks_err)?;
-            db.try_catch_up_with_primary()
-                .map_err(typed_store_err_from_rocks_err)?;
+            db.try_catch_up_with_primary().map_err(typed_store_err_from_rocks_err)?;
             db
         };
-        Ok(Arc::new(Database::new(Storage::Rocks(RocksDB {
-            underlying: rocksdb,
-        }))))
+        Ok(Arc::new(Database::new(Storage::Rocks(RocksDB { underlying: rocksdb }))))
     })
 }
 
 // Drops a database if there is no other handle to it, with retries and timeout.
 pub async fn safe_drop_db(path: PathBuf, timeout: Duration) -> Result<(), rocksdb::Error> {
-    let mut backoff = backoff::ExponentialBackoff {
-        max_elapsed_time: Some(timeout),
-        ..Default::default()
-    };
+    let mut backoff =
+        backoff::ExponentialBackoff { max_elapsed_time: Some(timeout), ..Default::default() };
     loop {
         match rocksdb::DB::destroy(&rocksdb::Options::default(), path.clone()) {
             Ok(()) => return Ok(()),
@@ -1063,11 +1000,7 @@ fn populate_missing_cfs(
             cfs.push((cf_name, rocksdb::Options::default()));
         }
     }
-    cfs.extend(
-        input_cfs
-            .iter()
-            .map(|(name, opts)| (name.to_string(), (*opts).clone())),
-    );
+    cfs.extend(input_cfs.iter().map(|(name, opts)| (name.to_string(), (*opts).clone())));
     Ok(cfs)
 }
 

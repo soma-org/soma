@@ -81,9 +81,7 @@ impl std::fmt::Display for Ed25519PublicKey {
 
 impl std::fmt::Debug for Ed25519PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Ed25519PublicKey")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Ed25519PublicKey").field(&format_args!("\"{self}\"")).finish()
     }
 }
 
@@ -179,8 +177,6 @@ impl std::fmt::Display for Ed25519Signature {
 
 impl std::fmt::Debug for Ed25519Signature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Ed25519Signature")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Ed25519Signature").field(&format_args!("\"{self}\"")).finish()
     }
 }

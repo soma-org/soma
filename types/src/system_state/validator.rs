@@ -137,9 +137,7 @@ impl Validator {
         let stake_activation_epoch = current_epoch + 1;
 
         // Add stake to the staking pool
-        let staked_soma = self
-            .staking_pool
-            .request_add_stake(stake, stake_activation_epoch);
+        let staked_soma = self.staking_pool.request_add_stake(stake, stake_activation_epoch);
 
         // If pool is preactive, process stake immediately
         if self.staking_pool.is_preactive() {
@@ -173,9 +171,7 @@ impl Validator {
     /// Request to withdraw stake from the validator
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma, current_epoch: u64) -> u64 {
         // Process withdrawal in staking pool
-        let withdrawn_amount = self
-            .staking_pool
-            .request_withdraw_stake(staked_soma, current_epoch);
+        let withdrawn_amount = self.staking_pool.request_withdraw_stake(staked_soma, current_epoch);
 
         // Update next epoch stake
         self.next_epoch_stake -= withdrawn_amount;
@@ -219,10 +215,7 @@ impl Validator {
 
         // Ensure pool is preactive
         assert!(self.staking_pool.is_preactive(), "Pool is already active");
-        assert!(
-            !self.staking_pool.is_inactive(),
-            "Cannot activate inactive pool"
-        );
+        assert!(!self.staking_pool.is_inactive(), "Cannot activate inactive pool");
 
         // Set activation epoch
         self.staking_pool.activation_epoch = Some(activation_epoch);
@@ -379,8 +372,7 @@ impl Validator {
         stake_activation_epoch: u64,
         current_epoch: u64,
     ) -> u64 {
-        self.staking_pool
-            .calculate_rewards(initial_stake, stake_activation_epoch, current_epoch)
+        self.staking_pool.calculate_rewards(initial_stake, stake_activation_epoch, current_epoch)
     }
 }
 
@@ -490,10 +482,8 @@ impl ValidatorSet {
 
     pub fn request_remove_validator(&mut self, address: SomaAddress) -> ExecutionResult {
         // Check consensus validators first
-        if let Some((i, _)) = self
-            .validators
-            .iter()
-            .find_position(|v| address == v.metadata.soma_address)
+        if let Some((i, _)) =
+            self.validators.iter().find_position(|v| address == v.metadata.soma_address)
         {
             if self.pending_removals.iter().any(|idx| *idx == i) {
                 return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
@@ -593,29 +583,17 @@ impl ValidatorSet {
                 // Potentially panic or handle error, though epoch change is usually non-recoverable
             }
             if !seen_network_keys.insert(meta.network_pubkey.to_bytes()) {
-                error!(
-                    "Duplicate network key found after effectuation: {:?}",
-                    meta.network_pubkey
-                );
+                error!("Duplicate network key found after effectuation: {:?}", meta.network_pubkey);
             }
             if !seen_worker_keys.insert(meta.worker_pubkey.to_bytes()) {
-                error!(
-                    "Duplicate worker key found after effectuation: {:?}",
-                    meta.worker_pubkey
-                );
+                error!("Duplicate worker key found after effectuation: {:?}", meta.worker_pubkey);
             }
             if !seen_net_addrs.insert(meta.net_address.to_string()) {
                 // Use string representation for Multiaddr comparison
-                error!(
-                    "Duplicate network address found after effectuation: {}",
-                    meta.net_address
-                );
+                error!("Duplicate network address found after effectuation: {}", meta.net_address);
             }
             if !seen_p2p_addrs.insert(meta.p2p_address.to_string()) {
-                error!(
-                    "Duplicate P2P address found after effectuation: {}",
-                    meta.p2p_address
-                );
+                error!("Duplicate P2P address found after effectuation: {}", meta.p2p_address);
             }
             // Add checks for primary_address, worker_address if they exist and need uniqueness
         }
@@ -678,9 +656,7 @@ impl ValidatorSet {
 
     /// Check if an address belongs to a pending active validator
     pub fn is_pending_validator(&self, address: SomaAddress) -> bool {
-        self.pending_validators
-            .iter()
-            .any(|v| v.metadata.soma_address == address)
+        self.pending_validators.iter().any(|v| v.metadata.soma_address == address)
     }
 
     /// Calculate unadjusted reward distribution without slashing
@@ -891,30 +867,22 @@ impl ValidatorSet {
 
     /// Calculate total stake across all validators
     pub fn calculate_total_stake(&self) -> u64 {
-        self.validators
-            .iter()
-            .map(|v| v.staking_pool.soma_balance)
-            .sum()
+        self.validators.iter().map(|v| v.staking_pool.soma_balance).sum()
     }
 
     /// Calculate total stake INCLUDING pending (for threshold calculations)
     pub fn calculate_total_stake_with_pending(&self) -> u64 {
         let active_stake = self.calculate_total_stake();
 
-        let pending_stake: u64 = self
-            .pending_validators
-            .iter()
-            .map(|v| v.staking_pool.soma_balance)
-            .sum();
+        let pending_stake: u64 =
+            self.pending_validators.iter().map(|v| v.staking_pool.soma_balance).sum();
 
         active_stake + pending_stake
     }
 
     /// Process the pending stake changes for each validator.
     fn adjust_commission_rates(&mut self) {
-        self.validators
-            .iter_mut()
-            .for_each(|validator| validator.adjust_commission_rate());
+        self.validators.iter_mut().for_each(|validator| validator.adjust_commission_rate());
     }
 
     /// Update validator voting power based on stake
@@ -925,11 +893,8 @@ impl ValidatorSet {
             return;
         }
 
-        let addresses: HashSet<SomaAddress> = self
-            .validators
-            .iter()
-            .map(|v| v.metadata.soma_address)
-            .collect();
+        let addresses: HashSet<SomaAddress> =
+            self.validators.iter().map(|v| v.metadata.soma_address).collect();
 
         // Combine all validators for voting power calculation
         let mut all_validators: Vec<&mut Validator> = Vec::new();
@@ -944,10 +909,8 @@ impl ValidatorSet {
         } else {
             TOTAL_VOTING_POWER
         };
-        let threshold = std::cmp::min(
-            TOTAL_VOTING_POWER,
-            std::cmp::max(MAX_VOTING_POWER, min_threshold),
-        );
+        let threshold =
+            std::cmp::min(TOTAL_VOTING_POWER, std::cmp::max(MAX_VOTING_POWER, min_threshold));
 
         // Sort validators by stake in descending order for consistent processing
         all_validators.sort_by(|a, b| {
@@ -977,10 +940,7 @@ impl ValidatorSet {
             let mut consensus_count = 0;
             for validator in &mut all_validators {
                 // Check if this validator is in consensus set
-                if addresses
-                    .iter()
-                    .any(|v| *v == validator.metadata.soma_address)
-                {
+                if addresses.iter().any(|v| *v == validator.metadata.soma_address) {
                     validator.voting_power += per_consensus;
                     if consensus_count < leftover as usize {
                         validator.voting_power += 1;
@@ -1016,10 +976,7 @@ impl ValidatorSet {
         let all_validators: Vec<&Validator> = self.validators.iter().collect();
 
         for i in 0..all_validators.len() {
-            info!(
-                "Validator {} voting power is: {}",
-                i, all_validators[i].voting_power
-            );
+            info!("Validator {} voting power is: {}", i, all_validators[i].voting_power);
             for j in i + 1..all_validators.len() {
                 let stake_i = all_validators[i].staking_pool.soma_balance;
                 let stake_j = all_validators[j].staking_pool.soma_balance;
@@ -1027,16 +984,10 @@ impl ValidatorSet {
                 let power_j = all_validators[j].voting_power;
 
                 if stake_i > stake_j {
-                    assert!(
-                        power_i >= power_j,
-                        "Voting power order mismatch with stake order"
-                    );
+                    assert!(power_i >= power_j, "Voting power order mismatch with stake order");
                 }
                 if stake_i < stake_j {
-                    assert!(
-                        power_i <= power_j,
-                        "Voting power order mismatch with stake order"
-                    );
+                    assert!(power_i <= power_j, "Voting power order mismatch with stake order");
                 }
             }
         }
@@ -1073,11 +1024,7 @@ impl ValidatorSet {
                 self.at_risk_validators.remove(&validator_address);
             } else if voting_power >= VALIDATOR_CONSENSUS_VERY_LOW_POWER {
                 // At risk - track grace period
-                let period = self
-                    .at_risk_validators
-                    .get(&validator_address)
-                    .unwrap_or(&0)
-                    + 1;
+                let period = self.at_risk_validators.get(&validator_address).unwrap_or(&0) + 1;
                 self.at_risk_validators.insert(validator_address, period);
 
                 if period > grace_period {

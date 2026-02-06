@@ -49,9 +49,7 @@ impl Address {
     pub fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, AddressParseError> {
         let hex = hex.as_ref();
 
-        hex_address_bytes(hex)
-            .map(Self)
-            .map_err(|e| AddressParseError { hex_error: Some(e) })
+        hex_address_bytes(hex).map(Self).map_err(|e| AddressParseError { hex_error: Some(e) })
     }
 
     /// Decodes an address from a hex encoded string.
@@ -126,9 +124,7 @@ impl std::fmt::Display for Address {
 
 impl std::fmt::Debug for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Address")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Address").field(&format_args!("\"{self}\"")).finish()
     }
 }
 
@@ -161,11 +157,7 @@ pub struct AddressParseError {
 
 impl std::fmt::Display for AddressParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "Unable to parse Address (must be hex string of length {})",
-            Address::LENGTH
-        )
+        write!(f, "Unable to parse Address (must be hex string of length {})", Address::LENGTH)
     }
 }
 

@@ -43,16 +43,12 @@ pub fn get_transaction(
         })?;
 
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
-        read_mask
-            .validate::<ExecutedTransaction>()
-            .map_err(|path| {
-                FieldViolation::new("read_mask")
-                    .with_description(format!("invalid read_mask path: {path}"))
-                    .with_reason(ErrorReason::FieldInvalid)
-            })?;
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        read_mask.validate::<ExecutedTransaction>().map_err(|path| {
+            FieldViolation::new("read_mask")
+                .with_description(format!("invalid read_mask path: {path}"))
+                .with_reason(ErrorReason::FieldInvalid)
+        })?;
         FieldMaskTree::from(read_mask)
     };
 
@@ -66,19 +62,15 @@ pub fn get_transaction(
 #[tracing::instrument(skip(service))]
 pub fn batch_get_transactions(
     service: &RpcService,
-    BatchGetTransactionsRequest {
-        digests, read_mask, ..
-    }: BatchGetTransactionsRequest,
+    BatchGetTransactionsRequest { digests, read_mask, .. }: BatchGetTransactionsRequest,
 ) -> Result<BatchGetTransactionsResponse, RpcError> {
     let read_mask = {
         let read_mask = read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
-        read_mask
-            .validate::<ExecutedTransaction>()
-            .map_err(|path| {
-                FieldViolation::new("read_mask")
-                    .with_description(format!("invalid read_mask path: {path}"))
-                    .with_reason(ErrorReason::FieldInvalid)
-            })?;
+        read_mask.validate::<ExecutedTransaction>().map_err(|path| {
+            FieldViolation::new("read_mask")
+                .with_description(format!("invalid read_mask path: {path}"))
+                .with_reason(ErrorReason::FieldInvalid)
+        })?;
         FieldMaskTree::from(read_mask)
     };
 
@@ -92,12 +84,9 @@ pub fn batch_get_transactions(
                     .with_reason(ErrorReason::FieldInvalid)
             })?;
 
-            service
-                .reader
-                .get_transaction_read(digest)
-                .map(|transaction_read| {
-                    transaction_to_response(service, transaction_read, &read_mask)
-                })
+            service.reader.get_transaction_read(digest).map(|transaction_read| {
+                transaction_to_response(service, transaction_read, &read_mask)
+            })
         })
         .map(|result| match result {
             Ok(transaction) => GetTransactionResult::new_transaction(transaction),
@@ -124,11 +113,8 @@ fn transaction_to_response(
     }
 
     if let Some(submask) = mask.subtree(ExecutedTransaction::SIGNATURES_FIELD.name) {
-        message.signatures = source
-            .signatures
-            .into_iter()
-            .map(|s| UserSignature::merge_from(s, &submask))
-            .collect();
+        message.signatures =
+            source.signatures.into_iter().map(|s| UserSignature::merge_from(s, &submask)).collect();
     }
 
     if let Some(submask) = mask.subtree(ExecutedTransaction::EFFECTS_FIELD.name) {

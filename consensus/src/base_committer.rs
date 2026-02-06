@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use tracing::warn;
 use types::consensus::{
     block::{BlockAPI, BlockRef, Round, Slot, VerifiedBlock},
-    commit::{LeaderStatus, WaveNumber, DEFAULT_WAVE_LENGTH},
+    commit::{DEFAULT_WAVE_LENGTH, LeaderStatus, WaveNumber},
     context::Context,
     stake_aggregator::{QuorumThreshold, StakeAggregator},
 };
@@ -36,11 +36,7 @@ pub(crate) struct BaseCommitterOptions {
 
 impl Default for BaseCommitterOptions {
     fn default() -> Self {
-        Self {
-            wave_length: DEFAULT_WAVE_LENGTH,
-            leader_offset: 0,
-            round_offset: 0,
-        }
+        Self { wave_length: DEFAULT_WAVE_LENGTH, leader_offset: 0, round_offset: 0 }
     }
 }
 
@@ -67,12 +63,7 @@ impl BaseCommitter {
         dag_state: Arc<RwLock<DagState>>,
         options: BaseCommitterOptions,
     ) -> Self {
-        Self {
-            context,
-            leader_schedule,
-            dag_state,
-            options,
-        }
+        Self { context, leader_schedule, dag_state, options }
     }
 
     /// Apply the direct decision rule to the specified leader to see whether we
@@ -106,9 +97,7 @@ impl BaseCommitter {
             );
         }
 
-        leaders_with_enough_support
-            .pop()
-            .unwrap_or(LeaderStatus::Undecided(leader))
+        leaders_with_enough_support.pop().unwrap_or(LeaderStatus::Undecided(leader))
     }
 
     /// Apply the indirect decision rule to the specified leader to see whether
@@ -152,11 +141,7 @@ impl BaseCommitter {
             return None;
         }
 
-        Some(Slot::new(
-            round,
-            self.leader_schedule
-                .elect_leader(round, self.options.leader_offset),
-        ))
+        Some(Slot::new(round, self.leader_schedule.elect_leader(round, self.options.leader_offset)))
     }
 
     /// Return the leader round of the specified wave. The leader round is always
@@ -279,10 +264,7 @@ impl BaseCommitter {
     fn decide_leader_from_anchor(&self, anchor: &VerifiedBlock, leader_slot: Slot) -> LeaderStatus {
         // Get the block(s) proposed by the leader. There could be more than one leader block
         // in the slot from a Byzantine authority.
-        let leader_blocks = self
-            .dag_state
-            .read()
-            .get_uncommitted_blocks_at_slot(leader_slot);
+        let leader_blocks = self.dag_state.read().get_uncommitted_blocks_at_slot(leader_slot);
 
         // TODO: Re-evaluate this check once we have a better way to handle/track byzantine authorities.
         if leader_blocks.len() > 1 {
@@ -296,10 +278,8 @@ impl BaseCommitter {
         // are in the decision round of the target leader and are linked to the anchor.
         let wave = self.wave_number(leader_slot.round);
         let decision_round = self.decision_round(wave);
-        let potential_certificates = self
-            .dag_state
-            .read()
-            .ancestors_at_round(anchor, decision_round);
+        let potential_certificates =
+            self.dag_state.read().ancestors_at_round(anchor, decision_round);
 
         // Use those potential certificates to determine which (if any) of the target leader
         // blocks can be committed.
@@ -330,19 +310,12 @@ impl BaseCommitter {
 
     /// Check whether the specified leader has 2f+1 non-votes (blames) to be directly skipped.
     fn enough_leader_blame(&self, voting_round: Round, leader: AuthorityIndex) -> bool {
-        let voting_blocks = self
-            .dag_state
-            .read()
-            .get_uncommitted_blocks_at_round(voting_round);
+        let voting_blocks = self.dag_state.read().get_uncommitted_blocks_at_round(voting_round);
 
         let mut blame_stake_aggregator = StakeAggregator::<QuorumThreshold>::new();
         for voting_block in &voting_blocks {
             let voter = voting_block.reference().author;
-            if voting_block
-                .ancestors()
-                .iter()
-                .all(|ancestor| ancestor.author != leader)
-            {
+            if voting_block.ancestors().iter().all(|ancestor| ancestor.author != leader) {
                 tracing::trace!(
                     "[{self}] {voting_block} is a blame for leader {}",
                     Slot::new(voting_round - 1, leader)
@@ -363,17 +336,12 @@ impl BaseCommitter {
     /// Check whether the specified leader has 2f+1 certificates to be directly
     /// committed.
     fn enough_leader_support(&self, decision_round: Round, leader_block: &VerifiedBlock) -> bool {
-        let decision_blocks = self
-            .dag_state
-            .read()
-            .get_uncommitted_blocks_at_round(decision_round);
+        let decision_blocks = self.dag_state.read().get_uncommitted_blocks_at_round(decision_round);
 
         // Quickly reject if there isn't enough stake to support the leader from
         // the potential certificates.
-        let total_stake: Stake = decision_blocks
-            .iter()
-            .map(|b| self.context.committee.stake_by_index(b.author()))
-            .sum();
+        let total_stake: Stake =
+            decision_blocks.iter().map(|b| self.context.committee.stake_by_index(b.author())).sum();
         if !self.context.committee.reached_quorum(total_stake) {
             tracing::trace!(
                 "Not enough support for {leader_block}. Stake not enough: {total_stake} < {}",
@@ -398,11 +366,7 @@ impl BaseCommitter {
 
 impl Display for BaseCommitter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Committer-L{}-R{}",
-            self.options.leader_offset, self.options.round_offset
-        )
+        write!(f, "Committer-L{}-R{}", self.options.leader_offset, self.options.round_offset)
     }
 }
 
@@ -459,10 +423,7 @@ mod base_committer_builder {
             };
             BaseCommitter::new(
                 self.context.clone(),
-                Arc::new(LeaderSchedule::new(
-                    self.context,
-                    LeaderSwapTable::default(),
-                )),
+                Arc::new(LeaderSchedule::new(self.context, LeaderSwapTable::default())),
                 self.dag_state,
                 options,
             )

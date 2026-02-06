@@ -20,10 +20,7 @@ struct Node {
 
 impl FieldMaskTree {
     pub fn new_wildcard() -> Self {
-        Self {
-            wildcard: true,
-            root: Default::default(),
-        }
+        Self { wildcard: true, root: Default::default() }
     }
 
     pub fn add_field_path(&mut self, path: &str) -> &mut Self {
@@ -45,13 +42,10 @@ impl FieldMaskTree {
                 return self;
             }
 
-            node = node
-                .children
-                .entry(component.to_owned())
-                .or_insert_with(|| {
-                    create_new_branch = true;
-                    Node::default()
-                });
+            node = node.children.entry(component.to_owned()).or_insert_with(|| {
+                create_new_branch = true;
+                Node::default()
+            });
         }
 
         node.children.clear();
@@ -163,10 +157,7 @@ impl FieldMaskTree {
         if std::ptr::eq(node, &self.root) {
             None
         } else {
-            Some(Self {
-                wildcard: node.children.is_empty(),
-                root: node.clone(),
-            })
+            Some(Self { wildcard: node.children.is_empty(), root: node.clone() })
         }
     }
 }

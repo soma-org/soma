@@ -42,8 +42,7 @@ impl HeadersInterceptor {
             .expect("base64 is always valid HeaderValue");
         header.set_sensitive(true);
 
-        self.headers
-            .insert(http::header::AUTHORIZATION.as_str(), header);
+        self.headers.insert(http::header::AUTHORIZATION.as_str(), header);
     }
 
     /// Enable HTTP bearer authentication.
@@ -56,8 +55,7 @@ impl HeadersInterceptor {
             .expect("token is always valid HeaderValue");
         header.set_sensitive(true);
 
-        self.headers
-            .insert(http::header::AUTHORIZATION.as_str(), header);
+        self.headers.insert(http::header::AUTHORIZATION.as_str(), header);
     }
 }
 
@@ -67,10 +65,7 @@ impl tonic::service::Interceptor for &HeadersInterceptor {
         mut request: tonic::Request<()>,
     ) -> std::result::Result<tonic::Request<()>, tonic::Status> {
         if !self.headers.is_empty() {
-            request
-                .metadata_mut()
-                .as_mut()
-                .extend(self.headers.clone().into_headers());
+            request.metadata_mut().as_mut().extend(self.headers.clone().into_headers());
         }
         Ok(request)
     }

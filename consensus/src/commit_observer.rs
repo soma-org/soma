@@ -1,19 +1,19 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
+    CommitConsumerArgs,
     commit_finalizer::{CommitFinalizer, CommitFinalizerHandle},
     dag_state::DagState,
     leader_schedule::LeaderSchedule,
     linearizer::Linearizer,
     transaction_certifier::TransactionCertifier,
-    CommitConsumerArgs,
 };
 use parking_lot::RwLock;
 use tokio::time::Instant;
 use tracing::info;
 use types::consensus::{
     block::{BlockAPI, VerifiedBlock},
-    commit::{load_committed_subdag_from_store, CommitAPI, CommittedSubDag},
+    commit::{CommitAPI, CommittedSubDag, load_committed_subdag_from_store},
     context::Context,
 };
 use types::error::ConsensusResult;
@@ -106,16 +106,10 @@ impl CommitObserver {
         }
 
         // Send scores as part of the first sub dag, if the leader schedule has been updated.
-        let schedule_updated = self
-            .leader_schedule
-            .leader_schedule_updated(&self.dag_state);
+        let schedule_updated = self.leader_schedule.leader_schedule_updated(&self.dag_state);
         if schedule_updated {
-            let reputation_scores_desc = self
-                .leader_schedule
-                .leader_swap_table
-                .read()
-                .reputation_scores_desc
-                .clone();
+            let reputation_scores_desc =
+                self.leader_schedule.leader_swap_table.read().reputation_scores_desc.clone();
             committed_sub_dags[0].reputation_scores_desc = reputation_scores_desc;
         }
 
@@ -130,9 +124,7 @@ impl CommitObserver {
             self.commit_finalizer_handle.send(commit.clone())?;
         }
 
-        self.dag_state
-            .write()
-            .add_scoring_subdags(committed_sub_dags.clone());
+        self.dag_state.write().add_scoring_subdags(committed_sub_dags.clone());
 
         Ok(committed_sub_dags)
     }
@@ -142,10 +134,8 @@ impl CommitObserver {
 
         let replay_after_commit_index = commit_consumer.replay_after_commit_index;
 
-        let last_commit = self
-            .store
-            .read_last_commit()
-            .expect("Reading the last commit should not fail");
+        let last_commit =
+            self.store.read_last_commit().expect("Reading the last commit should not fail");
         let Some(last_commit) = &last_commit else {
             assert_eq!(
                 replay_after_commit_index, 0,
@@ -182,9 +172,8 @@ impl CommitObserver {
         for start_index in (replay_after_commit_index + 1..=last_commit_index)
             .step_by(COMMIT_RECOVERY_BATCH_SIZE as usize)
         {
-            let end_index = start_index
-                .saturating_add(COMMIT_RECOVERY_BATCH_SIZE - 1)
-                .min(last_commit_index);
+            let end_index =
+                start_index.saturating_add(COMMIT_RECOVERY_BATCH_SIZE - 1).min(last_commit_index);
 
             let unsent_commits = self
                 .store
@@ -199,9 +188,7 @@ impl CommitObserver {
 
             // Buffered unsent commits in DAG state which is required to contain them when they are flushed
             // by CommitFinalizer.
-            self.dag_state
-                .write()
-                .recover_commits_to_write(unsent_commits.clone());
+            self.dag_state.write().recover_commits_to_write(unsent_commits.clone());
 
             info!(
                 "Recovered {} unsent commits in range [{start_index}..={end_index}]",
@@ -219,11 +206,7 @@ impl CommitObserver {
                 // and the scores will be passed along with the last commit of this recovered batch sent to
                 // Sui so that the current scores are available for submission.
                 let reputation_scores = if commit.index() == last_commit_index {
-                    self.leader_schedule
-                        .leader_swap_table
-                        .read()
-                        .reputation_scores_desc
-                        .clone()
+                    self.leader_schedule.leader_swap_table.read().reputation_scores_desc.clone()
                 } else {
                     vec![]
                 };
@@ -252,9 +235,7 @@ impl CommitObserver {
                         .recover_and_vote_on_blocks(committed_sub_dag.blocks.clone());
                 }
 
-                self.commit_finalizer_handle
-                    .send(committed_sub_dag)
-                    .unwrap();
+                self.commit_finalizer_handle.send(committed_sub_dag).unwrap();
 
                 tokio::task::yield_now().await;
             }

@@ -6,11 +6,11 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use store::{
+    DBMapUtils, TypedStoreError,
     rocks::{
-        default_db_options, read_size_from_env, DBBatch, DBMap, DBMapTableConfigMap, DBOptions,
+        DBBatch, DBMap, DBMapTableConfigMap, DBOptions, default_db_options, read_size_from_env,
     },
     rocksdb::compaction_filter::Decision,
-    DBMapUtils, TypedStoreError,
 };
 use store::{DbIterator, Map as _};
 use tracing::{error, info};
@@ -22,7 +22,7 @@ use types::{
     effects::TransactionEffects,
     error::{SomaError, SomaResult},
     object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version},
-    storage::{object_store::ObjectStore, FullObjectKey, MarkerValue, ObjectKey},
+    storage::{FullObjectKey, MarkerValue, ObjectKey, object_store::ObjectStore},
     system_state::epoch_start::EpochStartSystemStateTrait,
     transaction::TrustedTransaction,
 };
@@ -150,14 +150,8 @@ impl AuthorityPerpetualTables {
                 "owned_object_transaction_locks".to_string(),
                 owned_object_transaction_locks_table_config(db_options.clone()),
             ),
-            (
-                "transactions".to_string(),
-                transactions_table_config(db_options.clone()),
-            ),
-            (
-                "effects".to_string(),
-                effects_table_config(db_options.clone()),
-            ),
+            ("transactions".to_string(), transactions_table_config(db_options.clone())),
+            ("effects".to_string(), effects_table_config(db_options.clone())),
         ]));
 
         Self::open_tables_read_write(
@@ -207,14 +201,12 @@ impl AuthorityPerpetualTables {
         store_object: StoreObject,
     ) -> Result<ObjectRef, SomaError> {
         let obj_ref = match store_object {
-            StoreObject::Value(_) => self
-                .construct_object(store_object.clone())?
-                .compute_object_reference(),
-            StoreObject::Deleted => (
-                object_key.0,
-                object_key.1,
-                ObjectDigest::OBJECT_DIGEST_DELETED,
-            ),
+            StoreObject::Value(_) => {
+                self.construct_object(store_object.clone())?.compute_object_reference()
+            }
+            StoreObject::Deleted => {
+                (object_key.0, object_key.1, ObjectDigest::OBJECT_DIGEST_DELETED)
+            }
         };
         Ok(obj_ref)
     }
@@ -242,11 +234,9 @@ impl AuthorityPerpetualTables {
         store_object: &StoreObject,
     ) -> Result<Option<ObjectRef>, SomaError> {
         let obj_ref = match store_object {
-            StoreObject::Deleted => Some((
-                object_key.0,
-                object_key.1,
-                ObjectDigest::OBJECT_DIGEST_DELETED,
-            )),
+            StoreObject::Deleted => {
+                Some((object_key.0, object_key.1, ObjectDigest::OBJECT_DIGEST_DELETED))
+            }
             _ => None,
         };
         Ok(obj_ref)
@@ -329,8 +319,7 @@ impl AuthorityPerpetualTables {
         last_checkpoint_of_epoch: CheckpointSequenceNumber,
         hash: GlobalStateHash,
     ) -> SomaResult {
-        self.root_state_hash_by_epoch
-            .insert(&epoch, &(last_checkpoint_of_epoch, hash))?;
+        self.root_state_hash_by_epoch.insert(&epoch, &(last_checkpoint_of_epoch, hash))?;
         Ok(())
     }
 
@@ -374,11 +363,7 @@ impl AuthorityPerpetualTables {
     }
 
     pub fn iter_live_object_set(&self) -> LiveSetIter<'_> {
-        LiveSetIter {
-            iter: Box::new(self.objects.safe_iter()),
-            tables: self,
-            prev: None,
-        }
+        LiveSetIter { iter: Box::new(self.objects.safe_iter()), tables: self, prev: None }
     }
 
     pub fn range_iter_live_object_set(
@@ -416,13 +401,9 @@ impl AuthorityPerpetualTables {
         object_id: &ObjectID,
         version: Version,
     ) -> SomaResult<Option<Object>> {
-        Ok(self
-            .objects
-            .get(&ObjectKey(*object_id, version))?
-            .and_then(|object| {
-                self.object(&ObjectKey(*object_id, version), object)
-                    .expect("object construction error")
-            }))
+        Ok(self.objects.get(&ObjectKey(*object_id, version))?.and_then(|object| {
+            self.object(&ObjectKey(*object_id, version), object).expect("object construction error")
+        }))
     }
 }
 
@@ -433,8 +414,7 @@ impl ObjectStore for AuthorityPerpetualTables {
     }
 
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
-        self.get_object_by_key_fallible(object_id, version)
-            .expect("db error")
+        self.get_object_by_key_fallible(object_id, version).expect("db error")
     }
 }
 
@@ -502,7 +482,7 @@ pub(crate) fn try_construct_object(store_object: StoreObject) -> Result<Object, 
         _ => {
             return Err(SomaError::Storage(
                 "corrupted field: inconsistent object representation".to_string(),
-            ))
+            ));
         }
     };
 
@@ -541,17 +521,15 @@ fn objects_table_config(
     compaction_filter: Option<ObjectsCompactionFilter>,
 ) -> DBOptions {
     if let Some(mut compaction_filter) = compaction_filter {
-        db_options
-            .options
-            .set_compaction_filter("objects", move |_, key, value| {
-                match compaction_filter.filter(key, value) {
-                    Ok(decision) => decision,
-                    Err(err) => {
-                        error!("Compaction error: {:?}", err);
-                        Decision::Keep
-                    }
+        db_options.options.set_compaction_filter("objects", move |_, key, value| {
+            match compaction_filter.filter(key, value) {
+                Ok(decision) => decision,
+                Err(err) => {
+                    error!("Compaction error: {:?}", err);
+                    Decision::Keep
                 }
-            });
+            }
+        });
     }
     db_options
         .optimize_for_write_throughput()
@@ -559,17 +537,13 @@ fn objects_table_config(
 }
 
 fn transactions_table_config(db_options: DBOptions) -> DBOptions {
-    db_options
-        .optimize_for_write_throughput()
-        .optimize_for_point_lookup(
-            read_size_from_env(ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE).unwrap_or(512),
-        )
+    db_options.optimize_for_write_throughput().optimize_for_point_lookup(
+        read_size_from_env(ENV_VAR_TRANSACTIONS_BLOCK_CACHE_SIZE).unwrap_or(512),
+    )
 }
 
 fn effects_table_config(db_options: DBOptions) -> DBOptions {
-    db_options
-        .optimize_for_write_throughput()
-        .optimize_for_point_lookup(
-            read_size_from_env(ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
-        )
+    db_options.optimize_for_write_throughput().optimize_for_point_lookup(
+        read_size_from_env(ENV_VAR_EFFECTS_BLOCK_CACHE_SIZE).unwrap_or(1024),
+    )
 }

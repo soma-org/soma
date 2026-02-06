@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use axum::{middleware::AddExtension, Extension};
+use axum::{Extension, middleware::AddExtension};
 use axum_server::{
     accept::Accept,
     tls_rustls::{RustlsAcceptor, RustlsConfig},
@@ -42,9 +42,7 @@ pub struct TlsAcceptor {
 
 impl TlsAcceptor {
     pub fn new(config: rustls::ServerConfig) -> Self {
-        Self {
-            inner: RustlsAcceptor::new(RustlsConfig::from_config(Arc::new(config))),
-        }
+        Self { inner: RustlsAcceptor::new(RustlsConfig::from_config(Arc::new(config))) }
     }
 }
 

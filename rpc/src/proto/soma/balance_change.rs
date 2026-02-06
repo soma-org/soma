@@ -4,10 +4,7 @@ use crate::utils::merge::Merge;
 
 impl From<crate::types::BalanceChange> for BalanceChange {
     fn from(value: crate::types::BalanceChange) -> Self {
-        Self {
-            address: Some(value.address.to_string()),
-            amount: Some(value.amount.to_string()),
-        }
+        Self { address: Some(value.address.to_string()), amount: Some(value.amount.to_string()) }
     }
 }
 

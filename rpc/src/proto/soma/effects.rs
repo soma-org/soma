@@ -78,14 +78,8 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
                 .as_ref()
                 .ok_or_else(|| TryFromProtoError::missing("status"))?
                 .try_into()?,
-            epoch: value
-                .epoch
-                .ok_or_else(|| TryFromProtoError::missing("epoch"))?,
-            fee: value
-                .fee
-                .as_ref()
-                .ok_or_else(|| TryFromProtoError::missing("fee"))?
-                .try_into()?,
+            epoch: value.epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?,
+            fee: value.fee.as_ref().ok_or_else(|| TryFromProtoError::missing("fee"))?.try_into()?,
             transaction_digest: value
                 .transaction_digest
                 .as_ref()
@@ -95,10 +89,7 @@ impl TryFrom<&TransactionEffects> for crate::types::TransactionEffects {
             dependencies: value
                 .dependencies
                 .iter()
-                .map(|d| {
-                    d.parse()
-                        .map_err(|e| TryFromProtoError::invalid("dependencies", e))
-                })
+                .map(|d| d.parse().map_err(|e| TryFromProtoError::invalid("dependencies", e)))
                 .collect::<Result<Vec<_>, _>>()?,
             gas_object_index: value.gas_object_index,
             lamport_version: value
@@ -167,11 +158,7 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::CHANGED_OBJECTS_FIELD.name) {
-            self.changed_objects = changed_objects
-                .clone()
-                .into_iter()
-                .map(Into::into)
-                .collect();
+            self.changed_objects = changed_objects.clone().into_iter().map(Into::into).collect();
         }
 
         for object in self.changed_objects.iter_mut() {
@@ -181,11 +168,8 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
-            self.unchanged_shared_objects = unchanged_shared_objects
-                .clone()
-                .into_iter()
-                .map(Into::into)
-                .collect();
+            self.unchanged_shared_objects =
+                unchanged_shared_objects.clone().into_iter().map(Into::into).collect();
         }
     }
 }
@@ -199,19 +183,13 @@ impl From<crate::types::ChangedObject> for ChangedObject {
         use changed_object::InputObjectState;
         use changed_object::OutputObjectState;
 
-        let mut message = Self {
-            object_id: Some(value.object_id.to_string()),
-            ..Default::default()
-        };
+        let mut message =
+            Self { object_id: Some(value.object_id.to_string()), ..Default::default() };
 
         // Input State
         let input_state = match value.input_state {
             crate::types::ObjectIn::NotExist => InputObjectState::DoesNotExist,
-            crate::types::ObjectIn::Exist {
-                version,
-                digest,
-                owner,
-            } => {
+            crate::types::ObjectIn::Exist { version, digest, owner } => {
                 message.input_version = Some(version);
                 message.input_digest = Some(digest.to_string());
                 message.input_owner = Some(owner.into());
@@ -309,12 +287,7 @@ impl TryFrom<&ChangedObject> for crate::types::ChangedObject {
 
         let id_operation = value.id_operation().try_into()?;
 
-        Ok(Self {
-            object_id,
-            input_state,
-            output_state,
-            id_operation,
-        })
+        Ok(Self { object_id, input_state, output_state, id_operation })
     }
 }
 
@@ -343,10 +316,7 @@ impl TryFrom<changed_object::IdOperation> for crate::types::IdOperation {
 
         match value {
             IdOperation::Unknown => {
-                return Err(TryFromProtoError::invalid(
-                    "id_operation",
-                    "unknown IdOperation",
-                ));
+                return Err(TryFromProtoError::invalid("id_operation", "unknown IdOperation"));
             }
             IdOperation::None => Self::None,
             IdOperation::Created => Self::Created,
@@ -365,10 +335,8 @@ impl From<crate::types::UnchangedSharedObject> for UnchangedSharedObject {
         use crate::types::UnchangedSharedKind::*;
         use unchanged_shared_object::UnchangedSharedObjectKind;
 
-        let mut message = Self {
-            object_id: Some(value.object_id.to_string()),
-            ..Default::default()
-        };
+        let mut message =
+            Self { object_id: Some(value.object_id.to_string()), ..Default::default() };
 
         let kind = match value.kind {
             ReadOnlyRoot { version, digest } => {
@@ -420,9 +388,7 @@ impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
             }
 
             UnchangedSharedObjectKind::ReadOnlyRoot => UnchangedSharedKind::ReadOnlyRoot {
-                version: value
-                    .version
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+                version: value.version.ok_or_else(|| TryFromProtoError::missing("version"))?,
 
                 digest: value
                     .digest
@@ -434,19 +400,13 @@ impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
                     })?,
             },
             UnchangedSharedObjectKind::MutatedDeleted => UnchangedSharedKind::MutateDeleted {
-                version: value
-                    .version
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+                version: value.version.ok_or_else(|| TryFromProtoError::missing("version"))?,
             },
             UnchangedSharedObjectKind::ReadDeleted => UnchangedSharedKind::ReadDeleted {
-                version: value
-                    .version
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+                version: value.version.ok_or_else(|| TryFromProtoError::missing("version"))?,
             },
             UnchangedSharedObjectKind::Canceled => UnchangedSharedKind::Canceled {
-                version: value
-                    .version
-                    .ok_or_else(|| TryFromProtoError::missing("version"))?,
+                version: value.version.ok_or_else(|| TryFromProtoError::missing("version"))?,
             },
         };
 
@@ -470,18 +430,12 @@ impl TryFrom<&TransactionFee> for crate::types::TransactionFee {
 
     fn try_from(value: &TransactionFee) -> Result<Self, Self::Error> {
         Ok(Self {
-            base_fee: value
-                .base_fee
-                .ok_or_else(|| TryFromProtoError::missing("base_fee"))?,
+            base_fee: value.base_fee.ok_or_else(|| TryFromProtoError::missing("base_fee"))?,
             operation_fee: value
                 .operation_fee
                 .ok_or_else(|| TryFromProtoError::missing("operation_fee"))?,
-            value_fee: value
-                .value_fee
-                .ok_or_else(|| TryFromProtoError::missing("value_fee"))?,
-            total_fee: value
-                .total_fee
-                .ok_or_else(|| TryFromProtoError::missing("total_fee"))?,
+            value_fee: value.value_fee.ok_or_else(|| TryFromProtoError::missing("value_fee"))?,
+            total_fee: value.total_fee.ok_or_else(|| TryFromProtoError::missing("total_fee"))?,
         })
     }
 }

@@ -7,8 +7,8 @@ use crate::{
     safe_client::SafeClient,
     status_aggregator::StatusAggregator,
     transaction_driver::error::{
-        aggregate_request_errors, AggregatedEffectsDigests, TransactionDriverError,
-        TransactionRequestError,
+        AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+        aggregate_request_errors,
     },
     validator_client_monitor::ValidatorClientMonitor,
 };
@@ -61,19 +61,12 @@ impl<A: Clone> RequestRetrier<A> {
             .filter_map(|(name, _display_name)| {
                 // There is not guarantee that the `name` are in the `auth_agg.authority_clients` if those are coming from the list
                 // of `allowed_validators`, as the provided `auth_agg` might have been updated with a new committee that doesn't contain the validator in question.
-                auth_agg
-                    .authority_clients
-                    .get(&name)
-                    .map(|client| (name, client.clone()))
+                auth_agg.authority_clients.get(&name).map(|client| (name, client.clone()))
             })
             .collect::<VecDeque<_>>();
         let non_retriable_errors_aggregator = StatusAggregator::new(auth_agg.committee.clone());
         let retriable_errors_aggregator = StatusAggregator::new(auth_agg.committee.clone());
-        Self {
-            ranked_clients,
-            non_retriable_errors_aggregator,
-            retriable_errors_aggregator,
-        }
+        Self { ranked_clients, non_retriable_errors_aggregator, retriable_errors_aggregator }
     }
 
     // Selects the next target validator to attempt an operation.
@@ -84,10 +77,7 @@ impl<A: Clone> RequestRetrier<A> {
             return Ok((name, client));
         };
 
-        if self
-            .non_retriable_errors_aggregator
-            .reached_validity_threshold()
-        {
+        if self.non_retriable_errors_aggregator.reached_validity_threshold() {
             Err(TransactionDriverError::RejectedByValidators {
                 submission_non_retriable_errors: aggregate_request_errors(
                     self.non_retriable_errors_aggregator.status_by_authority(),
@@ -104,9 +94,7 @@ impl<A: Clone> RequestRetrier<A> {
                 submission_retriable_errors: aggregate_request_errors(
                     self.retriable_errors_aggregator.status_by_authority(),
                 ),
-                observed_effects_digests: AggregatedEffectsDigests {
-                    digests: Vec::new(),
-                },
+                observed_effects_digests: AggregatedEffectsDigests { digests: Vec::new() },
             })
         }
     }
@@ -125,10 +113,7 @@ impl<A: Clone> RequestRetrier<A> {
             self.retriable_errors_aggregator.insert(name, error);
         } else {
             self.non_retriable_errors_aggregator.insert(name, error);
-            if self
-                .non_retriable_errors_aggregator
-                .reached_validity_threshold()
-            {
+            if self.non_retriable_errors_aggregator.reached_validity_threshold() {
                 return Err(TransactionDriverError::RejectedByValidators {
                     submission_non_retriable_errors: aggregate_request_errors(
                         self.non_retriable_errors_aggregator.status_by_authority(),

@@ -38,9 +38,7 @@ impl ReadStore for SharedInMemoryStore {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> Option<VerifiedCheckpoint> {
-        self.inner()
-            .get_checkpoint_by_sequence_number(sequence_number)
-            .cloned()
+        self.inner().get_checkpoint_by_sequence_number(sequence_number).cloned()
     }
 
     fn get_highest_verified_checkpoint(&self) -> Result<VerifiedCheckpoint> {
@@ -68,21 +66,15 @@ impl ReadStore for SharedInMemoryStore {
         sequence_number: Option<CheckpointSequenceNumber>,
         digest: &CheckpointContentsDigest,
     ) -> Option<FullCheckpointContents> {
-        self.inner()
-            .get_full_checkpoint_contents(sequence_number, digest)
+        self.inner().get_full_checkpoint_contents(sequence_number, digest)
     }
 
     fn get_committee(&self, epoch: EpochId) -> Option<Arc<Committee>> {
-        self.inner()
-            .get_committee_by_epoch(epoch)
-            .cloned()
-            .map(Arc::new)
+        self.inner().get_committee_by_epoch(epoch).cloned().map(Arc::new)
     }
 
     fn get_transaction(&self, digest: &TransactionDigest) -> Option<Arc<VerifiedTransaction>> {
-        self.inner()
-            .get_transaction_block(digest)
-            .map(|tx| Arc::new(tx.clone()))
+        self.inner().get_transaction_block(digest).map(|tx| Arc::new(tx.clone()))
     }
 
     fn get_transaction_effects(&self, digest: &TransactionDigest) -> Option<TransactionEffects> {
@@ -129,14 +121,12 @@ impl WriteStore for SharedInMemoryStore {
     }
 
     fn update_highest_synced_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<()> {
-        self.inner_mut()
-            .update_highest_synced_checkpoint(checkpoint);
+        self.inner_mut().update_highest_synced_checkpoint(checkpoint);
         Ok(())
     }
 
     fn update_highest_verified_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<()> {
-        self.inner_mut()
-            .update_highest_verified_checkpoint(checkpoint);
+        self.inner_mut().update_highest_verified_checkpoint(checkpoint);
         Ok(())
     }
 
@@ -145,8 +135,7 @@ impl WriteStore for SharedInMemoryStore {
         checkpoint: &VerifiedCheckpoint,
         contents: VerifiedCheckpointContents,
     ) -> Result<()> {
-        self.inner_mut()
-            .insert_checkpoint_contents(checkpoint, contents);
+        self.inner_mut().insert_checkpoint_contents(checkpoint, contents);
         Ok(())
     }
 
@@ -284,19 +273,15 @@ impl InMemoryStore {
         contents: VerifiedCheckpointContents,
     ) {
         for tx in contents.iter() {
-            self.transactions
-                .insert(*tx.transaction.digest(), tx.transaction.to_owned());
-            self.effects
-                .insert(*tx.transaction.digest(), tx.effects.to_owned());
+            self.transactions.insert(*tx.transaction.digest(), tx.transaction.to_owned());
+            self.effects.insert(*tx.transaction.digest(), tx.effects.to_owned());
         }
         self.contents_digest_to_sequence_number
             .insert(checkpoint.content_digest, *checkpoint.sequence_number());
         let contents = contents.into_inner();
-        self.full_checkpoint_contents
-            .insert(*checkpoint.sequence_number(), contents.clone());
+        self.full_checkpoint_contents.insert(*checkpoint.sequence_number(), contents.clone());
         let contents = contents.into_checkpoint_contents();
-        self.checkpoint_contents
-            .insert(*contents.digest(), contents);
+        self.checkpoint_contents.insert(*contents.digest(), contents);
     }
 
     pub fn insert_checkpoint(&mut self, checkpoint: &VerifiedCheckpoint) {
@@ -322,19 +307,14 @@ impl InMemoryStore {
         }
 
         self.checkpoints.insert(digest, checkpoint.clone());
-        self.sequence_number_to_digest
-            .insert(sequence_number, digest);
+        self.sequence_number_to_digest.insert(sequence_number, digest);
     }
 
     pub fn delete_checkpoint_content_test_only(
         &mut self,
         sequence_number: u64,
     ) -> anyhow::Result<()> {
-        let contents = self
-            .full_checkpoint_contents
-            .get(&sequence_number)
-            .unwrap()
-            .clone();
+        let contents = self.full_checkpoint_contents.get(&sequence_number).unwrap().clone();
         let contents_digest = *contents.checkpoint_contents().digest();
         for content in contents.iter() {
             let tx_digest = content.transaction.digest();
@@ -343,8 +323,7 @@ impl InMemoryStore {
         }
         self.checkpoint_contents.remove(&contents_digest);
         self.full_checkpoint_contents.remove(&sequence_number);
-        self.contents_digest_to_sequence_number
-            .remove(&contents_digest);
+        self.contents_digest_to_sequence_number.remove(&contents_digest);
         self.lowest_checkpoint_number = sequence_number + 1;
         Ok(())
     }
@@ -430,7 +409,7 @@ impl SingleCheckpointSharedInMemoryStore {
         contents: VerifiedCheckpointContents,
         committee: Committee,
     ) {
-        let mut locked = self.0 .0.write().unwrap();
+        let mut locked = self.0.0.write().unwrap();
         locked.insert_genesis_state(checkpoint, contents, committee);
     }
 }
@@ -515,7 +494,7 @@ impl ReadStore for SingleCheckpointSharedInMemoryStore {
 impl WriteStore for SingleCheckpointSharedInMemoryStore {
     fn insert_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<()> {
         {
-            let mut locked = self.0 .0.write().unwrap();
+            let mut locked = self.0.0.write().unwrap();
             locked.checkpoints.clear();
             locked.sequence_number_to_digest.clear();
         }
@@ -539,7 +518,7 @@ impl WriteStore for SingleCheckpointSharedInMemoryStore {
         contents: VerifiedCheckpointContents,
     ) -> Result<()> {
         {
-            let mut locked = self.0 .0.write().unwrap();
+            let mut locked = self.0.0.write().unwrap();
             locked.transactions.clear();
             locked.effects.clear();
             locked.contents_digest_to_sequence_number.clear();

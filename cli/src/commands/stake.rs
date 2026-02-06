@@ -41,17 +41,9 @@ pub async fn execute_stake(
 
     // Build transaction kind
     let kind = if let Some(validator_address) = validator {
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref,
-            amount,
-        }
+        TransactionKind::AddStake { address: validator_address, coin_ref, amount }
     } else if let Some(model_id) = model {
-        TransactionKind::AddStakeToModel {
-            model_id,
-            coin_ref,
-            amount,
-        }
+        TransactionKind::AddStakeToModel { model_id, coin_ref, amount }
     } else {
         unreachable!()
     };
@@ -76,9 +68,7 @@ pub async fn execute_unstake(
         .map_err(|e| anyhow!("Failed to get staked SOMA object: {}", e))?;
     let staked_ref = staked_obj.compute_object_reference();
 
-    let kind = TransactionKind::WithdrawStake {
-        staked_soma: staked_ref,
-    };
+    let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };
 
     crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await
 }

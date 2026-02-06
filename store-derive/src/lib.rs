@@ -193,10 +193,8 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
         deprecated_cfs,
     } = extract_struct_info(input.clone());
 
-    let (key_names, value_names): (Vec<_>, Vec<_>) = inner_types
-        .iter()
-        .map(|q| (q.args.first().unwrap(), q.args.last().unwrap()))
-        .unzip();
+    let (key_names, value_names): (Vec<_>, Vec<_>) =
+        inner_types.iter().map(|q| (q.args.first().unwrap(), q.args.last().unwrap())).unzip();
 
     let default_options_override_fn_names: Vec<proc_macro2::TokenStream> = derived_table_options
         .iter()

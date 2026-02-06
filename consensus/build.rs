@@ -80,7 +80,5 @@ fn build_tonic_services(out_dir: &Path) {
         )
         .build();
 
-    tonic_build::manual::Builder::new()
-        .out_dir(out_dir)
-        .compile(&[service]);
+    tonic_build::manual::Builder::new().out_dir(out_dir).compile(&[service]);
 }

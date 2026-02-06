@@ -309,10 +309,7 @@ impl TransactionKind {
     }
 
     pub fn is_staking_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. }
-        )
+        matches!(self, TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. })
     }
 
     pub fn is_model_tx(&self) -> bool {
@@ -335,10 +332,7 @@ impl TransactionKind {
     }
 
     pub fn is_submission_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_)
-        )
+        matches!(self, TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_))
     }
 
     pub fn requires_system_state(&self) -> bool {
@@ -643,10 +637,7 @@ impl Transaction {
     ) -> Self {
         let signatures = {
             let intent_msg = IntentMessage::new(Intent::soma_transaction(), &data);
-            signers
-                .into_iter()
-                .map(|s| Signature::new_secure(&intent_msg, s))
-                .collect()
+            signers.into_iter().map(|s| Signature::new_secure(&intent_msg, s)).collect()
         };
         Self::from_data(data, signatures)
     }
@@ -712,22 +703,14 @@ pub struct TransactionData {
 
 impl TransactionData {
     pub fn new(kind: TransactionKind, sender: SomaAddress, gas_payment: Vec<ObjectRef>) -> Self {
-        TransactionData {
-            kind,
-            sender,
-            gas_payment,
-        }
+        TransactionData { kind, sender, gas_payment }
     }
 
     fn new_system_transaction(kind: TransactionKind) -> Self {
         // assert transaction kind if a system transaction
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
-        TransactionData {
-            kind,
-            sender,
-            gas_payment: vec![],
-        }
+        TransactionData { kind, sender, gas_payment: vec![] }
     }
 
     pub fn new_pay_coins(
@@ -741,11 +724,7 @@ impl TransactionData {
             panic!("PayCoins transaction must have at least one coin");
         }
         Self::new(
-            TransactionKind::PayCoins {
-                coins: coins.clone(),
-                amounts,
-                recipients,
-            },
+            TransactionKind::PayCoins { coins: coins.clone(), amounts, recipients },
             sender,
             vec![coins[0]],
         )
@@ -758,11 +737,7 @@ impl TransactionData {
         object_ref: ObjectRef,
     ) -> Self {
         Self::new(
-            TransactionKind::TransferCoin {
-                coin: object_ref,
-                amount,
-                recipient,
-            },
+            TransactionKind::TransferCoin { coin: object_ref, amount, recipient },
             sender,
             vec![object_ref],
         )
@@ -775,10 +750,7 @@ impl TransactionData {
         gas_payment: Vec<ObjectRef>,
     ) -> Self {
         Self::new(
-            TransactionKind::TransferObjects {
-                objects: vec![object_ref],
-                recipient: recipient,
-            },
+            TransactionKind::TransferObjects { objects: vec![object_ref], recipient },
             sender,
             gas_payment,
         )
@@ -950,12 +922,8 @@ impl SenderSignedData {
     }
 
     pub fn serialized_size(&self) -> SomaResult<usize> {
-        bcs::serialized_size(self).map_err(|e| {
-            SomaError::TransactionSerializationError {
-                error: e.to_string(),
-            }
-            .into()
-        })
+        bcs::serialized_size(self)
+            .map_err(|e| SomaError::TransactionSerializationError { error: e.to_string() }.into())
     }
 }
 
@@ -978,23 +946,11 @@ impl<S> Envelope<SenderSignedData, S> {
     }
 
     pub fn contains_shared_object(&self) -> bool {
-        self.data()
-            .inner()
-            .intent_message
-            .value
-            .shared_input_objects()
-            .iter()
-            .next()
-            .is_some()
+        self.data().inner().intent_message.value.shared_input_objects().iter().next().is_some()
     }
 
     pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {
-        self.data()
-            .inner()
-            .intent_message
-            .value
-            .shared_input_objects()
-            .into_iter()
+        self.data().inner().intent_message.value.shared_input_objects().into_iter()
     }
 
     pub fn is_consensus_tx(&self) -> bool {
@@ -1042,10 +998,8 @@ impl Serialize for SenderSignedTransaction {
         //     return Err(serde::ser::Error::custom("invalid Intent for Transaction"));
         // }
 
-        let txn = SignedTxn {
-            intent_message: self.intent_message(),
-            tx_signatures: &self.tx_signatures,
-        };
+        let txn =
+            SignedTxn { intent_message: self.intent_message(), tx_signatures: &self.tx_signatures };
         txn.serialize(serializer)
     }
 }
@@ -1062,19 +1016,13 @@ impl<'de> Deserialize<'de> for SenderSignedTransaction {
             tx_signatures: Vec<GenericSignature>,
         }
 
-        let SignedTxn {
-            intent_message,
-            tx_signatures,
-        } = Deserialize::deserialize(deserializer)?;
+        let SignedTxn { intent_message, tx_signatures } = Deserialize::deserialize(deserializer)?;
 
         // TODO: if intent_message.intent != Intent::transaction() {
         //     return Err(serde::de::Error::custom("invalid Intent for Transaction"));
         // }
 
-        Ok(Self {
-            intent_message,
-            tx_signatures,
-        })
+        Ok(Self { intent_message, tx_signatures })
     }
 }
 
@@ -1118,13 +1066,11 @@ impl CertifiedTransaction {
 
     pub fn verify_signatures_authenticated(&self, committee: &Committee) -> SomaResult {
         verify_sender_signed_data_message_signatures(self.data())?;
-        self.auth_sig()
-            .verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_sig().verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
 
     pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
-        self.auth_sig()
-            .verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_sig().verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
 
     pub fn try_into_verified_for_testing(
@@ -1357,14 +1303,12 @@ impl InputObjectKind {
 
     pub fn object_not_found_error(&self) -> SomaError {
         match *self {
-            Self::ImmOrOwnedObject((object_id, version, _)) => SomaError::ObjectNotFound {
-                object_id,
-                version: Some(version),
-            },
-            Self::SharedObject { id, .. } => SomaError::ObjectNotFound {
-                object_id: id,
-                version: None,
-            },
+            Self::ImmOrOwnedObject((object_id, version, _)) => {
+                SomaError::ObjectNotFound { object_id, version: Some(version) }
+            }
+            Self::SharedObject { id, .. } => {
+                SomaError::ObjectNotFound { object_id: id, version: None }
+            }
         }
     }
 
@@ -1382,11 +1326,9 @@ impl InputObjectKind {
     pub fn full_object_id(&self) -> FullObjectID {
         match self {
             Self::ImmOrOwnedObject((id, _, _)) => FullObjectID::Fastpath(*id),
-            Self::SharedObject {
-                id,
-                initial_shared_version,
-                ..
-            } => FullObjectID::Consensus((*id, *initial_shared_version)),
+            Self::SharedObject { id, initial_shared_version, .. } => {
+                FullObjectID::Consensus((*id, *initial_shared_version))
+            }
         }
     }
 }
@@ -1480,10 +1422,7 @@ impl ObjectReadResult {
             panic!("only shared objects can be CancelledTransactionSharedObject");
         }
 
-        Self {
-            input_object_kind,
-            object,
-        }
+        Self { input_object_kind, object }
     }
 
     pub fn id(&self) -> ObjectID {
@@ -1655,9 +1594,7 @@ impl InputObjects {
     }
 
     pub fn contains_deleted_objects(&self) -> bool {
-        self.objects
-            .iter()
-            .any(|obj| obj.is_deleted_shared_object())
+        self.objects.iter().any(|obj| obj.is_deleted_shared_object())
     }
 
     // Returns IDs of objects responsible for a trasnaction being cancelled, and the corresponding
@@ -1691,11 +1628,8 @@ impl InputObjects {
     }
 
     pub fn filter_owned_objects(&self) -> Vec<ObjectRef> {
-        let owned_objects: Vec<_> = self
-            .objects
-            .iter()
-            .filter_map(|obj| obj.get_owned_objref())
-            .collect();
+        let owned_objects: Vec<_> =
+            self.objects.iter().filter_map(|obj| obj.get_owned_objref()).collect();
 
         trace!(
             num_mutable_objects = owned_objects.len(),
@@ -1709,28 +1643,19 @@ impl InputObjects {
         self.objects
             .iter()
             .filter(|obj| obj.is_shared_object())
-            .map(|obj| {
-                obj.to_shared_input()
-                    .expect("already filtered for shared objects")
-            })
+            .map(|obj| obj.to_shared_input().expect("already filtered for shared objects"))
             .collect()
     }
 
     pub fn transaction_dependencies(&self) -> BTreeSet<TransactionDigest> {
-        self.objects
-            .iter()
-            .filter_map(|obj| obj.get_previous_transaction())
-            .collect()
+        self.objects.iter().filter_map(|obj| obj.get_previous_transaction()).collect()
     }
 
     pub fn mutable_inputs(&self) -> BTreeMap<ObjectID, (VersionDigest, Owner)> {
         self.objects
             .iter()
-            .filter_map(
-                |ObjectReadResult {
-                     input_object_kind,
-                     object,
-                 }| match (input_object_kind, object) {
+            .filter_map(|ObjectReadResult { input_object_kind, object }| {
+                match (input_object_kind, object) {
                     (
                         InputObjectKind::ImmOrOwnedObject(object_ref),
                         ObjectReadResultKind::Object(object),
@@ -1775,8 +1700,8 @@ impl InputObjects {
                         InputObjectKind::SharedObject { .. },
                         ObjectReadResultKind::CancelledTransactionSharedObject(_),
                     ) => None,
-                },
-            )
+                }
+            })
             .collect()
     }
 
@@ -1798,25 +1723,17 @@ impl InputObjects {
     }
 
     pub fn object_kinds(&self) -> impl Iterator<Item = &InputObjectKind> {
-        self.objects.iter().map(
-            |ObjectReadResult {
-                 input_object_kind, ..
-             }| input_object_kind,
-        )
+        self.objects.iter().map(|ObjectReadResult { input_object_kind, .. }| input_object_kind)
     }
 
     pub fn deleted_consensus_objects(&self) -> BTreeMap<ObjectID, Version> {
         self.objects
             .iter()
             .filter_map(|obj| {
-                if let InputObjectKind::SharedObject {
-                    id,
-                    initial_shared_version,
-                    ..
-                } = obj.input_object_kind
+                if let InputObjectKind::SharedObject { id, initial_shared_version, .. } =
+                    obj.input_object_kind
                 {
-                    obj.is_deleted_shared_object()
-                        .then_some((id, initial_shared_version))
+                    obj.is_deleted_shared_object().then_some((id, initial_shared_version))
                 } else {
                     None
                 }
@@ -1874,10 +1791,7 @@ impl ReceivingObjectReadResult {
     }
 
     pub fn is_previously_received(&self) -> bool {
-        matches!(
-            self.object,
-            ReceivingObjectReadResultKind::PreviouslyReceivedObject
-        )
+        matches!(self.object, ReceivingObjectReadResultKind::PreviouslyReceivedObject)
     }
 }
 

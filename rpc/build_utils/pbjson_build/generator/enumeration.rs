@@ -43,13 +43,7 @@ pub fn generate_enum<W: Write>(
     if use_integers_for_enums {
         writeln!(writer, "{}let variant = match self {{", Indent(2))?;
         for (_, variant_number, rust_variant) in &variants {
-            writeln!(
-                writer,
-                "{}Self::{} => {},",
-                Indent(3),
-                rust_variant,
-                variant_number
-            )?;
+            writeln!(writer, "{}Self::{} => {},", Indent(3), rust_variant, variant_number)?;
         }
         writeln!(writer, "{}}};", Indent(2))?;
 
@@ -57,13 +51,7 @@ pub fn generate_enum<W: Write>(
     } else {
         writeln!(writer, "{}let variant = match self {{", Indent(2))?;
         for (variant_name, _, rust_variant) in &variants {
-            writeln!(
-                writer,
-                "{}Self::{} => \"{}\",",
-                Indent(3),
-                rust_variant,
-                variant_name
-            )?;
+            writeln!(writer, "{}Self::{} => \"{}\",", Indent(3), rust_variant, variant_name)?;
         }
         writeln!(writer, "{}}};", Indent(2))?;
 
@@ -77,11 +65,7 @@ pub fn generate_enum<W: Write>(
     write_visitor(writer, 2, &rust_type, &variants)?;
 
     // Use deserialize_any to allow users to provide integers or strings
-    writeln!(
-        writer,
-        "{}deserializer.deserialize_any(GeneratedVisitor)",
-        Indent(2)
-    )?;
+    writeln!(writer, "{}deserializer.deserialize_any(GeneratedVisitor)", Indent(2))?;
 
     write_deserialize_end(0, writer)?;
     Ok(())

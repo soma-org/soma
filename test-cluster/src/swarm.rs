@@ -112,15 +112,11 @@ impl Swarm {
     /// This means that they have a consensus config. This however doesn't mean this validator is
     /// currently active (i.e. it's not necessarily in the validator set at the moment).
     pub fn validator_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.nodes
-            .values()
-            .filter(|node| node.config().consensus_config.is_some())
+        self.nodes.values().filter(|node| node.config().consensus_config.is_some())
     }
 
     pub fn validator_node_handles(&self) -> Vec<SomaNodeHandle> {
-        self.validator_nodes()
-            .map(|node| node.get_node_handle().unwrap())
-            .collect()
+        self.validator_nodes().map(|node| node.get_node_handle().unwrap()).collect()
     }
 
     /// Returns an iterator over all currently active validators.
@@ -135,9 +131,7 @@ impl Swarm {
 
     /// Return an iterator over shared references of all Fullnodes.
     pub fn fullnodes(&self) -> impl Iterator<Item = &Node> {
-        self.nodes
-            .values()
-            .filter(|node| node.config().consensus_config.is_none())
+        self.nodes.values().filter(|node| node.config().consensus_config.is_none())
     }
 
     pub async fn spawn_new_node(&mut self, config: NodeConfig) -> SomaNodeHandle {
@@ -265,9 +259,7 @@ impl<R> SwarmBuilder<R> {
     }
 
     pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
-        self.get_or_init_genesis_config()
-            .parameters
-            .protocol_version = v;
+        self.get_or_init_genesis_config().parameters.protocol_version = v;
         self
     }
 
@@ -298,9 +290,7 @@ impl<R> SwarmBuilder<R> {
     }
 
     pub fn with_epoch_duration_ms(mut self, epoch_duration_ms: u64) -> Self {
-        self.get_or_init_genesis_config()
-            .parameters
-            .epoch_duration_ms = epoch_duration_ms;
+        self.get_or_init_genesis_config().parameters.epoch_duration_ms = epoch_duration_ms;
         self
     }
 
@@ -341,10 +331,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             .validator_configs()
             .iter()
             .map(|config| {
-                info!(
-                    "SwarmBuilder configuring validator {}",
-                    config.protocol_public_key()
-                );
+                info!("SwarmBuilder configuring validator {}", config.protocol_public_key());
                 (config.protocol_public_key(), Node::new(config.to_owned()))
             })
             .collect();
@@ -359,12 +346,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     let p2p_address = config.p2p_config.external_address.clone()?;
                     Some(SeedPeer {
                         peer_id: Some(PeerId(
-                            config
-                                .network_key_pair()
-                                .public()
-                                .into_inner()
-                                .0
-                                .to_bytes(),
+                            config.network_key_pair().public().into_inner().0.to_bytes(),
                         )),
                         address: p2p_address,
                     })
@@ -374,8 +356,8 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             let genesis = network_config.genesis.clone();
 
             for i in 0..self.fullnode_count {
-                let mut builder = FullnodeConfigBuilder::new()
-                    .with_config_directory(dir.as_ref().to_path_buf());
+                let mut builder =
+                    FullnodeConfigBuilder::new().with_config_directory(dir.as_ref().to_path_buf());
 
                 if let Some(rpc_addr) = self.fullnode_rpc_addr {
                     builder = builder.with_rpc_addr(rpc_addr);
@@ -395,17 +377,10 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     fullnode_config.protocol_public_key()
                 );
 
-                nodes.insert(
-                    fullnode_config.protocol_public_key(),
-                    Node::new(fullnode_config),
-                );
+                nodes.insert(fullnode_config.protocol_public_key(), Node::new(fullnode_config));
             }
         }
 
-        Swarm {
-            network_config,
-            nodes,
-            dir,
-        }
+        Swarm { network_config, nodes, dir }
     }
 }

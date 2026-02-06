@@ -36,10 +36,7 @@ impl ActivePeers {
     pub fn new(broadcast_capacity: usize) -> Self {
         let (event_sender, _) = broadcast::channel(broadcast_capacity);
         Self {
-            inner: Arc::new(RwLock::new(ActivePeersInner {
-                peers: HashMap::new(),
-                event_sender,
-            })),
+            inner: Arc::new(RwLock::new(ActivePeersInner { peers: HashMap::new(), event_sender })),
         }
     }
 
@@ -52,11 +49,7 @@ impl ActivePeers {
     }
 
     pub fn get(&self, peer_id: &PeerId) -> Option<Channel> {
-        self.inner
-            .read()
-            .peers
-            .get(peer_id)
-            .map(|state| state.channel.clone())
+        self.inner.read().peers.get(peer_id).map(|state| state.channel.clone())
     }
 
     pub fn insert(
@@ -82,9 +75,7 @@ impl ActivePeers {
 
         // Send event if this is a new peer
         if result.is_none() {
-            let _ = inner
-                .event_sender
-                .send(PeerEvent::NewPeer { peer_id, address });
+            let _ = inner.event_sender.send(PeerEvent::NewPeer { peer_id, address });
         }
 
         result
@@ -95,10 +86,9 @@ impl ActivePeers {
         let result = inner.peers.remove(peer_id).map(|state| state.channel);
 
         if result.is_some() {
-            let _ = inner.event_sender.send(PeerEvent::LostPeer {
-                peer_id: *peer_id,
-                reason: reason.clone(),
-            });
+            let _ = inner
+                .event_sender
+                .send(PeerEvent::LostPeer { peer_id: *peer_id, reason: reason.clone() });
         }
 
         result

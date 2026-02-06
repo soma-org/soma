@@ -51,11 +51,7 @@ pub enum QuorumDriverError {
     #[error(
         "Transaction timed out before reaching finality. Last recorded retriable error: {last_error}"
     )]
-    TimeoutBeforeFinalityWithErrors {
-        last_error: String,
-        attempts: u32,
-        timeout: Duration,
-    },
+    TimeoutBeforeFinalityWithErrors { last_error: String, attempts: u32, timeout: Duration },
     #[error(
         "Transaction failed to reach finality with transient error after {total_attempts} attempts."
     )]
@@ -68,10 +64,7 @@ pub enum QuorumDriverError {
 
     // Wrapped error from Transaction Driver.
     #[error("Transaction processing failed. Details: {details}")]
-    TransactionFailed {
-        category: ErrorCategory,
-        details: String,
-    },
+    TransactionFailed { category: ErrorCategory, details: String },
 
     #[error(
         "Transaction is already being processed in transaction orchestrator (most likely by quorum driver), wait for results"
@@ -165,10 +158,7 @@ pub struct FinalizedEffects {
 impl FinalizedEffects {
     pub fn new_from_effects_cert(effects_cert: CertifiedTransactionEffects) -> Self {
         let (data, sig) = effects_cert.into_data_and_sig();
-        Self {
-            effects: data,
-            finality_info: EffectsFinalityInfo::Certified(sig),
-        }
+        Self { effects: data, finality_info: EffectsFinalityInfo::Certified(sig) }
     }
 
     pub fn epoch(&self) -> EpochId {

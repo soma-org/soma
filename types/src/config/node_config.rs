@@ -154,20 +154,18 @@ impl NodeConfig {
     pub fn worker_key_pair(&self) -> NetworkKeyPair {
         match self.worker_key_pair.keypair() {
             SomaKeyPair::Ed25519(kp) => NetworkKeyPair::new(kp.copy()),
-            other => panic!(
-                "Invalid keypair type: {:?}, only Ed25519 is allowed for worker key",
-                other
-            ),
+            other => {
+                panic!("Invalid keypair type: {:?}, only Ed25519 is allowed for worker key", other)
+            }
         }
     }
 
     pub fn network_key_pair(&self) -> NetworkKeyPair {
         match self.network_key_pair.keypair() {
             SomaKeyPair::Ed25519(kp) => NetworkKeyPair::new(kp.copy()),
-            other => panic!(
-                "Invalid keypair type: {:?}, only Ed25519 is allowed for network key",
-                other
-            ),
+            other => {
+                panic!("Invalid keypair type: {:?}, only Ed25519 is allowed for network key", other)
+            }
         }
     }
 
@@ -356,10 +354,7 @@ impl KeyPairWithPath {
         let arc_kp = Arc::new(kp);
         // OK to unwrap panic because authority should not start without all keypairs loaded.
         cell.set(arc_kp.clone()).expect("Failed to set keypair");
-        Self {
-            location: KeyPairLocation::InPlace { value: arc_kp },
-            keypair: cell,
-        }
+        Self { location: KeyPairLocation::InPlace { value: arc_kp }, keypair: cell }
     }
 
     //     pub fn new_from_path(path: PathBuf) -> Self {
@@ -414,8 +409,7 @@ impl AuthorityKeyPairWithPath {
         let cell: OnceLock<Arc<AuthorityKeyPair>> = OnceLock::new();
         let arc_kp = Arc::new(kp);
         // OK to unwrap panic because authority should not start without all keypairs loaded.
-        cell.set(arc_kp.clone())
-            .expect("Failed to set authority keypair");
+        cell.set(arc_kp.clone()).expect("Failed to set authority keypair");
         Self { keypair: cell }
     }
 
@@ -471,8 +465,7 @@ impl ConsensusConfig {
     }
 
     pub fn submit_delay_step_override(&self) -> Option<Duration> {
-        self.submit_delay_step_override_millis
-            .map(Duration::from_millis)
+        self.submit_delay_step_override_millis.map(Duration::from_millis)
     }
 
     pub fn db_retention_epochs(&self) -> u64 {
@@ -480,10 +473,7 @@ impl ConsensusConfig {
             // if n less than 2, coerce to 2 and log
             .map(|n| {
                 if n < 2 {
-                    info!(
-                        "db_retention_epochs must be at least 2, rounding up from {}",
-                        n
-                    );
+                    info!("db_retention_epochs must be at least 2, rounding up from {}", n);
                     2
                 } else {
                     n
@@ -494,9 +484,7 @@ impl ConsensusConfig {
 
     pub fn db_pruner_period(&self) -> Duration {
         // Default to 1 hour
-        self.db_pruner_period_secs
-            .map(Duration::from_secs)
-            .unwrap_or(Duration::from_secs(3_600))
+        self.db_pruner_period_secs.map(Duration::from_secs).unwrap_or(Duration::from_secs(3_600))
     }
 }
 
@@ -586,9 +574,7 @@ pub struct ValidatorConfigBuilder {
 
 impl ValidatorConfigBuilder {
     pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
+        Self { ..Default::default() }
     }
 
     pub fn with_config_directory(mut self, config_directory: PathBuf) -> Self {
@@ -613,13 +599,10 @@ impl ValidatorConfigBuilder {
         seed_peers: Vec<SeedPeer>,
     ) -> NodeConfig {
         let key_path = get_key_path(&validator.key_pair);
-        let config_directory = self
-            .config_directory
-            .unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
+        let config_directory =
+            self.config_directory.unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
 
-        let db_path = config_directory
-            .join(AUTHORITIES_DB_NAME)
-            .join(key_path.clone());
+        let db_path = config_directory.join(AUTHORITIES_DB_NAME).join(key_path.clone());
 
         let network_address = validator.network_address;
         let consensus_address = validator.consensus_address;
@@ -675,9 +658,7 @@ impl ValidatorConfigBuilder {
             network_address,
             genesis: Genesis::new(genesis),
             rpc_address: validator.rpc_address.to_socket_addr().unwrap(),
-            rpc: Some(RpcConfig {
-                ..Default::default()
-            }),
+            rpc: Some(RpcConfig { ..Default::default() }),
             checkpoint_executor_config,
             state_archive_read_config: None,
             consensus_config,
@@ -732,19 +713,13 @@ impl FullnodeConfigBuilder {
     }
 
     pub fn with_rpc_port(mut self, rpc_port: u16) -> Self {
-        assert!(
-            self.rpc_addr.is_none(),
-            "Cannot set both rpc_port and rpc_addr"
-        );
+        assert!(self.rpc_addr.is_none(), "Cannot set both rpc_port and rpc_addr");
         self.rpc_port = Some(rpc_port);
         self
     }
 
     pub fn with_rpc_addr(mut self, rpc_addr: SocketAddr) -> Self {
-        assert!(
-            self.rpc_port.is_none(),
-            "Cannot set both rpc_port and rpc_addr"
-        );
+        assert!(self.rpc_port.is_none(), "Cannot set both rpc_port and rpc_addr");
         self.rpc_addr = Some(rpc_addr);
         self
     }
@@ -775,13 +750,11 @@ impl FullnodeConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(&mut rng).1);
         let worker_key_pair: NetworkKeyPair =
             NetworkKeyPair::new(get_key_pair_from_rng(&mut rng).1);
-        let account_key_pair: SomaKeyPair =
-            SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1);
+        let account_key_pair: SomaKeyPair = SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1);
 
         let key_path = get_key_path(&protocol_key_pair);
-        let config_directory = self
-            .config_directory
-            .unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
+        let config_directory =
+            self.config_directory.unwrap_or_else(|| tempfile::tempdir().unwrap().into_path());
 
         let db_path = config_directory.join(FULL_NODE_DB_PATH).join(&key_path);
         let consensus_db_path = config_directory.join(CONSENSUS_DB_NAME).join(&key_path);
@@ -939,47 +912,43 @@ impl Default for ExecutionCacheConfig {
 
 impl ExecutionCacheConfig {
     pub fn max_cache_size(&self) -> u64 {
-        std::env::var("SOMA_MAX_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
+        std::env::var("SOMA_MAX_CACHE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or_else(
+            || match self {
                 ExecutionCacheConfig::WritebackCache { max_cache_size, .. } => {
                     max_cache_size.unwrap_or(100000)
                 }
-            })
+            },
+        )
     }
 
     pub fn package_cache_size(&self) -> u64 {
-        std::env::var("SOMA_PACKAGE_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    package_cache_size, ..
-                } => package_cache_size.unwrap_or(1000),
-            })
+        std::env::var("SOMA_PACKAGE_CACHE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or_else(
+            || match self {
+                ExecutionCacheConfig::WritebackCache { package_cache_size, .. } => {
+                    package_cache_size.unwrap_or(1000)
+                }
+            },
+        )
     }
 
     pub fn object_cache_size(&self) -> u64 {
-        std::env::var("SOMA_OBJECT_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    object_cache_size, ..
-                } => object_cache_size.unwrap_or(self.max_cache_size()),
-            })
+        std::env::var("SOMA_OBJECT_CACHE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or_else(
+            || match self {
+                ExecutionCacheConfig::WritebackCache { object_cache_size, .. } => {
+                    object_cache_size.unwrap_or(self.max_cache_size())
+                }
+            },
+        )
     }
 
     pub fn marker_cache_size(&self) -> u64 {
-        std::env::var("SOMA_MARKER_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    marker_cache_size, ..
-                } => marker_cache_size.unwrap_or(self.object_cache_size()),
-            })
+        std::env::var("SOMA_MARKER_CACHE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or_else(
+            || match self {
+                ExecutionCacheConfig::WritebackCache { marker_cache_size, .. } => {
+                    marker_cache_size.unwrap_or(self.object_cache_size())
+                }
+            },
+        )
     }
 
     pub fn object_by_id_cache_size(&self) -> u64 {
@@ -987,10 +956,9 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    object_by_id_cache_size,
-                    ..
-                } => object_by_id_cache_size.unwrap_or(self.object_cache_size()),
+                ExecutionCacheConfig::WritebackCache { object_by_id_cache_size, .. } => {
+                    object_by_id_cache_size.unwrap_or(self.object_cache_size())
+                }
             })
     }
 
@@ -999,10 +967,9 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    transaction_cache_size,
-                    ..
-                } => transaction_cache_size.unwrap_or(self.max_cache_size()),
+                ExecutionCacheConfig::WritebackCache { transaction_cache_size, .. } => {
+                    transaction_cache_size.unwrap_or(self.max_cache_size())
+                }
             })
     }
 
@@ -1011,22 +978,20 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    executed_effect_cache_size,
-                    ..
-                } => executed_effect_cache_size.unwrap_or(self.transaction_cache_size()),
+                ExecutionCacheConfig::WritebackCache { executed_effect_cache_size, .. } => {
+                    executed_effect_cache_size.unwrap_or(self.transaction_cache_size())
+                }
             })
     }
 
     pub fn effect_cache_size(&self) -> u64 {
-        std::env::var("SOMA_EFFECT_CACHE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    effect_cache_size, ..
-                } => effect_cache_size.unwrap_or(self.executed_effect_cache_size()),
-            })
+        std::env::var("SOMA_EFFECT_CACHE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or_else(
+            || match self {
+                ExecutionCacheConfig::WritebackCache { effect_cache_size, .. } => {
+                    effect_cache_size.unwrap_or(self.executed_effect_cache_size())
+                }
+            },
+        )
     }
 
     pub fn transaction_objects_cache_size(&self) -> u64 {
@@ -1034,10 +999,9 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    transaction_objects_cache_size,
-                    ..
-                } => transaction_objects_cache_size.unwrap_or(1000),
+                ExecutionCacheConfig::WritebackCache { transaction_objects_cache_size, .. } => {
+                    transaction_objects_cache_size.unwrap_or(1000)
+                }
             })
     }
 
@@ -1046,10 +1010,9 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    backpressure_threshold,
-                    ..
-                } => backpressure_threshold.unwrap_or(100_000),
+                ExecutionCacheConfig::WritebackCache { backpressure_threshold, .. } => {
+                    backpressure_threshold.unwrap_or(100_000)
+                }
             })
     }
 
@@ -1058,10 +1021,9 @@ impl ExecutionCacheConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| match self {
-                ExecutionCacheConfig::WritebackCache {
-                    backpressure_threshold_for_rpc,
-                    ..
-                } => backpressure_threshold_for_rpc.unwrap_or(self.backpressure_threshold()),
+                ExecutionCacheConfig::WritebackCache { backpressure_threshold_for_rpc, .. } => {
+                    backpressure_threshold_for_rpc.unwrap_or(self.backpressure_threshold())
+                }
             })
     }
 
@@ -1102,17 +1064,11 @@ pub struct ExpensiveSafetyCheckConfig {
 
 impl ExpensiveSafetyCheckConfig {
     pub fn new_enable_all() -> Self {
-        Self {
-            enable_state_consistency_check: true,
-            force_disable_state_consistency_check: false,
-        }
+        Self { enable_state_consistency_check: true, force_disable_state_consistency_check: false }
     }
 
     pub fn new_disable_all() -> Self {
-        Self {
-            enable_state_consistency_check: false,
-            force_disable_state_consistency_check: true,
-        }
+        Self { enable_state_consistency_check: false, force_disable_state_consistency_check: true }
     }
 
     pub fn force_disable_state_consistency_check(&mut self) {
@@ -1197,17 +1153,12 @@ pub struct Genesis {
 
 impl Genesis {
     pub fn new(genesis: crate::genesis::Genesis) -> Self {
-        Self {
-            location: GenesisLocation::InPlace { genesis },
-            genesis: Default::default(),
-        }
+        Self { location: GenesisLocation::InPlace { genesis }, genesis: Default::default() }
     }
 
     pub fn new_from_file<P: Into<PathBuf>>(path: P) -> Self {
         Self {
-            location: GenesisLocation::File {
-                genesis_file_location: path.into(),
-            },
+            location: GenesisLocation::File { genesis_file_location: path.into() },
             genesis: Default::default(),
         }
     }
@@ -1215,9 +1166,7 @@ impl Genesis {
     pub fn genesis(&self) -> Result<&crate::genesis::Genesis> {
         match &self.location {
             GenesisLocation::InPlace { genesis } => Ok(genesis),
-            GenesisLocation::File {
-                genesis_file_location,
-            } => self
+            GenesisLocation::File { genesis_file_location } => self
                 .genesis
                 .get_or_try_init(|| crate::genesis::Genesis::load(genesis_file_location)),
         }

@@ -50,9 +50,9 @@ impl UserSignature {
                 let multisig = MultisigAggregatedSignature::from_serialized_bytes(bytes)?;
                 Ok(Self::Multisig(multisig))
             }
-            SignatureScheme::Bls12381 => Err(serde::de::Error::custom(
-                "bls not supported for user signatures",
-            )),
+            SignatureScheme::Bls12381 => {
+                Err(serde::de::Error::custom("bls not supported for user signatures"))
+            }
         }
     }
 
@@ -72,10 +72,7 @@ impl UserSignature {
 #[derive(serde_derive::Serialize)]
 #[serde(tag = "scheme", rename_all = "lowercase")]
 enum ReadableUserSignatureRef<'a> {
-    Ed25519 {
-        signature: &'a Ed25519Signature,
-        public_key: &'a Ed25519PublicKey,
-    },
+    Ed25519 { signature: &'a Ed25519Signature, public_key: &'a Ed25519PublicKey },
     Multisig(&'a MultisigAggregatedSignature),
 }
 
@@ -83,10 +80,7 @@ enum ReadableUserSignatureRef<'a> {
 #[serde(tag = "scheme", rename_all = "lowercase")]
 #[serde(rename = "UserSignature")]
 enum ReadableUserSignature {
-    Ed25519 {
-        signature: Ed25519Signature,
-        public_key: Ed25519PublicKey,
-    },
+    Ed25519 { signature: Ed25519Signature, public_key: Ed25519PublicKey },
     Multisig(MultisigAggregatedSignature),
 }
 
@@ -97,13 +91,9 @@ impl serde::Serialize for UserSignature {
     {
         if serializer.is_human_readable() {
             let readable = match self {
-                UserSignature::Simple(SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                }) => ReadableUserSignatureRef::Ed25519 {
-                    signature,
-                    public_key,
-                },
+                UserSignature::Simple(SimpleSignature::Ed25519 { signature, public_key }) => {
+                    ReadableUserSignatureRef::Ed25519 { signature, public_key }
+                }
                 UserSignature::Multisig(multisig) => ReadableUserSignatureRef::Multisig(multisig),
             };
             readable.serialize(serializer)
@@ -124,13 +114,9 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
         if deserializer.is_human_readable() {
             let readable = ReadableUserSignature::deserialize(deserializer)?;
             Ok(match readable {
-                ReadableUserSignature::Ed25519 {
-                    signature,
-                    public_key,
-                } => Self::Simple(SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                }),
+                ReadableUserSignature::Ed25519 { signature, public_key } => {
+                    Self::Simple(SimpleSignature::Ed25519 { signature, public_key })
+                }
                 ReadableUserSignature::Multisig(multisig) => Self::Multisig(multisig),
             })
         } else {
@@ -146,10 +132,7 @@ impl<'de> serde::Deserialize<'de> for UserSignature {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SimpleSignature {
-    Ed25519 {
-        signature: Ed25519Signature,
-        public_key: Ed25519PublicKey,
-    },
+    Ed25519 { signature: Ed25519Signature, public_key: Ed25519PublicKey },
 }
 
 impl SimpleSignature {
@@ -165,10 +148,7 @@ impl SimpleSignature {
     fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         match self {
-            SimpleSignature::Ed25519 {
-                signature,
-                public_key,
-            } => {
+            SimpleSignature::Ed25519 { signature, public_key } => {
                 buf.push(SignatureScheme::Ed25519 as u8);
                 buf.extend_from_slice(signature.as_ref());
                 buf.extend_from_slice(public_key.as_ref());
@@ -221,30 +201,20 @@ impl serde::Serialize for SimpleSignature {
         #[serde(tag = "scheme")]
         #[serde(rename_all = "lowercase")]
         enum Sig<'a> {
-            Ed25519 {
-                signature: &'a Ed25519Signature,
-                public_key: &'a Ed25519PublicKey,
-            },
+            Ed25519 { signature: &'a Ed25519Signature, public_key: &'a Ed25519PublicKey },
         }
 
         if serializer.is_human_readable() {
             let sig = match self {
-                SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                } => Sig::Ed25519 {
-                    signature,
-                    public_key,
-                },
+                SimpleSignature::Ed25519 { signature, public_key } => {
+                    Sig::Ed25519 { signature, public_key }
+                }
             };
 
             sig.serialize(serializer)
         } else {
             match self {
-                SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                } => {
+                SimpleSignature::Ed25519 { signature, public_key } => {
                     let mut buf = [0; 1 + Ed25519Signature::LENGTH + Ed25519PublicKey::LENGTH];
                     buf[0] = SignatureScheme::Ed25519 as u8;
                     buf[1..(1 + Ed25519Signature::LENGTH)].copy_from_slice(signature.as_ref());
@@ -266,22 +236,15 @@ impl<'de> serde::Deserialize<'de> for SimpleSignature {
         #[serde(tag = "scheme")]
         #[serde(rename_all = "lowercase")]
         enum Sig {
-            Ed25519 {
-                signature: Ed25519Signature,
-                public_key: Ed25519PublicKey,
-            },
+            Ed25519 { signature: Ed25519Signature, public_key: Ed25519PublicKey },
         }
 
         if deserializer.is_human_readable() {
             let sig = Sig::deserialize(deserializer)?;
             Ok(match sig {
-                Sig::Ed25519 {
-                    signature,
-                    public_key,
-                } => SimpleSignature::Ed25519 {
-                    signature,
-                    public_key,
-                },
+                Sig::Ed25519 { signature, public_key } => {
+                    SimpleSignature::Ed25519 { signature, public_key }
+                }
             })
         } else {
             let bytes: std::borrow::Cow<'de, [u8]> = std::borrow::Cow::deserialize(deserializer)?;

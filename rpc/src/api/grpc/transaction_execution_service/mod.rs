@@ -92,13 +92,11 @@ pub async fn execute_transaction(
         let read_mask = request
             .read_mask
             .unwrap_or_else(|| FieldMask::from_str(EXECUTE_TRANSACTION_READ_MASK_DEFAULT));
-        read_mask
-            .validate::<ExecutedTransaction>()
-            .map_err(|path| {
-                FieldViolation::new("read_mask")
-                    .with_description(format!("invalid read_mask path: {path}"))
-                    .with_reason(ErrorReason::FieldInvalid)
-            })?;
+        read_mask.validate::<ExecutedTransaction>().map_err(|path| {
+            FieldViolation::new("read_mask")
+                .with_description(format!("invalid read_mask path: {path}"))
+                .with_reason(ErrorReason::FieldInvalid)
+        })?;
         FieldMaskTree::from(read_mask)
     };
 
@@ -113,11 +111,7 @@ pub async fn execute_transaction(
     };
 
     let types::quorum_driver::ExecuteTransactionResponse {
-        effects:
-            types::quorum_driver::FinalizedEffects {
-                effects,
-                finality_info: _,
-            },
+        effects: types::quorum_driver::FinalizedEffects { effects, finality_info: _ },
         input_objects,
         output_objects,
     } = executor.execute_transaction(request, None).await?;
@@ -146,46 +140,42 @@ pub async fn execute_transaction(
             .collect::<Result<Vec<_>, _>>()?;
 
         let effects = crate::types::TransactionEffects::try_from(effects)?;
-        let effects = read_mask
-            .subtree(ExecutedTransaction::EFFECTS_FIELD.name)
-            .map(|mask| {
-                let mut effects = TransactionEffects::merge_from(&effects, &mask);
+        let effects = read_mask.subtree(ExecutedTransaction::EFFECTS_FIELD.name).map(|mask| {
+            let mut effects = TransactionEffects::merge_from(&effects, &mask);
 
-                if mask.contains(TransactionEffects::CHANGED_OBJECTS_FIELD.name) {
-                    for changed_object in effects.changed_objects.iter_mut() {
-                        let Ok(object_id) = changed_object.object_id().parse::<Address>() else {
-                            continue;
-                        };
+            if mask.contains(TransactionEffects::CHANGED_OBJECTS_FIELD.name) {
+                for changed_object in effects.changed_objects.iter_mut() {
+                    let Ok(object_id) = changed_object.object_id().parse::<Address>() else {
+                        continue;
+                    };
 
-                        if let Some(object) = input_objects
-                            .iter()
-                            .chain(&output_objects)
-                            .find(|o| o.object_id() == object_id)
-                        {
-                            changed_object.object_type = Some(object.object_type.clone().into());
-                        }
+                    if let Some(object) = input_objects
+                        .iter()
+                        .chain(&output_objects)
+                        .find(|o| o.object_id() == object_id)
+                    {
+                        changed_object.object_type = Some(object.object_type.clone().into());
                     }
                 }
+            }
 
-                if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
-                    for unchanged_consensus_object in effects.unchanged_shared_objects.iter_mut() {
-                        let Ok(object_id) =
-                            unchanged_consensus_object.object_id().parse::<Address>()
-                        else {
-                            continue;
-                        };
+            if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+                for unchanged_consensus_object in effects.unchanged_shared_objects.iter_mut() {
+                    let Ok(object_id) = unchanged_consensus_object.object_id().parse::<Address>()
+                    else {
+                        continue;
+                    };
 
-                        if let Some(object) =
-                            input_objects.iter().find(|o| o.object_id() == object_id)
-                        {
-                            unchanged_consensus_object.object_type =
-                                Some(object.object_type.clone().into());
-                        }
+                    if let Some(object) = input_objects.iter().find(|o| o.object_id() == object_id)
+                    {
+                        unchanged_consensus_object.object_type =
+                            Some(object.object_type.clone().into());
                     }
                 }
+            }
 
-                effects
-            });
+            effects
+        });
 
         let mut message = ExecutedTransaction::default();
         message.digest = read_mask
@@ -197,32 +187,21 @@ pub async fn execute_transaction(
         message.signatures = read_mask
             .subtree(ExecutedTransaction::SIGNATURES_FIELD.name)
             .map(|mask| {
-                signatures
-                    .into_iter()
-                    .map(|s| UserSignature::merge_from(s, &mask))
-                    .collect()
+                signatures.into_iter().map(|s| UserSignature::merge_from(s, &mask)).collect()
             })
             .unwrap_or_default();
         message.effects = effects;
         message.balance_changes = balance_changes;
         message.objects = read_mask
-            .subtree(
-                ExecutedTransaction::path_builder()
-                    .objects()
-                    .objects()
-                    .finish(),
-            )
+            .subtree(ExecutedTransaction::path_builder().objects().objects().finish())
             .map(|mask| {
                 let set: std::collections::BTreeMap<_, _> = input_objects
                     .into_iter()
                     .chain(output_objects.into_iter())
                     .map(|object| ((object.object_id(), object.version()), object))
                     .collect();
-                ObjectSet::default().with_objects(
-                    set.into_values()
-                        .map(|o| Object::merge_from(o, &mask))
-                        .collect(),
-                )
+                ObjectSet::default()
+                    .with_objects(set.into_values().map(|o| Object::merge_from(o, &mask)).collect())
             });
         message
     };

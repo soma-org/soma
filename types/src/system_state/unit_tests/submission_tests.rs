@@ -24,10 +24,8 @@ use url::Url;
 /// Helper to create a test SubmissionManifest
 fn test_submission_manifest(size: usize) -> SubmissionManifest {
     let url = Url::parse("https://example.com/data/test.bin").unwrap();
-    let metadata = Metadata::V1(MetadataV1::new(
-        Checksum::new_from_hash([0u8; DIGEST_LENGTH]),
-        size,
-    ));
+    let metadata =
+        Metadata::V1(MetadataV1::new(Checksum::new_from_hash([0u8; DIGEST_LENGTH]), size));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
     SubmissionManifest::new(manifest)
 }
@@ -70,10 +68,10 @@ fn test_submission_new() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        500,      // distance_score
-        100,      // reconstruction_score
-        10240,    // bond_amount
-        5,        // submit_epoch
+        500,   // distance_score
+        100,   // reconstruction_score
+        10240, // bond_amount
+        5,     // submit_epoch
     );
 
     assert_eq!(submission.miner, miner);
@@ -146,7 +144,8 @@ fn test_submit_data_transaction_kind() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
     let embedding: Embedding = Array1::zeros(768);
-    let bond_coin = (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random());
+    let bond_coin =
+        (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random());
 
     let args = SubmitDataArgs {
         target_id,
@@ -171,9 +170,7 @@ fn test_submit_data_transaction_kind() {
 fn test_claim_rewards_transaction_kind() {
     let target_id = ObjectID::random();
 
-    let args = ClaimRewardsArgs {
-        target_id,
-    };
+    let args = ClaimRewardsArgs { target_id };
     let kind = TransactionKind::ClaimRewards(args);
 
     // Test is_submission_tx helper
@@ -186,7 +183,11 @@ fn test_claim_rewards_transaction_kind() {
 fn test_non_submission_transactions() {
     // TransferCoin is not a submission tx
     let transfer = TransactionKind::TransferCoin {
-        coin: (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random()),
+        coin: (
+            ObjectID::random(),
+            crate::object::Version::new(),
+            crate::digests::ObjectDigest::random(),
+        ),
         recipient: SomaAddress::random(),
         amount: Some(1000),
     };
@@ -195,7 +196,11 @@ fn test_non_submission_transactions() {
     // AddStake is not a submission tx
     let stake = TransactionKind::AddStake {
         address: SomaAddress::random(),
-        coin_ref: (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random()),
+        coin_ref: (
+            ObjectID::random(),
+            crate::object::Version::new(),
+            crate::digests::ObjectDigest::random(),
+        ),
         amount: None,
     };
     assert!(!stake.is_submission_tx());
@@ -235,7 +240,7 @@ fn test_submission_scores() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        -500,  // negative distance score
+        -500, // negative distance score
         100,
         5000,
         1,

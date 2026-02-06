@@ -2,14 +2,14 @@ use parking_lot::Mutex;
 use std::{collections::BTreeMap, sync::Arc};
 use tap::TapFallible;
 use thiserror::Error;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::oneshot;
 use tracing::{debug, error, warn};
 use types::committee::Epoch;
 use types::consensus::{
     block::{
-        BlockRef, Round, Transaction, TransactionIndex, NUM_RESERVED_TRANSACTION_INDICES,
-        PING_TRANSACTION_INDEX,
+        BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX, Round, Transaction,
+        TransactionIndex,
     },
     context::Context,
 };
@@ -77,10 +77,7 @@ impl TransactionConsumer {
         // Indexes down to TransactionIndex::MAX - 8 are also reserved for future use.
         // This check makes sure they do not overlap.
         assert!(
-            context
-                .protocol_config
-                .max_num_transactions_in_block()
-                .saturating_sub(1)
+            context.protocol_config.max_num_transactions_in_block().saturating_sub(1)
                 < TransactionIndex::MAX.saturating_sub(NUM_RESERVED_TRANSACTION_INDICES) as u64,
             "Unsupported max_num_transactions_in_block: {}",
             context.protocol_config.max_num_transactions_in_block()
@@ -173,10 +170,7 @@ impl TransactionConsumer {
                 for (ack, tx_indices) in acks {
                     let (status_tx, status_rx) = oneshot::channel();
 
-                    block_status_subscribers
-                        .entry(block_ref)
-                        .or_default()
-                        .push(status_tx);
+                    block_status_subscribers.entry(block_ref).or_default().push(status_tx);
 
                     let _ = ack.send((block_ref, tx_indices, status_rx));
                 }
@@ -219,10 +213,7 @@ impl TransactionConsumer {
     ) -> oneshot::Receiver<BlockStatus> {
         let (tx, rx) = oneshot::channel();
         let mut block_status_subscribers = self.block_status_subscribers.lock();
-        block_status_subscribers
-            .entry(block_ref)
-            .or_default()
-            .push(tx);
+        block_status_subscribers.entry(block_ref).or_default().push(tx);
         rx
     }
 
@@ -304,14 +295,8 @@ impl TransactionClient {
     pub async fn submit(
         &self,
         transactions: Vec<Vec<u8>>,
-    ) -> Result<
-        (
-            BlockRef,
-            Vec<TransactionIndex>,
-            oneshot::Receiver<BlockStatus>,
-        ),
-        ClientError,
-    > {
+    ) -> Result<(BlockRef, Vec<TransactionIndex>, oneshot::Receiver<BlockStatus>), ClientError>
+    {
         let included_in_block = self.submit_no_wait(transactions).await?;
         included_in_block
             .await
@@ -332,11 +317,7 @@ impl TransactionClient {
         &self,
         transactions: Vec<Vec<u8>>,
     ) -> Result<
-        oneshot::Receiver<(
-            BlockRef,
-            Vec<TransactionIndex>,
-            oneshot::Receiver<BlockStatus>,
-        )>,
+        oneshot::Receiver<(BlockRef, Vec<TransactionIndex>, oneshot::Receiver<BlockStatus>)>,
         ClientError,
     > {
         let (included_in_block_ack_send, included_in_block_ack_receive) = oneshot::channel();

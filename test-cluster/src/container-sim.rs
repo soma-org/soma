@@ -1,5 +1,5 @@
 use msim::runtime::Handle;
-use node::{handle::SomaNodeHandle, SomaNode};
+use node::{SomaNode, handle::SomaNodeHandle};
 use std::{
     net::{IpAddr, SocketAddr},
     sync::{Arc, Weak},

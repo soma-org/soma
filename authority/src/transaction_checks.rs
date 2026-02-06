@@ -51,12 +51,7 @@ pub fn check_transaction_input_with_given_gas(
     let gas_object_ref = gas_object.compute_object_reference();
     input_objects.push(ObjectReadResult::new_from_gas_object(&gas_object));
 
-    check_transaction_input_inner(
-        protocol_config,
-        transaction,
-        &input_objects,
-        &[gas_object_ref],
-    )?;
+    check_transaction_input_inner(protocol_config, transaction, &input_objects, &[gas_object_ref])?;
     check_receiving_objects(&input_objects, &receiving_objects)?;
 
     Ok(input_objects.into_checked())
@@ -88,11 +83,7 @@ fn check_transaction_input_inner(
     // Overrides the gas objects in the transaction.
     gas_override: &[ObjectRef],
 ) -> SomaResult {
-    let gas = if gas_override.is_empty() {
-        &transaction.gas()
-    } else {
-        gas_override
-    };
+    let gas = if gas_override.is_empty() { &transaction.gas() } else { gas_override };
 
     check_gas(input_objects, gas, transaction.kind())?;
     check_objects(transaction, input_objects)?;
@@ -104,10 +95,8 @@ fn check_receiving_objects(
     input_objects: &InputObjects,
     receiving_objects: &ReceivingObjects,
 ) -> Result<(), SomaError> {
-    let mut objects_in_txn: HashSet<_> = input_objects
-        .object_kinds()
-        .map(|x| x.object_id())
-        .collect();
+    let mut objects_in_txn: HashSet<_> =
+        input_objects.object_kinds().map(|x| x.object_id()).collect();
 
     // Since we're at signing we check that every object reference that we are receiving is the
     // most recent version of that object. If it's been received at the version specified we
@@ -116,10 +105,8 @@ fn check_receiving_objects(
     //
     // If there are any object IDs in common (either between receiving objects and input
     // objects) we return an error.
-    for ReceivingObjectReadResult {
-        object_ref: (object_id, version, object_digest),
-        object,
-    } in receiving_objects.iter()
+    for ReceivingObjectReadResult { object_ref: (object_id, version, object_digest), object } in
+        receiving_objects.iter()
     {
         if !(*version < Version::MAX) {
             return Err(SomaError::InvalidSequenceNumber);
@@ -176,9 +163,7 @@ fn check_receiving_objects(
                     return Err(SomaError::NotSharedObjectError);
                 }
                 Owner::Immutable => {
-                    return Err(SomaError::MutableParameterExpected {
-                        object_id: *object_id,
-                    })
+                    return Err(SomaError::MutableParameterExpected { object_id: *object_id });
                 }
             };
         }
@@ -200,9 +185,7 @@ fn check_gas(objects: &InputObjects, gas: &[ObjectRef], tx_kind: &TransactionKin
 
     // Check 1: Ensure we have at least one gas object
     if gas.is_empty() {
-        return Err(SomaError::GasPaymentError(
-            "No gas payment provided".to_string(),
-        ));
+        return Err(SomaError::GasPaymentError("No gas payment provided".to_string()));
     }
 
     // Build a map of object ID to ObjectReadResult for efficient lookup
@@ -213,16 +196,12 @@ fn check_gas(objects: &InputObjects, gas: &[ObjectRef], tx_kind: &TransactionKin
     for obj_ref in gas {
         let obj_result = objects_map
             .get(&obj_ref.0)
-            .ok_or(SomaError::ObjectNotFound {
-                object_id: obj_ref.0,
-                version: Some(obj_ref.1),
-            })?;
+            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
 
         // Get the actual object
-        let object = obj_result.as_object().ok_or(SomaError::ObjectNotFound {
-            object_id: obj_ref.0,
-            version: Some(obj_ref.1),
-        })?;
+        let object = obj_result
+            .as_object()
+            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
 
         // Check 3: Verify gas object is owned by an address (not shared/immutable)
         if !object.owner.is_address_owned() {
@@ -251,9 +230,7 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
     for object in objects.iter() {
         if object.is_mutable() {
             if !(used_objects.insert(object.id().into())) {
-                return Err(SomaError::MutableObjectUsedMoreThanOnce {
-                    object_id: object.id(),
-                });
+                return Err(SomaError::MutableObjectUsedMoreThanOnce { object_id: object.id() });
             }
         }
     }
@@ -274,12 +251,7 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
                 // Check if the object contents match the type of lock we need for
                 // this object.
                 let system_transaction = transaction.is_system_tx();
-                check_one_object(
-                    &owner_address,
-                    input_object_kind,
-                    object,
-                    system_transaction,
-                )?;
+                check_one_object(&owner_address, input_object_kind, object, system_transaction)?;
             }
             // We skip checking a removed consensus object because it no longer exists.
             ObjectReadResultKind::DeletedSharedObject(_, _) => (),
@@ -306,21 +278,18 @@ fn check_one_object(
 
             // This is an invariant - we just load the object with the given ID and version.
             assert_eq!(
-                    object.version(),
-                    sequence_number,
-                    "The fetched object version {:?} does not match the requested version {:?}, object id: {}",
-                    object.version(),
-                    sequence_number,
-                    object.id(),
-                );
+                object.version(),
+                sequence_number,
+                "The fetched object version {:?} does not match the requested version {:?}, object id: {}",
+                object.version(),
+                sequence_number,
+                object.id(),
+            );
 
             // Check the digest matches - user could give a mismatched ObjectDigest
             let expected_digest = object.digest();
             if !(expected_digest == object_digest) {
-                return Err(SomaError::InvalidObjectDigest {
-                    object_id,
-                    expected_digest,
-                });
+                return Err(SomaError::InvalidObjectDigest { object_id, expected_digest });
             }
 
             match object.owner {
@@ -330,11 +299,11 @@ fn check_one_object(
                 Owner::AddressOwner(actual_owner) => {
                     // Check the owner is correct.
                     if !(owner == &actual_owner) {
-                        return Err( SomaError::IncorrectUserSignature {
-                                error: format!(
-                                    "Object {object_id:?} is owned by account address {actual_owner:?}, but given owner/signer address is {owner:?}"
-                                ),
-                            });
+                        return Err(SomaError::IncorrectUserSignature {
+                            error: format!(
+                                "Object {object_id:?} is owned by account address {actual_owner:?}, but given owner/signer address is {owner:?}"
+                            ),
+                        });
                     }
                 }
 
@@ -360,9 +329,7 @@ fn check_one_object(
                     // When someone locks an object as shared it must be shared already.
                     return Err(SomaError::NotSharedObjectError);
                 }
-                Owner::Shared {
-                    initial_shared_version: actual_initial_shared_version,
-                } => {
+                Owner::Shared { initial_shared_version: actual_initial_shared_version } => {
                     if !(input_initial_shared_version == *actual_initial_shared_version) {
                         return Err(SomaError::SharedObjectStartingVersionMismatch);
                     }
@@ -376,9 +343,7 @@ fn check_one_object(
 macro_rules! deny_if_true {
     ($cond:expr, $msg:expr) => {
         if ($cond) {
-            return Err(SomaError::TransactionDenied {
-                error: $msg.to_string(),
-            });
+            return Err(SomaError::TransactionDenied { error: $msg.to_string() });
         }
     };
 }
@@ -441,10 +406,7 @@ fn check_signers(filter_config: &TransactionDenyConfig, tx_data: &TransactionDat
     for signer in tx_data.signers() {
         deny_if_true!(
             deny_map.contains(&signer),
-            format!(
-                "Access to account address {:?} is temporarily disabled",
-                signer
-            )
+            format!("Access to account address {:?} is temporarily disabled", signer)
         );
     }
     Ok(())

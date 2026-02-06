@@ -27,10 +27,7 @@ impl Node {
     /// The Node is returned without being started. See [`Node::spawn`] or [`Node::start`] for how to
     /// start the node.
     pub fn new(config: NodeConfig) -> Self {
-        Self {
-            container: Default::default(),
-            config: config.into(),
-        }
+        Self { container: Default::default(), config: config.into() }
     }
 
     /// Return the `name` of this Node
@@ -64,18 +61,10 @@ impl Node {
 
     /// If this Node is currently running
     pub fn is_running(&self) -> bool {
-        self.container
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map_or(false, |c| c.is_alive())
+        self.container.lock().unwrap().as_ref().map_or(false, |c| c.is_alive())
     }
 
     pub fn get_node_handle(&self) -> Option<SomaNodeHandle> {
-        self.container
-            .lock()
-            .unwrap()
-            .as_ref()
-            .and_then(|c| c.get_node_handle())
+        self.container.lock().unwrap().as_ref().and_then(|c| c.get_node_handle())
     }
 }

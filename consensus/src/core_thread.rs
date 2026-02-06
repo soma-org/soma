@@ -2,15 +2,15 @@ use std::{
     collections::BTreeSet,
     fmt::Debug,
     sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     },
 };
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use thiserror::Error;
-use tokio::sync::mpsc::{channel, Receiver, Sender, WeakSender};
+use tokio::sync::mpsc::{Receiver, Sender, WeakSender, channel};
 use tokio::sync::{oneshot, watch};
 use tracing::warn;
 use types::consensus::{
@@ -52,7 +52,7 @@ pub enum CoreError {
 #[async_trait]
 pub trait CoreThreadDispatcher: Sync + Send + 'static {
     async fn add_blocks(&self, blocks: Vec<VerifiedBlock>)
-        -> Result<BTreeSet<BlockRef>, CoreError>;
+    -> Result<BTreeSet<BlockRef>, CoreError>;
 
     async fn check_block_refs(
         &self,
@@ -221,20 +221,14 @@ impl ChannelCoreThreadDispatcher {
             tx_last_known_proposed_round: Arc::new(tx_last_known_proposed_round),
             highest_received_rounds: Arc::new(highest_received_rounds),
         };
-        let handle = CoreThreadHandle {
-            join_handle,
-            sender,
-        };
+        let handle = CoreThreadHandle { join_handle, sender };
         (dispatcher, handle)
     }
 
     async fn send(&self, command: CoreThreadCommand) {
         if let Some(sender) = self.sender.upgrade() {
             if let Err(err) = sender.send(command).await {
-                warn!(
-                    "Couldn't send command to core thread, probably is shutting down: {}",
-                    err
-                );
+                warn!("Couldn't send command to core thread, probably is shutting down: {}", err);
             }
         }
     }
@@ -250,8 +244,7 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
             self.highest_received_rounds[block.author()].fetch_max(block.round(), Ordering::AcqRel);
         }
         let (sender, receiver) = oneshot::channel();
-        self.send(CoreThreadCommand::AddBlocks(blocks.clone(), sender))
-            .await;
+        self.send(CoreThreadCommand::AddBlocks(blocks.clone(), sender)).await;
         let missing_block_refs = receiver.await.map_err(|e| Shutdown(e.to_string()))?;
 
         Ok(missing_block_refs)
@@ -262,11 +255,7 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
         block_refs: Vec<BlockRef>,
     ) -> Result<BTreeSet<BlockRef>, CoreError> {
         let (sender, receiver) = oneshot::channel();
-        self.send(CoreThreadCommand::CheckBlockRefs(
-            block_refs.clone(),
-            sender,
-        ))
-        .await;
+        self.send(CoreThreadCommand::CheckBlockRefs(block_refs.clone(), sender)).await;
         let missing_block_refs = receiver.await.map_err(|e| Shutdown(e.to_string()))?;
 
         Ok(missing_block_refs)
@@ -283,16 +272,14 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
             }
         }
         let (sender, receiver) = oneshot::channel();
-        self.send(CoreThreadCommand::AddCertifiedCommits(commits, sender))
-            .await;
+        self.send(CoreThreadCommand::AddCertifiedCommits(commits, sender)).await;
         let missing_block_refs = receiver.await.map_err(|e| Shutdown(e.to_string()))?;
         Ok(missing_block_refs)
     }
 
     async fn new_block(&self, round: Round, force: bool) -> Result<(), CoreError> {
         let (sender, receiver) = oneshot::channel();
-        self.send(CoreThreadCommand::NewBlock(round, sender, force))
-            .await;
+        self.send(CoreThreadCommand::NewBlock(round, sender, force)).await;
         receiver.await.map_err(|e| Shutdown(e.to_string()))
     }
 
@@ -303,22 +290,15 @@ impl CoreThreadDispatcher for ChannelCoreThreadDispatcher {
     }
 
     fn set_propagation_delay(&self, propagation_delay: Round) -> Result<(), CoreError> {
-        self.tx_propagation_delay
-            .send(propagation_delay)
-            .map_err(|e| Shutdown(e.to_string()))
+        self.tx_propagation_delay.send(propagation_delay).map_err(|e| Shutdown(e.to_string()))
     }
 
     fn set_last_known_proposed_round(&self, round: Round) -> Result<(), CoreError> {
-        self.tx_last_known_proposed_round
-            .send(round)
-            .map_err(|e| Shutdown(e.to_string()))
+        self.tx_last_known_proposed_round.send(round).map_err(|e| Shutdown(e.to_string()))
     }
 
     fn highest_received_rounds(&self) -> Vec<Round> {
-        self.highest_received_rounds
-            .iter()
-            .map(|round| round.load(Ordering::Relaxed))
-            .collect()
+        self.highest_received_rounds.iter().map(|round| round.load(Ordering::Relaxed)).collect()
     }
 }
 

@@ -11,7 +11,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use protocol_config::Chain;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, Bytes};
+use serde_with::{Bytes, serde_as};
 use std::env;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -19,7 +19,17 @@ use tracing::info;
 /// A representation of a 32 byte digest
 #[serde_as]
 #[derive(
-    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema
 )]
 pub struct Digest(
     #[schemars(with = "Base58")]
@@ -56,11 +66,7 @@ impl Digest {
         let mut next_digest = *self;
         let pos = next_digest.0.iter().rposition(|&byte| byte != 255)?;
         next_digest.0[pos] += 1;
-        next_digest
-            .0
-            .iter_mut()
-            .skip(pos + 1)
-            .for_each(|byte| *byte = 0);
+        next_digest.0.iter_mut().skip(pos + 1).for_each(|byte| *byte = 0);
         Some(next_digest)
     }
 }
@@ -220,11 +226,8 @@ impl TryFrom<Vec<u8>> for Digest {
     type Error = SomaError;
 
     fn try_from(bytes: Vec<u8>) -> Result<Self, SomaError> {
-        let bytes: [u8; 32] =
-            <[u8; 32]>::try_from(&bytes[..]).map_err(|_| SomaError::InvalidDigestLength {
-                expected: 32,
-                actual: bytes.len(),
-            })?;
+        let bytes: [u8; 32] = <[u8; 32]>::try_from(&bytes[..])
+            .map_err(|_| SomaError::InvalidDigestLength { expected: 32, actual: bytes.len() })?;
 
         Ok(Self::from(bytes))
     }
@@ -319,9 +322,7 @@ impl fmt::Display for TransactionEffectsDigest {
 
 impl fmt::Debug for TransactionEffectsDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("TransactionEffectsDigest")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("TransactionEffectsDigest").field(&self.0).finish()
     }
 }
 
@@ -400,9 +401,7 @@ impl fmt::Display for ConsensusCommitDigest {
 
 impl fmt::Debug for ConsensusCommitDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ConsensusCommitDigest")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("ConsensusCommitDigest").field(&self.0).finish()
     }
 }
 
@@ -525,9 +524,8 @@ impl TryFrom<&[u8]> for ObjectDigest {
     type Error = crate::error::SomaError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, crate::error::SomaError> {
-        let arr: [u8; 32] = bytes
-            .try_into()
-            .map_err(|_| crate::error::SomaError::InvalidTransactionDigest)?;
+        let arr: [u8; 32] =
+            bytes.try_into().map_err(|_| crate::error::SomaError::InvalidTransactionDigest)?;
         Ok(Self::new(arr))
     }
 }
@@ -559,7 +557,7 @@ impl std::str::FromStr for ObjectDigest {
     Hash,
     Serialize,
     Deserialize,
-    JsonSchema,
+    JsonSchema
 )]
 pub struct ChainIdentifier(CheckpointDigest);
 
@@ -659,7 +657,7 @@ pub fn get_testnet_chain_identifier() -> ChainIdentifier {
 
 impl fmt::Display for ChainIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in self.0 .0 .0[0..4].iter() {
+        for byte in self.0.0.0[0..4].iter() {
             write!(f, "{:02x}", byte)?;
         }
 
@@ -675,7 +673,17 @@ impl From<CheckpointDigest> for ChainIdentifier {
 
 /// Representation of a Checkpoint's digest
 #[derive(
-    Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema
 )]
 pub struct CheckpointDigest(Digest);
 
@@ -852,9 +860,7 @@ impl fmt::Display for CheckpointContentsDigest {
 
 impl fmt::Debug for CheckpointContentsDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("CheckpointContentsDigest")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("CheckpointContentsDigest").field(&self.0).finish()
     }
 }
 
@@ -942,9 +948,7 @@ impl fmt::Display for ModelWeightsCommitment {
 
 impl fmt::Debug for ModelWeightsCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ModelWeightsCommitment")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("ModelWeightsCommitment").field(&self.0).finish()
     }
 }
 
@@ -1006,9 +1010,7 @@ impl fmt::Display for ModelWeightsUrlCommitment {
 
 impl fmt::Debug for ModelWeightsUrlCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ModelWeightsUrlCommitment")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("ModelWeightsUrlCommitment").field(&self.0).finish()
     }
 }
 
@@ -1075,7 +1077,17 @@ impl fmt::Debug for DataCommitment {
 }
 
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema
 )]
 pub struct CheckpointArtifactsDigest(Digest);
 
@@ -1127,9 +1139,7 @@ impl SenderSignedDataDigest {
 
 impl fmt::Debug for SenderSignedDataDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("SenderSignedDataDigest")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("SenderSignedDataDigest").field(&self.0).finish()
     }
 }
 
@@ -1165,8 +1175,6 @@ impl fmt::Display for AdditionalConsensusStateDigest {
 
 impl fmt::Debug for AdditionalConsensusStateDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("AdditionalConsensusStateDigest")
-            .field(&self.0)
-            .finish()
+        f.debug_tuple("AdditionalConsensusStateDigest").field(&self.0).finish()
     }
 }

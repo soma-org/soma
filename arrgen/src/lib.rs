@@ -1,8 +1,8 @@
 use ndarray::ArrayD;
-use ndarray_rand::{rand_distr::Normal, RandomExt};
+use ndarray_rand::{RandomExt, rand_distr::Normal};
 use numpy::{IxDyn, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
-use rand::{distributions::Uniform, rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, distributions::Uniform, rngs::StdRng};
 
 pub fn uniform_array(seed: u64, shape: &[usize], min: f32, max: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);

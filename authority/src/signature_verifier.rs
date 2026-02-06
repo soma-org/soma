@@ -1,14 +1,14 @@
 use either::Either;
 use futures::pin_mut;
 use im::hashmap::HashMap as ImHashMap;
-use itertools::{izip, Itertools as _};
+use itertools::{Itertools as _, izip};
 use parking_lot::{Mutex, MutexGuard, RwLock};
 use std::sync::Arc;
 use tap::TapFallible;
 use tokio::runtime::Handle;
 use tokio::{
     sync::oneshot,
-    time::{timeout, Duration},
+    time::{Duration, timeout},
 };
 use tracing::{debug, info};
 use types::checkpoints::SignedCheckpointSummary;
@@ -19,8 +19,8 @@ use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
 use types::intent::Intent;
 use types::signature_verification::VerifiedDigestCache;
-use types::transaction::{verify_sender_signed_data_message_signatures, VerifiedCertificate};
 use types::transaction::{CertifiedTransaction, SenderSignedData};
+use types::transaction::{VerifiedCertificate, verify_sender_signed_data_message_signatures};
 
 // Maximum amount of time we wait for a batch to fill up before verifying a partial batch.
 const BATCH_TIMEOUT_MS: Duration = Duration::from_millis(10);
@@ -41,11 +41,7 @@ struct CertBuffer {
 
 impl CertBuffer {
     fn new(capacity: usize) -> Self {
-        Self {
-            certs: Vec::with_capacity(capacity),
-            senders: Vec::with_capacity(capacity),
-            id: 0,
-        }
+        Self { certs: Vec::with_capacity(capacity), senders: Vec::with_capacity(capacity), id: 0 }
     }
 
     // Function consumes MutexGuard, therefore releasing the lock after mem swap is done
@@ -229,18 +225,15 @@ impl SignatureVerifier {
 
     fn process_queue_sync(committee: Arc<Committee>, buffer: CertBuffer) {
         let results = batch_verify_certificates(&committee, &buffer.certs.iter().collect_vec());
-        izip!(
-            results.into_iter(),
-            buffer.certs.into_iter(),
-            buffer.senders.into_iter(),
-        )
-        .for_each(|(result, cert, tx)| {
-            tx.send(match result {
-                Ok(()) => Ok(VerifiedCertificate::new_unchecked(cert)),
-                Err(e) => Err(e),
-            })
-            .ok();
-        });
+        izip!(results.into_iter(), buffer.certs.into_iter(), buffer.senders.into_iter(),).for_each(
+            |(result, cert, tx)| {
+                tx.send(match result {
+                    Ok(()) => Ok(VerifiedCertificate::new_unchecked(cert)),
+                    Err(e) => Err(e),
+                })
+                .ok();
+            },
+        );
     }
 
     pub fn verify_tx(&self, signed_tx: &SenderSignedData) -> SomaResult {
@@ -303,14 +296,12 @@ fn batch_verify(
 
     for cert in certs {
         let idx = obligation.add_message(cert.data(), cert.epoch(), Intent::soma_app(cert.scope()));
-        cert.auth_sig()
-            .add_to_verification_obligation(committee, &mut obligation, idx)?;
+        cert.auth_sig().add_to_verification_obligation(committee, &mut obligation, idx)?;
     }
 
     for ckpt in checkpoints {
         let idx = obligation.add_message(ckpt.data(), ckpt.epoch(), Intent::soma_app(ckpt.scope()));
-        ckpt.auth_sig()
-            .add_to_verification_obligation(committee, &mut obligation, idx)?;
+        ckpt.auth_sig().add_to_verification_obligation(committee, &mut obligation, idx)?;
     }
 
     obligation.verify_all()

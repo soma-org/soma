@@ -4,7 +4,7 @@ use crate::{base_committer::BaseCommitter, dag_state::DagState};
 use parking_lot::RwLock;
 use types::committee::AuthorityIndex;
 use types::consensus::{
-    block::{Round, Slot, GENESIS_ROUND},
+    block::{GENESIS_ROUND, Round, Slot},
     commit::{DecidedLeader, Decision},
     context::Context,
 };
@@ -39,11 +39,7 @@ impl UniversalCommitter {
         // Try to decide as many leaders as possible, starting with the highest round.
         let mut leaders = VecDeque::new();
 
-        let last_round = match self
-            .context
-            .protocol_config
-            .mysticeti_num_leaders_per_round()
-        {
+        let last_round = match self.context.protocol_config.mysticeti_num_leaders_per_round() {
             1 => {
                 // Ensure that we don't commit any leaders from the same round as last_decided
                 // until we have full support for multi-leader per round.
@@ -204,11 +200,7 @@ pub(crate) mod universal_committer_builder {
                 }
             }
 
-            UniversalCommitter {
-                context: self.context,
-                dag_state: self.dag_state,
-                committers,
-            }
+            UniversalCommitter { context: self.context, dag_state: self.dag_state, committers }
         }
     }
 }

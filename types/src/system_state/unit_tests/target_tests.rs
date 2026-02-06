@@ -10,7 +10,7 @@
 use crate::{
     base::SomaAddress,
     config::genesis_config::SHANNONS_PER_SOMA,
-    target::{deterministic_embedding, generate_target, make_target_seed, TargetStatus},
+    target::{TargetStatus, deterministic_embedding, generate_target, make_target_seed},
 };
 
 use super::test_utils::{
@@ -69,15 +69,9 @@ fn test_target_generation_requires_active_models() {
         0,   // current_epoch
     );
 
+    assert!(result.is_err(), "Target generation should fail without active models");
     assert!(
-        result.is_err(),
-        "Target generation should fail without active models"
-    );
-    assert!(
-        matches!(
-            result.unwrap_err(),
-            crate::effects::ExecutionFailureStatus::NoActiveModels
-        ),
+        matches!(result.unwrap_err(), crate::effects::ExecutionFailureStatus::NoActiveModels),
         "Should return NoActiveModels error"
     );
 }
@@ -171,18 +165,11 @@ fn test_target_generation_multiple_models() {
 
     // Verify no duplicates
     let unique_models: std::collections::HashSet<_> = target.model_ids.iter().collect();
-    assert_eq!(
-        unique_models.len(),
-        3,
-        "All selected models should be unique"
-    );
+    assert_eq!(unique_models.len(), 3, "All selected models should be unique");
 
     // Verify all selected models are from the active set
     for selected_id in &target.model_ids {
-        assert!(
-            model_ids.contains(selected_id),
-            "Selected model should be from active set"
-        );
+        assert!(model_ids.contains(selected_id), "Selected model should be from active set");
     }
 }
 
@@ -305,13 +292,11 @@ fn test_difficulty_adjustment_min_bounds() {
 
     // Should be clamped to min
     assert_eq!(
-        system_state.target_state.distance_threshold,
-        100_000,
+        system_state.target_state.distance_threshold, 100_000,
         "Distance threshold should not go below min"
     );
     assert_eq!(
-        system_state.target_state.reconstruction_threshold,
-        50_000,
+        system_state.target_state.reconstruction_threshold, 50_000,
         "Reconstruction threshold should not go below min"
     );
 }
@@ -340,13 +325,11 @@ fn test_difficulty_adjustment_max_bounds() {
 
     // Should be clamped to max
     assert_eq!(
-        system_state.target_state.distance_threshold,
-        10_000_000,
+        system_state.target_state.distance_threshold, 10_000_000,
         "Distance threshold should not go above max"
     );
     assert_eq!(
-        system_state.target_state.reconstruction_threshold,
-        5_000_000,
+        system_state.target_state.reconstruction_threshold, 5_000_000,
         "Reconstruction threshold should not go above max"
     );
 }
@@ -409,10 +392,7 @@ fn test_advance_epoch_targets() {
         system_state.target_state.targets_generated_this_epoch, 0,
         "targets_generated_this_epoch should be reset"
     );
-    assert_eq!(
-        system_state.target_state.hits_this_epoch, 0,
-        "hits_this_epoch should be reset"
-    );
+    assert_eq!(system_state.target_state.hits_this_epoch, 0, "hits_this_epoch should be reset");
 }
 
 /// Test target status transitions
@@ -497,10 +477,7 @@ fn test_model_selection_uniqueness() {
 
     // All selected models should be from the active set
     for model_id in &selected {
-        assert!(
-            all_model_ids.contains(model_id),
-            "Selected model should be from active set"
-        );
+        assert!(all_model_ids.contains(model_id), "Selected model should be from active set");
     }
 }
 
@@ -529,11 +506,7 @@ fn test_model_selection_capped_to_available() {
     let selected = crate::target::select_models_uniform(42, &system_state.model_registry, 5)
         .expect("Model selection should succeed");
 
-    assert_eq!(
-        selected.len(),
-        2,
-        "Should cap selection to available models"
-    );
+    assert_eq!(selected.len(), 2, "Should cap selection to available models");
 }
 
 /// Test different seeds produce different model selections

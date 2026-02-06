@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::{collections::BTreeMap, net::SocketAddr};
 use tap::TapFallible as _;
 use tonic::transport::Channel;
-use tonic::{metadata::KeyAndValueRef, IntoRequest};
+use tonic::{IntoRequest, metadata::KeyAndValueRef};
 use tracing::info;
 use types::crypto::NetworkPublicKey;
 use types::messages_grpc::{
@@ -19,7 +19,7 @@ use types::system_state::SystemState;
 use types::{
     base::AuthorityName,
     checkpoints::{CheckpointRequest, CheckpointResponse},
-    client::{connect, connect_lazy, Config},
+    client::{Config, connect, connect_lazy},
     committee::CommitteeWithNetworkMetadata,
     error::{SomaError, SomaResult},
     messages_grpc::{
@@ -124,15 +124,11 @@ impl NetworkAuthorityClient {
     }
 
     pub fn new(channel: Channel) -> Self {
-        Self {
-            client: Ok(ValidatorClient::new(channel)),
-        }
+        Self { client: Ok(ValidatorClient::new(channel)) }
     }
 
     fn new_lazy(client: SomaResult<Channel>) -> Self {
-        Self {
-            client: client.map(ValidatorClient::new),
-        }
+        Self { client: client.map(ValidatorClient::new) }
     }
 
     pub(crate) fn client(&self) -> SomaResult<ValidatorClient<Channel>> {
@@ -204,11 +200,8 @@ impl AuthorityAPI for NetworkAuthorityClient {
         let mut request = request.into_request();
         insert_metadata(&mut request, client_addr);
 
-        let response = self
-            .client()?
-            .handle_certificate(request)
-            .await
-            .map(tonic::Response::into_inner);
+        let response =
+            self.client()?.handle_certificate(request).await.map(tonic::Response::into_inner);
 
         response.map_err(Into::into)
     }
@@ -280,11 +273,8 @@ pub fn make_network_authority_clients_with_network_config(
 ) -> BTreeMap<AuthorityName, NetworkAuthorityClient> {
     let mut authority_clients = BTreeMap::new();
     for (name, (_state, network_metadata)) in committee.validators() {
-        let address = network_metadata
-            .network_address
-            .clone()
-            .rewrite_udp_to_tcp()
-            .rewrite_http_to_https();
+        let address =
+            network_metadata.network_address.clone().rewrite_udp_to_tcp().rewrite_http_to_https();
         let tls_config = soma_tls::create_rustls_client_config(
             network_metadata.network_key.clone().into_inner(),
             soma_tls::SERVER_NAME.to_string(),
@@ -323,15 +313,13 @@ fn insert_metadata<T>(request: &mut tonic::Request<T>, client_addr: Option<Socke
     if let Some(client_addr) = client_addr {
         let mut metadata = tonic::metadata::MetadataMap::new();
         metadata.insert("x-forwarded-for", client_addr.to_string().parse().unwrap());
-        metadata
-            .iter()
-            .for_each(|key_and_value| match key_and_value {
-                KeyAndValueRef::Ascii(key, value) => {
-                    request.metadata_mut().insert(key, value.clone());
-                }
-                KeyAndValueRef::Binary(key, value) => {
-                    request.metadata_mut().insert_bin(key, value.clone());
-                }
-            });
+        metadata.iter().for_each(|key_and_value| match key_and_value {
+            KeyAndValueRef::Ascii(key, value) => {
+                request.metadata_mut().insert(key, value.clone());
+            }
+            KeyAndValueRef::Binary(key, value) => {
+                request.metadata_mut().insert_bin(key, value.clone());
+            }
+        });
     }
 }

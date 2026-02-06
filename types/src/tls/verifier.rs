@@ -267,31 +267,17 @@ fn verify_self_signed_cert(
 
     // Step 2: call verification from webpki
     let verified_cert = cert
-        .verify_for_usage(
-            SUPPORTED_SIG_ALGS,
-            &trustroots,
-            chain,
-            now,
-            usage,
-            None,
-            None,
-        )
+        .verify_for_usage(SUPPORTED_SIG_ALGS, &trustroots, chain, now, usage, None, None)
         .map_err(pki_error)?;
 
     // Ensure the cert is valid for the network name
     let subject_name =
         ServerName::try_from(name).map_err(|_| rustls::Error::UnsupportedNameType)?;
-    verified_cert
-        .end_entity()
-        .verify_is_valid_for_subject_name(&subject_name)
-        .map_err(pki_error)
+    verified_cert.end_entity().verify_is_valid_for_subject_name(&subject_name).map_err(pki_error)
 }
 
-type CertChainAndRoots<'a> = (
-    webpki::EndEntityCert<'a>,
-    &'a [CertificateDer<'a>],
-    Vec<TrustAnchor<'a>>,
-);
+type CertChainAndRoots<'a> =
+    (webpki::EndEntityCert<'a>, &'a [CertificateDer<'a>], Vec<TrustAnchor<'a>>);
 
 // This prepares arguments for webpki, including a trust anchor which is the end entity of the certificate
 // (which embodies a self-signed certificate by definition)

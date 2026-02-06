@@ -24,10 +24,7 @@ pub struct InMemoryBatch {
 
 impl InMemoryBatch {
     pub fn delete_cf<K: AsRef<[u8]>>(&mut self, cf_name: &str, key: K) {
-        self.data.push(InMemoryChange::Delete((
-            cf_name.to_string(),
-            key.as_ref().to_vec(),
-        )));
+        self.data.push(InMemoryChange::Delete((cf_name.to_string(), key.as_ref().to_vec())));
     }
 
     pub fn put_cf<K, V>(&mut self, cf_name: &str, key: K, value: V)
@@ -59,10 +56,7 @@ impl InMemoryDB {
     {
         let data = self.data.read().expect("can't read data");
         match data.get(cf_name) {
-            Some(cf) => keys
-                .into_iter()
-                .map(|k| cf.get(k.as_ref()).cloned())
-                .collect(),
+            Some(cf) => keys.into_iter().map(|k| cf.get(k.as_ref()).cloned()).collect(),
             None => vec![],
         }
     }
@@ -74,9 +68,7 @@ impl InMemoryDB {
 
     pub fn put(&self, cf_name: &str, key: Vec<u8>, value: Vec<u8>) {
         let mut data = self.data.write().expect("can't write data");
-        data.entry(cf_name.to_string())
-            .or_default()
-            .insert(key, value);
+        data.entry(cf_name.to_string()).or_default().insert(key, value);
     }
 
     pub fn write(&self, batch: InMemoryBatch) {
@@ -103,9 +95,7 @@ impl InMemoryDB {
         K: DeserializeOwned,
         V: DeserializeOwned,
     {
-        let config = bincode::DefaultOptions::new()
-            .with_big_endian()
-            .with_fixint_encoding();
+        let config = bincode::DefaultOptions::new().with_big_endian().with_fixint_encoding();
         let lower_bound = lower_bound.map(Bound::Included).unwrap_or(Bound::Unbounded);
         let upper_bound = upper_bound.map(Bound::Included).unwrap_or(Bound::Unbounded);
 

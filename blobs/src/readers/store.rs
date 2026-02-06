@@ -14,10 +14,7 @@ pub struct BlobStoreReader {
 
 impl BlobStoreReader {
     pub fn new(store: Arc<dyn ObjectStore>, path: &BlobPath) -> Self {
-        Self {
-            store,
-            path: path.path(),
-        }
+        Self { store, path: path.path() }
     }
 }
 
@@ -25,15 +22,9 @@ impl BlobStoreReader {
 impl BlobReader for BlobStoreReader {
     async fn get_full(&self, timeout: Duration) -> BlobResult<Bytes> {
         match tokio::time::timeout(timeout, async {
-            let get_result = self
-                .store
-                .get(&self.path)
-                .await
-                .map_err(BlobError::ObjectStoreError)?;
-            get_result
-                .bytes()
-                .await
-                .map_err(BlobError::ObjectStoreError)
+            let get_result =
+                self.store.get(&self.path).await.map_err(BlobError::ObjectStoreError)?;
+            get_result.bytes().await.map_err(BlobError::ObjectStoreError)
         })
         .await
         {

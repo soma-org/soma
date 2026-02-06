@@ -78,11 +78,9 @@ impl AuthenticatorTrait for MultiSig {
     where
         T: Serialize,
     {
-        self.multisig_pk
-            .validate()
-            .map_err(|_| SomaError::InvalidSignature {
-                error: "Invalid multisig pubkey".to_string(),
-            })?;
+        self.multisig_pk.validate().map_err(|_| SomaError::InvalidSignature {
+            error: "Invalid multisig pubkey".to_string(),
+        })?;
 
         if SomaAddress::from(&self.multisig_pk) != multisig_address {
             return Err(SomaError::InvalidSignature {
@@ -100,12 +98,9 @@ impl AuthenticatorTrait for MultiSig {
         // TODO: further optimization can be done because multiple Ed25519 signatures can be batch verified.
         for (sig, i) in self.sigs.iter().zip(as_indices(self.bitmap)?) {
             let (subsig_pubkey, weight) =
-                self.multisig_pk
-                    .pk_map
-                    .get(i as usize)
-                    .ok_or(SomaError::InvalidSignature {
-                        error: "Invalid public keys index".to_string(),
-                    })?;
+                self.multisig_pk.pk_map.get(i as usize).ok_or(SomaError::InvalidSignature {
+                    error: "Invalid public keys index".to_string(),
+                })?;
             let res = match sig {
                 CompressedSignature::Ed25519(s) => {
                     if !matches!(subsig_pubkey.scheme(), SignatureScheme::ED25519) {
@@ -165,10 +160,7 @@ impl AuthenticatorTrait for MultiSig {
 /// e.g. 22 = 0b10110, then the result is [1, 2, 4].
 pub fn as_indices(bitmap: u16) -> Result<Vec<u8>, SomaError> {
     if bitmap > MAX_BITMAP_VALUE {
-        return Err(SomaError::InvalidSignature {
-            error: "Invalid bitmap".to_string(),
-        }
-        .into());
+        return Err(SomaError::InvalidSignature { error: "Invalid bitmap".to_string() }.into());
     }
     let mut res = Vec::new();
     for i in 0..10 {
@@ -186,12 +178,7 @@ impl MultiSig {
         bitmap: BitmapUnit,
         multisig_pk: MultiSigPublicKey,
     ) -> Self {
-        Self {
-            sigs,
-            bitmap,
-            multisig_pk,
-            bytes: OnceCell::new(),
-        }
+        Self { sigs, bitmap, multisig_pk, bytes: OnceCell::new() }
     }
     /// This combines a list of [enum Signature] `flag || signature || pk` to a MultiSig.
     /// The order of full_sigs must be the same as the order of public keys in
@@ -201,11 +188,9 @@ impl MultiSig {
         full_sigs: Vec<GenericSignature>,
         multisig_pk: MultiSigPublicKey,
     ) -> Result<Self, SomaError> {
-        multisig_pk
-            .validate()
-            .map_err(|_| SomaError::InvalidSignature {
-                error: "Invalid multisig public key".to_string(),
-            })?;
+        multisig_pk.validate().map_err(|_| SomaError::InvalidSignature {
+            error: "Invalid multisig public key".to_string(),
+        })?;
 
         if full_sigs.len() > multisig_pk.pk_map.len() || full_sigs.is_empty() {
             return Err(SomaError::InvalidSignature {
@@ -217,11 +202,9 @@ impl MultiSig {
         let mut sigs = Vec::with_capacity(full_sigs.len());
         for s in full_sigs {
             let pk = s.to_public_key()?;
-            let index = multisig_pk
-                .get_index(&pk)
-                .ok_or(SomaError::IncorrectSigner {
-                    error: format!("pk does not exist: {:?}", pk),
-                })?;
+            let index = multisig_pk.get_index(&pk).ok_or(SomaError::IncorrectSigner {
+                error: format!("pk does not exist: {:?}", pk),
+            })?;
             if bitmap & (1 << index) != 0 {
                 return Err(SomaError::InvalidSignature {
                     error: "Duplicate public key".to_string(),
@@ -232,12 +215,7 @@ impl MultiSig {
             sigs.push(s.to_compressed()?);
         }
 
-        Ok(MultiSig {
-            sigs,
-            bitmap,
-            multisig_pk,
-            bytes: OnceCell::new(),
-        })
+        Ok(MultiSig { sigs, bitmap, multisig_pk, bytes: OnceCell::new() })
     }
 
     pub fn init_and_validate(&mut self) -> Result<Self, FastCryptoError> {
@@ -338,11 +316,7 @@ impl MultiSigPublicKey {
             || pks.len() != weights.len()
             || pks.len() > MAX_SIGNER_IN_MULTISIG
             || weights.contains(&0)
-            || weights
-                .iter()
-                .map(|w| *w as ThresholdUnit)
-                .sum::<ThresholdUnit>()
-                < threshold
+            || weights.iter().map(|w| *w as ThresholdUnit).sum::<ThresholdUnit>() < threshold
             || pks
                 .iter()
                 .enumerate()
@@ -354,10 +328,7 @@ impl MultiSigPublicKey {
             .into());
         }
 
-        Ok(MultiSigPublicKey {
-            pk_map: pks.into_iter().zip(weights).collect(),
-            threshold,
-        })
+        Ok(MultiSigPublicKey { pk_map: pks.into_iter().zip(weights).collect(), threshold })
     }
 
     pub fn get_index(&self, pk: &PublicKey) -> Option<u8> {
@@ -378,16 +349,10 @@ impl MultiSigPublicKey {
             || pk_map.is_empty()
             || pk_map.len() > MAX_SIGNER_IN_MULTISIG
             || pk_map.iter().any(|(_pk, weight)| *weight == 0)
-            || pk_map
-                .iter()
-                .map(|(_pk, weight)| *weight as ThresholdUnit)
-                .sum::<ThresholdUnit>()
+            || pk_map.iter().map(|(_pk, weight)| *weight as ThresholdUnit).sum::<ThresholdUnit>()
                 < self.threshold
             || pk_map.iter().enumerate().any(|(i, (pk, _weight))| {
-                pk_map
-                    .iter()
-                    .skip(i + 1)
-                    .any(|(other_pk, _weight)| *pk == *other_pk)
+                pk_map.iter().skip(i + 1).any(|(other_pk, _weight)| *pk == *other_pk)
             })
         {
             return Err(FastCryptoError::InvalidInput);

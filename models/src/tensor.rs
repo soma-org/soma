@@ -72,10 +72,7 @@ fn safetensor_dtype_to_burn(dtype: safetensors::Dtype) -> ModelResult<DType> {
         Dtype::U32 => Ok(DType::U32),
         Dtype::U8 => Ok(DType::U8),
         Dtype::BOOL => Ok(DType::Bool),
-        _ => Err(ModelError::FailedTypeVerification(format!(
-            "Unsupported dtype: {:?}",
-            dtype
-        ))),
+        _ => Err(ModelError::FailedTypeVerification(format!("Unsupported dtype: {:?}", dtype))),
     }
 }
 
@@ -87,11 +84,7 @@ struct TensorWrapper<B: Backend, const D: usize> {
 
 impl<B: Backend, const D: usize> TensorWrapper<B, D> {
     fn new(tensor: Tensor<B, D>) -> Self {
-        Self {
-            dtype: tensor.dtype(),
-            shape: tensor.shape().dims,
-            tensor,
-        }
+        Self { dtype: tensor.dtype(), shape: tensor.shape().dims, tensor }
     }
 }
 

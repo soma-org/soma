@@ -47,9 +47,8 @@ pub struct Encoder<B: Backend> {
 
 impl EncoderConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Encoder<B> {
-        let layers = (0..self.num_layers)
-            .map(|_| Layer::<B>::new(self, device))
-            .collect::<Vec<_>>();
+        let layers =
+            (0..self.num_layers).map(|_| Layer::<B>::new(self, device)).collect::<Vec<_>>();
         Encoder { layers }
     }
 }

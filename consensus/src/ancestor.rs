@@ -23,10 +23,7 @@ struct AncestorInfo {
 
 impl AncestorInfo {
     fn new() -> Self {
-        Self {
-            state: AncestorState::Include,
-            lock_until_round: 0,
-        }
+        Self { state: AncestorState::Include, lock_until_round: 0 }
     }
 
     fn is_locked(&self, current_clock_round: u32) -> bool {
@@ -79,10 +76,8 @@ impl AncestorStateManager {
 
         // Note: this value cannot be greater than the threshold used in leader
         // schedule to identify bad nodes.
-        let excluded_nodes_stake_threshold_percentage = 2 * context
-            .protocol_config
-            .consensus_bad_nodes_stake_threshold()
-            / 3;
+        let excluded_nodes_stake_threshold_percentage =
+            2 * context.protocol_config.consensus_bad_nodes_stake_threshold() / 3;
 
         let excluded_nodes_stake_threshold = (excluded_nodes_stake_threshold_percentage
             * context.committee.total_stake())
@@ -134,17 +129,9 @@ impl AncestorStateManager {
         // If propagation scores are not ready because the first 300 commits have not
         // happened, this is okay as we will only start excluding ancestors after that
         // point in time.
-        for (idx, score) in self
-            .propagation_scores
-            .scores_per_authority
-            .iter()
-            .enumerate()
-        {
-            let authority_id = self
-                .context
-                .committee
-                .to_authority_index(idx)
-                .expect("Index should be valid");
+        for (idx, score) in self.propagation_scores.scores_per_authority.iter().enumerate() {
+            let authority_id =
+                self.context.committee.to_authority_index(idx).expect("Index should be valid");
             let ancestor_info = &self.state_map[idx];
             let (_low, authority_high_quorum_round) = accepted_quorum_rounds[idx];
             let stake = self

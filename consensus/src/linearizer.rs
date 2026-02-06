@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 use types::committee::Stake;
 use types::consensus::{
     block::{BlockAPI, BlockRef, BlockTimestampMs, Round, VerifiedBlock},
-    commit::{sort_sub_dag_blocks, Commit, CommittedSubDag, TrustedCommit},
+    commit::{Commit, CommittedSubDag, TrustedCommit, sort_sub_dag_blocks},
     context::Context,
 };
 
@@ -85,14 +85,10 @@ impl Linearizer {
             last_commit_digest,
             timestamp_ms,
             leader_block.reference(),
-            to_commit
-                .iter()
-                .map(|block| block.reference())
-                .collect::<Vec<_>>(),
+            to_commit.iter().map(|block| block.reference()).collect::<Vec<_>>(),
         );
-        let serialized = commit
-            .serialize()
-            .unwrap_or_else(|e| panic!("Failed to serialize commit: {}", e));
+        let serialized =
+            commit.serialize().unwrap_or_else(|e| panic!("Failed to serialize commit: {}", e));
         let commit = TrustedCommit::new_trusted(commit, serialized);
 
         // Create the corresponding committed sub dag

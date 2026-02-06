@@ -47,10 +47,7 @@ pub enum TransactionStatus {
     /// (i.e. the signature part of the CertifiedTransaction), as well as the signed effects.
     /// The certificate signature is optional because for transactions executed in previous
     /// epochs, we won't keep around the certificate signatures.
-    Executed(
-        Option<AuthorityStrongQuorumSignInfo>,
-        SignedTransactionEffects,
-    ),
+    Executed(Option<AuthorityStrongQuorumSignInfo>, SignedTransactionEffects),
 }
 
 impl TransactionStatus {
@@ -169,17 +166,11 @@ pub struct SubmitTxRequest {
 
 impl SubmitTxRequest {
     pub fn new_transaction(transaction: Transaction) -> Self {
-        Self {
-            transaction: Some(transaction),
-            ping_type: None,
-        }
+        Self { transaction: Some(transaction), ping_type: None }
     }
 
     pub fn new_ping(ping_type: PingType) -> Self {
-        Self {
-            transaction: None,
-            ping_type: Some(ping_type),
-        }
+        Self { transaction: None, ping_type: Some(ping_type) }
     }
 
     pub fn tx_type(&self) -> TxType {
@@ -191,11 +182,7 @@ impl SubmitTxRequest {
             };
         }
         let transaction = self.transaction.as_ref().unwrap();
-        if transaction.is_consensus_tx() {
-            TxType::SharedObject
-        } else {
-            TxType::SingleWriter
-        }
+        if transaction.is_consensus_tx() { TxType::SharedObject } else { TxType::SingleWriter }
     }
 
     /// Returns the digest of the transaction if it is a transaction request.
@@ -226,25 +213,19 @@ impl TxType {
 impl SubmitTxRequest {
     pub fn into_raw(&self) -> Result<RawSubmitTxRequest, SomaError> {
         let transactions = if let Some(transaction) = &self.transaction {
-            vec![bcs::to_bytes(&transaction)
-                .map_err(|e| SomaError::TransactionSerializationError {
-                    error: e.to_string(),
-                })?
-                .into()]
+            vec![
+                bcs::to_bytes(&transaction)
+                    .map_err(|e| SomaError::TransactionSerializationError { error: e.to_string() })?
+                    .into(),
+            ]
         } else {
             vec![]
         };
 
-        let submit_type = if self.ping_type.is_some() {
-            SubmitTxType::Ping
-        } else {
-            SubmitTxType::Default
-        };
+        let submit_type =
+            if self.ping_type.is_some() { SubmitTxType::Ping } else { SubmitTxType::Default };
 
-        Ok(RawSubmitTxRequest {
-            transactions,
-            submit_type: submit_type.into(),
-        })
+        Ok(RawSubmitTxRequest { transactions, submit_type: submit_type.into() })
     }
 }
 
@@ -269,15 +250,10 @@ pub enum SubmitTxResult {
 impl std::fmt::Debug for SubmitTxResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Submitted { consensus_position } => f
-                .debug_struct("Submitted")
-                .field("consensus_position", consensus_position)
-                .finish(),
-            Self::Executed {
-                effects_digest,
-                fast_path,
-                ..
-            } => f
+            Self::Submitted { consensus_position } => {
+                f.debug_struct("Submitted").field("consensus_position", consensus_position).finish()
+            }
+            Self::Executed { effects_digest, fast_path, .. } => f
                 .debug_struct("Executed")
                 .field("effects_digest", &format_args!("{}", effects_digest))
                 .field("fast_path", fast_path)
@@ -402,21 +378,15 @@ pub enum WaitForEffectsResponse {
 impl std::fmt::Debug for WaitForEffectsResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Executed {
-                effects_digest,
-                fast_path,
-                ..
-            } => f
+            Self::Executed { effects_digest, fast_path, .. } => f
                 .debug_struct("Executed")
                 .field("effects_digest", effects_digest)
                 .field("fast_path", fast_path)
                 .finish(),
             Self::Rejected { error } => f.debug_struct("Rejected").field("error", error).finish(),
-            Self::Expired { epoch, round } => f
-                .debug_struct("Expired")
-                .field("epoch", epoch)
-                .field("round", round)
-                .finish(),
+            Self::Expired { epoch, round } => {
+                f.debug_struct("Expired").field("epoch", epoch).field("round", round).finish()
+            }
         }
     }
 }
@@ -445,8 +415,7 @@ pub struct RawWaitForEffectsRequest {
 
 impl RawWaitForEffectsRequest {
     pub fn get_ping_type(&self) -> Option<PingType> {
-        self.ping_type
-            .map(|p| PingType::try_from(p).expect("Invalid ping type"))
+        self.ping_type.map(|p| PingType::try_from(p).expect("Invalid ping type"))
     }
 }
 
@@ -570,12 +539,7 @@ impl TryFrom<ExecutedData> for RawExecutedData {
                     .into(),
             );
         }
-        Ok(RawExecutedData {
-            effects,
-
-            input_objects,
-            output_objects,
-        })
+        Ok(RawExecutedData { effects, input_objects, output_objects })
     }
 }
 
@@ -608,11 +572,7 @@ impl TryFrom<RawExecutedData> for ExecutedData {
                 }
             })?);
         }
-        Ok(ExecutedData {
-            effects,
-            input_objects,
-            output_objects,
-        })
+        Ok(ExecutedData { effects, input_objects, output_objects })
     }
 }
 
@@ -625,11 +585,7 @@ impl TryFrom<SubmitTxResult> for RawSubmitTxResult {
                 let consensus_position = consensus_position.into_raw()?;
                 RawValidatorSubmitStatus::Submitted(consensus_position)
             }
-            SubmitTxResult::Executed {
-                effects_digest,
-                details,
-                fast_path,
-            } => {
+            SubmitTxResult::Executed { effects_digest, details, fast_path } => {
                 let raw_executed = try_from_response_executed(effects_digest, details, fast_path)?;
                 RawValidatorSubmitStatus::Executed(raw_executed)
             }
@@ -653,11 +609,7 @@ impl TryFrom<RawSubmitTxResult> for SubmitTxResult {
             }
             Some(RawValidatorSubmitStatus::Executed(executed)) => {
                 let (effects_digest, details, fast_path) = try_from_raw_executed_status(executed)?;
-                Ok(SubmitTxResult::Executed {
-                    effects_digest,
-                    details,
-                    fast_path,
-                })
+                Ok(SubmitTxResult::Executed { effects_digest, details, fast_path })
             }
             Some(RawValidatorSubmitStatus::Rejected(error)) => {
                 let error = try_from_raw_rejected_status(error)?.unwrap_or(
@@ -704,11 +656,7 @@ impl TryFrom<RawSubmitTxResponse> for SubmitTxResponse {
 fn try_from_raw_executed_status(
     executed: RawExecutedStatus,
 ) -> Result<
-    (
-        crate::digests::TransactionEffectsDigest,
-        Option<Box<ExecutedData>>,
-        bool,
-    ),
+    (crate::digests::TransactionEffectsDigest, Option<Box<ExecutedData>>, bool),
     crate::error::SomaError,
 > {
     let effects_digest = bcs::from_bytes(&executed.effects_digest).map_err(|err| {
@@ -770,16 +718,8 @@ fn try_from_response_executed(
             error: err.to_string(),
         })?
         .into();
-    let details = if let Some(details) = details {
-        Some((*details).try_into()?)
-    } else {
-        None
-    };
-    Ok(RawExecutedStatus {
-        effects_digest,
-        details,
-        fast_path,
-    })
+    let details = if let Some(details) = details { Some((*details).try_into()?) } else { None };
+    Ok(RawExecutedStatus { effects_digest, details, fast_path })
 }
 
 impl TryFrom<RawWaitForEffectsRequest> for WaitForEffectsRequest {
@@ -853,20 +793,15 @@ impl TryFrom<RawWaitForEffectsResponse> for WaitForEffectsResponse {
         match value.inner {
             Some(RawValidatorTransactionStatus::Executed(executed)) => {
                 let (effects_digest, details, fast_path) = try_from_raw_executed_status(executed)?;
-                Ok(Self::Executed {
-                    effects_digest,
-                    details,
-                    fast_path,
-                })
+                Ok(Self::Executed { effects_digest, details, fast_path })
             }
             Some(RawValidatorTransactionStatus::Rejected(rejected)) => {
                 let error = try_from_raw_rejected_status(rejected)?;
                 Ok(Self::Rejected { error })
             }
-            Some(RawValidatorTransactionStatus::Expired(expired)) => Ok(Self::Expired {
-                epoch: expired.epoch,
-                round: expired.round,
-            }),
+            Some(RawValidatorTransactionStatus::Expired(expired)) => {
+                Ok(Self::Expired { epoch: expired.epoch, round: expired.round })
+            }
             None => Err(crate::error::SomaError::GrpcMessageDeserializeError {
                 type_info: "RawWaitForEffectsResponse.inner".to_string(),
                 error: "RawWaitForEffectsResponse.inner is None".to_string(),
@@ -881,11 +816,7 @@ impl TryFrom<WaitForEffectsResponse> for RawWaitForEffectsResponse {
 
     fn try_from(value: WaitForEffectsResponse) -> Result<Self, Self::Error> {
         let inner = match value {
-            WaitForEffectsResponse::Executed {
-                effects_digest,
-                details,
-                fast_path,
-            } => {
+            WaitForEffectsResponse::Executed { effects_digest, details, fast_path } => {
                 let raw_executed = try_from_response_executed(effects_digest, details, fast_path)?;
                 RawValidatorTransactionStatus::Executed(raw_executed)
             }

@@ -6,7 +6,7 @@ use tokio::{
         watch,
     },
     task::JoinHandle,
-    time::{sleep_until, Instant},
+    time::{Instant, sleep_until},
 };
 use tracing::{debug, warn};
 use types::consensus::{block::Round, context::Context};
@@ -49,10 +49,7 @@ impl<D: CoreThreadDispatcher> LeaderTimeoutTask<D> {
         };
         let handle = tokio::spawn(async move { me.run().await });
 
-        LeaderTimeoutTaskHandle {
-            handle,
-            stop: stop_sender,
-        }
+        LeaderTimeoutTaskHandle { handle, stop: stop_sender }
     }
 
     async fn run(&mut self) {

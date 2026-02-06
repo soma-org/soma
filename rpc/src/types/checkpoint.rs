@@ -172,10 +172,8 @@ mod serialization {
                 {
                     let mut seq = serializer.serialize_seq(Some(self.0.0.len()))?;
                     for txn in &self.0.0 {
-                        let digests = Digests {
-                            transaction: &txn.transaction,
-                            effects: &txn.effects,
-                        };
+                        let digests =
+                            Digests { transaction: &txn.transaction, effects: &txn.effects };
                         seq.serialize_element(&digests)?;
                     }
                     seq.end()
@@ -225,10 +223,8 @@ mod serialization {
         where
             D: Deserializer<'de>,
         {
-            let BinaryContents::V1(BinaryContentsV1 {
-                digests,
-                signatures,
-            }) = Deserialize::deserialize(deserializer)?;
+            let BinaryContents::V1(BinaryContentsV1 { digests, signatures }) =
+                Deserialize::deserialize(deserializer)?;
 
             if digests.len() != signatures.len() {
                 return Err(serde::de::Error::custom(
@@ -240,19 +236,9 @@ mod serialization {
                 digests
                     .into_iter()
                     .zip(signatures)
-                    .map(
-                        |(
-                            ExecutionDigests {
-                                transaction,
-                                effects,
-                            },
-                            signatures,
-                        )| CheckpointTransactionInfo {
-                            transaction,
-                            effects,
-                            signatures,
-                        },
-                    )
+                    .map(|(ExecutionDigests { transaction, effects }, signatures)| {
+                        CheckpointTransactionInfo { transaction, effects, signatures }
+                    })
                     .collect(),
             ))
         }

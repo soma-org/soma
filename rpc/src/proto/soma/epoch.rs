@@ -44,20 +44,15 @@ impl Merge<&Epoch> for Epoch {
         }
 
         if let Some(submask) = mask.subtree(Self::PROTOCOL_CONFIG_FIELD.name) {
-            self.protocol_config = protocol_config
-                .as_ref()
-                .map(|config| ProtocolConfig::merge_from(config, &submask));
+            self.protocol_config =
+                protocol_config.as_ref().map(|config| ProtocolConfig::merge_from(config, &submask));
         }
     }
 }
 
 impl Merge<&ProtocolConfig> for ProtocolConfig {
     fn merge(&mut self, source: &ProtocolConfig, mask: &FieldMaskTree) {
-        let ProtocolConfig {
-            protocol_version,
-            feature_flags,
-            attributes,
-        } = source;
+        let ProtocolConfig { protocol_version, feature_flags, attributes } = source;
 
         if mask.contains(Self::PROTOCOL_VERSION_FIELD.name) {
             self.protocol_version = *protocol_version;
@@ -75,11 +70,7 @@ impl Merge<&ProtocolConfig> for ProtocolConfig {
 
 impl Merge<ProtocolConfig> for ProtocolConfig {
     fn merge(&mut self, source: ProtocolConfig, mask: &FieldMaskTree) {
-        let ProtocolConfig {
-            protocol_version,
-            feature_flags,
-            attributes,
-        } = source;
+        let ProtocolConfig { protocol_version, feature_flags, attributes } = source;
 
         if mask.contains(Self::PROTOCOL_VERSION_FIELD.name) {
             self.protocol_version = protocol_version;

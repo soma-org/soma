@@ -20,29 +20,18 @@ pub struct RpcError {
 
 impl RpcError {
     pub fn new<T: Into<String>>(code: Code, message: T) -> Self {
-        Self {
-            code,
-            message: Some(message.into()),
-            details: None,
-        }
+        Self { code, message: Some(message.into()), details: None }
     }
 
     pub fn not_found() -> Self {
-        Self {
-            code: Code::NotFound,
-            message: None,
-            details: None,
-        }
+        Self { code: Code::NotFound, message: None, details: None }
     }
 
     pub fn into_status_proto(self) -> crate::proto::google::rpc::Status {
         crate::proto::google::rpc::Status {
             code: self.code.into(),
             message: self.message.unwrap_or_default(),
-            details: self
-                .details
-                .map(ErrorDetails::into_status_details)
-                .unwrap_or_default(),
+            details: self.details.map(ErrorDetails::into_status_details).unwrap_or_default(),
         }
     }
 }
@@ -66,11 +55,7 @@ impl From<tonic::Status> for RpcError {
 
         Self {
             code,
-            message: if message.is_empty() {
-                None
-            } else {
-                Some(message.to_string())
-            },
+            message: if message.is_empty() { None } else { Some(message.to_string()) },
             details,
         }
     }
@@ -98,41 +83,25 @@ impl From<types::storage::storage_error::Error> for RpcError {
             _ => Code::Internal,
         };
 
-        Self {
-            code,
-            message: Some(value.to_string()),
-            details: None,
-        }
+        Self { code, message: Some(value.to_string()), details: None }
     }
 }
 
 impl From<anyhow::Error> for RpcError {
     fn from(value: anyhow::Error) -> Self {
-        Self {
-            code: Code::Internal,
-            message: Some(value.to_string()),
-            details: None,
-        }
+        Self { code: Code::Internal, message: Some(value.to_string()), details: None }
     }
 }
 
 impl From<crate::utils::types_conversions::SdkTypeConversionError> for RpcError {
     fn from(value: crate::utils::types_conversions::SdkTypeConversionError) -> Self {
-        Self {
-            code: Code::Internal,
-            message: Some(value.to_string()),
-            details: None,
-        }
+        Self { code: Code::Internal, message: Some(value.to_string()), details: None }
     }
 }
 
 impl From<bcs::Error> for RpcError {
     fn from(value: bcs::Error) -> Self {
-        Self {
-            code: Code::Internal,
-            message: Some(value.to_string()),
-            details: None,
-        }
+        Self { code: Code::Internal, message: Some(value.to_string()), details: None }
     }
 }
 
@@ -155,10 +124,7 @@ impl From<types::quorum_driver::QuorumDriverError> for RpcError {
                 let new_map = conflicting_txes
                     .into_iter()
                     .map(|(digest, (pairs, _))| {
-                        (
-                            digest,
-                            pairs.into_iter().map(|(_, obj_ref)| obj_ref).collect(),
-                        )
+                        (digest, pairs.into_iter().map(|(_, obj_ref)| obj_ref).collect())
                     })
                     .collect::<std::collections::BTreeMap<_, Vec<_>>>();
 
@@ -170,16 +136,9 @@ impl From<types::quorum_driver::QuorumDriverError> for RpcError {
             }
             TimeoutBeforeFinality | FailedWithTransientErrorAfterMaximumAttempts { .. } => {
                 // TODO add a Retry-After header
-                RpcError::new(
-                    Code::Unavailable,
-                    "timed-out before finality could be reached",
-                )
+                RpcError::new(Code::Unavailable, "timed-out before finality could be reached")
             }
-            TimeoutBeforeFinalityWithErrors {
-                last_error,
-                attempts,
-                timeout,
-            } => {
+            TimeoutBeforeFinalityWithErrors { last_error, attempts, timeout } => {
                 // TODO add a Retry-After header
                 RpcError::new(
                     Code::Unavailable,
@@ -193,13 +152,11 @@ impl From<types::quorum_driver::QuorumDriverError> for RpcError {
                     .into_iter()
                     // sort by total stake, descending, so users see the most prominent one first
                     .sorted_by(|(_, a, _), (_, b, _)| b.cmp(a))
-                    .filter_map(|(err, _, _)| {
-                        if err.is_retryable().0 {
-                            None
-                        } else {
-                            Some(err.to_string())
-                        }
-                    })
+                    .filter_map(
+                        |(err, _, _)| {
+                            if err.is_retryable().0 { None } else { Some(err.to_string()) }
+                        },
+                    )
                     .collect();
 
                 assert!(
@@ -251,17 +208,10 @@ impl From<crate::proto::google::rpc::bad_request::FieldViolation> for RpcError {
 
 impl From<BadRequest> for RpcError {
     fn from(value: BadRequest) -> Self {
-        let message = value
-            .field_violations
-            .first()
-            .map(|violation| violation.description.clone());
+        let message = value.field_violations.first().map(|violation| violation.description.clone());
         let details = ErrorDetails::new().with_bad_request(value);
 
-        RpcError {
-            code: Code::InvalidArgument,
-            message,
-            details: Some(Box::new(details)),
-        }
+        RpcError { code: Code::InvalidArgument, message, details: Some(Box::new(details)) }
     }
 }
 
@@ -363,20 +313,14 @@ pub struct ObjectNotFoundError {
 
 impl ObjectNotFoundError {
     pub fn new(object_id: crate::types::Address) -> Self {
-        Self {
-            object_id,
-            version: None,
-        }
+        Self { object_id, version: None }
     }
 
     pub fn new_with_version(
         object_id: crate::types::Address,
         version: crate::types::Version,
     ) -> Self {
-        Self {
-            object_id,
-            version: Some(version),
-        }
+        Self { object_id, version: Some(version) }
     }
 }
 
@@ -408,17 +352,11 @@ pub struct CheckpointNotFoundError {
 
 impl CheckpointNotFoundError {
     pub fn sequence_number(sequence_number: u64) -> Self {
-        Self {
-            sequence_number: Some(sequence_number),
-            digest: None,
-        }
+        Self { sequence_number: Some(sequence_number), digest: None }
     }
 
     pub fn digest(digest: crate::types::Digest) -> Self {
-        Self {
-            sequence_number: None,
-            digest: Some(digest),
-        }
+        Self { sequence_number: None, digest: Some(digest) }
     }
 }
 

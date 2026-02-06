@@ -158,11 +158,7 @@ impl TransactionEffectsAPI for TransactionEffects {
         self.changed_objects
             .iter()
             .filter_map(|(id, change)| {
-                match (
-                    &change.input_state,
-                    &change.output_state,
-                    &change.id_operation,
-                ) {
+                match (&change.input_state, &change.output_state, &change.id_operation) {
                     (
                         ObjectIn::NotExist,
                         ObjectOut::ObjectWrite((digest, owner)),
@@ -177,34 +173,25 @@ impl TransactionEffectsAPI for TransactionEffects {
     fn mutated(&self) -> Vec<(ObjectRef, Owner)> {
         self.changed_objects
             .iter()
-            .filter_map(
-                |(id, change)| match (&change.input_state, &change.output_state) {
-                    (ObjectIn::Exist(_), ObjectOut::ObjectWrite((digest, owner))) => {
-                        Some(((*id, self.version, *digest), owner.clone()))
-                    }
-                    _ => None,
-                },
-            )
+            .filter_map(|(id, change)| match (&change.input_state, &change.output_state) {
+                (ObjectIn::Exist(_), ObjectOut::ObjectWrite((digest, owner))) => {
+                    Some(((*id, self.version, *digest), owner.clone()))
+                }
+                _ => None,
+            })
             .collect()
     }
 
     /// Return an iterator of mutated objects, but excluding the gas object.
     fn mutated_excluding_gas(&self) -> Vec<(ObjectRef, Owner)> {
-        self.mutated()
-            .into_iter()
-            .filter(|o| o != &self.gas_object())
-            .collect()
+        self.mutated().into_iter().filter(|o| o != &self.gas_object()).collect()
     }
 
     fn deleted(&self) -> Vec<ObjectRef> {
         self.changed_objects
             .iter()
             .filter_map(|(id, change)| {
-                match (
-                    &change.input_state,
-                    &change.output_state,
-                    &change.id_operation,
-                ) {
+                match (&change.input_state, &change.output_state, &change.id_operation) {
                     (ObjectIn::Exist(_), ObjectOut::NotExist, IDOperation::Deleted) => {
                         Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_DELETED))
                     }
@@ -227,27 +214,25 @@ impl TransactionEffectsAPI for TransactionEffects {
                 }
                 _ => None,
             })
-            .chain(
-                self.unchanged_shared_objects
-                    .iter()
-                    .filter_map(|(id, change_kind)| match change_kind {
-                        UnchangedSharedKind::ReadOnlyRoot((version, digest)) => {
-                            Some(InputSharedObject::ReadOnly((*id, *version, *digest)))
-                        }
-                        UnchangedSharedKind::MutateDeleted(seqno) => {
-                            Some(InputSharedObject::MutateDeleted(*id, *seqno))
-                        }
-                        UnchangedSharedKind::ReadDeleted(seqno) => {
-                            Some(InputSharedObject::ReadDeleted(*id, *seqno))
-                        }
-                        UnchangedSharedKind::Cancelled(seqno) => {
-                            Some(InputSharedObject::Cancelled(*id, *seqno))
-                        } // We can not expose the per epoch config object as input shared object,
-                          // since it does not require sequencing, and hence shall not be considered
-                          // as a normal input shared object.
-                          // UnchangedSharedKind::PerEpochConfig => None,
-                    }),
-            )
+            .chain(self.unchanged_shared_objects.iter().filter_map(|(id, change_kind)| {
+                match change_kind {
+                    UnchangedSharedKind::ReadOnlyRoot((version, digest)) => {
+                        Some(InputSharedObject::ReadOnly((*id, *version, *digest)))
+                    }
+                    UnchangedSharedKind::MutateDeleted(seqno) => {
+                        Some(InputSharedObject::MutateDeleted(*id, *seqno))
+                    }
+                    UnchangedSharedKind::ReadDeleted(seqno) => {
+                        Some(InputSharedObject::ReadDeleted(*id, *seqno))
+                    }
+                    UnchangedSharedKind::Cancelled(seqno) => {
+                        Some(InputSharedObject::Cancelled(*id, *seqno))
+                    } // We can not expose the per epoch config object as input shared object,
+                      // since it does not require sequencing, and hence shall not be considered
+                      // as a normal input shared object.
+                      // UnchangedSharedKind::PerEpochConfig => None,
+                }
+            }))
             .collect()
     }
 
@@ -274,50 +259,43 @@ impl TransactionEffectsAPI for TransactionEffects {
                 EffectsObjectChange {
                     input_state: ObjectIn::Exist((
                         (obj_ref.1, obj_ref.2),
-                        Owner::Shared {
-                            initial_shared_version: OBJECT_START_VERSION,
-                        },
+                        Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                     )),
                     output_state: ObjectOut::ObjectWrite((
                         obj_ref.2,
-                        Owner::Shared {
-                            initial_shared_version: obj_ref.1,
-                        },
+                        Owner::Shared { initial_shared_version: obj_ref.1 },
                     )),
                     id_operation: IDOperation::None,
                 },
             )),
-            InputSharedObject::ReadOnly(obj_ref) => self.unchanged_shared_objects.push((
-                obj_ref.0,
-                UnchangedSharedKind::ReadOnlyRoot((obj_ref.1, obj_ref.2)),
-            )),
+            InputSharedObject::ReadOnly(obj_ref) => self
+                .unchanged_shared_objects
+                .push((obj_ref.0, UnchangedSharedKind::ReadOnlyRoot((obj_ref.1, obj_ref.2)))),
             InputSharedObject::ReadDeleted(obj_id, seqno) => self
                 .unchanged_shared_objects
                 .push((obj_id, UnchangedSharedKind::ReadDeleted(seqno))),
             InputSharedObject::MutateDeleted(obj_id, seqno) => self
                 .unchanged_shared_objects
                 .push((obj_id, UnchangedSharedKind::MutateDeleted(seqno))),
-            InputSharedObject::Cancelled(obj_id, seqno) => self
-                .unchanged_shared_objects
-                .push((obj_id, UnchangedSharedKind::Cancelled(seqno))),
+            InputSharedObject::Cancelled(obj_id, seqno) => {
+                self.unchanged_shared_objects.push((obj_id, UnchangedSharedKind::Cancelled(seqno)))
+            }
         }
     }
 
     fn written(&self) -> Vec<ObjectRef> {
         self.changed_objects
             .iter()
-            .filter_map(
-                |(id, change)| match (&change.output_state, &change.id_operation) {
-                    (ObjectOut::NotExist, IDOperation::Deleted) => {
-                        Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_DELETED))
-                    }
-                    (ObjectOut::NotExist, IDOperation::None) => {
-                        Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_WRAPPED))
-                    }
-                    (ObjectOut::ObjectWrite((d, _)), _) => Some((*id, self.version, *d)),
-                    _ => None,
-                },
-            )
+            .filter_map(|(id, change)| match (&change.output_state, &change.id_operation) {
+                (ObjectOut::NotExist, IDOperation::Deleted) => {
+                    Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_DELETED))
+                }
+                (ObjectOut::NotExist, IDOperation::None) => {
+                    Some((*id, self.version, ObjectDigest::OBJECT_DIGEST_WRAPPED))
+                }
+                (ObjectOut::ObjectWrite((d, _)), _) => Some((*id, self.version, *d)),
+                _ => None,
+            })
             .collect()
     }
 
@@ -389,12 +367,8 @@ impl TransactionEffects {
             .collect();
         let changed_objects: Vec<_> = changed_objects.into_iter().collect();
 
-        let gas_object_index = gas_object.map(|gas_id| {
-            changed_objects
-                .iter()
-                .position(|(id, _)| id == &gas_id)
-                .unwrap() as u32
-        });
+        let gas_object_index = gas_object
+            .map(|gas_id| changed_objects.iter().position(|(id, _)| id == &gas_id).unwrap() as u32);
 
         let result = Self {
             status,
@@ -414,10 +388,7 @@ impl TransactionEffects {
     }
 
     pub fn execution_digests(&self) -> ExecutionDigests {
-        ExecutionDigests {
-            transaction: *self.transaction_digest(),
-            effects: self.digest(),
-        }
+        ExecutionDigests { transaction: *self.transaction_digest(), effects: self.digest() }
     }
 
     /// This function demonstrates what's the invariant of the effects.
@@ -427,11 +398,7 @@ impl TransactionEffects {
         let mut unique_ids = HashSet::new();
         for (id, change) in &self.changed_objects {
             assert!(unique_ids.insert(*id));
-            match (
-                &change.input_state,
-                &change.output_state,
-                &change.id_operation,
-            ) {
+            match (&change.input_state, &change.output_state, &change.id_operation) {
                 (ObjectIn::NotExist, ObjectOut::NotExist, IDOperation::Created) => {
                     // created and then wrapped Move object.
                 }
@@ -489,12 +456,7 @@ impl TransactionEffects {
         }
 
         for (id, _) in &self.unchanged_shared_objects {
-            assert!(
-                unique_ids.insert(*id),
-                "Duplicate object id: {:?}\n{:#?}",
-                id,
-                self
-            );
+            assert!(unique_ids.insert(*id), "Duplicate object id: {:?}\n{:#?}", id, self);
         }
     }
 
@@ -506,11 +468,7 @@ impl TransactionEffects {
         self.mutated()
             .into_iter()
             .map(|(r, o)| (r, o, WriteKind::Mutate))
-            .chain(
-                self.created()
-                    .into_iter()
-                    .map(|(r, o)| (r, o, WriteKind::Create)),
-            )
+            .chain(self.created().into_iter().map(|(r, o)| (r, o, WriteKind::Create)))
             .collect()
     }
 
@@ -523,10 +481,7 @@ impl TransactionEffects {
     /// Returns all objects that will become a tombstone after this transaction.
     /// This includes deleted, unwrapped_then_deleted and wrapped objects.
     pub fn all_tombstones(&self) -> Vec<(ObjectID, Version)> {
-        self.deleted()
-            .into_iter()
-            .map(|obj_ref| (obj_ref.0, obj_ref.1))
-            .collect()
+        self.deleted().into_iter().map(|obj_ref| (obj_ref.0, obj_ref.1)).collect()
     }
 }
 
@@ -624,8 +579,7 @@ pub type VerifiedCertifiedTransactionEffects =
 
 impl CertifiedTransactionEffects {
     pub fn verify_authority_signatures(&self, committee: &Committee) -> SomaResult {
-        self.auth_sig()
-            .verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_sig().verify_secure(self.data(), Intent::soma_transaction(), committee)
     }
 
     pub fn verify(self, committee: &Committee) -> SomaResult<VerifiedCertifiedTransactionEffects> {
@@ -715,11 +669,7 @@ pub enum ExecutionFailureStatus {
         "Invalid object type for object {object_id}. Expected: {expected_type:?}, Actual: \
          {actual_type:?}"
     )]
-    InvalidObjectType {
-        object_id: ObjectID,
-        expected_type: ObjectType,
-        actual_type: ObjectType,
-    },
+    InvalidObjectType { object_id: ObjectID, expected_type: ObjectType, actual_type: ObjectType },
     /// Error when the transaction type does not match what is expected
     #[error("The transaction type does not match the expected type")]
     InvalidTransactionType,
@@ -792,24 +742,14 @@ pub enum ExecutionFailureStatus {
     #[error("Target is not open for submissions.")]
     TargetNotOpen,
 
-    #[error(
-        "Target expired: generation_epoch={generation_epoch}, current_epoch={current_epoch}"
-    )]
-    TargetExpired {
-        generation_epoch: EpochId,
-        current_epoch: EpochId,
-    },
+    #[error("Target expired: generation_epoch={generation_epoch}, current_epoch={current_epoch}")]
+    TargetExpired { generation_epoch: EpochId, current_epoch: EpochId },
 
     #[error("Target is not filled.")]
     TargetNotFilled,
 
-    #[error(
-        "Challenge window still open: fill_epoch={fill_epoch}, current_epoch={current_epoch}"
-    )]
-    ChallengeWindowOpen {
-        fill_epoch: EpochId,
-        current_epoch: EpochId,
-    },
+    #[error("Challenge window still open: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
+    ChallengeWindowOpen { fill_epoch: EpochId, current_epoch: EpochId },
 
     #[error("Target rewards have already been claimed.")]
     TargetAlreadyClaimed,
@@ -818,10 +758,7 @@ pub enum ExecutionFailureStatus {
     // Submission errors
     //
     #[error("Model {model_id} is not assigned to target {target_id}.")]
-    ModelNotInTarget {
-        model_id: ObjectID,
-        target_id: ObjectID,
-    },
+    ModelNotInTarget { model_id: ObjectID, target_id: ObjectID },
 
     #[error("Embedding dimension mismatch: expected {expected}, got {actual}.")]
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },

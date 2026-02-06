@@ -15,10 +15,7 @@ pub struct SupportedProtocolVersions {
 }
 
 impl SupportedProtocolVersions {
-    pub const SYSTEM_DEFAULT: Self = Self {
-        min: ProtocolVersion::MIN,
-        max: ProtocolVersion::MAX,
-    };
+    pub const SYSTEM_DEFAULT: Self = Self { min: ProtocolVersion::MIN, max: ProtocolVersion::MAX };
 
     /// Use by VersionedProtocolMessage implementors to describe in which range of versions a
     /// message variant is supported.
@@ -58,10 +55,7 @@ pub struct SupportedProtocolVersionsWithHashes {
 
 impl SupportedProtocolVersionsWithHashes {
     pub fn get_version_digest(&self, v: ProtocolVersion) -> Option<Digest> {
-        self.versions
-            .iter()
-            .find(|(version, _)| *version == v)
-            .map(|(_, digest)| *digest)
+        self.versions.iter().find(|(version, _)| *version == v).map(|(_, digest)| *digest)
     }
 
     // Ideally this would be in sui-protocol-config, but sui-types depends on sui-protocol-config,

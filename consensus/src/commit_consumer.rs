@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::watch;
 use tracing::debug;
 
@@ -34,11 +34,7 @@ impl CommitConsumerArgs {
     pub fn new(
         replay_after_commit_index: CommitIndex,
         consumer_last_processed_commit_index: CommitIndex,
-    ) -> (
-        Self,
-        UnboundedReceiver<CommittedSubDag>,
-        UnboundedReceiver<CertifiedBlocksOutput>,
-    ) {
+    ) -> (Self, UnboundedReceiver<CommittedSubDag>, UnboundedReceiver<CertifiedBlocksOutput>) {
         let (commit_sender, commit_receiver) = unbounded_channel();
         let (block_sender, block_receiver) = unbounded_channel();
 
@@ -100,8 +96,7 @@ impl CommitConsumerMonitor {
     /// Updates the highest commit index processed by the consensus commit handler.
     pub fn set_highest_handled_commit(&self, highest_handled_commit: CommitIndex) {
         debug!("Highest handled commit set to {}", highest_handled_commit);
-        self.highest_handled_commit
-            .send_replace(highest_handled_commit);
+        self.highest_handled_commit.send_replace(highest_handled_commit);
     }
 
     /// Waits for consensus to replay commits until the consumer last processed commit index.

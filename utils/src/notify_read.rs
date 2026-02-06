@@ -1,17 +1,17 @@
-use futures::future::{join_all, Either};
+use futures::future::{Either, join_all};
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::time::Instant;
@@ -27,9 +27,7 @@ struct TaskAbortOnDrop {
 
 impl TaskAbortOnDrop {
     fn new(handle: tokio::task::JoinHandle<()>) -> Self {
-        Self {
-            handle: Some(handle),
-        }
+        Self { handle: Some(handle) }
     }
 }
 
@@ -58,10 +56,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
     pub fn new() -> Self {
         let pending = (0..255).map(|_| Default::default()).collect();
         let count_pending = Default::default();
-        Self {
-            pending,
-            count_pending,
-        }
+        Self { pending, count_pending }
     }
 
     /// Asynchronously notifies waiters and return number of remaining pending registration
@@ -70,9 +65,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
         let Some(registrations) = registrations else {
             return self.count_pending.load(Ordering::Relaxed);
         };
-        let rem = self
-            .count_pending
-            .fetch_sub(registrations.len(), Ordering::Relaxed);
+        let rem = self.count_pending.fetch_sub(registrations.len(), Ordering::Relaxed);
         for registration in registrations {
             registration.send(value.clone()).ok();
         }
@@ -83,10 +76,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
         self.count_pending.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         self.register(key, sender);
-        Registration {
-            this: self,
-            registration: Some((key.clone(), receiver)),
-        }
+        Registration { this: self, registration: Some((key.clone(), receiver)) }
     }
 
     pub fn register_all(&self, keys: &[K]) -> Vec<Registration<K, V>> {
@@ -95,30 +85,22 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
         for key in keys.iter() {
             let (sender, receiver) = oneshot::channel();
             self.register(key, sender);
-            let registration = Registration {
-                this: self,
-                registration: Some((key.clone(), receiver)),
-            };
+            let registration =
+                Registration { this: self, registration: Some((key.clone(), receiver)) };
             registrations.push(registration);
         }
         registrations
     }
 
     fn register(&self, key: &K, sender: oneshot::Sender<V>) {
-        self.pending(key)
-            .entry(key.clone())
-            .or_default()
-            .push(sender);
+        self.pending(key).entry(key.clone()).or_default().push(sender);
     }
 
     fn pending(&self, key: &K) -> MutexGuard<HashMap<K, Registrations<V>>> {
         let mut state = DefaultHasher::new();
         key.hash(&mut state);
         let hash = state.finish();
-        let pending = self
-            .pending
-            .get((hash % self.pending.len() as u64) as usize)
-            .unwrap();
+        let pending = self.pending.get((hash % self.pending.len() as u64) as usize).unwrap();
         pending.lock()
     }
 
@@ -140,8 +122,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
             }
             !delete
         });
-        self.count_pending
-            .fetch_sub(count_deleted, Ordering::Relaxed);
+        self.count_pending.fetch_sub(count_deleted, Ordering::Relaxed);
         if registrations.is_empty() {
             pending.remove(key);
         }
@@ -173,10 +154,8 @@ impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: 
             let handle = tokio::spawn(async move {
                 // Only start logging after the first interval.
                 let start = Instant::now() + Duration::from_secs(LONG_WAIT_LOG_INTERVAL_SECS);
-                let mut interval = interval_at(
-                    start.into(),
-                    Duration::from_secs(LONG_WAIT_LOG_INTERVAL_SECS),
-                );
+                let mut interval =
+                    interval_at(start.into(), Duration::from_secs(LONG_WAIT_LOG_INTERVAL_SECS));
 
                 loop {
                     interval.tick().await;
@@ -207,24 +186,20 @@ impl<K: Eq + Hash + Clone + Unpin + std::fmt::Debug + Send + Sync + 'static, V: 
         };
 
         let results =
-            results
-                .into_iter()
-                .zip(registrations)
-                .zip(keys.iter())
-                .map(|((a, r), key)| match a {
-                    // Note that Some() clause also drops registration that is already fulfilled
-                    Some(ready) => Either::Left(futures::future::ready(ready)),
-                    None => {
-                        let waiting_keys = waiting_keys.clone();
-                        let key = key.clone();
-                        Either::Right(async move {
-                            let result = r.await;
-                            // Remove this key from the waiting set
-                            waiting_keys.lock().remove(&key);
-                            result
-                        })
-                    }
-                });
+            results.into_iter().zip(registrations).zip(keys.iter()).map(|((a, r), key)| match a {
+                // Note that Some() clause also drops registration that is already fulfilled
+                Some(ready) => Either::Left(futures::future::ready(ready)),
+                None => {
+                    let waiting_keys = waiting_keys.clone();
+                    let key = key.clone();
+                    Either::Right(async move {
+                        let result = r.await;
+                        // Remove this key from the waiting set
+                        waiting_keys.lock().remove(&key);
+                        result
+                    })
+                }
+            });
 
         join_all(results).await
     }

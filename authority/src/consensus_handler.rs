@@ -10,7 +10,7 @@ use crate::{
         CheckpointService, CheckpointServiceNotify, PendingCheckpoint, PendingCheckpointInfo,
     },
     consensus_adapter::ConsensusAdapter,
-    consensus_output_api::{parse_block_transactions, ConsensusCommitAPI},
+    consensus_output_api::{ConsensusCommitAPI, parse_block_transactions},
     consensus_quarantine::ConsensusCommitOutput,
     consensus_tx_status_cache::ConsensusTxStatus,
     execution_scheduler::{ExecutionScheduler, SchedulingSource},
@@ -33,7 +33,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
-    sync::{mpsc, MutexGuard},
+    sync::{MutexGuard, mpsc},
     task::JoinSet,
 };
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -140,15 +140,12 @@ mod additional_consensus_state {
             epoch_start_time: u64,
             consensus_commit: &impl ConsensusCommitAPI,
         ) -> ConsensusCommitInfo {
-            self.commit_interval_observer
-                .observe_commit_time(consensus_commit);
+            self.commit_interval_observer.observe_commit_time(consensus_commit);
 
             let estimated_commit_period = self
                 .commit_interval_observer
                 .commit_interval_estimate()
-                .unwrap_or(Duration::from_millis(
-                    protocol_config.min_checkpoint_interval_ms(),
-                ));
+                .unwrap_or(Duration::from_millis(protocol_config.min_checkpoint_interval_ms()));
 
             info!("estimated commit rate: {:?}", estimated_commit_period);
 
@@ -241,24 +238,17 @@ mod additional_consensus_state {
             commit_timestamp: u64,
             estimated_commit_period: Duration,
         ) -> Self {
-            Self::new_for_test(
-                commit_round,
-                commit_timestamp,
-                Some(estimated_commit_period),
-                true,
-            )
+            Self::new_for_test(commit_round, commit_timestamp, Some(estimated_commit_period), true)
         }
 
         pub fn additional_state_digest(&self) -> AdditionalConsensusStateDigest {
             // this method cannot be called if stateless_commit_info is used
-            self.additional_state_digest
-                .expect("additional_state_digest is not available")
+            self.additional_state_digest.expect("additional_state_digest is not available")
         }
 
         pub fn estimated_commit_period(&self) -> Duration {
             // this method cannot be called if stateless_commit_info is used
-            self.estimated_commit_period
-                .expect("estimated commit period is not available")
+            self.estimated_commit_period.expect("estimated commit period is not available")
         }
 
         fn consensus_commit_prologue_transaction(
@@ -375,9 +365,8 @@ impl<C> ConsensusHandler<C> {
         }
         let execution_scheduler_sender =
             ExecutionSchedulerSender::start(execution_scheduler, epoch_store.clone());
-        let commit_rate_estimate_window_size = epoch_store
-            .protocol_config()
-            .get_consensus_commit_rate_estimation_window_size();
+        let commit_rate_estimate_window_size =
+            epoch_store.protocol_config().get_consensus_commit_rate_estimation_window_size();
         Self {
             epoch_store,
             last_consensus_stats,
@@ -417,9 +406,8 @@ impl<C> ConsensusHandler<C> {
         // traffic_controller: Option<Arc<TrafficController>>,
         last_consensus_stats: ExecutionIndicesWithStats,
     ) -> Self {
-        let commit_rate_estimate_window_size = epoch_store
-            .protocol_config()
-            .get_consensus_commit_rate_estimation_window_size();
+        let commit_rate_estimate_window_size =
+            epoch_store.protocol_config().get_consensus_commit_rate_estimation_window_size();
         Self {
             epoch_store,
             last_consensus_stats,
@@ -455,10 +443,7 @@ struct CommitHandlerState {
 
 impl CommitHandlerState {
     fn get_notifications(&self) -> Vec<SequencedConsensusTransactionKey> {
-        self.output
-            .get_consensus_messages_processed()
-            .cloned()
-            .collect()
+        self.output.get_consensus_messages_processed().cloned().collect()
     }
 }
 
@@ -468,10 +453,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
     /// state recorded in the epoch db.
     fn handle_prior_consensus_commit(&mut self, consensus_commit: impl ConsensusCommitAPI) {
         let protocol_config = self.epoch_store.protocol_config();
-        let epoch_start_time = self
-            .epoch_store
-            .epoch_start_config()
-            .epoch_start_timestamp_ms();
+        let epoch_start_time = self.epoch_store.epoch_start_config().epoch_start_timestamp_ms();
 
         self.additional_consensus_state.observe_commit(
             protocol_config,
@@ -517,9 +499,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         let commit_info = self.additional_consensus_state.observe_commit(
             protocol_config,
-            self.epoch_store
-                .epoch_start_config()
-                .epoch_start_timestamp_ms(),
+            self.epoch_store.epoch_start_config().epoch_start_timestamp_ms(),
             &consensus_commit,
         );
         assert!(commit_info.round > last_committed_round);
@@ -548,10 +528,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let mut state = CommitHandlerState {
             output: ConsensusCommitOutput::new(commit_info.round),
             indirect_state_observer: Some(IndirectStateObserver::new()),
-            initial_reconfig_state: self
-                .epoch_store
-                .get_reconfig_state_read_lock_guard()
-                .clone(),
+            initial_reconfig_state: self.epoch_store.get_reconfig_state_read_lock_guard().clone(),
         };
 
         let transactions = self.filter_consensus_txns(
@@ -587,9 +564,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         let notifications = state.get_notifications();
 
-        state
-            .output
-            .record_consensus_commit_stats(self.last_consensus_stats.clone());
+        state.output.record_consensus_commit_stats(self.last_consensus_stats.clone());
 
         self.epoch_store
             .consensus_quarantine
@@ -603,9 +578,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             ?commit_info.round,
             "Notifying checkpoint service about new pending checkpoint(s)",
         );
-        self.checkpoint_service
-            .notify_checkpoint()
-            .expect("failed to notify checkpoint service");
+        self.checkpoint_service.notify_checkpoint().expect("failed to notify checkpoint service");
 
         self.epoch_store.process_notifications(notifications.iter());
 
@@ -657,9 +630,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         schedulables: &[Schedulable],
         final_round: bool,
     ) {
-        let checkpoint_height = self
-            .epoch_store
-            .calculate_pending_checkpoint_height(commit_info.round);
+        let checkpoint_height =
+            self.epoch_store.calculate_pending_checkpoint_height(commit_info.round);
 
         let pending_checkpoint = PendingCheckpoint {
             roots: schedulables.iter().map(|s| s.key()).collect(),
@@ -688,9 +660,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
             state,
             commit_info,
-            transactions_to_schedule
-                .iter()
-                .map(Schedulable::Transaction),
+            transactions_to_schedule.iter().map(Schedulable::Transaction),
         );
 
         let schedulables: Vec<_> = itertools::chain!(
@@ -709,8 +679,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             )
             .expect("failed to assign shared object versions");
 
-        self.epoch_store
-            .process_user_signatures(schedulables.iter());
+        self.epoch_store.process_user_signatures(schedulables.iter());
 
         (schedulables, assigned_versions)
     }
@@ -744,9 +713,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         capability_notifications: Vec<AuthorityCapabilities>,
     ) {
         for capabilities in capability_notifications {
-            self.epoch_store
-                .record_capabilities(&capabilities)
-                .expect("db error");
+            self.epoch_store.record_capabilities(&capabilities).expect("db error");
         }
     }
 
@@ -785,10 +752,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             // It is ok to just release lock here as this function is the only place that transition into RejectAllCerts state
             // And this function itself is always executed from consensus task
             state.output.insert_end_of_publish(authority);
-            if eop_aggregator
-                .insert_generic(authority, ())
-                .is_quorum_reached()
-            {
+            if eop_aggregator.insert_generic(authority, ()).is_quorum_reached() {
                 debug!(
                     "Collected enough end_of_publish messages with last message from validator {:?}",
                     authority.concise(),
@@ -836,18 +800,13 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let leader_author = consensus_commit.leader_author_index();
         let commit_sub_dag_index = consensus_commit.commit_sub_dag_index();
 
-        let system_time_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
+        let system_time_ms =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64;
 
         let consensus_timestamp_bias_ms = system_time_ms - (timestamp as i64);
         let consensus_timestamp_bias_seconds = consensus_timestamp_bias_ms as f64 / 1000.0;
 
-        let epoch_start = self
-            .epoch_store
-            .epoch_start_config()
-            .epoch_start_timestamp_ms();
+        let epoch_start = self.epoch_store.epoch_start_config().epoch_start_timestamp_ms();
         let timestamp = if timestamp < epoch_start {
             error!(
                 "Unexpected commit timestamp {timestamp} less then epoch start time {epoch_start}, author {leader_author}"
@@ -884,11 +843,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             );
 
             for (tx_index, parsed) in parsed_transactions.into_iter().enumerate() {
-                let position = ConsensusPosition {
-                    epoch,
-                    block,
-                    index: tx_index as TransactionIndex,
-                };
+                let position =
+                    ConsensusPosition { epoch, block, index: tx_index as TransactionIndex };
 
                 // Transaction has appeared in consensus output, we can increment the submission count
                 // for this tx for DoS protection.
@@ -938,10 +894,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                     // TODO(fastpath): Handle unlocking.
                     continue;
                 }
-                if matches!(
-                    parsed.transaction.kind,
-                    ConsensusTransactionKind::UserTransaction(_)
-                ) {
+                if matches!(parsed.transaction.kind, ConsensusTransactionKind::UserTransaction(_)) {
                     self.epoch_store
                         .set_consensus_tx_status(position, ConsensusTxStatus::Finalized);
                     num_finalized_user_transactions[author] += 1;
@@ -954,9 +907,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                     ConsensusTransactionKind::CertifiedTransaction(_)
                         | ConsensusTransactionKind::UserTransaction(_)
                 ) {
-                    self.last_consensus_stats
-                        .stats
-                        .inc_num_user_transactions(author);
+                    self.last_consensus_stats.stats.inc_num_user_transactions(author);
                 }
 
                 if !initial_reconfig_state.should_accept_consensus_certs() {
@@ -997,15 +948,9 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                     ConsensusTransactionKind::UserTransaction(_)
                         | ConsensusTransactionKind::CertifiedTransaction(_)
                 ) {
-                    let author_name = self
-                        .epoch_store
-                        .committee()
-                        .authority_by_index(author as u32)
-                        .unwrap();
-                    if self
-                        .epoch_store
-                        .has_received_end_of_publish_from(author_name)
-                    {
+                    let author_name =
+                        self.epoch_store.committee().authority_by_index(author as u32).unwrap();
+                    if self.epoch_store.has_received_end_of_publish_from(author_name) {
                         // In some edge cases, consensus might resend previously seen certificate after EndOfPublish
                         // An honest validator should not send a new transaction after EndOfPublish. Whether the
                         // transaction is duplicate or not, we filter it out here.
@@ -1055,11 +1000,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
             self.last_consensus_stats.index = current_tx_index;
 
-            let certificate_author = *self
-                .epoch_store
-                .committee()
-                .authority_by_index(cert_origin)
-                .unwrap();
+            let certificate_author =
+                *self.epoch_store.committee().authority_by_index(cert_origin).unwrap();
 
             let sequenced_transaction = SequencedConsensusTransaction {
                 certificate_author_index: AuthorityIndex(cert_origin),
@@ -1068,9 +1010,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
                 transaction,
             };
 
-            let Some(verified_transaction) = self
-                .epoch_store
-                .verify_consensus_transaction(sequenced_transaction)
+            let Some(verified_transaction) =
+                self.epoch_store.verify_consensus_transaction(sequenced_transaction)
             else {
                 continue;
             };
@@ -1082,11 +1023,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             if in_set || in_cache {
                 continue;
             }
-            if self
-                .epoch_store
-                .is_consensus_message_processed(&key)
-                .expect("db error")
-            {
+            if self.epoch_store.is_consensus_message_processed(&key).expect("db error") {
                 continue;
             }
 
@@ -1165,13 +1102,9 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
         let end_of_publish = ConsensusTransaction::new_end_of_publish(self.epoch_store.name);
         if let Err(err) =
-            self.consensus_adapter
-                .submit(end_of_publish, None, &self.epoch_store, None, None)
+            self.consensus_adapter.submit(end_of_publish, None, &self.epoch_store, None, None)
         {
-            warn!(
-                "Error when sending EndOfPublish message from ConsensusHandler: {:?}",
-                err
-            );
+            warn!("Error when sending EndOfPublish message from ConsensusHandler: {:?}", err);
         } else {
             info!(epoch=?self.epoch_store.epoch(), "Sending EndOfPublish message to consensus");
         }
@@ -1209,9 +1142,7 @@ impl ExecutionSchedulerSender {
         assigned_versions: AssignedTxAndVersions,
         scheduling_source: SchedulingSource,
     ) {
-        let _ = self
-            .sender
-            .send((transactions, assigned_versions, scheduling_source));
+        let _ = self.sender.send((transactions, assigned_versions, scheduling_source));
     }
 
     async fn run(
@@ -1264,9 +1195,7 @@ impl MysticetiConsensusHandler {
                 if commit_index <= last_processed_commit_at_startup {
                     consensus_handler.handle_prior_consensus_commit(consensus_commit);
                 } else {
-                    consensus_handler
-                        .handle_consensus_commit(consensus_commit)
-                        .await;
+                    consensus_handler.handle_consensus_commit(consensus_commit).await;
                 }
                 commit_consumer_monitor.set_highest_handled_commit(commit_index);
             }
@@ -1274,9 +1203,7 @@ impl MysticetiConsensusHandler {
 
         tasks.spawn(async move {
             while let Some(blocks) = block_receiver.recv().await {
-                consensus_block_handler
-                    .handle_certified_blocks(blocks)
-                    .await;
+                consensus_block_handler.handle_certified_blocks(blocks).await;
             }
         });
 
@@ -1291,11 +1218,7 @@ impl MysticetiConsensusHandler {
 pub(crate) fn classify(transaction: &ConsensusTransaction) -> &'static str {
     match &transaction.kind {
         ConsensusTransactionKind::CertifiedTransaction(certificate) => {
-            if certificate.is_consensus_tx() {
-                "shared_certificate"
-            } else {
-                "owned_certificate"
-            }
+            if certificate.is_consensus_tx() { "shared_certificate" } else { "owned_certificate" }
         }
         ConsensusTransactionKind::CheckpointSignature(_) => "checkpoint_signature",
         ConsensusTransactionKind::CapabilityNotification(_) => "capability_notification",
@@ -1447,10 +1370,7 @@ impl SequencedConsensusTransaction {
     }
 
     pub fn is_system(&self) -> bool {
-        matches!(
-            self.transaction,
-            SequencedConsensusTransactionKind::System(_)
-        )
+        matches!(self.transaction, SequencedConsensusTransactionKind::System(_))
     }
 
     pub fn as_consensus_txn(&self) -> Option<&SenderSignedData> {
@@ -1508,11 +1428,7 @@ impl ConsensusBlockHandler {
         execution_scheduler_sender: ExecutionSchedulerSender,
         backpressure_subscriber: BackpressureSubscriber,
     ) -> Self {
-        Self {
-            epoch_store,
-            execution_scheduler_sender,
-            backpressure_subscriber,
-        }
+        Self { epoch_store, execution_scheduler_sender, backpressure_subscriber }
     }
 
     #[instrument(level = "debug", skip_all)]
@@ -1525,11 +1441,7 @@ impl ConsensusBlockHandler {
             debug!(
                 "Skipping fastpath execution because epoch {} is closing user transactions: {}",
                 self.epoch_store.epoch(),
-                blocks_output
-                    .blocks
-                    .iter()
-                    .map(|b| b.block.reference().to_string())
-                    .join(", "),
+                blocks_output.blocks.iter().map(|b| b.block.reference().to_string()).join(", "),
             );
             return;
         }
@@ -1554,17 +1466,10 @@ impl ConsensusBlockHandler {
             );
 
             for (txn_idx, parsed) in transactions.into_iter().enumerate() {
-                let position = ConsensusPosition {
-                    epoch,
-                    block,
-                    index: txn_idx as TransactionIndex,
-                };
+                let position =
+                    ConsensusPosition { epoch, block, index: txn_idx as TransactionIndex };
 
-                let status_str = if parsed.rejected {
-                    "rejected"
-                } else {
-                    "certified"
-                };
+                let status_str = if parsed.rejected { "rejected" } else { "certified" };
                 if let ConsensusTransactionKind::UserTransaction(tx) = &parsed.transaction.kind {
                     debug!(
                         "User Transaction in position: {:} with digest {:} is {:}",
@@ -1573,16 +1478,12 @@ impl ConsensusBlockHandler {
                         status_str
                     );
                 } else {
-                    debug!(
-                        "System Transaction in position: {:} is {:}",
-                        position, status_str
-                    );
+                    debug!("System Transaction in position: {:} is {:}", position, status_str);
                 }
 
                 if parsed.rejected {
                     // TODO(fastpath): avoid parsing blocks twice between handling commit and fastpath transactions?
-                    self.epoch_store
-                        .set_consensus_tx_status(position, ConsensusTxStatus::Rejected);
+                    self.epoch_store.set_consensus_tx_status(position, ConsensusTxStatus::Rejected);
                     continue;
                 }
 
@@ -1623,9 +1524,7 @@ pub(crate) struct CommitIntervalObserver {
 
 impl CommitIntervalObserver {
     pub fn new(window_size: u32) -> Self {
-        Self {
-            ring_buffer: VecDeque::with_capacity(window_size as usize),
-        }
+        Self { ring_buffer: VecDeque::with_capacity(window_size as usize) }
     }
 
     pub fn observe_commit_time(&mut self, consensus_commit: &impl ConsensusCommitAPI) {
@@ -1698,10 +1597,7 @@ pub(crate) fn update_low_scoring_authorities(
             };
 
         if !hostname.is_empty() {
-            debug!(
-                "authority {} has score {}, is low scoring: {}",
-                hostname, score, included
-            );
+            debug!("authority {} has score {}, is low scoring: {}", hostname, score, included);
         }
     }
     // Report the actual flagged final low scoring authorities

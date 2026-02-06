@@ -48,9 +48,7 @@ impl<'de> serde::Deserialize<'de> for PeerId {
         if deserializer.is_human_readable() {
             let s = <String>::deserialize(deserializer)?;
 
-            hex::FromHex::from_hex(s)
-                .map_err(D::Error::custom)
-                .map(Self)
+            hex::FromHex::from_hex(s).map_err(D::Error::custom).map(Self)
         } else {
             <[u8; PEER_ID_LENGTH]>::deserialize(deserializer).map(Self)
         }
@@ -93,9 +91,8 @@ impl From<Ed25519PublicKey> for NetworkPublicKey {
 // Conversions to PeerId
 impl From<&Ed25519PublicKey> for PeerId {
     fn from(pk: &Ed25519PublicKey) -> Self {
-        let bytes: [u8; PEER_ID_LENGTH] = pk.as_ref()[..PEER_ID_LENGTH]
-            .try_into()
-            .expect("Ed25519PublicKey should be 32 bytes");
+        let bytes: [u8; PEER_ID_LENGTH] =
+            pk.as_ref()[..PEER_ID_LENGTH].try_into().expect("Ed25519PublicKey should be 32 bytes");
         Self(bytes)
     }
 }

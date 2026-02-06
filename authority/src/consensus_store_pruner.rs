@@ -51,10 +51,7 @@ impl ConsensusStorePruner {
     pub async fn prune(&self, current_epoch: Epoch) {
         let result = self.tx_remove.send(current_epoch).await;
         if result.is_err() {
-            error!(
-                "Error sending message to data removal task for epoch {:?}",
-                current_epoch,
-            );
+            error!("Error sending message to data removal task for epoch {:?}", current_epoch,);
         }
     }
 
@@ -87,10 +84,7 @@ impl ConsensusStorePruner {
             let f = match file_res {
                 Ok(f) => f,
                 Err(e) => {
-                    error!(
-                        "Error while cleaning up storage of previous epochs: {:?}",
-                        e
-                    );
+                    error!("Error while cleaning up storage of previous epochs: {:?}", e);
                     continue;
                 }
             };
@@ -134,17 +128,11 @@ impl ConsensusStorePruner {
                         );
                     }
                 } else {
-                    info!(
-                        "Successfully pruned consensus epoch storage directory: {:?}",
-                        f.path()
-                    );
+                    info!("Successfully pruned consensus epoch storage directory: {:?}", f.path());
                 }
             }
         }
 
-        info!(
-            "Completed old epoch data removal process for epoch {:?}",
-            current_epoch
-        );
+        info!("Completed old epoch data removal process for epoch {:?}", current_epoch);
     }
 }

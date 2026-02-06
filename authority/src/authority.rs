@@ -15,10 +15,11 @@ use parking_lot::Mutex;
 use protocol_config::{ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tap::TapFallible as _;
-use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{mpsc::unbounded_channel, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
+use types::SYSTEM_STATE_OBJECT_ID;
 use types::base::{ConciseableName as _, FullObjectID};
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
@@ -37,15 +38,15 @@ use types::effects::{
 };
 use types::envelope::Message;
 use types::error::{ExecutionError, ExecutionResult};
-use types::execution::{get_early_execution_error, ExecutionOrEarlyError, ExecutionOutput};
+use types::execution::{ExecutionOrEarlyError, ExecutionOutput, get_early_execution_error};
 use types::full_checkpoint_content::ObjectSet;
 use types::messages_grpc::TransactionInfoRequest;
-use types::object::{Object, ObjectID, ObjectRef, Owner, Version, OBJECT_START_VERSION};
-use types::storage::object_store::ObjectStore;
+use types::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
 use types::storage::InputKey;
+use types::storage::object_store::ObjectStore;
 use types::supported_protocol_versions::SupportedProtocolVersions;
 use types::system_state::get_system_state;
-use types::system_state::{epoch_start::EpochStartSystemStateTrait, SystemState};
+use types::system_state::{SystemState, epoch_start::EpochStartSystemStateTrait};
 use types::temporary_store::InnerTemporaryStore;
 use types::transaction::{
     CheckedInputObjects, InputObjects, ObjectReadResult, SenderSignedData, TransactionData,
@@ -54,7 +55,6 @@ use types::transaction::{
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
 use types::transaction_outputs::{TransactionOutputs, WrittenObjects};
 use types::tx_fee::TransactionFee;
-use types::SYSTEM_STATE_OBJECT_ID;
 use types::{
     base::AuthorityName,
     committee::{Committee, EpochId},
@@ -77,7 +77,7 @@ use crate::authority_per_epoch_store::{CertLockGuard, CertTxGuard};
 use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
 use crate::authority_store::{AuthorityStore, ObjectLockStatus};
 use crate::authority_store_pruner::{
-    AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING,
+    AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING, PrunerWatermarks,
 };
 #[cfg(test)]
 use crate::authority_store_tables;
@@ -188,9 +188,7 @@ pub struct ForkRecoveryState {
 
 impl Default for ForkRecoveryState {
     fn default() -> Self {
-        Self {
-            transaction_overrides: parking_lot::RwLock::new(HashMap::new()),
-        }
+        Self { transaction_overrides: parking_lot::RwLock::new(HashMap::new()) }
     }
 }
 
@@ -214,9 +212,7 @@ impl ForkRecoveryState {
             transaction_overrides.insert(tx_digest, effects_digest);
         }
 
-        Ok(Self {
-            transaction_overrides: parking_lot::RwLock::new(transaction_overrides),
-        })
+        Ok(Self { transaction_overrides: parking_lot::RwLock::new(transaction_overrides) })
     }
 
     pub fn get_transaction_override(
@@ -394,10 +390,7 @@ impl AuthorityState {
             return Ok(HandleTransactionResponse { status });
         }
 
-        if !self
-            .wait_for_fastpath_dependency_objects(&transaction, epoch_store.epoch())
-            .await?
-        {
+        if !self.wait_for_fastpath_dependency_objects(&transaction, epoch_store.epoch()).await? {
             debug!("fastpath input objects are still unavailable after waiting");
             // Proceed with input checks to generate a proper error.
         }
@@ -441,10 +434,7 @@ impl AuthorityState {
             // has just been executed.
             // In that case, we could still return Ok to avoid showing confusing errors.
             Err(err) => Ok(HandleTransactionResponse {
-                status: self
-                    .get_transaction_status(&tx_digest, epoch_store)?
-                    .ok_or(err)?
-                    .1,
+                status: self.get_transaction_status(&tx_digest, epoch_store)?.ok_or(err)?.1,
             }),
         }
     }
@@ -469,19 +459,15 @@ impl AuthorityState {
         // The should_accept_user_certs check here is best effort, because
         // between a validator signs a tx and a cert is formed, the validator
         // could close the window.
-        if !epoch_store
-            .get_reconfig_state_read_lock_guard()
-            .should_accept_user_certs()
-        {
+        if !epoch_store.get_reconfig_state_read_lock_guard().should_accept_user_certs() {
             return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
         }
 
         // Accept executed transactions, instead of voting to reject them.
         // Execution is limited to the current epoch. Otherwise there can be a race where
         // the transaction is accepted but the executed effects are pruned.
-        if let Some(effects) = self
-            .get_transaction_cache_reader()
-            .get_executed_effects(transaction.digest())
+        if let Some(effects) =
+            self.get_transaction_cache_reader().get_executed_effects(transaction.digest())
         {
             if effects.executed_epoch() == epoch_store.epoch() {
                 return Ok(());
@@ -510,10 +496,7 @@ impl AuthorityState {
         epoch_store: &Arc<AuthorityPerEpochStore>,
         transaction: &VerifiedTransaction,
     ) -> SomaResult<()> {
-        if !epoch_store
-            .get_reconfig_state_read_lock_guard()
-            .should_accept_user_certs()
-        {
+        if !epoch_store.get_reconfig_state_read_lock_guard().should_accept_user_certs() {
             return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
         }
 
@@ -577,11 +560,8 @@ impl AuthorityState {
 
         // Use shorter wait timeout in simtests to exercise server-side error paths and
         // client-side retry logic.
-        let max_wait = if cfg!(msim) {
-            Duration::from_millis(200)
-        } else {
-            WAIT_FOR_FASTPATH_INPUT_TIMEOUT
-        };
+        let max_wait =
+            if cfg!(msim) { Duration::from_millis(200) } else { WAIT_FOR_FASTPATH_INPUT_TIMEOUT };
 
         match timeout(
             max_wait,
@@ -608,9 +588,8 @@ impl AuthorityState {
     /// - Not waiting when needed may cause the transaction to be rejected because input object is unavailable.
     fn should_wait_for_dependency_object(&self, obj_ref: ObjectRef) -> Option<InputKey> {
         let (obj_id, cur_version, _digest) = obj_ref;
-        let Some(latest_obj_ref) = self
-            .get_object_cache_reader()
-            .get_latest_object_ref_or_tombstone(obj_id)
+        let Some(latest_obj_ref) =
+            self.get_object_cache_reader().get_latest_object_ref_or_tombstone(obj_id)
         else {
             // Object might not have been created.
             return Some(InputKey::VersionedObject {
@@ -814,8 +793,7 @@ impl AuthorityState {
         );
 
         if scheduling_source == SchedulingSource::MysticetiFastPath {
-            self.get_cache_writer()
-                .write_fastpath_transaction_outputs(transaction_outputs);
+            self.get_cache_writer().write_fastpath_transaction_outputs(transaction_outputs);
         } else {
             let commit_result =
                 self.commit_certificate(certificate, transaction_outputs, epoch_store);
@@ -881,8 +859,7 @@ impl AuthorityState {
     }
 
     fn check_owned_locks(&self, owned_object_refs: &[ObjectRef]) -> SomaResult {
-        self.get_object_cache_reader()
-            .check_owned_objects_are_live(owned_object_refs)
+        self.get_object_cache_reader().check_owned_objects_are_live(owned_object_refs)
     }
 
     /// This function captures the required state to debug a forked transaction.
@@ -898,11 +875,8 @@ impl AuthorityState {
         certificate: &VerifiedExecutableTransaction,
         debug_dump_config: &StateDebugDumpConfig,
     ) -> SomaResult<PathBuf> {
-        let dump_dir = debug_dump_config
-            .dump_file_directory
-            .as_ref()
-            .cloned()
-            .unwrap_or(std::env::temp_dir());
+        let dump_dir =
+            debug_dump_config.dump_file_directory.as_ref().cloned().unwrap_or(std::env::temp_dir());
         let epoch_store = self.load_epoch_store_one_call_per_task();
 
         NodeStateDump::new(
@@ -983,8 +957,7 @@ impl AuthorityState {
             epoch_store.insert_tx_key(key, *tx_digest)?;
         }
 
-        self.get_cache_writer()
-            .write_transaction_outputs(epoch_store.epoch(), transaction_outputs);
+        self.get_cache_writer().write_transaction_outputs(epoch_store.epoch(), transaction_outputs);
 
         Ok(())
     }
@@ -1095,11 +1068,9 @@ impl AuthorityState {
         }
 
         // index certificate
-        let _ = self
-            .post_process_one_tx(certificate, &effects, &inner, epoch_store)
-            .tap_err(|e| {
-                error!(?tx_digest, "tx post processing failed: {e}");
-            });
+        let _ = self.post_process_one_tx(certificate, &effects, &inner, epoch_store).tap_err(|e| {
+            error!(?tx_digest, "tx post processing failed: {e}");
+        });
 
         let transaction_outputs = TransactionOutputs::build_transaction_outputs(
             certificate.clone().into_unsigned(),
@@ -1204,11 +1175,7 @@ impl AuthorityState {
             let objects = {
                 let mut objects = ObjectSet(BTreeMap::new());
 
-                for o in inner
-                    .input_objects
-                    .into_values()
-                    .chain(inner.written.into_values())
-                {
+                for o in inner.input_objects.into_values().chain(inner.written.into_values()) {
                     objects.insert(o);
                 }
 
@@ -1236,8 +1203,7 @@ impl AuthorityState {
     }
 
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> bool {
-        self.get_transaction_cache_reader()
-            .is_tx_already_executed(digest)
+        self.get_transaction_cache_reader().is_tx_already_executed(digest)
     }
 
     #[instrument(level = "trace", skip_all, err(level = "debug"))]
@@ -1267,10 +1233,8 @@ impl AuthorityState {
     }
 
     pub fn unixtime_now_ms() -> u64 {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis();
+        let now =
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_millis();
         u64::try_from(now).expect("Travelling in time machine")
     }
 
@@ -1285,13 +1249,8 @@ impl AuthorityState {
         let epoch_store = self.load_epoch_store_one_call_per_task();
         let (transaction, status) = self
             .get_transaction_status(&request.transaction_digest, &epoch_store)?
-            .ok_or(SomaError::TransactionNotFound {
-                digest: request.transaction_digest,
-            })?;
-        Ok(TransactionInfoResponse {
-            transaction,
-            status,
-        })
+            .ok_or(SomaError::TransactionNotFound { digest: request.transaction_digest })?;
+        Ok(TransactionInfoResponse { transaction, status })
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -1299,12 +1258,9 @@ impl AuthorityState {
         &self,
         request: ObjectInfoRequest,
     ) -> SomaResult<ObjectInfoResponse> {
-        let (_, requested_object_seq, _) = self
-            .get_object_or_tombstone(request.object_id)
-            .await
-            .ok_or_else(|| SomaError::ObjectNotFound {
-                object_id: request.object_id,
-                version: None,
+        let (_, requested_object_seq, _) =
+            self.get_object_or_tombstone(request.object_id).await.ok_or_else(|| {
+                SomaError::ObjectNotFound { object_id: request.object_id, version: None }
             })?;
 
         let object = self
@@ -1325,9 +1281,7 @@ impl AuthorityState {
     ) -> SomaResult<CheckpointResponse> {
         let summary = if request.certified {
             let summary = match request.sequence_number {
-                Some(seq) => self
-                    .checkpoint_store
-                    .get_checkpoint_by_sequence_number(seq)?,
+                Some(seq) => self.checkpoint_store.get_checkpoint_by_sequence_number(seq)?,
                 None => self.checkpoint_store.get_latest_certified_checkpoint()?,
             }
             .map(|v| v.into_inner());
@@ -1335,22 +1289,15 @@ impl AuthorityState {
         } else {
             let summary = match request.sequence_number {
                 Some(seq) => self.checkpoint_store.get_locally_computed_checkpoint(seq)?,
-                None => self
-                    .checkpoint_store
-                    .get_latest_locally_computed_checkpoint()?,
+                None => self.checkpoint_store.get_latest_locally_computed_checkpoint()?,
             };
             summary.map(CheckpointSummaryResponse::Pending)
         };
         let contents = match &summary {
-            Some(s) => self
-                .checkpoint_store
-                .get_checkpoint_contents(&s.content_digest())?,
+            Some(s) => self.checkpoint_store.get_checkpoint_contents(&s.content_digest())?,
             None => None,
         };
-        Ok(CheckpointResponse {
-            checkpoint: summary,
-            contents,
-        })
+        Ok(CheckpointResponse { checkpoint: summary, contents })
     }
 
     fn check_protocol_version(
@@ -1399,9 +1346,7 @@ impl AuthorityState {
         let (tx_ready_certificates, rx_ready_certificates) = unbounded_channel();
         let execution_scheduler = Arc::new(ExecutionScheduler::new(
             execution_cache_trait_pointers.object_cache_reader.clone(),
-            execution_cache_trait_pointers
-                .transaction_cache_reader
-                .clone(),
+            execution_cache_trait_pointers.transaction_cache_reader.clone(),
             tx_ready_certificates,
             &epoch_store,
         ));
@@ -1495,9 +1440,7 @@ impl AuthorityState {
     }
 
     pub fn database_for_testing(&self) -> Arc<AuthorityStore> {
-        self.execution_cache_trait_pointers
-            .testing_api
-            .database_for_testing()
+        self.execution_cache_trait_pointers.testing_api.database_for_testing()
     }
 
     pub async fn prune_checkpoints_for_eligible_epochs_for_testing(
@@ -1543,9 +1486,7 @@ impl AuthorityState {
     /// Otherwise, in-memory lock state could be cleared (by `ObjectLocks::clear_cached_locks`)
     /// while we are attempting to acquire locks for the transaction.
     pub fn execution_lock_for_signing(&self) -> SomaResult<ExecutionLockReadGuard<'_>> {
-        self.execution_lock
-            .try_read()
-            .map_err(|_| SomaError::ValidatorHaltedAtEpochEnd.into())
+        self.execution_lock.try_read().map_err(|_| SomaError::ValidatorHaltedAtEpochEnd.into())
     }
 
     pub async fn execution_lock_for_reconfiguration(&self) -> ExecutionLockWriteGuard<'_> {
@@ -1565,9 +1506,7 @@ impl AuthorityState {
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         Self::check_protocol_version(
             supported_protocol_versions,
-            epoch_start_configuration
-                .epoch_start_state()
-                .protocol_version(),
+            epoch_start_configuration.epoch_start_state().protocol_version(),
         );
 
         self.committee_store.insert_new_committee(&new_committee)?;
@@ -1595,12 +1534,10 @@ impl AuthorityState {
             // lock is dropped here
         }
 
-        self.get_reconfig_api()
-            .clear_state_end_of_epoch(&execution_lock);
+        self.get_reconfig_api().clear_state_end_of_epoch(&execution_lock);
         self.check_system_consistency(cur_epoch_store, state_hasher, expensive_safety_check_config);
 
-        self.get_reconfig_api()
-            .set_epoch_start_configuration(&epoch_start_configuration);
+        self.get_reconfig_api().set_epoch_start_configuration(&epoch_start_configuration);
 
         // TODO: consider checkpointing dbs on reconfig
         // if let Some(checkpoint_path) = &self.db_checkpoint_config.checkpoint_path {
@@ -1623,9 +1560,7 @@ impl AuthorityState {
         //     }
         // }
 
-        self.get_reconfig_api()
-            .reconfigure_cache(&epoch_start_configuration)
-            .await;
+        self.get_reconfig_api().reconfigure_cache(&epoch_start_configuration).await;
 
         let new_epoch = new_committee.epoch;
         let new_epoch_store = self
@@ -1659,10 +1594,7 @@ impl AuthorityState {
 
         // check for root state hash consistency with live object set
         if expensive_safety_check_config.enable_state_consistency_check() {
-            info!(
-                "Performing state consistency check for epoch {}",
-                cur_epoch_store.epoch()
-            );
+            info!("Performing state consistency check for epoch {}", cur_epoch_store.epoch());
             self.expensive_check_is_consistent_state(state_hasher, cur_epoch_store);
         }
     }
@@ -1727,8 +1659,7 @@ impl AuthorityState {
 
         // NOTE: Do not change the order of invoking these checkpoint calls
         // We want to snapshot checkpoint db first to not race with state sync
-        self.checkpoint_store
-            .checkpoint_db(&checkpoint_path_tmp.join("checkpoints"))?;
+        self.checkpoint_store.checkpoint_db(&checkpoint_path_tmp.join("checkpoints"))?;
 
         // TODO: checkpoint dbs
         // self.get_reconfig_api()
@@ -1784,9 +1715,7 @@ impl AuthorityState {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> SomaResult<Option<VerifiedCheckpoint>> {
-        Ok(self
-            .checkpoint_store
-            .get_checkpoint_by_sequence_number(sequence_number)?)
+        Ok(self.checkpoint_store.get_checkpoint_by_sequence_number(sequence_number)?)
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -1799,9 +1728,7 @@ impl AuthorityState {
         let Some(checkpoint) = checkpoint else {
             return Ok(None);
         };
-        let checkpoint = self
-            .checkpoint_store
-            .get_checkpoint_by_sequence_number(checkpoint)?;
+        let checkpoint = self.checkpoint_store.get_checkpoint_by_sequence_number(checkpoint)?;
         Ok(checkpoint)
     }
 
@@ -1820,9 +1747,7 @@ impl AuthorityState {
         object_id: &ObjectID,
         version: Version,
     ) -> SomaResult<Option<Object>> {
-        let Some(object) = self
-            .get_object_cache_reader()
-            .get_object_by_key(object_id, version)
+        let Some(object) = self.get_object_cache_reader().get_object_by_key(object_id, version)
         else {
             return Ok(None);
         };
@@ -1835,9 +1760,7 @@ impl AuthorityState {
         &self,
         sequence_numbers: &[CheckpointSequenceNumber],
     ) -> SomaResult<Vec<Option<VerifiedCheckpoint>>> {
-        Ok(self
-            .checkpoint_store
-            .multi_get_checkpoint_by_sequence_number(sequence_numbers)?)
+        Ok(self.checkpoint_store.multi_get_checkpoint_by_sequence_number(sequence_numbers)?)
     }
 
     pub fn get_transaction_input_objects(
@@ -1882,9 +1805,8 @@ impl AuthorityState {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> SomaResult<CheckpointSummary> {
-        let verified_checkpoint = self
-            .get_checkpoint_store()
-            .get_checkpoint_by_sequence_number(sequence_number)?;
+        let verified_checkpoint =
+            self.get_checkpoint_store().get_checkpoint_by_sequence_number(sequence_number)?;
         match verified_checkpoint {
             Some(verified_checkpoint) => Ok(verified_checkpoint.into_inner().into_data()),
             None => Err(SomaError::VerifiedCheckpointNotFound(sequence_number)),
@@ -1896,28 +1818,19 @@ impl AuthorityState {
         &self,
         digest: CheckpointDigest,
     ) -> SomaResult<CheckpointSummary> {
-        let verified_checkpoint = self
-            .get_checkpoint_store()
-            .get_checkpoint_by_digest(&digest)?;
+        let verified_checkpoint = self.get_checkpoint_store().get_checkpoint_by_digest(&digest)?;
         match verified_checkpoint {
             Some(verified_checkpoint) => Ok(verified_checkpoint.into_inner().into_data()),
-            None => Err(SomaError::VerifiedCheckpointDigestNotFound(Base58::encode(
-                digest,
-            ))),
+            None => Err(SomaError::VerifiedCheckpointDigestNotFound(Base58::encode(digest))),
         }
     }
 
     #[instrument(level = "trace", skip_all)]
     pub fn find_genesis_txn_digest(&self) -> SomaResult<TransactionDigest> {
-        let summary = self
-            .get_verified_checkpoint_by_sequence_number(0)?
-            .into_message();
+        let summary = self.get_verified_checkpoint_by_sequence_number(0)?.into_message();
         let content = self.get_checkpoint_contents(summary.content_digest)?;
         let genesis_transaction = content.enumerate_transactions(&summary).next();
-        Ok(genesis_transaction
-            .ok_or(SomaError::GenesisTransactionNotFound)?
-            .1
-            .transaction)
+        Ok(genesis_transaction.ok_or(SomaError::GenesisTransactionNotFound)?.1.transaction)
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -1925,9 +1838,8 @@ impl AuthorityState {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> SomaResult<VerifiedCheckpoint> {
-        let verified_checkpoint = self
-            .get_checkpoint_store()
-            .get_checkpoint_by_sequence_number(sequence_number)?;
+        let verified_checkpoint =
+            self.get_checkpoint_store().get_checkpoint_by_sequence_number(sequence_number)?;
         match verified_checkpoint {
             Some(verified_checkpoint) => Ok(verified_checkpoint),
             None => Err(SomaError::VerifiedCheckpointNotFound(sequence_number)),
@@ -1939,14 +1851,10 @@ impl AuthorityState {
         &self,
         digest: CheckpointDigest,
     ) -> SomaResult<VerifiedCheckpoint> {
-        let verified_checkpoint = self
-            .get_checkpoint_store()
-            .get_checkpoint_by_digest(&digest)?;
+        let verified_checkpoint = self.get_checkpoint_store().get_checkpoint_by_digest(&digest)?;
         match verified_checkpoint {
             Some(verified_checkpoint) => Ok(verified_checkpoint),
-            None => Err(SomaError::VerifiedCheckpointDigestNotFound(Base58::encode(
-                digest,
-            ))),
+            None => Err(SomaError::VerifiedCheckpointDigestNotFound(Base58::encode(digest))),
         }
     }
 
@@ -1965,9 +1873,8 @@ impl AuthorityState {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> SomaResult<CheckpointContents> {
-        let verified_checkpoint = self
-            .get_checkpoint_store()
-            .get_checkpoint_by_sequence_number(sequence_number)?;
+        let verified_checkpoint =
+            self.get_checkpoint_store().get_checkpoint_by_sequence_number(sequence_number)?;
         match verified_checkpoint {
             Some(verified_checkpoint) => {
                 let content_digest = verified_checkpoint.into_inner().content_digest;
@@ -1982,12 +1889,8 @@ impl AuthorityState {
     }
 
     pub async fn insert_genesis_objects(&self, objects: &[Object]) {
-        futures::future::join_all(
-            objects
-                .iter()
-                .map(|o| self.insert_genesis_object(o.clone())),
-        )
-        .await;
+        futures::future::join_all(objects.iter().map(|o| self.insert_genesis_object(o.clone())))
+            .await;
     }
 
     /// Make a status response for a transaction
@@ -2001,9 +1904,8 @@ impl AuthorityState {
         if let Some(effects) =
             self.get_signed_effects_and_maybe_resign(transaction_digest, epoch_store)?
         {
-            if let Some(transaction) = self
-                .get_transaction_cache_reader()
-                .get_transaction_block(transaction_digest)
+            if let Some(transaction) =
+                self.get_transaction_cache_reader().get_transaction_block(transaction_digest)
             {
                 let cert_sig = epoch_store.get_transaction_cert_sig(transaction_digest)?;
 
@@ -2035,9 +1937,7 @@ impl AuthorityState {
         transaction_digest: &TransactionDigest,
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<Option<VerifiedSignedTransactionEffects>> {
-        let effects = self
-            .get_transaction_cache_reader()
-            .get_executed_effects(transaction_digest);
+        let effects = self.get_transaction_cache_reader().get_executed_effects(transaction_digest);
         match effects {
             Some(effects) => {
                 // If the transaction was executed in previous epochs, the validator will
@@ -2106,9 +2006,7 @@ impl AuthorityState {
             }
         };
 
-        Ok(VerifiedSignedTransactionEffects::new_unchecked(
-            signed_effects,
-        ))
+        Ok(VerifiedSignedTransactionEffects::new_unchecked(signed_effects))
     }
 
     /// Get the TransactionEnvelope that currently locks the given object, if any.
@@ -2124,9 +2022,7 @@ impl AuthorityState {
         object_ref: &ObjectRef,
         epoch_store: &AuthorityPerEpochStore,
     ) -> SomaResult<Option<VerifiedSignedTransaction>> {
-        let lock_info = self
-            .get_object_cache_reader()
-            .get_lock(*object_ref, epoch_store)?;
+        let lock_info = self.get_object_cache_reader().get_lock(*object_ref, epoch_store)?;
         let lock_info = match lock_info {
             ObjectLockStatus::LockedAtDifferentVersion { locked_ref } => {
                 return Err(SomaError::ObjectVersionUnavailableForConsumption {
@@ -2148,8 +2044,7 @@ impl AuthorityState {
     }
 
     pub async fn get_object_or_tombstone(&self, object_id: ObjectID) -> Option<ObjectRef> {
-        self.get_object_cache_reader()
-            .get_latest_object_ref_or_tombstone(object_id)
+        self.get_object_cache_reader().get_latest_object_ref_or_tombstone(object_id)
     }
 
     /// Ordinarily, protocol upgrades occur when 2f + 1 + (f *
@@ -2168,11 +2063,7 @@ impl AuthorityState {
         let epoch_store = self.load_epoch_store_one_call_per_task();
         let actual_epoch = epoch_store.epoch();
         if actual_epoch != expected_epoch {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch,
-                actual_epoch,
-            }
-            .into());
+            return Err(SomaError::WrongEpoch { expected_epoch, actual_epoch }.into());
         }
 
         epoch_store.set_override_protocol_upgrade_buffer_stake(buffer_stake_bps)
@@ -2185,11 +2076,7 @@ impl AuthorityState {
         let epoch_store = self.load_epoch_store_one_call_per_task();
         let actual_epoch = epoch_store.epoch();
         if actual_epoch != expected_epoch {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch,
-                actual_epoch,
-            }
-            .into());
+            return Err(SomaError::WrongEpoch { expected_epoch, actual_epoch }.into());
         }
 
         epoch_store.clear_override_protocol_upgrade_buffer_stake()
@@ -2230,11 +2117,8 @@ impl AuthorityState {
 
         // There can only be one set of votes that have a majority, find one if it exists.
         desired_upgrades.sort();
-        desired_upgrades
-            .into_iter()
-            .chunk_by(|(digest, _authority)| *digest)
-            .into_iter()
-            .find_map(|(digest, group)| {
+        desired_upgrades.into_iter().chunk_by(|(digest, _authority)| *digest).into_iter().find_map(
+            |(digest, group)| {
                 let mut stake_aggregator: StakeAggregator<(), true> =
                     StakeAggregator::new(Arc::new(committee.clone()));
 
@@ -2262,7 +2146,8 @@ impl AuthorityState {
 
                 let has_support = total_votes >= effective_threshold;
                 has_support.then_some(proposed_protocol_version)
-            })
+            },
+        )
     }
 
     fn choose_protocol_version(
@@ -2318,9 +2203,7 @@ impl AuthorityState {
             epoch_store.protocol_version(),
             epoch_store.protocol_config(),
             epoch_store.committee(),
-            epoch_store
-                .get_capabilities()
-                .expect("read capabilities from db cannot fail"),
+            epoch_store.get_capabilities().expect("read capabilities from db cannot fail"),
             buffer_stake_bps,
         );
 
@@ -2342,20 +2225,13 @@ impl AuthorityState {
 
         let tx_digest = executable_tx.digest();
 
-        info!(
-            ?next_epoch,
-            ?tx_digest,
-            "Creating advance epoch transaction"
-        );
+        info!(?next_epoch, ?tx_digest, "Creating advance epoch transaction");
 
         let tx_lock = epoch_store.acquire_tx_lock(tx_digest);
 
         // The tx could have been executed by state sync already - if so simply return an error.
         // The checkpoint builder will shortly be terminated by reconfiguration anyway.
-        if self
-            .get_transaction_cache_reader()
-            .is_tx_already_executed(tx_digest)
-        {
+        if self.get_transaction_cache_reader().is_tx_already_executed(tx_digest) {
             warn!("change epoch tx has already been executed via state sync");
             return Err(CheckpointBuilderError::ChangeEpochTxAlreadyExecuted);
         }
@@ -2375,10 +2251,7 @@ impl AuthorityState {
         assert_eq!(assigned_versions.0.len(), 1);
         let assigned_versions = assigned_versions.0.into_iter().next().unwrap().1;
 
-        info!(
-            "Assigned versions for advance epoch: {:?}",
-            assigned_versions
-        );
+        info!("Assigned versions for advance epoch: {:?}", assigned_versions);
 
         let input_objects = self.read_objects_for_execution(
             &tx_lock,
@@ -2390,13 +2263,7 @@ impl AuthorityState {
         info!("Input objects for advance epoch: {:?}", input_objects);
 
         let (transaction_outputs, _execution_error_opt) = self
-            .execute_certificate(
-                &execution_guard,
-                &executable_tx,
-                input_objects,
-                None,
-                epoch_store,
-            )
+            .execute_certificate(&execution_guard, &executable_tx, input_objects, None, epoch_store)
             .unwrap();
         let system_obj = get_system_state(&transaction_outputs.written)
             .expect("change epoch tx must write to system object");
@@ -2405,8 +2272,7 @@ impl AuthorityState {
         // We must write tx and effects to the state sync tables so that state sync is able to
         // deliver to the transaction to CheckpointExecutor after it is included in a certified
         // checkpoint.
-        self.get_state_sync_store()
-            .insert_transaction_and_effects(&tx, &effects);
+        self.get_state_sync_store().insert_transaction_and_effects(&tx, &effects);
 
         // info!(
         //     "Effects summary of the change epoch transaction: {:?}",
@@ -2428,10 +2294,7 @@ impl AuthorityState {
     ) -> SomaResult<Arc<AuthorityPerEpochStore>> {
         let new_epoch = new_committee.epoch;
         info!(new_epoch = ?new_epoch, "re-opening AuthorityEpochTables for new epoch");
-        assert_eq!(
-            epoch_start_configuration.epoch_start_state().epoch(),
-            new_committee.epoch
-        );
+        assert_eq!(epoch_start_configuration.epoch_start_state().epoch(), new_committee.epoch);
 
         let new_epoch_store = cur_epoch_store.new_at_next_epoch(
             self.name,
@@ -2447,18 +2310,12 @@ impl AuthorityState {
     pub(crate) fn iter_live_object_set_for_testing(
         &self,
     ) -> impl Iterator<Item = types::object::LiveObject> + '_ {
-        self.get_global_state_hash_store()
-            .iter_cached_live_object_set_for_testing(false)
+        self.get_global_state_hash_store().iter_cached_live_object_set_for_testing(false)
     }
 
     #[cfg(test)]
     pub(crate) fn shutdown_execution_for_test(&self) {
-        self.tx_execution_shutdown
-            .lock()
-            .take()
-            .unwrap()
-            .send(())
-            .unwrap();
+        self.tx_execution_shutdown.lock().take().unwrap().send(()).unwrap();
     }
 
     /// NOTE: this function is only to be used for fuzzing and testing. Never use in prod
@@ -2485,12 +2342,7 @@ pub struct ObjDumpFormat {
 impl ObjDumpFormat {
     fn new(object: Object) -> Self {
         let oref = object.compute_object_reference();
-        Self {
-            id: oref.0,
-            version: oref.1,
-            digest: oref.2,
-            object,
-        }
+        Self { id: oref.0, version: oref.1, digest: oref.2, object }
     }
 }
 
@@ -2582,11 +2434,8 @@ impl NodeStateDump {
     }
 
     pub fn write_to_file(&self, path: &Path) -> Result<PathBuf, anyhow::Error> {
-        let file_name = format!(
-            "{}_{}_NODE_DUMP.json",
-            self.tx_digest,
-            AuthorityState::unixtime_now_ms()
-        );
+        let file_name =
+            format!("{}_{}_NODE_DUMP.json", self.tx_digest, AuthorityState::unixtime_now_ms());
         let mut path = path.to_path_buf();
         path.push(&file_name);
         let mut file = File::create(path.clone())?;

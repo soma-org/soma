@@ -31,10 +31,7 @@ impl WritePathPendingTransactionLog {
     pub fn new(path: PathBuf) -> Self {
         let pending_transactions =
             WritePathPendingTransactionTable::open_tables_read_write(path, None, None);
-        Self {
-            pending_transactions,
-            transactions_set: Mutex::new(HashSet::new()),
-        }
+        Self { pending_transactions, transactions_set: Mutex::new(HashSet::new()) }
     }
 
     // Returns whether the table currently has this transaction in record.
@@ -46,10 +43,7 @@ impl WritePathPendingTransactionLog {
             return false;
         }
         // Hold the lock while inserting into the logs to avoid race conditions.
-        self.pending_transactions
-            .logs
-            .insert(tx_digest, tx.serializable_ref())
-            .unwrap();
+        self.pending_transactions.logs.insert(tx_digest, tx.serializable_ref()).unwrap();
         transactions_set.insert(*tx_digest);
         true
     }

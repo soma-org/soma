@@ -10,11 +10,7 @@ use types::base::SomaAddress;
 
 #[tracing::instrument(skip(service))]
 pub fn get_balance(service: &RpcService, request: GetBalanceRequest) -> Result<GetBalanceResponse> {
-    let indexes = service
-        .reader
-        .inner()
-        .indexes()
-        .ok_or_else(RpcError::not_found)?;
+    let indexes = service.reader.inner().indexes().ok_or_else(RpcError::not_found)?;
 
     let owner = request
         .owner

@@ -223,11 +223,7 @@ where
         let amplification_factor = 1;
 
         let tx_type = request.tx_type();
-        let ping_label = if request.ping_type.is_some() {
-            "true"
-        } else {
-            "false"
-        };
+        let ping_label = if request.ping_type.is_some() { "true" } else { "false" };
         let timer = Instant::now();
 
         let mut backoff = ExponentialBackoff::new(MAX_DRIVE_TRANSACTION_RETRY_DELAY);
@@ -292,24 +288,22 @@ where
 
         match timeout_duration {
             Some(duration) => {
-                tokio::time::timeout(duration, retry_loop)
-                    .await
-                    .unwrap_or_else(|_| {
-                        // Timeout occurred, return with latest retriable error if available
-                        let e = TransactionDriverError::TimeoutWithLastRetriableError {
-                            last_error: latest_retriable_error.map(Box::new),
+                tokio::time::timeout(duration, retry_loop).await.unwrap_or_else(|_| {
+                    // Timeout occurred, return with latest retriable error if available
+                    let e = TransactionDriverError::TimeoutWithLastRetriableError {
+                        last_error: latest_retriable_error.map(Box::new),
+                        attempts,
+                        timeout: duration,
+                    };
+                    if request.transaction.is_some() {
+                        tracing::info!(
+                            "Transaction timed out after {} attempts. Last error: {}",
                             attempts,
-                            timeout: duration,
-                        };
-                        if request.transaction.is_some() {
-                            tracing::info!(
-                                "Transaction timed out after {} attempts. Last error: {}",
-                                attempts,
-                                e
-                            );
-                        }
-                        Err(e)
-                    })
+                            e
+                        );
+                    }
+                    Err(e)
+                })
             }
             None => retry_loop.await,
         }
@@ -365,18 +359,17 @@ where
             .await;
 
         if result.is_ok() {
-            self.client_monitor
-                .record_interaction_result(OperationFeedback {
-                    authority_name: name,
-                    display_name: auth_agg.get_display_name(&name),
-                    operation: if tx_type == TxType::SingleWriter {
-                        OperationType::FastPath
-                    } else {
-                        OperationType::Consensus
-                    },
-                    ping_type,
-                    result: Ok(start_time.elapsed()),
-                });
+            self.client_monitor.record_interaction_result(OperationFeedback {
+                authority_name: name,
+                display_name: auth_agg.get_display_name(&name),
+                operation: if tx_type == TxType::SingleWriter {
+                    OperationType::FastPath
+                } else {
+                    OperationType::Consensus
+                },
+                ping_type,
+                result: Ok(start_time.elapsed()),
+            });
         }
         result
     }
@@ -445,9 +438,7 @@ struct State {
 
 impl State {
     fn new() -> Self {
-        Self {
-            tasks: JoinSet::new(),
-        }
+        Self { tasks: JoinSet::new() }
     }
 }
 

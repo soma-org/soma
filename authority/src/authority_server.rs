@@ -1,12 +1,21 @@
 use crate::{
-    authority::{AuthorityState, ExecutionEnv}, authority_per_epoch_store::AuthorityPerEpochStore, checkpoints::CheckpointStore, consensus_adapter::ConsensusAdapter, consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult}, execution_scheduler::SchedulingSource, mysticeti_adapter::LazyMysticetiClient, server::TLS_SERVER_NAME, shared_obj_version_manager::Schedulable, tonic_gen::validator_server::{Validator, ValidatorServer}
+    authority::{AuthorityState, ExecutionEnv},
+    authority_per_epoch_store::AuthorityPerEpochStore,
+    checkpoints::CheckpointStore,
+    consensus_adapter::ConsensusAdapter,
+    consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult},
+    execution_scheduler::SchedulingSource,
+    mysticeti_adapter::LazyMysticetiClient,
+    server::TLS_SERVER_NAME,
+    shared_obj_version_manager::Schedulable,
+    tonic_gen::validator_server::{Validator, ValidatorServer},
 };
 use anyhow::Result;
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
-use futures::{future, TryFutureExt};
+use futures::{TryFutureExt, future};
 use itertools::Itertools as _;
-use nonempty::{nonempty, NonEmpty};
+use nonempty::{NonEmpty, nonempty};
 use std::{
     cmp::Ordering,
     future::Future,
@@ -14,28 +23,42 @@ use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
-    time::{Duration},
+    time::Duration,
 };
 use tap::TapFallible;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::server::TcpConnectInfo;
-use tracing::{debug, error, error_span, info, instrument, Instrument};
+use tracing::{Instrument, debug, error, error_span, info, instrument};
+use types::traffic_control::{ClientIdSource, Weight};
 use types::{
-    checkpoints::{CheckpointRequest, CheckpointResponse}, config::local_ip_utils::new_local_tcp_address_for_testing, consensus::{ConsensusPosition, ConsensusTransactionKind}, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{TransactionEffects}, error::SomaResult, object::Object, system_state::SystemState, transaction::{VerifiedCertificate, VerifiedExecutableTransaction}, transaction_outputs::TransactionOutputs
+    checkpoints::{CheckpointRequest, CheckpointResponse},
+    config::local_ip_utils::new_local_tcp_address_for_testing,
+    consensus::{ConsensusPosition, ConsensusTransactionKind},
+    digests::{TransactionDigest, TransactionEffectsDigest},
+    effects::TransactionEffects,
+    error::SomaResult,
+    object::Object,
+    system_state::SystemState,
+    transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
+    transaction_outputs::TransactionOutputs,
 };
 use types::{
     consensus::ConsensusTransaction,
+    envelope::Message as _,
     error::SomaError,
     messages_grpc::{
-        ObjectInfoRequest, ObjectInfoResponse, TransactionInfoRequest, HandleTransactionResponse, TransactionInfoResponse,  SystemStateRequest, HandleCertificateResponse,HandleCertificateRequest,ExecutedData, SubmitTxResult, RawSubmitTxRequest, SubmitTxType,RawSubmitTxResponse,  PingType,  WaitForEffectsRequest, WaitForEffectsResponse, RawWaitForEffectsRequest, RawWaitForEffectsResponse
+        ExecutedData, HandleCertificateRequest, HandleCertificateResponse,
+        HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, PingType,
+        RawSubmitTxRequest, RawSubmitTxResponse, RawWaitForEffectsRequest,
+        RawWaitForEffectsResponse, SubmitTxResult, SubmitTxType, SystemStateRequest,
+        TransactionInfoRequest, TransactionInfoResponse, WaitForEffectsRequest,
+        WaitForEffectsResponse,
     },
     multiaddr::Multiaddr,
     transaction::{CertifiedTransaction, Transaction},
-    envelope::Message as _,
 };
-use types::{ traffic_control::{Weight, ClientIdSource}};
 
 pub struct AuthorityServerHandle {
     server_handle: crate::server::Server,
@@ -69,11 +92,7 @@ impl AuthorityServer {
         consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Self {
         let address = new_local_tcp_address_for_testing();
-        Self {
-            address,
-            state,
-            consensus_adapter,
-        }
+        Self { address, state, consensus_adapter }
     }
 
     pub fn new_for_test(state: Arc<AuthorityState>) -> Self {
@@ -115,9 +134,7 @@ impl AuthorityServer {
             .unwrap();
         let local_addr = server.local_addr().to_owned();
         info!("Listening to traffic on {local_addr}");
-        let handle = AuthorityServerHandle {
-            server_handle: server,
-        };
+        let handle = AuthorityServerHandle { server_handle: server };
         Ok(handle)
     }
 }
@@ -149,17 +166,12 @@ impl ValidatorService {
         state: Arc<AuthorityState>,
         consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Self {
-        Self {
-            state,
-            consensus_adapter,
-        }
+        Self { state, consensus_adapter }
     }
 
     pub fn validator_state(&self) -> &Arc<AuthorityState> {
         &self.state
     }
-
-
 
     pub async fn handle_transaction_for_benchmarking(
         &self,
@@ -175,10 +187,7 @@ impl ValidatorService {
         &self,
         request: tonic::Request<Transaction>,
     ) -> WrappedServiceResponse<HandleTransactionResponse> {
-        let Self {
-            state,
-            consensus_adapter,
-        } = self.clone();
+        let Self { state, consensus_adapter } = self.clone();
         let transaction = request.into_inner();
         let epoch_store = state.load_epoch_store_one_call_per_task();
 
@@ -205,9 +214,7 @@ impl ValidatorService {
         //     }
         // }
 
-        let transaction = epoch_store
-            .verify_transaction(transaction)
-            .tap_err(|_| {})?;
+        let transaction = epoch_store.verify_transaction(transaction).tap_err(|_| {})?;
 
         let tx_digest = transaction.digest();
 
@@ -239,17 +246,14 @@ impl ValidatorService {
         &self,
         request: tonic::Request<RawSubmitTxRequest>,
     ) -> WrappedServiceResponse<RawSubmitTxResponse> {
-        let Self {
-            state,
-            consensus_adapter,
-        } = self.clone();
+        let Self { state, consensus_adapter } = self.clone();
 
         // let submitter_client_addr = if let Some(client_id_source) = &client_id_source {
         //     self.get_client_ip_addr(&request, client_id_source)
         // } else {
         //     self.get_client_ip_addr(&request, &ClientIdSource::SocketAddr)
         // };
-        let submitter_client_addr =  self.get_client_ip_addr(&request, &ClientIdSource::SocketAddr);
+        let submitter_client_addr = self.get_client_ip_addr(&request, &ClientIdSource::SocketAddr);
 
         let epoch_store = state.load_epoch_store_one_call_per_task();
 
@@ -267,18 +271,18 @@ impl ValidatorService {
                 return Err(SomaError::InvalidRequest(format!(
                     "Ping request cannot contain {} transactions",
                     request.transactions.len()
-                )).into());
+                ))
+                .into());
             }
         } else {
             // Ensure default requests contain at least one transaction.
             if !(!request.transactions.is_empty()) {
                 return Err(SomaError::InvalidRequest(
                     "At least one transaction needs to be submitted".to_string(),
-                ).into());
+                )
+                .into());
             }
         }
-
-       
 
         let max_num_transactions = 
             // Still enforce a limit even when transactions do not need to be in the same block.
@@ -291,7 +295,8 @@ impl ValidatorService {
                 "Too many transactions in request: {} vs {}",
                 request.transactions.len(),
                 max_num_transactions
-            )).into());
+            ))
+            .into());
         }
 
         // Transaction digests.
@@ -313,7 +318,6 @@ impl ValidatorService {
             "batch"
         };
 
-        
         for (idx, tx_bytes) in request.transactions.iter().enumerate() {
             let transaction = match bcs::from_bytes::<Transaction>(tx_bytes) {
                 Ok(txn) => txn,
@@ -321,10 +325,10 @@ impl ValidatorService {
                     // Ok to fail the request when any transaction is invalid.
                     return Err(SomaError::TransactionDeserializationError {
                         error: format!("Failed to deserialize transaction at index {}: {}", idx, e),
-                    }.into());
+                    }
+                    .into());
                 }
             };
-            
 
             // Ok to fail the request when any signature is invalid.
             let verified_transaction = {
@@ -339,17 +343,12 @@ impl ValidatorService {
             let tx_digest = verified_transaction.digest();
             tx_digests.push(*tx_digest);
 
-            debug!(
-                ?tx_digest,
-                "handle_submit_transaction: verified transaction"
-            );
+            debug!(?tx_digest, "handle_submit_transaction: verified transaction");
 
             // Check if the transaction has executed, before checking input objects
             // which could have been consumed.
-            if let Some(effects) = self
-                .state
-                .get_transaction_cache_reader()
-                .get_executed_effects(tx_digest)
+            if let Some(effects) =
+                self.state.get_transaction_cache_reader().get_executed_effects(tx_digest)
             {
                 let effects_digest = effects.digest();
                 if let Ok(executed_data) = self.complete_executed_data(effects, None).await {
@@ -372,10 +371,7 @@ impl ValidatorService {
                 .wait_for_fastpath_dependency_objects(&verified_transaction, epoch_store.epoch())
                 .await?
             {
-                debug!(
-                    ?tx_digest,
-                    "fastpath input objects are still unavailable after waiting"
-                );
+                debug!(?tx_digest, "fastpath input objects are still unavailable after waiting");
             }
 
             match state.handle_vote_transaction(&epoch_store, verified_transaction.clone()) {
@@ -383,10 +379,8 @@ impl ValidatorService {
                 Err(e) => {
                     // Check if transaction has been executed while being validated.
                     // This is an edge case so checking executed effects twice is acceptable.
-                    if let Some(effects) = self
-                        .state
-                        .get_transaction_cache_reader()
-                        .get_executed_effects(tx_digest)
+                    if let Some(effects) =
+                        self.state.get_transaction_cache_reader().get_executed_effects(tx_digest)
                     {
                         let effects_digest = effects.digest();
                         if let Ok(executed_data) = self.complete_executed_data(effects, None).await
@@ -426,18 +420,15 @@ impl ValidatorService {
         // Set the max bytes size of the soft bundle to be half of the consensus max transactions in block size.
         // We do this to account for serialization overheads and to ensure that the soft bundle is not too large
         // when is attempted to be posted via consensus.
-        let max_transaction_bytes = 
-            epoch_store
-                .protocol_config()
-                .consensus_max_transactions_in_block_bytes();
-        if !(
-            total_size_bytes <= max_transaction_bytes as usize) {
-                return Err(SomaError::TotalTransactionSizeTooLargeInBatch {
-                    size: total_size_bytes,
-                    limit: max_transaction_bytes,
-                }.into());
+        let max_transaction_bytes =
+            epoch_store.protocol_config().consensus_max_transactions_in_block_bytes();
+        if !(total_size_bytes <= max_transaction_bytes as usize) {
+            return Err(SomaError::TotalTransactionSizeTooLargeInBatch {
+                size: total_size_bytes,
+                limit: max_transaction_bytes,
             }
-            
+            .into());
+        }
 
         let consensus_positions = if is_ping_request {
             // We only allow the `consensus_transactions` to be empty for ping requests. This is how it should and is be treated from the downstream components.
@@ -449,10 +440,7 @@ impl ValidatorService {
             debug!(
                 "handle_submit_transaction: submitting consensus transactions ({}): {}",
                 req_type,
-                consensus_transactions
-                    .iter()
-                    .map(|t| t.local_display())
-                    .join(", ")
+                consensus_transactions.iter().map(|t| t.local_display()).join(", ")
             );
             self.handle_submit_to_consensus_for_position(
                 consensus_transactions,
@@ -473,11 +461,7 @@ impl ValidatorService {
                     submitter_client_addr,
                 )
             });
-            future::try_join_all(futures)
-                .await?
-                .into_iter()
-                .flatten()
-                .collect()
+            future::try_join_all(futures).await?.into_iter().flatten().collect()
         };
 
         if is_ping_request {
@@ -488,10 +472,8 @@ impl ValidatorService {
             }));
         } else {
             // Otherwise, return the consensus position for each transaction.
-            for ((idx, tx_digest), consensus_position) in transaction_indexes
-                .into_iter()
-                .zip(tx_digests)
-                .zip(consensus_positions)
+            for ((idx, tx_digest), consensus_position) in
+                transaction_indexes.into_iter().zip(tx_digests).zip(consensus_positions)
             {
                 debug!(
                     ?tx_digest,
@@ -502,10 +484,7 @@ impl ValidatorService {
             }
         }
 
-        Ok((
-            tonic::Response::new(Self::try_from_submit_tx_response(results)?),
-            Weight::zero(),
-        ))
+        Ok((tonic::Response::new(Self::try_from_submit_tx_response(results)?), Weight::zero()))
     }
 
     fn try_from_submit_tx_response(
@@ -519,9 +498,7 @@ impl ValidatorService {
             let raw_result = result.try_into()?;
             raw_results.push(raw_result);
         }
-        Ok(RawSubmitTxResponse {
-            results: raw_results,
-        })
+        Ok(RawSubmitTxResponse { results: raw_results })
     }
 
     // In addition to the response from handling the certificates,
@@ -540,13 +517,10 @@ impl ValidatorService {
         // Validate if cert can be executed
         // Fullnode does not serve handle_certificate call.
         if !(!self.state.is_fullnode(epoch_store)) {
-            return Err( SomaError::FullNodeCantHandleCertificate.into());
+            return Err(SomaError::FullNodeCantHandleCertificate.into());
         }
-           
 
         let is_consensus_tx = certificates.iter().any(|cert| cert.is_consensus_tx());
-
-        
 
         // 1) Check if the certificate is already executed.
         //    This is only needed when we have only one certificate (not a soft bundle).
@@ -555,17 +529,14 @@ impl ValidatorService {
             let tx_digest = *certificates[0].digest();
             debug!(tx_digest=?tx_digest, "Checking if certificate is already executed");
 
-            if let Some(signed_effects) = self
-                .state
-                .get_signed_effects_and_maybe_resign(&tx_digest, epoch_store)?
+            if let Some(signed_effects) =
+                self.state.get_signed_effects_and_maybe_resign(&tx_digest, epoch_store)?
             {
-
                 return Ok((
                     Some(vec![HandleCertificateResponse {
                         effects: signed_effects.into_inner(),
                         input_objects: None,
                         output_objects: None,
-                  
                     }]),
                     Weight::one(),
                 ));
@@ -574,7 +545,6 @@ impl ValidatorService {
 
         // 2) Verify the certificates.
         let verified_certificates = {
-            
             epoch_store
                 .signature_verifier
                 .multi_verify_certs(certificates.into())
@@ -610,7 +580,7 @@ impl ValidatorService {
                             self.state.sign_effects(response.effects, epoch_store)?;
                         Ok(HandleCertificateResponse {
                             effects: signed_effects.into_inner(),
-                         
+
                             input_objects: if response.input_objects.is_empty() {
                                 None
                             } else {
@@ -621,7 +591,6 @@ impl ValidatorService {
                             } else {
                                 Some(response.output_objects)
                             },
-                    
                         })
                     })
                     .collect::<Result<Vec<HandleCertificateResponse>, tonic::Status>>()?,
@@ -652,14 +621,12 @@ impl ValidatorService {
             // code block within reconfiguration lock
             let reconfiguration_lock = epoch_store.get_reconfig_state_read_lock_guard();
             if !reconfiguration_lock.should_accept_user_certs() {
-          
                 return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
             }
 
             // Submit to consensus and wait for position, we do not check if tx
             // has been processed by consensus already as this method is called
             // to get back a consensus position.
-         
 
             self.consensus_adapter.submit_batch(
                 &consensus_transactions,
@@ -671,9 +638,7 @@ impl ValidatorService {
         }
 
         Ok(rx_consensus_positions.await.map_err(|e| {
-            SomaError::FailedToSubmitToConsensus(format!(
-                "Failed to get consensus position: {e}"
-            ))
+            SomaError::FailedToSubmitToConsensus(format!("Failed to get consensus position: {e}"))
         })?)
     }
 
@@ -690,7 +655,6 @@ impl ValidatorService {
             // code block within reconfiguration lock
             let reconfiguration_lock = epoch_store.get_reconfig_state_read_lock_guard();
             if !reconfiguration_lock.should_accept_user_certs() {
-
                 return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
             }
 
@@ -702,7 +666,6 @@ impl ValidatorService {
             if !epoch_store.all_external_consensus_messages_processed(
                 consensus_transactions.iter().map(|tx| tx.key()),
             )? {
-               
                 self.consensus_adapter.submit_batch(
                     &consensus_transactions,
                     Some(&reconfiguration_lock),
@@ -738,9 +701,7 @@ impl ValidatorService {
                 .map(|(tx, env)| (Schedulable::Transaction(tx), env))
                 .collect::<Vec<_>>();
             if !fast_path_certificates.is_empty() {
-                self.state
-                    .execution_scheduler()
-                    .enqueue(fast_path_certificates, epoch_store);
+                self.state.execution_scheduler().enqueue(fast_path_certificates, epoch_store);
             }
             return Ok((None, Weight::zero()));
         }
@@ -799,9 +760,7 @@ impl ValidatorService {
         include_input_objects: bool,
         include_output_objects: bool,
         fastpath_outputs: Option<Arc<TransactionOutputs>>,
-    ) -> SomaResult<( Vec<Object>, Vec<Object>)> {
-        
-
+    ) -> SomaResult<(Vec<Object>, Vec<Object>)> {
         let input_objects = if include_input_objects {
             self.state.get_transaction_input_objects(effects)?
         } else {
@@ -838,8 +797,6 @@ impl ValidatorService {
     ) -> WrappedServiceResponse<RawSubmitTxResponse> {
         self.handle_submit_transaction(request).await
     }
-
-
 
     async fn handle_certificate_impl(
         &self,
@@ -897,12 +854,9 @@ impl ValidatorService {
         epoch_store: &Arc<AuthorityPerEpochStore>,
     ) -> SomaResult<WaitForEffectsResponse> {
         if request.ping_type.is_some() {
-            return timeout(
-                Duration::from_secs(10),
-                self.ping_response(request, epoch_store),
-            )
-            .await
-            .map_err(|_| SomaError::TimeoutError)?;
+            return timeout(Duration::from_secs(10), self.ping_response(request, epoch_store))
+                .await
+                .map_err(|_| SomaError::TimeoutError)?;
         }
 
         let Some(tx_digest) = request.transaction_digest else {
@@ -989,16 +943,11 @@ impl ValidatorService {
             .into());
         };
 
-       
-
         consensus_tx_status_cache.check_position_too_ahead(&consensus_position)?;
 
         let mut last_status = None;
-        let details = if request.include_details {
-            Some(Box::new(ExecutedData::default()))
-        } else {
-            None
-        };
+        let details =
+            if request.include_details { Some(Box::new(ExecutedData::default())) } else { None };
 
         loop {
             let status = consensus_tx_status_cache
@@ -1059,10 +1008,7 @@ impl ValidatorService {
             Ordering::Less => {
                 // Ask TransactionDriver to retry submitting the transaction and get a new ConsensusPosition,
                 // if response from this validator is desired.
-                let response = WaitForEffectsResponse::Expired {
-                    epoch: local_epoch,
-                    round: None,
-                };
+                let response = WaitForEffectsResponse::Expired { epoch: local_epoch, round: None };
                 return Ok(response);
             }
             Ordering::Greater => {
@@ -1149,11 +1095,7 @@ impl ValidatorService {
                 fastpath_outputs,
             )
             .await?;
-        Ok(Box::new(ExecutedData {
-            effects,
-            input_objects,
-            output_objects,
-        }))
+        Ok(Box::new(ExecutedData { effects, input_objects, output_objects }))
     }
 
     async fn object_info_impl(
@@ -1183,19 +1125,15 @@ impl ValidatorService {
         Ok((tonic::Response::new(response), Weight::one()))
     }
 
-
     async fn get_system_state_object_impl(
         &self,
         _request: tonic::Request<SystemStateRequest>,
     ) -> WrappedServiceResponse<SystemState> {
-        let response = self
-            .state
-            .get_object_cache_reader()
-            .get_system_state_object()?;
+        let response = self.state.get_object_cache_reader().get_system_state_object()?;
         Ok((tonic::Response::new(response), Weight::one()))
     }
 
-     async fn validator_health_impl(
+    async fn validator_health_impl(
         &self,
         _request: tonic::Request<types::messages_grpc::RawValidatorHealthRequest>,
     ) -> WrappedServiceResponse<types::messages_grpc::RawValidatorHealthResponse> {
@@ -1234,16 +1172,13 @@ impl ValidatorService {
             last_committed_leader_round,
         };
 
-        let raw_response = typed_response
-            .try_into()
-            .map_err(|e: types::error::SomaError| {
-                tonic::Status::internal(format!("Failed to serialize health response: {}", e))
-            })?;
+        let raw_response = typed_response.try_into().map_err(|e: types::error::SomaError| {
+            tonic::Status::internal(format!("Failed to serialize health response: {}", e))
+        })?;
 
         Ok((tonic::Response::new(raw_response), Weight::one()))
     }
 
-    
     fn get_client_ip_addr<T>(
         &self,
         request: &tonic::Request<T>,
@@ -1252,12 +1187,8 @@ impl ValidatorService {
         let forwarded_header = request.metadata().get_all("x-forwarded-for").iter().next();
 
         if let Some(header) = forwarded_header {
-            let num_hops = header
-                .to_str()
-                .map(|h| h.split(',').count().saturating_sub(1))
-                .unwrap_or(0);
-
-            
+            let num_hops =
+                header.to_str().map(|h| h.split(',').count().saturating_sub(1)).unwrap_or(0);
         }
 
         match source {
@@ -1277,7 +1208,6 @@ impl ValidatorService {
                     } else if cfg!(test) {
                         panic!("Failed to get remote address from request");
                     } else {
-                        
                         error!("Failed to get remote address from request");
                     }
                     None
@@ -1306,7 +1236,7 @@ impl ValidatorService {
                                     `client-id-source` in the node config.",
                                     header_contents, contents_len, num_hops, contents_len,
                                 );
-                                
+
                                 return None;
                             }
                             let Some(client_ip) = header_contents.get(contents_len - num_hops)
@@ -1318,16 +1248,13 @@ impl ValidatorService {
                                 );
                                 return None;
                             };
-                            Self::parse_ip(client_ip).or_else(|| {
-                                
-                                None
-                            })
+                            Self::parse_ip(client_ip).or_else(|| None)
                         }
                         Err(e) => {
                             // TODO: once we have confirmed that no legitimate traffic
                             // is hitting this case, we should reject such requests that
                             // hit this case.
-                           
+
                             error!("Invalid UTF-8 in x-forwarded-for header: {:?}", e);
                             None
                         }
@@ -1338,7 +1265,6 @@ impl ValidatorService {
                 } else if let Some(op) = request.metadata().get("X-Forwarded-For") {
                     do_header_parse(op)
                 } else {
-                   
                     error!(
                         "x-forwarded-for header not present for request despite node configuring x-forwarded-for tracking type"
                     );
@@ -1351,13 +1277,10 @@ impl ValidatorService {
     // TODO: remove this after implementing traffic controller
     pub fn parse_ip(ip: &str) -> Option<IpAddr> {
         ip.parse::<IpAddr>().ok().or_else(|| {
-            ip.parse::<SocketAddr>()
-                .ok()
-                .map(|socket_addr| socket_addr.ip())
-                .or_else(|| {
-                    error!("Failed to parse value of {:?} to ip address or socket.", ip,);
-                    None
-                })
+            ip.parse::<SocketAddr>().ok().map(|socket_addr| socket_addr.ip()).or_else(|| {
+                error!("Failed to parse value of {:?} to ip address or socket.", ip,);
+                None
+            })
         })
     }
 
@@ -1383,11 +1306,9 @@ impl ValidatorService {
     ) -> Result<tonic::Response<T>, tonic::Status> {
         let (error, spam_weight, unwrapped_response) = match wrapped_response {
             Ok((result, spam_weight)) => (None, spam_weight.clone(), Ok(result)),
-            Err(status) => (
-                Some(SomaError::from(status.clone())),
-                Weight::zero(),
-                Err(status.clone()),
-            ),
+            Err(status) => {
+                (Some(SomaError::from(status.clone())), Weight::zero(), Err(status.clone()))
+            }
         };
 
         // TODO: implement tallying with traffic controller
@@ -1496,7 +1417,6 @@ impl Validator for ValidatorService {
         .await
         .unwrap()
     }
-
 
     async fn handle_certificate(
         &self,

@@ -10,7 +10,7 @@ use crate::{
     crypto::GenericSignature,
     effects::{TransactionEffects, TransactionEffectsAPI as _},
     object::{Object, ObjectID, ObjectRef},
-    storage::{read_store::EpochInfo, ObjectKey},
+    storage::{ObjectKey, read_store::EpochInfo},
     system_state::get_system_state,
     transaction::{Transaction, TransactionData, TransactionKind},
 };
@@ -135,20 +135,17 @@ impl CheckpointTransaction {
     }
 
     pub fn changed_objects(&self) -> impl Iterator<Item = (&Object, Option<&Object>)> {
-        self.effects
-            .all_changed_objects()
-            .into_iter()
-            .map(|((id, _, _), ..)| {
-                let object = self
-                    .output_objects
-                    .iter()
-                    .find(|o| o.id() == id)
-                    .expect("changed objects should show up in output objects");
+        self.effects.all_changed_objects().into_iter().map(|((id, _, _), ..)| {
+            let object = self
+                .output_objects
+                .iter()
+                .find(|o| o.id() == id)
+                .expect("changed objects should show up in output objects");
 
-                let old_object = self.input_objects.iter().find(|o| o.id() == id);
+            let old_object = self.input_objects.iter().find(|o| o.id() == id);
 
-                (object, old_object)
-            })
+            (object, old_object)
+        })
     }
 
     pub fn created_objects(&self) -> impl Iterator<Item = &Object> {
@@ -166,10 +163,7 @@ impl CheckpointTransaction {
     }
 
     pub fn execution_data(&self) -> ExecutionData {
-        ExecutionData {
-            transaction: self.transaction.clone(),
-            effects: self.effects.clone(),
-        }
+        ExecutionData { transaction: self.transaction.clone(), effects: self.effects.clone() }
     }
 }
 
@@ -206,8 +200,7 @@ impl ObjectSet {
     }
 
     pub fn insert(&mut self, object: Object) {
-        self.0
-            .insert(ObjectKey(object.id(), object.version()), object);
+        self.0.insert(ObjectKey(object.id(), object.version()), object);
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Object> {
@@ -256,28 +249,18 @@ impl ExecutedTransaction {
         &self,
         object_set: &'a ObjectSet,
     ) -> impl Iterator<Item = &'a Object> + 'a {
-        self.effects
-            .object_changes()
-            .into_iter()
-            .filter_map(move |change| {
-                change
-                    .input_version
-                    .and_then(|version| object_set.get(&ObjectKey(change.id, version)))
-            })
+        self.effects.object_changes().into_iter().filter_map(move |change| {
+            change.input_version.and_then(|version| object_set.get(&ObjectKey(change.id, version)))
+        })
     }
 
     pub fn output_objects<'a>(
         &self,
         object_set: &'a ObjectSet,
     ) -> impl Iterator<Item = &'a Object> + 'a {
-        self.effects
-            .object_changes()
-            .into_iter()
-            .filter_map(move |change| {
-                change
-                    .output_version
-                    .and_then(|version| object_set.get(&ObjectKey(change.id, version)))
-            })
+        self.effects.object_changes().into_iter().filter_map(move |change| {
+            change.output_version.and_then(|version| object_set.get(&ObjectKey(change.id, version)))
+        })
     }
 }
 
@@ -292,10 +275,7 @@ impl From<Checkpoint> for CheckpointData {
                     .modified_at_versions()
                     .into_iter()
                     .filter_map(|(object_id, version)| {
-                        value
-                            .object_set
-                            .get(&ObjectKey(object_id, version))
-                            .cloned()
+                        value.object_set.get(&ObjectKey(object_id, version)).cloned()
                     })
                     .collect::<Vec<_>>();
                 let output_objects = tx
@@ -331,11 +311,7 @@ impl From<CheckpointData> for Checkpoint {
             .transactions
             .into_iter()
             .map(|tx| {
-                for o in tx
-                    .input_objects
-                    .into_iter()
-                    .chain(tx.output_objects.into_iter())
-                {
+                for o in tx.input_objects.into_iter().chain(tx.output_objects.into_iter()) {
                     object_set.insert(o);
                 }
 

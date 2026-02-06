@@ -1,5 +1,5 @@
 use futures::Future;
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,13 +36,7 @@ pub async fn quorum_map_then_reduce_with_timeout_and_prefs<
     map_each_authority: FMap,
     reduce_result: FReduce,
     initial_timeout: Duration,
-) -> Result<
-    (
-        R,
-        FuturesUnordered<impl Future<Output = (K, Result<V, E>)> + 'a>,
-    ),
-    S,
->
+) -> Result<(R, FuturesUnordered<impl Future<Output = (K, Result<V, E>)> + 'a>), S>
 where
     K: Ord + ConciseableName<'a> + Clone + 'a,
     C: CommitteeTrait<K>,
@@ -129,13 +123,7 @@ pub async fn quorum_map_then_reduce_with_timeout<
     reduce_result: FReduce,
     // The initial timeout applied to all
     // initial_timeout: Duration,
-) -> Result<
-    (
-        R,
-        FuturesUnordered<impl Future<Output = (K, Result<V, E>)> + 'a>,
-    ),
-    S,
->
+) -> Result<(R, FuturesUnordered<impl Future<Output = (K, Result<V, E>)> + 'a>), S>
 where
     K: Ord + ConciseableName<'a> + Clone + 'a,
     C: CommitteeTrait<K>,

@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use arc_swap::{ArcSwapOption, Guard};
 use consensus::{ClientError, TransactionClient};
 use tap::prelude::*;
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 use tracing::{error, info, warn};
 use types::{
     consensus::{ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind},
@@ -26,9 +26,7 @@ pub struct LazyMysticetiClient {
 
 impl LazyMysticetiClient {
     pub fn new() -> Self {
-        Self {
-            client: Arc::new(ArcSwapOption::empty()),
-        }
+        Self { client: Arc::new(ArcSwapOption::empty()) }
     }
 
     async fn get(&self) -> Guard<Option<Arc<TransactionClient>>> {
@@ -52,10 +50,7 @@ impl LazyMysticetiClient {
                 sleep(RETRY_INTERVAL).await;
                 count += 1;
                 if count % 100 == 0 {
-                    warn!(
-                        "Waiting for consensus to initialize after {:?}",
-                        Instant::now() - start
-                    );
+                    warn!("Waiting for consensus to initialize after {:?}", Instant::now() - start);
                 }
             }
         }
@@ -81,9 +76,7 @@ impl ConsensusClient for LazyMysticetiClient {
         // The retrieved TransactionClient can be from the past epoch. Submit would fail after
         // Mysticeti shuts down, so there should be no correctness issue.
         let client_guard = self.get().await;
-        let client = client_guard
-            .as_ref()
-            .expect("Client should always be returned");
+        let client = client_guard.as_ref().expect("Client should always be returned");
         let transactions_bytes = transactions
             .iter()
             .map(|t| bcs::to_bytes(t).expect("Serializing consensus transaction cannot fail"))
@@ -116,10 +109,7 @@ impl ConsensusClient for LazyMysticetiClient {
 
         if !is_soft_bundle
             && !is_ping
-            && matches!(
-                transactions[0].kind,
-                ConsensusTransactionKind::EndOfPublish(_)
-            )
+            && matches!(transactions[0].kind, ConsensusTransactionKind::EndOfPublish(_))
         {
             let transaction_key = SequencedConsensusTransactionKey::External(transactions[0].key());
             tracing::info!("Transaction {transaction_key:?} was included in {block_ref}",)

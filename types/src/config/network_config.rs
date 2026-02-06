@@ -184,9 +184,8 @@ impl<R> ConfigBuilder<R> {
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("SystemTime before UNIX EPOCH!");
 
-        self.get_or_init_genesis_config()
-            .parameters
-            .chain_start_timestamp_ms = duration_since_unix_epoch.as_millis() as u64;
+        self.get_or_init_genesis_config().parameters.chain_start_timestamp_ms =
+            duration_since_unix_epoch.as_millis() as u64;
         self
     }
 
@@ -280,9 +279,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             }
         };
 
-        let mut genesis_config = self
-            .genesis_config
-            .unwrap_or_else(GenesisConfig::for_local_testing);
+        let mut genesis_config =
+            self.genesis_config.unwrap_or_else(GenesisConfig::for_local_testing);
 
         if genesis_config.parameters.chain_start_timestamp_ms == 0 {
             genesis_config.parameters.chain_start_timestamp_ms = SystemTime::now()
@@ -359,9 +357,7 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let seed_peers: Vec<SeedPeer> = all_validators
             .iter()
             .map(|config| SeedPeer {
-                peer_id: Some(PeerId(
-                    config.network_key_pair.public().into_inner().0.to_bytes(),
-                )),
+                peer_id: Some(PeerId(config.network_key_pair.public().into_inner().0.to_bytes())),
                 address: config.p2p_address.clone(),
             })
             .collect();
@@ -392,10 +388,6 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
             })
             .collect();
 
-        NetworkConfig {
-            validator_configs,
-            genesis,
-            account_keys,
-        }
+        NetworkConfig { validator_configs, genesis, account_keys }
     }
 }

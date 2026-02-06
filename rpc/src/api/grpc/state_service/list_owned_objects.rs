@@ -25,11 +25,7 @@ pub fn list_owned_objects(
     service: &RpcService,
     request: ListOwnedObjectsRequest,
 ) -> Result<ListOwnedObjectsResponse> {
-    let indexes = service
-        .reader
-        .inner()
-        .indexes()
-        .ok_or_else(RpcError::not_found)?;
+    let indexes = service.reader.inner().indexes().ok_or_else(RpcError::not_found)?;
 
     let owner: Address = request
         .owner
@@ -41,24 +37,17 @@ pub fn list_owned_objects(
                 .with_description(format!("invalid owner: {e}"))
                 .with_reason(ErrorReason::FieldInvalid)
         })?;
-    let object_type = request
-        .object_type
-        .map(|s| s.parse())
-        .transpose()
-        .map_err(|e| {
-            FieldViolation::new("object_type")
-                .with_description(format!("invalid object_type: {e}"))
-                .with_reason(ErrorReason::FieldInvalid)
-        })?;
+    let object_type = request.object_type.map(|s| s.parse()).transpose().map_err(|e| {
+        FieldViolation::new("object_type")
+            .with_description(format!("invalid object_type: {e}"))
+            .with_reason(ErrorReason::FieldInvalid)
+    })?;
 
     let page_size = request
         .page_size
         .map(|s| (s as usize).clamp(1, MAX_PAGE_SIZE))
         .unwrap_or(DEFAULT_PAGE_SIZE);
-    let page_token = request
-        .page_token
-        .map(|token| decode_page_token(&token))
-        .transpose()?;
+    let page_token = request.page_token.map(|token| decode_page_token(&token)).transpose()?;
     if let Some(token) = &page_token {
         if token.owner != owner || token.object_type != object_type {
             return Err(FieldViolation::new("page_token")
@@ -68,9 +57,7 @@ pub fn list_owned_objects(
         }
     }
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Object>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -87,10 +74,8 @@ pub fn list_owned_objects(
     )?;
     let mut objects = Vec::with_capacity(page_size);
     let mut size_bytes = 0;
-    while let Some(object_info) = iter
-        .next()
-        .transpose()
-        .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
+    while let Some(object_info) =
+        iter.next().transpose().map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
     {
         let object = if should_load_object {
             let Some(object) = service
@@ -130,13 +115,7 @@ pub fn list_owned_objects(
         .next()
         .transpose()
         .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
-        .map(|cursor| {
-            encode_page_token(PageToken {
-                owner,
-                object_type,
-                inner: cursor,
-            })
-        });
+        .map(|cursor| encode_page_token(PageToken { owner, object_type, inner: cursor }));
 
     let mut message = ListOwnedObjectsResponse::default();
     message.objects = objects;

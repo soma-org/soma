@@ -59,10 +59,7 @@ impl Client {
         T: TryInto<http::Uri>,
         T::Error: Into<BoxError>,
     {
-        let uri = uri
-            .try_into()
-            .map_err(Into::into)
-            .map_err(tonic::Status::from_error)?;
+        let uri = uri.try_into().map_err(Into::into).map_err(tonic::Status::from_error)?;
         let mut endpoint = tonic::transport::Endpoint::from(uri.clone());
         if uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
             endpoint = endpoint
@@ -75,12 +72,7 @@ impl Client {
             .http2_keep_alive_interval(Duration::from_secs(5))
             .connect_lazy();
 
-        Ok(Self {
-            uri,
-            channel,
-            headers: Default::default(),
-            max_decoding_message_size: None,
-        })
+        Ok(Self { uri, channel, headers: Default::default(), max_decoding_message_size: None })
     }
 
     pub fn with_headers(mut self, headers: HeadersInterceptor) -> Self {

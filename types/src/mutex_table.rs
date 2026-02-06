@@ -1,11 +1,11 @@
 use parking_lot::{ArcMutexGuard, ArcRwLockReadGuard, ArcRwLockWriteGuard, Mutex, RwLock};
-use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::collections::HashMap;
+use std::collections::hash_map::{DefaultHasher, RandomState};
 use std::error::Error;
 use std::fmt;
 use std::hash::{BuildHasher, Hash, Hasher};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
@@ -96,11 +96,8 @@ impl<K: Hash + Eq + Send + Sync + 'static, L: Lock + 'static> LockTable<K, L> {
     ) -> Self {
         let num_shards = if cfg!(msim) { 4 } else { num_shards };
 
-        let lock_table: Arc<Vec<RwLock<InnerLockTable<K, L>>>> = Arc::new(
-            (0..num_shards)
-                .map(|_| RwLock::new(HashMap::new()))
-                .collect(),
-        );
+        let lock_table: Arc<Vec<RwLock<InnerLockTable<K, L>>>> =
+            Arc::new((0..num_shards).map(|_| RwLock::new(HashMap::new())).collect());
         let cloned = lock_table.clone();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_cloned = stop.clone();
@@ -131,12 +128,7 @@ impl<K: Hash + Eq + Send + Sync + 'static, L: Lock + 'static> LockTable<K, L> {
     }
 
     pub fn new(num_shards: usize) -> Self {
-        Self::new_with_cleanup(
-            num_shards,
-            Duration::from_secs(10),
-            Duration::from_secs(10),
-            10_000,
-        )
+        Self::new_with_cleanup(num_shards, Duration::from_secs(10), Duration::from_secs(10), 10_000)
     }
 
     pub fn size(&self) -> usize {
@@ -238,9 +230,8 @@ impl<K: Hash + Eq + Send + Sync + 'static, L: Lock + 'static> LockTable<K, L> {
     pub fn try_acquire_lock(&self, k: K) -> Result<L::Guard, TryAcquireLockError> {
         let lock_idx = self.get_lock_idx(&k);
         let element = {
-            let map = self.lock_table[lock_idx]
-                .try_read()
-                .ok_or(TryAcquireLockError::LockTableLocked)?;
+            let map =
+                self.lock_table[lock_idx].try_read().ok_or(TryAcquireLockError::LockTableLocked)?;
             map.get(&k).cloned()
         };
         if let Some(element) = element {

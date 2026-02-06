@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{join, stream::FuturesUnordered, StreamExt as _};
+use futures::{StreamExt as _, join, stream::FuturesUnordered};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, instrument};
 use types::{
@@ -27,13 +27,13 @@ use crate::{
     safe_client::SafeClient,
     status_aggregator::StatusAggregator,
     transaction_driver::{
+        QuorumTransactionResponse, SubmitTransactionOptions,
         backoff::ExponentialBackoff,
         error::{
-            aggregate_request_errors, AggregatedEffectsDigests, TransactionDriverError,
-            TransactionRequestError,
+            AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+            aggregate_request_errors,
         },
         request_retrier::RequestRetrier,
-        QuorumTransactionResponse, SubmitTransactionOptions,
     },
     validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
 };
@@ -73,11 +73,7 @@ impl EffectsCertifier {
         // Skip the first attempt to get full effects if it is already provided.
         let (consensus_position, full_effects) = match submit_txn_result {
             SubmitTxResult::Submitted { consensus_position } => (Some(consensus_position), None),
-            SubmitTxResult::Executed {
-                effects_digest,
-                details,
-                fast_path,
-            } => match details {
+            SubmitTxResult::Executed { effects_digest, details, fast_path } => match details {
                 Some(details) => (None, Some((effects_digest, details, fast_path))),
                 // Details should always be set in correct responses.
                 // But if it is not set, continuing to get full effects and certify the digest are still correct.
@@ -93,13 +89,8 @@ impl EffectsCertifier {
             }
         };
 
-        let mut retrier = RequestRetrier::new(
-            authority_aggregator,
-            client_monitor,
-            tx_type,
-            vec![],
-            vec![],
-        );
+        let mut retrier =
+            RequestRetrier::new(authority_aggregator, client_monitor, tx_type, vec![], vec![]);
         let ping_type = get_ping_type(&tx_digest, tx_type);
 
         // Setting this to None at first because if the full effects are already provided,
@@ -124,13 +115,11 @@ impl EffectsCertifier {
                     // only used with failed full effects query.
                     return Ok(full_effects);
                 }
-                let (name, client) = retrier
-                    .next_target()
-                    .expect("there should be at least 1 target");
+                let (name, client) =
+                    retrier.next_target().expect("there should be at least 1 target");
                 current_target = name;
                 full_effects_start_time = Some(Instant::now());
-                self.get_full_effects(client, tx_digest, tx_type, consensus_position, options)
-                    .await
+                self.get_full_effects(client, tx_digest, tx_type, consensus_position, options).await
             },
         );
 
@@ -232,11 +221,7 @@ impl EffectsCertifier {
         .await
         {
             Ok(Ok(response)) => match response {
-                WaitForEffectsResponse::Executed {
-                    effects_digest,
-                    details,
-                    fast_path,
-                } => {
+                WaitForEffectsResponse::Executed { effects_digest, details, fast_path } => {
                     if let Some(details) = details {
                         tracing::Span::current()
                             .record("ret_effects_digest", format!("{:?}", effects_digest));
@@ -254,9 +239,9 @@ impl EffectsCertifier {
                     // by the function signature. This will get ignored by the caller as a retriable error.
                     None => Err(TransactionRequestError::RejectedByConsensus),
                 },
-                WaitForEffectsResponse::Expired { epoch, round } => Err(
-                    TransactionRequestError::StatusExpired(epoch, round.unwrap_or(0)),
-                ),
+                WaitForEffectsResponse::Expired { epoch, round } => {
+                    Err(TransactionRequestError::StatusExpired(epoch, round.unwrap_or(0)))
+                }
             },
             Ok(Err(e)) => Err(TransactionRequestError::Aborted(e)),
             Err(_) => Err(TransactionRequestError::TimedOutGettingFullEffectsAtValidator),
@@ -281,10 +266,7 @@ impl EffectsCertifier {
         let ping_label = if tx_digest.is_none() { "true" } else { "false" };
 
         let timer = tokio::time::Instant::now();
-        let clients = authority_aggregator
-            .authority_clients
-            .iter()
-            .collect::<Vec<_>>();
+        let clients = authority_aggregator.authority_clients.iter().collect::<Vec<_>>();
         let committee = authority_aggregator.committee.clone();
         let raw_request = RawWaitForEffectsRequest::try_from(WaitForEffectsRequest {
             transaction_digest: tx_digest,
@@ -355,11 +337,7 @@ impl EffectsCertifier {
         // Every validator returns at most one WaitForEffectsResponse.
         while let Some((name, response)) = futures.next().await {
             match response {
-                Ok(WaitForEffectsResponse::Executed {
-                    effects_digest,
-                    details: _,
-                    fast_path,
-                }) => {
+                Ok(WaitForEffectsResponse::Executed { effects_digest, details: _, fast_path }) => {
                     if fast_path {
                         if tx_type != TxType::SingleWriter {
                             tracing::warn!(
@@ -422,10 +400,8 @@ impl EffectsCertifier {
 
             // Adding vote up between different StatusAggregators without de-duplication is ok,
             // because each authority only returns one response.
-            let executed_weight: u64 = effects_digest_aggregators
-                .values()
-                .map(|agg| agg.total_votes())
-                .sum();
+            let executed_weight: u64 =
+                effects_digest_aggregators.values().map(|agg| agg.total_votes()).sum();
             let total_weight = executed_weight
                 + reason_not_found_aggregator.total_votes()
                 + non_retriable_errors_aggregator.total_votes()
@@ -515,10 +491,7 @@ impl EffectsCertifier {
             })
         } else {
             if observed_effects_digests.len() <= 1 {
-                debug!(
-                    "Expect at least 2 effects digests, but got {:?}",
-                    observed_effects_digests
-                );
+                debug!("Expect at least 2 effects digests, but got {:?}", observed_effects_digests);
             }
             Err(TransactionDriverError::ForkedExecution {
                 observed_effects_digests: AggregatedEffectsDigests {
@@ -553,9 +526,7 @@ impl EffectsCertifier {
         // This loop should only retry errors that are retriable without new submission.
         for (attempt, delay) in backoff.enumerate() {
             let request: WaitForEffectsRequest = raw_request.clone().try_into().unwrap();
-            let result = client
-                .wait_for_effects(request, options.forwarded_client_addr)
-                .await;
+            let result = client.wait_for_effects(request, options.forwarded_client_addr).await;
             match result {
                 Ok(response) => {
                     let latency = effects_start.elapsed();

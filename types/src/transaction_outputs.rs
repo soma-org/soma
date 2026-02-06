@@ -89,20 +89,15 @@ impl TransactionOutputs {
             // transaction.
             let smeared_objects = effects.deleted_mutably_accessed_shared_objects();
             let shared_smears = smeared_objects.into_iter().map(|object_id| {
-                let id = input_objects
-                    .get(&object_id)
-                    .map(|obj| obj.full_id())
-                    .unwrap_or_else(|| {
+                let id =
+                    input_objects.get(&object_id).map(|obj| obj.full_id()).unwrap_or_else(|| {
                         let start_version = deleted_shared_objects.get(&object_id).expect(
                             "deleted object must be in either input_objects or \
                              deleted_consensus_objects",
                         );
                         FullObjectID::new(object_id, Some(*start_version))
                     });
-                (
-                    FullObjectKey::new(id, lamport_version),
-                    MarkerValue::SharedDeleted(tx_digest),
-                )
+                (FullObjectKey::new(id, lamport_version), MarkerValue::SharedDeleted(tx_digest))
             });
 
             received.chain(deleted).chain(shared_smears).collect()

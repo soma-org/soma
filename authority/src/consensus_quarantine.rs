@@ -1,4 +1,4 @@
-use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque, hash_map};
 
 use crate::{
     authority_per_epoch_store::{
@@ -17,12 +17,12 @@ use dashmap::DashMap;
 use moka::policy::EvictionPolicy;
 use moka::sync::SegmentedCache as MokaCache;
 use parking_lot::{Mutex, RwLock};
-use store::{rocks::DBBatch, Map as _};
+use store::{Map as _, rocks::DBBatch};
 use tracing::{debug, info, trace};
 use types::{
     base::{AuthorityName, ConsensusObjectSequenceKey},
     checkpoints::{CheckpointContents, CheckpointSequenceNumber},
-    consensus::{commit::CommitIndex, Round},
+    consensus::{Round, commit::CommitIndex},
     crypto::GenericSignature,
     digests::TransactionDigest,
     error::SomaResult,
@@ -48,10 +48,7 @@ pub(crate) struct ConsensusCommitOutput {
 
 impl ConsensusCommitOutput {
     pub fn new(consensus_round: Round) -> Self {
-        Self {
-            consensus_round,
-            ..Default::default()
-        }
+        Self { consensus_round, ..Default::default() }
     }
 
     fn get_highest_pending_checkpoint_height(&self) -> Option<CheckpointHeight> {
@@ -62,25 +59,17 @@ impl ConsensusCommitOutput {
         &self,
         last: Option<CheckpointHeight>,
     ) -> impl Iterator<Item = &PendingCheckpoint> {
-        self.pending_checkpoints.iter().filter(move |cp| {
-            if let Some(last) = last {
-                cp.height() > last
-            } else {
-                true
-            }
-        })
+        self.pending_checkpoints
+            .iter()
+            .filter(move |cp| if let Some(last) = last { cp.height() > last } else { true })
     }
 
     fn pending_checkpoint_exists(&self, index: &CheckpointHeight) -> bool {
-        self.pending_checkpoints
-            .iter()
-            .any(|cp| cp.height() == *index)
+        self.pending_checkpoints.iter().any(|cp| cp.height() == *index)
     }
 
     fn get_round(&self) -> Option<u64> {
-        self.consensus_commit_stats
-            .as_ref()
-            .map(|stats| stats.index.last_committed_round)
+        self.consensus_commit_stats.as_ref().map(|stats| stats.index.last_committed_round)
     }
 
     pub fn insert_end_of_publish(&mut self, authority: AuthorityName) {
@@ -130,9 +119,7 @@ impl ConsensusCommitOutput {
         let tables = epoch_store.tables()?;
         batch.insert_batch(
             &tables.consensus_message_processed,
-            self.consensus_messages_processed
-                .iter()
-                .map(|key| (key, true)),
+            self.consensus_messages_processed.iter().map(|key| (key, true)),
         )?;
 
         batch.insert_batch(
@@ -141,15 +128,11 @@ impl ConsensusCommitOutput {
         )?;
 
         if let Some(reconfig_state) = &self.reconfig_state {
-            batch.insert_batch(
-                &tables.reconfig_state,
-                [(RECONFIG_STATE_INDEX, reconfig_state)],
-            )?;
+            batch.insert_batch(&tables.reconfig_state, [(RECONFIG_STATE_INDEX, reconfig_state)])?;
         }
 
-        let consensus_commit_stats = self
-            .consensus_commit_stats
-            .expect("consensus_commit_stats must be set");
+        let consensus_commit_stats =
+            self.consensus_commit_stats.expect("consensus_commit_stats must be set");
         let round = consensus_commit_stats.index.last_committed_round;
 
         batch.insert_batch(
@@ -208,10 +191,7 @@ impl ConsensusOutputCache {
     // Called by execution
     pub fn insert_executed_in_epoch(&self, tx_digest: TransactionDigest) {
         assert!(
-            self.executed_in_epoch
-                .read()
-                .insert(tx_digest, ())
-                .is_none(),
+            self.executed_in_epoch.read().insert(tx_digest, ()).is_none(),
             "transaction already executed"
         );
         self.executed_in_epoch_cache.insert(tx_digest, ());
@@ -289,11 +269,9 @@ impl ConsensusOutputQuarantine {
     ) {
         debug!(?sequence_number, "inserting builder summary {:?}", summary);
         for tx in contents.iter() {
-            self.builder_digest_to_checkpoint
-                .insert(tx.transaction, sequence_number);
+            self.builder_digest_to_checkpoint.insert(tx.transaction, sequence_number);
         }
-        self.builder_checkpoint_summary
-            .insert(sequence_number, (summary, contents));
+        self.builder_checkpoint_summary.insert(sequence_number, (summary, contents));
     }
 }
 
@@ -346,14 +324,9 @@ impl ConsensusOutputQuarantine {
             for tx in contents.iter() {
                 let digest = &tx.transaction;
                 assert_eq!(
-                    self.builder_digest_to_checkpoint
-                        .remove(digest)
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "transaction {:?} not found in builder_digest_to_checkpoint",
-                                digest
-                            )
-                        }),
+                    self.builder_digest_to_checkpoint.remove(digest).unwrap_or_else(|| {
+                        panic!("transaction {:?} not found in builder_digest_to_checkpoint", digest)
+                    }),
                     seq
                 );
             }
@@ -363,14 +336,10 @@ impl ConsensusOutputQuarantine {
                 contents.iter().map(|tx| (tx.transaction, seq)),
             )?;
 
-            batch.insert_batch(
-                &tables.builder_checkpoint_summary,
-                [(seq, &builder_summary)],
-            )?;
+            batch.insert_batch(&tables.builder_checkpoint_summary, [(seq, &builder_summary)])?;
 
-            let checkpoint_height = builder_summary
-                .checkpoint_height
-                .expect("non-genesis checkpoint must have height");
+            let checkpoint_height =
+                builder_summary.checkpoint_height.expect("non-genesis checkpoint must have height");
             if let Some(highest) = highest_committed_height {
                 assert!(
                     checkpoint_height >= highest,
@@ -391,11 +360,8 @@ impl ConsensusOutputQuarantine {
             // A consensus commit can have more than one pending checkpoint (a regular one and a randomnes one).
             // We can only write the consensus commit if the highest pending checkpoint associated with it has
             // been processed by the builder.
-            let Some(highest_in_commit) = self
-                .output_queue
-                .front()
-                .unwrap()
-                .get_highest_pending_checkpoint_height()
+            let Some(highest_in_commit) =
+                self.output_queue.front().unwrap().get_highest_pending_checkpoint_height()
             else {
                 // if highest is none, we have already written the pending checkpoint for the final epoch,
                 // so there is no more data that needs to be committed.
@@ -425,8 +391,7 @@ impl ConsensusOutputQuarantine {
     fn insert_shared_object_next_versions(&mut self, output: &ConsensusCommitOutput) {
         if let Some(next_versions) = output.next_shared_object_versions.as_ref() {
             for (object_id, next_version) in next_versions {
-                self.shared_object_next_versions
-                    .insert(*object_id, *next_version);
+                self.shared_object_next_versions.insert(*object_id, *next_version);
             }
         }
     }
@@ -447,10 +412,7 @@ impl ConsensusOutputQuarantine {
         if let Some(next_versions) = output.next_shared_object_versions.as_ref() {
             for object_id in next_versions.keys() {
                 if !self.shared_object_next_versions.remove(object_id) {
-                    panic!(
-                        "Shared object next version not found in quarantine: {:?}",
-                        object_id
-                    );
+                    panic!("Shared object next version not found in quarantine: {:?}", object_id);
                 }
             }
         }
@@ -461,19 +423,14 @@ impl ConsensusOutputQuarantine {
 // be found in the database.
 impl ConsensusOutputQuarantine {
     pub(super) fn last_built_summary(&self) -> Option<&BuilderCheckpointSummary> {
-        self.builder_checkpoint_summary
-            .values()
-            .last()
-            .map(|(summary, _)| summary)
+        self.builder_checkpoint_summary.values().last().map(|(summary, _)| summary)
     }
 
     pub(super) fn get_built_summary(
         &self,
         sequence: CheckpointSequenceNumber,
     ) -> Option<&BuilderCheckpointSummary> {
-        self.builder_checkpoint_summary
-            .get(&sequence)
-            .map(|(summary, _)| summary)
+        self.builder_checkpoint_summary.get(&sequence).map(|(summary, _)| summary)
     }
 
     pub(super) fn included_transaction_in_checkpoint(&self, digest: &TransactionDigest) -> bool {
@@ -506,18 +463,13 @@ impl ConsensusOutputQuarantine {
                 }
             },
             |object_keys| {
-                tables
-                    .next_shared_object_versions
-                    .multi_get(object_keys)
-                    .expect("db error")
+                tables.next_shared_object_versions.multi_get(object_keys).expect("db error")
             },
         ))
     }
 
     pub(super) fn get_highest_pending_checkpoint_height(&self) -> Option<CheckpointHeight> {
-        self.output_queue
-            .back()
-            .and_then(|output| output.get_highest_pending_checkpoint_height())
+        self.output_queue.back().and_then(|output| output.get_highest_pending_checkpoint_height())
     }
 
     pub(super) fn get_pending_checkpoints(
@@ -526,11 +478,8 @@ impl ConsensusOutputQuarantine {
     ) -> Vec<(CheckpointHeight, PendingCheckpoint)> {
         let mut checkpoints = Vec::new();
         for output in &self.output_queue {
-            checkpoints.extend(
-                output
-                    .get_pending_checkpoints(last)
-                    .map(|cp| (cp.height(), cp.clone())),
-            );
+            checkpoints
+                .extend(output.get_pending_checkpoints(last).map(|cp| (cp.height(), cp.clone())));
         }
         if cfg!(debug_assertions) {
             let mut prev = None;
@@ -545,9 +494,7 @@ impl ConsensusOutputQuarantine {
     }
 
     pub(super) fn pending_checkpoint_exists(&self, index: &CheckpointHeight) -> bool {
-        self.output_queue
-            .iter()
-            .any(|output| output.pending_checkpoint_exists(index))
+        self.output_queue.iter().any(|output| output.pending_checkpoint_exists(index))
     }
 }
 
@@ -569,9 +516,7 @@ where
     K: Clone + Eq + std::hash::Hash,
 {
     pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-        }
+        Self { map: HashMap::new() }
     }
 
     pub fn insert(&mut self, key: K, value: V) {

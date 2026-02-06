@@ -68,32 +68,24 @@ impl RocksDbStore {
     }
 
     pub fn get_objects(&self, object_keys: &[ObjectKey]) -> Vec<Option<Object>> {
-        self.cache_traits
-            .object_cache_reader
-            .multi_get_objects_by_key(object_keys)
+        self.cache_traits.object_cache_reader.multi_get_objects_by_key(object_keys)
     }
 
     pub fn get_last_executed_checkpoint(&self) -> Option<VerifiedCheckpoint> {
-        self.checkpoint_store
-            .get_highest_executed_checkpoint()
-            .expect("db error")
+        self.checkpoint_store.get_highest_executed_checkpoint().expect("db error")
     }
 }
 
 impl ReadStore for RocksDbStore {
     fn get_checkpoint_by_digest(&self, digest: &CheckpointDigest) -> Option<VerifiedCheckpoint> {
-        self.checkpoint_store
-            .get_checkpoint_by_digest(digest)
-            .expect("db error")
+        self.checkpoint_store.get_checkpoint_by_digest(digest).expect("db error")
     }
 
     fn get_checkpoint_by_sequence_number(
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> Option<VerifiedCheckpoint> {
-        self.checkpoint_store
-            .get_checkpoint_by_sequence_number(sequence_number)
-            .expect("db error")
+        self.checkpoint_store.get_checkpoint_by_sequence_number(sequence_number).expect("db error")
     }
 
     fn get_highest_verified_checkpoint(&self) -> Result<VerifiedCheckpoint, StorageError> {
@@ -148,9 +140,7 @@ impl ReadStore for RocksDbStore {
         }
 
         let sequence_number = sequence_number.or_else(|| {
-            self.checkpoint_store
-                .get_sequence_number_by_contents_digest(digest)
-                .expect("db error")
+            self.checkpoint_store.get_sequence_number_by_contents_digest(digest).expect("db error")
         });
         if let Some(sequence_number) = sequence_number {
             // Note: We don't use `?` here because we want to tolerate
@@ -177,22 +167,16 @@ impl ReadStore for RocksDbStore {
         // because it needs to be inserted along with `checkpoint_sequence_by_contents_digest`
         // and `checkpoint_content`. However at this point it's likely we don't know the
         // corresponding sequence number yet.
-        self.checkpoint_store
-            .get_checkpoint_contents(digest)
-            .expect("db error")
-            .and_then(|contents| {
+        self.checkpoint_store.get_checkpoint_contents(digest).expect("db error").and_then(
+            |contents| {
                 let mut transactions = Vec::with_capacity(contents.size());
                 for tx in contents.iter() {
                     if let (Some(t), Some(e)) = (
                         self.get_transaction(&tx.transaction),
-                        self.cache_traits
-                            .transaction_cache_reader
-                            .get_effects(&tx.effects),
+                        self.cache_traits.transaction_cache_reader.get_effects(&tx.effects),
                     ) {
-                        transactions.push(types::base::ExecutionData::new(
-                            (*t).clone().into_inner(),
-                            e,
-                        ))
+                        transactions
+                            .push(types::base::ExecutionData::new((*t).clone().into_inner(), e))
                     } else {
                         return None;
                     }
@@ -201,7 +185,8 @@ impl ReadStore for RocksDbStore {
                     contents,
                     transactions.into_iter(),
                 ))
-            })
+            },
+        )
     }
 
     fn get_committee(&self, epoch: EpochId) -> Option<Arc<Committee>> {
@@ -209,33 +194,24 @@ impl ReadStore for RocksDbStore {
     }
 
     fn get_transaction(&self, digest: &TransactionDigest) -> Option<Arc<VerifiedTransaction>> {
-        self.cache_traits
-            .transaction_cache_reader
-            .get_transaction_block(digest)
+        self.cache_traits.transaction_cache_reader.get_transaction_block(digest)
     }
 
     fn get_transaction_effects(&self, digest: &TransactionDigest) -> Option<TransactionEffects> {
-        self.cache_traits
-            .transaction_cache_reader
-            .get_executed_effects(digest)
+        self.cache_traits.transaction_cache_reader.get_executed_effects(digest)
     }
 
     fn get_latest_checkpoint(&self) -> types::storage::storage_error::Result<VerifiedCheckpoint> {
-        self.checkpoint_store
-            .get_highest_executed_checkpoint()
-            .expect("db error")
-            .ok_or_else(|| {
-                types::storage::storage_error::Error::missing("unable to get latest checkpoint")
-            })
+        self.checkpoint_store.get_highest_executed_checkpoint().expect("db error").ok_or_else(
+            || types::storage::storage_error::Error::missing("unable to get latest checkpoint"),
+        )
     }
 
     fn get_checkpoint_contents_by_digest(
         &self,
         digest: &CheckpointContentsDigest,
     ) -> Option<types::checkpoints::CheckpointContents> {
-        self.checkpoint_store
-            .get_checkpoint_contents(digest)
-            .expect("db error")
+        self.checkpoint_store.get_checkpoint_contents(digest).expect("db error")
     }
 
     fn get_checkpoint_contents_by_sequence_number(
@@ -259,9 +235,7 @@ impl ObjectStore for RocksDbStore {
         object_id: &types::object::ObjectID,
         version: types::object::Version,
     ) -> Option<Object> {
-        self.cache_traits
-            .object_store
-            .get_object_by_key(object_id, version)
+        self.cache_traits.object_store.get_object_by_key(object_id, version)
     }
 }
 
@@ -270,17 +244,13 @@ impl WriteStore for RocksDbStore {
         &self,
         checkpoint: &VerifiedCheckpoint,
     ) -> Result<(), types::storage::storage_error::Error> {
-        if let Some(EndOfEpochData {
-            next_epoch_validator_committee,
-            ..
-        }) = checkpoint.end_of_epoch_data.as_ref()
+        if let Some(EndOfEpochData { next_epoch_validator_committee, .. }) =
+            checkpoint.end_of_epoch_data.as_ref()
         {
             self.insert_committee(next_epoch_validator_committee.clone())?;
         }
 
-        self.checkpoint_store
-            .insert_verified_checkpoint(checkpoint)
-            .map_err(Into::into)
+        self.checkpoint_store.insert_verified_checkpoint(checkpoint).map_err(Into::into)
     }
 
     fn update_highest_synced_checkpoint(
@@ -330,9 +300,7 @@ impl WriteStore for RocksDbStore {
         &self,
         new_committee: Committee,
     ) -> Result<(), types::storage::storage_error::Error> {
-        self.committee_store
-            .insert_new_committee(&new_committee)
-            .unwrap();
+        self.committee_store.insert_new_committee(&new_committee).unwrap();
         Ok(())
     }
 }
@@ -403,8 +371,7 @@ impl ReadStore for RestReadStore {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> Option<VerifiedCheckpoint> {
-        self.rocks
-            .get_checkpoint_by_sequence_number(sequence_number)
+        self.rocks.get_checkpoint_by_sequence_number(sequence_number)
     }
 
     fn get_checkpoint_contents_by_digest(
@@ -418,8 +385,7 @@ impl ReadStore for RestReadStore {
         &self,
         sequence_number: CheckpointSequenceNumber,
     ) -> Option<types::checkpoints::CheckpointContents> {
-        self.rocks
-            .get_checkpoint_contents_by_sequence_number(sequence_number)
+        self.rocks.get_checkpoint_contents_by_sequence_number(sequence_number)
     }
 
     fn get_transaction(&self, digest: &TransactionDigest) -> Option<Arc<VerifiedTransaction>> {
@@ -435,8 +401,7 @@ impl ReadStore for RestReadStore {
         sequence_number: Option<CheckpointSequenceNumber>,
         digest: &CheckpointContentsDigest,
     ) -> Option<FullCheckpointContents> {
-        self.rocks
-            .get_full_checkpoint_contents(sequence_number, digest)
+        self.rocks.get_full_checkpoint_contents(sequence_number, digest)
     }
 }
 
@@ -466,9 +431,7 @@ impl RpcIndexes for RestReadStore {
         &self,
         epoch: EpochId,
     ) -> Result<Option<types::storage::read_store::EpochInfo>> {
-        self.index()?
-            .get_epoch_info(epoch)
-            .map_err(StorageError::custom)
+        self.index()?.get_epoch_info(epoch).map_err(StorageError::custom)
     }
 
     fn get_transaction_info(
@@ -476,9 +439,7 @@ impl RpcIndexes for RestReadStore {
         digest: &TransactionDigest,
     ) -> types::storage::storage_error::Result<Option<types::storage::read_store::TransactionInfo>>
     {
-        self.index()?
-            .get_transaction_info(digest)
-            .map_err(StorageError::custom)
+        self.index()?.get_transaction_info(digest).map_err(StorageError::custom)
     }
 
     fn owned_objects_iter(
@@ -494,30 +455,22 @@ impl RpcIndexes for RestReadStore {
             object_id: cursor.object_id,
         });
 
-        let iter = self
-            .index()?
-            .owner_iter(owner, object_type, cursor)?
-            .map(|result| {
-                result.map(
-                    |(
-                        OwnerIndexKey {
-                            owner,
-                            object_id,
-                            object_type,
-                            inverted_balance,
-                        },
-                        OwnerIndexInfo { version },
-                    )| {
-                        OwnedObjectInfo {
-                            owner,
-                            object_type,
-                            balance: inverted_balance.map(std::ops::Not::not),
-                            object_id,
-                            version,
-                        }
-                    },
-                )
-            });
+        let iter = self.index()?.owner_iter(owner, object_type, cursor)?.map(|result| {
+            result.map(
+                |(
+                    OwnerIndexKey { owner, object_id, object_type, inverted_balance },
+                    OwnerIndexInfo { version },
+                )| {
+                    OwnedObjectInfo {
+                        owner,
+                        object_type,
+                        balance: inverted_balance.map(std::ops::Not::not),
+                        object_id,
+                        version,
+                    }
+                },
+            )
+        });
 
         Ok(Box::new(iter) as _)
     }
@@ -526,18 +479,13 @@ impl RpcIndexes for RestReadStore {
         &self,
         owner: &SomaAddress,
     ) -> types::storage::storage_error::Result<Option<BalanceInfo>> {
-        self.index()?
-            .get_balance(owner)?
-            .map(|info| info.into())
-            .pipe(Ok)
+        self.index()?.get_balance(owner)?.map(|info| info.into()).pipe(Ok)
     }
 
     fn get_highest_indexed_checkpoint_seq_number(
         &self,
     ) -> types::storage::storage_error::Result<Option<CheckpointSequenceNumber>> {
-        self.index()?
-            .get_highest_indexed_checkpoint_seq_number()
-            .map_err(Into::into)
+        self.index()?.get_highest_indexed_checkpoint_seq_number().map_err(Into::into)
     }
 
     fn targets_iter(

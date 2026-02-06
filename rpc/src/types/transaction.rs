@@ -378,14 +378,8 @@ impl SerializeAs<SignedTransaction> for SignedTransactionWithIntentMessage {
         if serializer.is_human_readable() {
             transaction.serialize(serializer)
         } else {
-            let SignedTransaction {
-                transaction,
-                signatures,
-            } = transaction;
-            let binary = BinarySignedTransactionWithIntentMessageRef {
-                transaction,
-                signatures,
-            };
+            let SignedTransaction { transaction, signatures } = transaction;
+            let binary = BinarySignedTransactionWithIntentMessageRef { transaction, signatures };
 
             let mut s = serializer.serialize_seq(Some(1))?;
             s.serialize_element(&binary)?;
@@ -415,21 +409,14 @@ impl<'de> DeserializeAs<'de, SignedTransaction> for SignedTransactionWithIntentM
                     A: serde::de::SeqAccess<'de>,
                 {
                     if seq.size_hint().is_some_and(|size| size != 1) {
-                        return Err(serde::de::Error::custom(
-                            "expected a sequence with length 1",
-                        ));
+                        return Err(serde::de::Error::custom("expected a sequence with length 1"));
                     }
 
-                    let BinarySignedTransactionWithIntentMessage {
-                        transaction,
-                        signatures,
-                    } = seq.next_element()?.ok_or_else(|| {
-                        serde::de::Error::custom("expected a sequence with length 1")
-                    })?;
-                    Ok(SignedTransaction {
-                        transaction,
-                        signatures,
-                    })
+                    let BinarySignedTransactionWithIntentMessage { transaction, signatures } =
+                        seq.next_element()?.ok_or_else(|| {
+                            serde::de::Error::custom("expected a sequence with length 1")
+                        })?;
+                    Ok(SignedTransaction { transaction, signatures })
                 }
             }
 
@@ -474,16 +461,8 @@ impl<'de> Deserialize<'de> for Transaction {
     where
         D: Deserializer<'de>,
     {
-        let TransactionData {
-            kind,
-            sender,
-            gas_payment,
-        } = Deserialize::deserialize(deserializer)?;
+        let TransactionData { kind, sender, gas_payment } = Deserialize::deserialize(deserializer)?;
 
-        Ok(Transaction {
-            kind,
-            sender,
-            gas_payment,
-        })
+        Ok(Transaction { kind, sender, gas_payment })
     }
 }

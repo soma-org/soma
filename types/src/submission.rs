@@ -126,10 +126,8 @@ mod tests {
 
     fn test_manifest() -> SubmissionManifest {
         let url = Url::parse("https://example.com/data").unwrap();
-        let metadata = Metadata::V1(MetadataV1::new(
-            Checksum::new_from_hash([0u8; DIGEST_LENGTH]),
-            1024,
-        ));
+        let metadata =
+            Metadata::V1(MetadataV1::new(Checksum::new_from_hash([0u8; DIGEST_LENGTH]), 1024));
         let manifest = crate::metadata::Manifest::V1(ManifestV1::new(url, metadata));
         SubmissionManifest::new(manifest)
     }

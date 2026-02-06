@@ -11,8 +11,8 @@ pub use acceptor::{TlsAcceptor, TlsConnectionInfo};
 pub use certgen::SelfSignedCertificate;
 use rustls::ClientConfig;
 pub use verifier::{
-    public_key_from_certificate, AllowAll, AllowPublicKeys, Allower, ClientCertVerifier,
-    ServerCertVerifier,
+    AllowAll, AllowPublicKeys, Allower, ClientCertVerifier, ServerCertVerifier,
+    public_key_from_certificate,
 };
 
 pub use rustls;
@@ -108,11 +108,7 @@ mod tests {
 
         // The alice passes validation
         verifier
-            .verify_client_cert(
-                &random_cert_alice.rustls_certificate(),
-                &[],
-                UnixTime::now(),
-            )
+            .verify_client_cert(&random_cert_alice.rustls_certificate(), &[], UnixTime::now())
             .unwrap();
     }
 
@@ -148,10 +144,7 @@ mod tests {
                 UnixTime::now(),
             )
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
     }
 
     #[test]
@@ -177,20 +170,14 @@ mod tests {
         let err = verifier
             .verify_client_cert(&disallowed_cert.rustls_certificate(), &[], UnixTime::now())
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
 
         // After removing the allowed public key from the set it now fails validation
         allowlist.update(BTreeSet::new());
         let err = verifier
             .verify_client_cert(&allowed_cert.rustls_certificate(), &[], UnixTime::now())
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
     }
 
     #[test]

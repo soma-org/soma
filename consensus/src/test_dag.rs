@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use types::committee::AuthorityIndex;
 use types::consensus::{
-    block::{genesis_blocks, BlockRef, BlockTimestampMs, Round, TestBlock, VerifiedBlock},
+    block::{BlockRef, BlockTimestampMs, Round, TestBlock, VerifiedBlock, genesis_blocks},
     context::Context,
 };
 
@@ -25,16 +25,10 @@ pub(crate) fn build_dag(
     let mut ancestors = match start {
         Some(start) => {
             assert!(!start.is_empty());
-            assert_eq!(
-                start.iter().map(|x| x.round).max(),
-                start.iter().map(|x| x.round).min()
-            );
+            assert_eq!(start.iter().map(|x| x.round).max(), start.iter().map(|x| x.round).min());
             start
         }
-        None => genesis_blocks(context.as_ref())
-            .iter()
-            .map(|x| x.reference())
-            .collect::<Vec<_>>(),
+        None => genesis_blocks(context.as_ref()).iter().map(|x| x.reference()).collect::<Vec<_>>(),
     };
 
     let num_authorities = context.committee.size();
@@ -77,9 +71,7 @@ pub(crate) fn build_dag_layer(
         let round = ancestors.first().unwrap().round + 1;
         let author = authority.value() as u32;
         let block = VerifiedBlock::new_for_test(
-            TestBlock::new(round, author)
-                .set_ancestors(ancestors)
-                .build(),
+            TestBlock::new(round, author).set_ancestors(ancestors).build(),
         );
         references.push(block.reference());
         dag_state.write().accept_block(block);
@@ -104,9 +96,7 @@ pub(crate) fn create_random_dag(
     for r in 1..=num_rounds {
         let random_num = rng.r#gen_range(0..100);
         let include_leader = random_num <= include_leader_percentage;
-        dag_builder
-            .layer(r)
-            .min_ancestor_links(include_leader, Some(random_num));
+        dag_builder.layer(r).min_ancestor_links(include_leader, Some(random_num));
     }
 
     dag_builder

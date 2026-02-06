@@ -5,7 +5,7 @@ use clap::*;
 use cli::soma_commands::SomaCommand;
 use colored::Colorize;
 
-use tracing::{debug, Level};
+use tracing::{Level, debug};
 
 // Define the `GIT_REVISION` and `VERSION` consts
 bin_version::bin_version!();

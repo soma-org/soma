@@ -8,9 +8,9 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{info, warn};
 use types::storage::committee_store::CommitteeStore;
-use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::system_state::SystemState;
 use types::system_state::SystemStateTrait;
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
 
 #[async_trait]
 pub trait ReconfigObserver<A: Clone> {
@@ -32,11 +32,7 @@ impl OnsiteReconfigObserver {
         execution_cache: Arc<dyn ObjectCacheRead>,
         committee_store: Arc<CommitteeStore>,
     ) -> Self {
-        Self {
-            reconfig_rx,
-            execution_cache,
-            committee_store,
-        }
+        Self { reconfig_rx, execution_cache, committee_store }
     }
 }
 

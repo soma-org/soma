@@ -90,16 +90,10 @@ pub fn timestamp_ms_to_proto(timestamp_ms: u64) -> prost_types::Timestamp {
 #[allow(clippy::result_large_err)]
 pub fn proto_to_timestamp_ms(timestamp: prost_types::Timestamp) -> Result<u64, TryFromProtoError> {
     let seconds = std::time::Duration::from_secs(
-        timestamp
-            .seconds
-            .try_into()
-            .map_err(|e| TryFromProtoError::invalid("seconds", e))?,
+        timestamp.seconds.try_into().map_err(|e| TryFromProtoError::invalid("seconds", e))?,
     );
     let nanos = std::time::Duration::from_nanos(
-        timestamp
-            .nanos
-            .try_into()
-            .map_err(|e| TryFromProtoError::invalid("nanos", e))?,
+        timestamp.nanos.try_into().map_err(|e| TryFromProtoError::invalid("nanos", e))?,
     );
 
     (seconds + nanos)

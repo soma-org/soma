@@ -14,8 +14,8 @@ use crate::consensus::{
 use crate::error::{ConsensusError, ConsensusResult};
 use bytes::Bytes;
 use store::{
-    rocks::{default_db_options, DBMap, DBMapTableConfigMap},
     DBMapUtils, Map as _,
+    rocks::{DBMap, DBMapTableConfigMap, default_db_options},
 };
 
 /// Persistent storage with RocksDB.
@@ -61,10 +61,7 @@ impl RocksDBStore {
                     // Using larger block is ok since there is not much point reads on the cf.
                     .set_block_options(512, 128 << 10),
             ),
-            (
-                Self::DIGESTS_BY_AUTHORITIES_CF.to_string(),
-                cf_options.clone(),
-            ),
+            (Self::DIGESTS_BY_AUTHORITIES_CF.to_string(), cf_options.clone()),
             (Self::COMMITS_CF.to_string(), cf_options.clone()),
             (Self::COMMIT_VOTES_CF.to_string(), cf_options.clone()),
             (Self::COMMIT_INFO_CF.to_string(), cf_options.clone()),
@@ -86,10 +83,7 @@ impl Store for RocksDBStore {
             batch
                 .insert_batch(
                     &self.blocks,
-                    [(
-                        (block_ref.round, block_ref.author, block_ref.digest),
-                        block.serialized(),
-                    )],
+                    [((block_ref.round, block_ref.author, block_ref.digest), block.serialized())],
                 )
                 .map_err(ConsensusError::RocksDBFailure)?;
             batch
@@ -100,10 +94,7 @@ impl Store for RocksDBStore {
                 .map_err(ConsensusError::RocksDBFailure)?;
             for vote in block.commit_votes() {
                 batch
-                    .insert_batch(
-                        &self.commit_votes,
-                        [((vote.index, vote.digest, block_ref), ())],
-                    )
+                    .insert_batch(&self.commit_votes, [((vote.index, vote.digest, block_ref), ())])
                     .map_err(ConsensusError::RocksDBFailure)?;
             }
         }
@@ -141,10 +132,7 @@ impl Store for RocksDBStore {
     }
 
     fn read_blocks(&self, refs: &[BlockRef]) -> ConsensusResult<Vec<Option<VerifiedBlock>>> {
-        let keys = refs
-            .iter()
-            .map(|r| (r.round, r.author, r.digest))
-            .collect::<Vec<_>>();
+        let keys = refs.iter().map(|r| (r.round, r.author, r.digest)).collect::<Vec<_>>();
         let serialized = self.blocks.multi_get(keys)?;
         let mut blocks = vec![];
         for (key, serialized) in refs.iter().zip(serialized) {
@@ -164,10 +152,7 @@ impl Store for RocksDBStore {
     }
 
     fn contains_blocks(&self, refs: &[BlockRef]) -> ConsensusResult<Vec<bool>> {
-        let refs = refs
-            .iter()
-            .map(|r| (r.round, r.author, r.digest))
-            .collect::<Vec<_>>();
+        let refs = refs.iter().map(|r| (r.round, r.author, r.digest)).collect::<Vec<_>>();
         let exist = self.blocks.multi_contains_keys(refs)?;
         Ok(exist)
     }
@@ -228,11 +213,7 @@ impl Store for RocksDBStore {
     }
 
     fn read_last_commit(&self) -> ConsensusResult<Option<TrustedCommit>> {
-        let Some(result) = self
-            .commits
-            .reversed_safe_iter_with_bounds(None, None)?
-            .next()
-        else {
+        let Some(result) = self.commits.reversed_safe_iter_with_bounds(None, None)?.next() else {
             return Ok(None);
         };
         let ((_index, digest), serialized) = result?;
@@ -274,10 +255,7 @@ impl Store for RocksDBStore {
     }
 
     fn read_last_commit_info(&self) -> ConsensusResult<Option<(CommitRef, CommitInfo)>> {
-        let Some(result) = self
-            .commit_info
-            .reversed_safe_iter_with_bounds(None, None)?
-            .next()
+        let Some(result) = self.commit_info.reversed_safe_iter_with_bounds(None, None)?.next()
         else {
             return Ok(None);
         };
@@ -286,10 +264,8 @@ impl Store for RocksDBStore {
     }
 
     fn read_last_finalized_commit(&self) -> ConsensusResult<Option<CommitRef>> {
-        let Some(result) = self
-            .finalized_commits
-            .reversed_safe_iter_with_bounds(None, None)?
-            .next()
+        let Some(result) =
+            self.finalized_commits.reversed_safe_iter_with_bounds(None, None)?.next()
         else {
             return Ok(None);
         };
@@ -301,9 +277,7 @@ impl Store for RocksDBStore {
         &self,
         commit_ref: CommitRef,
     ) -> ConsensusResult<Option<BTreeMap<BlockRef, Vec<TransactionIndex>>>> {
-        let result = self
-            .finalized_commits
-            .get(&(commit_ref.index, commit_ref.digest))?;
+        let result = self.finalized_commits.get(&(commit_ref.index, commit_ref.digest))?;
         Ok(result)
     }
 }

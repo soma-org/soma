@@ -1,9 +1,9 @@
 use parking_lot::{RwLock, RwLockWriteGuard};
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use tokio::sync::watch;
 use tracing::debug;
 use types::{
-    consensus::{block::Round, ConsensusPosition},
+    consensus::{ConsensusPosition, block::Round},
     error::{SomaError, SomaResult},
 };
 use utils::notify_read::NotifyRead;
@@ -190,10 +190,7 @@ impl ConsensusTxStatusCache {
         &self,
         last_committed_leader_round: u32,
     ) {
-        debug!(
-            "Updating last committed leader round: {}",
-            last_committed_leader_round
-        );
+        debug!("Updating last committed leader round: {}", last_committed_leader_round);
 
         let mut inner = self.inner.write();
 
@@ -201,9 +198,8 @@ impl ConsensusTxStatusCache {
         // based on the latest committed leader round, we may expire transactions in the current commit, or
         // make these transactions' statuses very short lived.
         // So we only expire and GC transactions with the previous committed leader round.
-        let Some(leader_round) = inner
-            .last_committed_leader_round
-            .replace(last_committed_leader_round)
+        let Some(leader_round) =
+            inner.last_committed_leader_round.replace(last_committed_leader_round)
         else {
             // This is the first update. Do not expire or GC any transactions.
             return;

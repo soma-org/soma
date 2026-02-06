@@ -46,10 +46,7 @@ impl BackpressureManager {
     fn new_from_watermarks(watermarks: Watermarks) -> Arc<Self> {
         let (watermarks_sender, _) = watch::channel(watermarks);
         let (backpressure_sender, _) = watch::channel(false);
-        Arc::new(Self {
-            watermarks_sender,
-            backpressure_sender,
-        })
+        Arc::new(Self { watermarks_sender, backpressure_sender })
     }
 
     pub fn new_from_checkpoint_store(store: &CheckpointStore) -> Arc<Self> {
@@ -61,15 +58,8 @@ impl BackpressureManager {
             .get_highest_synced_checkpoint_seq_number()
             .expect("read cannot fail")
             .unwrap_or_default();
-        info!(
-            ?executed,
-            ?certified,
-            "initializing backpressure manager from checkpoint store"
-        );
-        Self::new_from_watermarks(Watermarks {
-            executed,
-            certified,
-        })
+        info!(?executed, ?certified, "initializing backpressure manager from checkpoint store");
+        Self::new_from_watermarks(Watermarks { executed, certified })
     }
 
     pub fn update_highest_certified_checkpoint(&self, seq: CheckpointSequenceNumber) {
@@ -124,10 +114,7 @@ impl BackpressureSubscriber {
     /// Otherwise, wait until backpressure is lifted or suppressed.
     pub async fn await_no_backpressure(&self) {
         let mut watermarks_rx = self.mgr.watermarks_sender.subscribe();
-        if watermarks_rx
-            .borrow_and_update()
-            .should_suppress_backpressure()
-        {
+        if watermarks_rx.borrow_and_update().should_suppress_backpressure() {
             return;
         }
 

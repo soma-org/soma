@@ -27,9 +27,7 @@ impl LedgerService for RpcService {
         &self,
         _request: tonic::Request<GetServiceInfoRequest>,
     ) -> Result<tonic::Response<GetServiceInfoResponse>, tonic::Status> {
-        get_service_info::get_service_info(self)
-            .map(tonic::Response::new)
-            .map_err(Into::into)
+        get_service_info::get_service_info(self).map(tonic::Response::new).map_err(Into::into)
     }
 
     async fn get_object(

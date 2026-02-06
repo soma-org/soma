@@ -24,11 +24,7 @@ impl<D: Hash + Eq + Copy> VerifiedDigestCache<D> {
 
     pub fn is_cached(&self, digest: &D) -> bool {
         let inner = self.inner.read();
-        if inner.contains(digest) {
-            true
-        } else {
-            false
-        }
+        if inner.contains(digest) { true } else { false }
     }
 
     pub fn cache_digest(&self, digest: D) {
@@ -38,9 +34,7 @@ impl<D: Hash + Eq + Copy> VerifiedDigestCache<D> {
 
     pub fn cache_digests(&self, digests: Vec<D>) {
         let mut inner = self.inner.write();
-        digests
-            .into_iter()
-            .for_each(|d| if let Some(old) = inner.push(d, ()) {});
+        digests.into_iter().for_each(|d| if let Some(old) = inner.push(d, ()) {});
     }
 
     pub fn is_verified<F, G>(&self, digest: D, verify_callback: F, uncached_checks: G) -> SomaResult

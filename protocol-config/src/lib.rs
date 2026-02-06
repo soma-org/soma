@@ -341,48 +341,48 @@ impl ProtocolConfig {
 
             // Reward parameters
             validator_reward_allocation_bps: Some(7000), // 70% of validator rewards
-            reward_slashing_rate_bps: Some(5000),     // 50%
+            reward_slashing_rate_bps: Some(5000),        // 50%
 
             // Model parameters
-            model_min_stake: Some(1_000_000_000),     // 1 SOMA (in shannons)
+            model_min_stake: Some(1_000_000_000), // 1 SOMA (in shannons)
             model_architecture_version: Some(1),
-            model_reveal_slash_rate_bps: Some(5000),  // 50%
-            model_tally_slash_rate_bps: Some(9500),   // 95%
+            model_reveal_slash_rate_bps: Some(5000), // 50%
+            model_tally_slash_rate_bps: Some(9500),  // 95%
 
             // Fee parameters
             target_epoch_fee_collection: Some(1_000_000_000),
             base_fee: Some(1000),
             write_object_fee: Some(300),
-            initial_value_fee_bps: Some(10), // 0.1%
-            min_value_fee_bps: Some(1),      // 0.01%
-            max_value_fee_bps: Some(100),    // 1%
+            initial_value_fee_bps: Some(10),     // 0.1%
+            min_value_fee_bps: Some(1),          // 0.01%
+            max_value_fee_bps: Some(100),        // 1%
             fee_adjustment_rate_bps: Some(1250), // 12.5%
 
             // Target/Mining parameters
-            target_models_per_target: Some(3),           // 3 models per target
-            target_embedding_dim: Some(768),             // Standard transformer embedding dim
+            target_models_per_target: Some(3), // 3 models per target
+            target_embedding_dim: Some(768),   // Standard transformer embedding dim
             target_initial_distance_threshold: Some(1_000_000), // Fixed-point distance
             target_initial_reconstruction_threshold: Some(500_000), // Fixed-point MSE
-            target_reward_allocation_bps: Some(8000),    // 80% of emissions to targets
-            target_hit_rate_target_bps: Some(8000),      // 80% target hit rate
-            target_hit_rate_ema_decay_bps: Some(9000),   // 90% decay (10% weight on new data)
+            target_reward_allocation_bps: Some(8000), // 80% of emissions to targets
+            target_hit_rate_target_bps: Some(8000), // 80% target hit rate
+            target_hit_rate_ema_decay_bps: Some(9000), // 90% decay (10% weight on new data)
             target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
             target_max_distance_threshold: Some(10_000_000), // Max distance (easiest)
-            target_min_distance_threshold: Some(100_000),    // Min distance (hardest)
+            target_min_distance_threshold: Some(100_000), // Min distance (hardest)
             target_max_reconstruction_threshold: Some(5_000_000), // Max reconstruction (easiest)
-            target_min_reconstruction_threshold: Some(50_000),    // Min reconstruction (hardest)
-            target_initial_targets_per_epoch: Some(20),   // 20 targets at genesis and each epoch start
+            target_min_reconstruction_threshold: Some(50_000), // Min reconstruction (hardest)
+            target_initial_targets_per_epoch: Some(20), // 20 targets at genesis and each epoch start
 
             // Reward distribution parameters
-            target_miner_reward_share_bps: Some(5000),   // 50% to miner
-            target_model_reward_share_bps: Some(3000),   // 30% to model owner
-            target_claimer_incentive_bps: Some(100),     // 1% to claimer as incentive
+            target_miner_reward_share_bps: Some(5000), // 50% to miner
+            target_model_reward_share_bps: Some(3000), // 30% to model owner
+            target_claimer_incentive_bps: Some(100),   // 1% to claimer as incentive
 
             // Submission parameters
-            submission_bond_per_byte: Some(10),          // 10 shannons per byte
+            submission_bond_per_byte: Some(10), // 10 shannons per byte
 
-            // When adding a new constant, set it to None in the earliest version, like this:
-            // new_constant: None,
+                                                // When adding a new constant, set it to None in the earliest version, like this:
+                                                // new_constant: None,
         };
         for cur in 2..=version.0 {
             match cur {
@@ -427,25 +427,19 @@ impl ProtocolConfig {
 
 impl ProtocolConfig {
     pub fn max_transaction_size_bytes(&self) -> u64 {
-        self.consensus_max_transaction_size_bytes
-            .unwrap_or(256 * 1024)
+        self.consensus_max_transaction_size_bytes.unwrap_or(256 * 1024)
     }
 
     pub fn max_transactions_in_block_bytes(&self) -> u64 {
         if cfg!(msim) {
             256 * 1024
         } else {
-            self.consensus_max_transactions_in_block_bytes
-                .unwrap_or(512 * 1024)
+            self.consensus_max_transactions_in_block_bytes.unwrap_or(512 * 1024)
         }
     }
 
     pub fn max_num_transactions_in_block(&self) -> u64 {
-        if cfg!(msim) {
-            8
-        } else {
-            self.consensus_max_num_transactions_in_block.unwrap_or(512)
-        }
+        if cfg!(msim) { 8 } else { self.consensus_max_num_transactions_in_block.unwrap_or(512) }
     }
 
     pub fn gc_depth(&self) -> u32 {
@@ -453,8 +447,7 @@ impl ProtocolConfig {
     }
 
     pub fn get_consensus_commit_rate_estimation_window_size(&self) -> u32 {
-        self.consensus_commit_rate_estimation_window_size
-            .unwrap_or(0)
+        self.consensus_commit_rate_estimation_window_size.unwrap_or(0)
     }
 
     pub fn consensus_num_requested_prior_commits_at_startup(&self) -> u32 {
@@ -505,7 +498,6 @@ impl ProtocolConfig {
             submission_bond_per_byte: self.submission_bond_per_byte(),
         }
     }
-
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]

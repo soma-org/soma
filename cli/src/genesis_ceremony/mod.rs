@@ -7,13 +7,9 @@ use protocol_config::ProtocolVersion;
 use soma_keys::keypair_file::read_authority_keypair_from_file;
 use std::path::PathBuf;
 use types::{
-    config::SOMA_GENESIS_FILENAME,
-    config::genesis_config::GenesisModelConfig,
-    crypto::AuthorityKeyPair,
-    envelope::Message as _,
-    genesis::UnsignedGenesis,
-    genesis_builder::GenesisBuilder,
-    validator_info::GenesisValidatorInfo,
+    config::SOMA_GENESIS_FILENAME, config::genesis_config::GenesisModelConfig,
+    crypto::AuthorityKeyPair, envelope::Message as _, genesis::UnsignedGenesis,
+    genesis_builder::GenesisBuilder, validator_info::GenesisValidatorInfo,
 };
 
 mod genesis_inspector;
@@ -93,17 +89,11 @@ pub enum CeremonyCommand {
 }
 
 pub fn run(cmd: Ceremony) -> Result<()> {
-    let dir = if let Some(path) = cmd.path {
-        path
-    } else {
-        std::env::current_dir()?
-    };
+    let dir = if let Some(path) = cmd.path { path } else { std::env::current_dir()? };
     let dir = Utf8PathBuf::try_from(dir)?;
 
-    let protocol_version = cmd
-        .protocol_version
-        .map(ProtocolVersion::new)
-        .unwrap_or(ProtocolVersion::MAX);
+    let protocol_version =
+        cmd.protocol_version.map(ProtocolVersion::new).unwrap_or(ProtocolVersion::MAX);
 
     match cmd.command {
         CeremonyCommand::Init => {
@@ -199,10 +189,7 @@ pub fn run(cmd: Ceremony) -> Result<()> {
 
             let UnsignedGenesis { checkpoint, .. } = builder.build_unsigned_genesis();
 
-            println!(
-                "Successfully built unsigned checkpoint: {}",
-                checkpoint.digest()
-            );
+            println!("Successfully built unsigned checkpoint: {}", checkpoint.digest());
 
             builder.save(&dir)?;
         }
@@ -252,11 +239,7 @@ pub fn run(cmd: Ceremony) -> Result<()> {
             genesis.save(&genesis_path)?;
 
             println!("Successfully built {}", SOMA_GENESIS_FILENAME);
-            println!(
-                "{} blake2b-256: {}",
-                SOMA_GENESIS_FILENAME,
-                Hex::encode(genesis.hash())
-            );
+            println!("{} blake2b-256: {}", SOMA_GENESIS_FILENAME, Hex::encode(genesis.hash()));
         }
     }
 

@@ -73,10 +73,7 @@ async fn test_reconfig_with_committee_change_basic() {
     // Check that a new validator has joined the committee.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         assert_eq!(
-            node.state()
-                .epoch_store_for_testing()
-                .committee()
-                .num_members(),
+            node.state().epoch_store_for_testing().committee().num_members(),
             initial_num_validators + 1
         );
     });
@@ -84,10 +81,7 @@ async fn test_reconfig_with_committee_change_basic() {
     test_cluster.wait_for_epoch_all_nodes(1).await;
 
     new_validator_handle.with(|node| {
-        assert!(
-            node.state()
-                .is_validator(&node.state().epoch_store_for_testing())
-        );
+        assert!(node.state().is_validator(&node.state().epoch_store_for_testing()));
     });
 
     execute_remove_validator_tx(&test_cluster, &new_validator_handle).await;
@@ -95,10 +89,7 @@ async fn test_reconfig_with_committee_change_basic() {
 
     test_cluster.fullnode_handle.soma_node.with(|node| {
         assert_eq!(
-            node.state()
-                .epoch_store_for_testing()
-                .committee()
-                .num_members(),
+            node.state().epoch_store_for_testing().committee().num_members(),
             initial_num_validators
         );
     });
@@ -120,15 +111,10 @@ async fn test_passive_reconfig_determinism() {
 async fn do_test_passive_reconfig() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(1000)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_epoch_duration_ms(1000).build().await;
 
-    let target_epoch: u64 = std::env::var("RECONFIG_TARGET_EPOCH")
-        .ok()
-        .map(|v| v.parse().unwrap())
-        .unwrap_or(4);
+    let target_epoch: u64 =
+        std::env::var("RECONFIG_TARGET_EPOCH").ok().map(|v| v.parse().unwrap()).unwrap_or(4);
 
     test_cluster.wait_for_epoch(Some(target_epoch)).await;
 }
@@ -148,9 +134,8 @@ async fn test_reconfig_with_committee_change_stress_determinism() {
 async fn do_test_reconfig_with_committee_change_stress() {
     init_tracing();
 
-    let mut candidates = (0..6)
-        .map(|_| ValidatorGenesisConfigBuilder::new().build(&mut OsRng))
-        .collect::<Vec<_>>();
+    let mut candidates =
+        (0..6).map(|_| ValidatorGenesisConfigBuilder::new().build(&mut OsRng)).collect::<Vec<_>>();
     let addresses = candidates
         .iter()
         .map(|c| (&c.account_key_pair.public()).into())
@@ -203,9 +188,7 @@ async fn do_test_reconfig_with_committee_change_stress() {
         assert_eq!(committee.num_members(), 7);
         assert!(committee.authority_exists(&handle1.state().name));
         assert!(committee.authority_exists(&handle2.state().name));
-        removed_validators
-            .iter()
-            .all(|v| !committee.authority_exists(v));
+        removed_validators.iter().all(|v| !committee.authority_exists(v));
     }
 }
 
@@ -217,9 +200,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
     // This test exercise the full flow of a validator joining the network, catch up and then leave.
     // Validator starts with .12% of the total voting power and then decreases to below the threshold.
     let initial_num_validators = 10;
-    let new_validator = ValidatorGenesisConfigBuilder::new()
-        .with_stake(0)
-        .build(&mut OsRng);
+    let new_validator = ValidatorGenesisConfigBuilder::new().with_stake(0).build(&mut OsRng);
 
     let address = (&new_validator.account_key_pair.public()).into();
     let mut test_cluster = TestClusterBuilder::new()
@@ -277,18 +258,13 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
     // Check that a new validator has joined the committee.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         assert_eq!(
-            node.state()
-                .epoch_store_for_testing()
-                .committee()
-                .num_members(),
+            node.state().epoch_store_for_testing().committee().num_members(),
             initial_num_validators + 1
         );
     });
 
-    for (address, stake) in initial_validators
-        .iter()
-        .map(|address| (*address, default_stake))
-        .collect::<Vec<_>>()
+    for (address, stake) in
+        initial_validators.iter().map(|address| (*address, default_stake)).collect::<Vec<_>>()
     {
         // Double the stake of every other validator, stake just as much as they had.
         execute_add_stake_transaction(
@@ -311,10 +287,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             .expect("Should be able to get SystemState")
             .validators;
 
-        let candidate = system_state
-            .validators
-            .iter()
-            .find(|v| v.metadata.soma_address == address);
+        let candidate = system_state.validators.iter().find(|v| v.metadata.soma_address == address);
 
         assert!(candidate.is_some());
         let candidate = candidate.unwrap();
@@ -329,10 +302,8 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
 
     // Double validators' stake once again, and check that the new validator is now at risk.
     // Double the stake of every other validator, stake just as much as they had.
-    for (address, stake) in initial_validators
-        .iter()
-        .map(|address| (*address, default_stake))
-        .collect::<Vec<_>>()
+    for (address, stake) in
+        initial_validators.iter().map(|address| (*address, default_stake)).collect::<Vec<_>>()
     {
         execute_add_stake_transaction(
             new_validator.account_key_pair.copy(),
@@ -403,9 +374,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
                 .build(&mut OsRng)
         })
         .collect::<Vec<_>>();
-    let new_validator = ValidatorGenesisConfigBuilder::new()
-        .with_stake(0)
-        .build(&mut OsRng);
+    let new_validator = ValidatorGenesisConfigBuilder::new().with_stake(0).build(&mut OsRng);
 
     let address = (&new_validator.account_key_pair.public()).into();
     let mut test_cluster = TestClusterBuilder::new()
@@ -430,11 +399,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
 
             (
                 system_state.total_stake,
-                system_state
-                    .validators
-                    .iter()
-                    .map(|v| v.metadata.soma_address)
-                    .collect::<Vec<_>>(),
+                system_state.validators.iter().map(|v| v.metadata.soma_address).collect::<Vec<_>>(),
             )
         });
 
@@ -451,10 +416,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
     // Check that a new validator has joined the committee.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         assert_eq!(
-            node.state()
-                .epoch_store_for_testing()
-                .committee()
-                .num_members(),
+            node.state().epoch_store_for_testing().committee().num_members(),
             initial_num_validators + 1
         );
     });
@@ -577,11 +539,7 @@ async fn execute_add_validator_transactions(
         vec![&new_validator.account_key_pair],
     );
 
-    info!(
-        ?tx,
-        "Executing add validator tx {}",
-        &new_validator.network_address.to_string()
-    );
+    info!(?tx, "Executing add validator tx {}", &new_validator.network_address.to_string());
 
     let _response = test_cluster.execute_transaction(tx).await;
 
@@ -602,9 +560,7 @@ async fn execute_add_validator_transactions(
         let pending_active_validators = system_state.validators.pending_validators;
         assert_eq!(pending_active_validators.len(), pending_active_count + 1);
         assert_eq!(
-            pending_active_validators[pending_active_validators.len() - 1]
-                .metadata
-                .soma_address,
+            pending_active_validators[pending_active_validators.len() - 1].metadata.soma_address,
             (&new_validator.account_key_pair.public()).into()
         );
     });
@@ -626,11 +582,7 @@ async fn execute_add_stake_transaction(
 
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
-            TransactionKind::AddStake {
-                address: address,
-                coin_ref: gas_object,
-                amount: Some(stake),
-            },
+            TransactionKind::AddStake { address, coin_ref: gas_object, amount: Some(stake) },
             (&signer.public()).into(),
             vec![gas_object],
         ),

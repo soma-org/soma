@@ -13,10 +13,7 @@ use types::checkpoints::CheckpointSequenceNumber;
 use types::full_checkpoint_content::CheckpointData;
 
 pub static MAX_CHECKPOINTS_IN_PROGRESS: Lazy<usize> = Lazy::new(|| {
-    std::env::var("MAX_CHECKPOINTS_IN_PROGRESS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100)
+    std::env::var("MAX_CHECKPOINTS_IN_PROGRESS").ok().and_then(|s| s.parse().ok()).unwrap_or(100)
 });
 
 /// Progress tracking for executor
@@ -34,11 +31,7 @@ pub struct WorkerPool<W: Worker> {
 
 impl<W: Worker + 'static> WorkerPool<W> {
     pub fn new(worker: W, task_name: String, concurrency: usize) -> Self {
-        Self {
-            worker: Arc::new(worker),
-            task_name,
-            concurrency,
-        }
+        Self { worker: Arc::new(worker), task_name, concurrency }
     }
 
     pub async fn run(
@@ -250,10 +243,7 @@ impl IndexerExecutor {
             }
         }
 
-        Ok(ExecutorProgress {
-            last_processed_checkpoint: last_checkpoint,
-            total_processed,
-        })
+        Ok(ExecutorProgress { last_processed_checkpoint: last_checkpoint, total_processed })
     }
 }
 
@@ -265,10 +255,7 @@ pub async fn setup_single_workflow_with_options<W: Worker + 'static>(
     initial_checkpoint_number: CheckpointSequenceNumber,
     concurrency: usize,
     reader_options: Option<ReaderOptions>,
-) -> Result<(
-    impl Future<Output = Result<ExecutorProgress>>,
-    oneshot::Sender<()>,
-)> {
+) -> Result<(impl Future<Output = Result<ExecutorProgress>>, oneshot::Sender<()>)> {
     let (exit_sender, exit_receiver) = oneshot::channel();
     let mut executor = IndexerExecutor::new(initial_checkpoint_number, 1);
     let worker_pool = WorkerPool::new(worker, "workflow".to_string(), concurrency);

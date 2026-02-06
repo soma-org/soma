@@ -85,11 +85,7 @@ impl Iterator for ExponentialBackoff {
                 rand::thread_rng().gen_range(0.0..self.max_jitter.as_secs_f64()),
             )
         };
-        let next = self
-            .current
-            .mul_f64(self.factor)
-            .min(self.max_delay)
-            .saturating_add(jitter);
+        let next = self.current.mul_f64(self.factor).min(self.max_delay).saturating_add(jitter);
 
         self.current = next;
 

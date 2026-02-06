@@ -17,11 +17,7 @@ pub(crate) struct StatusAggregator<T> {
 
 impl<T> StatusAggregator<T> {
     pub(crate) fn new(committee: Arc<Committee>) -> Self {
-        Self {
-            committee,
-            total_votes: 0,
-            statuses: BTreeMap::new(),
-        }
+        Self { committee, total_votes: 0, statuses: BTreeMap::new() }
     }
 
     /// Returns true if the status is inserted the first time for the authority.

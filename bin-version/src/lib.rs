@@ -44,10 +44,7 @@ macro_rules! bin_version {
 macro_rules! git_revision {
     () => {
         const _ASSERT_IS_BINARY: () = {
-            env!(
-                "CARGO_BIN_NAME",
-                "`bin_version!()` must be used from a binary"
-            );
+            env!("CARGO_BIN_NAME", "`bin_version!()` must be used from a binary");
         };
 
         const GIT_REVISION: &str = {

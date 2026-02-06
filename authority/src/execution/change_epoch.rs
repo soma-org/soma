@@ -131,11 +131,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
                         targets_created += 1;
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "Failed to generate target at epoch {}: {:?}",
-                            new_epoch,
-                            e
-                        );
+                        tracing::warn!("Failed to generate target at epoch {}: {:?}", new_epoch, e);
                         break;
                     }
                 }

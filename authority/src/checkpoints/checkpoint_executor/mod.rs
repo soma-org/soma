@@ -84,11 +84,7 @@ impl CheckpointTransactionData {
         assert_eq!(transactions.len(), effects.len());
         assert_eq!(transactions.len(), executed_fx_digests.len());
 
-        Self {
-            transactions,
-            effects,
-            executed_fx_digests,
-        }
+        Self { transactions, effects, executed_fx_digests }
     }
 }
 pub(crate) struct CheckpointExecutionState {
@@ -100,22 +96,14 @@ pub(crate) struct CheckpointExecutionState {
 
 impl CheckpointExecutionState {
     pub fn new(data: CheckpointExecutionData) -> Self {
-        Self {
-            data,
-            state_hasher: None,
-            full_data: None,
-        }
+        Self { data, state_hasher: None, full_data: None }
     }
 
     pub fn new_with_global_state_hasher(
         data: CheckpointExecutionData,
         hasher: GlobalStateHash,
     ) -> Self {
-        Self {
-            data,
-            state_hasher: Some(hasher),
-            full_data: None,
-        }
+        Self { data, state_hasher: Some(hasher), full_data: None }
     }
 }
 
@@ -189,10 +177,7 @@ impl CheckpointExecutor {
         // Decide the first checkpoint to schedule for execution.
         // If we haven't executed anything in the past, we schedule checkpoint 0.
         // Otherwise we schedule the one after highest executed.
-        let highest_executed = self
-            .checkpoint_store
-            .get_highest_executed_checkpoint()
-            .unwrap();
+        let highest_executed = self.checkpoint_store.get_highest_executed_checkpoint().unwrap();
 
         if let Some(highest_executed) = &highest_executed {
             if self.epoch_store.epoch() == highest_executed.epoch()
@@ -205,17 +190,12 @@ impl CheckpointExecutor {
             }
         }
 
-        Some(
-            highest_executed
-                .as_ref()
-                .map(|c| c.sequence_number() + 1)
-                .unwrap_or_else(|| {
-                    // TODO this invariant may no longer hold once we introduce snapshots
-                    assert_eq!(self.epoch_store.epoch(), 0);
-                    // we need to execute the genesis checkpoint
-                    0
-                }),
-        )
+        Some(highest_executed.as_ref().map(|c| c.sequence_number() + 1).unwrap_or_else(|| {
+            // TODO this invariant may no longer hold once we introduce snapshots
+            assert_eq!(self.epoch_store.epoch(), 0);
+            // we need to execute the genesis checkpoint
+            0
+        }))
     }
 
     /// Execute all checkpoints for the current epoch, ensuring that the node has not
@@ -224,10 +204,7 @@ impl CheckpointExecutor {
     #[instrument(level = "error", skip_all, fields(epoch = ?self.epoch_store.epoch()))]
     pub async fn run_epoch(self, run_with_range: Option<RunWithRange>) -> StopReason {
         info!(?run_with_range, "CheckpointExecutor::run_epoch");
-        debug!(
-            "Checkpoint executor running for epoch {:?}",
-            self.epoch_store.epoch(),
-        );
+        debug!("Checkpoint executor running for epoch {:?}", self.epoch_store.epoch(),);
 
         // check if we want to run this epoch based on RunWithRange condition value
         // we want to be inclusive of the defined RunWithRangeEpoch::Epoch
@@ -261,18 +238,13 @@ impl CheckpointExecutor {
             let pipeline_handle = pipeline_stages.handle(*checkpoint.sequence_number());
             async move {
                 let pipeline_handle = pipeline_handle.await;
-                tokio::spawn(this.execute_checkpoint(checkpoint, pipeline_handle))
-                    .await
-                    .unwrap()
+                tokio::spawn(this.execute_checkpoint(checkpoint, pipeline_handle)).await.unwrap()
             }
         })
         .buffered(concurrency)
         // Take the last value from the stream to determine if we completed the epoch
         .fold(false, |state, is_final_checkpoint| async move {
-            assert!(
-                !state,
-                "fold can't be called again after the final checkpoint"
-            );
+            assert!(!state, "fold can't be called again after the final checkpoint");
             is_final_checkpoint
         })
         .await;
@@ -296,33 +268,28 @@ impl CheckpointExecutor {
         info!("executing checkpoint");
         let sequence_number = checkpoint.sequence_number;
 
-        self.backpressure_manager
-            .update_highest_certified_checkpoint(sequence_number);
+        self.backpressure_manager.update_highest_certified_checkpoint(sequence_number);
 
         if checkpoint.is_last_checkpoint_of_epoch() && sequence_number > 0 {
             info!(
                 "Reached end of epoch checkpoint, waiting for all previous checkpoints to be executed"
             );
-            self.checkpoint_store
-                .notify_read_executed_checkpoint(sequence_number - 1)
-                .await;
+            self.checkpoint_store.notify_read_executed_checkpoint(sequence_number - 1).await;
         }
 
         // Note: only `execute_transactions_from_synced_checkpoint` has end-of-epoch logic.
         let ckpt_state = if self.state.is_fullnode(&self.epoch_store)
             || checkpoint.is_last_checkpoint_of_epoch()
         {
-            self.execute_transactions_from_synced_checkpoint(checkpoint, &mut pipeline_handle)
-                .await
+            self.execute_transactions_from_synced_checkpoint(checkpoint, &mut pipeline_handle).await
         } else {
-            self.verify_locally_built_checkpoint(checkpoint, &mut pipeline_handle)
-                .await
+            self.verify_locally_built_checkpoint(checkpoint, &mut pipeline_handle).await
         };
 
-        let tps = self.tps_estimator.lock().update(
-            Instant::now(),
-            ckpt_state.data.checkpoint.network_total_transactions,
-        );
+        let tps = self
+            .tps_estimator
+            .lock()
+            .update(Instant::now(), ckpt_state.data.checkpoint.network_total_transactions);
 
         self.backpressure_manager
             .update_highest_executed_checkpoint(*ckpt_state.data.checkpoint.sequence_number());
@@ -364,8 +331,7 @@ impl CheckpointExecutor {
         finish_stage!(pipeline_handle, FinalizeCheckpoint);
 
         if let Some(checkpoint_data) = ckpt_state.full_data.take() {
-            self.commit_index_updates_and_enqueue_to_subscription_service(checkpoint_data)
-                .await;
+            self.commit_index_updates_and_enqueue_to_subscription_service(checkpoint_data).await;
         }
 
         finish_stage!(pipeline_handle, UpdateRpcIndex);
@@ -452,9 +418,7 @@ impl CheckpointExecutor {
             .map(|digests| (digests.transaction, digests.effects))
             .unzip();
 
-        pipeline_handle
-            .skip_to(PipelineStage::FinalizeTransactions)
-            .await;
+        pipeline_handle.skip_to(PipelineStage::FinalizeTransactions).await;
 
         // Currently this code only runs on validators, where this method call does nothing.
         // But in the future, fullnodes may follow the mysticeti dag and build their own checkpoints.
@@ -463,12 +427,7 @@ impl CheckpointExecutor {
         pipeline_handle.skip_to(PipelineStage::BuildDbBatch).await;
 
         CheckpointExecutionState::new_with_global_state_hasher(
-            CheckpointExecutionData {
-                checkpoint,
-                checkpoint_contents,
-                tx_digests,
-                fx_digests,
-            },
+            CheckpointExecutionData { checkpoint, checkpoint_contents, tx_digests, fx_digests },
             state_hasher,
         )
     }
@@ -611,10 +570,8 @@ impl CheckpointExecutor {
             let mut effects = Vec::with_capacity(num_txns);
             let mut fx_digests = Vec::with_capacity(num_txns);
 
-            full_contents
-                .into_iter()
-                .zip(checkpoint_contents.iter())
-                .for_each(|(execution_data, digests)| {
+            full_contents.into_iter().zip(checkpoint_contents.iter()).for_each(
+                |(execution_data, digests)| {
                     let tx_digest = digests.transaction;
                     let fx_digest = digests.effects;
                     debug_assert_eq!(tx_digest, *execution_data.transaction.digest());
@@ -628,11 +585,11 @@ impl CheckpointExecutor {
                     ));
                     effects.push(execution_data.effects);
                     fx_digests.push(fx_digest);
-                });
+                },
+            );
 
-            let executed_fx_digests = self
-                .transaction_cache_reader
-                .multi_get_executed_effects_digests(&tx_digests);
+            let executed_fx_digests =
+                self.transaction_cache_reader.multi_get_executed_effects_digests(&tx_digests);
 
             (
                 CheckpointExecutionState::new(CheckpointExecutionData {
@@ -676,9 +633,8 @@ impl CheckpointExecutor {
                 })
                 .collect();
 
-            let executed_fx_digests = self
-                .transaction_cache_reader
-                .multi_get_executed_effects_digests(&tx_digests);
+            let executed_fx_digests =
+                self.transaction_cache_reader.multi_get_executed_effects_digests(&tx_digests);
 
             (
                 CheckpointExecutionState::new(CheckpointExecutionData {
@@ -748,8 +704,7 @@ impl CheckpointExecutor {
         );
 
         // Enqueue unexecuted transactions with their expected effects digests
-        self.execution_scheduler
-            .enqueue_transactions(unexecuted_txns, &self.epoch_store);
+        self.execution_scheduler.enqueue_transactions(unexecuted_txns, &self.epoch_store);
 
         unexecuted_tx_digests
     }
@@ -758,10 +713,7 @@ impl CheckpointExecutor {
     async fn execute_change_epoch_tx(&self, tx_data: &CheckpointTransactionData) {
         let change_epoch_tx = tx_data.transactions.last().unwrap();
         let change_epoch_fx = tx_data.effects.last().unwrap();
-        assert_eq!(
-            change_epoch_tx.digest(),
-            change_epoch_fx.transaction_digest()
-        );
+        assert_eq!(change_epoch_tx.digest(), change_epoch_fx.transaction_digest());
         assert!(
             change_epoch_tx.transaction_data().kind.is_end_of_epoch_tx(),
             "final txn must be an end of epoch txn"
@@ -820,10 +772,8 @@ impl CheckpointExecutor {
         // Ensure that we are not skipping checkpoints at any point
         let seq = *checkpoint.sequence_number();
         debug!("Bumping highest_executed_checkpoint watermark to {seq:?}");
-        if let Some(prev_highest) = self
-            .checkpoint_store
-            .get_highest_executed_checkpoint_seq_number()
-            .unwrap()
+        if let Some(prev_highest) =
+            self.checkpoint_store.get_highest_executed_checkpoint_seq_number().unwrap()
         {
             assert_eq!(prev_highest + 1, seq);
         } else {
@@ -855,16 +805,11 @@ impl CheckpointExecutor {
                 // If this is directly after a snapshot restore with skiplisting,
                 // this is expected for the first `NUM_SAVED_FULL_CHECKPOINT_CONTENTS`
                 // checkpoints.
-                debug!(
-                    "Failed to fetch checkpoint with sequence number {:?}",
-                    prune_seq
-                );
+                debug!("Failed to fetch checkpoint with sequence number {:?}", prune_seq);
             }
         }
 
-        self.checkpoint_store
-            .update_highest_executed_checkpoint(checkpoint)
-            .unwrap();
+        self.checkpoint_store.update_highest_executed_checkpoint(checkpoint).unwrap();
     }
 
     /// If configured, commit the pending index updates for the provided checkpoint as well as

@@ -164,10 +164,7 @@ struct DerivedAddressIter {
 
 impl DerivedAddressIter {
     fn new(primary: Address) -> Self {
-        Self {
-            primary: Some(primary),
-            extra: None,
-        }
+        Self { primary: Some(primary), extra: None }
     }
 }
 

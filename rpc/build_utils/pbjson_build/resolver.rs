@@ -14,11 +14,7 @@ impl<'a> Resolver<'a> {
         package: &'a Package,
         retain_enum_prefix: bool,
     ) -> Self {
-        Resolver {
-            extern_types,
-            package,
-            retain_enum_prefix,
-        }
+        Resolver { extern_types, package, retain_enum_prefix }
     }
 
     /// Lookup an extern type, returns the rust path followed by the number of
@@ -52,13 +48,8 @@ impl<'a> Resolver<'a> {
             Some(x) => x,
             None => {
                 // Compute the amount the resolver and path have in common
-                let shared_prefix = self
-                    .package
-                    .path()
-                    .iter()
-                    .zip(path.path())
-                    .take_while(|(a, b)| a == b)
-                    .count();
+                let shared_prefix =
+                    self.package.path().iter().zip(path.path()).take_while(|(a, b)| a == b).count();
 
                 let super_count = self.package.path().len() - shared_prefix;
 
@@ -116,10 +107,7 @@ mod tests {
         let extern_types = &[
             (".test.external".to_string(), "foo::common".to_string()),
             (".test.external.Boo".to_string(), "foo::common".to_string()),
-            (
-                ".test.external.Fiz.Buz".to_string(),
-                "foo::bar::Buz".to_string(),
-            ),
+            (".test.external.Fiz.Buz".to_string(), "foo::bar::Buz".to_string()),
         ];
         let resolver = Resolver::new(extern_types, &resolver_package, false);
 
@@ -139,14 +127,10 @@ mod tests {
         let other_type = TypePath::new(other_package.clone()).child(TypeName::new("Bar"));
         assert_eq!(resolver.rust_type(&other_type), "super::common::Bar");
 
-        let other_nested_type = TypePath::new(other_package)
-            .child(TypeName::new("Foo"))
-            .child(TypeName::new("Bar"));
+        let other_nested_type =
+            TypePath::new(other_package).child(TypeName::new("Foo")).child(TypeName::new("Bar"));
 
-        assert_eq!(
-            resolver.rust_type(&other_nested_type),
-            "super::common::foo::Bar"
-        );
+        assert_eq!(resolver.rust_type(&other_nested_type), "super::common::foo::Bar");
 
         let external_package = Package::new("test.external");
 
@@ -157,23 +141,16 @@ mod tests {
         // A nested external type
         let nested_external_type = external_type.child(TypeName::new("Bar"));
 
-        assert_eq!(
-            resolver.rust_type(&nested_external_type),
-            "foo::common::fiz::Bar"
-        );
+        assert_eq!(resolver.rust_type(&nested_external_type), "foo::common::fiz::Bar");
 
         // An external type within an external type
         let external_nested_type = external_type.child(TypeName::new("Buz"));
         assert_eq!(resolver.rust_type(&external_nested_type), "foo::bar::Buz");
 
         // An external type with a different rust path length
-        let external_nested_type = TypePath::new(external_package)
-            .child(TypeName::new("Boo"))
-            .child(TypeName::new("Bar"));
-        assert_eq!(
-            resolver.rust_type(&external_nested_type),
-            "foo::common::Bar"
-        );
+        let external_nested_type =
+            TypePath::new(external_package).child(TypeName::new("Boo")).child(TypeName::new("Bar"));
+        assert_eq!(resolver.rust_type(&external_nested_type), "foo::common::Bar");
     }
 
     #[test]

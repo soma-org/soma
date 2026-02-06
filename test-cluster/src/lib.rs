@@ -75,11 +75,7 @@ impl FullNodeHandle {
         let rpc_url = format!("http://{}", rpc_address);
         let soma_client = SomaClientBuilder::default().build(&rpc_url).await.unwrap();
 
-        Self {
-            soma_node,
-            soma_client,
-            rpc_url,
-        }
+        Self { soma_node, soma_client, rpc_url }
     }
 }
 
@@ -103,17 +99,11 @@ impl TestCluster {
     }
 
     pub fn all_node_handles(&self) -> Vec<SomaNodeHandle> {
-        self.swarm
-            .all_nodes()
-            .flat_map(|n| n.get_node_handle())
-            .collect()
+        self.swarm.all_nodes().flat_map(|n| n.get_node_handle()).collect()
     }
 
     pub fn all_validator_handles(&self) -> Vec<SomaNodeHandle> {
-        self.swarm
-            .validator_nodes()
-            .map(|n| n.get_node_handle().unwrap())
-            .collect()
+        self.swarm.validator_nodes().map(|n| n.get_node_handle().unwrap()).collect()
     }
 
     pub fn get_validator_pubkeys(&self) -> Vec<AuthorityName> {
@@ -163,9 +153,7 @@ impl TestCluster {
             .validator_configs
             .iter()
             .map(|config| SeedPeer {
-                peer_id: Some(PeerId(
-                    config.network_key_pair().public().into_inner().0.to_bytes(),
-                )),
+                peer_id: Some(PeerId(config.network_key_pair().public().into_inner().0.to_bytes())),
                 address: config.p2p_config.external_address.clone().unwrap(),
             })
             .collect();
@@ -185,18 +173,15 @@ impl TestCluster {
     }
 
     pub async fn wait_for_run_with_range_shutdown_signal(&self) -> Option<RunWithRange> {
-        self.wait_for_run_with_range_shutdown_signal_with_timeout(Duration::from_secs(60))
-            .await
+        self.wait_for_run_with_range_shutdown_signal_with_timeout(Duration::from_secs(60)).await
     }
 
     pub async fn wait_for_run_with_range_shutdown_signal_with_timeout(
         &self,
         timeout_dur: Duration,
     ) -> Option<RunWithRange> {
-        let mut shutdown_channel_rx = self
-            .fullnode_handle
-            .soma_node
-            .with(|node| node.subscribe_to_shutdown_channel());
+        let mut shutdown_channel_rx =
+            self.fullnode_handle.soma_node.with(|node| node.subscribe_to_shutdown_channel());
 
         timeout(timeout_dur, async move {
             tokio::select! {
@@ -252,10 +237,8 @@ impl TestCluster {
         let start = Instant::now();
 
         // Close epoch on 2f+1 validators.
-        let cur_committee = self
-            .fullnode_handle
-            .soma_node
-            .with(|node| node.state().clone_committee_for_testing());
+        let cur_committee =
+            self.fullnode_handle.soma_node.with(|node| node.state().clone_committee_for_testing());
         let mut cur_stake = 0;
         for node in self.swarm.active_validators() {
             node.get_node_handle()
@@ -284,8 +267,7 @@ impl TestCluster {
     /// If target_epoch is None, wait until the cluster reaches the next epoch.
     /// Note that this function does not guarantee that every node is at the target epoch.
     pub async fn wait_for_epoch(&self, target_epoch: Option<EpochId>) -> SystemState {
-        self.wait_for_epoch_with_timeout(target_epoch, Duration::from_secs(120))
-            .await
+        self.wait_for_epoch_with_timeout(target_epoch, Duration::from_secs(120)).await
     }
 
     pub async fn wait_for_epoch_on_node(
@@ -337,11 +319,8 @@ impl TestCluster {
     }
 
     pub async fn wait_for_epoch_all_nodes(&self, target_epoch: EpochId) {
-        let handles: Vec<_> = self
-            .swarm
-            .all_nodes()
-            .map(|node| node.get_node_handle().unwrap())
-            .collect();
+        let handles: Vec<_> =
+            self.swarm.all_nodes().map(|node| node.get_node_handle().unwrap()).collect();
         let tasks: Vec<_> = handles
             .iter()
             .map(|handle| {
@@ -386,11 +365,8 @@ impl TestCluster {
         for authority in self.get_validator_pubkeys() {
             self.stop_node(&authority);
             tokio::time::sleep(Duration::from_millis(1000)).await;
-            self.swarm
-                .node(&authority)
-                .unwrap()
-                .config()
-                .supported_protocol_versions = Some(new_supported_versions);
+            self.swarm.node(&authority).unwrap().config().supported_protocol_versions =
+                Some(new_supported_versions);
             self.start_node(&authority).await;
             info!("Restarted validator {}", authority);
         }
@@ -421,10 +397,7 @@ impl TestCluster {
             .into_iter()
             .map(|h| {
                 h.with(|node| {
-                    node.state()
-                        .epoch_store_for_testing()
-                        .epoch_start_state()
-                        .protocol_version()
+                    node.state().epoch_store_for_testing().epoch_start_state().protocol_version()
                 })
             })
             .max()
@@ -495,9 +468,7 @@ impl TestClusterBuilder {
     }
 
     pub fn with_epoch_duration_ms(mut self, epoch_duration_ms: u64) -> Self {
-        self.get_or_init_genesis_config()
-            .parameters
-            .epoch_duration_ms = epoch_duration_ms;
+        self.get_or_init_genesis_config().parameters.epoch_duration_ms = epoch_duration_ms;
         self
     }
 
@@ -518,9 +489,7 @@ impl TestClusterBuilder {
     }
 
     pub fn with_protocol_version(mut self, v: ProtocolVersion) -> Self {
-        self.get_or_init_genesis_config()
-            .parameters
-            .protocol_version = v;
+        self.get_or_init_genesis_config().parameters.protocol_version = v;
         self
     }
 
@@ -562,19 +531,12 @@ impl TestClusterBuilder {
         });
         wallet_conf.active_env = Some("localnet".to_string());
 
-        wallet_conf
-            .persisted(&working_dir.join(SOMA_CLIENT_CONFIG))
-            .save()
-            .unwrap();
+        wallet_conf.persisted(&working_dir.join(SOMA_CLIENT_CONFIG)).save().unwrap();
 
         let wallet_conf = swarm.dir().join(SOMA_CLIENT_CONFIG);
         let wallet = WalletContext::new(&wallet_conf).unwrap();
 
-        TestCluster {
-            wallet,
-            fullnode_handle,
-            swarm,
-        }
+        TestCluster { wallet, fullnode_handle, swarm }
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
@@ -646,12 +608,9 @@ impl TestClusterBuilder {
         mut self,
         addresses: impl IntoIterator<Item = SomaAddress>,
     ) -> Self {
-        self.get_or_init_genesis_config()
-            .accounts
-            .extend(addresses.into_iter().map(|address| AccountConfig {
-                address: Some(address),
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
-            }));
+        self.get_or_init_genesis_config().accounts.extend(addresses.into_iter().map(|address| {
+            AccountConfig { address: Some(address), gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10] }
+        }));
         self
     }
 }

@@ -7,11 +7,7 @@ pub struct Intent {
 
 impl Intent {
     pub fn new(scope: IntentScope, version: IntentVersion, app_id: IntentAppId) -> Self {
-        Self {
-            scope,
-            version,
-            app_id,
-        }
+        Self { scope, version, app_id }
     }
 
     pub fn to_bytes(self) -> [u8; 3] {

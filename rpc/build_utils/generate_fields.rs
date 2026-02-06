@@ -155,11 +155,7 @@ fn generate_field_path_builders_impl(
     let mut field_chain_methods = TokenStream::new();
 
     for field in &message.field {
-        field_chain_methods.extend(generate_field_chain_methods(
-            message.name(),
-            field,
-            map_types,
-        ));
+        field_chain_methods.extend(generate_field_chain_methods(message.name(), field, map_types));
     }
 
     quote! {

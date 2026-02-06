@@ -13,10 +13,7 @@ pub struct EmissionPool {
 
 impl EmissionPool {
     pub fn new(balance: u64, emission_per_epoch: u64) -> Self {
-        Self {
-            balance,
-            emission_per_epoch,
-        }
+        Self { balance, emission_per_epoch }
     }
 
     /// Withdraw this epoch's emission (returns 0 when pool is drained)
@@ -28,11 +25,7 @@ impl EmissionPool {
 
     /// Epochs remaining until pool is drained
     pub fn epochs_remaining(&self) -> u64 {
-        if self.emission_per_epoch == 0 {
-            u64::MAX
-        } else {
-            self.balance / self.emission_per_epoch
-        }
+        if self.emission_per_epoch == 0 { u64::MAX } else { self.balance / self.emission_per_epoch }
     }
 
     /// Whether the pool still has emissions

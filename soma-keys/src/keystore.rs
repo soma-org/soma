@@ -86,11 +86,7 @@ pub trait AccountKeystore: Send + Sync {
             generate_new_key(key_scheme, derivation_path, word_length)?;
         let public_key = kp.public();
         self.import(alias, kp).await?;
-        Ok(GeneratedKey {
-            address,
-            public_key,
-            scheme,
-        })
+        Ok(GeneratedKey { address, public_key, scheme })
     }
 
     /// Import a keypair into the keystore from a `SomaKeyPair` and optional alias.
@@ -176,10 +172,7 @@ pub trait AccountKeystore: Send + Sync {
         for a in self.aliases_mut() {
             if a.alias == old_alias {
                 let pk = &a.public_key_base64;
-                *a = Alias {
-                    alias: new_alias_name.clone(),
-                    public_key_base64: pk.clone(),
-                };
+                *a = Alias { alias: new_alias_name.clone(), public_key_base64: pk.clone() };
             }
         }
         Ok(new_alias_name)
@@ -241,13 +234,8 @@ impl Serialize for FileBasedKeystore {
     where
         S: Serializer,
     {
-        serializer.serialize_str(
-            self.path
-                .as_ref()
-                .unwrap_or(&PathBuf::default())
-                .to_str()
-                .unwrap_or(""),
-        )
+        serializer
+            .serialize_str(self.path.as_ref().unwrap_or(&PathBuf::default()).to_str().unwrap_or(""))
     }
 }
 
@@ -300,13 +288,8 @@ impl AccountKeystore for FileBasedKeystore {
     ) -> Result<(), anyhow::Error> {
         let address: SomaAddress = (&keypair.public()).into();
         let alias = self.create_alias(alias)?;
-        self.aliases.insert(
-            address,
-            Alias {
-                alias,
-                public_key_base64: keypair.public().encode_base64(),
-            },
-        );
+        self.aliases
+            .insert(address, Alias { alias, public_key_base64: keypair.public().encode_base64() });
         self.keys.insert(address, keypair);
         self.save().await?;
         Ok(())
@@ -347,11 +330,7 @@ impl AccountKeystore for FileBasedKeystore {
             }
             Some(a) => validate_alias(&a),
             None => Ok(random_name(
-                &self
-                    .aliases()
-                    .into_iter()
-                    .map(|x| x.alias.to_string())
-                    .collect::<HashSet<_>>(),
+                &self.aliases().into_iter().map(|x| x.alias.to_string()).collect::<HashSet<_>>(),
             )),
         }
     }
@@ -422,17 +401,11 @@ impl FileBasedKeystore {
 
         let aliases = if aliases_path.exists() {
             let reader = BufReader::new(fs::File::open(&aliases_path).with_context(|| {
-                format!(
-                    "Cannot open aliases file in keystore: {}",
-                    aliases_path.display()
-                )
+                format!("Cannot open aliases file in keystore: {}", aliases_path.display())
             })?);
 
             let aliases: Vec<Alias> = serde_json::from_reader(reader).with_context(|| {
-                format!(
-                    "Cannot deserialize aliases file in keystore: {}",
-                    aliases_path.display(),
-                )
+                format!("Cannot deserialize aliases file in keystore: {}", aliases_path.display(),)
             })?;
 
             aliases
@@ -443,11 +416,7 @@ impl FileBasedKeystore {
                 })
                 .collect::<Result<BTreeMap<_, _>, _>>()
                 .map_err(|e| {
-                    anyhow!(
-                        "Invalid aliases file in keystore: {}. {}",
-                        aliases_path.display(),
-                        e
-                    )
+                    anyhow!("Invalid aliases file in keystore: {}. {}", aliases_path.display(), e)
                 })?
         } else if keys.is_empty() {
             BTreeMap::new()
@@ -458,13 +427,7 @@ impl FileBasedKeystore {
                 .zip(names)
                 .map(|((soma_address, skp), alias)| {
                     let public_key_base64 = skp.public().encode_base64();
-                    (
-                        *soma_address,
-                        Alias {
-                            alias,
-                            public_key_base64,
-                        },
-                    )
+                    (*soma_address, Alias { alias, public_key_base64 })
                 })
                 .collect::<BTreeMap<_, _>>();
             let aliases_store = serde_json::to_string_pretty(&aliases.values().collect::<Vec<_>>())
@@ -479,11 +442,7 @@ impl FileBasedKeystore {
             aliases
         };
 
-        Ok(Self {
-            keys,
-            aliases,
-            path: Some(path.to_path_buf()),
-        })
+        Ok(Self { keys, aliases, path: Some(path.to_path_buf()) })
     }
 
     pub fn set_path(&mut self, path: &Path) {
@@ -495,10 +454,7 @@ impl FileBasedKeystore {
             let aliases_store =
                 serde_json::to_string_pretty(&self.aliases.values().collect::<Vec<_>>())
                     .with_context(|| {
-                        format!(
-                            "Cannot serialize aliases to file in keystore: {}",
-                            path.display()
-                        )
+                        format!("Cannot serialize aliases to file in keystore: {}", path.display())
                     })?;
 
             let mut aliases_path = path.clone();
@@ -517,11 +473,7 @@ impl FileBasedKeystore {
     pub async fn save_keystore(&self) -> Result<(), anyhow::Error> {
         if let Some(path) = &self.path {
             let store = serde_json::to_string_pretty(
-                &self
-                    .keys
-                    .values()
-                    .map(|k| k.encode_base64())
-                    .collect::<Vec<_>>(),
+                &self.keys.values().map(|k| k.encode_base64()).collect::<Vec<_>>(),
             )
             .with_context(|| format!("Cannot serialize keystore to file: {}", path.display()))?;
             let keystore_path = path.clone();
@@ -564,10 +516,7 @@ fn set_reduced_file_permissions(path: impl AsRef<Path>) -> Result<(), anyhow::Er
     let mode = metadata.permissions().mode();
     if mode & 0o177 != 0 {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600)).with_context(|| {
-            format!(
-                "Cannot set permissions for keystore file: {}.",
-                path.display(),
-            )
+            format!("Cannot set permissions for keystore file: {}.", path.display(),)
         })?;
     }
     Ok(())
@@ -617,20 +566,11 @@ impl AccountKeystore for InMemKeystore {
     ) -> Result<(), anyhow::Error> {
         let address: SomaAddress = (&keypair.public()).into();
         let alias = alias.unwrap_or_else(|| {
-            random_name(
-                &self
-                    .aliases()
-                    .iter()
-                    .map(|x| x.alias.clone())
-                    .collect::<HashSet<_>>(),
-            )
+            random_name(&self.aliases().iter().map(|x| x.alias.clone()).collect::<HashSet<_>>())
         });
 
         let public_key_base64 = keypair.public().encode_base64();
-        let alias = Alias {
-            alias,
-            public_key_base64,
-        };
+        let alias = Alias { alias, public_key_base64 };
         self.aliases.insert(address, alias);
         self.keys.insert(address, keypair);
         Ok(())
@@ -680,11 +620,7 @@ impl AccountKeystore for InMemKeystore {
             }
             Some(a) => validate_alias(&a),
             None => Ok(random_name(
-                &self
-                    .aliases()
-                    .iter()
-                    .map(|x| x.alias.to_string())
-                    .collect::<HashSet<_>>(),
+                &self.aliases().iter().map(|x| x.alias.to_string()).collect::<HashSet<_>>(),
             )),
         }
     }
@@ -717,13 +653,7 @@ impl InMemKeystore {
             .zip(random_names(HashSet::new(), keys.len()))
             .map(|((soma_address, skp), alias)| {
                 let public_key_base64 = skp.public().encode_base64();
-                (
-                    *soma_address,
-                    Alias {
-                        alias,
-                        public_key_base64,
-                    },
-                )
+                (*soma_address, Alias { alias, public_key_base64 })
             })
             .collect::<BTreeMap<_, _>>();
 

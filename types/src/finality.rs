@@ -33,12 +33,7 @@ impl FinalityProof {
         checkpoint: CertifiedCheckpointSummary,
         inclusion_proof: CheckpointInclusionProof,
     ) -> Self {
-        Self {
-            transaction,
-            effects,
-            checkpoint,
-            inclusion_proof,
-        }
+        Self { transaction, effects, checkpoint, inclusion_proof }
     }
 
     /// Get the transaction digest
@@ -75,8 +70,7 @@ impl FinalityProof {
         self.checkpoint.verify_authority_signatures(committee)?;
 
         // 2. Verify the Merkle inclusion proof against the checkpoint's content_digest
-        self.inclusion_proof
-            .verify(&self.checkpoint.data().content_digest)?;
+        self.inclusion_proof.verify(&self.checkpoint.data().content_digest)?;
 
         // 3. Verify the proven leaf matches our transaction and effects
         let tx_digest = self.transaction.digest();

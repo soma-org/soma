@@ -6,10 +6,7 @@ use serde::Serialize;
 use std::fmt::{self, Display, Formatter};
 use tabled::{
     builder::Builder as TableBuilder,
-    settings::{
-        Panel as TablePanel, Style as TableStyle,
-        style::HorizontalLine,
-    },
+    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
 };
 
 use sdk::wallet_context::WalletContext;
@@ -171,10 +168,7 @@ pub enum ModelCommand {
 // =============================================================================
 
 impl ModelCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<ModelCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<ModelCommandResponse> {
         let sender = context.active_address()?;
 
         match self {
@@ -192,7 +186,8 @@ impl ModelCommand {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
 
-                let url_commitment = parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
+                let url_commitment =
+                    parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
                 let wt_commitment = parse_hex_digest_32(&weights_commitment, "weights-commitment")?;
 
                 let kind = TransactionKind::CommitModel(CommitModelArgs {
@@ -237,7 +232,8 @@ impl ModelCommand {
                 weights_commitment,
                 tx_args,
             } => {
-                let url_commitment = parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
+                let url_commitment =
+                    parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
                 let wt_commitment = parse_hex_digest_32(&weights_commitment, "weights-commitment")?;
 
                 let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
@@ -272,27 +268,18 @@ impl ModelCommand {
                 execute_tx(context, sender, kind, tx_args).await
             }
 
-            ModelCommand::Deactivate {
-                model_id,
-                tx_args,
-            } => {
+            ModelCommand::Deactivate { model_id, tx_args } => {
                 let kind = TransactionKind::DeactivateModel { model_id };
                 execute_tx(context, sender, kind, tx_args).await
             }
 
-            ModelCommand::SetCommissionRate {
-                model_id,
-                commission_rate,
-                tx_args,
-            } => {
+            ModelCommand::SetCommissionRate { model_id, commission_rate, tx_args } => {
                 if commission_rate > 10000 {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
 
-                let kind = TransactionKind::SetModelCommissionRate {
-                    model_id,
-                    new_rate: commission_rate,
-                };
+                let kind =
+                    TransactionKind::SetModelCommissionRate { model_id, new_rate: commission_rate };
                 execute_tx(context, sender, kind, tx_args).await
             }
 
@@ -304,15 +291,16 @@ impl ModelCommand {
                     .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
 
                 match find_model(&system_state, &model_id) {
-                    Some((status, summary)) => {
-                        Ok(ModelCommandResponse::Info(ModelInfoOutput {
-                            model_id,
-                            status,
-                            summary,
-                        }))
-                    }
+                    Some((status, summary)) => Ok(ModelCommandResponse::Info(ModelInfoOutput {
+                        model_id,
+                        status,
+                        summary,
+                    })),
                     None => {
-                        bail!("Model {} not found in active, pending, or inactive registries", model_id);
+                        bail!(
+                            "Model {} not found in active, pending, or inactive registries",
+                            model_id
+                        );
                     }
                 }
             }
@@ -338,9 +326,8 @@ impl ModelCommand {
 fn parse_hex_digest_32(hex_str: &str, field_name: &str) -> Result<[u8; 32]> {
     let bytes = Hex::decode(hex_str.strip_prefix("0x").unwrap_or(hex_str))
         .map_err(|e| anyhow!("Invalid hex for {}: {}", field_name, e))?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
+    let arr: [u8; 32] =
+        bytes.try_into().map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
     Ok(arr)
 }
 
@@ -357,10 +344,7 @@ fn build_weights_manifest(
     let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
     let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
 
-    Ok(ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new(key_bytes),
-    })
+    Ok(ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new(key_bytes) })
 }
 
 /// Execute a model transaction, delegating to the shared client_commands helper.
@@ -370,10 +354,8 @@ async fn execute_tx(
     kind: TransactionKind,
     tx_args: TxProcessingArgs,
 ) -> Result<ModelCommandResponse> {
-    let result = crate::client_commands::execute_or_serialize(
-        context, sender, kind, None, tx_args,
-    )
-    .await?;
+    let result =
+        crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
 
     // Convert ClientCommandResponse to ModelCommandResponse
     match result {
@@ -381,14 +363,10 @@ async fn execute_tx(
             Ok(ModelCommandResponse::Transaction(tx))
         }
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
-            Ok(ModelCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
-            })
+            Ok(ModelCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
         }
         crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
-            Ok(ModelCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
-            })
+            Ok(ModelCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
         }
         crate::response::ClientCommandResponse::TransactionDigest(d) => {
             Ok(ModelCommandResponse::TransactionDigest(d))
@@ -446,7 +424,10 @@ fn model_to_summary(model_id: &ModelId, model: &Model, status: ModelStatus) -> M
     }
 }
 
-fn find_model(system_state: &SystemState, model_id: &ModelId) -> Option<(ModelStatus, ModelSummary)> {
+fn find_model(
+    system_state: &SystemState,
+    model_id: &ModelId,
+) -> Option<(ModelStatus, ModelSummary)> {
     if let Some(model) = system_state.model_registry.active_models.get(model_id) {
         let summary = model_to_summary(model_id, model, ModelStatus::Active);
         return Some((ModelStatus::Active, summary));
@@ -490,9 +471,7 @@ fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
 #[serde(untagged)]
 pub enum ModelCommandResponse {
     Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
+    SerializedTransaction { serialized_unsigned_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
     Info(ModelInfoOutput),
@@ -517,9 +496,7 @@ impl Display for ModelCommandResponse {
             ModelCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            ModelCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
+            ModelCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_unsigned_transaction)?;
@@ -548,10 +525,8 @@ impl Display for ModelInfoOutput {
         builder.push_record(["Owner", &s.owner.to_string()]);
         builder.push_record(["Status", &s.status.to_string()]);
         builder.push_record(["Architecture", &s.architecture_version.to_string()]);
-        builder.push_record([
-            "Commission Rate",
-            &format!("{:.2}%", s.commission_rate as f64 / 100.0),
-        ]);
+        builder
+            .push_record(["Commission Rate", &format!("{:.2}%", s.commission_rate as f64 / 100.0)]);
         builder.push_record(["Commit Epoch", &s.commit_epoch.to_string()]);
         builder.push_record(["Stake Balance", &format!("{} SHANNONS", s.stake_balance)]);
         if s.has_pending_update {
@@ -561,10 +536,7 @@ impl Display for ModelInfoOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Model Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -592,18 +564,9 @@ impl Display for ModelListOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!(
-            "Registered Models ({} total)",
-            self.models.len()
-        )));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(TablePanel::header(format!("Registered Models ({} total)", self.models.len())));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -623,9 +586,5 @@ impl ModelCommandResponse {
 }
 
 fn truncate_id(s: &str) -> String {
-    if s.len() <= 16 {
-        s.to_string()
-    } else {
-        format!("{}...{}", &s[..10], &s[s.len() - 6..])
-    }
+    if s.len() <= 16 { s.to_string() } else { format!("{}...{}", &s[..10], &s[s.len() - 6..]) }
 }

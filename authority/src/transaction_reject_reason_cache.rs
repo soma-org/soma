@@ -4,8 +4,8 @@ use parking_lot::RwLock;
 use tracing::trace;
 use types::committee::AuthorityIndex;
 use types::committee::EpochId;
-use types::consensus::block::{BlockDigest, BlockRef, TransactionIndex};
 use types::consensus::ConsensusPosition;
+use types::consensus::block::{BlockDigest, BlockRef, TransactionIndex};
 use types::error::SomaError;
 
 use crate::consensus_tx_status_cache::CONSENSUS_STATUS_RETENTION_ROUNDS;

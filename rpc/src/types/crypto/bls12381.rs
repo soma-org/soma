@@ -7,7 +7,7 @@
     PartialOrd,
     Ord,
     serde_derive::Serialize,
-    serde_derive::Deserialize,
+    serde_derive::Deserialize
 )]
 pub struct Bls12381PublicKey(
     #[serde(
@@ -91,9 +91,7 @@ impl std::fmt::Display for Bls12381PublicKey {
 
 impl std::fmt::Debug for Bls12381PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Bls12381PublicKey")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Bls12381PublicKey").field(&format_args!("\"{self}\"")).finish()
     }
 }
 
@@ -115,7 +113,7 @@ impl std::fmt::Debug for Bls12381PublicKey {
     PartialOrd,
     Ord,
     serde_derive::Serialize,
-    serde_derive::Deserialize,
+    serde_derive::Deserialize
 )]
 pub struct Bls12381Signature(
     #[serde(
@@ -199,8 +197,6 @@ impl std::fmt::Display for Bls12381Signature {
 
 impl std::fmt::Debug for Bls12381Signature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Bls12381Signature")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Bls12381Signature").field(&format_args!("\"{self}\"")).finish()
     }
 }

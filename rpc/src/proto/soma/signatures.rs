@@ -22,9 +22,7 @@ impl TryFrom<&ValidatorAggregatedSignature> for crate::types::ValidatorAggregate
     type Error = TryFromProtoError;
 
     fn try_from(value: &ValidatorAggregatedSignature) -> Result<Self, Self::Error> {
-        let epoch = value
-            .epoch
-            .ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+        let epoch = value.epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?;
         let signature = value
             .signature
             .as_ref()
@@ -36,11 +34,7 @@ impl TryFrom<&ValidatorAggregatedSignature> for crate::types::ValidatorAggregate
             })?;
         let bitmap = value.bitmap.iter().copied().collect();
 
-        Ok(Self {
-            epoch,
-            signature,
-            bitmap,
-        })
+        Ok(Self { epoch, signature, bitmap })
     }
 }
 //
@@ -80,11 +74,7 @@ impl TryFrom<&ValidatorCommitteeMember> for crate::types::ValidatorCommitteeMemb
             .ok_or_else(|| TryFromProtoError::missing("network_metadata"))?
             .try_into()?;
 
-        Ok(Self {
-            authority_key,
-            stake,
-            network_metadata,
-        })
+        Ok(Self { authority_key, stake, network_metadata })
     }
 }
 
@@ -119,10 +109,8 @@ impl TryFrom<&ValidatorNetworkMetadata> for crate::types::ValidatorNetworkMetada
             .ok_or_else(|| TryFromProtoError::missing("consensus_address"))?
             .clone();
 
-        let hostname = hostname
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("hostname"))?
-            .clone();
+        let hostname =
+            hostname.as_ref().ok_or_else(|| TryFromProtoError::missing("hostname"))?.clone();
 
         let protocol_key = protocol_key
             .as_ref()
@@ -136,12 +124,7 @@ impl TryFrom<&ValidatorNetworkMetadata> for crate::types::ValidatorNetworkMetada
             .as_ref()
             .to_vec();
 
-        Ok(Self {
-            consensus_address,
-            hostname,
-            protocol_key,
-            network_key,
-        })
+        Ok(Self { consensus_address, hostname, protocol_key, network_key })
     }
 }
 
@@ -162,16 +145,10 @@ impl TryFrom<ValidatorCommittee> for crate::types::ValidatorCommittee {
     type Error = TryFromProtoError;
 
     fn try_from(value: ValidatorCommittee) -> Result<Self, Self::Error> {
-        let epoch = value
-            .epoch
-            .ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+        let epoch = value.epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?;
         Ok(Self {
             epoch,
-            members: value
-                .members
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
+            members: value.members.iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
         })
     }
 }
@@ -202,10 +179,9 @@ impl TryFrom<&SignatureScheme> for crate::types::SignatureScheme {
 impl From<crate::types::SimpleSignature> for SimpleSignature {
     fn from(value: crate::types::SimpleSignature) -> Self {
         let (signature, public_key) = match &value {
-            crate::types::SimpleSignature::Ed25519 {
-                signature,
-                public_key,
-            } => (signature.as_bytes(), public_key.as_bytes()),
+            crate::types::SimpleSignature::Ed25519 { signature, public_key } => {
+                (signature.as_bytes(), public_key.as_bytes())
+            }
             _ => return Self::default(),
         };
 
@@ -230,14 +206,10 @@ impl TryFrom<&SimpleSignature> for crate::types::SimpleSignature {
             .ok_or_else(|| TryFromProtoError::missing("scheme"))?
             .pipe(SignatureScheme::try_from)
             .map_err(|e| TryFromProtoError::invalid(SimpleSignature::SCHEME_FIELD, e))?;
-        let signature = value
-            .signature
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("signature"))?;
-        let public_key = value
-            .public_key
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("public_key"))?;
+        let signature =
+            value.signature.as_ref().ok_or_else(|| TryFromProtoError::missing("signature"))?;
+        let public_key =
+            value.public_key.as_ref().ok_or_else(|| TryFromProtoError::missing("public_key"))?;
 
         match scheme {
             SignatureScheme::Ed25519 => Self::Ed25519 {
@@ -289,11 +261,11 @@ impl TryFrom<&MultisigMemberPublicKey> for crate::types::MultisigMemberPublicKey
         use crate::types::Ed25519PublicKey;
 
         match value.scheme() {
-            SignatureScheme::Ed25519 => Self::Ed25519(
-                Ed25519PublicKey::from_bytes(value.public_key()).map_err(|e| {
+            SignatureScheme::Ed25519 => {
+                Self::Ed25519(Ed25519PublicKey::from_bytes(value.public_key()).map_err(|e| {
                     TryFromProtoError::invalid(MultisigMemberPublicKey::PUBLIC_KEY_FIELD, e)
-                })?,
-            ),
+                })?)
+            }
 
             SignatureScheme::Multisig | SignatureScheme::Bls12381 => {
                 return Err(TryFromProtoError::invalid(
@@ -312,10 +284,7 @@ impl TryFrom<&MultisigMemberPublicKey> for crate::types::MultisigMemberPublicKey
 
 impl From<&crate::types::MultisigMember> for MultisigMember {
     fn from(value: &crate::types::MultisigMember) -> Self {
-        Self {
-            public_key: Some(value.public_key().into()),
-            weight: Some(value.weight().into()),
-        }
+        Self { public_key: Some(value.public_key().into()), weight: Some(value.weight().into()) }
     }
 }
 
@@ -355,11 +324,7 @@ impl TryFrom<&MultisigCommittee> for crate::types::MultisigCommittee {
     type Error = TryFromProtoError;
 
     fn try_from(value: &MultisigCommittee) -> Result<Self, Self::Error> {
-        let members = value
-            .members
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let members = value.members.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
         let threshold = value
             .threshold
             .ok_or_else(|| TryFromProtoError::missing("threshold"))?
@@ -401,11 +366,11 @@ impl TryFrom<&MultisigMemberSignature> for crate::types::MultisigMemberSignature
         use crate::types::Ed25519Signature;
 
         match value.scheme() {
-            SignatureScheme::Ed25519 => Self::Ed25519(
-                Ed25519Signature::from_bytes(value.signature()).map_err(|e| {
+            SignatureScheme::Ed25519 => {
+                Self::Ed25519(Ed25519Signature::from_bytes(value.signature()).map_err(|e| {
                     TryFromProtoError::invalid(MultisigMemberSignature::SIGNATURE_FIELD, e)
-                })?,
-            ),
+                })?)
+            }
 
             SignatureScheme::Multisig | SignatureScheme::Bls12381 => {
                 return Err(TryFromProtoError::invalid(
@@ -437,18 +402,12 @@ impl TryFrom<&MultisigAggregatedSignature> for crate::types::MultisigAggregatedS
     type Error = TryFromProtoError;
 
     fn try_from(value: &MultisigAggregatedSignature) -> Result<Self, Self::Error> {
-        let signatures = value
-            .signatures
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
-        let bitmap = value
-            .bitmap
-            .ok_or_else(|| TryFromProtoError::missing("bitmap"))?
-            .try_into()
-            .map_err(|e| {
-                TryFromProtoError::invalid(MultisigAggregatedSignature::BITMAP_FIELD, e)
-            })?;
+        let signatures =
+            value.signatures.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
+        let bitmap =
+            value.bitmap.ok_or_else(|| TryFromProtoError::missing("bitmap"))?.try_into().map_err(
+                |e| TryFromProtoError::invalid(MultisigAggregatedSignature::BITMAP_FIELD, e),
+            )?;
         let committee = value
             .committee
             .as_ref()

@@ -10,7 +10,7 @@ use types::{
 
 use crate::execution::BPS_DENOMINATOR;
 
-use super::{object::check_ownership, FeeCalculator, TransactionExecutor};
+use super::{FeeCalculator, TransactionExecutor, object::check_ownership};
 
 /// Executor for coin-related transactions
 pub struct CoinExecutor;
@@ -188,9 +188,7 @@ impl CoinExecutor {
         // Check for primary gas coin
         let gas_object_id = store.gas_object_id;
         let has_gas_coin = gas_object_id.is_some()
-            && coin_refs
-                .iter()
-                .any(|coin_ref| coin_ref.0 == gas_object_id.unwrap());
+            && coin_refs.iter().any(|coin_ref| coin_ref.0 == gas_object_id.unwrap());
 
         match amounts {
             // Specific amounts provided
@@ -398,9 +396,7 @@ impl CoinExecutor {
                         let first_coin_id = coin_refs[0].0;
                         let first_coin_object =
                             store.read_object(&first_coin_id).ok_or_else(|| {
-                                ExecutionFailureStatus::ObjectNotFound {
-                                    object_id: first_coin_id,
-                                }
+                                ExecutionFailureStatus::ObjectNotFound { object_id: first_coin_id }
                             })?;
 
                         // Check ownership of first coin
@@ -457,20 +453,12 @@ impl TransactionExecutor for CoinExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::TransferCoin {
-                coin,
-                amount,
-                recipient,
-            } => self.execute_transfer_coin(
-                store, coin, amount, recipient, signer, tx_digest, value_fee,
-            ),
-            TransactionKind::PayCoins {
-                coins,
-                amounts,
-                recipients,
-            } => self.execute_pay_coins(
-                store, coins, amounts, recipients, signer, tx_digest, value_fee,
-            ),
+            TransactionKind::TransferCoin { coin, amount, recipient } => self
+                .execute_transfer_coin(
+                    store, coin, amount, recipient, signer, tx_digest, value_fee,
+                ),
+            TransactionKind::PayCoins { coins, amounts, recipients } => self
+                .execute_pay_coins(store, coins, amounts, recipients, signer, tx_digest, value_fee),
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }
@@ -486,10 +474,7 @@ impl FeeCalculator for CoinExecutor {
                     *specific_amount
                 } else {
                     // For full transfer, get the actual coin balance
-                    store
-                        .read_object(&coin.0)
-                        .and_then(|obj| obj.as_coin())
-                        .unwrap_or(0)
+                    store.read_object(&coin.0).and_then(|obj| obj.as_coin()).unwrap_or(0)
                 };
 
                 if transfer_amount == 0 {
@@ -525,11 +510,9 @@ impl FeeCalculator for CoinExecutor {
 
 /// Verifies an object is a coin and returns its balance
 fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    object
-        .as_coin()
-        .ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-            object_id: object.id(),
-            expected_type: ObjectType::Coin,
-            actual_type: object.type_().clone(),
-        })
+    object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
+        object_id: object.id(),
+        expected_type: ObjectType::Coin,
+        actual_type: object.type_().clone(),
+    })
 }

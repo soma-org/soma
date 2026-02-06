@@ -55,9 +55,7 @@ fn main() -> Result<()> {
         )
         .build();
 
-    tonic_build::manual::Builder::new()
-        .out_dir("src/proto")
-        .compile(&[discovery_service]);
+    tonic_build::manual::Builder::new().out_dir("src/proto").compile(&[discovery_service]);
 
     Ok(())
 }

@@ -52,38 +52,17 @@ pub enum ExecutionError {
     NoActiveModels,
     TargetNotFound,
     TargetNotOpen,
-    TargetExpired {
-        generation_epoch: u64,
-        current_epoch: u64,
-    },
+    TargetExpired { generation_epoch: u64, current_epoch: u64 },
     TargetNotFilled,
-    ChallengeWindowOpen {
-        fill_epoch: u64,
-        current_epoch: u64,
-    },
+    ChallengeWindowOpen { fill_epoch: u64, current_epoch: u64 },
     TargetAlreadyClaimed,
 
     // Submission errors
-    ModelNotInTarget {
-        model_id: Address,
-        target_id: Address,
-    },
-    EmbeddingDimensionMismatch {
-        expected: u64,
-        actual: u64,
-    },
-    DistanceExceedsThreshold {
-        score: i64,
-        threshold: i64,
-    },
-    ReconstructionExceedsThreshold {
-        score: u64,
-        threshold: u64,
-    },
-    InsufficientBond {
-        required: u64,
-        provided: u64,
-    },
+    ModelNotInTarget { model_id: Address, target_id: Address },
+    EmbeddingDimensionMismatch { expected: u64, actual: u64 },
+    DistanceExceedsThreshold { score: i64, threshold: i64 },
+    ReconstructionExceedsThreshold { score: u64, threshold: u64 },
+    InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 
     // Coin errors

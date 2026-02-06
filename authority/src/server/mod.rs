@@ -34,11 +34,7 @@ impl ServerBuilder {
         let (health_reporter, health_service) = tonic_health::server::health_reporter();
         let router = tonic::service::Routes::new(health_service);
 
-        Self {
-            config: config.to_owned(),
-            router,
-            health_reporter,
-        }
+        Self { config: config.to_owned(), router, health_reporter }
     }
 
     pub fn health_reporter(&self) -> tonic_health::server::HealthReporter {
@@ -68,10 +64,7 @@ impl ServerBuilder {
             // is configured with a tls_config
             .allow_insecure(true);
 
-        let request_timeout = self
-            .config
-            .request_timeout
-            .unwrap_or(DEFAULT_GRPC_REQUEST_TIMEOUT);
+        let request_timeout = self.config.request_timeout.unwrap_or(DEFAULT_GRPC_REQUEST_TIMEOUT);
 
         fn add_path_to_request_header<T>(request: &Request<T>) -> Option<HeaderValue> {
             let path = request.uri().path();
@@ -128,11 +121,7 @@ impl ServerBuilder {
             .map_err(|e| eyre!(e))?;
 
         let local_addr = update_tcp_port_in_multiaddr(addr, server_handle.local_addr().port());
-        Ok(Server {
-            server: server_handle,
-            local_addr,
-            health_reporter: self.health_reporter,
-        })
+        Ok(Server { server: server_handle, local_addr, health_reporter: self.health_reporter })
     }
 }
 

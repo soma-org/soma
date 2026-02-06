@@ -11,20 +11,13 @@
 //! - Spawn-on-fill: filling a target spawns 1 replacement
 
 use ndarray::Array1;
-use rand::{rngs::StdRng, seq::SliceRandom as _, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom as _};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    base::SomaAddress,
-    committee::EpochId,
-    crypto::DefaultHash,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::ExecutionResult,
-    model::ModelId,
-    object::ObjectID,
-    system_state::model_registry::ModelRegistry,
-    system_state::target_state::TargetState,
+    base::SomaAddress, committee::EpochId, crypto::DefaultHash, digests::TransactionDigest,
+    effects::ExecutionFailureStatus, error::ExecutionResult, model::ModelId, object::ObjectID,
+    system_state::model_registry::ModelRegistry, system_state::target_state::TargetState,
 };
 use fastcrypto::hash::HashFunction as _;
 
@@ -246,11 +239,7 @@ pub fn make_target_seed(tx_digest: &TransactionDigest, creation_num: u64) -> u64
     hasher.update(&creation_num.to_le_bytes());
     let hash = hasher.finalize();
     // Use first 8 bytes as u64 seed
-    u64::from_le_bytes(
-        hash.as_ref()[..8]
-            .try_into()
-            .expect("hash is at least 8 bytes"),
-    )
+    u64::from_le_bytes(hash.as_ref()[..8].try_into().expect("hash is at least 8 bytes"))
 }
 
 #[cfg(test)]

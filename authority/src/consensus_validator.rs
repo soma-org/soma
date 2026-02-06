@@ -7,8 +7,8 @@ use types::error::SomaResult;
 use types::transaction::Transaction;
 use types::{
     consensus::{
-        block::{BlockRef, TransactionIndex},
         ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind,
+        block::{BlockRef, TransactionIndex},
     },
     error::SomaError,
 };
@@ -34,11 +34,7 @@ impl TxValidator {
     ) -> Self {
         let epoch_store = authority_state.load_epoch_store_one_call_per_task().clone();
         info!("TxValidator constructed for epoch {}", epoch_store.epoch());
-        Self {
-            authority_state,
-
-            checkpoint_service,
-        }
+        Self { authority_state, checkpoint_service }
     }
 
     fn validate_transactions(&self, txs: &[ConsensusTransactionKind]) -> Result<(), SomaError> {
@@ -77,8 +73,7 @@ impl TxValidator {
 
         // All checkpoint sigs have been verified, forward them to the checkpoint service
         for ckpt in ckpt_messages {
-            self.checkpoint_service
-                .notify_checkpoint_signature(&epoch_store, ckpt)?;
+            self.checkpoint_service.notify_checkpoint_signature(&epoch_store, ckpt)?;
         }
 
         Ok(())
@@ -128,8 +123,7 @@ impl TxValidator {
     ) -> SomaResult<()> {
         let tx = epoch_store.verify_transaction(*tx)?;
 
-        self.authority_state
-            .handle_vote_transaction(epoch_store, tx)?;
+        self.authority_state.handle_vote_transaction(epoch_store, tx)?;
 
         Ok(())
     }
@@ -148,10 +142,8 @@ fn tx_kind_from_bytes(tx: &[u8]) -> Result<ConsensusTransactionKind, ValidationE
 
 impl TransactionVerifier for TxValidator {
     fn verify_batch(&self, batch: &[&[u8]]) -> Result<(), ValidationError> {
-        let txs: Vec<_> = batch
-            .iter()
-            .map(|tx| tx_kind_from_bytes(tx))
-            .collect::<Result<Vec<_>, _>>()?;
+        let txs: Vec<_> =
+            batch.iter().map(|tx| tx_kind_from_bytes(tx)).collect::<Result<Vec<_>, _>>()?;
 
         self.validate_transactions(&txs)
             .map_err(|e| ValidationError::InvalidTransaction(e.to_string()))
@@ -162,10 +154,8 @@ impl TransactionVerifier for TxValidator {
         block_ref: &BlockRef,
         batch: &[&[u8]],
     ) -> Result<Vec<TransactionIndex>, ValidationError> {
-        let txs: Vec<_> = batch
-            .iter()
-            .map(|tx| tx_kind_from_bytes(tx))
-            .collect::<Result<Vec<_>, _>>()?;
+        let txs: Vec<_> =
+            batch.iter().map(|tx| tx_kind_from_bytes(tx)).collect::<Result<Vec<_>, _>>()?;
 
         self.validate_transactions(&txs)
             .map_err(|e| ValidationError::InvalidTransaction(e.to_string()))?;

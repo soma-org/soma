@@ -1,7 +1,7 @@
 use fastcrypto::traits::KeyPair;
 use futures::FutureExt;
-use node::handle::SomaNodeHandle;
 use node::SomaNode;
+use node::handle::SomaNodeHandle;
 use std::sync::{Arc, Weak};
 use std::thread;
 use tracing::{info, trace};
@@ -70,11 +70,7 @@ impl Container {
 
         let node = startup_receiver.await.unwrap();
 
-        Self {
-            join_handle: Some(thread),
-            cancel_sender: Some(cancel_sender),
-            node,
-        }
+        Self { join_handle: Some(thread), cancel_sender: Some(cancel_sender), node }
     }
 
     /// Get a SomaNodeHandle to the node owned by the container.

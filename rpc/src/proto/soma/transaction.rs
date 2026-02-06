@@ -46,10 +46,7 @@ impl TryFrom<&Metadata> for crate::types::Metadata {
 
                 let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
 
-                Ok(crate::types::Metadata::V1(crate::types::MetadataV1 {
-                    checksum,
-                    size,
-                }))
+                Ok(crate::types::Metadata::V1(crate::types::MetadataV1 { checksum, size }))
             }
         }
     }
@@ -85,26 +82,18 @@ impl TryFrom<&Manifest> for crate::types::Manifest {
         {
             Version::V1(v1) => {
                 let url = Url::parse(
-                    v1.url
-                        .clone()
-                        .ok_or_else(|| TryFromProtoError::missing("url"))?
-                        .as_str(),
+                    v1.url.clone().ok_or_else(|| TryFromProtoError::missing("url"))?.as_str(),
                 )
                 .map_err(|e| TryFromProtoError::invalid("url", e))?;
 
-                let metadata = &v1
-                    .metadata
-                    .clone()
-                    .ok_or_else(|| TryFromProtoError::missing("metadata"))?;
+                let metadata =
+                    &v1.metadata.clone().ok_or_else(|| TryFromProtoError::missing("metadata"))?;
 
                 let metadata = metadata.try_into().map_err(|_| {
                     TryFromProtoError::invalid("checksum", "invalid checksum length")
                 })?;
 
-                Ok(crate::types::Manifest::V1(crate::types::ManifestV1 {
-                    url,
-                    metadata,
-                }))
+                Ok(crate::types::Manifest::V1(crate::types::ManifestV1 { url, metadata }))
             }
         }
     }
@@ -142,12 +131,7 @@ impl Merge<crate::types::Transaction> for Transaction {
 
 impl Merge<&Transaction> for Transaction {
     fn merge(&mut self, source: &Transaction, mask: &FieldMaskTree) {
-        let Transaction {
-            digest,
-            kind,
-            sender,
-            gas_payment,
-        } = source;
+        let Transaction { digest, kind, sender, gas_payment } = source;
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -177,11 +161,8 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
         //         .map_err(|e| TryFromProtoError::invalid(Transaction::BCS_FIELD, e));
         // }
 
-        let kind = value
-            .kind
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("kind"))?
-            .try_into()?;
+        let kind =
+            value.kind.as_ref().ok_or_else(|| TryFromProtoError::missing("kind"))?.try_into()?;
 
         let sender = value
             .sender
@@ -190,17 +171,10 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
             .parse()
             .map_err(|e| TryFromProtoError::invalid(Transaction::SENDER_FIELD, e))?;
 
-        let gas_payment = value
-            .gas_payment
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let gas_payment =
+            value.gas_payment.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        Ok(Self {
-            kind,
-            sender,
-            gas_payment,
-        })
+        Ok(Self { kind, sender, gas_payment })
     }
 }
 
@@ -227,47 +201,20 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             SetCommissionRate { new_rate } => Kind::SetCommissionRate(new_rate.into()),
 
             // Transfers and payments
-            TransferCoin {
-                coin,
-                amount,
-                recipient,
-            } => Kind::TransferCoin(
-                TransferCoinArgs {
-                    coin,
-                    amount,
-                    recipient,
-                }
-                .into(),
-            ),
-            PayCoins {
-                coins,
-                amounts,
-                recipients,
-            } => Kind::PayCoins(
-                PayCoinsArgs {
-                    coins,
-                    amounts,
-                    recipients,
-                }
-                .into(),
-            ),
+            TransferCoin { coin, amount, recipient } => {
+                Kind::TransferCoin(TransferCoinArgs { coin, amount, recipient }.into())
+            }
+            PayCoins { coins, amounts, recipients } => {
+                Kind::PayCoins(PayCoinsArgs { coins, amounts, recipients }.into())
+            }
             TransferObjects { objects, recipient } => {
                 Kind::TransferObjects(TransferObjectsArgs { objects, recipient }.into())
             }
 
             // Staking
-            AddStake {
-                address,
-                coin_ref,
-                amount,
-            } => Kind::AddStake(
-                AddStakeArgs {
-                    address,
-                    coin_ref,
-                    amount,
-                }
-                .into(),
-            ),
+            AddStake { address, coin_ref, amount } => {
+                Kind::AddStake(AddStakeArgs { address, coin_ref, amount }.into())
+            }
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
 
             // Model transactions
@@ -299,15 +246,13 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
                 }),
             }),
-            AddStakeToModel {
-                model_id,
-                coin_ref,
-                amount,
-            } => Kind::AddStakeToModel(super::AddStakeToModel {
-                model_id: Some(model_id.to_string()),
-                coin_ref: Some(coin_ref.into()),
-                amount,
-            }),
+            AddStakeToModel { model_id, coin_ref, amount } => {
+                Kind::AddStakeToModel(super::AddStakeToModel {
+                    model_id: Some(model_id.to_string()),
+                    coin_ref: Some(coin_ref.into()),
+                    amount,
+                })
+            }
             SetModelCommissionRate { model_id, new_rate } => {
                 Kind::SetModelCommissionRate(super::SetModelCommissionRate {
                     model_id: Some(model_id.to_string()),
@@ -317,9 +262,9 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             DeactivateModel { model_id } => Kind::DeactivateModel(super::DeactivateModel {
                 model_id: Some(model_id.to_string()),
             }),
-            ReportModel { model_id } => Kind::ReportModel(super::ReportModel {
-                model_id: Some(model_id.to_string()),
-            }),
+            ReportModel { model_id } => {
+                Kind::ReportModel(super::ReportModel { model_id: Some(model_id.to_string()) })
+            }
             UndoReportModel { model_id } => Kind::UndoReportModel(super::UndoReportModel {
                 model_id: Some(model_id.to_string()),
             }),
@@ -353,11 +298,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
     fn try_from(value: &TransactionKind) -> Result<Self, Self::Error> {
         use transaction_kind::Kind;
 
-        match value
-            .kind
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("kind"))?
-        {
+        match value.kind.as_ref().ok_or_else(|| TryFromProtoError::missing("kind"))? {
             Kind::ChangeEpoch(change_epoch) => Self::ChangeEpoch(change_epoch.try_into()?),
             Kind::Genesis(genesis) => Self::Genesis(genesis.try_into()?),
             Kind::ConsensusCommitPrologue(prologue) => {
@@ -387,9 +328,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 Self::UpdateValidatorMetadata(metadata.try_into()?)
             }
             Kind::SetCommissionRate(rate) => Self::SetCommissionRate {
-                new_rate: rate
-                    .new_rate
-                    .ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
+                new_rate: rate.new_rate.ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
             },
 
             // Transfers and payments
@@ -408,19 +347,12 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
             },
             Kind::PayCoins(pay) => Self::PayCoins {
-                coins: pay
-                    .coins
-                    .iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<_, _>>()?,
+                coins: pay.coins.iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
                 amounts: Some(pay.amounts.clone()),
                 recipients: pay
                     .recipients
                     .iter()
-                    .map(|r| {
-                        r.parse()
-                            .map_err(|e| TryFromProtoError::invalid("recipients", e))
-                    })
+                    .map(|r| r.parse().map_err(|e| TryFromProtoError::invalid("recipients", e)))
                     .collect::<Result<_, _>>()?,
             },
             Kind::TransferObjects(transfer) => Self::TransferObjects {
@@ -588,9 +520,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("model_id"))?
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                new_rate: args
-                    .new_rate
-                    .ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
+                new_rate: args.new_rate.ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
             },
             Kind::DeactivateModel(args) => Self::DeactivateModel {
                 model_id: args
@@ -733,9 +663,7 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
 // RemoveValidatorArgs conversions
 impl From<crate::types::RemoveValidatorArgs> for RemoveValidator {
     fn from(value: crate::types::RemoveValidatorArgs) -> Self {
-        Self {
-            pubkey_bytes: Some(value.pubkey_bytes.into()),
-        }
+        Self { pubkey_bytes: Some(value.pubkey_bytes.into()) }
     }
 }
 
@@ -791,9 +719,7 @@ impl From<crate::types::ConsensusCommitPrologue> for ConsensusCommitPrologue {
         Self {
             epoch: Some(value.epoch),
             round: Some(value.round),
-            commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(
-                value.commit_timestamp_ms,
-            )),
+            commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(value.commit_timestamp_ms)),
             consensus_commit_digest: Some(value.consensus_commit_digest.to_string()),
             additional_state_digest: Some(value.additional_state_digest.to_string()),
             sub_dag_index: value.sub_dag_index,
@@ -805,12 +731,8 @@ impl TryFrom<&ConsensusCommitPrologue> for crate::types::ConsensusCommitPrologue
     type Error = TryFromProtoError;
 
     fn try_from(value: &ConsensusCommitPrologue) -> Result<Self, Self::Error> {
-        let epoch = value
-            .epoch
-            .ok_or_else(|| TryFromProtoError::missing("epoch"))?;
-        let round = value
-            .round
-            .ok_or_else(|| TryFromProtoError::missing("round"))?;
+        let epoch = value.epoch.ok_or_else(|| TryFromProtoError::missing("epoch"))?;
+        let round = value.round.ok_or_else(|| TryFromProtoError::missing("round"))?;
         let commit_timestamp_ms = value
             .commit_timestamp
             .ok_or_else(|| TryFromProtoError::missing("commit_timestamp"))?
@@ -909,40 +831,28 @@ impl TryFrom<&ChangeEpoch> for crate::types::ChangeEpoch {
             .ok_or_else(|| TryFromProtoError::missing("epoch_randomness"))?
             .into();
 
-        Ok(Self {
-            epoch,
-            protocol_version,
-            fees,
-            epoch_start_timestamp_ms,
-            epoch_randomness,
-        })
+        Ok(Self { epoch, protocol_version, fees, epoch_start_timestamp_ms, epoch_randomness })
     }
 }
 
 // ReportValidator conversions
 impl From<crate::types::Address> for ReportValidator {
     fn from(reportee: crate::types::Address) -> Self {
-        Self {
-            reportee: Some(reportee.to_string()),
-        }
+        Self { reportee: Some(reportee.to_string()) }
     }
 }
 
 // UndoReportValidator conversions
 impl From<crate::types::Address> for UndoReportValidator {
     fn from(reportee: crate::types::Address) -> Self {
-        Self {
-            reportee: Some(reportee.to_string()),
-        }
+        Self { reportee: Some(reportee.to_string()) }
     }
 }
 
 // SetCommissionRate conversions
 impl From<u64> for SetCommissionRate {
     fn from(new_rate: u64) -> Self {
-        Self {
-            new_rate: Some(new_rate),
-        }
+        Self { new_rate: Some(new_rate) }
     }
 }
 
@@ -1015,8 +925,6 @@ impl From<AddStakeArgs> for AddStake {
 // WithdrawStake conversions
 impl From<crate::types::ObjectReference> for WithdrawStake {
     fn from(staked_soma: crate::types::ObjectReference) -> Self {
-        Self {
-            staked_soma: Some(staked_soma.into()),
-        }
+        Self { staked_soma: Some(staked_soma.into()) }
     }
 }

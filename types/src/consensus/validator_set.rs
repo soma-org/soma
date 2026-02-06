@@ -8,7 +8,7 @@ use crate::{
     committee::NetworkMetadata,
     crypto::{
         AuthorityKeyPair, AuthorityPublicKey, AuthorityPublicKeyBytes, AuthoritySignature,
-        DefaultHash as DefaultHashFunction, DIGEST_LENGTH,
+        DIGEST_LENGTH, DefaultHash as DefaultHashFunction,
     },
     error::{ConsensusError, ConsensusResult},
     intent::{Intent, IntentMessage, IntentScope},
@@ -44,9 +44,7 @@ impl ValidatorSet {
         let digest = self.compute_digest()?;
         let message = bcs::to_bytes(&to_validator_set_intent(digest))
             .map_err(ConsensusError::SerializationFailure)?;
-        public_key
-            .verify(&message, signature)
-            .map_err(ConsensusError::SignatureVerificationFailure)
+        public_key.verify(&message, signature).map_err(ConsensusError::SignatureVerificationFailure)
     }
 }
 

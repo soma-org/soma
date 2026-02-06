@@ -66,10 +66,7 @@ impl ValidatorClientStats {
                 entry.get_mut().add_value(new_latency);
             }
             Entry::Vacant(entry) => {
-                entry.insert(MovingWindow::new(
-                    new_latency,
-                    self.latency_moving_window_size,
-                ));
+                entry.insert(MovingWindow::new(new_latency, self.latency_moving_window_size));
             }
         }
     }
@@ -77,20 +74,15 @@ impl ValidatorClientStats {
 
 impl ClientObservedStats {
     pub fn new(config: ValidatorClientMonitorConfig) -> Self {
-        Self {
-            validator_stats: HashMap::new(),
-            config,
-        }
+        Self { validator_stats: HashMap::new(), config }
     }
 
     /// Record client-observed interaction result with a validator.
     ///
     /// Updates reliability scores and latency measurements.
     pub fn record_interaction_result(&mut self, feedback: OperationFeedback) {
-        let validator_stats = self
-            .validator_stats
-            .entry(feedback.authority_name)
-            .or_insert_with(|| {
+        let validator_stats =
+            self.validator_stats.entry(feedback.authority_name).or_insert_with(|| {
                 ValidatorClientStats::new(
                     1.0,
                     self.config.reliability_moving_window_size,
@@ -166,8 +158,7 @@ impl ClientObservedStats {
     pub fn retain_validators(&mut self, current_validators: &[AuthorityName]) {
         let cur_len = self.validator_stats.len();
         let validator_set: HashSet<_> = current_validators.iter().collect();
-        self.validator_stats
-            .retain(|validator, _| validator_set.contains(validator));
+        self.validator_stats.retain(|validator, _| validator_set.contains(validator));
         let removed_count = cur_len - self.validator_stats.len();
         if removed_count > 0 {
             debug!("Removed {} stale validator data", removed_count);

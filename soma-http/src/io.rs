@@ -30,9 +30,7 @@ impl<IO> ServerIo<IO> {
             Self::TlsIo(io) => {
                 let (_inner, session) = io.get_ref();
 
-                session
-                    .peer_certificates()
-                    .map(|certs| certs.to_owned().into())
+                session.peer_certificates().map(|certs| certs.to_owned().into())
             }
         }
     }

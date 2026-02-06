@@ -19,12 +19,7 @@ impl TransactionFee {
         value_fee: u64,
         total_fee: u64,
     ) -> TransactionFee {
-        TransactionFee {
-            base_fee,
-            operation_fee,
-            value_fee,
-            total_fee,
-        }
+        TransactionFee { base_fee, operation_fee, value_fee, total_fee }
     }
 }
 

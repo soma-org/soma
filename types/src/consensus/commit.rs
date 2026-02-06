@@ -13,7 +13,7 @@ use super::{
     leader_scoring::ReputationScores,
 };
 use crate::committee::AuthorityIndex;
-use crate::crypto::{DefaultHash, DIGEST_LENGTH};
+use crate::crypto::{DIGEST_LENGTH, DefaultHash};
 use crate::storage::consensus::Store;
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
@@ -67,13 +67,7 @@ impl Commit {
         leader: BlockRef,
         blocks: Vec<BlockRef>,
     ) -> Self {
-        Commit::V1(CommitV1 {
-            index,
-            previous_digest,
-            timestamp_ms,
-            leader,
-            blocks,
-        })
+        Commit::V1(CommitV1 { index, previous_digest, timestamp_ms, leader, blocks })
     }
 
     pub fn serialize(&self) -> Result<Bytes, bcs::Error> {
@@ -154,11 +148,7 @@ pub struct TrustedCommit {
 impl TrustedCommit {
     pub fn new_trusted(commit: Commit, serialized: Bytes) -> Self {
         let digest = Self::compute_digest(&serialized);
-        Self {
-            inner: Arc::new(commit),
-            digest,
-            serialized,
-        }
+        Self { inner: Arc::new(commit), digest, serialized }
     }
 
     pub fn new_for_test(
@@ -174,10 +164,7 @@ impl TrustedCommit {
     }
 
     pub fn reference(&self) -> CommitRef {
-        CommitRef {
-            index: self.index(),
-            digest: self.digest(),
-        }
+        CommitRef { index: self.index(), digest: self.digest() }
     }
 
     pub fn digest(&self) -> CommitDigest {
@@ -235,10 +222,7 @@ pub struct CertifiedCommit {
 
 impl CertifiedCommit {
     pub fn new_certified(commit: TrustedCommit, blocks: Vec<VerifiedBlock>) -> Self {
-        Self {
-            commit: Arc::new(commit),
-            blocks,
-        }
+        Self { commit: Arc::new(commit), blocks }
     }
 
     pub fn blocks(&self) -> &[VerifiedBlock] {
@@ -294,11 +278,7 @@ impl fmt::Display for CommitDigest {
 
 impl fmt::Debug for CommitDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{}",
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0)
-        )
+        write!(f, "{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, self.0))
     }
 }
 
@@ -402,11 +382,7 @@ impl CommittedSubDag {
 // Sort the blocks of the sub-dag blocks by round number then authority index. Any
 // deterministic & stable algorithm works.
 pub fn sort_sub_dag_blocks(blocks: &mut [VerifiedBlock]) {
-    blocks.sort_by(|a, b| {
-        a.round()
-            .cmp(&b.round())
-            .then_with(|| a.author().cmp(&b.author()))
-    })
+    blocks.sort_by(|a, b| a.round().cmp(&b.round()).then_with(|| a.author().cmp(&b.author())))
 }
 
 impl Display for CommittedSubDag {
@@ -416,10 +392,7 @@ impl Display for CommittedSubDag {
             "{}@{} [{}])",
             self.commit_ref,
             self.leader,
-            self.blocks
-                .iter()
-                .map(|b| b.reference().to_string())
-                .join(", ")
+            self.blocks.iter().map(|b| b.reference().to_string()).join(", ")
         )
     }
 }
@@ -431,10 +404,7 @@ impl fmt::Debug for CommittedSubDag {
             "{}@{} [{}])",
             self.commit_ref,
             self.leader,
-            self.blocks
-                .iter()
-                .map(|b| b.reference().to_string())
-                .join(", ")
+            self.blocks.iter().map(|b| b.reference().to_string()).join(", ")
         )?;
         write!(
             f,
@@ -479,18 +449,12 @@ pub fn load_committed_subdag_from_store(
     let leader_block_idx = leader_block_idx.expect("Leader block must be in the sub-dag");
     let leader_block_ref = blocks[leader_block_idx].reference();
 
-    let mut subdag = CommittedSubDag::new(
-        leader_block_ref,
-        blocks,
-        commit.timestamp_ms(),
-        commit.reference(),
-    );
+    let mut subdag =
+        CommittedSubDag::new(leader_block_ref, blocks, commit.timestamp_ms(), commit.reference());
 
     subdag.reputation_scores_desc = reputation_scores_desc;
 
-    let reject_votes = store
-        .read_rejected_transactions(commit.reference())
-        .unwrap();
+    let reject_votes = store.read_rejected_transactions(commit.reference()).unwrap();
     if let Some(reject_votes) = reject_votes {
         subdag.decided_with_local_blocks = true;
         subdag.recovered_rejected_transactions = true;
@@ -651,10 +615,7 @@ impl CommitRange {
     }
 
     pub fn size(&self) -> usize {
-        self.0
-            .end
-            .checked_sub(self.0.start)
-            .expect("Range should never have end < start") as usize
+        self.0.end.checked_sub(self.0.start).expect("Range should never have end < start") as usize
     }
 
     /// Check whether the two ranges have the same size.
@@ -670,9 +631,7 @@ impl CommitRange {
 
 impl Ord for CommitRange {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.start()
-            .cmp(&other.start())
-            .then_with(|| self.end().cmp(&other.end()))
+        self.start().cmp(&other.start()).then_with(|| self.end().cmp(&other.end()))
     }
 }
 

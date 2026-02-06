@@ -30,9 +30,7 @@ impl SubscriptionService for RpcService {
         let read_mask = FieldMaskTree::from(read_mask);
 
         let Some(mut receiver) = subscription_service_handle.register_subscription().await else {
-            return Err(tonic::Status::unavailable(
-                "too many existing subscriptions",
-            ));
+            return Err(tonic::Status::unavailable("too many existing subscriptions"));
         };
 
         let store = self.reader.clone();

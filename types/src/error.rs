@@ -110,25 +110,16 @@ pub enum SomaError {
         "Failed to verify Tx certificate with executed effects, error: {error:?}, validator: \
          {validator_name:?}"
     )]
-    FailedToVerifyTxCertWithExecutedEffects {
-        validator_name: AuthorityName,
-        error: String,
-    },
+    FailedToVerifyTxCertWithExecutedEffects { validator_name: AuthorityName, error: String },
     /// Error when too many authorities report errors for an operation
     #[error("Too many authority errors were detected for {}: {:?}", action, errors)]
-    TooManyIncorrectAuthorities {
-        errors: Vec<(AuthorityName, SomaError)>,
-        action: String,
-    },
+    TooManyIncorrectAuthorities { errors: Vec<(AuthorityName, SomaError)>, action: String },
 
     /// Error when a signature or certificate is from the wrong epoch
     #[error(
         "Signature or certificate from wrong epoch, expected {expected_epoch}, got {actual_epoch}"
     )]
-    WrongEpoch {
-        expected_epoch: EpochId,
-        actual_epoch: EpochId,
-    },
+    WrongEpoch { expected_epoch: EpochId, actual_epoch: EpochId },
 
     /// Error when the number of signatures doesn't match expected signers
     #[error("Expect {expected} signer signatures but got {actual}")]
@@ -136,10 +127,7 @@ pub enum SomaError {
 
     /// Error when a required signature is missing
     #[error("Required Signature from {expected} is absent {:?}", actual)]
-    SignerSignatureAbsent {
-        expected: String,
-        actual: Vec<String>,
-    },
+    SignerSignatureAbsent { expected: String, actual: Vec<String> },
 
     /// Error when a signature is from an unknown authority
     #[error(
@@ -148,11 +136,7 @@ pub enum SomaError {
         signer,
         index
     )]
-    UnknownSigner {
-        signer: Option<String>,
-        index: Option<u32>,
-        committee: Box<Committee>,
-    },
+    UnknownSigner { signer: Option<String>, index: Option<u32>, committee: Box<Committee> },
 
     /// Error when an authenticator is invalid
     #[error("Invalid authenticator")]
@@ -168,17 +152,11 @@ pub enum SomaError {
         signer,
         conflicting_sig
     )]
-    StakeAggregatorRepeatedSigner {
-        signer: AuthorityName,
-        conflicting_sig: bool,
-    },
+    StakeAggregatorRepeatedSigner { signer: AuthorityName, conflicting_sig: bool },
 
     /// Error when a validator is suspected of Byzantine behavior
     #[error("Validator {authority:?} is faulty in a Byzantine manner: {reason:?}")]
-    ByzantineAuthoritySuspicion {
-        authority: AuthorityName,
-        reason: String,
-    },
+    ByzantineAuthoritySuspicion { authority: AuthorityName, reason: String },
 
     /// Error when a digest has an invalid length
     #[error("Invalid digest length. Expected {expected}, got {actual}")]
@@ -205,42 +183,26 @@ pub enum SomaError {
     InvalidTransactionDigest,
 
     /// Error when a referenced object cannot be found
-    #[error(
-        "Could not find the referenced object {:?} at version {:?}",
-        object_id,
-        version
-    )]
-    ObjectNotFound {
-        object_id: ObjectID,
-        version: Option<Version>,
-    },
+    #[error("Could not find the referenced object {:?} at version {:?}", object_id, version)]
+    ObjectNotFound { object_id: ObjectID, version: Option<Version> },
     /// Error when an object is already locked by a different transaction
     #[error(
         "Object {obj_ref:?} already locked by a different transaction: {pending_transaction:?}"
     )]
-    ObjectLockConflict {
-        obj_ref: ObjectRef,
-        pending_transaction: TransactionDigest,
-    },
+    ObjectLockConflict { obj_ref: ObjectRef, pending_transaction: TransactionDigest },
 
     /// Error when an object is not available for consumption due to version mismatch
     #[error(
         "Object {provided_obj_ref:?} is not available for consumption, its current version: \
          {current_version:?}"
     )]
-    ObjectVersionUnavailableForConsumption {
-        provided_obj_ref: ObjectRef,
-        current_version: Version,
-    },
+    ObjectVersionUnavailableForConsumption { provided_obj_ref: ObjectRef, current_version: Version },
 
     /// Error when an object's digest doesn't match the expected value
     #[error(
         "Invalid Object digest for object {object_id:?}. Expected digest : {expected_digest:?}"
     )]
-    InvalidObjectDigest {
-        object_id: ObjectID,
-        expected_digest: ObjectDigest,
-    },
+    InvalidObjectDigest { object_id: ObjectID, expected_digest: ObjectDigest },
 
     /// Error when a storage operation fails
     #[error("Storage error: {0}")]
@@ -368,10 +330,7 @@ pub enum SomaError {
     #[error(
         "Validator consensus rounds are lagging behind. last committed leader round: {last_committed_round}, requested round: {round}"
     )]
-    ValidatorConsensusLagging {
-        round: u32,
-        last_committed_round: u32,
-    },
+    ValidatorConsensusLagging { round: u32, last_committed_round: u32 },
 
     #[error("Error executing {0}")]
     ExecutionError(String),
@@ -423,10 +382,7 @@ pub enum SomaError {
 
 impl SomaError {
     pub fn individual_error_indicates_epoch_change(&self) -> bool {
-        matches!(
-            self,
-            SomaError::ValidatorHaltedAtEpochEnd | SomaError::MissingCommitteeAtEpoch(_)
-        )
+        matches!(self, SomaError::ValidatorHaltedAtEpochEnd | SomaError::MissingCommitteeAtEpoch(_))
     }
 
     /// Returns if the error is retryable and if the error's retryability is
@@ -546,10 +502,7 @@ impl From<Status> for SomaError {
         if let Ok(error) = result {
             error
         } else {
-            Self::RpcError(
-                status.message().to_owned(),
-                status.code().description().to_owned(),
-            )
+            Self::RpcError(status.message().to_owned(), status.code().description().to_owned())
         }
     }
 }
@@ -575,9 +528,7 @@ impl From<String> for SomaError {
 
 impl From<&str> for SomaError {
     fn from(error: &str) -> Self {
-        SomaError::GenericAuthorityError {
-            error: error.to_string(),
-        }
+        SomaError::GenericAuthorityError { error: error.to_string() }
     }
 }
 
@@ -621,9 +572,7 @@ struct ExecutionErrorInner {
 
 impl ExecutionError {
     pub fn new(kind: ExecutionErrorKind, source: Option<BoxError>) -> Self {
-        Self {
-            inner: Box::new(ExecutionErrorInner { kind, source }),
-        }
+        Self { inner: Box::new(ExecutionErrorInner { kind, source }) }
     }
 
     pub fn new_with_source<E: Into<BoxError>>(kind: ExecutionErrorKind, source: E) -> Self {
@@ -707,25 +656,15 @@ pub enum ConsensusError {
     #[error(
         "Expected {requested} but received {received} blocks returned from authority {authority}"
     )]
-    UnexpectedNumberOfBlocksFetched {
-        authority: AuthorityIndex,
-        requested: usize,
-        received: usize,
-    },
+    UnexpectedNumberOfBlocksFetched { authority: AuthorityIndex, requested: usize, received: usize },
 
     #[error("Unexpected block returned while fetching missing blocks")]
-    UnexpectedFetchedBlock {
-        index: AuthorityIndex,
-        block_ref: BlockRef,
-    },
+    UnexpectedFetchedBlock { index: AuthorityIndex, block_ref: BlockRef },
 
     #[error(
         "Unexpected block {block_ref} returned while fetching last own block from peer {index}"
     )]
-    UnexpectedLastOwnBlock {
-        index: AuthorityIndex,
-        block_ref: BlockRef,
-    },
+    UnexpectedLastOwnBlock { index: AuthorityIndex, block_ref: BlockRef },
 
     #[error(
         "Too many blocks have been returned from authority {0} when requesting to fetch missing blocks"
@@ -791,11 +730,7 @@ pub enum ConsensusError {
     #[error(
         "Received unexpected start commit from peer {peer}: requested {start}, received {commit:?}"
     )]
-    UnexpectedStartCommit {
-        peer: AuthorityIndex,
-        start: CommitIndex,
-        commit: Box<Commit>,
-    },
+    UnexpectedStartCommit { peer: AuthorityIndex, start: CommitIndex, commit: Box<Commit> },
 
     #[error(
         "Received unexpected commit sequence from peer {peer}: {prev_commit:?}, {curr_commit:?}"
@@ -807,26 +742,15 @@ pub enum ConsensusError {
     },
 
     #[error("Not enough votes ({stake}) on end commit from peer {peer}: {commit:?}")]
-    NotEnoughCommitVotes {
-        stake: Stake,
-        peer: AuthorityIndex,
-        commit: Box<Commit>,
-    },
+    NotEnoughCommitVotes { stake: Stake, peer: AuthorityIndex, commit: Box<Commit> },
 
     #[error("Received unexpected block from peer {peer}: {requested:?} vs {received:?}")]
-    UnexpectedBlockForCommit {
-        peer: AuthorityIndex,
-        requested: BlockRef,
-        received: BlockRef,
-    },
+    UnexpectedBlockForCommit { peer: AuthorityIndex, requested: BlockRef, received: BlockRef },
 
     #[error(
         "Unexpected certified commit index and last committed index. Expected next commit index to be {expected_commit_index}, but found {commit_index}"
     )]
-    UnexpectedCertifiedCommitIndex {
-        expected_commit_index: CommitIndex,
-        commit_index: CommitIndex,
-    },
+    UnexpectedCertifiedCommitIndex { expected_commit_index: CommitIndex, commit_index: CommitIndex },
 
     #[error("RocksDB failure: {0}")]
     RocksDBFailure(#[from] TypedStoreError),

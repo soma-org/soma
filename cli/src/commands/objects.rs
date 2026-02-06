@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use futures::TryStreamExt;
 use rpc::types::ObjectType;
@@ -51,9 +51,7 @@ pub async fn execute(
                 .await
                 .map_err(|e| anyhow!("Failed to get object: {}", e))?;
 
-            Ok(ClientCommandResponse::Object(ObjectOutput::from_object(
-                &object, bcs,
-            )))
+            Ok(ClientCommandResponse::Object(ObjectOutput::from_object(&object, bcs)))
         }
 
         ObjectsCommand::List { owner } => {
@@ -82,10 +80,7 @@ pub async fn execute(
                 objects.push(ObjectOutput::from_object(&obj, false));
             }
 
-            Ok(ClientCommandResponse::Objects(ObjectsOutput {
-                address,
-                objects,
-            }))
+            Ok(ClientCommandResponse::Objects(ObjectsOutput { address, objects }))
         }
 
         ObjectsCommand::Gas { owner } => {
@@ -94,9 +89,7 @@ pub async fn execute(
                 None => context.active_address()?,
             };
 
-            let gas_objects = context
-                .get_all_gas_objects_owned_by_address(address)
-                .await?;
+            let gas_objects = context.get_all_gas_objects_owned_by_address(address).await?;
 
             // Fetch full objects to get balances
             let client = context.get_client().await?;
@@ -109,10 +102,7 @@ pub async fn execute(
                 }
             }
 
-            Ok(ClientCommandResponse::Gas(GasCoinsOutput {
-                address,
-                coins,
-            }))
+            Ok(ClientCommandResponse::Gas(GasCoinsOutput { address, coins }))
         }
     }
 }

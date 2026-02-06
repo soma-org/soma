@@ -91,10 +91,7 @@ where
     Self: DeserializeOwned + Serialize,
 {
     fn persisted(self, path: &Path) -> PersistedConfig<Self> {
-        PersistedConfig {
-            inner: self,
-            path: path.to_path_buf(),
-        }
+        PersistedConfig { inner: self, path: path.to_path_buf() }
     }
 
     fn load<P: AsRef<Path>>(path: P) -> Result<Self, anyhow::Error> {
@@ -139,10 +136,7 @@ where
             .truncate(true)
             .open(path)
             .with_context(|| {
-                format!(
-                    "Unable to open config file for writing at {}",
-                    path.display()
-                )
+                format!("Unable to open config file for writing at {}", path.display())
             })?;
 
         file.lock()

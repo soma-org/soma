@@ -17,7 +17,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{ready, stream, task, Stream, StreamExt};
+use futures::{Stream, StreamExt, ready, stream, task};
 use parking_lot::RwLock;
 use rand::seq::SliceRandom as _;
 use tap::TapFallible;
@@ -27,7 +27,7 @@ use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
 use types::consensus::{
     block::{
-        BlockAPI as _, BlockRef, ExtendedBlock, Round, SignedBlock, VerifiedBlock, GENESIS_ROUND,
+        BlockAPI as _, BlockRef, ExtendedBlock, GENESIS_ROUND, Round, SignedBlock, VerifiedBlock,
     },
     commit::{CommitAPI as _, CommitIndex, CommitRange, TrustedCommit},
     context::Context,
@@ -192,12 +192,10 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
             excluded_ancestors.truncate(excluded_ancestors_limit);
         }
 
-        self.round_tracker
-            .write()
-            .update_from_accepted_block(&ExtendedBlock {
-                block: verified_block,
-                excluded_ancestors: excluded_ancestors.clone(),
-            });
+        self.round_tracker.write().update_from_accepted_block(&ExtendedBlock {
+            block: verified_block,
+            excluded_ancestors: excluded_ancestors.clone(),
+        });
 
         let missing_excluded_ancestors = self
             .core_dispatcher
@@ -209,9 +207,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         if !missing_excluded_ancestors.is_empty() {
             let synchronizer = self.synchronizer.clone();
             tokio::spawn(async move {
-                if let Err(err) = synchronizer
-                    .fetch_blocks(missing_excluded_ancestors, peer)
-                    .await
+                if let Err(err) = synchronizer.fetch_blocks(missing_excluded_ancestors, peer).await
                 {
                     debug!("Failed to fetch excluded ancestors via synchronizer: {err}");
                 }
@@ -231,13 +227,12 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         // If last_received is a valid and more blocks have been proposed since then, this call is
         // guaranteed to return at least some recent blocks, which will help with liveness.
         let missed_blocks = stream::iter(
-            dag_state
-                .get_cached_blocks(self.context.own_index, last_received + 1)
-                .into_iter()
-                .map(|block| ExtendedSerializedBlock {
+            dag_state.get_cached_blocks(self.context.own_index, last_received + 1).into_iter().map(
+                |block| ExtendedSerializedBlock {
                     block: block.serialized().clone(),
                     excluded_ancestors: vec![],
-                }),
+                },
+            ),
         );
 
         let broadcasted_blocks = BroadcastedBlockStream::new(
@@ -247,9 +242,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         );
 
         // Return a stream of blocks that first yields missed blocks as requested, then new blocks.
-        Ok(Box::pin(missed_blocks.chain(
-            broadcasted_blocks.map(ExtendedSerializedBlock::from),
-        )))
+        Ok(Box::pin(missed_blocks.chain(broadcasted_blocks.map(ExtendedSerializedBlock::from))))
     }
 
     // Handles two types of requests:
@@ -336,9 +329,8 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
                 // Compute the lowest missing round per requested authority.
                 let mut lowest_missing_rounds = BTreeMap::<AuthorityIndex, Round>::new();
                 for block_ref in blocks.iter().map(|b| b.reference()) {
-                    let entry = lowest_missing_rounds
-                        .entry(block_ref.author)
-                        .or_insert(block_ref.round);
+                    let entry =
+                        lowest_missing_rounds.entry(block_ref.author).or_insert(block_ref.round);
                     *entry = (*entry).min(block_ref.round);
                 }
 
@@ -357,10 +349,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
                         authority,
                         highest_accepted_round + 1,
                         lowest_missing_round,
-                        self.context
-                            .parameters
-                            .max_blocks_per_sync
-                            .saturating_sub(blocks.len()),
+                        self.context.parameters.max_blocks_per_sync.saturating_sub(blocks.len()),
                     );
                     blocks.extend(missing_blocks);
                     if blocks.len() >= self.context.parameters.max_blocks_per_sync {
@@ -372,19 +361,11 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
 
             blocks
         } else {
-            self.dag_state
-                .read()
-                .get_blocks(&block_refs)
-                .into_iter()
-                .flatten()
-                .collect()
+            self.dag_state.read().get_blocks(&block_refs).into_iter().flatten().collect()
         };
 
         // Return the serialized blocks
-        let bytes = blocks
-            .into_iter()
-            .map(|block| block.serialized().clone())
-            .collect::<Vec<_>>();
+        let bytes = blocks.into_iter().map(|block| block.serialized().clone()).collect::<Vec<_>>();
         Ok(bytes)
     }
 
@@ -398,9 +379,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
             commit_range.start() + self.context.parameters.commit_sync_batch_size as CommitIndex
                 - 1,
         );
-        let mut commits = self
-            .store
-            .scan_commits((commit_range.start()..=inclusive_end).into())?;
+        let mut commits = self.store.scan_commits((commit_range.start()..=inclusive_end).into())?;
         let mut certifier_block_refs = vec![];
         'commit: while let Some(c) = commits.last() {
             let index = c.index();
@@ -423,12 +402,8 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
                 commits.pop();
             }
         }
-        let certifier_blocks = self
-            .store
-            .read_blocks(&certifier_block_refs)?
-            .into_iter()
-            .flatten()
-            .collect();
+        let certifier_blocks =
+            self.store.read_blocks(&certifier_block_refs)?.into_iter().flatten().collect();
         Ok((commits, certifier_blocks))
     }
 
@@ -468,10 +443,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         }
 
         // Return the serialised blocks
-        let result = blocks
-            .into_iter()
-            .map(|block| block.serialized().clone())
-            .collect::<Vec<_>>();
+        let result = blocks.into_iter().map(|block| block.serialized().clone()).collect::<Vec<_>>();
 
         Ok(result)
     }
@@ -482,14 +454,9 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
     ) -> ConsensusResult<(Vec<Round>, Vec<Round>)> {
         let mut highest_received_rounds = self.core_dispatcher.highest_received_rounds();
 
-        let blocks = self
-            .dag_state
-            .read()
-            .get_last_cached_block_per_authority(Round::MAX);
-        let highest_accepted_rounds = blocks
-            .into_iter()
-            .map(|(block, _)| block.round())
-            .collect::<Vec<_>>();
+        let blocks = self.dag_state.read().get_last_cached_block_per_authority(Round::MAX);
+        let highest_accepted_rounds =
+            blocks.into_iter().map(|(block, _)| block.round()).collect::<Vec<_>>();
 
         // Own blocks do not go through the core dispatcher, so they need to be set separately.
         highest_received_rounds[self.context.own_index] =
@@ -549,10 +516,7 @@ struct BroadcastStream<T> {
     // Stores the receiver across poll_next() calls.
     inner: ReusableBoxFuture<
         'static,
-        (
-            Result<T, broadcast::error::RecvError>,
-            broadcast::Receiver<T>,
-        ),
+        (Result<T, broadcast::error::RecvError>, broadcast::Receiver<T>),
     >,
     // Counts total subscriptions / active BroadcastStreams.
     subscription_counter: Arc<SubscriptionCounter>,
@@ -570,11 +534,7 @@ impl<T: 'static + Clone + Send> BroadcastStream<T> {
                 _ => panic!("Unexpected error: {err}"),
             }
         }
-        Self {
-            peer,
-            inner: ReusableBoxFuture::new(make_recv_future(rx)),
-            subscription_counter,
-        }
+        Self { peer, inner: ReusableBoxFuture::new(make_recv_future(rx)), subscription_counter }
     }
 }
 
@@ -597,10 +557,7 @@ impl<T: 'static + Clone + Send> Stream for BroadcastStream<T> {
                     break None;
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(
-                        "Block BroadcastedBlockStream {} lagged by {} messages",
-                        peer, n
-                    );
+                    warn!("Block BroadcastedBlockStream {} lagged by {} messages", peer, n);
                     continue;
                 }
             }
@@ -622,10 +579,7 @@ impl<T> Drop for BroadcastStream<T> {
 
 async fn make_recv_future<T: Clone>(
     mut rx: broadcast::Receiver<T>,
-) -> (
-    Result<T, broadcast::error::RecvError>,
-    broadcast::Receiver<T>,
-) {
+) -> (Result<T, broadcast::error::RecvError>, broadcast::Receiver<T>) {
     let result = rx.recv().await;
     (result, rx)
 }

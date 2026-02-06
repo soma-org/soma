@@ -181,42 +181,30 @@ where
         };
         let tx_digest = *request.transaction.digest();
 
-        let (response, mut executed_locally) = self
-            .execute_transaction_with_effects_waiting(request, client_addr)
-            .await?;
+        let (response, mut executed_locally) =
+            self.execute_transaction_with_effects_waiting(request, client_addr).await?;
 
         if !executed_locally {
-            executed_locally = if matches!(
-                request_type,
-                ExecuteTransactionRequestType::WaitForLocalExecution
-            ) {
-                let executed_locally = Self::wait_for_finalized_tx_executed_locally_with_timeout(
-                    &self.validator_state,
-                    tx_digest,
-                    tx_type,
-                )
-                .await
-                .is_ok();
+            executed_locally =
+                if matches!(request_type, ExecuteTransactionRequestType::WaitForLocalExecution) {
+                    let executed_locally =
+                        Self::wait_for_finalized_tx_executed_locally_with_timeout(
+                            &self.validator_state,
+                            tx_digest,
+                            tx_type,
+                        )
+                        .await
+                        .is_ok();
 
-                executed_locally
-            } else {
-                false
-            };
+                    executed_locally
+                } else {
+                    false
+                };
         }
 
-        let QuorumTransactionResponse {
-            effects,
+        let QuorumTransactionResponse { effects, input_objects, output_objects } = response;
 
-            input_objects,
-            output_objects,
-        } = response;
-
-        let response = ExecuteTransactionResponse {
-            effects,
-
-            input_objects,
-            output_objects,
-        };
+        let response = ExecuteTransactionResponse { effects, input_objects, output_objects };
 
         Ok((response, executed_locally))
     }
@@ -235,23 +223,12 @@ where
             TxType::SingleWriter
         };
 
-        let (response, _) = self
-            .execute_transaction_with_effects_waiting(request, client_addr)
-            .await?;
+        let (response, _) =
+            self.execute_transaction_with_effects_waiting(request, client_addr).await?;
 
-        let QuorumTransactionResponse {
-            effects,
+        let QuorumTransactionResponse { effects, input_objects, output_objects } = response;
 
-            input_objects,
-            output_objects,
-        } = response;
-
-        Ok(ExecuteTransactionResponse {
-            effects,
-
-            input_objects,
-            output_objects,
-        })
+        Ok(ExecuteTransactionResponse { effects, input_objects, output_objects })
     }
 
     /// Shared implementation for executing transactions with parallel local effects waiting
@@ -269,9 +246,8 @@ where
         // Early validation check against local state before submission to catch non-retriable errors
         // TODO: Consider moving this check to TransactionDriver for per-retry validation
         if self.enable_early_validation {
-            if let Err(e) = self
-                .validator_state
-                .check_transaction_validity(&epoch_store, &verified_transaction)
+            if let Err(e) =
+                self.validator_state.check_transaction_validity(&epoch_store, &verified_transaction)
             {
                 let error_category = e.categorize();
                 if !error_category.is_submission_retriable() {
@@ -331,11 +307,7 @@ where
         for i in 0..num_submissions {
             // Generate jitter values outside the async block
             let should_delay = i > 0 && rand::thread_rng().gen_bool(0.8);
-            let delay_ms = if should_delay {
-                rand::thread_rng().gen_range(100..=500)
-            } else {
-                0
-            };
+            let delay_ms = if should_delay { rand::thread_rng().gen_range(100..=500) } else { 0 };
 
             let epoch_store = epoch_store.clone();
             let request = request.clone();
@@ -566,10 +538,7 @@ where
                 .get_transaction_cache_reader()
                 .notify_read_executed_effects_digests(&[tx_digest]),
         )
-        .instrument(error_span!(
-            "transaction_orchestrator::local_execution",
-            ?tx_digest
-        ))
+        .instrument(error_span!("transaction_orchestrator::local_execution", ?tx_digest))
         .await
         {
             Err(_elapsed) => {
@@ -597,10 +566,7 @@ where
                 .load_all_pending_transactions()
                 .expect("failed to load all pending transactions");
             let num_pending_txes = pending_txes.len();
-            info!(
-                "Recovering {} pending transactions from pending_tx_log.",
-                num_pending_txes
-            );
+            info!("Recovering {} pending transactions from pending_tx_log.", num_pending_txes);
             let mut recovery = pending_txes
                 .into_iter()
                 .map(|tx| {
@@ -689,8 +655,7 @@ where
         transaction: TransactionData,
         checks: TransactionChecks,
     ) -> Result<SimulateTransactionResult, SomaError> {
-        self.validator_state
-            .simulate_transaction(transaction, checks)
+        self.validator_state.simulate_transaction(transaction, checks)
     }
 }
 
@@ -717,11 +682,7 @@ impl TransactionSubmissionGuard {
                 "Transaction already being processed, no new submission will be made"
             );
         };
-        Self {
-            pending_tx_log,
-            tx_digest,
-            is_new_transaction,
-        }
+        Self { pending_tx_log, tx_digest, is_new_transaction }
     }
 
     fn is_new_transaction(&self) -> bool {

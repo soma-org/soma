@@ -10,7 +10,7 @@ use crate::dag_state::DagState;
 use parking_lot::RwLock;
 use tracing::{debug, trace, warn};
 use types::consensus::{
-    block::{BlockAPI, BlockRef, Round, VerifiedBlock, GENESIS_ROUND},
+    block::{BlockAPI, BlockRef, GENESIS_ROUND, Round, VerifiedBlock},
     context::Context,
 };
 
@@ -22,11 +22,7 @@ struct SuspendedBlock {
 
 impl SuspendedBlock {
     fn new(block: VerifiedBlock, missing_ancestors: BTreeSet<BlockRef>) -> Self {
-        Self {
-            block,
-            missing_ancestors,
-            timestamp: Instant::now(),
-        }
+        Self { block, missing_ancestors, timestamp: Instant::now() }
     }
 }
 
@@ -158,9 +154,7 @@ impl BlockManager {
 
             // Insert the accepted blocks into DAG state so future blocks including them as
             // ancestors do not get suspended.
-            self.dag_state
-                .write()
-                .accept_blocks(blocks_to_accept.clone());
+            self.dag_state.write().accept_blocks(blocks_to_accept.clone());
 
             accepted_blocks.extend(blocks_to_accept);
         }
@@ -181,14 +175,11 @@ impl BlockManager {
         // ancestors to remove those as well. If we don't do that then it's possible once the missing ancestor is fetched to cause a panic
         // when trying to unsuspend this children as it won't be found in the suspended blocks map.
         if let Some(suspended_block) = self.suspended_blocks.remove(&block.reference()) {
-            suspended_block
-                .missing_ancestors
-                .iter()
-                .for_each(|ancestor| {
-                    if let Some(references) = self.missing_ancestors.get_mut(ancestor) {
-                        references.remove(&block.reference());
-                    }
-                });
+            suspended_block.missing_ancestors.iter().for_each(|ancestor| {
+                if let Some(references) = self.missing_ancestors.get_mut(ancestor) {
+                    references.remove(&block.reference());
+                }
+            });
         }
 
         // Accept this block before any unsuspended children blocks
@@ -215,10 +206,7 @@ impl BlockManager {
 
         block_refs.sort_by_key(|b| b.round);
 
-        trace!(
-            "Trying to find blocks: {}",
-            block_refs.iter().map(|b| b.to_string()).join(",")
-        );
+        trace!("Trying to find blocks: {}", block_refs.iter().map(|b| b.to_string()).join(","));
 
         let mut missing_blocks = BTreeSet::new();
 
@@ -273,19 +261,14 @@ impl BlockManager {
             .collect::<Vec<_>>();
 
         // make sure that we have all the required ancestors in store
-        for (found, ancestor) in dag_state
-            .contains_blocks(ancestors.clone())
-            .into_iter()
-            .zip(ancestors.iter())
+        for (found, ancestor) in
+            dag_state.contains_blocks(ancestors.clone()).into_iter().zip(ancestors.iter())
         {
             if !found {
                 missing_ancestors.insert(*ancestor);
 
                 // mark the block as having missing ancestors
-                self.missing_ancestors
-                    .entry(*ancestor)
-                    .or_default()
-                    .insert(block_ref);
+                self.missing_ancestors.entry(*ancestor).or_default().insert(block_ref);
 
                 // Add the ancestor to the missing blocks set only if it doesn't already exist in the suspended blocks - meaning
                 // that we already have its payload.
@@ -302,8 +285,7 @@ impl BlockManager {
         self.missing_blocks.remove(&block.reference());
 
         if !missing_ancestors.is_empty() {
-            self.suspended_blocks
-                .insert(block_ref, SuspendedBlock::new(block, missing_ancestors));
+            self.suspended_blocks.insert(block_ref, SuspendedBlock::new(block, missing_ancestors));
             return TryAcceptResult::Suspended(ancestors_to_fetch);
         }
 
@@ -334,10 +316,7 @@ impl BlockManager {
 
         // Report the unsuspended blocks
 
-        unsuspended_blocks
-            .into_iter()
-            .map(|block| block.block)
-            .collect()
+        unsuspended_blocks.into_iter().map(|block| block.block).collect()
     }
 
     /// Attempts to unsuspend a block by checking its ancestors and removing the `accepted_dependency` by its local set.
@@ -347,10 +326,8 @@ impl BlockManager {
         block_ref: &BlockRef,
         accepted_dependency: &BlockRef,
     ) -> Option<SuspendedBlock> {
-        let block = self
-            .suspended_blocks
-            .get_mut(block_ref)
-            .expect("Block should be in suspended map");
+        let block =
+            self.suspended_blocks.get_mut(block_ref).expect("Block should be in suspended map");
 
         assert!(
             block.missing_ancestors.remove(accepted_dependency),
@@ -400,9 +377,7 @@ impl BlockManager {
             });
 
             // Now accept the unsuspended blocks
-            self.dag_state
-                .write()
-                .accept_blocks(unsuspended_blocks.clone());
+            self.dag_state.write().accept_blocks(unsuspended_blocks.clone());
         }
 
         debug!(

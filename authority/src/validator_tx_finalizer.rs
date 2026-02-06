@@ -5,9 +5,9 @@ use crate::cache::TransactionCacheRead;
 use arc_swap::ArcSwap;
 use std::cmp::min;
 use std::ops::Add;
+use std::sync::Arc;
 #[cfg(any(msim, test))]
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::select;
 use tokio::time::Instant;
@@ -65,11 +65,7 @@ pub struct ValidatorTxFinalizer<C: Clone> {
 
 impl<C: Clone> ValidatorTxFinalizer<C> {
     pub fn new(agg: Arc<ArcSwap<AuthorityAggregator<C>>>, name: AuthorityName) -> Self {
-        Self {
-            agg,
-            name,
-            config: Arc::new(ValidatorTxFinalizerConfig::default()),
-        }
+        Self { agg, name, config: Arc::new(ValidatorTxFinalizerConfig::default()) }
     }
 
     #[cfg(test)]
@@ -98,10 +94,7 @@ where
     ) {
         let tx_digest = *tx.digest();
         trace!(?tx_digest, "Tracking signed transaction");
-        match self
-            .delay_and_finalize_tx(cache_read, epoch_store, tx)
-            .await
-        {
+        match self.delay_and_finalize_tx(cache_read, epoch_store, tx).await {
             Ok(did_run) => {
                 if did_run {
                     debug!(?tx_digest, "Transaction finalized");
@@ -144,15 +137,10 @@ where
             return Ok(false);
         }
 
-        debug!(
-            ?tx_digest,
-            "Invoking authority aggregator to finalize transaction"
-        );
+        debug!(?tx_digest, "Invoking authority aggregator to finalize transaction");
         tokio::time::timeout(
             self.config.tx_finalization_timeout,
-            self.agg
-                .load()
-                .execute_transaction_block(tx.into_unsigned().inner(), None),
+            self.agg.load().execute_transaction_block(tx.into_unsigned().inner(), None),
         )
         .await??;
 
@@ -176,10 +164,7 @@ where
         };
         // TODO: As an optimization, we could also limit the number of validators that would do this.
         let extra_delay = position as u64 * self.config.validator_delay_increments_sec;
-        let delay = self
-            .config
-            .tx_finalization_delay
-            .add(Duration::from_secs(extra_delay));
+        let delay = self.config.tx_finalization_delay.add(Duration::from_secs(extra_delay));
         Some(min(delay, self.config.validator_max_delay))
     }
 }

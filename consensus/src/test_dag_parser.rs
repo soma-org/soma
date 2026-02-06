@@ -4,13 +4,13 @@ use crate::test_dag_builder::DagBuilder;
 use types::committee::AuthorityIndex;
 
 use nom::{
+    IResult,
     branch::alt,
-    bytes::complete::{tag, take_while1, take_while_m_n},
+    bytes::complete::{tag, take_while_m_n, take_while1},
     character::complete::{char, digit1, multispace0, multispace1, space0, space1},
     combinator::{map_res, opt},
     multi::{many0, separated_list0},
     sequence::{delimited, preceded, terminated, tuple},
-    IResult,
 };
 use types::consensus::{
     block::{BlockRef, Round, Slot},
@@ -179,10 +179,7 @@ fn parse_author_and_connections(input: &str) -> IResult<&str, (AuthorityIndex, V
     // parse author
     let (input, author) = preceded(
         multispace0,
-        terminated(
-            take_while1(|c: char| c.is_alphabetic()),
-            preceded(opt(space0), tag("->")),
-        ),
+        terminated(take_while1(|c: char| c.is_alphabetic()), preceded(opt(space0), tag("->"))),
     )(input)?;
 
     // parse connections
@@ -192,22 +189,15 @@ fn parse_author_and_connections(input: &str) -> IResult<&str, (AuthorityIndex, V
         terminated(char(']'), opt(char(','))),
     )(input)?;
     let (input, _) = opt(multispace1)(input)?;
-    Ok((
-        input,
-        (
-            str_to_authority_index(author).expect("Invalid authority index"),
-            connections,
-        ),
-    ))
+    Ok((input, (str_to_authority_index(author).expect("Invalid authority index"), connections)))
 }
 
 fn parse_block(input: &str) -> IResult<&str, &str> {
     alt((
         map_res(tag("*"), |s: &str| Ok::<_, nom::error::ErrorKind>(s)),
-        map_res(
-            take_while1(|c: char| c.is_alphanumeric() || c == '-'),
-            |s: &str| Ok::<_, nom::error::ErrorKind>(s),
-        ),
+        map_res(take_while1(|c: char| c.is_alphanumeric() || c == '-'), |s: &str| {
+            Ok::<_, nom::error::ErrorKind>(s)
+        }),
     ))(input)
 }
 
@@ -257,10 +247,7 @@ fn parse_slot(input: &str) -> IResult<&str, Slot> {
 // Helper function to convert a string representation (e.g., 'A' or '[26]') to an AuthorityIndex
 fn str_to_authority_index(input: &str) -> Option<AuthorityIndex> {
     if input.starts_with('[') && input.ends_with(']') && input.len() > 2 {
-        input[1..input.len() - 1]
-            .parse::<u32>()
-            .ok()
-            .map(AuthorityIndex::new_for_test)
+        input[1..input.len() - 1].parse::<u32>().ok().map(AuthorityIndex::new_for_test)
     } else if input.len() == 1 && input.chars().next()?.is_ascii_uppercase() {
         // Handle single uppercase ASCII alphabetic character
         let alpha_char = input.chars().next().unwrap();

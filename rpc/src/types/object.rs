@@ -28,11 +28,7 @@ pub struct ObjectReference {
 impl ObjectReference {
     /// Creates a new object reference from the object's id, version, and digest.
     pub fn new(object_id: Address, version: Version, digest: Digest) -> Self {
-        Self {
-            object_id,
-            version,
-            digest,
-        }
+        Self { object_id, version, digest }
     }
 
     /// Returns a reference to the object id that this ObjectReference is referring to.
@@ -52,11 +48,7 @@ impl ObjectReference {
 
     /// Returns a 3-tuple containing the object id, version, and digest.
     pub fn into_parts(self) -> (Address, Version, Digest) {
-        let Self {
-            object_id,
-            version,
-            digest,
-        } = self;
+        let Self { object_id, version, digest } = self;
 
         (object_id, version, digest)
     }
@@ -125,14 +117,7 @@ impl Object {
         previous_transaction: Digest,
         contents: Vec<u8>,
     ) -> Self {
-        Self {
-            object_id,
-            version,
-            object_type,
-            owner,
-            previous_transaction,
-            contents,
-        }
+        Self { object_id, version, object_type, owner, previous_transaction, contents }
     }
 
     /// Return this object's id

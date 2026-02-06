@@ -20,9 +20,7 @@ pub struct ParamModule1D<B: Backend> {
 
 impl<B: Backend> ParamModule1D<B> {
     pub fn new(device: &B::Device) -> Self {
-        ParamModule1D {
-            param: Initializer::Ones.init([4], device),
-        }
+        ParamModule1D { param: Initializer::Ones.init([4], device) }
     }
 
     pub fn forward(&self) -> Tensor<B, 1> {
@@ -37,9 +35,7 @@ pub struct ParamModule3D<B: Backend> {
 
 impl<B: Backend> ParamModule3D<B> {
     pub fn new(device: &B::Device) -> Self {
-        ParamModule3D {
-            param: Initializer::Ones.init([1, 1, 4], device),
-        }
+        ParamModule3D { param: Initializer::Ones.init([1, 1, 4], device) }
     }
 
     pub fn forward(&self) -> Tensor<B, 3> {
@@ -73,9 +69,7 @@ fn test_1d_param() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
 
 #[test]
@@ -98,7 +92,5 @@ fn test_3d_param() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

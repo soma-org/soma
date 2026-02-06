@@ -5,7 +5,7 @@ use std::{
 };
 
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::VerifyingKey};
-use futures::{channel, StreamExt};
+use futures::{StreamExt, channel};
 use parking_lot::RwLock;
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -18,11 +18,11 @@ use types::{
     crypto::NetworkKeyPair,
     multiaddr::Multiaddr,
     peer_id::PeerId,
-    sync::{active_peers::ActivePeers, channel_manager::ChannelManagerRequest, PeerEvent},
     sync::{
         GetKnownPeersRequest, GetKnownPeersResponse, NodeInfo, SignedNodeInfo,
         VerifiedSignedNodeInfo,
     },
+    sync::{PeerEvent, active_peers::ActivePeers, channel_manager::ChannelManagerRequest},
 };
 
 use crate::tonic_gen::p2p_client::P2pClient;
@@ -138,29 +138,21 @@ impl DiscoveryEventLoop {
             PeerEvent::NewPeer { peer_id, address } => {
                 if let Some(_state) = self.active_peers.get_state(&peer_id) {
                     // Create a verified node info for the new peer
-                    let node_info = NodeInfo {
-                        peer_id,
-                        address,
-                        timestamp_ms: now_unix(),
-                    };
+                    let node_info = NodeInfo { peer_id, address, timestamp_ms: now_unix() };
 
                     // Sign the node info with the peer's public key
                     let signed_info = node_info.sign(&self.keypair);
                     let verified_info = VerifiedSignedNodeInfo::new_from_verified(signed_info);
 
-                    self.state
-                        .write()
-                        .known_peers
-                        .insert(peer_id, verified_info);
+                    self.state.write().known_peers.insert(peer_id, verified_info);
 
                     // Spawn a task to query this peer's known peers
-                    self.tasks
-                        .spawn(query_connected_peers_for_their_known_peers(
-                            self.active_peers.clone(),
-                            self.discovery_config.clone(),
-                            self.state.clone(),
-                            self.allowlisted_peers.clone(),
-                        ));
+                    self.tasks.spawn(query_connected_peers_for_their_known_peers(
+                        self.active_peers.clone(),
+                        self.discovery_config.clone(),
+                        self.state.clone(),
+                        self.allowlisted_peers.clone(),
+                    ));
                 }
             }
             PeerEvent::LostPeer { peer_id, reason } => {
@@ -176,15 +168,11 @@ impl DiscoveryEventLoop {
         }
 
         // Get external address from config
-        let address = self
-            .config
-            .external_address
-            .clone()
-            .expect("External address must be set");
+        let address = self.config.external_address.clone().expect("External address must be set");
 
         let our_info = NodeInfo {
             peer_id: PeerId::from(self.keypair.public()), // Assuming you have From<&NetworkKeyPair> for PeerId
-            address: address,
+            address,
             timestamp_ms: now_unix(),
         }
         .sign(&self.keypair);
@@ -193,15 +181,16 @@ impl DiscoveryEventLoop {
     }
 
     async fn configure_preferred_peers(&mut self) {
-        for (peer_id, address) in self
-            .discovery_config
-            .allowlisted_peers
-            .iter()
-            .map(|sp| (sp.peer_id, sp.address.clone()))
-            .chain(self.config.seed_peers.iter().filter_map(|ap| {
-                ap.peer_id
-                    .map(|peer_id| (peer_id, Some(ap.address.clone())))
-            }))
+        for (peer_id, address) in
+            self.discovery_config
+                .allowlisted_peers
+                .iter()
+                .map(|sp| (sp.peer_id, sp.address.clone()))
+                .chain(
+                    self.config.seed_peers.iter().filter_map(|ap| {
+                        ap.peer_id.map(|peer_id| (peer_id, Some(ap.address.clone())))
+                    }),
+                )
         {
             // Try to connect to preferred peer
             if let Some(address) = address {
@@ -238,13 +227,12 @@ impl DiscoveryEventLoop {
     async fn handle_tick(&mut self, _now: Instant, now_unix: u64) {
         self.update_our_info_timestamp(now_unix);
 
-        self.tasks
-            .spawn(query_connected_peers_for_their_known_peers(
-                self.active_peers.clone(),
-                self.discovery_config.clone(),
-                self.state.clone(),
-                self.allowlisted_peers.clone(),
-            ));
+        self.tasks.spawn(query_connected_peers_for_their_known_peers(
+            self.active_peers.clone(),
+            self.discovery_config.clone(),
+            self.state.clone(),
+            self.allowlisted_peers.clone(),
+        ));
 
         // Cull old peers older than a day
         self.state
@@ -287,10 +275,8 @@ impl DiscoveryEventLoop {
             number_to_dial,
         ) {
             let channel_manager_tx = self.channel_manager_tx.clone();
-            let abort_handle = self.tasks.spawn(try_to_connect_to_peer(
-                channel_manager_tx,
-                info.data().clone(),
-            ));
+            let abort_handle =
+                self.tasks.spawn(try_to_connect_to_peer(channel_manager_tx, info.data().clone()));
             self.pending_dials.insert(*peer_id, abort_handle);
         }
 
@@ -314,10 +300,7 @@ impl DiscoveryEventLoop {
 
 pub fn now_unix() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 async fn try_to_connect_to_peer(
@@ -364,33 +347,29 @@ async fn try_to_connect_to_seed_peers(
 ) {
     debug!(?seed_peers, "Connecting to seed peers");
 
-    futures::stream::iter(
-        seed_peers
-            .into_iter()
-            .map(|seed| (seed.clone(), seed.address)),
-    )
-    .for_each_concurrent(max_concurrent, |(seed, address)| {
-        let value = channel_manager_tx.clone();
-        async move {
-            let (tx, rx) = oneshot::channel();
-            if let Err(e) = value
-                .send(ChannelManagerRequest::Connect {
-                    address: address.clone(),
-                    peer_id: seed.peer_id.expect("Seed peers must have peer_id"),
-                    response: tx,
-                })
-                .await
-            {
-                debug!("error sending connect request for seed peer: {e}");
-                return;
-            }
+    futures::stream::iter(seed_peers.into_iter().map(|seed| (seed.clone(), seed.address)))
+        .for_each_concurrent(max_concurrent, |(seed, address)| {
+            let value = channel_manager_tx.clone();
+            async move {
+                let (tx, rx) = oneshot::channel();
+                if let Err(e) = value
+                    .send(ChannelManagerRequest::Connect {
+                        address: address.clone(),
+                        peer_id: seed.peer_id.expect("Seed peers must have peer_id"),
+                        response: tx,
+                    })
+                    .await
+                {
+                    debug!("error sending connect request for seed peer: {e}");
+                    return;
+                }
 
-            if let Err(e) = rx.await {
-                debug!("connect request for seed peer cancelled: {e}");
+                if let Err(e) = rx.await {
+                    debug!("connect request for seed peer cancelled: {e}");
+                }
             }
-        }
-    })
-    .await;
+        })
+        .await;
 }
 
 async fn query_connected_peers_for_their_known_peers(
@@ -407,47 +386,29 @@ async fn query_connected_peers_for_their_known_peers(
         .into_iter()
         .choose_multiple(&mut rand::thread_rng(), config.peers_to_query());
 
-    info!(
-        "Querying {} connected peers for their known peers",
-        peers_to_query.len()
-    );
+    info!("Querying {} connected peers for their known peers", peers_to_query.len());
 
-    let own_info = state
-        .read()
-        .our_info
-        .clone()
-        .expect("Our info should be set");
+    let own_info = state.read().our_info.clone().expect("Our info should be set");
 
     let found_peers = futures::stream::iter(peers_to_query)
         .map(|peer_id| {
-            let channel = active_peers
-                .get(&peer_id)
-                .expect("Active peer should exist")
-                .clone();
+            let channel = active_peers.get(&peer_id).expect("Active peer should exist").clone();
             let mut client = P2pClient::new(channel);
             let own_info = own_info.clone();
             async move {
                 let mut request = Request::new(GetKnownPeersRequest { own_info });
                 request.set_timeout(Duration::from_secs(PEER_QUERY_TIMEOUT_SECS));
-                client
-                    .get_known_peers(request)
-                    .await
-                    .ok()
-                    .map(Response::into_inner)
-                    .map(
-                        |GetKnownPeersResponse {
-                             own_info,
-                             mut known_peers,
-                         }| {
-                            known_peers.push(own_info);
-                            info!(
-                                "Received {} peers from connected peer {}",
-                                known_peers.len(),
-                                peer_id.short_display(4)
-                            );
-                            known_peers
-                        },
-                    )
+                client.get_known_peers(request).await.ok().map(Response::into_inner).map(
+                    |GetKnownPeersResponse { own_info, mut known_peers }| {
+                        known_peers.push(own_info);
+                        info!(
+                            "Received {} peers from connected peer {}",
+                            known_peers.len(),
+                            peer_id.short_display(4)
+                        );
+                        known_peers
+                    },
+                )
             }
         })
         .buffer_unordered(config.peers_to_query())

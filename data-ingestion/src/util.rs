@@ -17,9 +17,8 @@ pub fn create_remote_store_client(
         retry_timeout: Duration::from_secs(timeout_secs + 1),
         ..Default::default()
     };
-    let client_options = ClientOptions::new()
-        .with_timeout(Duration::from_secs(timeout_secs))
-        .with_allow_http(true);
+    let client_options =
+        ClientOptions::new().with_timeout(Duration::from_secs(timeout_secs)).with_allow_http(true);
     let url = Url::parse(&url)?;
     let mut scheme = url.scheme();
     if url.host_str().unwrap_or_default().starts_with("s3") {
@@ -54,9 +53,7 @@ pub fn create_remote_store_client(
             }
             Ok(Box::new(builder.build()?))
         }
-        "file" => Ok(Box::new(
-            object_store::local::LocalFileSystem::new_with_prefix(url.path())?,
-        )),
+        "file" => Ok(Box::new(object_store::local::LocalFileSystem::new_with_prefix(url.path())?)),
         _ => Err(anyhow::anyhow!("Unsupported URL scheme: {}", url.scheme())),
     }
 }

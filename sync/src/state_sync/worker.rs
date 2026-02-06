@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use data_ingestion::Worker;
 
@@ -28,10 +28,8 @@ impl<S: WriteStore + Clone + Send + Sync + 'static> Worker for StateSyncWorker<S
         );
         full_contents.verify_digests(verified_checkpoint.content_digest)?;
         let verified_contents = VerifiedCheckpointContents::new_unchecked(full_contents);
-        self.0
-            .insert_checkpoint_contents(&verified_checkpoint, verified_contents)?;
-        self.0
-            .update_highest_synced_checkpoint(&verified_checkpoint)?;
+        self.0.insert_checkpoint_contents(&verified_checkpoint, verified_contents)?;
+        self.0.update_highest_synced_checkpoint(&verified_checkpoint)?;
 
         Ok(())
     }
@@ -55,12 +53,10 @@ where
                     .sequence_number
                     .checked_sub(1)
                     .context("Checkpoint seq num underflow")?;
-                let prev_checkpoint = store
-                    .get_checkpoint_by_sequence_number(prev_checkpoint_seq_num)
-                    .context(format!(
-                        "Missing previous checkpoint {} in store",
-                        prev_checkpoint_seq_num
-                    ))?;
+                let prev_checkpoint =
+                    store.get_checkpoint_by_sequence_number(prev_checkpoint_seq_num).context(
+                        format!("Missing previous checkpoint {} in store", prev_checkpoint_seq_num),
+                    )?;
 
                 verify_checkpoint(&prev_checkpoint, store, certified_checkpoint)
                     .map_err(|_| anyhow!("Checkpoint verification failed"))?

@@ -35,12 +35,7 @@ pub(crate) trait ConsensusCommitAPI: Display {
 impl ConsensusCommitAPI for types::consensus::commit::CommittedSubDag {
     fn reputation_score_sorted_desc(&self) -> Option<Vec<(AuthorityIndex, u64)>> {
         if !self.reputation_scores_desc.is_empty() {
-            Some(
-                self.reputation_scores_desc
-                    .iter()
-                    .map(|(id, score)| (*id, *score))
-                    .collect(),
-            )
+            Some(self.reputation_scores_desc.iter().map(|(id, score)| (*id, *score)).collect())
         } else {
             None
         }
@@ -72,10 +67,7 @@ impl ConsensusCommitAPI for types::consensus::commit::CommittedSubDag {
                     .rejected_transactions_by_block
                     .get(&block.reference())
                     .unwrap_or(&no_transaction);
-                (
-                    block.reference(),
-                    parse_block_transactions(block, rejected_transactions),
-                )
+                (block.reference(), parse_block_transactions(block, rejected_transactions))
             })
             .collect()
     }

@@ -70,9 +70,7 @@ impl SerializeAs<roaring::RoaringBitmap> for SomaBitmap {
     {
         let mut bytes = vec![];
 
-        source
-            .serialize_into(&mut bytes)
-            .map_err(to_custom_ser_error::<S, _>)?;
+        source.serialize_into(&mut bytes).map_err(to_custom_ser_error::<S, _>)?;
         Bytes::serialize_as(&bytes, serializer)
     }
 }

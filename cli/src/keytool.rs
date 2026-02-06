@@ -6,7 +6,7 @@ use fastcrypto::{
     hash::HashFunction as _,
     traits::KeyPair as _,
 };
-use json_to_table::{json_to_table, Orientation};
+use json_to_table::{Orientation, json_to_table};
 use serde::Serialize;
 use serde_json::json;
 use soma_keys::{
@@ -24,7 +24,7 @@ use std::{
 };
 use tabled::{
     builder::Builder,
-    settings::{object::Rows, Modify, Rotate, Width},
+    settings::{Modify, Rotate, Width, object::Rows},
 };
 use tracing::info;
 use types::{
@@ -304,23 +304,11 @@ pub enum CommandOutput {
 impl KeyToolCommand {
     pub async fn execute(self, keystore: &mut Keystore) -> Result<CommandOutput, anyhow::Error> {
         Ok(match self {
-            KeyToolCommand::Alias {
-                old_alias,
-                new_alias,
-            } => {
-                let new_alias = keystore
-                    .update_alias(&old_alias, new_alias.as_deref())
-                    .await?;
-                CommandOutput::Alias(AliasUpdate {
-                    old_alias,
-                    new_alias,
-                })
+            KeyToolCommand::Alias { old_alias, new_alias } => {
+                let new_alias = keystore.update_alias(&old_alias, new_alias.as_deref()).await?;
+                CommandOutput::Alias(AliasUpdate { old_alias, new_alias })
             }
-            KeyToolCommand::DecodeMultiSig {
-                multisig,
-                tx_bytes,
-                cur_epoch,
-            } => {
+            KeyToolCommand::DecodeMultiSig { multisig, tx_bytes, cur_epoch } => {
                 let pks = multisig.get_pk().pubkeys();
                 let sigs = multisig.get_sigs();
                 let bitmap = multisig.get_indices()?;
@@ -375,11 +363,7 @@ impl KeyToolCommand {
                 CommandOutput::DecodeMultiSig(output)
             }
 
-            KeyToolCommand::DecodeOrVerifyTx {
-                tx_bytes,
-                sig,
-                cur_epoch,
-            } => {
+            KeyToolCommand::DecodeOrVerifyTx { tx_bytes, sig, cur_epoch } => {
                 let tx_bytes = Base64::decode(&tx_bytes)
                     .map_err(|e| anyhow!("Invalid base64 key: {:?}", e))?;
                 let tx_data: TransactionData = bcs::from_bytes(&tx_bytes)?;
@@ -400,75 +384,70 @@ impl KeyToolCommand {
                     }
                 }
             }
-            KeyToolCommand::Generate {
-                key_scheme,
-                derivation_path,
-                word_length,
-            } => match key_scheme {
-                SignatureScheme::BLS12381 => {
-                    let (soma_address, kp) = types::crypto::get_authority_key_pair();
-                    let file_name = format!("bls-{soma_address}.key");
-                    write_authority_keypair_to_file(&kp, file_name)?;
-                    CommandOutput::Generate(Key {
-                        alias: None,
-                        soma_address,
-                        public_base64_key: kp.public().encode_base64(),
-                        key_scheme: key_scheme.to_string(),
-                        flag: SignatureScheme::BLS12381.flag(),
-                        mnemonic: None,
-                    })
+            KeyToolCommand::Generate { key_scheme, derivation_path, word_length } => {
+                match key_scheme {
+                    SignatureScheme::BLS12381 => {
+                        let (soma_address, kp) = types::crypto::get_authority_key_pair();
+                        let file_name = format!("bls-{soma_address}.key");
+                        write_authority_keypair_to_file(&kp, file_name)?;
+                        CommandOutput::Generate(Key {
+                            alias: None,
+                            soma_address,
+                            public_base64_key: kp.public().encode_base64(),
+                            key_scheme: key_scheme.to_string(),
+                            flag: SignatureScheme::BLS12381.flag(),
+                            mnemonic: None,
+                        })
+                    }
+                    _ => {
+                        let (soma_address, skp, _scheme, phrase) =
+                            generate_new_key(key_scheme, derivation_path, word_length)?;
+                        let file = format!("{soma_address}.key");
+                        write_keypair_to_file(&skp, file)?;
+                        let mut key = Key::from(&skp);
+                        key.mnemonic = Some(phrase);
+                        CommandOutput::Generate(key)
+                    }
                 }
-                _ => {
-                    let (soma_address, skp, _scheme, phrase) =
-                        generate_new_key(key_scheme, derivation_path, word_length)?;
-                    let file = format!("{soma_address}.key");
-                    write_keypair_to_file(&skp, file)?;
-                    let mut key = Key::from(&skp);
-                    key.mnemonic = Some(phrase);
-                    CommandOutput::Generate(key)
+            }
+            KeyToolCommand::Import { alias, input_string, key_scheme, derivation_path } => {
+                match SomaKeyPair::decode(&input_string) {
+                    Ok(skp) => {
+                        info!("Importing Bech32 encoded private key to keystore");
+                        let mut key = Key::from(&skp);
+                        keystore.import(alias.clone(), skp).await?;
+
+                        let alias = match alias {
+                            Some(x) => x,
+                            None => keystore.get_alias(&key.soma_address)?,
+                        };
+
+                        key.alias = Some(alias);
+                        CommandOutput::Import(key)
+                    }
+                    Err(_) => {
+                        info!("Importing mneomonics to keystore");
+                        let soma_address = keystore
+                            .import_from_mnemonic(
+                                &input_string,
+                                key_scheme,
+                                derivation_path,
+                                alias.clone(),
+                            )
+                            .await?;
+                        let skp = keystore.export(&soma_address)?;
+                        let mut key = Key::from(skp);
+
+                        let alias = match alias {
+                            Some(x) => x,
+                            None => keystore.get_alias(&key.soma_address)?,
+                        };
+
+                        key.alias = Some(alias);
+                        CommandOutput::Import(key)
+                    }
                 }
-            },
-            KeyToolCommand::Import {
-                alias,
-                input_string,
-                key_scheme,
-                derivation_path,
-            } => match SomaKeyPair::decode(&input_string) {
-                Ok(skp) => {
-                    info!("Importing Bech32 encoded private key to keystore");
-                    let mut key = Key::from(&skp);
-                    keystore.import(alias.clone(), skp).await?;
-
-                    let alias = match alias {
-                        Some(x) => x,
-                        None => keystore.get_alias(&key.soma_address)?,
-                    };
-
-                    key.alias = Some(alias);
-                    CommandOutput::Import(key)
-                }
-                Err(_) => {
-                    info!("Importing mneomonics to keystore");
-                    let soma_address = keystore
-                        .import_from_mnemonic(
-                            &input_string,
-                            key_scheme,
-                            derivation_path,
-                            alias.clone(),
-                        )
-                        .await?;
-                    let skp = keystore.export(&soma_address)?;
-                    let mut key = Key::from(skp);
-
-                    let alias = match alias {
-                        Some(x) => x,
-                        None => keystore.get_alias(&key.soma_address)?,
-                    };
-
-                    key.alias = Some(alias);
-                    CommandOutput::Import(key)
-                }
-            },
+            }
             KeyToolCommand::Export { key_identity } => {
                 let address = keystore.get_by_identity(&key_identity)?;
                 let skp = keystore.export(&address)?;
@@ -534,17 +513,11 @@ impl KeyToolCommand {
                 CommandOutput::LoadKeypair(output)
             }
 
-            KeyToolCommand::MultiSigAddress {
-                threshold,
-                pks,
-                weights,
-            } => {
+            KeyToolCommand::MultiSigAddress { threshold, pks, weights } => {
                 let multisig_pk = MultiSigPublicKey::new(pks.clone(), weights.clone(), threshold)?;
                 let address: SomaAddress = (&multisig_pk).into();
-                let mut output = MultiSigAddress {
-                    multisig_address: address.to_string(),
-                    multisig: vec![],
-                };
+                let mut output =
+                    MultiSigAddress { multisig_address: address.to_string(), multisig: vec![] };
 
                 for (pk, w) in pks.into_iter().zip(weights.into_iter()) {
                     output.multisig.push(MultiSigOutput {
@@ -556,12 +529,7 @@ impl KeyToolCommand {
                 CommandOutput::MultiSigAddress(output)
             }
 
-            KeyToolCommand::MultiSigCombinePartialSig {
-                sigs,
-                pks,
-                weights,
-                threshold,
-            } => {
+            KeyToolCommand::MultiSigCombinePartialSig { sigs, pks, weights, threshold } => {
                 let multisig_pk = MultiSigPublicKey::new(pks, weights, threshold)?;
                 let address: SomaAddress = (&multisig_pk).into();
                 let multisig = MultiSig::combine(sigs, multisig_pk)?;
@@ -602,11 +570,7 @@ impl KeyToolCommand {
                 }
             }
 
-            KeyToolCommand::Sign {
-                address,
-                data,
-                intent,
-            } => {
+            KeyToolCommand::Sign { address, data, intent } => {
                 let address = keystore.get_by_identity(&address)?;
                 let intent = intent.unwrap_or_else(Intent::soma_transaction);
                 let intent_clone = intent.clone();
@@ -619,9 +583,8 @@ impl KeyToolCommand {
                 let mut hasher = DefaultHash::default();
                 hasher.update(bcs::to_bytes(&intent_msg)?);
                 let digest = hasher.finalize().digest;
-                let soma_signature = keystore
-                    .sign_secure(&address, &intent_msg.value, intent_msg.intent)
-                    .await?;
+                let soma_signature =
+                    keystore.sign_secure(&address, &intent_msg.value, intent_msg.intent).await?;
                 CommandOutput::Sign(SignData {
                     soma_address: address,
                     raw_tx_data: data,
@@ -708,11 +671,7 @@ impl Display for CommandOutput {
 
 impl CommandOutput {
     pub fn print(&self, pretty: bool) {
-        let line = if pretty {
-            format!("{self}")
-        } else {
-            format!("{:?}", self)
-        };
+        let line = if pretty { format!("{self}") } else { format!("{:?}", self) };
         // Log line by line
         for line in line.lines() {
             // Logs write to a file on the side.  Print to stdout and also log to file, for tests to pass.

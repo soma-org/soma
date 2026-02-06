@@ -35,9 +35,7 @@ pub struct SomaClientBuilder {
 
 impl Default for SomaClientBuilder {
     fn default() -> Self {
-        Self {
-            request_timeout: Duration::from_secs(60),
-        }
+        Self { request_timeout: Duration::from_secs(60) }
     }
 }
 
@@ -53,9 +51,7 @@ impl SomaClientBuilder {
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
 
-        Ok(SomaClient {
-            inner: Arc::new(RwLock::new(client)),
-        })
+        Ok(SomaClient { inner: Arc::new(RwLock::new(client)) })
     }
 
     /// Build a client for the local network with default addresses
@@ -102,9 +98,7 @@ impl SomaClient {
         timeout: Duration,
     ) -> Result<rpc::api::client::TransactionExecutionResponseWithCheckpoint, tonic::Status> {
         let mut client = self.inner.write().await;
-        client
-            .execute_transaction_and_wait_for_checkpoint(transaction, timeout)
-            .await
+        client.execute_transaction_and_wait_for_checkpoint(transaction, timeout).await
     }
 
     /// Subscribe to checkpoints
@@ -157,15 +151,13 @@ impl SomaClient {
 
     /// Verifies if the API version matches the server version and returns an error if they do not match.
     pub async fn check_api_version(&self) -> SomaRpcResult<()> {
-        let server_version = self
-            .get_server_version()
-            .await
-            .map_err(|e| crate::error::Error::RpcError(e.into()))?;
+        let server_version =
+            self.get_server_version().await.map_err(|e| crate::error::Error::RpcError(e.into()))?;
         let client_version = env!("CARGO_PKG_VERSION");
         if server_version != client_version {
             return Err(crate::error::Error::ServerVersionMismatch {
                 client_version: client_version.to_string(),
-                server_version: server_version,
+                server_version,
             });
         };
         Ok(())

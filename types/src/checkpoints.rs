@@ -89,9 +89,7 @@ pub struct ECMHLiveObjectSetDigest {
 
 impl From<fastcrypto::hash::Digest<32>> for ECMHLiveObjectSetDigest {
     fn from(digest: fastcrypto::hash::Digest<32>) -> Self {
-        Self {
-            digest: Digest::new(digest.digest),
-        }
+        Self { digest: Digest::new(digest.digest) }
     }
 }
 
@@ -117,9 +115,7 @@ impl CheckpointArtifact {
         match self {
             Self::ObjectStates(object_states) => {
                 let tree = MerkleTree::<Blake2b256>::build_from_unserialized(
-                    object_states
-                        .iter()
-                        .map(|(id, (seq, digest))| (id, seq, digest)),
+                    object_states.iter().map(|(id, (seq, digest))| (id, seq, digest)),
                 )
                 .map_err(|e| SomaError::GenericAuthorityError {
                     error: format!("Failed to build Merkle tree: {}", e),
@@ -146,9 +142,7 @@ pub struct CheckpointArtifacts {
 
 impl CheckpointArtifacts {
     pub fn new() -> Self {
-        Self {
-            artifacts: BTreeSet::new(),
-        }
+        Self { artifacts: BTreeSet::new() }
     }
 
     pub fn add_artifact(&mut self, artifact: CheckpointArtifact) -> SomaResult<()> {
@@ -190,11 +184,7 @@ impl CheckpointArtifacts {
 
     pub fn digest(&self) -> SomaResult<CheckpointArtifactsDigest> {
         // Already sorted by BTreeSet!
-        let digests = self
-            .artifacts
-            .iter()
-            .map(|a| a.digest())
-            .collect::<Result<Vec<_>, _>>()?;
+        let digests = self.artifacts.iter().map(|a| a.digest()).collect::<Result<Vec<_>, _>>()?;
 
         CheckpointArtifactsDigest::from_artifact_digests(digests)
     }
@@ -212,10 +202,7 @@ impl From<&[&TransactionEffects]> for CheckpointArtifacts {
         for e in effects {
             for (id, seq, digest) in e.written() {
                 if let Some((old_seq, _)) = latest_object_states.insert(id, (seq, digest)) {
-                    assert!(
-                        old_seq < seq,
-                        "Object states should be monotonically increasing"
-                    );
+                    assert!(old_seq < seq, "Object states should be monotonically increasing");
                 }
             }
         }
@@ -233,11 +220,7 @@ impl From<&[TransactionEffects]> for CheckpointArtifacts {
 
 impl From<&CheckpointData> for CheckpointArtifacts {
     fn from(checkpoint_data: &CheckpointData) -> Self {
-        let effects = checkpoint_data
-            .transactions
-            .iter()
-            .map(|tx| &tx.effects)
-            .collect::<Vec<_>>();
+        let effects = checkpoint_data.transactions.iter().map(|tx| &tx.effects).collect::<Vec<_>>();
 
         Self::from(effects.as_slice())
     }
@@ -346,10 +329,7 @@ impl CheckpointSummary {
 
     pub fn verify_epoch(&self, epoch: EpochId) -> SomaResult {
         if !(self.epoch == epoch) {
-            return Err(SomaError::WrongEpoch {
-                expected_epoch: epoch,
-                actual_epoch: self.epoch,
-            });
+            return Err(SomaError::WrongEpoch { expected_epoch: epoch, actual_epoch: self.epoch });
         }
 
         Ok(())
@@ -364,9 +344,7 @@ impl CheckpointSummary {
     }
 
     pub fn next_epoch_committee(&self) -> Option<&Committee> {
-        self.end_of_epoch_data
-            .as_ref()
-            .map(|e| &e.next_epoch_validator_committee)
+        self.end_of_epoch_data.as_ref().map(|e| &e.next_epoch_validator_committee)
     }
 
     pub fn is_last_checkpoint_of_epoch(&self) -> bool {
@@ -564,11 +542,7 @@ impl CheckpointContents {
     {
         let transactions: Vec<_> = contents.into_iter().collect();
         assert_eq!(transactions.len(), user_signatures.len());
-        Self::V1(CheckpointContentsV1 {
-            digest: Default::default(),
-            transactions,
-            user_signatures,
-        })
+        Self::V1(CheckpointContentsV1 { digest: Default::default(), transactions, user_signatures })
     }
 
     pub fn new_with_causally_ordered_execution_data<'a, T>(contents: T) -> Self
@@ -578,18 +552,11 @@ impl CheckpointContents {
         let (transactions, user_signatures): (Vec<_>, Vec<_>) = contents
             .into_iter()
             .map(|data| {
-                (
-                    data.digests(),
-                    data.transaction.inner().data().tx_signatures().to_owned(),
-                )
+                (data.digests(), data.transaction.inner().data().tx_signatures().to_owned())
             })
             .unzip();
         assert_eq!(transactions.len(), user_signatures.len());
-        Self::V1(CheckpointContentsV1 {
-            digest: Default::default(),
-            transactions,
-            user_signatures,
-        })
+        Self::V1(CheckpointContentsV1 { digest: Default::default(), transactions, user_signatures })
     }
 
     pub fn new_with_digests_only_for_tests<T>(contents: T) -> Self
@@ -598,11 +565,7 @@ impl CheckpointContents {
     {
         let transactions: Vec<_> = contents.into_iter().collect();
         let user_signatures = transactions.iter().map(|_| vec![]).collect();
-        Self::V1(CheckpointContentsV1 {
-            digest: Default::default(),
-            transactions,
-            user_signatures,
-        })
+        Self::V1(CheckpointContentsV1 { digest: Default::default(), transactions, user_signatures })
     }
 
     fn as_v1(&self) -> &CheckpointContentsV1 {
@@ -624,11 +587,7 @@ impl CheckpointContents {
     pub fn into_iter_with_signatures(
         self,
     ) -> impl Iterator<Item = (ExecutionDigests, Vec<GenericSignature>)> {
-        let CheckpointContentsV1 {
-            transactions,
-            user_signatures,
-            ..
-        } = self.into_v1();
+        let CheckpointContentsV1 { transactions, user_signatures, .. } = self.into_v1();
 
         transactions.into_iter().zip(user_signatures)
     }
@@ -643,9 +602,7 @@ impl CheckpointContents {
     ) -> impl Iterator<Item = (u64, &ExecutionDigests)> {
         let start = ckpt.network_total_transactions - self.size() as u64;
 
-        (0u64..)
-            .zip(self.iter())
-            .map(move |(i, digests)| (i + start, digests))
+        (0u64..).zip(self.iter()).map(move |(i, digests)| (i + start, digests))
     }
 
     pub fn into_inner(self) -> Vec<ExecutionDigests> {
@@ -685,9 +642,7 @@ impl CheckpointContents {
 
         if leaves.is_empty() {
             // Empty checkpoint - use empty node hash
-            return Ok(CheckpointContentsDigest::new(
-                fastcrypto::merkle::EMPTY_NODE,
-            ));
+            return Ok(CheckpointContentsDigest::new(fastcrypto::merkle::EMPTY_NODE));
         }
 
         let tree =
@@ -726,17 +681,11 @@ impl CheckpointContents {
                 }
             })?;
 
-        let proof = tree
-            .get_proof(leaf_index)
-            .map_err(|e| SomaError::GenericAuthorityError {
-                error: format!("Failed to generate Merkle proof: {:?}", e),
-            })?;
+        let proof = tree.get_proof(leaf_index).map_err(|e| SomaError::GenericAuthorityError {
+            error: format!("Failed to generate Merkle proof: {:?}", e),
+        })?;
 
-        Ok(CheckpointInclusionProof {
-            leaf: leaves[leaf_index].clone(),
-            leaf_index,
-            proof,
-        })
+        Ok(CheckpointInclusionProof { leaf: leaves[leaf_index].clone(), leaf_index, proof })
     }
 }
 
@@ -768,20 +717,14 @@ impl FullCheckpointContents {
             })
             .unzip();
         assert_eq!(transactions.len(), user_signatures.len());
-        Self {
-            transactions,
-            user_signatures,
-        }
+        Self { transactions, user_signatures }
     }
     pub fn from_contents_and_execution_data(
         contents: CheckpointContents,
         execution_data: impl Iterator<Item = ExecutionData>,
     ) -> Self {
         let transactions: Vec<_> = execution_data.collect();
-        Self {
-            transactions,
-            user_signatures: contents.into_v1().user_signatures,
-        }
+        Self { transactions, user_signatures: contents.into_v1().user_signatures }
     }
 
     pub fn iter(&self) -> Iter<'_, ExecutionData> {
@@ -820,11 +763,7 @@ impl FullCheckpointContents {
     pub fn into_checkpoint_contents(self) -> CheckpointContents {
         CheckpointContents::V1(CheckpointContentsV1 {
             digest: Default::default(),
-            transactions: self
-                .transactions
-                .into_iter()
-                .map(|tx| tx.digests())
-                .collect(),
+            transactions: self.transactions.into_iter().map(|tx| tx.digests()).collect(),
             user_signatures: self.user_signatures,
         })
     }
@@ -874,11 +813,7 @@ impl VerifiedCheckpointContents {
 
     pub fn into_inner(self) -> FullCheckpointContents {
         FullCheckpointContents {
-            transactions: self
-                .transactions
-                .into_iter()
-                .map(|tx| tx.into_inner())
-                .collect(),
+            transactions: self.transactions.into_iter().map(|tx| tx.into_inner()).collect(),
             user_signatures: self.user_signatures,
         }
     }

@@ -5,7 +5,7 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use rand::{prelude::SliceRandom, rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, prelude::SliceRandom, rngs::StdRng};
 use types::committee::{AuthorityIndex, Stake};
 
 use types::consensus::{
@@ -83,9 +83,7 @@ impl LeaderSchedule {
             subdag_count <= self.num_commits_per_schedule,
             "Committed subdags count exceeds the number of commits per schedule"
         );
-        self.num_commits_per_schedule
-            .checked_sub(subdag_count)
-            .unwrap() as usize
+        self.num_commits_per_schedule.checked_sub(subdag_count).unwrap() as usize
     }
 
     /// Checks whether the dag state sub dags list is empty. If yes then that means that
@@ -227,15 +225,8 @@ impl LeaderSwapTable {
         commit_index: CommitIndex,
         reputation_scores: ReputationScores,
     ) -> Self {
-        let swap_stake_threshold = context
-            .protocol_config
-            .consensus_bad_nodes_stake_threshold();
-        Self::new_inner(
-            context,
-            swap_stake_threshold,
-            commit_index,
-            reputation_scores,
-        )
+        let swap_stake_threshold = context.protocol_config.consensus_bad_nodes_stake_threshold();
+        Self::new_inner(context, swap_stake_threshold, commit_index, reputation_scores)
     }
 
     fn new_inner(
@@ -335,10 +326,7 @@ impl LeaderSwapTable {
     ) -> Option<AuthorityIndex> {
         if self.bad_nodes.contains_key(&leader) {
             // TODO: Re-work swap for the multileader case
-            assert!(
-                leader_offset == 0,
-                "Swap for multi-leader case not implemented yet."
-            );
+            assert!(leader_offset == 0, "Swap for multi-leader case not implemented yet.");
             let mut seed_bytes = [0u8; 32];
             seed_bytes[24..28].copy_from_slice(&leader_round.to_le_bytes());
             seed_bytes[28..32].copy_from_slice(&leader_offset.to_le_bytes());
@@ -349,12 +337,7 @@ impl LeaderSwapTable {
                 .choose(&mut rng)
                 .expect("There should be at least one good node available");
 
-            tracing::trace!(
-                "Swapping bad leader {} -> {} for round {}",
-                leader,
-                idx,
-                leader_round
-            );
+            tracing::trace!("Swapping bad leader {} -> {} for round {}", leader, idx, leader_round);
 
             return Some(*idx);
         }

@@ -24,10 +24,7 @@ pub struct ReputationScores {
 
 impl ReputationScores {
     pub fn new(commit_range: CommitRange, scores_per_authority: Vec<u64>) -> Self {
-        Self {
-            scores_per_authority,
-            commit_range,
-        }
+        Self { scores_per_authority, commit_range }
     }
 
     pub fn highest_score(&self) -> u64 {
@@ -72,12 +69,7 @@ pub struct ScoringSubdag {
 
 impl ScoringSubdag {
     pub fn new(context: Arc<Context>) -> Self {
-        Self {
-            context,
-            commit_range: None,
-            leaders: HashSet::new(),
-            votes: BTreeMap::new(),
-        }
+        Self { context, commit_range: None, leaders: HashSet::new(), votes: BTreeMap::new() }
     }
 
     pub fn add_subdags(&mut self, committed_subdags: Vec<CommittedSubDag>) {
@@ -85,9 +77,8 @@ impl ScoringSubdag {
             // If the commit range is not set, then set it to the range of the first
             // committed subdag index.
             if self.commit_range.is_none() {
-                self.commit_range = Some(CommitRange::new(
-                    subdag.commit_ref.index..=subdag.commit_ref.index,
-                ));
+                self.commit_range =
+                    Some(CommitRange::new(subdag.commit_ref.index..=subdag.commit_ref.index));
             } else {
                 let commit_range = self.commit_range.as_mut().unwrap();
                 commit_range.extend_to(subdag.commit_ref.index);
@@ -118,9 +109,7 @@ impl ScoringSubdag {
                             block.author()
                         );
                         assert!(
-                            self.votes
-                                .insert(block.reference(), StakeAggregator::new())
-                                .is_none(),
+                            self.votes.insert(block.reference(), StakeAggregator::new()).is_none(),
                             "Vote {block} already exists. Duplicate vote found for leader {ancestor}"
                         );
                     }
@@ -174,11 +163,7 @@ impl ScoringSubdag {
     }
 
     pub fn scored_subdags_count(&self) -> usize {
-        if let Some(commit_range) = &self.commit_range {
-            commit_range.size()
-        } else {
-            0
-        }
+        if let Some(commit_range) = &self.commit_range { commit_range.size() } else { 0 }
     }
 
     pub fn is_empty(&self) -> bool {

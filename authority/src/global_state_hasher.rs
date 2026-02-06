@@ -80,9 +80,7 @@ pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
         effects
             .iter()
             .flat_map(|fx| {
-                fx.all_changed_objects()
-                    .into_iter()
-                    .map(|(object_ref, _, _)| object_ref.2)
+                fx.all_changed_objects().into_iter().map(|(object_ref, _, _)| object_ref.2)
             })
             .collect::<Vec<ObjectDigest>>(),
     );
@@ -92,9 +90,7 @@ pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
         effects
             .iter()
             .flat_map(|fx| {
-                fx.old_object_metadata()
-                    .into_iter()
-                    .map(|(object_ref, _owner)| object_ref.2)
+                fx.old_object_metadata().into_iter().map(|(object_ref, _owner)| object_ref.2)
             })
             .collect::<Vec<ObjectDigest>>(),
     );
@@ -123,9 +119,7 @@ impl GlobalStateHasher {
         epoch_store.insert_state_hash_for_checkpoint(&checkpoint_seq_num, &acc)?;
         debug!("Accumulated checkpoint {}", checkpoint_seq_num);
 
-        epoch_store
-            .checkpoint_state_notify_read
-            .notify(&checkpoint_seq_num, &acc);
+        epoch_store.checkpoint_state_notify_read.notify(&checkpoint_seq_num, &acc);
 
         Ok(acc)
     }
@@ -135,8 +129,7 @@ impl GlobalStateHasher {
         include_wrapped_tombstone: bool,
     ) -> GlobalStateHash {
         Self::accumulate_live_object_set_impl(
-            self.store
-                .iter_cached_live_object_set_for_testing(include_wrapped_tombstone),
+            self.store.iter_cached_live_object_set_for_testing(include_wrapped_tombstone),
         )
     }
 
@@ -171,10 +164,7 @@ impl GlobalStateHasher {
         epoch_store: Arc<AuthorityPerEpochStore>,
         last_checkpoint_of_epoch: CheckpointSequenceNumber,
     ) -> SomaResult<ECMHLiveObjectSetDigest> {
-        Ok(self
-            .accumulate_epoch(epoch_store, last_checkpoint_of_epoch)?
-            .digest()
-            .into())
+        Ok(self.accumulate_epoch(epoch_store, last_checkpoint_of_epoch)?.digest().into())
     }
 
     pub async fn wait_for_previous_running_root(
@@ -198,9 +188,7 @@ impl GlobalStateHasher {
         // There is an edge case here where checkpoint_seq_num is 1. This means the previous
         // checkpoint is the genesis checkpoint. CheckpointExecutor is guaranteed to execute
         // and accumulate the genesis checkpoint, so this will resolve.
-        epoch_store
-            .notify_read_running_root(checkpoint_seq_num - 1)
-            .await?;
+        epoch_store.notify_read_running_root(checkpoint_seq_num - 1).await?;
         Ok(())
     }
 
@@ -219,19 +207,15 @@ impl GlobalStateHasher {
             return Ok(prior_running_root);
         }
 
-        if let Some((last_checkpoint_prev_epoch, prev_acc)) = self
-            .store
-            .get_root_state_hash_for_epoch(epoch_store.epoch() - 1)?
+        if let Some((last_checkpoint_prev_epoch, prev_acc)) =
+            self.store.get_root_state_hash_for_epoch(epoch_store.epoch() - 1)?
         {
             if last_checkpoint_prev_epoch == checkpoint_seq_num - 1 {
                 return Ok(prev_acc);
             }
         }
 
-        panic!(
-            "Running root state hasher must exist for checkpoint {}",
-            checkpoint_seq_num - 1
-        );
+        panic!("Running root state hasher must exist for checkpoint {}", checkpoint_seq_num - 1);
     }
 
     // Accumulate the running root.
@@ -242,16 +226,10 @@ impl GlobalStateHasher {
         checkpoint_seq_num: CheckpointSequenceNumber,
         checkpoint_acc: Option<GlobalStateHash>,
     ) -> SomaResult {
-        tracing::info!(
-            "accumulating running root for checkpoint {}",
-            checkpoint_seq_num
-        );
+        tracing::info!("accumulating running root for checkpoint {}", checkpoint_seq_num);
 
         // Idempotency.
-        if epoch_store
-            .get_running_root_state_hash(checkpoint_seq_num)?
-            .is_some()
-        {
+        if epoch_store.get_running_root_state_hash(checkpoint_seq_num)?.is_some() {
             debug!(
                 "accumulate_running_root {:?} {:?} already exists",
                 epoch_store.epoch(),
@@ -270,10 +248,7 @@ impl GlobalStateHasher {
         });
         running_root.union(&checkpoint_acc);
         epoch_store.insert_running_root_state_hash(&checkpoint_seq_num, &running_root)?;
-        debug!(
-            "Accumulated checkpoint {} to running root accumulator",
-            checkpoint_seq_num,
-        );
+        debug!("Accumulated checkpoint {} to running root accumulator", checkpoint_seq_num,);
         Ok(())
     }
 

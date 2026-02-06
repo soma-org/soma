@@ -33,17 +33,16 @@ impl<'a> TransactionBuilder<'a> {
         let gas_payment = match gas {
             Some(gas_ref) => vec![gas_ref],
             None => {
-                let gas_ref = self
-                    .context
-                    .get_one_gas_object_owned_by_address(sender)
-                    .await?
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "No gas object found for address {}. \
+                let gas_ref =
+                    self.context.get_one_gas_object_owned_by_address(sender).await?.ok_or_else(
+                        || {
+                            anyhow!(
+                                "No gas object found for address {}. \
                              Please ensure the address has coins.",
-                            sender
-                        )
-                    })?;
+                                sender
+                            )
+                        },
+                    )?;
                 vec![gas_ref]
             }
         };

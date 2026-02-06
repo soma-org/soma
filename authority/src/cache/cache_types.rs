@@ -4,8 +4,8 @@ use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::hash::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tracing::debug;
 use types::object::Version;
 pub enum CacheResult<T> {
@@ -32,9 +32,7 @@ pub struct CachedVersionMap<V> {
 
 impl<V> Default for CachedVersionMap<V> {
     fn default() -> Self {
-        Self {
-            values: VecDeque::new(),
-        }
+        Self { values: VecDeque::new() }
     }
 }
 
@@ -47,10 +45,7 @@ impl<V> CachedVersionMap<V> {
         if !self.values.is_empty() {
             let back = self.values.back().unwrap().0;
             if back >= version {
-                panic!(
-                    "version must be monotonically increasing ({:?} < {:?})",
-                    back, version
-                );
+                panic!("version must be monotonically increasing ({:?} < {:?})", back, version);
             }
         }
         self.values.push_back((version, value));
@@ -192,9 +187,7 @@ where
     pub fn new(cache_size: u64) -> Self {
         Self {
             cache: MokaCache::builder(8).max_capacity(cache_size).build(),
-            key_generation: (0..KEY_GENERATION_SIZE)
-                .map(|_| AtomicU64::new(0))
-                .collect(),
+            key_generation: (0..KEY_GENERATION_SIZE).map(|_| AtomicU64::new(0)).collect(),
         }
     }
 

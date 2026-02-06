@@ -10,13 +10,14 @@ use std::{
 use regex::Regex;
 use std::sync::RwLock;
 use tracing::{
+    Event, Subscriber,
     field::{Field, Visit},
-    span, Event, Subscriber,
+    span,
 };
 use tracing_subscriber::{
+    EnvFilter, Layer, Registry,
     layer::{Context, SubscriberExt},
     registry::LookupSpan,
-    EnvFilter, Layer, Registry,
 };
 
 const LOG_DIR: &str = "logs";
@@ -29,41 +30,33 @@ struct FieldVisitor {
 
 impl FieldVisitor {
     fn new() -> Self {
-        Self {
-            values: HashMap::new(),
-        }
+        Self { values: HashMap::new() }
     }
 }
 
 impl Visit for FieldVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.values
-            .insert(field.name().to_string(), format!("{:?}", value));
+        self.values.insert(field.name().to_string(), format!("{:?}", value));
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.values
-            .insert(field.name().to_string(), value.to_string());
+        self.values.insert(field.name().to_string(), value.to_string());
     }
 
     fn record_i64(&mut self, field: &Field, value: i64) {
-        self.values
-            .insert(field.name().to_string(), value.to_string());
+        self.values.insert(field.name().to_string(), value.to_string());
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        self.values
-            .insert(field.name().to_string(), value.to_string());
+        self.values.insert(field.name().to_string(), value.to_string());
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.values
-            .insert(field.name().to_string(), value.to_string());
+        self.values.insert(field.name().to_string(), value.to_string());
     }
 
     fn record_f64(&mut self, field: &Field, value: f64) {
-        self.values
-            .insert(field.name().to_string(), value.to_string());
+        self.values.insert(field.name().to_string(), value.to_string());
     }
 }
 
@@ -75,10 +68,7 @@ struct NodeFiles {
 
 impl NodeFiles {
     fn new(log_dir: PathBuf) -> Self {
-        Self {
-            files: RwLock::new(HashMap::new()),
-            log_dir,
-        }
+        Self { files: RwLock::new(HashMap::new()), log_dir }
     }
 
     /// Get or create a file for the given node ID
@@ -273,14 +263,8 @@ where
         }
 
         // Format the complete log line
-        let log_line = format!(
-            "{} {} {}{}: {}",
-            timestamp,
-            level,
-            span_str,
-            metadata.target(),
-            message
-        );
+        let log_line =
+            format!("{} {} {}{}: {}", timestamp, level, span_str, metadata.target(), message);
 
         // ----- ROUTING LOGIC -----
 

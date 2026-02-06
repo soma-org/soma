@@ -42,22 +42,14 @@ pub enum ValidatorCommandResponse {
     MakeValidatorInfo,
     DisplayMetadata,
     Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
+    SerializedTransaction { serialized_unsigned_transaction: String },
 }
 
 impl Display for ValidatorCommandResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ValidatorCommandResponse::MakeValidatorInfo => {
-                writeln!(
-                    f,
-                    "{}",
-                    "✓ Validator info files created successfully."
-                        .green()
-                        .bold()
-                )?;
+                writeln!(f, "{}", "✓ Validator info files created successfully.".green().bold())?;
                 writeln!(f)?;
 
                 let mut builder = TableBuilder::default();
@@ -79,9 +71,7 @@ impl Display for ValidatorCommandResponse {
             ValidatorCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)?;
             }
-            ValidatorCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
+            ValidatorCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_unsigned_transaction)?;
@@ -172,11 +162,9 @@ impl From<Owner> for OwnerDisplay {
     fn from(owner: Owner) -> Self {
         match owner {
             Owner::AddressOwner(address) => OwnerDisplay::AddressOwner { address },
-            Owner::Shared {
-                initial_shared_version,
-            } => OwnerDisplay::Shared {
-                initial_shared_version,
-            },
+            Owner::Shared { initial_shared_version } => {
+                OwnerDisplay::Shared { initial_shared_version }
+            }
             Owner::Immutable => OwnerDisplay::Immutable,
         }
     }
@@ -184,22 +172,13 @@ impl From<Owner> for OwnerDisplay {
 
 impl From<(ObjectRef, Owner)> for OwnedObjectRef {
     fn from((obj_ref, owner): (ObjectRef, Owner)) -> Self {
-        Self {
-            object_id: obj_ref.0,
-            version: obj_ref.1,
-            digest: obj_ref.2,
-            owner: owner.into(),
-        }
+        Self { object_id: obj_ref.0, version: obj_ref.1, digest: obj_ref.2, owner: owner.into() }
     }
 }
 
 impl From<ObjectRef> for ObjectRefDisplay {
     fn from(obj_ref: ObjectRef) -> Self {
-        Self {
-            object_id: obj_ref.0,
-            version: obj_ref.1,
-            digest: obj_ref.2,
-        }
+        Self { object_id: obj_ref.0, version: obj_ref.1, digest: obj_ref.2 }
     }
 }
 
@@ -207,9 +186,9 @@ impl TransactionResponse {
     pub fn from_effects(effects: &TransactionEffects, checkpoint: Option<u64>) -> Self {
         let status = match effects.status() {
             ExecutionStatus::Success => TransactionStatus::Success,
-            ExecutionStatus::Failure { error } => TransactionStatus::Failure {
-                error: format!("{}", error),
-            },
+            ExecutionStatus::Failure { error } => {
+                TransactionStatus::Failure { error: format!("{}", error) }
+            }
         };
 
         Self {
@@ -219,11 +198,7 @@ impl TransactionResponse {
             checkpoint,
             fee: effects.transaction_fee().clone(),
             created: effects.created().into_iter().map(Into::into).collect(),
-            mutated: effects
-                .mutated_excluding_gas()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            mutated: effects.mutated_excluding_gas().into_iter().map(Into::into).collect(),
             deleted: effects.deleted().into_iter().map(Into::into).collect(),
             gas_object: effects.gas_object().into(),
             balance_changes: Vec::new(),
@@ -249,9 +224,9 @@ impl TransactionResponse {
         let effects = &response.effects;
         let status = match effects.status() {
             ExecutionStatus::Success => TransactionStatus::Success,
-            ExecutionStatus::Failure { error } => TransactionStatus::Failure {
-                error: format!("{}", error),
-            },
+            ExecutionStatus::Failure { error } => {
+                TransactionStatus::Failure { error: format!("{}", error) }
+            }
         };
 
         Self {
@@ -261,11 +236,7 @@ impl TransactionResponse {
             checkpoint: Some(response.checkpoint_sequence_number),
             fee: effects.transaction_fee().clone(),
             created: effects.created().into_iter().map(Into::into).collect(),
-            mutated: effects
-                .mutated_excluding_gas()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            mutated: effects.mutated_excluding_gas().into_iter().map(Into::into).collect(),
             deleted: effects.deleted().into_iter().map(Into::into).collect(),
             gas_object: effects.gas_object().into(),
             balance_changes: response.balance_changes.clone(),
@@ -305,10 +276,7 @@ impl TransactionResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
@@ -316,23 +284,13 @@ impl TransactionResponse {
         // Object Changes
         if !self.created.is_empty() {
             writeln!(f)?;
-            writeln!(
-                f,
-                "{} Created Objects ({})",
-                "●".green(),
-                self.created.len()
-            )?;
+            writeln!(f, "{} Created Objects ({})", "●".green(), self.created.len())?;
             self.fmt_object_refs(f, &self.created)?;
         }
 
         if !self.mutated.is_empty() {
             writeln!(f)?;
-            writeln!(
-                f,
-                "{} Mutated Objects ({})",
-                "●".yellow(),
-                self.mutated.len()
-            )?;
+            writeln!(f, "{} Mutated Objects ({})", "●".yellow(), self.mutated.len())?;
             self.fmt_object_refs(f, &self.mutated)?;
         }
 
@@ -347,10 +305,7 @@ impl TransactionResponse {
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
         builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
-        builder.push_record([
-            "Operation Fee",
-            &format!("{} SHANNONS", self.fee.operation_fee),
-        ]);
+        builder.push_record(["Operation Fee", &format!("{} SHANNONS", self.fee.operation_fee)]);
         builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
         builder.push_record([
             "Total",
@@ -363,10 +318,7 @@ impl TransactionResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
         table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
         table.with(tabled::settings::style::BorderSpanCorrection);
@@ -390,14 +342,8 @@ impl TransactionResponse {
             let mut table = builder.build();
             table.with(TableStyle::rounded());
             table.with(TablePanel::header("Balance Changes"));
-            table.with(HorizontalLine::new(
-                1,
-                TableStyle::modern().get_horizontal(),
-            ));
-            table.with(HorizontalLine::new(
-                2,
-                TableStyle::modern().get_horizontal(),
-            ));
+            table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
             table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
             table.with(tabled::settings::style::BorderSpanCorrection);
             writeln!(f, "{}", table)?;
@@ -413,9 +359,7 @@ impl TransactionResponse {
         for obj in refs {
             let owner_str = match &obj.owner {
                 OwnerDisplay::AddressOwner { address } => truncate_address(&address.to_string()),
-                OwnerDisplay::Shared {
-                    initial_shared_version,
-                } => {
+                OwnerDisplay::Shared { initial_shared_version } => {
                     format!("Shared (v{})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
@@ -429,10 +373,7 @@ impl TransactionResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         writeln!(f, "{}", table)
     }
 
@@ -450,10 +391,7 @@ impl TransactionResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         writeln!(f, "{}", table)
     }
 }
@@ -590,14 +528,8 @@ impl Display for AddressesOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Managed Addresses"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)?;
@@ -637,9 +569,7 @@ impl Display for NewAddressOutput {
         writeln!(
             f,
             "{}",
-            "⚠  Store this recovery phrase securely. It cannot be recovered!"
-                .yellow()
-                .bold()
+            "⚠  Store this recovery phrase securely. It cannot be recovered!".yellow().bold()
         )
     }
 }
@@ -716,14 +646,8 @@ impl Display for EnvsOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Configured Environments"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)?;
@@ -740,12 +664,7 @@ pub struct NewEnvOutput {
 
 impl Display for NewEnvOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{} Added environment [{}]",
-            "✓".green(),
-            self.alias.cyan()
-        )?;
+        writeln!(f, "{} Added environment [{}]", "✓".green(), self.alias.cyan())?;
         writeln!(f, "  Chain ID: {}", self.chain_id)
     }
 }
@@ -771,10 +690,7 @@ impl Display for ChainInfoOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Chain Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)
@@ -864,13 +780,8 @@ impl Display for ObjectOutput {
         if let Some(owner) = &self.owner {
             let owner_str = match owner {
                 OwnerDisplay::AddressOwner { address } => address.to_string(),
-                OwnerDisplay::Shared {
-                    initial_shared_version,
-                } => {
-                    format!(
-                        "Shared (initial version: {})",
-                        initial_shared_version.value()
-                    )
+                OwnerDisplay::Shared { initial_shared_version } => {
+                    format!("Shared (initial version: {})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
             };
@@ -880,10 +791,7 @@ impl Display for ObjectOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Object"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 
@@ -899,10 +807,7 @@ impl Display for ObjectOutput {
                     let mut table = builder.build();
                     table.with(TableStyle::rounded());
                     table.with(TablePanel::header("Coin Data"));
-                    table.with(HorizontalLine::new(
-                        1,
-                        TableStyle::modern().get_horizontal(),
-                    ));
+                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
                     table.with(tabled::settings::style::BorderSpanCorrection);
                     writeln!(f, "{}", table)?;
                 }
@@ -920,10 +825,7 @@ impl Display for ObjectOutput {
                     let mut table = builder.build();
                     table.with(TableStyle::rounded());
                     table.with(TablePanel::header("Staked SOMA Data"));
-                    table.with(HorizontalLine::new(
-                        1,
-                        TableStyle::modern().get_horizontal(),
-                    ));
+                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
                     table.with(tabled::settings::style::BorderSpanCorrection);
                     writeln!(f, "{}", table)?;
                 }
@@ -943,11 +845,7 @@ impl Display for ObjectOutput {
                     )?;
                 }
                 ObjectContent::Submission => {
-                    writeln!(
-                        f,
-                        "{}",
-                        "Submission object".dimmed()
-                    )?;
+                    writeln!(f, "{}", "Submission object".dimmed())?;
                 }
                 ObjectContent::Unknown => {}
             }
@@ -972,11 +870,7 @@ pub struct ObjectsOutput {
 impl Display for ObjectsOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.objects.is_empty() {
-            return writeln!(
-                f,
-                "{}",
-                format!("No objects owned by {}", self.address).yellow()
-            );
+            return writeln!(f, "{}", format!("No objects owned by {}", self.address).yellow());
         }
 
         let mut builder = TableBuilder::default();
@@ -998,14 +892,8 @@ impl Display for ObjectsOutput {
             truncate_address(&self.address.to_string()),
             self.objects.len()
         )));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)
@@ -1021,11 +909,7 @@ pub struct GasCoinsOutput {
 impl Display for GasCoinsOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.coins.is_empty() {
-            return writeln!(
-                f,
-                "{}",
-                format!("No gas coins owned by {}", self.address).yellow()
-            );
+            return writeln!(f, "{}", format!("No gas coins owned by {}", self.address).yellow());
         }
 
         let mut builder = TableBuilder::default();
@@ -1043,23 +927,14 @@ impl Display for GasCoinsOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!(
-            "Gas Coins ({} coins)",
-            self.coins.len()
-        )));
+        table.with(TablePanel::header(format!("Gas Coins ({} coins)", self.coins.len())));
         table.with(TablePanel::footer(format!(
             "Total: {} SHANNONS ({})",
             total,
             format_soma(total)
         )));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableCols::new(1..)).with(TableAlignment::right()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
@@ -1080,20 +955,14 @@ impl Display for BalanceOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record([
-            "Total (SOMA)",
-            &format_soma(self.total_balance).green().to_string(),
-        ]);
+        builder.push_record(["Total (SOMA)", &format_soma(self.total_balance).green().to_string()]);
         builder.push_record(["Total (SHANNONS)", &self.total_balance.to_string()]);
         builder.push_record(["Coin Count", &self.coin_count.to_string()]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Balance"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 
@@ -1109,14 +978,8 @@ impl Display for BalanceOutput {
             let mut table = builder.build();
             table.with(TableStyle::rounded());
             table.with(TablePanel::header("Individual Coins"));
-            table.with(HorizontalLine::new(
-                1,
-                TableStyle::modern().get_horizontal(),
-            ));
-            table.with(HorizontalLine::new(
-                2,
-                TableStyle::modern().get_horizontal(),
-            ));
+            table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
             table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
             table.with(tabled::settings::style::BorderSpanCorrection);
             writeln!(f, "{}", table)?;
@@ -1168,11 +1031,7 @@ impl Display for SimulationResponse {
         builder.push_record(["Status", &status_str]);
         builder.push_record([
             "Estimated Gas",
-            &format!(
-                "{} SHANNONS ({})",
-                self.gas_used,
-                format_soma(self.gas_used as u128)
-            ),
+            &format!("{} SHANNONS ({})", self.gas_used, format_soma(self.gas_used as u128)),
         ]);
 
         if !self.created.is_empty() {
@@ -1221,9 +1080,9 @@ impl TransactionQueryResponse {
         let effects = &result.effects;
         let status = match effects.status() {
             ExecutionStatus::Success => TransactionStatus::Success,
-            ExecutionStatus::Failure { error } => TransactionStatus::Failure {
-                error: format!("{}", error),
-            },
+            ExecutionStatus::Failure { error } => {
+                TransactionStatus::Failure { error: format!("{}", error) }
+            }
         };
 
         let timestamp = result.timestamp_ms.map(|ms| {
@@ -1240,11 +1099,7 @@ impl TransactionQueryResponse {
             timestamp,
             fee: effects.transaction_fee().clone(),
             created: effects.created().into_iter().map(Into::into).collect(),
-            mutated: effects
-                .mutated_excluding_gas()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            mutated: effects.mutated_excluding_gas().into_iter().map(Into::into).collect(),
             deleted: effects.deleted().into_iter().map(Into::into).collect(),
             gas_object: effects.gas_object().into(),
             balance_changes: result.balance_changes.clone(),
@@ -1285,10 +1140,7 @@ impl TransactionQueryResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
@@ -1309,23 +1161,13 @@ impl TransactionQueryResponse {
 
         if !self.created.is_empty() {
             writeln!(f)?;
-            writeln!(
-                f,
-                "{} Created Objects ({})",
-                "●".green(),
-                self.created.len()
-            )?;
+            writeln!(f, "{} Created Objects ({})", "●".green(), self.created.len())?;
             tx_response.fmt_object_refs(f, &self.created)?;
         }
 
         if !self.mutated.is_empty() {
             writeln!(f)?;
-            writeln!(
-                f,
-                "{} Mutated Objects ({})",
-                "●".yellow(),
-                self.mutated.len()
-            )?;
+            writeln!(f, "{} Mutated Objects ({})", "●".yellow(), self.mutated.len())?;
             tx_response.fmt_object_refs(f, &self.mutated)?;
         }
 
@@ -1340,10 +1182,7 @@ impl TransactionQueryResponse {
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
         builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
-        builder.push_record([
-            "Operation Fee",
-            &format!("{} SHANNONS", self.fee.operation_fee),
-        ]);
+        builder.push_record(["Operation Fee", &format!("{} SHANNONS", self.fee.operation_fee)]);
         builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
         builder.push_record([
             "Total",
@@ -1356,10 +1195,7 @@ impl TransactionQueryResponse {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
         table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
         table.with(tabled::settings::style::BorderSpanCorrection);
@@ -1382,14 +1218,8 @@ impl TransactionQueryResponse {
             let mut table = builder.build();
             table.with(TableStyle::rounded());
             table.with(TablePanel::header("Balance Changes"));
-            table.with(HorizontalLine::new(
-                1,
-                TableStyle::modern().get_horizontal(),
-            ));
-            table.with(HorizontalLine::new(
-                2,
-                TableStyle::modern().get_horizontal(),
-            ));
+            table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
             table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
             table.with(tabled::settings::style::BorderSpanCorrection);
             writeln!(f, "{}", table)?;
@@ -1446,10 +1276,7 @@ impl Display for ValidatorSummary {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Validator Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 
@@ -1462,10 +1289,7 @@ impl Display for ValidatorSummary {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Network Addresses"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 
@@ -1478,10 +1302,7 @@ impl Display for ValidatorSummary {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Public Keys"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -1516,11 +1337,7 @@ fn format_soma(shannons: u128) -> String {
     } else {
         let decimal_str = format!("{:09}", frac);
         let trimmed = decimal_str.trim_end_matches('0');
-        if trimmed.is_empty() {
-            "0 SOMA".to_string()
-        } else {
-            format!("0.{} SOMA", trimmed)
-        }
+        if trimmed.is_empty() { "0 SOMA".to_string() } else { format!("0.{} SOMA", trimmed) }
     }
 }
 
@@ -1544,11 +1361,7 @@ fn truncate_address(addr: &str) -> String {
 
 /// Truncate a string to a maximum length
 fn truncate_string(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
-    }
+    if s.len() <= max_len { s.to_string() } else { format!("{}...", &s[..max_len - 3]) }
 }
 
 // =============================================================================

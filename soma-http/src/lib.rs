@@ -325,11 +325,8 @@ where
 
     fn handle_connection(&mut self, io: ServerIo<L::Io>, remote_addr: L::Addr) {
         let connection_shutdown_token = self.graceful_shutdown_token.child_token();
-        let connection_info = ConnectionInfo::new(
-            remote_addr,
-            io.peer_certs(),
-            connection_shutdown_token.clone(),
-        );
+        let connection_info =
+            ConnectionInfo::new(remote_addr, io.peer_certs(), connection_shutdown_token.clone());
         let connection_id = connection_info.id();
         let connect_info = connection_info::ConnectInfo {
             local_addr: self.local_addr.clone(),
@@ -349,21 +346,17 @@ where
             },
         ));
 
-        self.connections
-            .write()
-            .unwrap()
-            .insert(connection_id, connection_info);
+        self.connections.write().unwrap().insert(connection_id, connection_info);
         let on_connection_close = OnConnectionClose::new(connection_id, self.connections.clone());
 
-        self.connection_handlers
-            .spawn(connection_handler::serve_connection(
-                hyper_io,
-                hyper_svc,
-                self.config.connection_builder(),
-                connection_shutdown_token,
-                self.config.max_connection_age,
-                on_connection_close,
-            ));
+        self.connection_handlers.spawn(connection_handler::serve_connection(
+            hyper_io,
+            hyper_svc,
+            self.config.connection_builder(),
+            connection_shutdown_token,
+            self.config.max_connection_age,
+            on_connection_close,
+        ));
     }
 
     async fn shutdown(mut self) {
@@ -378,17 +371,12 @@ where
         self.pending_connections.shutdown().await;
 
         // Wait for all connection handlers to terminate
-        trace!(
-            "waiting for {} connections to close",
-            self.connection_handlers.len()
-        );
+        trace!("waiting for {} connections to close", self.connection_handlers.len());
 
         let graceful_shutdown =
             async { while self.connection_handlers.join_next().await.is_some() {} };
 
-        if tokio::time::timeout(CONNECTION_SHUTDOWN_GRACE_PERIOD, graceful_shutdown)
-            .await
-            .is_err()
+        if tokio::time::timeout(CONNECTION_SHUTDOWN_GRACE_PERIOD, graceful_shutdown).await.is_err()
         {
             tracing::warn!(
                 "Failed to stop all connection handlers in {:?}. Forcing shutdown.",

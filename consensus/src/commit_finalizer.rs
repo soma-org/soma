@@ -4,7 +4,7 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 use types::committee::Stake;
 use types::consensus::{
@@ -147,15 +147,11 @@ impl CommitFinalizer {
         committed_sub_dag: CommittedSubDag,
     ) -> Vec<CommittedSubDag> {
         if let Some(last_processed_commit) = self.last_processed_commit {
-            assert_eq!(
-                last_processed_commit + 1,
-                committed_sub_dag.commit_ref.index
-            );
+            assert_eq!(last_processed_commit + 1, committed_sub_dag.commit_ref.index);
         }
         self.last_processed_commit = Some(committed_sub_dag.commit_ref.index);
 
-        self.pending_commits
-            .push_back(CommitState::new(committed_sub_dag));
+        self.pending_commits.push_back(CommitState::new(committed_sub_dag));
 
         let mut finalized_commits = vec![];
 
@@ -258,15 +254,9 @@ impl CommitFinalizer {
                 // If the transaction has > 0 but < 2f+1 reject votes, it is still pending.
                 // Otherwise, it is rejected.
                 let entry = if stake < self.context.committee.quorum_threshold() {
-                    commit_state
-                        .pending_transactions
-                        .entry(block_ref)
-                        .or_default()
+                    commit_state.pending_transactions.entry(block_ref).or_default()
                 } else {
-                    commit_state
-                        .rejected_transactions
-                        .entry(block_ref)
-                        .or_default()
+                    commit_state.rejected_transactions.entry(block_ref).or_default()
                 };
                 entry.insert(transaction_index);
             }
@@ -276,10 +266,8 @@ impl CommitFinalizer {
     // Creates an entry in the blocks map for each block in the commit,
     // and have its ancestors link to the block.
     fn link_blocks_in_last_commit(&mut self) {
-        let commit_state = self
-            .pending_commits
-            .back_mut()
-            .unwrap_or_else(|| panic!("No pending commit."));
+        let commit_state =
+            self.pending_commits.back_mut().unwrap_or_else(|| panic!("No pending commit."));
 
         // Link blocks in ascending order of round, to ensure ancestor block states are created
         // before they are linked from.
@@ -298,9 +286,7 @@ impl CommitFinalizer {
                 }
             }
             // Initialize the block state.
-            blocks_map
-                .entry(block_ref)
-                .or_insert_with(|| RwLock::new(BlockState::new(block)));
+            blocks_map.entry(block_ref).or_insert_with(|| RwLock::new(BlockState::new(block)));
         }
     }
 
@@ -322,10 +308,8 @@ impl CommitFinalizer {
     /// This function updates the set of origin descendants for all pending blocks using blocks
     /// from the last commit.
     fn append_origin_descendants_from_last_commit(&mut self) {
-        let commit_state = self
-            .pending_commits
-            .back_mut()
-            .unwrap_or_else(|| panic!("No pending commit."));
+        let commit_state =
+            self.pending_commits.back_mut().unwrap_or_else(|| panic!("No pending commit."));
         let mut committed_blocks = commit_state.commit.blocks.clone();
         committed_blocks.sort_by_key(|b| b.round());
         let blocks_map = self.blocks.read();
@@ -346,16 +330,9 @@ impl CommitFinalizer {
                 let Some(origin_ancestor_block) = blocks_map.get(&origin_ancestor_ref) else {
                     break;
                 };
-                origin_ancestor_block
-                    .write()
-                    .origin_descendants
-                    .push(committed_block_ref);
-                origin_ancestor_ref = *origin_ancestor_block
-                    .read()
-                    .block
-                    .ancestors()
-                    .first()
-                    .unwrap();
+                origin_ancestor_block.write().origin_descendants.push(committed_block_ref);
+                origin_ancestor_ref =
+                    *origin_ancestor_block.read().block.ancestors().first().unwrap();
             }
         }
     }
@@ -370,8 +347,7 @@ impl CommitFinalizer {
         self.check_pending_transactions_in_first_commit();
 
         // Check if remaining pending transactions can be finalized.
-        self.try_indirect_finalize_pending_transactions_in_first_commit()
-            .await;
+        self.try_indirect_finalize_pending_transactions_in_first_commit().await;
 
         // Check if remaining pending transactions can be indirectly rejected.
         self.try_indirect_reject_pending_transactions_in_first_commit();
@@ -526,12 +502,8 @@ impl CommitFinalizer {
         let mut finalized_transactions = vec![];
         let blocks_map = blocks.read();
         // Use BTreeSet to ensure always visit blocks in the earliest round.
-        let mut to_visit_blocks = blocks_map
-            .get(&pending_block_ref)
-            .unwrap()
-            .read()
-            .children
-            .clone();
+        let mut to_visit_blocks =
+            blocks_map.get(&pending_block_ref).unwrap().read().children.clone();
         // Blocks that have been visited.
         let mut visited = BTreeSet::new();
         // Blocks where votes and origin descendants should be ignored for processing.
@@ -581,12 +553,8 @@ impl CommitFinalizer {
                 }
             }
             // Add additional children blocks to visit.
-            to_visit_blocks.extend(
-                curr_block_state
-                    .children
-                    .iter()
-                    .filter(|b| !visited.contains(*b)),
-            );
+            to_visit_blocks
+                .extend(curr_block_state.children.iter().filter(|b| !visited.contains(*b)));
         }
         finalized_transactions
     }
@@ -632,10 +600,7 @@ impl CommitFinalizer {
     fn try_update_gc_round(&mut self, last_finalized_commit_round: Round) {
         // GC TransactionCertifier state only with finalized commits, to ensure unfinalized transactions
         // can access their reject votes from TransactionCertifier.
-        let gc_round = self
-            .dag_state
-            .read()
-            .calculate_gc_round(last_finalized_commit_round);
+        let gc_round = self.dag_state.read().calculate_gc_round(last_finalized_commit_round);
         self.transaction_certifier.run_gc(gc_round);
     }
 
@@ -662,11 +627,8 @@ struct CommitState {
 
 impl CommitState {
     fn new(commit: CommittedSubDag) -> Self {
-        let pending_blocks: BTreeMap<_, _> = commit
-            .blocks
-            .iter()
-            .map(|b| (b.reference(), b.transactions().len()))
-            .collect();
+        let pending_blocks: BTreeMap<_, _> =
+            commit.blocks.iter().map(|b| (b.reference(), b.transactions().len())).collect();
         assert!(!pending_blocks.is_empty());
         Self {
             commit,
@@ -714,11 +676,6 @@ impl BlockState {
         // With at most 4 pending commits and assume 2 origin descendants per commit,
         // there will be at most 8 origin descendants.
         let origin_descendants = Vec::with_capacity(8);
-        Self {
-            block,
-            children: BTreeSet::new(),
-            reject_votes,
-            origin_descendants,
-        }
+        Self { block, children: BTreeSet::new(), reject_votes, origin_descendants }
     }
 }

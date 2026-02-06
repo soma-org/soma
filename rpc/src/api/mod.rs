@@ -131,17 +131,12 @@ impl RpcService {
             services.into_router()
         };
 
-        router.layer(axum::middleware::map_response_with_state(
-            self,
-            response::append_info_headers,
-        ))
+        router.layer(axum::middleware::map_response_with_state(self, response::append_info_headers))
     }
 
     pub async fn start_service(self, socket_address: std::net::SocketAddr) {
         let listener = tokio::net::TcpListener::bind(socket_address).await.unwrap();
-        axum::serve(listener, self.into_router().await)
-            .await
-            .unwrap();
+        axum::serve(listener, self.into_router().await).await.unwrap();
     }
 }
 

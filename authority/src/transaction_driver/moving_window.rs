@@ -15,11 +15,8 @@ impl<T: MovingWindowValue> MovingWindow<T> {
     /// The provided `max_size` must be greater than 0.
     pub fn new(init_value: T, max_size: usize) -> Self {
         assert!(max_size > 0, "Window size must be greater than 0");
-        let mut window = Self {
-            values: VecDeque::with_capacity(max_size),
-            max_size,
-            sum: T::zero(),
-        };
+        let mut window =
+            Self { values: VecDeque::with_capacity(max_size), max_size, sum: T::zero() };
         window.add_value(init_value);
         window
     }
@@ -40,11 +37,7 @@ impl<T: MovingWindowValue> MovingWindow<T> {
     /// Get the current average of all values in the window. Returns the value's zero if the
     /// window is empty.
     pub fn get(&self) -> T {
-        if self.values.is_empty() {
-            T::zero()
-        } else {
-            T::average(self.sum, self.values.len())
-        }
+        if self.values.is_empty() { T::zero() } else { T::average(self.sum, self.values.len()) }
     }
 
     /// Get the number of values currently in the window.

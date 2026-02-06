@@ -42,10 +42,7 @@ impl BlobClient {
 
     pub async fn get_reader(&self, manifest: &Manifest) -> BlobResult<BlobHttpReader> {
         let client = self.client.clone();
-        Ok(BlobHttpReader {
-            url: manifest.url().clone(),
-            client,
-        })
+        Ok(BlobHttpReader { url: manifest.url().clone(), client })
     }
 }
 
@@ -65,10 +62,7 @@ impl BlobReader for BlobHttpReader {
     async fn get_full(&self, timeout: Duration) -> BlobResult<Bytes> {
         info!("get_full_called");
         let req = self.client.get(self.url.clone()).timeout(timeout);
-        let response = req
-            .send()
-            .await
-            .map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
+        let response = req.send().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
 
         info!("{:?}", response);
         if !response.status().is_success() {
@@ -76,10 +70,7 @@ impl BlobReader for BlobHttpReader {
         }
 
         info!("response non error?");
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
+        let bytes = response.bytes().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
         Ok(bytes)
     }
     async fn get_range(&self, range: Range<usize>, timeout: Duration) -> BlobResult<Bytes> {
@@ -90,18 +81,12 @@ impl BlobReader for BlobHttpReader {
             .header(reqwest::header::RANGE, range_header)
             .timeout(timeout);
 
-        let response = req
-            .send()
-            .await
-            .map_err(|e| BlobError::NetworkRequest(format!("{e:?}")))?;
+        let response = req.send().await.map_err(|e| BlobError::NetworkRequest(format!("{e:?}")))?;
         info!("{:?}", response);
         if !response.status().is_success() {
             return Err(BlobError::NetworkRequest("status threw error".to_string()));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
+        let bytes = response.bytes().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
         Ok(bytes)
     }
 }
