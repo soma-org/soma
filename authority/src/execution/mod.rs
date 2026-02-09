@@ -26,10 +26,12 @@ use types::{
     },
     tx_fee::TransactionFee,
 };
+use challenge::ChallengeExecutor;
 use model::ModelExecutor;
 use submission::SubmissionExecutor;
 use validator::ValidatorExecutor;
 
+mod challenge;
 mod change_epoch;
 mod coin;
 mod model;
@@ -312,8 +314,19 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::UndoReportModel { .. } => Box::new(ModelExecutor::new()),
 
         // Submission transactions
-        TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_) => {
+        TransactionKind::SubmitData(_)
+        | TransactionKind::ClaimRewards(_)
+        | TransactionKind::ReportSubmission { .. }
+        | TransactionKind::UndoReportSubmission { .. } => {
             Box::new(SubmissionExecutor::new())
+        }
+
+        // Challenge transactions
+        TransactionKind::InitiateChallenge(_)
+        | TransactionKind::ReportChallenge { .. }
+        | TransactionKind::UndoReportChallenge { .. }
+        | TransactionKind::ClaimChallengeBond { .. } => {
+            Box::new(ChallengeExecutor::new())
         }
     }
 }

@@ -2144,6 +2144,116 @@ mod _getter_impls {
             self
         }
     }
+    impl GetChallengeRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                challenge_id: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetChallengeRequest = GetChallengeRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_challenge_id(mut self, field: String) -> Self {
+            self.challenge_id = Some(field.into());
+            self
+        }
+    }
+    impl GetChallengeResponse {
+        pub const fn const_default() -> Self {
+            Self { challenge: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetChallengeResponse = GetChallengeResponse::const_default();
+            &DEFAULT
+        }
+        pub fn challenge(&self) -> &Challenge {
+            self.challenge
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Challenge::default_instance() as _)
+        }
+        pub fn challenge_opt(&self) -> Option<&Challenge> {
+            self.challenge.as_ref().map(|field| field as _)
+        }
+        pub fn challenge_opt_mut(&mut self) -> Option<&mut Challenge> {
+            self.challenge.as_mut().map(|field| field as _)
+        }
+        pub fn challenge_mut(&mut self) -> &mut Challenge {
+            self.challenge.get_or_insert_default()
+        }
+        pub fn with_challenge(mut self, field: Challenge) -> Self {
+            self.challenge = Some(field.into());
+            self
+        }
+    }
+    impl ListChallengesRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                status_filter: None,
+                epoch_filter: None,
+                page_size: None,
+                page_token: None,
+                read_mask: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListChallengesRequest = ListChallengesRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_status_filter(mut self, field: String) -> Self {
+            self.status_filter = Some(field.into());
+            self
+        }
+        pub fn with_epoch_filter(mut self, field: u64) -> Self {
+            self.epoch_filter = Some(field.into());
+            self
+        }
+        pub fn with_page_size(mut self, field: u32) -> Self {
+            self.page_size = Some(field.into());
+            self
+        }
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
+            self
+        }
+    }
+    impl ListChallengesResponse {
+        pub const fn const_default() -> Self {
+            Self {
+                challenges: Vec::new(),
+                next_page_token: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListChallengesResponse = ListChallengesResponse::const_default();
+            &DEFAULT
+        }
+        pub fn challenges(&self) -> &[Challenge] {
+            &self.challenges
+        }
+        pub fn challenges_mut(&mut self) -> &mut Vec<Challenge> {
+            &mut self.challenges
+        }
+        pub fn with_challenges(mut self, field: Vec<Challenge>) -> Self {
+            self.challenges = field;
+            self
+        }
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
+            self
+        }
+    }
     impl SubscribeCheckpointsRequest {
         pub const fn const_default() -> Self {
             Self { read_mask: None }
@@ -2202,6 +2312,7 @@ mod _getter_impls {
                 emission_pool: None,
                 target_state: None,
                 model_registry: None,
+                submission_report_records: std::collections::BTreeMap::new(),
             }
         }
         #[doc(hidden)]
@@ -2356,20 +2467,20 @@ mod _getter_impls {
                 target_models_per_target: None,
                 target_embedding_dim: None,
                 target_initial_distance_threshold: None,
-                target_initial_reconstruction_threshold: None,
                 target_reward_allocation_bps: None,
                 target_hit_rate_target_bps: None,
                 target_hit_rate_ema_decay_bps: None,
                 target_difficulty_adjustment_rate_bps: None,
                 target_max_distance_threshold: None,
                 target_min_distance_threshold: None,
-                target_max_reconstruction_threshold: None,
-                target_min_reconstruction_threshold: None,
                 target_initial_targets_per_epoch: None,
                 target_miner_reward_share_bps: None,
                 target_model_reward_share_bps: None,
                 target_claimer_incentive_bps: None,
                 submission_bond_per_byte: None,
+                challenger_bond_per_byte: None,
+                challenge_distance_epsilon: None,
+                max_submission_data_size: None,
             }
         }
         #[doc(hidden)]
@@ -2441,13 +2552,6 @@ mod _getter_impls {
             self.target_initial_distance_threshold = Some(field.into());
             self
         }
-        pub fn with_target_initial_reconstruction_threshold(
-            mut self,
-            field: u64,
-        ) -> Self {
-            self.target_initial_reconstruction_threshold = Some(field.into());
-            self
-        }
         pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
             self.target_reward_allocation_bps = Some(field.into());
             self
@@ -2472,14 +2576,6 @@ mod _getter_impls {
             self.target_min_distance_threshold = Some(field.into());
             self
         }
-        pub fn with_target_max_reconstruction_threshold(mut self, field: u64) -> Self {
-            self.target_max_reconstruction_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_min_reconstruction_threshold(mut self, field: u64) -> Self {
-            self.target_min_reconstruction_threshold = Some(field.into());
-            self
-        }
         pub fn with_target_initial_targets_per_epoch(mut self, field: u64) -> Self {
             self.target_initial_targets_per_epoch = Some(field.into());
             self
@@ -2498,6 +2594,18 @@ mod _getter_impls {
         }
         pub fn with_submission_bond_per_byte(mut self, field: u64) -> Self {
             self.submission_bond_per_byte = Some(field.into());
+            self
+        }
+        pub fn with_challenger_bond_per_byte(mut self, field: u64) -> Self {
+            self.challenger_bond_per_byte = Some(field.into());
+            self
+        }
+        pub fn with_challenge_distance_epsilon(mut self, field: i64) -> Self {
+            self.challenge_distance_epsilon = Some(field.into());
+            self
+        }
+        pub fn with_max_submission_data_size(mut self, field: u64) -> Self {
+            self.max_submission_data_size = Some(field.into());
             self
         }
     }
@@ -2584,6 +2692,7 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
+                proxy_address: None,
                 voting_power: None,
                 commission_rate: None,
                 next_epoch_stake: None,
@@ -2595,6 +2704,7 @@ mod _getter_impls {
                 next_epoch_net_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
+                next_epoch_proxy_address: None,
             }
         }
         #[doc(hidden)]
@@ -2628,6 +2738,10 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: String) -> Self {
             self.primary_address = Some(field.into());
+            self
+        }
+        pub fn with_proxy_address(mut self, field: String) -> Self {
+            self.proxy_address = Some(field.into());
             self
         }
         pub fn with_voting_power(mut self, field: u64) -> Self {
@@ -2696,6 +2810,10 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_primary_address(mut self, field: String) -> Self {
             self.next_epoch_primary_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_proxy_address(mut self, field: String) -> Self {
+            self.next_epoch_proxy_address = Some(field.into());
             self
         }
     }
@@ -2911,7 +3029,6 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 distance_threshold: None,
-                reconstruction_threshold: None,
                 targets_generated_this_epoch: None,
                 hits_this_epoch: None,
                 hit_rate_ema_bps: None,
@@ -2925,10 +3042,6 @@ mod _getter_impls {
         }
         pub fn with_distance_threshold(mut self, field: i64) -> Self {
             self.distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_reconstruction_threshold(mut self, field: u64) -> Self {
-            self.reconstruction_threshold = Some(field.into());
             self
         }
         pub fn with_targets_generated_this_epoch(mut self, field: u64) -> Self {
@@ -2955,7 +3068,6 @@ mod _getter_impls {
                 embedding: Vec::new(),
                 model_ids: Vec::new(),
                 distance_threshold: None,
-                reconstruction_threshold: None,
                 reward_pool: None,
                 generation_epoch: None,
                 status: None,
@@ -2997,10 +3109,6 @@ mod _getter_impls {
         }
         pub fn with_distance_threshold(mut self, field: i64) -> Self {
             self.distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_reconstruction_threshold(mut self, field: u64) -> Self {
-            self.reconstruction_threshold = Some(field.into());
             self
         }
         pub fn with_reward_pool(mut self, field: u64) -> Self {
@@ -3045,7 +3153,6 @@ mod _getter_impls {
                 model_id: None,
                 embedding: Vec::new(),
                 distance_score: None,
-                reconstruction_score: None,
                 bond_amount: None,
                 submit_epoch: None,
             }
@@ -3100,16 +3207,78 @@ mod _getter_impls {
             self.distance_score = Some(field.into());
             self
         }
-        pub fn with_reconstruction_score(mut self, field: u64) -> Self {
-            self.reconstruction_score = Some(field.into());
-            self
-        }
         pub fn with_bond_amount(mut self, field: u64) -> Self {
             self.bond_amount = Some(field.into());
             self
         }
         pub fn with_submit_epoch(mut self, field: u64) -> Self {
             self.submit_epoch = Some(field.into());
+            self
+        }
+    }
+    impl Challenge {
+        pub const fn const_default() -> Self {
+            Self {
+                id: None,
+                target_id: None,
+                challenger: None,
+                challenger_bond: None,
+                challenge_epoch: None,
+                status: None,
+                verdict: None,
+                win_reason: None,
+                distance_threshold: None,
+                winning_distance_score: None,
+                winning_model_id: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Challenge = Challenge::const_default();
+            &DEFAULT
+        }
+        pub fn with_id(mut self, field: String) -> Self {
+            self.id = Some(field.into());
+            self
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_challenger(mut self, field: String) -> Self {
+            self.challenger = Some(field.into());
+            self
+        }
+        pub fn with_challenger_bond(mut self, field: u64) -> Self {
+            self.challenger_bond = Some(field.into());
+            self
+        }
+        pub fn with_challenge_epoch(mut self, field: u64) -> Self {
+            self.challenge_epoch = Some(field.into());
+            self
+        }
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
+            self
+        }
+        pub fn with_verdict(mut self, field: String) -> Self {
+            self.verdict = Some(field.into());
+            self
+        }
+        pub fn with_win_reason(mut self, field: String) -> Self {
+            self.win_reason = Some(field.into());
+            self
+        }
+        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+            self.distance_threshold = Some(field.into());
+            self
+        }
+        pub fn with_winning_distance_score(mut self, field: i64) -> Self {
+            self.winning_distance_score = Some(field.into());
+            self
+        }
+        pub fn with_winning_model_id(mut self, field: String) -> Self {
+            self.winning_model_id = Some(field.into());
             self
         }
     }
@@ -4066,6 +4235,235 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::ClaimRewards(field.into()));
             self
         }
+        pub fn report_submission(&self) -> &ReportSubmission {
+            if let Some(transaction_kind::Kind::ReportSubmission(field)) = &self.kind {
+                field as _
+            } else {
+                ReportSubmission::default_instance() as _
+            }
+        }
+        pub fn report_submission_opt(&self) -> Option<&ReportSubmission> {
+            if let Some(transaction_kind::Kind::ReportSubmission(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn report_submission_opt_mut(&mut self) -> Option<&mut ReportSubmission> {
+            if let Some(transaction_kind::Kind::ReportSubmission(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn report_submission_mut(&mut self) -> &mut ReportSubmission {
+            if self.report_submission_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ReportSubmission(ReportSubmission::default()),
+                );
+            }
+            self.report_submission_opt_mut().unwrap()
+        }
+        pub fn with_report_submission(mut self, field: ReportSubmission) -> Self {
+            self.kind = Some(transaction_kind::Kind::ReportSubmission(field.into()));
+            self
+        }
+        pub fn undo_report_submission(&self) -> &UndoReportSubmission {
+            if let Some(transaction_kind::Kind::UndoReportSubmission(field)) = &self.kind
+            {
+                field as _
+            } else {
+                UndoReportSubmission::default_instance() as _
+            }
+        }
+        pub fn undo_report_submission_opt(&self) -> Option<&UndoReportSubmission> {
+            if let Some(transaction_kind::Kind::UndoReportSubmission(field)) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn undo_report_submission_opt_mut(
+            &mut self,
+        ) -> Option<&mut UndoReportSubmission> {
+            if let Some(transaction_kind::Kind::UndoReportSubmission(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn undo_report_submission_mut(&mut self) -> &mut UndoReportSubmission {
+            if self.undo_report_submission_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UndoReportSubmission(
+                        UndoReportSubmission::default(),
+                    ),
+                );
+            }
+            self.undo_report_submission_opt_mut().unwrap()
+        }
+        pub fn with_undo_report_submission(
+            mut self,
+            field: UndoReportSubmission,
+        ) -> Self {
+            self.kind = Some(transaction_kind::Kind::UndoReportSubmission(field.into()));
+            self
+        }
+        pub fn initiate_challenge(&self) -> &InitiateChallenge {
+            if let Some(transaction_kind::Kind::InitiateChallenge(field)) = &self.kind {
+                field as _
+            } else {
+                InitiateChallenge::default_instance() as _
+            }
+        }
+        pub fn initiate_challenge_opt(&self) -> Option<&InitiateChallenge> {
+            if let Some(transaction_kind::Kind::InitiateChallenge(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn initiate_challenge_opt_mut(&mut self) -> Option<&mut InitiateChallenge> {
+            if let Some(transaction_kind::Kind::InitiateChallenge(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn initiate_challenge_mut(&mut self) -> &mut InitiateChallenge {
+            if self.initiate_challenge_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::InitiateChallenge(
+                        InitiateChallenge::default(),
+                    ),
+                );
+            }
+            self.initiate_challenge_opt_mut().unwrap()
+        }
+        pub fn with_initiate_challenge(mut self, field: InitiateChallenge) -> Self {
+            self.kind = Some(transaction_kind::Kind::InitiateChallenge(field.into()));
+            self
+        }
+        pub fn report_challenge(&self) -> &ReportChallenge {
+            if let Some(transaction_kind::Kind::ReportChallenge(field)) = &self.kind {
+                field as _
+            } else {
+                ReportChallenge::default_instance() as _
+            }
+        }
+        pub fn report_challenge_opt(&self) -> Option<&ReportChallenge> {
+            if let Some(transaction_kind::Kind::ReportChallenge(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn report_challenge_opt_mut(&mut self) -> Option<&mut ReportChallenge> {
+            if let Some(transaction_kind::Kind::ReportChallenge(field)) = &mut self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn report_challenge_mut(&mut self) -> &mut ReportChallenge {
+            if self.report_challenge_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ReportChallenge(ReportChallenge::default()),
+                );
+            }
+            self.report_challenge_opt_mut().unwrap()
+        }
+        pub fn with_report_challenge(mut self, field: ReportChallenge) -> Self {
+            self.kind = Some(transaction_kind::Kind::ReportChallenge(field.into()));
+            self
+        }
+        pub fn undo_report_challenge(&self) -> &UndoReportChallenge {
+            if let Some(transaction_kind::Kind::UndoReportChallenge(field)) = &self.kind
+            {
+                field as _
+            } else {
+                UndoReportChallenge::default_instance() as _
+            }
+        }
+        pub fn undo_report_challenge_opt(&self) -> Option<&UndoReportChallenge> {
+            if let Some(transaction_kind::Kind::UndoReportChallenge(field)) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn undo_report_challenge_opt_mut(
+            &mut self,
+        ) -> Option<&mut UndoReportChallenge> {
+            if let Some(transaction_kind::Kind::UndoReportChallenge(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn undo_report_challenge_mut(&mut self) -> &mut UndoReportChallenge {
+            if self.undo_report_challenge_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::UndoReportChallenge(
+                        UndoReportChallenge::default(),
+                    ),
+                );
+            }
+            self.undo_report_challenge_opt_mut().unwrap()
+        }
+        pub fn with_undo_report_challenge(mut self, field: UndoReportChallenge) -> Self {
+            self.kind = Some(transaction_kind::Kind::UndoReportChallenge(field.into()));
+            self
+        }
+        pub fn claim_challenge_bond(&self) -> &ClaimChallengeBond {
+            if let Some(transaction_kind::Kind::ClaimChallengeBond(field)) = &self.kind {
+                field as _
+            } else {
+                ClaimChallengeBond::default_instance() as _
+            }
+        }
+        pub fn claim_challenge_bond_opt(&self) -> Option<&ClaimChallengeBond> {
+            if let Some(transaction_kind::Kind::ClaimChallengeBond(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_challenge_bond_opt_mut(
+            &mut self,
+        ) -> Option<&mut ClaimChallengeBond> {
+            if let Some(transaction_kind::Kind::ClaimChallengeBond(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn claim_challenge_bond_mut(&mut self) -> &mut ClaimChallengeBond {
+            if self.claim_challenge_bond_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::ClaimChallengeBond(
+                        ClaimChallengeBond::default(),
+                    ),
+                );
+            }
+            self.claim_challenge_bond_opt_mut().unwrap()
+        }
+        pub fn with_claim_challenge_bond(mut self, field: ClaimChallengeBond) -> Self {
+            self.kind = Some(transaction_kind::Kind::ClaimChallengeBond(field.into()));
+            self
+        }
     }
     impl AddValidator {
         pub const fn const_default() -> Self {
@@ -4076,6 +4474,7 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
+                proxy_address: None,
             }
         }
         #[doc(hidden)]
@@ -4108,6 +4507,10 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.primary_address = Some(field.into());
+            self
+        }
+        pub fn with_proxy_address(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.proxy_address = Some(field.into());
             self
         }
     }
@@ -4159,6 +4562,7 @@ mod _getter_impls {
                 next_epoch_network_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
+                next_epoch_proxy_address: None,
                 next_epoch_protocol_pubkey: None,
                 next_epoch_worker_pubkey: None,
                 next_epoch_network_pubkey: None,
@@ -4188,6 +4592,13 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.next_epoch_primary_address = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_proxy_address(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_proxy_address = Some(field.into());
             self
         }
         pub fn with_next_epoch_protocol_pubkey(
@@ -4860,6 +5271,41 @@ mod _getter_impls {
             self
         }
     }
+    impl ReportSubmission {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                challenger: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ReportSubmission = ReportSubmission::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_challenger(mut self, field: String) -> Self {
+            self.challenger = Some(field.into());
+            self
+        }
+    }
+    impl UndoReportSubmission {
+        pub const fn const_default() -> Self {
+            Self { target_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UndoReportSubmission = UndoReportSubmission::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+    }
     impl ChangeEpoch {
         pub const fn const_default() -> Self {
             Self {
@@ -4958,7 +5404,6 @@ mod _getter_impls {
                 model_id: None,
                 embedding: Vec::new(),
                 distance_score: None,
-                reconstruction_score: None,
                 bond_coin: None,
             }
         }
@@ -5010,10 +5455,6 @@ mod _getter_impls {
         }
         pub fn with_distance_score(mut self, field: i64) -> Self {
             self.distance_score = Some(field.into());
-            self
-        }
-        pub fn with_reconstruction_score(mut self, field: u64) -> Self {
-            self.reconstruction_score = Some(field.into());
             self
         }
         pub fn bond_coin(&self) -> &ObjectReference {
@@ -5076,6 +5517,94 @@ mod _getter_impls {
         }
         pub fn with_manifest(mut self, field: Manifest) -> Self {
             self.manifest = Some(field.into());
+            self
+        }
+    }
+    impl InitiateChallenge {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                challenge_type: None,
+                model_id: None,
+                bond_coin: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: InitiateChallenge = InitiateChallenge::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_challenge_type(mut self, field: String) -> Self {
+            self.challenge_type = Some(field.into());
+            self
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
+        }
+        pub fn bond_coin(&self) -> &ObjectReference {
+            self.bond_coin
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn bond_coin_opt(&self) -> Option<&ObjectReference> {
+            self.bond_coin.as_ref().map(|field| field as _)
+        }
+        pub fn bond_coin_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.bond_coin.as_mut().map(|field| field as _)
+        }
+        pub fn bond_coin_mut(&mut self) -> &mut ObjectReference {
+            self.bond_coin.get_or_insert_default()
+        }
+        pub fn with_bond_coin(mut self, field: ObjectReference) -> Self {
+            self.bond_coin = Some(field.into());
+            self
+        }
+    }
+    impl ReportChallenge {
+        pub const fn const_default() -> Self {
+            Self { challenge_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ReportChallenge = ReportChallenge::const_default();
+            &DEFAULT
+        }
+        pub fn with_challenge_id(mut self, field: String) -> Self {
+            self.challenge_id = Some(field.into());
+            self
+        }
+    }
+    impl UndoReportChallenge {
+        pub const fn const_default() -> Self {
+            Self { challenge_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: UndoReportChallenge = UndoReportChallenge::const_default();
+            &DEFAULT
+        }
+        pub fn with_challenge_id(mut self, field: String) -> Self {
+            self.challenge_id = Some(field.into());
+            self
+        }
+    }
+    impl ClaimChallengeBond {
+        pub const fn const_default() -> Self {
+            Self { challenge_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ClaimChallengeBond = ClaimChallengeBond::const_default();
+            &DEFAULT
+        }
+        pub fn with_challenge_id(mut self, field: String) -> Self {
+            self.challenge_id = Some(field.into());
             self
         }
     }

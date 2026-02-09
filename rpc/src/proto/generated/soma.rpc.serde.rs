@@ -297,6 +297,9 @@ impl serde::Serialize for AddValidator {
         if self.primary_address.is_some() {
             len += 1;
         }
+        if self.proxy_address.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddValidator", len)?;
         if let Some(v) = self.pubkey_bytes.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -328,6 +331,11 @@ impl serde::Serialize for AddValidator {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("primaryAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.proxy_address.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("proxyAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -350,6 +358,8 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
             "p2pAddress",
             "primary_address",
             "primaryAddress",
+            "proxy_address",
+            "proxyAddress",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -360,6 +370,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
             NetAddress,
             P2pAddress,
             PrimaryAddress,
+            ProxyAddress,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -388,6 +399,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                             "netAddress" | "net_address" => Ok(GeneratedField::NetAddress),
                             "p2pAddress" | "p2p_address" => Ok(GeneratedField::P2pAddress),
                             "primaryAddress" | "primary_address" => Ok(GeneratedField::PrimaryAddress),
+                            "proxyAddress" | "proxy_address" => Ok(GeneratedField::ProxyAddress),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -415,6 +427,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                 let mut net_address__ = None;
                 let mut p2p_address__ = None;
                 let mut primary_address__ = None;
+                let mut proxy_address__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::PubkeyBytes => {
@@ -465,6 +478,14 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::ProxyAddress => {
+                            if proxy_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("proxyAddress"));
+                            }
+                            proxy_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -477,6 +498,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                     net_address: net_address__,
                     p2p_address: p2p_address__,
                     primary_address: primary_address__,
+                    proxy_address: proxy_address__,
                 })
             }
         }
@@ -1019,6 +1041,296 @@ impl<'de> serde::Deserialize<'de> for BatchGetTransactionsResponse {
             }
         }
         deserializer.deserialize_struct("soma.rpc.BatchGetTransactionsResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for Challenge {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.id.is_some() {
+            len += 1;
+        }
+        if self.target_id.is_some() {
+            len += 1;
+        }
+        if self.challenger.is_some() {
+            len += 1;
+        }
+        if self.challenger_bond.is_some() {
+            len += 1;
+        }
+        if self.challenge_epoch.is_some() {
+            len += 1;
+        }
+        if self.status.is_some() {
+            len += 1;
+        }
+        if self.verdict.is_some() {
+            len += 1;
+        }
+        if self.win_reason.is_some() {
+            len += 1;
+        }
+        if self.distance_threshold.is_some() {
+            len += 1;
+        }
+        if self.winning_distance_score.is_some() {
+            len += 1;
+        }
+        if self.winning_model_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.Challenge", len)?;
+        if let Some(v) = self.id.as_ref() {
+            struct_ser.serialize_field("id", v)?;
+        }
+        if let Some(v) = self.target_id.as_ref() {
+            struct_ser.serialize_field("targetId", v)?;
+        }
+        if let Some(v) = self.challenger.as_ref() {
+            struct_ser.serialize_field("challenger", v)?;
+        }
+        if let Some(v) = self.challenger_bond.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("challengerBond", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.challenge_epoch.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("challengeEpoch", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.status.as_ref() {
+            struct_ser.serialize_field("status", v)?;
+        }
+        if let Some(v) = self.verdict.as_ref() {
+            struct_ser.serialize_field("verdict", v)?;
+        }
+        if let Some(v) = self.win_reason.as_ref() {
+            struct_ser.serialize_field("winReason", v)?;
+        }
+        if let Some(v) = self.distance_threshold.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.winning_distance_score.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("winningDistanceScore", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.winning_model_id.as_ref() {
+            struct_ser.serialize_field("winningModelId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for Challenge {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "id",
+            "target_id",
+            "targetId",
+            "challenger",
+            "challenger_bond",
+            "challengerBond",
+            "challenge_epoch",
+            "challengeEpoch",
+            "status",
+            "verdict",
+            "win_reason",
+            "winReason",
+            "distance_threshold",
+            "distanceThreshold",
+            "winning_distance_score",
+            "winningDistanceScore",
+            "winning_model_id",
+            "winningModelId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Id,
+            TargetId,
+            Challenger,
+            ChallengerBond,
+            ChallengeEpoch,
+            Status,
+            Verdict,
+            WinReason,
+            DistanceThreshold,
+            WinningDistanceScore,
+            WinningModelId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "id" => Ok(GeneratedField::Id),
+                            "targetId" | "target_id" => Ok(GeneratedField::TargetId),
+                            "challenger" => Ok(GeneratedField::Challenger),
+                            "challengerBond" | "challenger_bond" => Ok(GeneratedField::ChallengerBond),
+                            "challengeEpoch" | "challenge_epoch" => Ok(GeneratedField::ChallengeEpoch),
+                            "status" => Ok(GeneratedField::Status),
+                            "verdict" => Ok(GeneratedField::Verdict),
+                            "winReason" | "win_reason" => Ok(GeneratedField::WinReason),
+                            "distanceThreshold" | "distance_threshold" => Ok(GeneratedField::DistanceThreshold),
+                            "winningDistanceScore" | "winning_distance_score" => Ok(GeneratedField::WinningDistanceScore),
+                            "winningModelId" | "winning_model_id" => Ok(GeneratedField::WinningModelId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = Challenge;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.Challenge")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<Challenge, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut id__ = None;
+                let mut target_id__ = None;
+                let mut challenger__ = None;
+                let mut challenger_bond__ = None;
+                let mut challenge_epoch__ = None;
+                let mut status__ = None;
+                let mut verdict__ = None;
+                let mut win_reason__ = None;
+                let mut distance_threshold__ = None;
+                let mut winning_distance_score__ = None;
+                let mut winning_model_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Id => {
+                            if id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("id"));
+                            }
+                            id__ = map_.next_value()?;
+                        }
+                        GeneratedField::TargetId => {
+                            if target_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetId"));
+                            }
+                            target_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Challenger => {
+                            if challenger__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challenger"));
+                            }
+                            challenger__ = map_.next_value()?;
+                        }
+                        GeneratedField::ChallengerBond => {
+                            if challenger_bond__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengerBond"));
+                            }
+                            challenger_bond__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ChallengeEpoch => {
+                            if challenge_epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeEpoch"));
+                            }
+                            challenge_epoch__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::Status => {
+                            if status__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("status"));
+                            }
+                            status__ = map_.next_value()?;
+                        }
+                        GeneratedField::Verdict => {
+                            if verdict__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("verdict"));
+                            }
+                            verdict__ = map_.next_value()?;
+                        }
+                        GeneratedField::WinReason => {
+                            if win_reason__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("winReason"));
+                            }
+                            win_reason__ = map_.next_value()?;
+                        }
+                        GeneratedField::DistanceThreshold => {
+                            if distance_threshold__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("distanceThreshold"));
+                            }
+                            distance_threshold__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::WinningDistanceScore => {
+                            if winning_distance_score__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("winningDistanceScore"));
+                            }
+                            winning_distance_score__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::WinningModelId => {
+                            if winning_model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("winningModelId"));
+                            }
+                            winning_model_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(Challenge {
+                    id: id__,
+                    target_id: target_id__,
+                    challenger: challenger__,
+                    challenger_bond: challenger_bond__,
+                    challenge_epoch: challenge_epoch__,
+                    status: status__,
+                    verdict: verdict__,
+                    win_reason: win_reason__,
+                    distance_threshold: distance_threshold__,
+                    winning_distance_score: winning_distance_score__,
+                    winning_model_id: winning_model_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.Challenge", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ChangeEpoch {
@@ -2646,6 +2958,104 @@ impl<'de> serde::Deserialize<'de> for CheckpointedTransactionInfo {
             }
         }
         deserializer.deserialize_struct("soma.rpc.CheckpointedTransactionInfo", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ClaimChallengeBond {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.challenge_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ClaimChallengeBond", len)?;
+        if let Some(v) = self.challenge_id.as_ref() {
+            struct_ser.serialize_field("challengeId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ClaimChallengeBond {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenge_id",
+            "challengeId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChallengeId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challengeId" | "challenge_id" => Ok(GeneratedField::ChallengeId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ClaimChallengeBond;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ClaimChallengeBond")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ClaimChallengeBond, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenge_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChallengeId => {
+                            if challenge_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeId"));
+                            }
+                            challenge_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ClaimChallengeBond {
+                    challenge_id: challenge_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ClaimChallengeBond", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ClaimRewards {
@@ -4627,9 +5037,17 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::ModelNotInTarget => "MODEL_NOT_IN_TARGET",
             Self::EmbeddingDimensionMismatch => "EMBEDDING_DIMENSION_MISMATCH",
             Self::DistanceExceedsThreshold => "DISTANCE_EXCEEDS_THRESHOLD",
-            Self::ReconstructionExceedsThreshold => "RECONSTRUCTION_EXCEEDS_THRESHOLD",
             Self::InsufficientBond => "INSUFFICIENT_BOND",
             Self::InsufficientEmissionBalance => "INSUFFICIENT_EMISSION_BALANCE",
+            Self::ChallengeWindowClosed => "CHALLENGE_WINDOW_CLOSED",
+            Self::InsufficientChallengerBond => "INSUFFICIENT_CHALLENGER_BOND",
+            Self::ChallengeNotFound => "CHALLENGE_NOT_FOUND",
+            Self::ChallengeNotPending => "CHALLENGE_NOT_PENDING",
+            Self::ChallengeExpired => "CHALLENGE_EXPIRED",
+            Self::InvalidChallengeResult => "INVALID_CHALLENGE_RESULT",
+            Self::InvalidChallengeQuorum => "INVALID_CHALLENGE_QUORUM",
+            Self::DataExceedsMaxSize => "DATA_EXCEEDS_MAX_SIZE",
+            Self::ChallengeAlreadyExists => "CHALLENGE_ALREADY_EXISTS",
         };
         serializer.serialize_str(variant)
     }
@@ -4683,9 +5101,17 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "MODEL_NOT_IN_TARGET",
             "EMBEDDING_DIMENSION_MISMATCH",
             "DISTANCE_EXCEEDS_THRESHOLD",
-            "RECONSTRUCTION_EXCEEDS_THRESHOLD",
             "INSUFFICIENT_BOND",
             "INSUFFICIENT_EMISSION_BALANCE",
+            "CHALLENGE_WINDOW_CLOSED",
+            "INSUFFICIENT_CHALLENGER_BOND",
+            "CHALLENGE_NOT_FOUND",
+            "CHALLENGE_NOT_PENDING",
+            "CHALLENGE_EXPIRED",
+            "INVALID_CHALLENGE_RESULT",
+            "INVALID_CHALLENGE_QUORUM",
+            "DATA_EXCEEDS_MAX_SIZE",
+            "CHALLENGE_ALREADY_EXISTS",
         ];
 
         struct GeneratedVisitor;
@@ -4768,9 +5194,17 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "MODEL_NOT_IN_TARGET" => Ok(execution_error::ExecutionErrorKind::ModelNotInTarget),
                     "EMBEDDING_DIMENSION_MISMATCH" => Ok(execution_error::ExecutionErrorKind::EmbeddingDimensionMismatch),
                     "DISTANCE_EXCEEDS_THRESHOLD" => Ok(execution_error::ExecutionErrorKind::DistanceExceedsThreshold),
-                    "RECONSTRUCTION_EXCEEDS_THRESHOLD" => Ok(execution_error::ExecutionErrorKind::ReconstructionExceedsThreshold),
                     "INSUFFICIENT_BOND" => Ok(execution_error::ExecutionErrorKind::InsufficientBond),
                     "INSUFFICIENT_EMISSION_BALANCE" => Ok(execution_error::ExecutionErrorKind::InsufficientEmissionBalance),
+                    "CHALLENGE_WINDOW_CLOSED" => Ok(execution_error::ExecutionErrorKind::ChallengeWindowClosed),
+                    "INSUFFICIENT_CHALLENGER_BOND" => Ok(execution_error::ExecutionErrorKind::InsufficientChallengerBond),
+                    "CHALLENGE_NOT_FOUND" => Ok(execution_error::ExecutionErrorKind::ChallengeNotFound),
+                    "CHALLENGE_NOT_PENDING" => Ok(execution_error::ExecutionErrorKind::ChallengeNotPending),
+                    "CHALLENGE_EXPIRED" => Ok(execution_error::ExecutionErrorKind::ChallengeExpired),
+                    "INVALID_CHALLENGE_RESULT" => Ok(execution_error::ExecutionErrorKind::InvalidChallengeResult),
+                    "INVALID_CHALLENGE_QUORUM" => Ok(execution_error::ExecutionErrorKind::InvalidChallengeQuorum),
+                    "DATA_EXCEEDS_MAX_SIZE" => Ok(execution_error::ExecutionErrorKind::DataExceedsMaxSize),
+                    "CHALLENGE_ALREADY_EXISTS" => Ok(execution_error::ExecutionErrorKind::ChallengeAlreadyExists),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -5185,6 +5619,219 @@ impl<'de> serde::Deserialize<'de> for GetBalanceResponse {
             }
         }
         deserializer.deserialize_struct("soma.rpc.GetBalanceResponse", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetChallengeRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.challenge_id.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetChallengeRequest", len)?;
+        if let Some(v) = self.challenge_id.as_ref() {
+            struct_ser.serialize_field("challengeId", v)?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetChallengeRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenge_id",
+            "challengeId",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChallengeId,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challengeId" | "challenge_id" => Ok(GeneratedField::ChallengeId),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetChallengeRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetChallengeRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetChallengeRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenge_id__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChallengeId => {
+                            if challenge_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeId"));
+                            }
+                            challenge_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetChallengeRequest {
+                    challenge_id: challenge_id__,
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetChallengeRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for GetChallengeResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.challenge.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.GetChallengeResponse", len)?;
+        if let Some(v) = self.challenge.as_ref() {
+            struct_ser.serialize_field("challenge", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for GetChallengeResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenge",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Challenge,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challenge" => Ok(GeneratedField::Challenge),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = GetChallengeResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.GetChallengeResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<GetChallengeResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenge__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Challenge => {
+                            if challenge__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challenge"));
+                            }
+                            challenge__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(GetChallengeResponse {
+                    challenge: challenge__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.GetChallengeResponse", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for GetCheckpointRequest {
@@ -6831,6 +7478,475 @@ impl<'de> serde::Deserialize<'de> for GetTransactionResult {
             }
         }
         deserializer.deserialize_struct("soma.rpc.GetTransactionResult", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for InitiateChallenge {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.target_id.is_some() {
+            len += 1;
+        }
+        if self.challenge_type.is_some() {
+            len += 1;
+        }
+        if self.model_id.is_some() {
+            len += 1;
+        }
+        if self.bond_coin.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.InitiateChallenge", len)?;
+        if let Some(v) = self.target_id.as_ref() {
+            struct_ser.serialize_field("targetId", v)?;
+        }
+        if let Some(v) = self.challenge_type.as_ref() {
+            struct_ser.serialize_field("challengeType", v)?;
+        }
+        if let Some(v) = self.model_id.as_ref() {
+            struct_ser.serialize_field("modelId", v)?;
+        }
+        if let Some(v) = self.bond_coin.as_ref() {
+            struct_ser.serialize_field("bondCoin", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for InitiateChallenge {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "target_id",
+            "targetId",
+            "challenge_type",
+            "challengeType",
+            "model_id",
+            "modelId",
+            "bond_coin",
+            "bondCoin",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TargetId,
+            ChallengeType,
+            ModelId,
+            BondCoin,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "targetId" | "target_id" => Ok(GeneratedField::TargetId),
+                            "challengeType" | "challenge_type" => Ok(GeneratedField::ChallengeType),
+                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
+                            "bondCoin" | "bond_coin" => Ok(GeneratedField::BondCoin),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = InitiateChallenge;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.InitiateChallenge")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<InitiateChallenge, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut target_id__ = None;
+                let mut challenge_type__ = None;
+                let mut model_id__ = None;
+                let mut bond_coin__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TargetId => {
+                            if target_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetId"));
+                            }
+                            target_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::ChallengeType => {
+                            if challenge_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeType"));
+                            }
+                            challenge_type__ = map_.next_value()?;
+                        }
+                        GeneratedField::ModelId => {
+                            if model_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("modelId"));
+                            }
+                            model_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::BondCoin => {
+                            if bond_coin__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("bondCoin"));
+                            }
+                            bond_coin__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(InitiateChallenge {
+                    target_id: target_id__,
+                    challenge_type: challenge_type__,
+                    model_id: model_id__,
+                    bond_coin: bond_coin__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.InitiateChallenge", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ListChallengesRequest {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.target_id.is_some() {
+            len += 1;
+        }
+        if self.status_filter.is_some() {
+            len += 1;
+        }
+        if self.epoch_filter.is_some() {
+            len += 1;
+        }
+        if self.page_size.is_some() {
+            len += 1;
+        }
+        if self.page_token.is_some() {
+            len += 1;
+        }
+        if self.read_mask.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ListChallengesRequest", len)?;
+        if let Some(v) = self.target_id.as_ref() {
+            struct_ser.serialize_field("targetId", v)?;
+        }
+        if let Some(v) = self.status_filter.as_ref() {
+            struct_ser.serialize_field("statusFilter", v)?;
+        }
+        if let Some(v) = self.epoch_filter.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("epochFilter", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.page_size.as_ref() {
+            struct_ser.serialize_field("pageSize", v)?;
+        }
+        if let Some(v) = self.page_token.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("pageToken", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.read_mask.as_ref() {
+            struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ListChallengesRequest {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "target_id",
+            "targetId",
+            "status_filter",
+            "statusFilter",
+            "epoch_filter",
+            "epochFilter",
+            "page_size",
+            "pageSize",
+            "page_token",
+            "pageToken",
+            "read_mask",
+            "readMask",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TargetId,
+            StatusFilter,
+            EpochFilter,
+            PageSize,
+            PageToken,
+            ReadMask,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "targetId" | "target_id" => Ok(GeneratedField::TargetId),
+                            "statusFilter" | "status_filter" => Ok(GeneratedField::StatusFilter),
+                            "epochFilter" | "epoch_filter" => Ok(GeneratedField::EpochFilter),
+                            "pageSize" | "page_size" => Ok(GeneratedField::PageSize),
+                            "pageToken" | "page_token" => Ok(GeneratedField::PageToken),
+                            "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ListChallengesRequest;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ListChallengesRequest")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ListChallengesRequest, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut target_id__ = None;
+                let mut status_filter__ = None;
+                let mut epoch_filter__ = None;
+                let mut page_size__ = None;
+                let mut page_token__ = None;
+                let mut read_mask__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TargetId => {
+                            if target_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetId"));
+                            }
+                            target_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::StatusFilter => {
+                            if status_filter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("statusFilter"));
+                            }
+                            status_filter__ = map_.next_value()?;
+                        }
+                        GeneratedField::EpochFilter => {
+                            if epoch_filter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("epochFilter"));
+                            }
+                            epoch_filter__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PageSize => {
+                            if page_size__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pageSize"));
+                            }
+                            page_size__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::PageToken => {
+                            if page_token__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("pageToken"));
+                            }
+                            page_token__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ReadMask => {
+                            if read_mask__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("readMask"));
+                            }
+                            read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ListChallengesRequest {
+                    target_id: target_id__,
+                    status_filter: status_filter__,
+                    epoch_filter: epoch_filter__,
+                    page_size: page_size__,
+                    page_token: page_token__,
+                    read_mask: read_mask__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ListChallengesRequest", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ListChallengesResponse {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.challenges.is_empty() {
+            len += 1;
+        }
+        if self.next_page_token.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ListChallengesResponse", len)?;
+        if !self.challenges.is_empty() {
+            struct_ser.serialize_field("challenges", &self.challenges)?;
+        }
+        if let Some(v) = self.next_page_token.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextPageToken", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ListChallengesResponse {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenges",
+            "next_page_token",
+            "nextPageToken",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Challenges,
+            NextPageToken,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challenges" => Ok(GeneratedField::Challenges),
+                            "nextPageToken" | "next_page_token" => Ok(GeneratedField::NextPageToken),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ListChallengesResponse;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ListChallengesResponse")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ListChallengesResponse, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenges__ = None;
+                let mut next_page_token__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Challenges => {
+                            if challenges__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challenges"));
+                            }
+                            challenges__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::NextPageToken => {
+                            if next_page_token__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextPageToken"));
+                            }
+                            next_page_token__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ListChallengesResponse {
+                    challenges: challenges__.unwrap_or_default(),
+                    next_page_token: next_page_token__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ListChallengesResponse", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ListOwnedObjectsRequest {
@@ -10381,6 +11497,104 @@ impl<'de> serde::Deserialize<'de> for RemoveValidator {
         deserializer.deserialize_struct("soma.rpc.RemoveValidator", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for ReportChallenge {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.challenge_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ReportChallenge", len)?;
+        if let Some(v) = self.challenge_id.as_ref() {
+            struct_ser.serialize_field("challengeId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ReportChallenge {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenge_id",
+            "challengeId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChallengeId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challengeId" | "challenge_id" => Ok(GeneratedField::ChallengeId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ReportChallenge;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ReportChallenge")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ReportChallenge, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenge_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChallengeId => {
+                            if challenge_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeId"));
+                            }
+                            challenge_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ReportChallenge {
+                    challenge_id: challenge_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ReportChallenge", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for ReportModel {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -10477,6 +11691,121 @@ impl<'de> serde::Deserialize<'de> for ReportModel {
             }
         }
         deserializer.deserialize_struct("soma.rpc.ReportModel", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for ReportSubmission {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.target_id.is_some() {
+            len += 1;
+        }
+        if self.challenger.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.ReportSubmission", len)?;
+        if let Some(v) = self.target_id.as_ref() {
+            struct_ser.serialize_field("targetId", v)?;
+        }
+        if let Some(v) = self.challenger.as_ref() {
+            struct_ser.serialize_field("challenger", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for ReportSubmission {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "target_id",
+            "targetId",
+            "challenger",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TargetId,
+            Challenger,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "targetId" | "target_id" => Ok(GeneratedField::TargetId),
+                            "challenger" => Ok(GeneratedField::Challenger),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = ReportSubmission;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.ReportSubmission")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<ReportSubmission, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut target_id__ = None;
+                let mut challenger__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TargetId => {
+                            if target_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetId"));
+                            }
+                            target_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Challenger => {
+                            if challenger__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challenger"));
+                            }
+                            challenger__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(ReportSubmission {
+                    target_id: target_id__,
+                    challenger: challenger__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.ReportSubmission", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for ReportValidator {
@@ -11965,9 +13294,6 @@ impl serde::Serialize for Submission {
         if self.distance_score.is_some() {
             len += 1;
         }
-        if self.reconstruction_score.is_some() {
-            len += 1;
-        }
         if self.bond_amount.is_some() {
             len += 1;
         }
@@ -11996,11 +13322,6 @@ impl serde::Serialize for Submission {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("distanceScore", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.reconstruction_score.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("reconstructionScore", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.bond_amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -12032,8 +13353,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
             "embedding",
             "distance_score",
             "distanceScore",
-            "reconstruction_score",
-            "reconstructionScore",
             "bond_amount",
             "bondAmount",
             "submit_epoch",
@@ -12048,7 +13367,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
             ModelId,
             Embedding,
             DistanceScore,
-            ReconstructionScore,
             BondAmount,
             SubmitEpoch,
             __SkipField__,
@@ -12079,7 +13397,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             "embedding" => Ok(GeneratedField::Embedding),
                             "distanceScore" | "distance_score" => Ok(GeneratedField::DistanceScore),
-                            "reconstructionScore" | "reconstruction_score" => Ok(GeneratedField::ReconstructionScore),
                             "bondAmount" | "bond_amount" => Ok(GeneratedField::BondAmount),
                             "submitEpoch" | "submit_epoch" => Ok(GeneratedField::SubmitEpoch),
                             _ => Ok(GeneratedField::__SkipField__),
@@ -12109,7 +13426,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
                 let mut model_id__ = None;
                 let mut embedding__ = None;
                 let mut distance_score__ = None;
-                let mut reconstruction_score__ = None;
                 let mut bond_amount__ = None;
                 let mut submit_epoch__ = None;
                 while let Some(k) = map_.next_key()? {
@@ -12157,14 +13473,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::ReconstructionScore => {
-                            if reconstruction_score__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("reconstructionScore"));
-                            }
-                            reconstruction_score__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::BondAmount => {
                             if bond_amount__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("bondAmount"));
@@ -12193,7 +13501,6 @@ impl<'de> serde::Deserialize<'de> for Submission {
                     model_id: model_id__,
                     embedding: embedding__.unwrap_or_default(),
                     distance_score: distance_score__,
-                    reconstruction_score: reconstruction_score__,
                     bond_amount: bond_amount__,
                     submit_epoch: submit_epoch__,
                 })
@@ -12325,9 +13632,6 @@ impl serde::Serialize for SubmitData {
         if self.distance_score.is_some() {
             len += 1;
         }
-        if self.reconstruction_score.is_some() {
-            len += 1;
-        }
         if self.bond_coin.is_some() {
             len += 1;
         }
@@ -12354,11 +13658,6 @@ impl serde::Serialize for SubmitData {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("distanceScore", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.reconstruction_score.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("reconstructionScore", ToString::to_string(&v).as_str())?;
-        }
         if let Some(v) = self.bond_coin.as_ref() {
             struct_ser.serialize_field("bondCoin", v)?;
         }
@@ -12383,8 +13682,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
             "embedding",
             "distance_score",
             "distanceScore",
-            "reconstruction_score",
-            "reconstructionScore",
             "bond_coin",
             "bondCoin",
         ];
@@ -12397,7 +13694,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
             ModelId,
             Embedding,
             DistanceScore,
-            ReconstructionScore,
             BondCoin,
             __SkipField__,
         }
@@ -12427,7 +13723,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             "embedding" => Ok(GeneratedField::Embedding),
                             "distanceScore" | "distance_score" => Ok(GeneratedField::DistanceScore),
-                            "reconstructionScore" | "reconstruction_score" => Ok(GeneratedField::ReconstructionScore),
                             "bondCoin" | "bond_coin" => Ok(GeneratedField::BondCoin),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -12456,7 +13751,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                 let mut model_id__ = None;
                 let mut embedding__ = None;
                 let mut distance_score__ = None;
-                let mut reconstruction_score__ = None;
                 let mut bond_coin__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -12503,14 +13797,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::ReconstructionScore => {
-                            if reconstruction_score__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("reconstructionScore"));
-                            }
-                            reconstruction_score__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::BondCoin => {
                             if bond_coin__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("bondCoin"));
@@ -12529,7 +13815,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                     model_id: model_id__,
                     embedding: embedding__.unwrap_or_default(),
                     distance_score: distance_score__,
-                    reconstruction_score: reconstruction_score__,
                     bond_coin: bond_coin__,
                 })
             }
@@ -12809,9 +14094,6 @@ impl serde::Serialize for SystemParameters {
         if self.target_initial_distance_threshold.is_some() {
             len += 1;
         }
-        if self.target_initial_reconstruction_threshold.is_some() {
-            len += 1;
-        }
         if self.target_reward_allocation_bps.is_some() {
             len += 1;
         }
@@ -12830,12 +14112,6 @@ impl serde::Serialize for SystemParameters {
         if self.target_min_distance_threshold.is_some() {
             len += 1;
         }
-        if self.target_max_reconstruction_threshold.is_some() {
-            len += 1;
-        }
-        if self.target_min_reconstruction_threshold.is_some() {
-            len += 1;
-        }
         if self.target_initial_targets_per_epoch.is_some() {
             len += 1;
         }
@@ -12849,6 +14125,15 @@ impl serde::Serialize for SystemParameters {
             len += 1;
         }
         if self.submission_bond_per_byte.is_some() {
+            len += 1;
+        }
+        if self.challenger_bond_per_byte.is_some() {
+            len += 1;
+        }
+        if self.challenge_distance_epsilon.is_some() {
+            len += 1;
+        }
+        if self.max_submission_data_size.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemParameters", len)?;
@@ -12932,11 +14217,6 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("targetInitialDistanceThreshold", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.target_initial_reconstruction_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetInitialReconstructionThreshold", ToString::to_string(&v).as_str())?;
-        }
         if let Some(v) = self.target_reward_allocation_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
@@ -12967,16 +14247,6 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("targetMinDistanceThreshold", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.target_max_reconstruction_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetMaxReconstructionThreshold", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_min_reconstruction_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetMinReconstructionThreshold", ToString::to_string(&v).as_str())?;
-        }
         if let Some(v) = self.target_initial_targets_per_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
@@ -13001,6 +14271,21 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("submissionBondPerByte", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.challenger_bond_per_byte.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("challengerBondPerByte", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.challenge_distance_epsilon.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("challengeDistanceEpsilon", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.max_submission_data_size.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("maxSubmissionDataSize", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -13044,8 +14329,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "targetEmbeddingDim",
             "target_initial_distance_threshold",
             "targetInitialDistanceThreshold",
-            "target_initial_reconstruction_threshold",
-            "targetInitialReconstructionThreshold",
             "target_reward_allocation_bps",
             "targetRewardAllocationBps",
             "target_hit_rate_target_bps",
@@ -13058,10 +14341,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "targetMaxDistanceThreshold",
             "target_min_distance_threshold",
             "targetMinDistanceThreshold",
-            "target_max_reconstruction_threshold",
-            "targetMaxReconstructionThreshold",
-            "target_min_reconstruction_threshold",
-            "targetMinReconstructionThreshold",
             "target_initial_targets_per_epoch",
             "targetInitialTargetsPerEpoch",
             "target_miner_reward_share_bps",
@@ -13072,6 +14351,12 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "targetClaimerIncentiveBps",
             "submission_bond_per_byte",
             "submissionBondPerByte",
+            "challenger_bond_per_byte",
+            "challengerBondPerByte",
+            "challenge_distance_epsilon",
+            "challengeDistanceEpsilon",
+            "max_submission_data_size",
+            "maxSubmissionDataSize",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -13092,20 +14377,20 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             TargetModelsPerTarget,
             TargetEmbeddingDim,
             TargetInitialDistanceThreshold,
-            TargetInitialReconstructionThreshold,
             TargetRewardAllocationBps,
             TargetHitRateTargetBps,
             TargetHitRateEmaDecayBps,
             TargetDifficultyAdjustmentRateBps,
             TargetMaxDistanceThreshold,
             TargetMinDistanceThreshold,
-            TargetMaxReconstructionThreshold,
-            TargetMinReconstructionThreshold,
             TargetInitialTargetsPerEpoch,
             TargetMinerRewardShareBps,
             TargetModelRewardShareBps,
             TargetClaimerIncentiveBps,
             SubmissionBondPerByte,
+            ChallengerBondPerByte,
+            ChallengeDistanceEpsilon,
+            MaxSubmissionDataSize,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -13144,20 +14429,20 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                             "targetModelsPerTarget" | "target_models_per_target" => Ok(GeneratedField::TargetModelsPerTarget),
                             "targetEmbeddingDim" | "target_embedding_dim" => Ok(GeneratedField::TargetEmbeddingDim),
                             "targetInitialDistanceThreshold" | "target_initial_distance_threshold" => Ok(GeneratedField::TargetInitialDistanceThreshold),
-                            "targetInitialReconstructionThreshold" | "target_initial_reconstruction_threshold" => Ok(GeneratedField::TargetInitialReconstructionThreshold),
                             "targetRewardAllocationBps" | "target_reward_allocation_bps" => Ok(GeneratedField::TargetRewardAllocationBps),
                             "targetHitRateTargetBps" | "target_hit_rate_target_bps" => Ok(GeneratedField::TargetHitRateTargetBps),
                             "targetHitRateEmaDecayBps" | "target_hit_rate_ema_decay_bps" => Ok(GeneratedField::TargetHitRateEmaDecayBps),
                             "targetDifficultyAdjustmentRateBps" | "target_difficulty_adjustment_rate_bps" => Ok(GeneratedField::TargetDifficultyAdjustmentRateBps),
                             "targetMaxDistanceThreshold" | "target_max_distance_threshold" => Ok(GeneratedField::TargetMaxDistanceThreshold),
                             "targetMinDistanceThreshold" | "target_min_distance_threshold" => Ok(GeneratedField::TargetMinDistanceThreshold),
-                            "targetMaxReconstructionThreshold" | "target_max_reconstruction_threshold" => Ok(GeneratedField::TargetMaxReconstructionThreshold),
-                            "targetMinReconstructionThreshold" | "target_min_reconstruction_threshold" => Ok(GeneratedField::TargetMinReconstructionThreshold),
                             "targetInitialTargetsPerEpoch" | "target_initial_targets_per_epoch" => Ok(GeneratedField::TargetInitialTargetsPerEpoch),
                             "targetMinerRewardShareBps" | "target_miner_reward_share_bps" => Ok(GeneratedField::TargetMinerRewardShareBps),
                             "targetModelRewardShareBps" | "target_model_reward_share_bps" => Ok(GeneratedField::TargetModelRewardShareBps),
                             "targetClaimerIncentiveBps" | "target_claimer_incentive_bps" => Ok(GeneratedField::TargetClaimerIncentiveBps),
                             "submissionBondPerByte" | "submission_bond_per_byte" => Ok(GeneratedField::SubmissionBondPerByte),
+                            "challengerBondPerByte" | "challenger_bond_per_byte" => Ok(GeneratedField::ChallengerBondPerByte),
+                            "challengeDistanceEpsilon" | "challenge_distance_epsilon" => Ok(GeneratedField::ChallengeDistanceEpsilon),
+                            "maxSubmissionDataSize" | "max_submission_data_size" => Ok(GeneratedField::MaxSubmissionDataSize),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -13195,20 +14480,20 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 let mut target_models_per_target__ = None;
                 let mut target_embedding_dim__ = None;
                 let mut target_initial_distance_threshold__ = None;
-                let mut target_initial_reconstruction_threshold__ = None;
                 let mut target_reward_allocation_bps__ = None;
                 let mut target_hit_rate_target_bps__ = None;
                 let mut target_hit_rate_ema_decay_bps__ = None;
                 let mut target_difficulty_adjustment_rate_bps__ = None;
                 let mut target_max_distance_threshold__ = None;
                 let mut target_min_distance_threshold__ = None;
-                let mut target_max_reconstruction_threshold__ = None;
-                let mut target_min_reconstruction_threshold__ = None;
                 let mut target_initial_targets_per_epoch__ = None;
                 let mut target_miner_reward_share_bps__ = None;
                 let mut target_model_reward_share_bps__ = None;
                 let mut target_claimer_incentive_bps__ = None;
                 let mut submission_bond_per_byte__ = None;
+                let mut challenger_bond_per_byte__ = None;
+                let mut challenge_distance_epsilon__ = None;
+                let mut max_submission_data_size__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::EpochDurationMs => {
@@ -13339,14 +14624,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::TargetInitialReconstructionThreshold => {
-                            if target_initial_reconstruction_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetInitialReconstructionThreshold"));
-                            }
-                            target_initial_reconstruction_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::TargetRewardAllocationBps => {
                             if target_reward_allocation_bps__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("targetRewardAllocationBps"));
@@ -13395,22 +14672,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::TargetMaxReconstructionThreshold => {
-                            if target_max_reconstruction_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetMaxReconstructionThreshold"));
-                            }
-                            target_max_reconstruction_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetMinReconstructionThreshold => {
-                            if target_min_reconstruction_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetMinReconstructionThreshold"));
-                            }
-                            target_min_reconstruction_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::TargetInitialTargetsPerEpoch => {
                             if target_initial_targets_per_epoch__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("targetInitialTargetsPerEpoch"));
@@ -13451,6 +14712,30 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::ChallengerBondPerByte => {
+                            if challenger_bond_per_byte__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengerBondPerByte"));
+                            }
+                            challenger_bond_per_byte__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::ChallengeDistanceEpsilon => {
+                            if challenge_distance_epsilon__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeDistanceEpsilon"));
+                            }
+                            challenge_distance_epsilon__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::MaxSubmissionDataSize => {
+                            if max_submission_data_size__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("maxSubmissionDataSize"));
+                            }
+                            max_submission_data_size__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -13473,20 +14758,20 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     target_models_per_target: target_models_per_target__,
                     target_embedding_dim: target_embedding_dim__,
                     target_initial_distance_threshold: target_initial_distance_threshold__,
-                    target_initial_reconstruction_threshold: target_initial_reconstruction_threshold__,
                     target_reward_allocation_bps: target_reward_allocation_bps__,
                     target_hit_rate_target_bps: target_hit_rate_target_bps__,
                     target_hit_rate_ema_decay_bps: target_hit_rate_ema_decay_bps__,
                     target_difficulty_adjustment_rate_bps: target_difficulty_adjustment_rate_bps__,
                     target_max_distance_threshold: target_max_distance_threshold__,
                     target_min_distance_threshold: target_min_distance_threshold__,
-                    target_max_reconstruction_threshold: target_max_reconstruction_threshold__,
-                    target_min_reconstruction_threshold: target_min_reconstruction_threshold__,
                     target_initial_targets_per_epoch: target_initial_targets_per_epoch__,
                     target_miner_reward_share_bps: target_miner_reward_share_bps__,
                     target_model_reward_share_bps: target_model_reward_share_bps__,
                     target_claimer_incentive_bps: target_claimer_incentive_bps__,
                     submission_bond_per_byte: submission_bond_per_byte__,
+                    challenger_bond_per_byte: challenger_bond_per_byte__,
+                    challenge_distance_epsilon: challenge_distance_epsilon__,
+                    max_submission_data_size: max_submission_data_size__,
                 })
             }
         }
@@ -13528,6 +14813,9 @@ impl serde::Serialize for SystemState {
         if self.model_registry.is_some() {
             len += 1;
         }
+        if !self.submission_report_records.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemState", len)?;
         if let Some(v) = self.epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -13562,6 +14850,9 @@ impl serde::Serialize for SystemState {
         if let Some(v) = self.model_registry.as_ref() {
             struct_ser.serialize_field("modelRegistry", v)?;
         }
+        if !self.submission_report_records.is_empty() {
+            struct_ser.serialize_field("submissionReportRecords", &self.submission_report_records)?;
+        }
         struct_ser.end()
     }
 }
@@ -13587,6 +14878,8 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             "targetState",
             "model_registry",
             "modelRegistry",
+            "submission_report_records",
+            "submissionReportRecords",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -13600,6 +14893,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             EmissionPool,
             TargetState,
             ModelRegistry,
+            SubmissionReportRecords,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -13631,6 +14925,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                             "emissionPool" | "emission_pool" => Ok(GeneratedField::EmissionPool),
                             "targetState" | "target_state" => Ok(GeneratedField::TargetState),
                             "modelRegistry" | "model_registry" => Ok(GeneratedField::ModelRegistry),
+                            "submissionReportRecords" | "submission_report_records" => Ok(GeneratedField::SubmissionReportRecords),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -13661,6 +14956,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                 let mut emission_pool__ = None;
                 let mut target_state__ = None;
                 let mut model_registry__ = None;
+                let mut submission_report_records__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Epoch => {
@@ -13725,6 +15021,14 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                             }
                             model_registry__ = map_.next_value()?;
                         }
+                        GeneratedField::SubmissionReportRecords => {
+                            if submission_report_records__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("submissionReportRecords"));
+                            }
+                            submission_report_records__ = Some(
+                                map_.next_value::<std::collections::BTreeMap<_, _>>()?
+                            );
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -13740,6 +15044,7 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                     emission_pool: emission_pool__,
                     target_state: target_state__,
                     model_registry: model_registry__,
+                    submission_report_records: submission_report_records__.unwrap_or_default(),
                 })
             }
         }
@@ -13764,9 +15069,6 @@ impl serde::Serialize for Target {
             len += 1;
         }
         if self.distance_threshold.is_some() {
-            len += 1;
-        }
-        if self.reconstruction_threshold.is_some() {
             len += 1;
         }
         if self.reward_pool.is_some() {
@@ -13807,11 +15109,6 @@ impl serde::Serialize for Target {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.reconstruction_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("reconstructionThreshold", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.reward_pool.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -13861,8 +15158,6 @@ impl<'de> serde::Deserialize<'de> for Target {
             "modelIds",
             "distance_threshold",
             "distanceThreshold",
-            "reconstruction_threshold",
-            "reconstructionThreshold",
             "reward_pool",
             "rewardPool",
             "generation_epoch",
@@ -13885,7 +15180,6 @@ impl<'de> serde::Deserialize<'de> for Target {
             Embedding,
             ModelIds,
             DistanceThreshold,
-            ReconstructionThreshold,
             RewardPool,
             GenerationEpoch,
             Status,
@@ -13920,7 +15214,6 @@ impl<'de> serde::Deserialize<'de> for Target {
                             "embedding" => Ok(GeneratedField::Embedding),
                             "modelIds" | "model_ids" => Ok(GeneratedField::ModelIds),
                             "distanceThreshold" | "distance_threshold" => Ok(GeneratedField::DistanceThreshold),
-                            "reconstructionThreshold" | "reconstruction_threshold" => Ok(GeneratedField::ReconstructionThreshold),
                             "rewardPool" | "reward_pool" => Ok(GeneratedField::RewardPool),
                             "generationEpoch" | "generation_epoch" => Ok(GeneratedField::GenerationEpoch),
                             "status" => Ok(GeneratedField::Status),
@@ -13954,7 +15247,6 @@ impl<'de> serde::Deserialize<'de> for Target {
                 let mut embedding__ = None;
                 let mut model_ids__ = None;
                 let mut distance_threshold__ = None;
-                let mut reconstruction_threshold__ = None;
                 let mut reward_pool__ = None;
                 let mut generation_epoch__ = None;
                 let mut status__ = None;
@@ -13991,14 +15283,6 @@ impl<'de> serde::Deserialize<'de> for Target {
                                 return Err(serde::de::Error::duplicate_field("distanceThreshold"));
                             }
                             distance_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ReconstructionThreshold => {
-                            if reconstruction_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("reconstructionThreshold"));
-                            }
-                            reconstruction_threshold__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -14068,7 +15352,6 @@ impl<'de> serde::Deserialize<'de> for Target {
                     embedding: embedding__.unwrap_or_default(),
                     model_ids: model_ids__.unwrap_or_default(),
                     distance_threshold: distance_threshold__,
-                    reconstruction_threshold: reconstruction_threshold__,
                     reward_pool: reward_pool__,
                     generation_epoch: generation_epoch__,
                     status: status__,
@@ -14094,9 +15377,6 @@ impl serde::Serialize for TargetState {
         if self.distance_threshold.is_some() {
             len += 1;
         }
-        if self.reconstruction_threshold.is_some() {
-            len += 1;
-        }
         if self.targets_generated_this_epoch.is_some() {
             len += 1;
         }
@@ -14114,11 +15394,6 @@ impl serde::Serialize for TargetState {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.reconstruction_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("reconstructionThreshold", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.targets_generated_this_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14152,8 +15427,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
         const FIELDS: &[&str] = &[
             "distance_threshold",
             "distanceThreshold",
-            "reconstruction_threshold",
-            "reconstructionThreshold",
             "targets_generated_this_epoch",
             "targetsGeneratedThisEpoch",
             "hits_this_epoch",
@@ -14167,7 +15440,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             DistanceThreshold,
-            ReconstructionThreshold,
             TargetsGeneratedThisEpoch,
             HitsThisEpoch,
             HitRateEmaBps,
@@ -14195,7 +15467,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                     {
                         match value {
                             "distanceThreshold" | "distance_threshold" => Ok(GeneratedField::DistanceThreshold),
-                            "reconstructionThreshold" | "reconstruction_threshold" => Ok(GeneratedField::ReconstructionThreshold),
                             "targetsGeneratedThisEpoch" | "targets_generated_this_epoch" => Ok(GeneratedField::TargetsGeneratedThisEpoch),
                             "hitsThisEpoch" | "hits_this_epoch" => Ok(GeneratedField::HitsThisEpoch),
                             "hitRateEmaBps" | "hit_rate_ema_bps" => Ok(GeneratedField::HitRateEmaBps),
@@ -14222,7 +15493,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut distance_threshold__ = None;
-                let mut reconstruction_threshold__ = None;
                 let mut targets_generated_this_epoch__ = None;
                 let mut hits_this_epoch__ = None;
                 let mut hit_rate_ema_bps__ = None;
@@ -14234,14 +15504,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                                 return Err(serde::de::Error::duplicate_field("distanceThreshold"));
                             }
                             distance_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ReconstructionThreshold => {
-                            if reconstruction_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("reconstructionThreshold"));
-                            }
-                            reconstruction_threshold__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -14284,7 +15546,6 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                 }
                 Ok(TargetState {
                     distance_threshold: distance_threshold__,
-                    reconstruction_threshold: reconstruction_threshold__,
                     targets_generated_this_epoch: targets_generated_this_epoch__,
                     hits_this_epoch: hits_this_epoch__,
                     hit_rate_ema_bps: hit_rate_ema_bps__,
@@ -14949,6 +16210,24 @@ impl serde::Serialize for TransactionKind {
                 transaction_kind::Kind::ClaimRewards(v) => {
                     struct_ser.serialize_field("claimRewards", v)?;
                 }
+                transaction_kind::Kind::ReportSubmission(v) => {
+                    struct_ser.serialize_field("reportSubmission", v)?;
+                }
+                transaction_kind::Kind::UndoReportSubmission(v) => {
+                    struct_ser.serialize_field("undoReportSubmission", v)?;
+                }
+                transaction_kind::Kind::InitiateChallenge(v) => {
+                    struct_ser.serialize_field("initiateChallenge", v)?;
+                }
+                transaction_kind::Kind::ReportChallenge(v) => {
+                    struct_ser.serialize_field("reportChallenge", v)?;
+                }
+                transaction_kind::Kind::UndoReportChallenge(v) => {
+                    struct_ser.serialize_field("undoReportChallenge", v)?;
+                }
+                transaction_kind::Kind::ClaimChallengeBond(v) => {
+                    struct_ser.serialize_field("claimChallengeBond", v)?;
+                }
             }
         }
         struct_ser.end()
@@ -15010,6 +16289,18 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             "submitData",
             "claim_rewards",
             "claimRewards",
+            "report_submission",
+            "reportSubmission",
+            "undo_report_submission",
+            "undoReportSubmission",
+            "initiate_challenge",
+            "initiateChallenge",
+            "report_challenge",
+            "reportChallenge",
+            "undo_report_challenge",
+            "undoReportChallenge",
+            "claim_challenge_bond",
+            "claimChallengeBond",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -15039,6 +16330,12 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
             UndoReportModel,
             SubmitData,
             ClaimRewards,
+            ReportSubmission,
+            UndoReportSubmission,
+            InitiateChallenge,
+            ReportChallenge,
+            UndoReportChallenge,
+            ClaimChallengeBond,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -15086,6 +16383,12 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                             "undoReportModel" | "undo_report_model" => Ok(GeneratedField::UndoReportModel),
                             "submitData" | "submit_data" => Ok(GeneratedField::SubmitData),
                             "claimRewards" | "claim_rewards" => Ok(GeneratedField::ClaimRewards),
+                            "reportSubmission" | "report_submission" => Ok(GeneratedField::ReportSubmission),
+                            "undoReportSubmission" | "undo_report_submission" => Ok(GeneratedField::UndoReportSubmission),
+                            "initiateChallenge" | "initiate_challenge" => Ok(GeneratedField::InitiateChallenge),
+                            "reportChallenge" | "report_challenge" => Ok(GeneratedField::ReportChallenge),
+                            "undoReportChallenge" | "undo_report_challenge" => Ok(GeneratedField::UndoReportChallenge),
+                            "claimChallengeBond" | "claim_challenge_bond" => Ok(GeneratedField::ClaimChallengeBond),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -15283,6 +16586,48 @@ impl<'de> serde::Deserialize<'de> for TransactionKind {
                                 return Err(serde::de::Error::duplicate_field("claimRewards"));
                             }
                             kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ClaimRewards)
+;
+                        }
+                        GeneratedField::ReportSubmission => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("reportSubmission"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ReportSubmission)
+;
+                        }
+                        GeneratedField::UndoReportSubmission => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("undoReportSubmission"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UndoReportSubmission)
+;
+                        }
+                        GeneratedField::InitiateChallenge => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("initiateChallenge"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::InitiateChallenge)
+;
+                        }
+                        GeneratedField::ReportChallenge => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("reportChallenge"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ReportChallenge)
+;
+                        }
+                        GeneratedField::UndoReportChallenge => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("undoReportChallenge"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::UndoReportChallenge)
+;
+                        }
+                        GeneratedField::ClaimChallengeBond => {
+                            if kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("claimChallengeBond"));
+                            }
+                            kind__ = map_.next_value::<::std::option::Option<_>>()?.map(transaction_kind::Kind::ClaimChallengeBond)
 ;
                         }
                         GeneratedField::__SkipField__ => {
@@ -15800,6 +17145,104 @@ impl<'de> serde::Deserialize<'de> for unchanged_shared_object::UnchangedSharedOb
         deserializer.deserialize_any(GeneratedVisitor)
     }
 }
+impl serde::Serialize for UndoReportChallenge {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.challenge_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.UndoReportChallenge", len)?;
+        if let Some(v) = self.challenge_id.as_ref() {
+            struct_ser.serialize_field("challengeId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for UndoReportChallenge {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "challenge_id",
+            "challengeId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            ChallengeId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "challengeId" | "challenge_id" => Ok(GeneratedField::ChallengeId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = UndoReportChallenge;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.UndoReportChallenge")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<UndoReportChallenge, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut challenge_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::ChallengeId => {
+                            if challenge_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("challengeId"));
+                            }
+                            challenge_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(UndoReportChallenge {
+                    challenge_id: challenge_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.UndoReportChallenge", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for UndoReportModel {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -15896,6 +17339,104 @@ impl<'de> serde::Deserialize<'de> for UndoReportModel {
             }
         }
         deserializer.deserialize_struct("soma.rpc.UndoReportModel", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for UndoReportSubmission {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.target_id.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("soma.rpc.UndoReportSubmission", len)?;
+        if let Some(v) = self.target_id.as_ref() {
+            struct_ser.serialize_field("targetId", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for UndoReportSubmission {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "target_id",
+            "targetId",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            TargetId,
+            __SkipField__,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "targetId" | "target_id" => Ok(GeneratedField::TargetId),
+                            _ => Ok(GeneratedField::__SkipField__),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        #[allow(clippy::useless_conversion)]
+        #[allow(clippy::unit_arg)]
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = UndoReportSubmission;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct soma.rpc.UndoReportSubmission")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<UndoReportSubmission, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut target_id__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::TargetId => {
+                            if target_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetId"));
+                            }
+                            target_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::__SkipField__ => {
+                            let _ = map_.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+                Ok(UndoReportSubmission {
+                    target_id: target_id__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("soma.rpc.UndoReportSubmission", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for UndoReportValidator {
@@ -16012,6 +17553,9 @@ impl serde::Serialize for UpdateValidatorMetadata {
         if self.next_epoch_primary_address.is_some() {
             len += 1;
         }
+        if self.next_epoch_proxy_address.is_some() {
+            len += 1;
+        }
         if self.next_epoch_protocol_pubkey.is_some() {
             len += 1;
         }
@@ -16036,6 +17580,11 @@ impl serde::Serialize for UpdateValidatorMetadata {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("nextEpochPrimaryAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_proxy_address.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProxyAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.next_epoch_protocol_pubkey.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -16068,6 +17617,8 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
             "nextEpochP2pAddress",
             "next_epoch_primary_address",
             "nextEpochPrimaryAddress",
+            "next_epoch_proxy_address",
+            "nextEpochProxyAddress",
             "next_epoch_protocol_pubkey",
             "nextEpochProtocolPubkey",
             "next_epoch_worker_pubkey",
@@ -16081,6 +17632,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
             NextEpochNetworkAddress,
             NextEpochP2pAddress,
             NextEpochPrimaryAddress,
+            NextEpochProxyAddress,
             NextEpochProtocolPubkey,
             NextEpochWorkerPubkey,
             NextEpochNetworkPubkey,
@@ -16109,6 +17661,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                             "nextEpochNetworkAddress" | "next_epoch_network_address" => Ok(GeneratedField::NextEpochNetworkAddress),
                             "nextEpochP2pAddress" | "next_epoch_p2p_address" => Ok(GeneratedField::NextEpochP2pAddress),
                             "nextEpochPrimaryAddress" | "next_epoch_primary_address" => Ok(GeneratedField::NextEpochPrimaryAddress),
+                            "nextEpochProxyAddress" | "next_epoch_proxy_address" => Ok(GeneratedField::NextEpochProxyAddress),
                             "nextEpochProtocolPubkey" | "next_epoch_protocol_pubkey" => Ok(GeneratedField::NextEpochProtocolPubkey),
                             "nextEpochWorkerPubkey" | "next_epoch_worker_pubkey" => Ok(GeneratedField::NextEpochWorkerPubkey),
                             "nextEpochNetworkPubkey" | "next_epoch_network_pubkey" => Ok(GeneratedField::NextEpochNetworkPubkey),
@@ -16136,6 +17689,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                 let mut next_epoch_network_address__ = None;
                 let mut next_epoch_p2p_address__ = None;
                 let mut next_epoch_primary_address__ = None;
+                let mut next_epoch_proxy_address__ = None;
                 let mut next_epoch_protocol_pubkey__ = None;
                 let mut next_epoch_worker_pubkey__ = None;
                 let mut next_epoch_network_pubkey__ = None;
@@ -16162,6 +17716,14 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                                 return Err(serde::de::Error::duplicate_field("nextEpochPrimaryAddress"));
                             }
                             next_epoch_primary_address__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochProxyAddress => {
+                            if next_epoch_proxy_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProxyAddress"));
+                            }
+                            next_epoch_proxy_address__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -16198,6 +17760,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                     next_epoch_network_address: next_epoch_network_address__,
                     next_epoch_p2p_address: next_epoch_p2p_address__,
                     next_epoch_primary_address: next_epoch_primary_address__,
+                    next_epoch_proxy_address: next_epoch_proxy_address__,
                     next_epoch_protocol_pubkey: next_epoch_protocol_pubkey__,
                     next_epoch_worker_pubkey: next_epoch_worker_pubkey__,
                     next_epoch_network_pubkey: next_epoch_network_pubkey__,
@@ -16370,6 +17933,9 @@ impl serde::Serialize for Validator {
         if self.primary_address.is_some() {
             len += 1;
         }
+        if self.proxy_address.is_some() {
+            len += 1;
+        }
         if self.voting_power.is_some() {
             len += 1;
         }
@@ -16403,6 +17969,9 @@ impl serde::Serialize for Validator {
         if self.next_epoch_primary_address.is_some() {
             len += 1;
         }
+        if self.next_epoch_proxy_address.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Validator", len)?;
         if let Some(v) = self.soma_address.as_ref() {
             struct_ser.serialize_field("somaAddress", v)?;
@@ -16430,6 +17999,9 @@ impl serde::Serialize for Validator {
         }
         if let Some(v) = self.primary_address.as_ref() {
             struct_ser.serialize_field("primaryAddress", v)?;
+        }
+        if let Some(v) = self.proxy_address.as_ref() {
+            struct_ser.serialize_field("proxyAddress", v)?;
         }
         if let Some(v) = self.voting_power.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -16478,6 +18050,9 @@ impl serde::Serialize for Validator {
         if let Some(v) = self.next_epoch_primary_address.as_ref() {
             struct_ser.serialize_field("nextEpochPrimaryAddress", v)?;
         }
+        if let Some(v) = self.next_epoch_proxy_address.as_ref() {
+            struct_ser.serialize_field("nextEpochProxyAddress", v)?;
+        }
         struct_ser.end()
     }
 }
@@ -16502,6 +18077,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
             "p2pAddress",
             "primary_address",
             "primaryAddress",
+            "proxy_address",
+            "proxyAddress",
             "voting_power",
             "votingPower",
             "commission_rate",
@@ -16524,6 +18101,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
             "nextEpochP2pAddress",
             "next_epoch_primary_address",
             "nextEpochPrimaryAddress",
+            "next_epoch_proxy_address",
+            "nextEpochProxyAddress",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -16535,6 +18114,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
             NetAddress,
             P2pAddress,
             PrimaryAddress,
+            ProxyAddress,
             VotingPower,
             CommissionRate,
             NextEpochStake,
@@ -16546,6 +18126,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
             NextEpochNetAddress,
             NextEpochP2pAddress,
             NextEpochPrimaryAddress,
+            NextEpochProxyAddress,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -16575,6 +18156,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                             "netAddress" | "net_address" => Ok(GeneratedField::NetAddress),
                             "p2pAddress" | "p2p_address" => Ok(GeneratedField::P2pAddress),
                             "primaryAddress" | "primary_address" => Ok(GeneratedField::PrimaryAddress),
+                            "proxyAddress" | "proxy_address" => Ok(GeneratedField::ProxyAddress),
                             "votingPower" | "voting_power" => Ok(GeneratedField::VotingPower),
                             "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
                             "nextEpochStake" | "next_epoch_stake" => Ok(GeneratedField::NextEpochStake),
@@ -16586,6 +18168,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                             "nextEpochNetAddress" | "next_epoch_net_address" => Ok(GeneratedField::NextEpochNetAddress),
                             "nextEpochP2pAddress" | "next_epoch_p2p_address" => Ok(GeneratedField::NextEpochP2pAddress),
                             "nextEpochPrimaryAddress" | "next_epoch_primary_address" => Ok(GeneratedField::NextEpochPrimaryAddress),
+                            "nextEpochProxyAddress" | "next_epoch_proxy_address" => Ok(GeneratedField::NextEpochProxyAddress),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -16614,6 +18197,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                 let mut net_address__ = None;
                 let mut p2p_address__ = None;
                 let mut primary_address__ = None;
+                let mut proxy_address__ = None;
                 let mut voting_power__ = None;
                 let mut commission_rate__ = None;
                 let mut next_epoch_stake__ = None;
@@ -16625,6 +18209,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                 let mut next_epoch_net_address__ = None;
                 let mut next_epoch_p2p_address__ = None;
                 let mut next_epoch_primary_address__ = None;
+                let mut next_epoch_proxy_address__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::SomaAddress => {
@@ -16674,6 +18259,12 @@ impl<'de> serde::Deserialize<'de> for Validator {
                                 return Err(serde::de::Error::duplicate_field("primaryAddress"));
                             }
                             primary_address__ = map_.next_value()?;
+                        }
+                        GeneratedField::ProxyAddress => {
+                            if proxy_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("proxyAddress"));
+                            }
+                            proxy_address__ = map_.next_value()?;
                         }
                         GeneratedField::VotingPower => {
                             if voting_power__.is_some() {
@@ -16755,6 +18346,12 @@ impl<'de> serde::Deserialize<'de> for Validator {
                             }
                             next_epoch_primary_address__ = map_.next_value()?;
                         }
+                        GeneratedField::NextEpochProxyAddress => {
+                            if next_epoch_proxy_address__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProxyAddress"));
+                            }
+                            next_epoch_proxy_address__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -16768,6 +18365,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                     net_address: net_address__,
                     p2p_address: p2p_address__,
                     primary_address: primary_address__,
+                    proxy_address: proxy_address__,
                     voting_power: voting_power__,
                     commission_rate: commission_rate__,
                     next_epoch_stake: next_epoch_stake__,
@@ -16779,6 +18377,7 @@ impl<'de> serde::Deserialize<'de> for Validator {
                     next_epoch_net_address: next_epoch_net_address__,
                     next_epoch_p2p_address: next_epoch_p2p_address__,
                     next_epoch_primary_address: next_epoch_primary_address__,
+                    next_epoch_proxy_address: next_epoch_proxy_address__,
                 })
             }
         }

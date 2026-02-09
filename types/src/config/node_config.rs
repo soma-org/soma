@@ -455,6 +455,11 @@ pub struct ConsensusConfig {
     pub parameters: Option<Parameters>,
 
     pub address: Multiaddr,
+
+    /// Port for the proxy HTTP server that serves data/model downloads.
+    /// If not set, proxy server is not started.
+    /// Clients fetch submission data and model weights from this address.
+    pub proxy_port: Option<u16>,
 }
 
 impl ConsensusConfig {
@@ -497,6 +502,11 @@ impl ConsensusConfig {
         self.db_pruner_period_secs
             .map(Duration::from_secs)
             .unwrap_or(Duration::from_secs(3_600))
+    }
+
+    /// Get the proxy server port for serving data/model downloads.
+    pub fn proxy_port(&self) -> Option<u16> {
+        self.proxy_port
     }
 }
 
@@ -634,6 +644,7 @@ impl ValidatorConfigBuilder {
             max_submit_position: None,
             max_pending_transactions: None,
             parameters: None,
+            proxy_port: None,
         });
 
         let p2p_config = {

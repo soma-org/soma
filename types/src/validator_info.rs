@@ -21,6 +21,7 @@ pub struct ValidatorInfo {
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub primary_address: Multiaddr,
+    pub proxy_address: Multiaddr,
 }
 
 impl ValidatorInfo {
@@ -54,6 +55,10 @@ impl ValidatorInfo {
 
     pub fn p2p_address(&self) -> &Multiaddr {
         &self.p2p_address
+    }
+
+    pub fn proxy_address(&self) -> &Multiaddr {
+        &self.proxy_address
     }
 }
 
@@ -121,6 +126,7 @@ impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for ValidatorI
             network_address: config.network_address.clone(),
             p2p_address: config.p2p_address.clone(),
             primary_address: config.consensus_address.clone(), // consensus_address maps to primary_address
+            proxy_address: config.proxy_address.clone(),
             commission_rate: config.commission_rate,
         }
     }

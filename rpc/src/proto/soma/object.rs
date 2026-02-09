@@ -174,6 +174,7 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
             crate::types::ObjectType::Target => "Target".to_string(),
             crate::types::ObjectType::Submission => "Submission".to_string(),
+            crate::types::ObjectType::Challenge => "Challenge".to_string(),
         }
     }
 }
@@ -188,6 +189,7 @@ impl FromStr for crate::types::ObjectType {
             "StakedSoma" => Ok(Self::StakedSoma),
             "Target" => Ok(Self::Target),
             "Submission" => Ok(Self::Submission),
+            "Challenge" => Ok(Self::Challenge),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

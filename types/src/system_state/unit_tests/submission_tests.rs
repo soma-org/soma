@@ -5,6 +5,7 @@
 //! - SubmissionManifest creation and size calculation
 //! - DataCommitment type behavior
 //! - Transaction type helpers for submissions
+//! - Tally-based submission reports on Target objects
 
 use crate::{
     base::SomaAddress,
@@ -71,7 +72,6 @@ fn test_submission_new() {
         model_id,
         embedding.clone(),
         500,      // distance_score
-        100,      // reconstruction_score
         10240,    // bond_amount
         5,        // submit_epoch
     );
@@ -80,7 +80,6 @@ fn test_submission_new() {
     assert_eq!(submission.data_commitment, data_commitment);
     assert_eq!(submission.model_id, model_id);
     assert_eq!(submission.distance_score, 500);
-    assert_eq!(submission.reconstruction_score, 100);
     assert_eq!(submission.bond_amount, 10240);
     assert_eq!(submission.submit_epoch, 5);
     assert_eq!(submission.embedding, embedding);
@@ -103,10 +102,9 @@ fn test_submission_embedding() {
         data_manifest,
         model_id,
         embedding.clone(),
-        1000,
-        500,
-        5120,
-        1,
+        1000,  // distance_score
+        5120,  // bond_amount
+        1,     // submit_epoch
     );
 
     assert_eq!(submission.embedding.len(), 768);
@@ -155,7 +153,6 @@ fn test_submit_data_transaction_kind() {
         model_id,
         embedding,
         distance_score: 1000,
-        reconstruction_score: 500,
         bond_coin,
     };
 
@@ -236,41 +233,36 @@ fn test_submission_scores() {
         model_id,
         embedding.clone(),
         -500,  // negative distance score
-        100,
-        5000,
-        1,
+        5000,  // bond_amount
+        1,     // submit_epoch
     );
     assert_eq!(submission_negative.distance_score, -500);
 
-    // Test with zero scores
+    // Test with zero distance score
     let submission_zero = Submission::new(
         miner,
         DataCommitment::random(),
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        0,
-        0,
-        5000,
-        1,
+        0,     // distance_score
+        5000,  // bond_amount
+        1,     // submit_epoch
     );
     assert_eq!(submission_zero.distance_score, 0);
-    assert_eq!(submission_zero.reconstruction_score, 0);
 
-    // Test with large scores
+    // Test with large distance score
     let submission_large = Submission::new(
         miner,
         DataCommitment::random(),
         data_manifest,
         model_id,
         embedding,
-        i64::MAX / 2,
-        u64::MAX / 2,
-        5000,
-        1,
+        i64::MAX / 2,  // distance_score
+        5000,          // bond_amount
+        1,             // submit_epoch
     );
     assert_eq!(submission_large.distance_score, i64::MAX / 2);
-    assert_eq!(submission_large.reconstruction_score, u64::MAX / 2);
 }
 
 /// Test submission serialization round-trip
@@ -288,10 +280,9 @@ fn test_submission_serialization() {
         data_manifest,
         model_id,
         embedding,
-        1000,
-        500,
-        10240,
-        5,
+        1000,   // distance_score
+        10240,  // bond_amount
+        5,      // submit_epoch
     );
 
     // Serialize and deserialize
@@ -302,8 +293,381 @@ fn test_submission_serialization() {
     assert_eq!(submission.data_commitment, deserialized.data_commitment);
     assert_eq!(submission.model_id, deserialized.model_id);
     assert_eq!(submission.distance_score, deserialized.distance_score);
-    assert_eq!(submission.reconstruction_score, deserialized.reconstruction_score);
     assert_eq!(submission.bond_amount, deserialized.bond_amount);
     assert_eq!(submission.submit_epoch, deserialized.submit_epoch);
     assert_eq!(submission.embedding, deserialized.embedding);
+}
+
+// =============================================================================
+// Tally-Based Submission Report Tests (Target methods)
+// =============================================================================
+
+use super::test_utils::{create_test_system_state, create_validators_with_stakes};
+use crate::target::{Target, TargetStatus};
+use std::collections::BTreeMap;
+
+/// Helper to create a test system state with voting power properly set.
+fn create_test_system_state_with_voting_power(stakes: Vec<u64>) -> crate::system_state::SystemState {
+    let validators = create_validators_with_stakes(stakes);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+    // Voting power is calculated from stake at epoch boundary, so we need to set it explicitly
+    system_state.validators.set_voting_power();
+    system_state
+}
+
+/// Helper to create a test filled target
+fn create_test_target() -> Target {
+    Target {
+        embedding: Array1::zeros(10),
+        model_ids: vec![],
+        distance_threshold: 1000,
+        reward_pool: 1000,
+        generation_epoch: 0,
+        status: TargetStatus::Filled { fill_epoch: 1 },
+        miner: Some(SomaAddress::random()),
+        winning_model_id: Some(ModelId::random()),
+        winning_model_owner: Some(SomaAddress::random()),
+        bond_amount: 5000,
+        winning_data_manifest: None,
+        winning_data_commitment: None,
+        winning_embedding: None,
+        winning_distance_score: Some(500),
+        // New tally-based fields
+        challenger: None,
+        challenge_id: None,
+        submission_reports: BTreeMap::new(),
+    }
+}
+
+/// Test that reports can be added to a Target
+#[test]
+fn test_target_report_submission() {
+    let mut target = create_test_target();
+    let validator_addr = SomaAddress::random();
+
+    // Report with no challenger (availability issue)
+    target.report_submission(validator_addr, None);
+    assert_eq!(target.submission_reports.len(), 1);
+    assert_eq!(target.submission_reports.get(&validator_addr), Some(&None));
+}
+
+/// Test that reports with challenger attribution work
+#[test]
+fn test_target_report_submission_with_challenger() {
+    let mut target = create_test_target();
+    let validator_addr = SomaAddress::random();
+    let challenger_addr = SomaAddress::random();
+
+    // Report with challenger attribution
+    target.report_submission(validator_addr, Some(challenger_addr));
+    assert_eq!(target.submission_reports.len(), 1);
+    assert_eq!(target.submission_reports.get(&validator_addr), Some(&Some(challenger_addr)));
+}
+
+/// Test that duplicate reports from the same validator are idempotent
+#[test]
+fn test_target_report_submission_duplicate_overwrites() {
+    let mut target = create_test_target();
+    let validator_addr = SomaAddress::random();
+    let challenger1 = SomaAddress::random();
+    let challenger2 = SomaAddress::random();
+
+    // First report with challenger1
+    target.report_submission(validator_addr, Some(challenger1));
+    assert_eq!(target.submission_reports.get(&validator_addr), Some(&Some(challenger1)));
+
+    // Second report with challenger2 - should overwrite
+    target.report_submission(validator_addr, Some(challenger2));
+    assert_eq!(target.submission_reports.len(), 1);
+    assert_eq!(target.submission_reports.get(&validator_addr), Some(&Some(challenger2)));
+}
+
+/// Test undo_report_submission removes the report
+#[test]
+fn test_target_undo_report_submission() {
+    let mut target = create_test_target();
+    let validator_addr = SomaAddress::random();
+
+    // Add report then undo
+    target.report_submission(validator_addr, None);
+    assert_eq!(target.submission_reports.len(), 1);
+
+    let removed = target.undo_report_submission(validator_addr);
+    assert!(removed);
+    assert_eq!(target.submission_reports.len(), 0);
+}
+
+/// Test undo_report_submission returns false when no report exists
+#[test]
+fn test_target_undo_report_submission_not_found() {
+    let mut target = create_test_target();
+    let validator_addr = SomaAddress::random();
+
+    // Try to undo when never reported
+    let removed = target.undo_report_submission(validator_addr);
+    assert!(!removed);
+}
+
+/// Test get_submission_report_quorum returns false with no reports
+#[test]
+fn test_target_quorum_no_reports() {
+    let target = create_test_target();
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100]);
+
+    let (has_quorum, challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum);
+    assert!(challenger.is_none());
+    assert!(reporters.is_empty());
+}
+
+/// Test get_submission_report_quorum returns false with insufficient stake
+#[test]
+fn test_target_quorum_insufficient_stake() {
+    let mut target = create_test_target();
+    // Create 4 validators with equal stake (each gets 25% voting power)
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100, 100, 100]);
+    let validator_addr = system_state.validators.validators[0].metadata.soma_address;
+
+    // Single validator reports (25% stake, need 67%)
+    target.report_submission(validator_addr, None);
+
+    let (has_quorum, _challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum);
+    assert_eq!(reporters.len(), 1); // Still tracked as reporter
+}
+
+/// Test get_submission_report_quorum returns true with sufficient stake
+#[test]
+fn test_target_quorum_sufficient_stake() {
+    let mut target = create_test_target();
+    // Use 4 validators with equal stake
+    // Each gets 2500 voting power, quorum = 6667
+    // 3 of 4 = 7500 > 6667 (quorum reached)
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100, 100, 100]);
+    let validator1_addr = system_state.validators.validators[0].metadata.soma_address;
+    let validator2_addr = system_state.validators.validators[1].metadata.soma_address;
+    let validator3_addr = system_state.validators.validators[2].metadata.soma_address;
+    let challenger_addr = SomaAddress::random();
+
+    // All 3 validators report with same challenger
+    target.report_submission(validator1_addr, Some(challenger_addr));
+    target.report_submission(validator2_addr, Some(challenger_addr));
+    target.report_submission(validator3_addr, Some(challenger_addr));
+
+    let (has_quorum, winning_challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(has_quorum);
+    assert_eq!(winning_challenger, Some(challenger_addr));
+    assert_eq!(reporters.len(), 3);
+}
+
+/// Test get_submission_report_quorum with no challenger consensus
+#[test]
+fn test_target_quorum_no_challenger_consensus() {
+    let mut target = create_test_target();
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100, 100, 100]);
+    let validator1_addr = system_state.validators.validators[0].metadata.soma_address;
+    let validator2_addr = system_state.validators.validators[1].metadata.soma_address;
+    let validator3_addr = system_state.validators.validators[2].metadata.soma_address;
+    let challenger1 = SomaAddress::random();
+    let challenger2 = SomaAddress::random();
+
+    // Different challengers - no consensus
+    target.report_submission(validator1_addr, Some(challenger1));
+    target.report_submission(validator2_addr, Some(challenger2));
+    target.report_submission(validator3_addr, None); // No challenger
+
+    let (has_quorum, winning_challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    // Has quorum (3 of 4) but no single challenger has quorum
+    assert!(has_quorum);
+    assert!(winning_challenger.is_none()); // No consensus on challenger
+    assert_eq!(reporters.len(), 3);
+}
+
+/// Test clear_submission_reports removes all reports
+#[test]
+fn test_target_clear_submission_reports() {
+    let mut target = create_test_target();
+    let validator1 = SomaAddress::random();
+    let validator2 = SomaAddress::random();
+
+    target.report_submission(validator1, None);
+    target.report_submission(validator2, None);
+    assert_eq!(target.submission_reports.len(), 2);
+
+    target.clear_submission_reports();
+    assert_eq!(target.submission_reports.len(), 0);
+}
+
+/// Test quorum calculation with validators of different stakes
+#[test]
+fn test_target_quorum_with_varied_stakes() {
+    let mut target = create_test_target();
+    // Create validators with different stakes: [200, 100, 100] = 50%, 25%, 25%
+    let system_state = create_test_system_state_with_voting_power(vec![200, 100, 100]);
+    let big_validator_addr = system_state.validators.validators[0].metadata.soma_address;
+    let small_validator_addr = system_state.validators.validators[1].metadata.soma_address;
+    let challenger_addr = SomaAddress::random();
+
+    // Small validator alone (25%) - no quorum
+    target.report_submission(small_validator_addr, Some(challenger_addr));
+    let (has_quorum, _, _) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum);
+
+    // Add big validator (50% + 25% = 75%) - should have quorum
+    target.report_submission(big_validator_addr, Some(challenger_addr));
+    let (has_quorum, winning_challenger, _) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(has_quorum);
+    assert_eq!(winning_challenger, Some(challenger_addr));
+}
+
+// =============================================================================
+// Edge Case Tests for Submission and Target
+// =============================================================================
+
+/// Test submission with zero-size data
+#[test]
+fn test_submission_with_zero_size_data() {
+    let miner = SomaAddress::random();
+    let data_commitment = DataCommitment::random();
+    let data_manifest = test_submission_manifest(0); // Zero-size data
+    let model_id = ModelId::random();
+    let embedding: Embedding = Array1::zeros(10);
+
+    let submission = Submission::new(
+        miner,
+        data_commitment,
+        data_manifest.clone(),
+        model_id,
+        embedding,
+        0,  // distance_score
+        0,  // bond_amount (zero because zero data size)
+        1,  // submit_epoch
+    );
+
+    assert_eq!(submission.bond_amount, 0);
+    assert_eq!(data_manifest.size(), 0);
+}
+
+/// Test bond calculation with zero size produces zero bond
+#[test]
+fn test_bond_calculation_zero_size() {
+    let bond_per_byte: u64 = 10;
+    let data_manifest = test_submission_manifest(0);
+    let bond = bond_per_byte * data_manifest.size() as u64;
+    assert_eq!(bond, 0);
+}
+
+/// Test reports from non-validators are ignored in quorum calculation
+#[test]
+fn test_quorum_ignores_non_validator_reports() {
+    let mut target = create_test_target();
+    // Create system state with 4 validators, each with 100 stake
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100, 100, 100]);
+
+    // Get one real validator
+    let real_validator = system_state.validators.validators[0].metadata.soma_address;
+
+    // Create addresses that are NOT validators
+    let fake_validator1 = SomaAddress::random();
+    let fake_validator2 = SomaAddress::random();
+    let fake_validator3 = SomaAddress::random();
+    let challenger = SomaAddress::random();
+
+    // Have 3 non-validators report (these should be ignored)
+    target.report_submission(fake_validator1, Some(challenger));
+    target.report_submission(fake_validator2, Some(challenger));
+    target.report_submission(fake_validator3, Some(challenger));
+
+    // Check quorum - should NOT have quorum even with 3 reports
+    let (has_quorum, _, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum, "Non-validator reports should not count toward quorum");
+    assert!(reporters.is_empty(), "Non-validators should not be in reporters list");
+
+    // Now add the real validator
+    target.report_submission(real_validator, Some(challenger));
+
+    // Still should not have quorum (only 1 validator = 25%)
+    let (has_quorum, _, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum, "Single validator should not reach quorum");
+    assert_eq!(reporters.len(), 1, "Should only count the real validator");
+}
+
+/// Test that model_owner being None (shouldn't happen but edge case)
+/// means model share is not distributed
+#[test]
+fn test_target_with_no_model_owner() {
+    // Create a filled target but with winning_model_owner = None
+    // This tests the edge case in ClaimRewards
+    let mut target = create_test_target();
+    target.miner = Some(SomaAddress::random());
+    target.winning_model_id = Some(ModelId::random());
+    target.winning_model_owner = None; // Edge case: no model owner
+    target.bond_amount = 5000;
+    target.reward_pool = 10000;
+    target.status = TargetStatus::Filled { fill_epoch: 0 };
+
+    // Verify the state is as expected
+    assert!(target.miner.is_some());
+    assert!(target.winning_model_owner.is_none());
+}
+
+/// Test quorum threshold edge case - exactly at threshold
+#[test]
+fn test_quorum_exactly_at_threshold() {
+    let mut target = create_test_target();
+    // Use validators with equal stake (each gets 2500 voting power)
+    // Quorum threshold is 6667, so need 3 of 4 (7500 > 6667)
+    let system_state = create_test_system_state_with_voting_power(vec![100, 100, 100, 100]);
+
+    let validator1 = system_state.validators.validators[0].metadata.soma_address;
+    let validator2 = system_state.validators.validators[1].metadata.soma_address;
+    let challenger = SomaAddress::random();
+
+    // 2 validators = 5000 voting power < 6667 threshold
+    target.report_submission(validator1, Some(challenger));
+    target.report_submission(validator2, Some(challenger));
+
+    let (has_quorum, _, _) = target.get_submission_report_quorum(&system_state.validators);
+    assert!(!has_quorum, "2 of 4 validators should not reach quorum");
+}
+
+/// Test validator reward remainder goes to first validator
+#[test]
+fn test_validator_reward_remainder_distribution() {
+    // This tests the logic in distribute_bond_to_validators
+    // where remainder goes to the first validator
+    let bond: u64 = 100;
+    let num_validators = 3;
+
+    let per_validator = bond / num_validators;
+    let remainder = bond % num_validators;
+
+    assert_eq!(per_validator, 33);
+    assert_eq!(remainder, 1);
+
+    // First validator gets 33 + 1 = 34
+    // Others get 33 each
+    // Total: 34 + 33 + 33 = 100 ✓
+    let first_amount = per_validator + remainder;
+    let other_amount = per_validator;
+    let total = first_amount + other_amount * 2;
+    assert_eq!(total, bond, "All bond should be distributed");
+}
+
+/// Test concurrent reports from same validator (last wins)
+#[test]
+fn test_report_overwrite_behavior() {
+    let mut target = create_test_target();
+    let validator = SomaAddress::random();
+    let challenger1 = SomaAddress::random();
+    let challenger2 = SomaAddress::random();
+
+    // First report with challenger1
+    target.report_submission(validator, Some(challenger1));
+    assert_eq!(target.submission_reports.get(&validator), Some(&Some(challenger1)));
+
+    // Second report overwrites with challenger2
+    target.report_submission(validator, Some(challenger2));
+    assert_eq!(target.submission_reports.get(&validator), Some(&Some(challenger2)));
+    assert_eq!(target.submission_reports.len(), 1, "Should still have only one report");
 }

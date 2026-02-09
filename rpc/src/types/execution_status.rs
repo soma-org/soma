@@ -76,15 +76,40 @@ pub enum ExecutionError {
         score: i64,
         threshold: i64,
     },
-    ReconstructionExceedsThreshold {
-        score: u64,
-        threshold: u64,
-    },
     InsufficientBond {
         required: u64,
         provided: u64,
     },
     InsufficientEmissionBalance,
+
+    // Challenge errors
+    ChallengeWindowClosed {
+        fill_epoch: u64,
+        current_epoch: u64,
+    },
+    InsufficientChallengerBond {
+        required: u64,
+        provided: u64,
+    },
+    ChallengeNotFound {
+        challenge_id: Address,
+    },
+    ChallengeNotPending {
+        challenge_id: Address,
+    },
+    ChallengeExpired {
+        challenge_epoch: u64,
+        current_epoch: u64,
+    },
+    InvalidChallengeResult,
+    InvalidChallengeQuorum,
+    ChallengeAlreadyExists,
+
+    // Data size errors
+    DataExceedsMaxSize {
+        size: u64,
+        max_size: u64,
+    },
 
     // Coin errors
     InsufficientCoinBalance,

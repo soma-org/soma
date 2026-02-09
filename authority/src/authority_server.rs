@@ -17,11 +17,11 @@ use std::{
     time::{Duration},
 };
 use tap::TapFallible;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::server::TcpConnectInfo;
-use tracing::{debug, error, error_span, info, instrument, Instrument};
+use tracing::{debug, error, error_span, info, instrument, warn, Instrument};
 use types::{
     checkpoints::{CheckpointRequest, CheckpointResponse}, config::local_ip_utils::new_local_tcp_address_for_testing, consensus::{ConsensusPosition, ConsensusTransactionKind}, digests::{TransactionDigest, TransactionEffectsDigest}, effects::{TransactionEffects}, error::SomaResult, object::Object, system_state::SystemState, transaction::{VerifiedCertificate, VerifiedExecutableTransaction}, transaction_outputs::TransactionOutputs
 };
@@ -106,7 +106,7 @@ impl AuthorityServer {
         );
         let config = types::client::Config::new();
         let server = crate::server::ServerBuilder::from_config(&config)
-            .add_service(ValidatorServer::new(ValidatorService::new_for_tests(
+            .add_service(ValidatorServer::new(ValidatorService::new(
                 self.state,
                 self.consensus_adapter,
             )))
@@ -142,16 +142,6 @@ impl ValidatorService {
             consensus_adapter,
             // traffic_controller,
             // client_id_source,
-        }
-    }
-
-    pub fn new_for_tests(
-        state: Arc<AuthorityState>,
-        consensus_adapter: Arc<ConsensusAdapter>,
-    ) -> Self {
-        Self {
-            state,
-            consensus_adapter,
         }
     }
 
@@ -1195,7 +1185,7 @@ impl ValidatorService {
         Ok((tonic::Response::new(response), Weight::one()))
     }
 
-     async fn validator_health_impl(
+    async fn validator_health_impl(
         &self,
         _request: tonic::Request<types::messages_grpc::RawValidatorHealthRequest>,
     ) -> WrappedServiceResponse<types::messages_grpc::RawValidatorHealthResponse> {

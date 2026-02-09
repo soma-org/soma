@@ -829,14 +829,51 @@ pub enum ExecutionFailureStatus {
     #[error("Distance score {score} exceeds threshold {threshold}.")]
     DistanceExceedsThreshold { score: i64, threshold: i64 },
 
-    #[error("Reconstruction score {score} exceeds threshold {threshold}.")]
-    ReconstructionExceedsThreshold { score: u64, threshold: u64 },
-
     #[error("Insufficient bond: required {required}, provided {provided}.")]
     InsufficientBond { required: u64, provided: u64 },
 
+    #[error("Data size {size} bytes exceeds maximum allowed {max_size} bytes.")]
+    DataExceedsMaxSize { size: u64, max_size: u64 },
+
     #[error("Insufficient emission pool balance.")]
     InsufficientEmissionBalance,
+
+    //
+    // Challenge errors
+    //
+    #[error(
+        "Challenge window has closed: fill_epoch={fill_epoch}, current_epoch={current_epoch}"
+    )]
+    ChallengeWindowClosed {
+        fill_epoch: EpochId,
+        current_epoch: EpochId,
+    },
+
+    #[error("Insufficient challenger bond: required {required}, provided {provided}.")]
+    InsufficientChallengerBond { required: u64, provided: u64 },
+
+    #[error("Challenge not found: {challenge_id}")]
+    ChallengeNotFound { challenge_id: ObjectID },
+
+    #[error("Challenge is not pending: {challenge_id}")]
+    ChallengeNotPending { challenge_id: ObjectID },
+
+    #[error("Challenge already exists for this target (only first challenger wins)")]
+    ChallengeAlreadyExists,
+
+    #[error(
+        "Challenge expired: challenge_epoch={challenge_epoch}, current_epoch={current_epoch}"
+    )]
+    ChallengeExpired {
+        challenge_epoch: EpochId,
+        current_epoch: EpochId,
+    },
+
+    #[error("Invalid challenge result: challenge_id mismatch")]
+    InvalidChallengeResult,
+
+    #[error("Invalid challenge quorum: signature verification failed")]
+    InvalidChallengeQuorum,
 
     //
     // Coin errors

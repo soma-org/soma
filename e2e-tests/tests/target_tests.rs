@@ -130,10 +130,6 @@ async fn test_genesis_target_bootstrap() {
         "Distance threshold should be initialized"
     );
     assert!(
-        system_state.target_state.reconstruction_threshold > 0,
-        "Reconstruction threshold should be initialized"
-    );
-    assert!(
         system_state.target_state.reward_per_target > 0,
         "Reward per target should be calculated"
     );
@@ -214,7 +210,6 @@ async fn test_submit_data_fills_target() {
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
-    let reconstruction_threshold = system_state.target_state.reconstruction_threshold;
 
     // List open targets using SDK
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -245,7 +240,6 @@ async fn test_submit_data_fills_target() {
     let data_manifest = make_submission_manifest(1024);
     let embedding: Embedding = Array1::zeros(embedding_dim);
     let distance_score = distance_threshold - 100;
-    let reconstruction_score = reconstruction_threshold - 100;
 
     // Get gas object
     let gas_object = test_cluster
@@ -264,7 +258,6 @@ async fn test_submit_data_fills_target() {
             model_id,
             embedding,
             distance_score,
-            reconstruction_score,
             bond_coin: gas_object,
         }),
         miner,
@@ -340,7 +333,6 @@ async fn test_claim_rewards_after_challenge_window() {
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
-    let reconstruction_threshold = system_state.target_state.reconstruction_threshold;
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -371,7 +363,6 @@ async fn test_claim_rewards_after_challenge_window() {
             model_id,
             embedding: Array1::zeros(embedding_dim),
             distance_score: distance_threshold - 100,
-            reconstruction_score: reconstruction_threshold - 100,
             bond_coin: gas_object,
         }),
         miner,
@@ -643,7 +634,6 @@ async fn test_submit_data_validation_errors() {
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
-    let reconstruction_threshold = system_state.target_state.reconstruction_threshold;
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -675,7 +665,6 @@ async fn test_submit_data_validation_errors() {
                 model_id,
                 embedding: Array1::zeros(embedding_dim),
                 distance_score: distance_threshold + 1, // Exceeds threshold
-                reconstruction_score: reconstruction_threshold - 1,
                 bond_coin: gas_object,
             }),
             miner,
@@ -713,7 +702,6 @@ async fn test_submit_data_validation_errors() {
                 model_id,
                 embedding: Array1::zeros(wrong_dim), // Wrong dimension
                 distance_score: distance_threshold - 1,
-                reconstruction_score: reconstruction_threshold - 1,
                 bond_coin: gas_object,
             }),
             miner,
@@ -747,7 +735,6 @@ async fn test_submit_data_validation_errors() {
                 model_id: wrong_model_id, // Wrong model
                 embedding: Array1::zeros(embedding_dim),
                 distance_score: distance_threshold - 1,
-                reconstruction_score: reconstruction_threshold - 1,
                 bond_coin: gas_object,
             }),
             miner,

@@ -7,6 +7,8 @@ version.workspace = true
 sync.workspace = true
 consensus.workspace = true
 types.workspace = true
+blobs.workspace = true
+bytes.workspace = true
 utils.workspace = true
 protocol-config.workspace = true
 # test-cluster.workspace = true
@@ -58,6 +60,9 @@ moka = { version = "0.12", default-features = false, features = [
 ] }
 once_cell = { version = "1.21.3" }
 bincode = "1.3.3"
+axum.workspace = true
+hex = "0.4"
+sdk.workspace = true
 sysinfo = "0.35.2"
 diffy = { version = "0.3", default-features = false }
 im = "15"

@@ -178,7 +178,6 @@ impl SystemState {
         // Initialize target state with initial thresholds from parameters
         let target_state = TargetState::new(
             parameters.target_initial_distance_threshold,
-            parameters.target_initial_reconstruction_threshold,
         );
 
         Self {
@@ -203,6 +202,7 @@ impl SystemState {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
+        proxy_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let validator = Validator::new(
@@ -217,6 +217,7 @@ impl SystemState {
             Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&p2p_address).unwrap()).unwrap(),
             Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
+            Multiaddr::from_str(bcs::from_bytes(&proxy_address).unwrap()).unwrap(),
             0,
             10,
             staking_pool_id,
@@ -856,12 +857,22 @@ impl SystemState {
         Ok(())
     }
 
-    /// Undo a model report (sender must be in the report set).
+    /// Undo a model report (sender must be an active validator and in the report set).
     pub fn undo_report_model(
         &mut self,
         reporter: SomaAddress,
         model_id: &ModelId,
     ) -> ExecutionResult {
+        // Validate reporter is an active validator
+        if !self.validators.is_active_validator(reporter) {
+            return Err(ExecutionFailureStatus::NotAValidator);
+        }
+
+        // Validate model is still active (can only undo reports on active models)
+        if !self.model_registry.active_models.contains_key(model_id) {
+            return Err(ExecutionFailureStatus::ModelNotActive);
+        }
+
         let reports = self
             .model_registry
             .model_report_records
@@ -1137,8 +1148,6 @@ impl SystemState {
         let adjustment_rate = self.parameters.target_difficulty_adjustment_rate_bps;
         let min_distance = self.parameters.target_min_distance_threshold;
         let max_distance = self.parameters.target_max_distance_threshold;
-        let min_reconstruction = self.parameters.target_min_reconstruction_threshold;
-        let max_reconstruction = self.parameters.target_max_reconstruction_threshold;
 
         // Calculate adjustment factor based on EMA
         // If ema > target_rate, we're too easy → decrease thresholds (harder)
@@ -1161,17 +1170,9 @@ impl SystemState {
             / BPS_DENOMINATOR as i64;
         self.target_state.distance_threshold = new_distance.clamp(min_distance, max_distance);
 
-        // Apply adjustment to reconstruction threshold
-        let new_reconstruction = (self.target_state.reconstruction_threshold as i64
-            * adjustment_factor)
-            / BPS_DENOMINATOR as i64;
-        self.target_state.reconstruction_threshold =
-            (new_reconstruction as u64).clamp(min_reconstruction, max_reconstruction);
-
         info!(
-            "Difficulty adjusted: distance={}, reconstruction={} (ema={}bps, target={}bps, hits={}, targets={})",
+            "Difficulty adjusted: distance={} (ema={}bps, target={}bps, hits={}, targets={})",
             self.target_state.distance_threshold,
-            self.target_state.reconstruction_threshold,
             ema_bps,
             target_hit_rate_bps,
             self.target_state.hits_this_epoch,
@@ -1198,10 +1199,9 @@ impl SystemState {
         self.target_state.reward_per_target = self.calculate_reward_per_target();
 
         info!(
-            "Target state advanced: reward_per_target={}, distance_threshold={}, reconstruction_threshold={}",
+            "Target state advanced: reward_per_target={}, distance_threshold={}",
             self.target_state.reward_per_target,
-            self.target_state.distance_threshold,
-            self.target_state.reconstruction_threshold
+            self.target_state.distance_threshold
         );
     }
 

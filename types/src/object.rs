@@ -1,6 +1,7 @@
 use crate::base::HexAccountAddress;
 use crate::{
     base::{FullObjectID, FullObjectRef, SOMA_ADDRESS_LENGTH, SomaAddress},
+    challenge::Challenge,
     committee::EpochId,
     crypto::{DefaultHash, default_hash},
     digests::{ObjectDigest, TransactionDigest},
@@ -471,6 +472,47 @@ impl Object {
             None
         }
     }
+
+    /// Create a new Object containing a Challenge.
+    ///
+    /// Challenges are shared objects used for dispute resolution.
+    /// Unlike targets and submissions which are created at genesis (when lamport=1),
+    /// challenges are created mid-transaction when lamport > 1. We use OBJECT_START_VERSION
+    /// directly so the TemporaryStore won't update it, ensuring it matches
+    /// CHALLENGE_OBJECT_SHARED_VERSION for consistent lookups.
+    pub fn new_challenge_object(
+        id: ObjectID,
+        challenge: Challenge,
+        previous_transaction: TransactionDigest,
+    ) -> Object {
+        // Serialize Challenge to bytes
+        let challenge_bytes = bcs::to_bytes(&challenge).unwrap();
+
+        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Challenge,
+            Version::MIN,
+            challenge_bytes,
+        );
+
+        // Challenges are shared objects - use OBJECT_START_VERSION (1) directly
+        // so TemporaryStore won't update it (it only updates Version::new() = 0)
+        let owner = Owner::Shared {
+            initial_shared_version: OBJECT_START_VERSION,
+        };
+
+        Object::new(data, owner, previous_transaction)
+    }
+
+    /// Extract Challenge from an Object
+    pub fn as_challenge(&self) -> Option<Challenge> {
+        if *self.data.object_type() == ObjectType::Challenge {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -633,6 +675,8 @@ pub enum ObjectType {
     Target,
     /// Represents a data submission to a target
     Submission,
+    /// Represents a challenge against a submission
+    Challenge,
 }
 
 impl fmt::Display for ObjectType {
@@ -643,6 +687,7 @@ impl fmt::Display for ObjectType {
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
             ObjectType::Target => write!(f, "Target"),
             ObjectType::Submission => write!(f, "Submission"),
+            ObjectType::Challenge => write!(f, "Challenge"),
         }
     }
 }
@@ -657,6 +702,7 @@ impl FromStr for ObjectType {
             "StakedSoma" => Ok(ObjectType::StakedSoma),
             "Target" => Ok(ObjectType::Target),
             "Submission" => Ok(ObjectType::Submission),
+            "Challenge" => Ok(ObjectType::Challenge),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

@@ -70,6 +70,15 @@ message TransactionKind {
     // Submission transactions
     SubmitData submit_data = 24;
     ClaimRewards claim_rewards = 25;
+    ReportSubmission report_submission = 28;
+    UndoReportSubmission undo_report_submission = 29;
+
+    // Challenge transactions
+    InitiateChallenge initiate_challenge = 26;
+    // Field 27 was ResolveAudit (removed)
+    ReportChallenge report_challenge = 30;
+    UndoReportChallenge undo_report_challenge = 31;
+    ClaimChallengeBond claim_challenge_bond = 32;
   }
 }
 
@@ -80,6 +89,7 @@ message AddValidator {
   optional bytes net_address = 4;
   optional bytes p2p_address = 5;
   optional bytes primary_address = 6;
+  optional bytes proxy_address = 7;
 }
 
 message RemoveValidator {
@@ -98,9 +108,10 @@ message UpdateValidatorMetadata {
   optional bytes next_epoch_network_address = 1;
   optional bytes next_epoch_p2p_address = 2;
   optional bytes next_epoch_primary_address = 3;
-  optional bytes next_epoch_protocol_pubkey = 4;
-  optional bytes next_epoch_worker_pubkey = 5;
-  optional bytes next_epoch_network_pubkey= 6;
+  optional bytes next_epoch_proxy_address = 4;
+  optional bytes next_epoch_protocol_pubkey = 5;
+  optional bytes next_epoch_worker_pubkey = 6;
+  optional bytes next_epoch_network_pubkey = 7;
 }
 
 message SetCommissionRate {
@@ -222,6 +233,18 @@ message UndoReportModel {
   optional string model_id = 1;
 }
 
+// Report a submission as fraudulent (validators only)
+message ReportSubmission {
+  optional string target_id = 1;
+  // Optional challenger to attribute fraud to (for tally-based bond distribution)
+  optional string challenger = 2;
+}
+
+// Undo a previous submission report
+message UndoReportSubmission {
+  optional string target_id = 1;
+}
+
 
 // System transaction used to change the epoch.
 message ChangeEpoch {
@@ -276,41 +299,68 @@ message SubmitData {
   // Target ID (ObjectID hex string)
   optional string target_id = 1;
 
-  // Field 2 reserved (was target_initial_shared_version, now a protocol constant)
-  reserved 2;
-
   // Commitment to raw data: hash(data_bytes), 32-byte digest
-  optional bytes data_commitment = 3;
+  optional bytes data_commitment = 2;
 
   // Manifest for submitted data
-  optional SubmissionManifest data_manifest = 4;
+  optional SubmissionManifest data_manifest = 3;
 
   // Model ID used for submission (must be in target's model_ids)
-  optional string model_id = 5;
+  optional string model_id = 4;
 
   // Pre-computed embedding (fixed-point i64 values)
-  repeated int64 embedding = 6;
+  repeated int64 embedding = 5;
 
   // Distance score (fixed-point i64, lower is better)
-  optional int64 distance_score = 7;
-
-  // Reconstruction error score (MSE, fixed-point u64, lower is better)
-  optional uint64 reconstruction_score = 8;
+  optional int64 distance_score = 6;
 
   // Bond coin reference
-  optional ObjectReference bond_coin = 9;
+  optional ObjectReference bond_coin = 7;
 }
 
 // Claim rewards from a filled or expired target.
 message ClaimRewards {
   // Target ID (ObjectID hex string)
   optional string target_id = 1;
-
-  // Field 2 reserved (was target_initial_shared_version, now a protocol constant)
-  reserved 2;
 }
 
 // Manifest for submitted data (URL + metadata).
 message SubmissionManifest {
   optional Manifest manifest = 1;
+}
+
+// Initiate a challenge against a filled target.
+message InitiateChallenge {
+  // Target ID (ObjectID hex string) to challenge
+  optional string target_id = 1;
+
+  // Type of challenge (e.g., "data_unavailable", "model_unavailable", "data_fraud", "score_fraud")
+  optional string challenge_type = 2;
+
+  // For ModelUnavailable challenges: the model ID that is unavailable
+  optional string model_id = 3;
+
+  // Bond coin reference
+  optional ObjectReference bond_coin = 4;
+}
+
+// Report a challenge (validators only).
+// Reports indicate "the challenger is wrong" (i.e., the submission is valid).
+// If 2f+1 validators report, the challenger loses their bond.
+message ReportChallenge {
+  // Challenge ID (ObjectID hex string)
+  optional string challenge_id = 1;
+}
+
+// Undo a previous challenge report.
+message UndoReportChallenge {
+  // Challenge ID (ObjectID hex string)
+  optional string challenge_id = 1;
+}
+
+// Claim the challenger's bond after challenge window closes.
+// Distributes bond based on tally-based report quorum.
+message ClaimChallengeBond {
+  // Challenge ID (ObjectID hex string)
+  optional string challenge_id = 1;
 }

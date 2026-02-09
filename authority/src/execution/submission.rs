@@ -178,20 +178,21 @@ impl SubmissionExecutor {
             });
         }
 
-        // 6. Validate reconstruction score
-        if args.reconstruction_score > target.reconstruction_threshold {
-            return Err(ExecutionFailureStatus::ReconstructionExceedsThreshold {
-                score: args.reconstruction_score,
-                threshold: target.reconstruction_threshold,
+        // 6. Validate data size against protocol limit
+        let data_size = args.data_manifest.manifest.metadata().size() as u64;
+        let max_data_size = state.parameters.max_submission_data_size;
+        if data_size > max_data_size {
+            return Err(ExecutionFailureStatus::DataExceedsMaxSize {
+                size: data_size,
+                max_size: max_data_size,
             });
         }
 
         // 7. Calculate required bond from protocol config and validate
-        let data_size = args.data_manifest.manifest.metadata().size() as u64;
         let bond_per_byte = state.parameters.submission_bond_per_byte;
         let required_bond = data_size * bond_per_byte;
 
-        // Get and validate bond coin
+        // 8. Get and validate bond coin
         let bond_coin_id = args.bond_coin.0;
         let bond_object = store
             .read_object(&bond_coin_id)
@@ -214,7 +215,7 @@ impl SubmissionExecutor {
             });
         }
 
-        // 8. Consume bond coin (deduct bond amount)
+        // 9. Consume bond coin (deduct bond amount)
         let is_gas_coin = store.gas_object_id == Some(bond_coin_id);
         if bond_balance == required_bond && !is_gas_coin {
             // Exact amount and not gas coin - delete
@@ -226,19 +227,6 @@ impl SubmissionExecutor {
             updated_bond.update_coin_balance(remaining);
             store.mutate_input_object(updated_bond);
         }
-
-        // 9. Create submission object
-        let submission = Submission::new(
-            signer,
-            args.data_commitment,
-            args.data_manifest,
-            args.model_id,
-            args.embedding,
-            args.distance_score,
-            args.reconstruction_score,
-            required_bond,
-            current_epoch,
-        );
 
         // 10. Update target status to Filled and record miner/model/bond for rewards
         target.status = TargetStatus::Filled { fill_epoch: current_epoch };
@@ -253,10 +241,29 @@ impl SubmissionExecutor {
         target.winning_model_owner = Some(model.owner);
         target.bond_amount = required_bond; // Store bond on target for refund/forfeit
 
-        // 11. Record hit in target_state (for difficulty adjustment at epoch boundary)
+        // 11. Populate challenge audit fields (BEFORE moving args into Submission)
+        // These are needed for challengers/validators to verify the submission
+        target.winning_data_manifest = Some(args.data_manifest.clone());
+        target.winning_data_commitment = Some(args.data_commitment);
+        target.winning_embedding = Some(args.embedding.clone());
+        target.winning_distance_score = Some(args.distance_score);
+
+        // 12. Create submission object (moves args.data_manifest and args.embedding)
+        let submission = Submission::new(
+            signer,
+            args.data_commitment,
+            args.data_manifest,
+            args.model_id,
+            args.embedding,
+            args.distance_score,
+            required_bond,
+            current_epoch,
+        );
+
+        // 13. Record hit in target_state (for difficulty adjustment at epoch boundary)
         state.target_state.record_hit();
 
-        // 12. Create submission object that holds the submission data
+        // 14. Create submission object that holds the submission data
         // Submission is stored as a shared object associated with the target
         let submission_creation_num = store.next_creation_num();
         let submission_id = ObjectID::derive_id(tx_digest, submission_creation_num);
@@ -271,7 +278,7 @@ impl SubmissionExecutor {
         );
         store.create_object(submission_object);
 
-        // 13. Spawn replacement target if there are active models and emission pool has funds
+        // 15. Spawn replacement target if there are active models and emission pool has funds
         let reward_per_target = state.target_state.reward_per_target;
         if !state.model_registry.active_models.is_empty()
             && state.emission_pool.balance >= reward_per_target
@@ -317,7 +324,7 @@ impl SubmissionExecutor {
             store.create_object(new_target_object);
         }
 
-        // 14. Save updated state and target
+        // 16. Save updated state and target
         Self::save_target(store, target_object, &target)?;
         Self::save_system_state(store, state_object, &state)?;
 
@@ -360,6 +367,7 @@ impl SubmissionExecutor {
                     store,
                     &mut state,
                     &mut target,
+                    &args.target_id,
                     signer,
                     tx_digest,
                     fill_epoch,
@@ -387,11 +395,18 @@ impl SubmissionExecutor {
     }
 
     /// Claim rewards from a filled target after the challenge window closes.
+    ///
+    /// Handles tally-based fraud detection:
+    /// - Check Target.submission_reports for 2f+1 quorum
+    /// - If quorum WITH challenger: miner bond → challenger
+    /// - If quorum WITHOUT challenger: miner bond → reporting validators (split evenly)
+    /// - No quorum: normal distribution (miner gets rewards + bond)
     fn claim_filled_target(
         &self,
         store: &mut TemporaryStore,
         state: &mut SystemState,
         target: &mut Target,
+        _target_id: &ObjectID,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
         fill_epoch: EpochId,
@@ -418,15 +433,55 @@ impl SubmissionExecutor {
         // Mark target as claimed
         target.status = TargetStatus::Claimed;
 
-        // TODO: When challenges are implemented, check if there was a successful challenge.
-        // If challenged successfully:
-        //   - Forfeit bond to emission pool: state.emission_pool.balance += bond
-        //   - Return reward to emission pool: state.emission_pool.balance += reward
-        //   - Pay claimer incentive only
-        //   - Return early
-        let _challenge_succeeded = false; // Placeholder for future challenge system
+        // Check submission reports on Target object using tally-based quorum
+        let (has_quorum, winning_challenger, reporters) =
+            target.get_submission_report_quorum(&state.validators);
 
-        // No successful challenge - distribute rewards normally
+        // Clear submission reports from Target
+        target.clear_submission_reports();
+
+        if has_quorum {
+            // Fraud detected by validator quorum
+            info!(
+                "ClaimRewards: submission reported with quorum - has_quorum={}, winning_challenger={:?}, reporters={:?}",
+                has_quorum, winning_challenger, reporters
+            );
+
+            if let Some(challenger) = winning_challenger {
+                // FRAUD WITH CHALLENGER: miner bond → challenger
+                if bond > 0 {
+                    let challenger_coin = Object::new_coin(
+                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                        bond,
+                        Owner::AddressOwner(challenger),
+                        tx_digest,
+                    );
+                    store.create_object(challenger_coin);
+                }
+            } else {
+                // AVAILABILITY (no challenger): miner bond → reporting validators (split evenly)
+                Self::distribute_bond_to_validators(store, bond, &reporters, tx_digest);
+            }
+
+            // Reward → emission pool (forfeited)
+            state.emission_pool.balance += reward;
+
+            // Pay claimer incentive for triggering the cleanup
+            let claimer_share = (reward * state.parameters.target_claimer_incentive_bps) / BPS_DENOMINATOR;
+            if claimer_share > 0 {
+                let claimer_coin = Object::new_coin(
+                    ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                    claimer_share,
+                    Owner::AddressOwner(signer),
+                    tx_digest,
+                );
+                store.create_object(claimer_coin);
+            }
+
+            return Ok(());
+        }
+
+        // No quorum - distribute rewards normally
         // Full reward goes to miner, model owner, and claimer (100% distributed)
         if reward > 0 {
             let params = &state.parameters;
@@ -474,7 +529,7 @@ impl SubmissionExecutor {
             }
         }
 
-        // Return bond to miner (no challenge succeeded)
+        // Return bond to miner (no fraud detected)
         if bond > 0 {
             let bond_return_coin = Object::new_coin(
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -486,6 +541,35 @@ impl SubmissionExecutor {
         }
 
         Ok(())
+    }
+
+    /// Distribute a bond evenly among reporting validators.
+    fn distribute_bond_to_validators(
+        store: &mut TemporaryStore,
+        bond: u64,
+        reporters: &[SomaAddress],
+        tx_digest: TransactionDigest,
+    ) {
+        if reporters.is_empty() || bond == 0 {
+            return;
+        }
+
+        let per_validator = bond / reporters.len() as u64;
+        let remainder = bond % reporters.len() as u64;
+
+        for (i, reporter) in reporters.iter().enumerate() {
+            // First validator gets the remainder (rounding dust)
+            let amount = if i == 0 { per_validator + remainder } else { per_validator };
+            if amount > 0 {
+                let coin = Object::new_coin(
+                    ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                    amount,
+                    Owner::AddressOwner(*reporter),
+                    tx_digest,
+                );
+                store.create_object(coin);
+            }
+        }
     }
 
     /// Claim an expired unfilled target - return reward pool to emissions.
@@ -532,6 +616,110 @@ impl SubmissionExecutor {
 
         Ok(())
     }
+
+    /// Execute ReportSubmission: Record a validator's report against a filled target's submission.
+    ///
+    /// Reports are now stored on the Target object (tally-based approach).
+    /// Only active validators can report. Reports accumulate until 2f+1 stake quorum
+    /// is reached, at which point ClaimRewards will forfeit the bond.
+    fn execute_report_submission(
+        &self,
+        store: &mut TemporaryStore,
+        signer: SomaAddress,
+        target_id: ObjectID,
+        challenger: Option<SomaAddress>,
+    ) -> ExecutionResult<()> {
+        // Load system state and target
+        let (state_object, state) = Self::load_system_state(store)?;
+        let (target_object, mut target) = Self::load_target(store, &target_id)?;
+
+        // Validate signer is an active validator
+        if !state.validators.is_active_validator(signer) {
+            return Err(ExecutionFailureStatus::NotAValidator);
+        }
+
+        // Verify target is filled (only filled targets can have submissions reported)
+        let fill_epoch = match target.status {
+            TargetStatus::Filled { fill_epoch } => fill_epoch,
+            TargetStatus::Open => return Err(ExecutionFailureStatus::TargetNotFilled),
+            TargetStatus::Claimed => return Err(ExecutionFailureStatus::TargetAlreadyClaimed),
+        };
+
+        // Verify we're still within the challenge window (fill_epoch + 1)
+        let challenge_window_end = fill_epoch + 1;
+        if state.epoch > challenge_window_end {
+            return Err(ExecutionFailureStatus::ChallengeWindowClosed {
+                fill_epoch,
+                current_epoch: state.epoch,
+            });
+        }
+
+        // Record the report on the Target object (tally-based)
+        target.report_submission(signer, challenger);
+
+        info!(
+            "ReportSubmission: validator {:?} reported target {:?} with challenger={:?}",
+            signer, target_id, challenger
+        );
+
+        // Save updated target
+        Self::save_target(store, target_object, &target)?;
+
+        Ok(())
+    }
+
+    /// Execute UndoReportSubmission: Remove a validator's report against a submission.
+    ///
+    /// Validation:
+    /// - Signer must be an active validator
+    /// - Target must be in Filled status (not Open or Claimed)
+    /// - Challenge window must still be open
+    fn execute_undo_report_submission(
+        &self,
+        store: &mut TemporaryStore,
+        signer: SomaAddress,
+        target_id: ObjectID,
+    ) -> ExecutionResult<()> {
+        // Load system state and target
+        let (_, state) = Self::load_system_state(store)?;
+        let (target_object, mut target) = Self::load_target(store, &target_id)?;
+
+        // Validate signer is an active validator
+        if !state.validators.is_active_validator(signer) {
+            return Err(ExecutionFailureStatus::NotAValidator);
+        }
+
+        // Verify target is filled (can only undo reports on filled targets)
+        let fill_epoch = match target.status {
+            TargetStatus::Filled { fill_epoch } => fill_epoch,
+            TargetStatus::Open => return Err(ExecutionFailureStatus::TargetNotFilled),
+            TargetStatus::Claimed => return Err(ExecutionFailureStatus::TargetAlreadyClaimed),
+        };
+
+        // Verify we're still within the challenge window (fill_epoch + 1)
+        let challenge_window_end = fill_epoch + 1;
+        if state.epoch > challenge_window_end {
+            return Err(ExecutionFailureStatus::ChallengeWindowClosed {
+                fill_epoch,
+                current_epoch: state.epoch,
+            });
+        }
+
+        // Undo the report from Target object
+        if !target.undo_report_submission(signer) {
+            return Err(ExecutionFailureStatus::ReportRecordNotFound);
+        }
+
+        info!(
+            "UndoReportSubmission: validator {:?} removed report for target {:?}",
+            signer, target_id
+        );
+
+        // Save updated target
+        Self::save_target(store, target_object, &target)?;
+
+        Ok(())
+    }
 }
 
 impl TransactionExecutor for SubmissionExecutor {
@@ -549,6 +737,12 @@ impl TransactionExecutor for SubmissionExecutor {
             }
             TransactionKind::ClaimRewards(_) => {
                 self.execute_claim_rewards(store, signer, kind, tx_digest)
+            }
+            TransactionKind::ReportSubmission { target_id, challenger } => {
+                self.execute_report_submission(store, signer, target_id, challenger)
+            }
+            TransactionKind::UndoReportSubmission { target_id } => {
+                self.execute_undo_report_submission(store, signer, target_id)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }

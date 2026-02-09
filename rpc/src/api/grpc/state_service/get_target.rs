@@ -15,7 +15,7 @@ use types::object::ObjectID;
 
 /// Default fields to return if no read_mask is specified.
 pub const READ_MASK_DEFAULT: &str =
-    "id,status,generation_epoch,reward_pool,distance_threshold,reconstruction_threshold";
+    "id,status,generation_epoch,reward_pool,distance_threshold";
 
 #[tracing::instrument(skip(service))]
 pub fn get_target(service: &RpcService, request: GetTargetRequest) -> Result<GetTargetResponse> {

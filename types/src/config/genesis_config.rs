@@ -29,6 +29,7 @@ pub struct ValidatorGenesisConfig {
     pub consensus_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub rpc_address: Multiaddr,
+    pub proxy_address: Multiaddr,
     #[serde(default = "default_stake")]
     pub stake: u64,
     pub commission_rate: u64,
@@ -45,6 +46,7 @@ impl Clone for ValidatorGenesisConfig {
             consensus_address: self.consensus_address.clone(),
             p2p_address: self.p2p_address.clone(),
             rpc_address: self.rpc_address.clone(),
+            proxy_address: self.proxy_address.clone(),
             stake: self.stake.clone(),
             commission_rate: self.commission_rate.clone(),
         }
@@ -256,16 +258,18 @@ impl ValidatorGenesisConfigBuilder {
             NetworkKeyPair::new(get_key_pair_from_rng(rng).1),
         );
 
-        let (network_address, consensus_address, p2p_address, rpc_address) =
+        let (network_address, consensus_address, p2p_address, rpc_address, proxy_address) =
             if let Some(offset) = self.port_offset {
                 (
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 1),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 2),
                     local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 3),
+                    local_ip_utils::new_deterministic_tcp_address_for_testing(&ip, offset + 4),
                 )
             } else {
                 (
+                    local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
                     local_ip_utils::new_tcp_address_for_testing(&ip),
@@ -282,6 +286,7 @@ impl ValidatorGenesisConfigBuilder {
             consensus_address,
             p2p_address,
             rpc_address,
+            proxy_address,
             stake,
             commission_rate: DEFAULT_COMMISSION_RATE,
         }

@@ -4,6 +4,31 @@
 
 ---
 
+## Current Status
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1: Core Removals | ✅ Complete | Encoder infrastructure removed |
+| Phase 2: Step-Decay Emissions | ⏳ Pending | Logarithmic emission decay |
+| Phase 3: Model Registry | ✅ Complete | Commit-reveal flow, staking, CLI, RPC |
+| Phase 4: Target Generation | ✅ Complete | Continuous targets, difficulty adjustment |
+| Phase 5: Data Submission | ✅ Complete | SubmitData, ClaimRewards, bond mechanics |
+| Phase 6: Inference Engine | ⏳ Pending | Replace MockEvaluationService with real inference |
+| Phase 7: Challenge System | ✅ Complete | Tally-based voting, AuditService, 14 E2E tests |
+| Phase 8: Reward Distribution | ⏳ Pending | Epoch-end reward distribution |
+| Phase 9: Error Handling | ⏳ Pending | ExecutionFailureStatus variants |
+| Phase 10: RPC & SDK Updates | ⏳ Pending | Index tables, SDK methods |
+| Phase 11: Polish & Testnet | ⏳ Pending | Final testing, documentation |
+
+### Next Steps
+
+1. **Phase 6: Real EvaluationService** — Replace `MockEvaluationService` with actual inference using `probes/` crate
+2. **CLI UX improvements** — Better error messages, progress indicators, output formatting
+3. **Additional chain-side tests** — More edge cases for targets, submissions, epoch boundary logic
+4. **Phase 2: Emissions** — Step-decay schedule (can be done in parallel)
+
+---
+
 ## Overview
 
 ### What's Changing
@@ -198,7 +223,7 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 ### 4.1 Implemented
 
 - **Target type** (`types/src/target.rs`): `Target`, `TargetId`, `TargetStatus`, `Embedding = Array1<i64>`, `generate_target()`, `select_models_uniform()`, `deterministic_embedding()`, `make_target_seed()`
-- **TargetState** (`types/src/system_state/target_state.rs`): 6 fields - `distance_threshold`, `reconstruction_threshold`, `targets_generated_this_epoch`, `hits_this_epoch`, `hit_rate_ema_bps`, `reward_per_target`
+- **TargetState** (`types/src/system_state/target_state.rs`): 5 fields - `distance_threshold`, `targets_generated_this_epoch`, `hits_this_epoch`, `hit_rate_ema_bps`, `reward_per_target`
 - **Object infrastructure**: `ObjectType::Target`, `Object::new_target_object()`, `Object::as_target()`
 - **Genesis bootstrap**: Seed targets created as shared objects when active models exist
 - **Epoch boundary**: `advance_epoch_targets()` issues new targets, adjusts difficulty via hit-rate EMA
@@ -445,67 +470,50 @@ pub struct GenesisModelConfig {
 
 **Goal:** Shared inference engine for miners, challengers, and validators.
 
-### 6.1 Create Inference Engine Crate
+**Status:** Pending. Currently using `MockEvaluationService` in AuditService. Real implementation needs to wrap the `probes/` crate.
+
+### 6.1 Implement EvaluationService
+
+The `EvaluationService` trait is defined in `authority/src/audit_service.rs`:
+```rust
+pub trait EvaluationService: Send + Sync {
+    async fn evaluate(
+        &self,
+        model_manifests: &[(ModelId, Manifest)],
+        data_manifest: &Manifest,
+        data_commitment: &[u8; 32],
+        target_embedding: &Embedding,
+    ) -> Result<EvaluationResult, EvaluationError>;
+}
+```
+
+Replace `MockEvaluationService` with real implementation that:
+1. Downloads model weights from manifests (cached)
+2. Downloads input data from data_manifest
+3. Verifies data hash matches commitment
+4. Runs inference with each model to compute embeddings
+5. Determines winning model (best distance to target)
+6. Returns winning model, final embedding, and distance
+
+### 6.2 Wrap Probes Crate
 
 Keep `probes/` as the model architecture crate (transformer implementation).
 
-Create new `inference-engine/` crate that uses probes:
-```toml
-# inference-engine/Cargo.toml
-[dependencies]
-probes = { path = "../probes" }
-burn = { version = "...", features = ["wgpu"] }
-```
+The real EvaluationService should:
+- Use `probes` crate for transformer inference
+- Handle model loading/caching
+- Ensure deterministic f32 inference
+- Convert to fixed-point for distance comparisons
 
-### 6.2 Create Engine Trait
-
-New file `inference-engine/src/engine.rs`:
-```rust
-pub trait InferenceEngineAPI: Send + Sync {
-    fn load_model(&self, weights: &[u8]) -> Result<Arc<dyn LoadedModelAPI>>;
-    fn compute_embedding(&self, model: &dyn LoadedModelAPI, data: &[u8]) -> Result<Vec<f32>>;
-    fn compute_distance(&self, embedding: &[f32], target: &[f32]) -> f32;
-}
-
-pub trait LoadedModelAPI: Send + Sync {
-    fn model_id(&self) -> &ModelId;
-}
-
-pub fn create_inference_engine(arch_version: u64) -> Box<dyn InferenceEngineAPI> {
-    match arch_version {
-        1 => Box::new(v1::InferenceEngineV1::new()),
-        _ => panic!("unsupported architecture version"),
-    }
-}
-```
-
-### 6.3 Create Inference Service
-
-New file `inference-engine/src/service.rs`:
-```rust
-/// Shared inference service used by CLI and validators
-pub struct InferenceService {
-    engines: RwLock<BTreeMap<u64, Arc<dyn InferenceEngineAPI>>>,
-    loaded_models: RwLock<BTreeMap<ModelId, Arc<dyn LoadedModelAPI>>>,
-    model_cache: RwLock<LruCache<ModelId, Vec<u8>>>,  // Cached decrypted weights
-}
-
-impl InferenceService {
-    pub async fn ensure_model_loaded(&self, model: &Model) -> Result<Arc<dyn LoadedModelAPI>>;
-    pub async fn compute_embedding(&self, model_id: &ModelId, data: &[u8]) -> Result<Vec<f32>>;
-    pub async fn compute_distance(&self, embedding: &[f32], target: &[f32]) -> f32;
-}
-```
-
-### 6.4 Determinism Requirements
+### 6.3 Determinism Requirements
 
 - All computations must be deterministic across nodes
 - Inference in f32, immediately convert to fixed-point for comparisons
-- Use Burn WGPU backend with deterministic settings
+- Use consistent backend across all validators
 
-### 6.5 Add Verification CLI
+### 6.4 Add Verification CLI
 
-New file `cli/src/commands/verify.rs`:
+Update `cli/src/commands/` with verification:
 - `soma verify --data <FILE> --target <ID> --model <MODEL_ID>`
   - Outputs: embedding, distance to target, whether it's within radius
 
@@ -513,171 +521,49 @@ New file `cli/src/commands/verify.rs`:
 
 ---
 
-## Phase 7: Challenge System
+## Phase 7: Challenge System — COMPLETE ✓
 
 **Goal:** Challengers can dispute winners, validators audit and vote.
 
-### 7.1 Create Challenge Types
+**Status:** Fully implemented and tested. Challenge types, tally-based reporting, AuditService, ClaimRewards/ClaimChallengeBond resolution, and 14 E2E tests are passing.
 
-New file `types/src/challenge.rs`:
-```rust
-pub struct Challenge {
-    pub id: ObjectID,
-    pub submission_id: ObjectID,
-    pub challenger: SomaAddress,
-    pub challenge_type: ChallengeType,
-    pub challenger_bond: u64,
-}
+### 7.1 Implemented
 
-pub enum ChallengeType {
-    /// Miner lied about distance
-    ScoreFraud,
-    /// Data at URL doesn't match commitment
-    DataFraud,
-}
+- **Challenge type** (`types/src/challenge.rs`): `Challenge`, `ChallengeId`, `ChallengeStatus` (Pending/Resolved)
+- **Tally-based voting**: Submission reports via `BTreeMap<SomaAddress, Option<SomaAddress>>` on Target
+- **Challenge reports**: `BTreeSet<SomaAddress>` on Challenge object
+- **Transactions**:
+  - `InitiateChallenge(InitiateChallengeArgs)` - Creates Challenge, locks bond
+  - `ReportSubmission { target_id, challenger }` - Validator reports miner fraud
+  - `UndoReportSubmission { target_id }` - Validator retracts report
+  - `ReportChallenge { challenge_id }` - Validator reports challenger wrong
+  - `UndoReportChallenge { challenge_id }` - Validator retracts report
+  - `ClaimRewards(ClaimRewardsArgs)` - Distributes rewards, handles fraud quorum
+  - `ClaimChallengeBond { challenge_id }` - Distributes challenger's bond
+- **ChallengeExecutor** (`authority/src/execution/challenge.rs`): Full implementation
+- **AuditService** (`authority/src/audit_service.rs`):
+  - Receives Challenge objects via channel from CheckpointExecutor
+  - Calls EvaluationService (currently mocked)
+  - Detects fraud via distance mismatch beyond epsilon
+  - Submits ReportSubmission or ReportChallenge via consensus
+  - Signs transactions with validator's account keypair
+- **Proxy infrastructure**:
+  - `FullnodeProxy` for data/model serving
+  - `ProxyServer` on validators for direct access
+- **CLI**: `soma challenge initiate|list|info`, `soma claim-challenge-bond`
+- **RPC**: GetChallenge, ListChallenges handlers
+- **Unit tests**: Edge cases in `submission_tests.rs`
+- **E2E tests**: 14 tests in `e2e-tests/tests/challenge_tests.rs`
 
-pub struct ChallengeAuditVote {
-    pub challenge_id: ObjectID,
-    pub verdict: ChallengeVerdict,
-    pub validator: AuthorityName,
-    pub signature: AuthoritySignature,
-}
+### 7.2 Key Design Decisions
 
-pub enum ChallengeVerdict {
-    ChallengerWins { reason: ChallengeWinReason },
-    MinerWins,
-}
+- **Tally-based voting** (not off-chain aggregation): Validators submit individual report transactions that accumulate on-chain. Quorum checked when claiming.
+- **Fraud-only challenges**: All challenges are fraud challenges. Availability issues handled via ReportSubmission without InitiateChallenge.
+- **Simplified ChallengeStatus**: `Pending` or `Resolved { challenger_lost: bool }`. No complex win reasons.
+- **2f+1 stake-weighted quorum**: Uses `QUORUM_THRESHOLD = 6667` (66.67% of voting power).
+- **Challenge window**: Fill epoch + 1 (e.g., filled in epoch 0 → challengeable through epoch 1).
 
-pub enum ChallengeWinReason {
-    DistanceMismatch { claimed: f32, actual: f32 },
-    DataHashMismatch,
-    MinerUnresponsive,
-}
-
-pub struct CertifiedChallengeResult {
-    pub challenge_id: ObjectID,
-    pub verdict: ChallengeVerdict,
-    pub quorum_signature: AuthorityStrongQuorumSignInfo,
-}
-```
-
-### 7.2 Add Challenge Transactions
-
-In `types/src/transaction.rs`:
-```rust
-/// Initiate a challenge against a submission
-InitiateChallenge {
-    submission_id: ObjectID,
-    challenge_type: ChallengeType,
-    challenger_bond_coin: ObjectRef,
-},
-
-/// Submit certified audit result
-ResolveChallengeAudit {
-    certified_result: CertifiedChallengeResult,
-},
-```
-
-### 7.3 Implement Challenge Executor
-
-New file `authority/src/execution/challenge.rs`:
-
-**InitiateChallenge:**
-1. Validate submission exists and is in challenge window
-   - `reveal_epoch == current_epoch` or `reveal_epoch == current_epoch - 1`
-2. Validate no active challenge exists for this submission
-3. Validate challenger bond >= `submission.bond_amount / 3`
-4. Create Challenge object
-5. Lock challenger bond
-6. Validators automatically start auditing
-
-**ResolveChallengeAudit:**
-1. Verify 2f+1 quorum signature on certified_result
-2. If ChallengerWins:
-   - Transfer miner bond → challenger
-   - Add submission to slashed_submissions
-   - Remove from hits[reveal_epoch]
-   - Reopen target (status = Open)
-3. If MinerWins:
-   - Transfer challenger bond → miner
-
-**Challenge Timeout (in ChangeEpoch at end of epoch N+1):**
-- For challenges on epoch N submissions that haven't resolved:
-  - Return challenger bond
-  - Miner remains winner
-
-### 7.4 Implement Validator Audit Service
-
-New file `authority/src/challenge_audit.rs`:
-```rust
-pub struct ChallengeAuditService {
-    inference_service: Arc<InferenceService>,
-    state: Arc<AuthorityState>,
-    http_client: reqwest::Client,
-}
-
-impl ChallengeAuditService {
-    pub async fn audit_challenge(&self, challenge: &Challenge) -> ChallengeAuditVote {
-        let submission = self.get_submission(&challenge.submission_id);
-
-        // 1. Download data from submission's data_url
-        let data = match self.download_data(&submission.data_url).await {
-            Ok(d) => d,
-            Err(_) => return vote(ChallengerWins(MinerUnresponsive)),
-        };
-
-        // 2. Check DataFraud
-        if hash(&data) != submission.data_hash {
-            return vote(ChallengerWins(DataHashMismatch));
-        }
-
-        // 3. Check ScoreFraud
-        let model = self.inference_service.ensure_model_loaded(&submission.model_id).await?;
-        let embedding = self.inference_service.compute_embedding(&model, &data)?;
-        let target = self.get_target(&submission.target_id);
-        let actual_distance = self.inference_service.compute_distance(&embedding, &target.embedding);
-
-        if (actual_distance - submission.distance).abs() > distance_epsilon {
-            return vote(ChallengerWins(DistanceMismatch {
-                claimed: submission.distance,
-                actual: actual_distance
-            }));
-        }
-
-        vote(MinerWins)
-    }
-}
-```
-
-### 7.5 Implement Challenge Vote Exchange
-
-Extend validator P2P:
-- New RPC method: `BroadcastChallengeVote(ChallengeAuditVote)`
-- Aggregate votes in `ChallengeAggregator`
-- When 2f+1 votes agree → create `CertifiedChallengeResult` → submit `ResolveChallengeAudit` tx
-
-### 7.6 Wire into Node
-
-In `node/src/lib.rs`:
-- Start `ChallengeAuditService` for validators
-- Subscribe to new Challenge objects
-- Trigger audit when challenge is created
-
-### 7.7 Add Protocol Config
-
-```rust
-challenge_bond_ratio_bps: Option<u64>,     // 3333 = 1/3 of miner bond
-challenge_audit_timeout_ms: Option<u64>,   // How long validators wait for data
-```
-
-### 7.8 Add CLI Commands
-
-New file `cli/src/commands/challenge.rs`:
-- `soma challenge initiate --submission <ID> --type <score-fraud|data-fraud>`
-- `soma challenge list [--submission <ID>] [--challenger <ADDR>]`
-- `soma challenge info <ID>`
-
-**Gate:** E2E test for full challenge lifecycle
+**Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test challenge_tests` — 14 tests passing
 
 ---
 
@@ -953,14 +839,19 @@ pub async fn initiate_challenge(&self, ...) -> Result<ObjectID>;
 | rpc | `api/grpc/state_service/list_targets.rs` | ListTargets RPC handler (stub) | ✓ Created |
 | rpc | `proto/soma/target.rs` | Target proto Merge impl | ✓ Created |
 | e2e-tests | `tests/target_tests.rs` | 6 E2E target tests | ✓ Created |
-| types | `challenge.rs` | Challenge, ChallengeType, ChallengeVerdict | Pending (Phase 7) |
-| authority | `execution/challenge.rs` | Challenge tx executor | Pending (Phase 7) |
-| authority | `challenge_audit.rs` | Validator audit service | Pending (Phase 7) |
+| types | `challenge.rs` | Challenge, ChallengeId, ChallengeStatus | ✓ Created |
+| authority | `execution/challenge.rs` | Challenge tx executor | ✓ Created |
+| authority | `audit_service.rs` | Validator audit service + EvaluationService trait | ✓ Created |
+| authority | `fullnode_proxy.rs` | Fullnode proxy for data/model serving | ✓ Created |
+| authority | `proxy_server.rs` | Validator proxy server | ✓ Created |
+| cli | `commands/challenge.rs` | Challenge CLI | ✓ Created |
+| rpc | `api/grpc/state_service/get_challenge.rs` | GetChallenge RPC handler | ✓ Created |
+| rpc | `api/grpc/state_service/list_challenges.rs` | ListChallenges RPC handler | ✓ Created |
+| e2e-tests | `tests/challenge_tests.rs` | 14 E2E challenge tests | ✓ Created |
 | inference-engine | `lib.rs` | Crate root | Pending (Phase 6) |
 | inference-engine | `engine.rs` | InferenceEngineAPI trait | Pending (Phase 6) |
 | inference-engine | `service.rs` | InferenceService | Pending (Phase 6) |
 | cli | `commands/verify.rs` | Verification CLI | Pending (Phase 6) |
-| cli | `commands/challenge.rs` | Challenge CLI | Pending (Phase 7) |
 
 ## Quick Reference: Files to Modify
 

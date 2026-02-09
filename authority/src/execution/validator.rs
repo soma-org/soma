@@ -38,6 +38,7 @@ impl ValidatorExecutor {
                 args.net_address.clone(),
                 args.p2p_address.clone(),
                 args.primary_address.clone(),
+                args.proxy_address.clone(),
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
             ),
             TransactionKind::RemoveValidator(args) => {

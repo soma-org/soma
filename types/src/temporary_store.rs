@@ -152,12 +152,22 @@ impl ExecutionResults {
             } = &mut obj.owner
             {
                 if self.created_object_ids.contains(id) {
-                    assert_eq!(
-                        *initial_shared_version,
-                        Version::new(),
-                        "Initial version should be blank before this point for {id:?}",
-                    );
-                    *initial_shared_version = lamport_version;
+                    // Objects created with Version::new() (0) get their initial_shared_version
+                    // set to the lamport timestamp. Objects created with OBJECT_START_VERSION (1)
+                    // keep that value - this allows dynamically created shared objects (like
+                    // Challenges) to have a predictable initial_shared_version for easy reference.
+                    if *initial_shared_version == Version::new() {
+                        *initial_shared_version = lamport_version;
+                    } else {
+                        debug_assert_eq!(
+                            *initial_shared_version,
+                            crate::object::OBJECT_START_VERSION,
+                            "Newly created shared objects should have initial_shared_version \
+                             of either Version::new() (to be set by lamport) or OBJECT_START_VERSION \
+                             (to keep fixed), not {:?} for {id:?}",
+                            initial_shared_version,
+                        );
+                    }
                 }
 
                 // Update initial_shared_version for reshared objects

@@ -682,12 +682,28 @@ pub mod execution_error {
         EmbeddingDimensionMismatch = 41,
         /// Distance score exceeds threshold
         DistanceExceedsThreshold = 42,
-        /// Reconstruction score exceeds threshold
-        ReconstructionExceedsThreshold = 43,
         /// Insufficient bond for submission
-        InsufficientBond = 44,
+        InsufficientBond = 43,
         /// Insufficient emission pool balance
-        InsufficientEmissionBalance = 45,
+        InsufficientEmissionBalance = 44,
+        /// Challenge window has closed
+        ChallengeWindowClosed = 45,
+        /// Insufficient challenger bond
+        InsufficientChallengerBond = 46,
+        /// Challenge not found
+        ChallengeNotFound = 47,
+        /// Challenge is not pending
+        ChallengeNotPending = 48,
+        /// Challenge has expired
+        ChallengeExpired = 49,
+        /// Invalid challenge result
+        InvalidChallengeResult = 50,
+        /// Invalid challenge quorum
+        InvalidChallengeQuorum = 51,
+        /// Data exceeds maximum allowed size
+        DataExceedsMaxSize = 52,
+        /// Challenge already exists for this target
+        ChallengeAlreadyExists = 53,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -740,11 +756,17 @@ pub mod execution_error {
                 Self::ModelNotInTarget => "MODEL_NOT_IN_TARGET",
                 Self::EmbeddingDimensionMismatch => "EMBEDDING_DIMENSION_MISMATCH",
                 Self::DistanceExceedsThreshold => "DISTANCE_EXCEEDS_THRESHOLD",
-                Self::ReconstructionExceedsThreshold => {
-                    "RECONSTRUCTION_EXCEEDS_THRESHOLD"
-                }
                 Self::InsufficientBond => "INSUFFICIENT_BOND",
                 Self::InsufficientEmissionBalance => "INSUFFICIENT_EMISSION_BALANCE",
+                Self::ChallengeWindowClosed => "CHALLENGE_WINDOW_CLOSED",
+                Self::InsufficientChallengerBond => "INSUFFICIENT_CHALLENGER_BOND",
+                Self::ChallengeNotFound => "CHALLENGE_NOT_FOUND",
+                Self::ChallengeNotPending => "CHALLENGE_NOT_PENDING",
+                Self::ChallengeExpired => "CHALLENGE_EXPIRED",
+                Self::InvalidChallengeResult => "INVALID_CHALLENGE_RESULT",
+                Self::InvalidChallengeQuorum => "INVALID_CHALLENGE_QUORUM",
+                Self::DataExceedsMaxSize => "DATA_EXCEEDS_MAX_SIZE",
+                Self::ChallengeAlreadyExists => "CHALLENGE_ALREADY_EXISTS",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -796,13 +818,19 @@ pub mod execution_error {
                 "MODEL_NOT_IN_TARGET" => Some(Self::ModelNotInTarget),
                 "EMBEDDING_DIMENSION_MISMATCH" => Some(Self::EmbeddingDimensionMismatch),
                 "DISTANCE_EXCEEDS_THRESHOLD" => Some(Self::DistanceExceedsThreshold),
-                "RECONSTRUCTION_EXCEEDS_THRESHOLD" => {
-                    Some(Self::ReconstructionExceedsThreshold)
-                }
                 "INSUFFICIENT_BOND" => Some(Self::InsufficientBond),
                 "INSUFFICIENT_EMISSION_BALANCE" => {
                     Some(Self::InsufficientEmissionBalance)
                 }
+                "CHALLENGE_WINDOW_CLOSED" => Some(Self::ChallengeWindowClosed),
+                "INSUFFICIENT_CHALLENGER_BOND" => Some(Self::InsufficientChallengerBond),
+                "CHALLENGE_NOT_FOUND" => Some(Self::ChallengeNotFound),
+                "CHALLENGE_NOT_PENDING" => Some(Self::ChallengeNotPending),
+                "CHALLENGE_EXPIRED" => Some(Self::ChallengeExpired),
+                "INVALID_CHALLENGE_RESULT" => Some(Self::InvalidChallengeResult),
+                "INVALID_CHALLENGE_QUORUM" => Some(Self::InvalidChallengeQuorum),
+                "DATA_EXCEEDS_MAX_SIZE" => Some(Self::DataExceedsMaxSize),
+                "CHALLENGE_ALREADY_EXISTS" => Some(Self::ChallengeAlreadyExists),
                 _ => None,
             }
         }
@@ -2201,6 +2229,66 @@ pub struct ListTargetsResponse {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
+/// Request message for `StateService.GetChallenge`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetChallengeRequest {
+    /// Required. The challenge ID (ObjectID hex string).
+    #[prost(string, optional, tag = "1")]
+    pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Mask specifying which fields to read.
+    /// If no mask is specified, all fields are returned.
+    #[prost(message, optional, tag = "2")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+/// Response message for `StateService.GetChallenge`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetChallengeResponse {
+    #[prost(message, optional, tag = "1")]
+    pub challenge: ::core::option::Option<Challenge>,
+}
+/// Request message for `StateService.ListChallenges`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChallengesRequest {
+    /// Optional target ID filter. If specified, only returns challenges for this target.
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional status filter: "pending" or "resolved".
+    /// If not specified, returns challenges of all statuses.
+    #[prost(string, optional, tag = "2")]
+    pub status_filter: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional epoch filter. If specified, only returns challenges with
+    /// challenge_epoch equal to this value.
+    #[prost(uint64, optional, tag = "3")]
+    pub epoch_filter: ::core::option::Option<u64>,
+    /// The maximum number of entries to return. The service may return fewer.
+    /// If unspecified, at most `50` entries will be returned.
+    /// The maximum value is `1000`; values above `1000` will be coerced to `1000`.
+    #[prost(uint32, optional, tag = "4")]
+    pub page_size: ::core::option::Option<u32>,
+    /// A page token, received from a previous `ListChallenges` call.
+    /// Provide this to retrieve the subsequent page.
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub page_token: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Mask specifying which fields to read on each challenge.
+    /// If no mask is specified, all fields are returned.
+    #[prost(message, optional, tag = "6")]
+    pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+}
+/// Response message for `StateService.ListChallenges`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChallengesResponse {
+    /// Page of challenges matching the filters.
+    #[prost(message, repeated, tag = "1")]
+    pub challenges: ::prost::alloc::vec::Vec<Challenge>,
+    /// A token, which can be sent as `page_token` to retrieve the next page.
+    /// If this field is omitted, there are no subsequent pages.
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
+}
 /// Generated client implementations.
 pub mod state_service_client {
     #![allow(
@@ -2388,6 +2476,54 @@ pub mod state_service_client {
                 .insert(GrpcMethod::new("soma.rpc.StateService", "ListTargets"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn get_challenge(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetChallengeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetChallengeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.StateService/GetChallenge",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.StateService", "GetChallenge"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list_challenges(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListChallengesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListChallengesResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.StateService/ListChallenges",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.StateService", "ListChallenges"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -2429,6 +2565,20 @@ pub mod state_service_server {
             request: tonic::Request<super::ListTargetsRequest>,
         ) -> std::result::Result<
             tonic::Response<super::ListTargetsResponse>,
+            tonic::Status,
+        >;
+        async fn get_challenge(
+            &self,
+            request: tonic::Request<super::GetChallengeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetChallengeResponse>,
+            tonic::Status,
+        >;
+        async fn list_challenges(
+            &self,
+            request: tonic::Request<super::ListChallengesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListChallengesResponse>,
             tonic::Status,
         >;
     }
@@ -2674,6 +2824,96 @@ pub mod state_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = ListTargetsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.StateService/GetChallenge" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetChallengeSvc<T: StateService>(pub Arc<T>);
+                    impl<
+                        T: StateService,
+                    > tonic::server::UnaryService<super::GetChallengeRequest>
+                    for GetChallengeSvc<T> {
+                        type Response = super::GetChallengeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetChallengeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StateService>::get_challenge(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetChallengeSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.StateService/ListChallenges" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListChallengesSvc<T: StateService>(pub Arc<T>);
+                    impl<
+                        T: StateService,
+                    > tonic::server::UnaryService<super::ListChallengesRequest>
+                    for ListChallengesSvc<T> {
+                        type Response = super::ListChallengesResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListChallengesRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StateService>::list_challenges(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListChallengesSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3125,6 +3365,12 @@ pub struct SystemState {
     /// Model registry
     #[prost(message, optional, tag = "11")]
     pub model_registry: ::core::option::Option<ModelRegistry>,
+    /// Submission report records (target_id hex -> reporter addresses)
+    #[prost(btree_map = "string, message", tag = "13")]
+    pub submission_report_records: ::prost::alloc::collections::BTreeMap<
+        ::prost::alloc::string::String,
+        ReporterSet,
+    >,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3171,35 +3417,37 @@ pub struct SystemParameters {
     #[prost(int64, optional, tag = "16")]
     pub target_initial_distance_threshold: ::core::option::Option<i64>,
     #[prost(uint64, optional, tag = "17")]
-    pub target_initial_reconstruction_threshold: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "18")]
     pub target_reward_allocation_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "19")]
+    #[prost(uint64, optional, tag = "18")]
     pub target_hit_rate_target_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "20")]
+    #[prost(uint64, optional, tag = "19")]
     pub target_hit_rate_ema_decay_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "21")]
+    #[prost(uint64, optional, tag = "20")]
     pub target_difficulty_adjustment_rate_bps: ::core::option::Option<u64>,
-    #[prost(int64, optional, tag = "22")]
+    #[prost(int64, optional, tag = "21")]
     pub target_max_distance_threshold: ::core::option::Option<i64>,
-    #[prost(int64, optional, tag = "23")]
+    #[prost(int64, optional, tag = "22")]
     pub target_min_distance_threshold: ::core::option::Option<i64>,
-    #[prost(uint64, optional, tag = "24")]
-    pub target_max_reconstruction_threshold: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "25")]
-    pub target_min_reconstruction_threshold: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "26")]
+    #[prost(uint64, optional, tag = "23")]
     pub target_initial_targets_per_epoch: ::core::option::Option<u64>,
     /// Reward distribution parameters
-    #[prost(uint64, optional, tag = "28")]
+    #[prost(uint64, optional, tag = "24")]
     pub target_miner_reward_share_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "29")]
+    #[prost(uint64, optional, tag = "25")]
     pub target_model_reward_share_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "30")]
+    #[prost(uint64, optional, tag = "26")]
     pub target_claimer_incentive_bps: ::core::option::Option<u64>,
     /// Submission parameters
-    #[prost(uint64, optional, tag = "31")]
+    #[prost(uint64, optional, tag = "27")]
     pub submission_bond_per_byte: ::core::option::Option<u64>,
+    /// Challenge parameters
+    #[prost(uint64, optional, tag = "28")]
+    pub challenger_bond_per_byte: ::core::option::Option<u64>,
+    #[prost(int64, optional, tag = "29")]
+    pub challenge_distance_epsilon: ::core::option::Option<i64>,
+    /// Data size limit
+    #[prost(uint64, optional, tag = "30")]
+    pub max_submission_data_size: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -3256,6 +3504,9 @@ pub struct Validator {
     pub p2p_address: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "7")]
     pub primary_address: ::core::option::Option<::prost::alloc::string::String>,
+    /// HTTP proxy address for serving data/model downloads
+    #[prost(string, optional, tag = "19")]
+    pub proxy_address: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint64, optional, tag = "8")]
     pub voting_power: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "9")]
@@ -3281,6 +3532,9 @@ pub struct Validator {
     pub next_epoch_primary_address: ::core::option::Option<
         ::prost::alloc::string::String,
     >,
+    /// HTTP proxy address for next epoch
+    #[prost(string, optional, tag = "20")]
+    pub next_epoch_proxy_address: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3396,21 +3650,18 @@ pub struct TargetState {
     /// Current distance threshold for new targets (fixed-point i64)
     #[prost(int64, optional, tag = "1")]
     pub distance_threshold: ::core::option::Option<i64>,
-    /// Current reconstruction error threshold (MSE, fixed-point u64)
-    #[prost(uint64, optional, tag = "2")]
-    pub reconstruction_threshold: ::core::option::Option<u64>,
     /// Count of targets generated this epoch
-    #[prost(uint64, optional, tag = "3")]
+    #[prost(uint64, optional, tag = "2")]
     pub targets_generated_this_epoch: ::core::option::Option<u64>,
     /// Count of successful hits this epoch
-    #[prost(uint64, optional, tag = "4")]
+    #[prost(uint64, optional, tag = "3")]
     pub hits_this_epoch: ::core::option::Option<u64>,
     /// EMA of hit rate across epochs (bps, 0-10000)
     /// 0 indicates bootstrap mode (no data yet)
-    #[prost(uint64, optional, tag = "5")]
+    #[prost(uint64, optional, tag = "4")]
     pub hit_rate_ema_bps: ::core::option::Option<u64>,
     /// Reward per target for current epoch (in shannons)
-    #[prost(uint64, optional, tag = "6")]
+    #[prost(uint64, optional, tag = "5")]
     pub reward_per_target: ::core::option::Option<u64>,
 }
 /// A target in the Soma mining competition.
@@ -3430,32 +3681,29 @@ pub struct Target {
     /// Distance threshold (fixed-point i64)
     #[prost(int64, optional, tag = "4")]
     pub distance_threshold: ::core::option::Option<i64>,
-    /// Reconstruction error threshold (MSE, fixed-point u64)
-    #[prost(uint64, optional, tag = "5")]
-    pub reconstruction_threshold: ::core::option::Option<u64>,
     /// Pre-allocated reward amount (in shannons)
-    #[prost(uint64, optional, tag = "6")]
+    #[prost(uint64, optional, tag = "5")]
     pub reward_pool: ::core::option::Option<u64>,
     /// Epoch in which this target was generated
-    #[prost(uint64, optional, tag = "7")]
+    #[prost(uint64, optional, tag = "6")]
     pub generation_epoch: ::core::option::Option<u64>,
     /// Status: "open", "filled", or "claimed"
-    #[prost(string, optional, tag = "9")]
+    #[prost(string, optional, tag = "7")]
     pub status: ::core::option::Option<::prost::alloc::string::String>,
     /// Fill epoch (only present if status is "filled")
-    #[prost(uint64, optional, tag = "10")]
+    #[prost(uint64, optional, tag = "8")]
     pub fill_epoch: ::core::option::Option<u64>,
     /// Miner address who filled (only present if filled)
-    #[prost(string, optional, tag = "11")]
+    #[prost(string, optional, tag = "9")]
     pub miner: ::core::option::Option<::prost::alloc::string::String>,
     /// Model used by the miner (only present if filled)
-    #[prost(string, optional, tag = "12")]
+    #[prost(string, optional, tag = "10")]
     pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
     /// Model owner address at fill time (only present if filled)
-    #[prost(string, optional, tag = "13")]
+    #[prost(string, optional, tag = "11")]
     pub winning_model_owner: ::core::option::Option<::prost::alloc::string::String>,
     /// Bond amount held (in shannons, only present if filled)
-    #[prost(uint64, optional, tag = "14")]
+    #[prost(uint64, optional, tag = "12")]
     pub bond_amount: ::core::option::Option<u64>,
 }
 /// A data submission to a target.
@@ -3480,15 +3728,51 @@ pub struct Submission {
     /// Distance score reported by submitter (fixed-point i64)
     #[prost(int64, optional, tag = "6")]
     pub distance_score: ::core::option::Option<i64>,
-    /// Reconstruction error (MSE) reported by submitter (fixed-point u64)
-    #[prost(uint64, optional, tag = "7")]
-    pub reconstruction_score: ::core::option::Option<u64>,
     /// Bond amount locked (in shannons)
-    #[prost(uint64, optional, tag = "8")]
+    #[prost(uint64, optional, tag = "7")]
     pub bond_amount: ::core::option::Option<u64>,
     /// Epoch when submission was made
     #[prost(uint64, optional, tag = "9")]
     pub submit_epoch: ::core::option::Option<u64>,
+}
+/// A challenge against a filled target's submission.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Challenge {
+    /// Challenge ID (ObjectID hex)
+    #[prost(string, optional, tag = "1")]
+    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Target being challenged (TargetId hex)
+    #[prost(string, optional, tag = "2")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Address of the challenger
+    #[prost(string, optional, tag = "3")]
+    pub challenger: ::core::option::Option<::prost::alloc::string::String>,
+    /// Bond locked by challenger (in shannons)
+    #[prost(uint64, optional, tag = "4")]
+    pub challenger_bond: ::core::option::Option<u64>,
+    /// Epoch when challenge was initiated
+    #[prost(uint64, optional, tag = "5")]
+    pub challenge_epoch: ::core::option::Option<u64>,
+    /// Status: "pending" or "resolved"
+    #[prost(string, optional, tag = "6")]
+    pub status: ::core::option::Option<::prost::alloc::string::String>,
+    /// Verdict (only if resolved): "challenger_won" or "challenger_lost"
+    /// Simplified: reports indicate "challenger is wrong". If 2f+1 report, challenger loses.
+    #[prost(string, optional, tag = "7")]
+    pub verdict: ::core::option::Option<::prost::alloc::string::String>,
+    /// Win reason is no longer used in simplified design (field kept for backwards compatibility)
+    #[prost(string, optional, tag = "8")]
+    pub win_reason: ::core::option::Option<::prost::alloc::string::String>,
+    /// Distance threshold of target (fixed-point i64)
+    #[prost(int64, optional, tag = "9")]
+    pub distance_threshold: ::core::option::Option<i64>,
+    /// Claimed distance score by miner (fixed-point i64)
+    #[prost(int64, optional, tag = "10")]
+    pub winning_distance_score: ::core::option::Option<i64>,
+    /// Winning model ID used by miner
+    #[prost(string, optional, tag = "11")]
+    pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// A transaction.
 #[non_exhaustive]
@@ -3510,7 +3794,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3577,6 +3861,20 @@ pub mod transaction_kind {
         SubmitData(super::SubmitData),
         #[prost(message, tag = "25")]
         ClaimRewards(super::ClaimRewards),
+        #[prost(message, tag = "28")]
+        ReportSubmission(super::ReportSubmission),
+        #[prost(message, tag = "29")]
+        UndoReportSubmission(super::UndoReportSubmission),
+        /// Challenge transactions
+        #[prost(message, tag = "26")]
+        InitiateChallenge(super::InitiateChallenge),
+        /// Field 27 was ResolveAudit (removed)
+        #[prost(message, tag = "30")]
+        ReportChallenge(super::ReportChallenge),
+        #[prost(message, tag = "31")]
+        UndoReportChallenge(super::UndoReportChallenge),
+        #[prost(message, tag = "32")]
+        ClaimChallengeBond(super::ClaimChallengeBond),
     }
 }
 #[non_exhaustive]
@@ -3594,6 +3892,8 @@ pub struct AddValidator {
     pub p2p_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "6")]
     pub primary_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "7")]
+    pub proxy_address: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3623,10 +3923,12 @@ pub struct UpdateValidatorMetadata {
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub next_epoch_primary_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "4")]
-    pub next_epoch_protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    pub next_epoch_proxy_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "5")]
-    pub next_epoch_worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    pub next_epoch_protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "6")]
+    pub next_epoch_worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "7")]
     pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
@@ -3831,6 +4133,23 @@ pub struct UndoReportModel {
     #[prost(string, optional, tag = "1")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Report a submission as fraudulent (validators only)
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportSubmission {
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional challenger to attribute fraud to (for tally-based bond distribution)
+    #[prost(string, optional, tag = "2")]
+    pub challenger: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Undo a previous submission report
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UndoReportSubmission {
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+}
 /// System transaction used to change the epoch.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3892,25 +4211,22 @@ pub struct SubmitData {
     #[prost(string, optional, tag = "1")]
     pub target_id: ::core::option::Option<::prost::alloc::string::String>,
     /// Commitment to raw data: hash(data_bytes), 32-byte digest
-    #[prost(bytes = "bytes", optional, tag = "3")]
+    #[prost(bytes = "bytes", optional, tag = "2")]
     pub data_commitment: ::core::option::Option<::prost::bytes::Bytes>,
     /// Manifest for submitted data
-    #[prost(message, optional, tag = "4")]
+    #[prost(message, optional, tag = "3")]
     pub data_manifest: ::core::option::Option<SubmissionManifest>,
     /// Model ID used for submission (must be in target's model_ids)
-    #[prost(string, optional, tag = "5")]
+    #[prost(string, optional, tag = "4")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
     /// Pre-computed embedding (fixed-point i64 values)
-    #[prost(int64, repeated, tag = "6")]
+    #[prost(int64, repeated, tag = "5")]
     pub embedding: ::prost::alloc::vec::Vec<i64>,
     /// Distance score (fixed-point i64, lower is better)
-    #[prost(int64, optional, tag = "7")]
+    #[prost(int64, optional, tag = "6")]
     pub distance_score: ::core::option::Option<i64>,
-    /// Reconstruction error score (MSE, fixed-point u64, lower is better)
-    #[prost(uint64, optional, tag = "8")]
-    pub reconstruction_score: ::core::option::Option<u64>,
     /// Bond coin reference
-    #[prost(message, optional, tag = "9")]
+    #[prost(message, optional, tag = "7")]
     pub bond_coin: ::core::option::Option<ObjectReference>,
 }
 /// Claim rewards from a filled or expired target.
@@ -3927,6 +4243,50 @@ pub struct ClaimRewards {
 pub struct SubmissionManifest {
     #[prost(message, optional, tag = "1")]
     pub manifest: ::core::option::Option<Manifest>,
+}
+/// Initiate a challenge against a filled target.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InitiateChallenge {
+    /// Target ID (ObjectID hex string) to challenge
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Type of challenge (e.g., "data_unavailable", "model_unavailable", "data_fraud", "score_fraud")
+    #[prost(string, optional, tag = "2")]
+    pub challenge_type: ::core::option::Option<::prost::alloc::string::String>,
+    /// For ModelUnavailable challenges: the model ID that is unavailable
+    #[prost(string, optional, tag = "3")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Bond coin reference
+    #[prost(message, optional, tag = "4")]
+    pub bond_coin: ::core::option::Option<ObjectReference>,
+}
+/// Report a challenge (validators only).
+/// Reports indicate "the challenger is wrong" (i.e., the submission is valid).
+/// If 2f+1 validators report, the challenger loses their bond.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportChallenge {
+    /// Challenge ID (ObjectID hex string)
+    #[prost(string, optional, tag = "1")]
+    pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Undo a previous challenge report.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UndoReportChallenge {
+    /// Challenge ID (ObjectID hex string)
+    #[prost(string, optional, tag = "1")]
+    pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Claim the challenger's bond after challenge window closes.
+/// Distributes bond based on tally-based report quorum.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ClaimChallengeBond {
+    /// Challenge ID (ObjectID hex string)
+    #[prost(string, optional, tag = "1")]
+    pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

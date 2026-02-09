@@ -300,6 +300,35 @@ impl Client {
             .map(|r| r.into_inner())
     }
 
+    /// Get a challenge by ID.
+    ///
+    /// Returns the challenge details including status, challenger, target, and audit data.
+    pub async fn get_challenge(
+        &mut self,
+        request: impl tonic::IntoRequest<proto::GetChallengeRequest>,
+    ) -> Result<proto::GetChallengeResponse> {
+        self.0
+            .state_client()
+            .get_challenge(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
+    /// List challenges with optional filtering by status, epoch, and target.
+    ///
+    /// Returns a paginated list of challenges. Use `status_filter` to filter by "pending" or "resolved".
+    /// Use `epoch_filter` to filter by challenge epoch. Use `target_filter` to filter by target ID.
+    pub async fn list_challenges(
+        &mut self,
+        request: impl tonic::IntoRequest<proto::ListChallengesRequest>,
+    ) -> Result<proto::ListChallengesResponse> {
+        self.0
+            .state_client()
+            .list_challenges(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self

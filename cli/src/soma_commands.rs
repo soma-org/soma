@@ -1,6 +1,6 @@
 use crate::{
     client_commands::SomaClientCommands,
-    commands::{ClaimCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, SubmitCommand, TargetCommand, WalletCommand},
+    commands::{ChallengeCommand, ClaimCommand, DataCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, SubmitCommand, TargetCommand, WalletCommand},
     keytool::KeyToolCommand,
 };
 use anyhow::{Context as _, anyhow, bail, ensure};
@@ -268,6 +268,17 @@ pub enum SomaCommand {
         json: bool,
     },
 
+    /// Download submission data from filled targets
+    ///
+    /// Fetches the winning submission's data via the validator proxy network.
+    #[clap(name = "data")]
+    Data {
+        #[clap(subcommand)]
+        cmd: DataCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
     /// Submit data to fill a target
     #[clap(name = "submit")]
     Submit {
@@ -285,6 +296,18 @@ pub enum SomaCommand {
     Claim {
         #[clap(flatten)]
         cmd: ClaimCommand,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Challenge a filled target's submission
+    ///
+    /// Initiates a fraud challenge against a miner's submission for a filled target.
+    /// Requires a bond proportional to the data size.
+    #[clap(name = "challenge")]
+    Challenge {
+        #[clap(subcommand)]
+        cmd: ChallengeCommand,
         #[clap(long, global = true)]
         json: bool,
     },
@@ -545,6 +568,12 @@ impl SomaCommand {
                 Ok(())
             }
 
+            SomaCommand::Data { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                cmd.execute(&mut context).await?.print(json);
+                Ok(())
+            }
+
             SomaCommand::Submit { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 cmd.execute(&mut context).await?.print(!json);
@@ -552,6 +581,12 @@ impl SomaCommand {
             }
 
             SomaCommand::Claim { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                cmd.execute(&mut context).await?.print(json);
+                Ok(())
+            }
+
+            SomaCommand::Challenge { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 cmd.execute(&mut context).await?.print(json);
                 Ok(())

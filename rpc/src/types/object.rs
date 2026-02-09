@@ -164,4 +164,5 @@ pub enum ObjectType {
     StakedSoma,
     Target,
     Submission,
+    Challenge,
 }

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
 use authority::{
+    audit_service::{AuditService, MockEvaluationService},
     authority::{AuthorityState, ExecutionEnv},
     authority_aggregator::AuthorityAggregator,
     authority_client::NetworkAuthorityClient,
@@ -24,6 +25,8 @@ use authority::{
     consensus_validator::TxValidator,
     execution_scheduler::SchedulingSource,
     global_state_hasher::GlobalStateHasher,
+    fullnode_proxy::FullnodeProxy,
+    proxy_server::{ProxyConfig, ProxyServer, spawn_report_handler},
     reconfiguration::ReconfigurationInitiator,
     rpc_index::RpcIndexStore,
     server::{ServerBuilder, TLS_SERVER_NAME},
@@ -58,6 +61,7 @@ use tokio::{
 use tracing::{Instrument, debug, error, error_span, info, warn};
 use types::{
     base::AuthorityName,
+    challenge::Challenge,
     client::Config,
     committee::Committee,
     config::node_config::{
@@ -110,6 +114,16 @@ pub struct ValidatorComponents {
     consensus_manager: Arc<ConsensusManager>,
     consensus_store_pruner: ConsensusStorePruner,
     consensus_adapter: Arc<ConsensusAdapter>,
+    /// AuditService for challenge resolution (submits tally-based reports).
+    /// Recreated each epoch with fresh channels.
+    audit_service: Option<Arc<AuditService>>,
+    /// Sender for challenge observer - used by CheckpointExecutor to notify AuditService
+    /// of new Challenge objects. Cloned and passed to CheckpointExecutor at startup.
+    challenge_observer_sender: tokio::sync::mpsc::Sender<Challenge>,
+    /// Handle for the HTTP proxy server (for serving data/model downloads).
+    /// None if proxy_port is not configured.
+    #[allow(unused)]
+    proxy_server_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 enum SpawnOnce {
@@ -643,9 +657,12 @@ impl SomaNode {
             consensus_config.db_pruner_period(),
         );
 
-        let validator_server_handle =
-            Self::start_grpc_validator_service(&config, state.clone(), consensus_adapter.clone())
-                .await?;
+        let validator_server_handle = Self::start_grpc_validator_service(
+            &config,
+            state.clone(),
+            consensus_adapter.clone(),
+        )
+        .await?;
 
         // Starts an overload monitor that monitors the execution of the authority.
         // Don't start the overload monitor when max_load_shedding_percentage is 0.
@@ -751,11 +768,88 @@ impl SomaNode {
             .spawn(epoch_store.clone(), replay_waiter)
             .await;
 
+        // Create channel for AuditService to receive new Challenge objects from checkpoint execution.
+        let (challenge_tx, challenge_rx) = tokio::sync::mpsc::channel(100);
+
+        // Create AuditService with MockEvaluationService for e2e testing.
+        // TODO: Replace MockEvaluationService with real EvaluationService from inference-engine crate (Phase 6)
+        // once it's implemented. The real EvaluationService will wrap probes/intelligence for
+        // deterministic inference.
+        let audit_service = Self::create_audit_service(
+            config,
+            &state,
+            &epoch_store,
+            consensus_adapter.clone(),
+            challenge_rx,
+        ).await;
+
+        // Start proxy server if proxy_port is configured
+        let proxy_server_handle = if let Some(proxy_port) = config
+            .consensus_config
+            .as_ref()
+            .and_then(|c| c.proxy_port())
+        {
+            // Create report channel for availability reports
+            let (report_tx, report_rx) = tokio::sync::mpsc::channel(100);
+
+            // Spawn the report handler with consensus adapter for transaction submission
+            let validator_address = config.soma_address();
+            let account_keypair = Arc::new(config.account_key_pair.keypair().copy());
+            let report_state = state.clone();
+            let report_consensus_adapter = consensus_adapter.clone();
+            let report_epoch_store = epoch_store.clone();
+            tokio::spawn(async move {
+                spawn_report_handler(
+                    report_rx,
+                    validator_address,
+                    account_keypair,
+                    report_state,
+                    report_consensus_adapter,
+                    report_epoch_store,
+                ).await;
+            });
+
+            // Create and start the proxy server
+            match ProxyServer::new(state.clone(), report_tx, ProxyConfig::default()) {
+                Ok(proxy_server) => {
+                    let proxy_server = Arc::new(proxy_server);
+                    let router = proxy_server.router();
+                    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], proxy_port));
+
+                    info!("Starting proxy server on {}", addr);
+
+                    let handle = tokio::spawn(async move {
+                        let listener = match tokio::net::TcpListener::bind(addr).await {
+                            Ok(l) => l,
+                            Err(e) => {
+                                error!("Failed to bind proxy server to {}: {}", addr, e);
+                                return;
+                            }
+                        };
+                        if let Err(e) = axum::serve(listener, router).await {
+                            error!("Proxy server error: {}", e);
+                        }
+                    });
+
+                    Some(handle)
+                }
+                Err(e) => {
+                    warn!("Failed to create proxy server: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(ValidatorComponents {
             validator_server_handle,
             consensus_manager,
             consensus_store_pruner,
             consensus_adapter,
+            audit_service,
+            challenge_observer_sender: challenge_tx,
+            proxy_server_handle,
         })
     }
 
@@ -832,7 +926,8 @@ impl SomaNode {
         state: Arc<AuthorityState>,
         consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Result<SpawnOnce> {
-        let validator_service = ValidatorService::new(state.clone(), consensus_adapter);
+        let validator_service =
+            ValidatorService::new(state.clone(), consensus_adapter);
 
         let mut server_conf = Config::new();
         server_conf.connect_timeout = Some(DEFAULT_GRPC_CONNECT_TIMEOUT);
@@ -994,6 +1089,16 @@ impl SomaNode {
                 "Creating checkpoint executor for epoch {}",
                 epoch_store.epoch()
             );
+
+            // Get the challenge observer sender from ValidatorComponents if this is a validator.
+            // Fullnodes don't run the AuditService, so they get None.
+            let challenge_observer_sender = {
+                let guard = self.validator_components.lock().await;
+                guard
+                    .as_ref()
+                    .map(|c| c.challenge_observer_sender.clone())
+            };
+
             let checkpoint_executor = CheckpointExecutor::new(
                 epoch_store.clone(),
                 self.checkpoint_store.clone(),
@@ -1002,6 +1107,7 @@ impl SomaNode {
                 self.backpressure_manager.clone(),
                 self.config.checkpoint_executor_config.clone(),
                 self.subscription_service_checkpoint_sender.clone(),
+                challenge_observer_sender,
             );
 
             let run_with_range = self.config.run_with_range;
@@ -1106,9 +1212,17 @@ impl SomaNode {
                 consensus_manager,
                 consensus_store_pruner,
                 consensus_adapter,
+                audit_service,
+                challenge_observer_sender: _, // Dropped - new channel created each epoch
+                proxy_server_handle: _,       // Dropped - recreated each epoch
             }) = validator_components_lock_guard.take()
             {
                 info!("Reconfiguring the validator.");
+
+                // Shutdown the old AuditService (if any).
+                // The AuditService holds channels that will be dropped, which signals
+                // spawned tasks to shut down.
+                drop(audit_service);
 
                 consensus_manager.shutdown().await;
                 info!("Consensus has shut down.");
@@ -1492,6 +1606,51 @@ impl SomaNode {
     pub fn get_config(&self) -> &NodeConfig {
         &self.config
     }
+
+    /// Create and spawn the AuditService with MockEvaluationService.
+    /// Returns the audit service if successfully created, None otherwise.
+    ///
+    /// The AuditService uses a tally-based approach for challenge resolution:
+    /// validators submit individual report transactions that accumulate on-chain
+    /// rather than aggregating votes off-chain.
+    ///
+    /// TODO: Replace MockEvaluationService with real EvaluationService from
+    /// inference-engine crate (Phase 6) once it's implemented.
+    async fn create_audit_service(
+        config: &NodeConfig,
+        state: &Arc<AuthorityState>,
+        epoch_store: &Arc<AuthorityPerEpochStore>,
+        consensus_adapter: Arc<ConsensusAdapter>,
+        challenge_rx: tokio::sync::mpsc::Receiver<Challenge>,
+    ) -> Option<Arc<AuditService>> {
+        // Create evaluation service (currently a mock - handles all downloading internally)
+        let evaluation_service: Arc<dyn authority::audit_service::EvaluationService> =
+            Arc::new(MockEvaluationService);
+
+        let protocol_config = epoch_store.protocol_config();
+        let distance_epsilon = protocol_config.challenge_distance_epsilon();
+
+        // Get validator's account address and keypair from config
+        let validator_address = config.soma_address();
+        let account_keypair = Arc::new(config.account_key_pair.keypair().copy());
+
+        let audit_service = AuditService::build(
+            state.name,
+            validator_address,
+            account_keypair,
+            state.clone(),
+            evaluation_service,
+            epoch_store.epoch(),
+            distance_epsilon,
+            consensus_adapter,
+            epoch_store.clone(),
+        );
+
+        // Spawn the audit service
+        audit_service.clone().spawn(challenge_rx).await;
+
+        Some(audit_service)
+    }
 }
 
 async fn build_http_servers(
@@ -1528,6 +1687,11 @@ async fn build_http_servers(
         rpc_service.into_router().await
     };
 
+    // Create fullnode proxy router for forwarding /data and /model requests to validators
+    let fullnode_proxy = Arc::new(FullnodeProxy::with_default_config(state.clone()));
+    let fullnode_proxy_router = fullnode_proxy.router();
+    info!("Fullnode proxy enabled for /data and /model endpoints");
+
     let layers = ServiceBuilder::new()
         .map_request(|mut request: axum::http::Request<_>| {
             if let Some(connect_info) = request.extensions().get::<soma_http::ConnectInfo>() {
@@ -1545,7 +1709,10 @@ async fn build_http_servers(
                 .allow_headers(tower_http::cors::Any),
         );
 
-    router = router.merge(rpc_router).layer(layers);
+    router = router
+        .merge(rpc_router)
+        .merge(fullnode_proxy_router)
+        .layer(layers);
 
     let https = if let Some((tls_config, https_address)) = config
         .rpc()

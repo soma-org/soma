@@ -25,10 +25,6 @@ impl Merge<&DomainTarget> for Target {
             self.distance_threshold = Some(source.distance_threshold);
         }
 
-        if mask.contains(Self::RECONSTRUCTION_THRESHOLD_FIELD.name) {
-            self.reconstruction_threshold = Some(source.reconstruction_threshold);
-        }
-
         if mask.contains(Self::REWARD_POOL_FIELD.name) {
             self.reward_pool = Some(source.reward_pool);
         }
@@ -87,10 +83,6 @@ impl Merge<&Target> for Target {
 
         if mask.contains(Self::DISTANCE_THRESHOLD_FIELD.name) {
             self.distance_threshold = source.distance_threshold;
-        }
-
-        if mask.contains(Self::RECONSTRUCTION_THRESHOLD_FIELD.name) {
-            self.reconstruction_threshold = source.reconstruction_threshold;
         }
 
         if mask.contains(Self::REWARD_POOL_FIELD.name) {

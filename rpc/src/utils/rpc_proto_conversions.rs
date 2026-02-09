@@ -118,9 +118,21 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
             E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
             E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
-            E::ReconstructionExceedsThreshold { .. } => (ExecutionErrorKind::ReconstructionExceedsThreshold, None),
             E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
             E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
+            // Challenge errors
+            E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
+            E::InsufficientChallengerBond { .. } => (ExecutionErrorKind::InsufficientChallengerBond, None),
+            E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
+            E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
+            E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
+            E::InvalidChallengeResult => (ExecutionErrorKind::InvalidChallengeResult, None),
+            E::InvalidChallengeQuorum => (ExecutionErrorKind::InvalidChallengeQuorum, None),
+            E::ChallengeAlreadyExists => (ExecutionErrorKind::ChallengeAlreadyExists, None),
+            E::DataExceedsMaxSize { size, max_size } => (
+                ExecutionErrorKind::DataExceedsMaxSize,
+                Some(format!("size={}, max_size={}", size, max_size)),
+            ),
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
         };
 
@@ -601,11 +613,35 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 model_id: Some(args.model_id.to_string()),
                 embedding: args.embedding.to_vec(),
                 distance_score: Some(args.distance_score),
-                reconstruction_score: Some(args.reconstruction_score),
                 bond_coin: Some(object_ref_to_proto(args.bond_coin)),
             }),
             K::ClaimRewards(args) => Kind::ClaimRewards(ClaimRewards {
                 target_id: Some(args.target_id.to_string()),
+            }),
+            K::ReportSubmission { target_id, challenger } => Kind::ReportSubmission(ReportSubmission {
+                target_id: Some(target_id.to_string()),
+                challenger: challenger.map(|c| c.to_string()),
+            }),
+            K::UndoReportSubmission { target_id } => Kind::UndoReportSubmission(UndoReportSubmission {
+                target_id: Some(target_id.to_string()),
+            }),
+            // Challenge transactions
+            // All challenges are fraud challenges now (simplified design v2)
+            K::InitiateChallenge(args) => Kind::InitiateChallenge(InitiateChallenge {
+                target_id: Some(args.target_id.to_string()),
+                challenge_type: Some("Fraud".to_string()),
+                model_id: None,
+                bond_coin: Some(object_ref_to_proto(args.bond_coin)),
+            }),
+            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
+            K::ReportChallenge { challenge_id } => Kind::ReportChallenge(ReportChallenge {
+                challenge_id: Some(challenge_id.to_string()),
+            }),
+            K::UndoReportChallenge { challenge_id } => Kind::UndoReportChallenge(UndoReportChallenge {
+                challenge_id: Some(challenge_id.to_string()),
+            }),
+            K::ClaimChallengeBond { challenge_id } => Kind::ClaimChallengeBond(ClaimChallengeBond {
+                challenge_id: Some(challenge_id.to_string()),
             }),
         };
 
@@ -625,6 +661,7 @@ impl From<types::transaction::AddValidatorArgs> for AddValidator {
             net_address: Some(args.net_address.into()),
             p2p_address: Some(args.p2p_address.into()),
             primary_address: Some(args.primary_address.into()),
+            proxy_address: Some(args.proxy_address.into()),
         }
     }
 }
@@ -643,6 +680,7 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
             next_epoch_network_address: args.next_epoch_network_address.map(|bytes| bytes.into()),
             next_epoch_p2p_address: args.next_epoch_p2p_address.map(|bytes| bytes.into()),
             next_epoch_primary_address: args.next_epoch_primary_address.map(|bytes| bytes.into()),
+            next_epoch_proxy_address: args.next_epoch_proxy_address.map(|bytes| bytes.into()),
             next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey.map(|bytes| bytes.into()),
             next_epoch_worker_pubkey: args.next_epoch_worker_pubkey.map(|bytes| bytes.into()),
             next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| bytes.into()),
@@ -896,6 +934,8 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         let validator_report_records =
             convert_report_records(proto_state.validator_report_records)?;
 
+        // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
+
         // Convert model registry
         let model_registry = proto_state
             .model_registry
@@ -981,9 +1021,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             target_initial_distance_threshold: proto_params
                 .target_initial_distance_threshold
                 .ok_or("Missing target_initial_distance_threshold")?,
-            target_initial_reconstruction_threshold: proto_params
-                .target_initial_reconstruction_threshold
-                .ok_or("Missing target_initial_reconstruction_threshold")?,
             target_reward_allocation_bps: proto_params
                 .target_reward_allocation_bps
                 .ok_or("Missing target_reward_allocation_bps")?,
@@ -1002,12 +1039,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             target_min_distance_threshold: proto_params
                 .target_min_distance_threshold
                 .ok_or("Missing target_min_distance_threshold")?,
-            target_max_reconstruction_threshold: proto_params
-                .target_max_reconstruction_threshold
-                .ok_or("Missing target_max_reconstruction_threshold")?,
-            target_min_reconstruction_threshold: proto_params
-                .target_min_reconstruction_threshold
-                .ok_or("Missing target_min_reconstruction_threshold")?,
             target_initial_targets_per_epoch: proto_params
                 .target_initial_targets_per_epoch
                 .ok_or("Missing target_initial_targets_per_epoch")?,
@@ -1025,6 +1056,17 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             submission_bond_per_byte: proto_params
                 .submission_bond_per_byte
                 .ok_or("Missing submission_bond_per_byte")?,
+            // Challenge parameters
+            challenger_bond_per_byte: proto_params
+                .challenger_bond_per_byte
+                .ok_or("Missing challenger_bond_per_byte")?,
+            challenge_distance_epsilon: proto_params
+                .challenge_distance_epsilon
+                .ok_or("Missing challenge_distance_epsilon")?,
+            // Data size limit
+            max_submission_data_size: proto_params
+                .max_submission_data_size
+                .ok_or("Missing max_submission_data_size")?,
         })
     }
 }
@@ -1207,6 +1249,24 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             })
             .transpose()?;
 
+        // Parse proxy addresses (optional)
+        let proxy_address = proto_val
+            .proxy_address
+            .map(|addr| {
+                types::multiaddr::Multiaddr::from_str(&addr)
+                    .map_err(|e| format!("Invalid proxy_address: {}", e))
+            })
+            .transpose()?
+            .unwrap_or_else(types::multiaddr::Multiaddr::empty);
+
+        let next_epoch_proxy_address = proto_val
+            .next_epoch_proxy_address
+            .map(|addr| {
+                types::multiaddr::Multiaddr::from_str(&addr)
+                    .map_err(|e| format!("Invalid next_epoch_proxy_address: {}", e))
+            })
+            .transpose()?;
+
         let metadata = types::system_state::validator::ValidatorMetadata {
             soma_address,
             protocol_pubkey,
@@ -1215,12 +1275,14 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             net_address,
             p2p_address,
             primary_address,
+            proxy_address,
             next_epoch_protocol_pubkey,
             next_epoch_network_pubkey,
             next_epoch_net_address,
             next_epoch_p2p_address,
             next_epoch_primary_address,
             next_epoch_worker_pubkey,
+            next_epoch_proxy_address,
         };
 
         let staking_pool = proto_val
@@ -1314,6 +1376,35 @@ fn convert_report_records(
         .collect()
 }
 
+fn convert_submission_report_records(
+    proto_records: BTreeMap<String, ReporterSet>,
+) -> Result<BTreeMap<types::object::ObjectID, BTreeSet<SomaAddress>>, String> {
+    proto_records
+        .into_iter()
+        .map(|(k, v)| {
+            let key = k.parse().map_err(|_| "Invalid ObjectID")?;
+            let reporters = v
+                .reporters
+                .into_iter()
+                .map(|r| r.parse().map_err(|_| "Invalid SomaAddress"))
+                .collect::<Result<BTreeSet<_>, _>>()?;
+            Ok((key, reporters))
+        })
+        .collect()
+}
+
+fn convert_submission_report_records_to_proto(
+    records: BTreeMap<types::object::ObjectID, BTreeSet<SomaAddress>>,
+) -> Result<BTreeMap<String, ReporterSet>, String> {
+    Ok(records
+        .into_iter()
+        .map(|(k, v)| {
+            let reporters: Vec<String> = v.into_iter().map(|addr| addr.to_string()).collect();
+            (k.to_string(), ReporterSet { reporters })
+        })
+        .collect())
+}
+
 impl TryFrom<types::system_state::SystemState> for SystemState {
     type Error = String;
 
@@ -1321,6 +1412,8 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
         // Convert validator report records
         let validator_report_records =
             convert_report_records_to_proto(domain_state.validator_report_records)?;
+
+        // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
 
         Ok(SystemState {
             epoch: Some(domain_state.epoch),
@@ -1332,6 +1425,7 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             emission_pool: Some(domain_state.emission_pool.try_into()?),
             target_state: Some(domain_state.target_state.into()),
             model_registry: Some(domain_state.model_registry.try_into()?),
+            submission_report_records: std::collections::BTreeMap::new(), // Empty for backward compat
         })
     }
 }
@@ -1344,7 +1438,6 @@ impl From<types::system_state::target_state::TargetState> for TargetState {
     fn from(domain: types::system_state::target_state::TargetState) -> Self {
         TargetState {
             distance_threshold: Some(domain.distance_threshold),
-            reconstruction_threshold: Some(domain.reconstruction_threshold),
             targets_generated_this_epoch: Some(domain.targets_generated_this_epoch),
             hits_this_epoch: Some(domain.hits_this_epoch),
             hit_rate_ema_bps: Some(domain.hit_rate_ema_bps),
@@ -1359,9 +1452,6 @@ impl TryFrom<TargetState> for types::system_state::target_state::TargetState {
     fn try_from(proto: TargetState) -> Result<Self, Self::Error> {
         Ok(types::system_state::target_state::TargetState {
             distance_threshold: proto.distance_threshold.ok_or("Missing distance_threshold")?,
-            reconstruction_threshold: proto
-                .reconstruction_threshold
-                .ok_or("Missing reconstruction_threshold")?,
             targets_generated_this_epoch: proto
                 .targets_generated_this_epoch
                 .ok_or("Missing targets_generated_this_epoch")?,
@@ -1394,15 +1484,12 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             target_models_per_target: Some(domain_params.target_models_per_target),
             target_embedding_dim: Some(domain_params.target_embedding_dim),
             target_initial_distance_threshold: Some(domain_params.target_initial_distance_threshold),
-            target_initial_reconstruction_threshold: Some(domain_params.target_initial_reconstruction_threshold),
             target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
             target_hit_rate_target_bps: Some(domain_params.target_hit_rate_target_bps),
             target_hit_rate_ema_decay_bps: Some(domain_params.target_hit_rate_ema_decay_bps),
             target_difficulty_adjustment_rate_bps: Some(domain_params.target_difficulty_adjustment_rate_bps),
             target_max_distance_threshold: Some(domain_params.target_max_distance_threshold),
             target_min_distance_threshold: Some(domain_params.target_min_distance_threshold),
-            target_max_reconstruction_threshold: Some(domain_params.target_max_reconstruction_threshold),
-            target_min_reconstruction_threshold: Some(domain_params.target_min_reconstruction_threshold),
             target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
             // Reward distribution parameters
             target_miner_reward_share_bps: Some(domain_params.target_miner_reward_share_bps),
@@ -1410,6 +1497,11 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
             // Submission parameters
             submission_bond_per_byte: Some(domain_params.submission_bond_per_byte),
+            // Challenge parameters
+            challenger_bond_per_byte: Some(domain_params.challenger_bond_per_byte),
+            challenge_distance_epsilon: Some(domain_params.challenge_distance_epsilon),
+            // Data size limit
+            max_submission_data_size: Some(domain_params.max_submission_data_size),
         })
     }
 }
@@ -1516,6 +1608,17 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             .next_epoch_primary_address
             .map(|addr| addr.to_string());
 
+        let next_epoch_proxy_address = metadata
+            .next_epoch_proxy_address
+            .map(|addr| addr.to_string());
+
+        // Convert proxy address (empty Multiaddr becomes None in proto)
+        let proxy_address = if metadata.proxy_address.is_empty() {
+            None
+        } else {
+            Some(metadata.proxy_address.to_string())
+        };
+
         Ok(Validator {
             soma_address: Some(metadata.soma_address.to_string()),
             protocol_pubkey: Some(Bytes::from(metadata.protocol_pubkey.as_bytes().to_vec())),
@@ -1524,6 +1627,7 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             net_address: Some(metadata.net_address.to_string()),
             p2p_address: Some(metadata.p2p_address.to_string()),
             primary_address: Some(metadata.primary_address.to_string()),
+            proxy_address,
 
             voting_power: Some(domain_val.voting_power),
             commission_rate: Some(domain_val.commission_rate),
@@ -1536,6 +1640,7 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             next_epoch_net_address,
             next_epoch_p2p_address,
             next_epoch_primary_address,
+            next_epoch_proxy_address,
         })
     }
 }

@@ -4,6 +4,7 @@ use colored::Colorize;
 use fastcrypto::encoding::{Encoding, Hex};
 use serde::Serialize;
 use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
 use tabled::{
     builder::Builder as TableBuilder,
     settings::{
@@ -11,7 +12,9 @@ use tabled::{
         style::HorizontalLine,
     },
 };
+use tokio::io::AsyncWriteExt;
 
+use sdk::proxy_client::ProxyClient;
 use sdk::wallet_context::WalletContext;
 use types::{
     base::SomaAddress,
@@ -163,6 +166,19 @@ pub enum ModelCommand {
         commission_rate: u64,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
+    },
+
+    /// Download model weights from the validator network
+    ///
+    /// Fetches model weights via the validator proxy network. The weights are
+    /// downloaded from any available validator that serves them.
+    #[clap(name = "download")]
+    Download {
+        /// Model ID to download weights for
+        model_id: ObjectID,
+        /// Output file path (defaults to ./<model_id>.weights)
+        #[clap(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -326,6 +342,57 @@ impl ModelCommand {
 
                 let models = list_all_models(&system_state);
                 Ok(ModelCommandResponse::List(ModelListOutput { models }))
+            }
+
+            ModelCommand::Download { model_id, output } => {
+                let client = context.get_client().await?;
+
+                // Get system state to create proxy client
+                let system_state = client
+                    .get_latest_system_state()
+                    .await
+                    .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
+
+                // Verify model exists
+                if find_model(&system_state, &model_id).is_none() {
+                    bail!("Model {} not found", model_id);
+                }
+
+                // Create proxy client from system state
+                let proxy_client = ProxyClient::from_system_state(&system_state)
+                    .map_err(|e| anyhow!("Failed to create proxy client: {}", e))?;
+
+                if proxy_client.validator_count() == 0 {
+                    bail!("No validators with proxy addresses available");
+                }
+
+                // Determine output path
+                let output_path = output.unwrap_or_else(|| {
+                    PathBuf::from(format!("{}.weights", model_id))
+                });
+
+                // Download model weights
+                eprintln!("Downloading model {} from {} validators...",
+                    model_id, proxy_client.validator_count());
+
+                let data = proxy_client
+                    .fetch_model(&model_id)
+                    .await
+                    .map_err(|e| anyhow!("Failed to download model: {}", e))?;
+
+                // Write to file
+                let mut file = tokio::fs::File::create(&output_path)
+                    .await
+                    .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
+                file.write_all(&data)
+                    .await
+                    .map_err(|e| anyhow!("Failed to write to file: {}", e))?;
+
+                Ok(ModelCommandResponse::Downloaded(ModelDownloadOutput {
+                    model_id,
+                    output_path,
+                    size_bytes: data.len(),
+                }))
             }
         }
     }
@@ -497,6 +564,7 @@ pub enum ModelCommandResponse {
     Simulation(crate::response::SimulationResponse),
     Info(ModelInfoOutput),
     List(ModelListOutput),
+    Downloaded(ModelDownloadOutput),
 }
 
 #[derive(Debug, Serialize)]
@@ -509,6 +577,13 @@ pub struct ModelInfoOutput {
 #[derive(Debug, Serialize)]
 pub struct ModelListOutput {
     pub models: Vec<ModelSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelDownloadOutput {
+    pub model_id: ModelId,
+    pub output_path: PathBuf,
+    pub size_bytes: usize,
 }
 
 impl Display for ModelCommandResponse {
@@ -536,7 +611,18 @@ impl Display for ModelCommandResponse {
             ModelCommandResponse::Simulation(sim) => write!(f, "{}", sim),
             ModelCommandResponse::Info(info) => write!(f, "{}", info),
             ModelCommandResponse::List(list) => write!(f, "{}", list),
+            ModelCommandResponse::Downloaded(dl) => write!(f, "{}", dl),
         }
+    }
+}
+
+impl Display for ModelDownloadOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", "Model Downloaded Successfully".green().bold())?;
+        writeln!(f)?;
+        writeln!(f, "{}: {}", "Model ID".bold(), self.model_id)?;
+        writeln!(f, "{}: {}", "Output".bold(), self.output_path.display())?;
+        writeln!(f, "{}: {} bytes", "Size".bold(), self.size_bytes)
     }
 }
 

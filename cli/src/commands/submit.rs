@@ -52,9 +52,6 @@ pub struct SubmitCommand {
     /// Distance score (fixed-point i64, must be <= target threshold)
     #[clap(long)]
     pub distance_score: i64,
-    /// Reconstruction score (fixed-point u64, must be <= target threshold)
-    #[clap(long)]
-    pub reconstruction_score: u64,
     /// Coin object to use for bond payment
     #[clap(long)]
     pub bond_coin: ObjectID,
@@ -97,7 +94,6 @@ impl SubmitCommand {
             model_id: self.model_id,
             embedding: Embedding::from(embedding_vec),
             distance_score: self.distance_score,
-            reconstruction_score: self.reconstruction_score,
             bond_coin: bond_coin_ref,
         });
 

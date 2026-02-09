@@ -15,7 +15,9 @@ use types::storage::read_store::BalanceInfo;
 use types::storage::read_store::OwnedObjectInfo;
 use types::storage::read_store::RpcIndexes;
 use types::storage::read_store::RpcStateReader;
+use types::storage::read_store::ChallengeInfo;
 use types::storage::read_store::TargetInfo;
+use types::object::ObjectID;
 
 use std::sync::Arc;
 use tracing::error;
@@ -547,6 +549,17 @@ impl RpcIndexes for RestReadStore {
         cursor: Option<TargetInfo>,
     ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, TypedStoreError>> + '_>> {
         let iter = self.index()?.targets_iter(status_filter, epoch_filter, cursor)?;
+        Ok(Box::new(iter))
+    }
+
+    fn challenges_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        target_filter: Option<ObjectID>,
+        cursor: Option<ChallengeInfo>,
+    ) -> Result<Box<dyn Iterator<Item = Result<ChallengeInfo, TypedStoreError>> + '_>> {
+        let iter = self.index()?.challenges_iter(status_filter, epoch_filter, target_filter, cursor)?;
         Ok(Box::new(iter))
     }
 }

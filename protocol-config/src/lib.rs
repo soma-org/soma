@@ -229,8 +229,6 @@ pub struct ProtocolConfig {
     target_embedding_dim: Option<u64>,
     /// Initial distance threshold for new targets (fixed-point, scale DISTANCE_SCALE)
     target_initial_distance_threshold: Option<i64>,
-    /// Initial reconstruction error threshold for new targets (MSE, fixed-point)
-    target_initial_reconstruction_threshold: Option<u64>,
     /// Percentage of epoch emissions allocated to targets (bps, e.g. 8000 = 80%)
     target_reward_allocation_bps: Option<u64>,
     /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
@@ -245,10 +243,6 @@ pub struct ProtocolConfig {
     target_max_distance_threshold: Option<i64>,
     /// Minimum distance threshold (floor for difficulty increase)
     target_min_distance_threshold: Option<i64>,
-    /// Maximum reconstruction threshold (cap)
-    target_max_reconstruction_threshold: Option<u64>,
-    /// Minimum reconstruction threshold (floor)
-    target_min_reconstruction_threshold: Option<u64>,
     /// Number of targets to issue at genesis and at each epoch start
     target_initial_targets_per_epoch: Option<u64>,
 
@@ -265,6 +259,23 @@ pub struct ProtocolConfig {
     /// Bond is held on the Target and returned to miner on successful claim,
     /// or forfeited to emission pool on successful challenge.
     submission_bond_per_byte: Option<u64>,
+
+    // === Challenge Parameters ===
+    /// Bond per byte for challengers (in shannons)
+    /// Challenger must post challenger_bond_per_byte * data_size as bond.
+    /// If challenger wins: miner's bond is slashed, challenger gets reward.
+    /// If challenger loses: challenger's bond is slashed.
+    challenger_bond_per_byte: Option<u64>,
+
+    /// Epsilon tolerance for distance score fraud detection (fixed-point, scale DISTANCE_SCALE)
+    /// If |actual_distance - claimed_distance| > epsilon, fraud is proven.
+    challenge_distance_epsilon: Option<i64>,
+
+    // === Data Size Limits ===
+    /// Maximum data size allowed for submissions (in bytes).
+    /// Submissions exceeding this size will be rejected.
+    /// This also affects audit timeouts which are calculated based on data size.
+    max_submission_data_size: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -362,15 +373,12 @@ impl ProtocolConfig {
             target_models_per_target: Some(3),           // 3 models per target
             target_embedding_dim: Some(768),             // Standard transformer embedding dim
             target_initial_distance_threshold: Some(1_000_000), // Fixed-point distance
-            target_initial_reconstruction_threshold: Some(500_000), // Fixed-point MSE
             target_reward_allocation_bps: Some(8000),    // 80% of emissions to targets
             target_hit_rate_target_bps: Some(8000),      // 80% target hit rate
             target_hit_rate_ema_decay_bps: Some(9000),   // 90% decay (10% weight on new data)
             target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
             target_max_distance_threshold: Some(10_000_000), // Max distance (easiest)
             target_min_distance_threshold: Some(100_000),    // Min distance (hardest)
-            target_max_reconstruction_threshold: Some(5_000_000), // Max reconstruction (easiest)
-            target_min_reconstruction_threshold: Some(50_000),    // Min reconstruction (hardest)
             target_initial_targets_per_epoch: Some(20),   // 20 targets at genesis and each epoch start
 
             // Reward distribution parameters
@@ -380,6 +388,13 @@ impl ProtocolConfig {
 
             // Submission parameters
             submission_bond_per_byte: Some(10),          // 10 shannons per byte
+
+            // Challenge parameters
+            challenger_bond_per_byte: Some(5),           // 5 shannons per byte (half of submission bond)
+            challenge_distance_epsilon: Some(1000),      // Tolerance for distance fraud detection
+
+            // Data size limits
+            max_submission_data_size: Some(1024 * 1024 * 1024), // 1 GiB max data size
 
             // When adding a new constant, set it to None in the earliest version, like this:
             // new_constant: None,
@@ -489,20 +504,22 @@ impl ProtocolConfig {
             target_models_per_target: self.target_models_per_target(),
             target_embedding_dim: self.target_embedding_dim(),
             target_initial_distance_threshold: self.target_initial_distance_threshold(),
-            target_initial_reconstruction_threshold: self.target_initial_reconstruction_threshold(),
             target_reward_allocation_bps: self.target_reward_allocation_bps(),
             target_hit_rate_target_bps: self.target_hit_rate_target_bps(),
             target_hit_rate_ema_decay_bps: self.target_hit_rate_ema_decay_bps(),
             target_difficulty_adjustment_rate_bps: self.target_difficulty_adjustment_rate_bps(),
             target_max_distance_threshold: self.target_max_distance_threshold(),
             target_min_distance_threshold: self.target_min_distance_threshold(),
-            target_max_reconstruction_threshold: self.target_max_reconstruction_threshold(),
-            target_min_reconstruction_threshold: self.target_min_reconstruction_threshold(),
             target_initial_targets_per_epoch: self.target_initial_targets_per_epoch(),
             target_miner_reward_share_bps: self.target_miner_reward_share_bps(),
             target_model_reward_share_bps: self.target_model_reward_share_bps(),
             target_claimer_incentive_bps: self.target_claimer_incentive_bps(),
             submission_bond_per_byte: self.submission_bond_per_byte(),
+            // Challenge parameters
+            challenger_bond_per_byte: self.challenger_bond_per_byte(),
+            challenge_distance_epsilon: self.challenge_distance_epsilon(),
+            // Data size limits
+            max_submission_data_size: self.max_submission_data_size(),
         }
     }
 
@@ -555,8 +572,6 @@ pub struct SystemParameters {
     pub target_embedding_dim: u64,
     /// Initial distance threshold for new targets (fixed-point)
     pub target_initial_distance_threshold: i64,
-    /// Initial reconstruction error threshold for new targets (MSE, fixed-point)
-    pub target_initial_reconstruction_threshold: u64,
     /// Percentage of epoch emissions allocated to targets (bps)
     pub target_reward_allocation_bps: u64,
     /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
@@ -570,10 +585,6 @@ pub struct SystemParameters {
     pub target_max_distance_threshold: i64,
     /// Minimum distance threshold (floor)
     pub target_min_distance_threshold: i64,
-    /// Maximum reconstruction threshold (cap)
-    pub target_max_reconstruction_threshold: u64,
-    /// Minimum reconstruction threshold (floor)
-    pub target_min_reconstruction_threshold: u64,
     /// Number of targets to issue at genesis and at each epoch start
     pub target_initial_targets_per_epoch: u64,
 
@@ -590,4 +601,21 @@ pub struct SystemParameters {
     /// Bond is held on the Target and returned to miner on successful claim,
     /// or forfeited to emission pool on successful challenge.
     pub submission_bond_per_byte: u64,
+
+    // === Challenge Parameters ===
+    /// Bond per byte for challengers (in shannons)
+    /// Challenger must post challenger_bond_per_byte * data_size as bond.
+    /// If challenger wins: miner's bond is slashed, challenger gets reward.
+    /// If challenger loses: challenger's bond is slashed.
+    pub challenger_bond_per_byte: u64,
+
+    /// Epsilon tolerance for distance score fraud detection (fixed-point, scale DISTANCE_SCALE)
+    /// If |actual_distance - claimed_distance| > epsilon, fraud is proven.
+    pub challenge_distance_epsilon: i64,
+
+    // === Data Size Limits ===
+    /// Maximum data size allowed for submissions (in bytes).
+    /// Submissions exceeding this size will be rejected.
+    /// This also affects audit timeouts which are calculated based on data size.
+    pub max_submission_data_size: u64,
 }

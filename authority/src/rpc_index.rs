@@ -30,7 +30,7 @@ use types::{
     object::{Object, ObjectID, ObjectType, Owner, Version},
 };
 
-const CURRENT_DB_VERSION: u64 = 2; // Bumped for target index support
+const CURRENT_DB_VERSION: u64 = 3; // Bumped for challenge index support
 const BALANCE_FLUSH_THRESHOLD: usize = 10_000;
 
 fn bulk_ingestion_write_options() -> WriteOptions {
@@ -243,6 +243,30 @@ pub struct TargetIndexInfo {
     pub version: Version,
 }
 
+/// Key for the challenge index table.
+/// Ordered by (status, challenge_epoch, target_id, challenge_id) to allow efficient filtering and pagination.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct ChallengeIndexKey {
+    pub status: String,
+    pub challenge_epoch: u64,
+    pub target_id: ObjectID,
+    pub challenge_id: ObjectID,
+}
+
+/// Value stored in the challenge index table.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct ChallengeIndexInfo {
+    pub version: Version,
+}
+
+/// Convert a ChallengeStatus to a string for indexing.
+fn challenge_status_string(status: &types::challenge::ChallengeStatus) -> String {
+    match status {
+        types::challenge::ChallengeStatus::Pending => "pending".to_string(),
+        types::challenge::ChallengeStatus::Resolved { .. } => "resolved".to_string(),
+    }
+}
+
 /// RocksDB tables for the RpcIndexStore
 ///
 /// Anytime a new table is added, or and existing one has it's schema changed, make sure to also
@@ -295,6 +319,12 @@ struct IndexStoreTables {
     /// Allows efficient iteration over targets filtered by status and/or epoch.
     /// Key is (status, generation_epoch, target_id) for efficient range scans.
     targets: DBMap<TargetIndexKey, TargetIndexInfo>,
+
+    /// An index of Challenges.
+    ///
+    /// Allows efficient iteration over challenges filtered by status, epoch, and/or target.
+    /// Key is (status, challenge_epoch, target_id, challenge_id) for efficient range scans.
+    challenges: DBMap<ChallengeIndexKey, ChallengeIndexInfo>,
 }
 
 impl IndexStoreTables {
@@ -641,6 +671,42 @@ impl IndexStoreTables {
                     }
                 }
 
+                // Handle challenge index updates for Challenge objects
+                if object.type_() == &ObjectType::Challenge {
+                    // Remove old challenge index entry if this is an update
+                    if let Some(old_obj) = old_object {
+                        if let Ok(old_challenge) =
+                            bcs::from_bytes::<types::challenge::Challenge>(old_obj.data.contents())
+                        {
+                            let old_status = challenge_status_string(&old_challenge.status);
+                            let old_key = ChallengeIndexKey {
+                                status: old_status,
+                                challenge_epoch: old_challenge.challenge_epoch,
+                                target_id: old_challenge.target_id,
+                                challenge_id: old_obj.id(),
+                            };
+                            batch.delete_batch(&self.challenges, [old_key])?;
+                        }
+                    }
+
+                    // Add new challenge index entry
+                    if let Ok(challenge) =
+                        bcs::from_bytes::<types::challenge::Challenge>(object.data.contents())
+                    {
+                        let status = challenge_status_string(&challenge.status);
+                        let key = ChallengeIndexKey {
+                            status,
+                            challenge_epoch: challenge.challenge_epoch,
+                            target_id: challenge.target_id,
+                            challenge_id: object.id(),
+                        };
+                        let info = ChallengeIndexInfo {
+                            version: object.version(),
+                        };
+                        batch.insert_batch(&self.challenges, [(key, info)])?;
+                    }
+                }
+
                 if let Some(old_object) = old_object {
                     match old_object.owner() {
                         Owner::AddressOwner(owner) => {
@@ -812,6 +878,65 @@ impl IndexStoreTables {
         Ok(iter)
     }
 
+    /// Iterate over challenges, optionally filtered by status, epoch, and/or target.
+    fn challenges_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        target_filter: Option<ObjectID>,
+        cursor: Option<types::storage::read_store::ChallengeInfo>,
+    ) -> Result<
+        impl Iterator<Item = Result<types::storage::read_store::ChallengeInfo, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        // If a cursor is provided, use it as the lower bound
+        let lower_bound = cursor.map(|c| ChallengeIndexKey {
+            status: c.status,
+            challenge_epoch: c.challenge_epoch,
+            target_id: c.target_id,
+            challenge_id: c.challenge_id,
+        });
+
+        let status_filter_clone = status_filter.clone();
+        let iter = self
+            .challenges
+            .safe_iter_with_bounds(lower_bound, None)
+            .filter_map(move |item| {
+                match item {
+                    Ok((key, info)) => {
+                        // Apply status filter if specified
+                        if let Some(ref filter) = status_filter_clone {
+                            if &key.status != filter {
+                                return None;
+                            }
+                        }
+                        // Apply epoch filter if specified
+                        if let Some(epoch) = epoch_filter {
+                            if key.challenge_epoch != epoch {
+                                return None;
+                            }
+                        }
+                        // Apply target filter if specified
+                        if let Some(ref target) = target_filter {
+                            if &key.target_id != target {
+                                return None;
+                            }
+                        }
+                        Some(Ok(types::storage::read_store::ChallengeInfo {
+                            challenge_id: key.challenge_id,
+                            version: info.version,
+                            status: key.status,
+                            challenge_epoch: key.challenge_epoch,
+                            target_id: key.target_id,
+                        }))
+                    }
+                    Err(e) => Some(Err(e)),
+                }
+            });
+
+        Ok(iter)
+    }
+
     /// Index a single executed transaction's object changes immediately after execution.
     /// This mirrors the checkpoint-based `index_objects` but for a single transaction.
     fn index_executed_tx_objects(
@@ -888,6 +1013,44 @@ impl IndexStoreTables {
                             version: new_object.version(),
                         };
                         batch.insert_batch(&self.targets, [(key, info)])?;
+                    }
+                }
+
+                // Handle Challenge index updates
+                if new_object.type_() == &ObjectType::Challenge {
+                    // Remove old challenge index entry if this is an update
+                    if matches!(kind, WriteKind::Mutate) {
+                        if let Some(old_object) = input_objects.get(id) {
+                            if let Ok(old_challenge) =
+                                bcs::from_bytes::<types::challenge::Challenge>(old_object.data.contents())
+                            {
+                                let old_status = challenge_status_string(&old_challenge.status);
+                                let old_key = ChallengeIndexKey {
+                                    status: old_status,
+                                    challenge_epoch: old_challenge.challenge_epoch,
+                                    target_id: old_challenge.target_id,
+                                    challenge_id: *id,
+                                };
+                                batch.delete_batch(&self.challenges, [old_key])?;
+                            }
+                        }
+                    }
+
+                    // Add new challenge index entry
+                    if let Ok(challenge) =
+                        bcs::from_bytes::<types::challenge::Challenge>(new_object.data.contents())
+                    {
+                        let status = challenge_status_string(&challenge.status);
+                        let key = ChallengeIndexKey {
+                            status,
+                            challenge_epoch: challenge.challenge_epoch,
+                            target_id: challenge.target_id,
+                            challenge_id: *id,
+                        };
+                        let info = ChallengeIndexInfo {
+                            version: new_object.version(),
+                        };
+                        batch.insert_batch(&self.challenges, [(key, info)])?;
                     }
                 }
             }
@@ -1360,6 +1523,19 @@ impl RpcIndexStore {
         self.tables.targets_iter(status_filter, epoch_filter, cursor)
     }
 
+    pub fn challenges_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        target_filter: Option<ObjectID>,
+        cursor: Option<types::storage::read_store::ChallengeInfo>,
+    ) -> Result<
+        impl Iterator<Item = Result<types::storage::read_store::ChallengeInfo, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        self.tables.challenges_iter(status_filter, epoch_filter, target_filter, cursor)
+    }
+
     /// Index a transaction immediately after execution (before checkpoint finalization).
     /// This updates the owner and balance indexes in real-time.
     pub fn index_executed_tx(
@@ -1416,6 +1592,26 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
                 };
                 self.batch
                     .insert_batch(&self.tables.targets, [(key, info)])?;
+            }
+        }
+
+        // Index Challenge objects (shared objects)
+        if object.type_() == &ObjectType::Challenge {
+            if let Ok(challenge) =
+                bcs::from_bytes::<types::challenge::Challenge>(object.data.contents())
+            {
+                let status = challenge_status_string(&challenge.status);
+                let key = ChallengeIndexKey {
+                    status,
+                    challenge_epoch: challenge.challenge_epoch,
+                    target_id: challenge.target_id,
+                    challenge_id: object.id(),
+                };
+                let info = ChallengeIndexInfo {
+                    version: object.version(),
+                };
+                self.batch
+                    .insert_batch(&self.tables.challenges, [(key, info)])?;
             }
         }
 

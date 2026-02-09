@@ -525,6 +525,21 @@ pub trait RpcIndexes: Send + Sync {
         epoch_filter: Option<u64>,
         cursor: Option<TargetInfo>,
     ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, TypedStoreError>> + '_>>;
+
+    /// Iterate over Challenge objects with optional filtering by status, epoch, and target.
+    ///
+    /// # Arguments
+    /// * `status_filter` - Optional filter: "pending" or "resolved"
+    /// * `epoch_filter` - Optional filter by challenge_epoch
+    /// * `target_filter` - Optional filter by target_id
+    /// * `cursor` - Optional cursor for pagination
+    fn challenges_iter(
+        &self,
+        status_filter: Option<String>,
+        epoch_filter: Option<u64>,
+        target_filter: Option<ObjectID>,
+        cursor: Option<ChallengeInfo>,
+    ) -> Result<Box<dyn Iterator<Item = Result<ChallengeInfo, TypedStoreError>> + '_>>;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -543,6 +558,16 @@ pub struct TargetInfo {
     pub version: Version,
     pub status: String,
     pub generation_epoch: u64,
+}
+
+/// Information about a Challenge for indexing and pagination.
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct ChallengeInfo {
+    pub challenge_id: ObjectID,
+    pub version: Version,
+    pub status: String,
+    pub challenge_epoch: u64,
+    pub target_id: ObjectID,
 }
 
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]

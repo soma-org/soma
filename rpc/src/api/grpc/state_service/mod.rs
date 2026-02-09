@@ -1,8 +1,12 @@
 use crate::api::RpcService;
 use crate::proto::soma::GetBalanceRequest;
 use crate::proto::soma::GetBalanceResponse;
+use crate::proto::soma::GetChallengeRequest;
+use crate::proto::soma::GetChallengeResponse;
 use crate::proto::soma::GetTargetRequest;
 use crate::proto::soma::GetTargetResponse;
+use crate::proto::soma::ListChallengesRequest;
+use crate::proto::soma::ListChallengesResponse;
 use crate::proto::soma::ListOwnedObjectsRequest;
 use crate::proto::soma::ListOwnedObjectsResponse;
 use crate::proto::soma::ListTargetsRequest;
@@ -10,7 +14,9 @@ use crate::proto::soma::ListTargetsResponse;
 use crate::proto::soma::state_service_server::StateService;
 
 mod get_balance;
+mod get_challenge;
 mod get_target;
+mod list_challenges;
 mod list_owned_objects;
 mod list_targets;
 
@@ -48,6 +54,24 @@ impl StateService for RpcService {
         request: tonic::Request<ListTargetsRequest>,
     ) -> Result<tonic::Response<ListTargetsResponse>, tonic::Status> {
         list_targets::list_targets(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
+
+    async fn get_challenge(
+        &self,
+        request: tonic::Request<GetChallengeRequest>,
+    ) -> Result<tonic::Response<GetChallengeResponse>, tonic::Status> {
+        get_challenge::get_challenge(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
+
+    async fn list_challenges(
+        &self,
+        request: tonic::Request<ListChallengesRequest>,
+    ) -> Result<tonic::Response<ListChallengesResponse>, tonic::Status> {
+        list_challenges::list_challenges(self, request.into_inner())
             .map(tonic::Response::new)
             .map_err(Into::into)
     }

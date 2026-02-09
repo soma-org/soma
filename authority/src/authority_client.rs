@@ -10,10 +10,10 @@ use tonic::{metadata::KeyAndValueRef, IntoRequest};
 use tracing::info;
 use types::crypto::NetworkPublicKey;
 use types::messages_grpc::{
-    ObjectInfoRequest, ObjectInfoResponse, RawValidatorHealthRequest, RawWaitForEffectsRequest,
-    SubmitTxRequest, SubmitTxResponse, SystemStateRequest, TransactionInfoRequest,
-    TransactionInfoResponse, ValidatorHealthRequest, ValidatorHealthResponse,
-    WaitForEffectsRequest, WaitForEffectsResponse,
+    ObjectInfoRequest, ObjectInfoResponse, RawValidatorHealthRequest,
+    RawWaitForEffectsRequest, SubmitTxRequest, SubmitTxResponse, SystemStateRequest,
+    TransactionInfoRequest, TransactionInfoResponse, ValidatorHealthRequest,
+    ValidatorHealthResponse, WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::system_state::SystemState;
 use types::{

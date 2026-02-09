@@ -334,11 +334,36 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 model_id: Some(args.model_id.to_string()),
                 embedding: args.embedding.clone(),
                 distance_score: Some(args.distance_score),
-                reconstruction_score: Some(args.reconstruction_score),
                 bond_coin: Some(args.bond_coin.clone().into()),
             }),
             ClaimRewards(args) => Kind::ClaimRewards(super::ClaimRewards {
                 target_id: Some(args.target_id.to_string()),
+            }),
+            ReportSubmission { target_id, challenger } => Kind::ReportSubmission(super::ReportSubmission {
+                target_id: Some(target_id.to_string()),
+                challenger: challenger.map(|c| c.to_string()),
+            }),
+            UndoReportSubmission { target_id } => Kind::UndoReportSubmission(super::UndoReportSubmission {
+                target_id: Some(target_id.to_string()),
+            }),
+
+            // Challenge transactions
+            // All challenges are fraud challenges now (simplified design v2)
+            InitiateChallenge(args) => Kind::InitiateChallenge(super::InitiateChallenge {
+                target_id: Some(args.target_id.to_string()),
+                challenge_type: Some("Fraud".to_string()),
+                model_id: None,
+                bond_coin: Some(args.bond_coin.clone().into()),
+            }),
+            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
+            ReportChallenge { challenge_id } => Kind::ReportChallenge(super::ReportChallenge {
+                challenge_id: Some(challenge_id.to_string()),
+            }),
+            UndoReportChallenge { challenge_id } => Kind::UndoReportChallenge(super::UndoReportChallenge {
+                challenge_id: Some(challenge_id.to_string()),
+            }),
+            ClaimChallengeBond { challenge_id } => Kind::ClaimChallengeBond(super::ClaimChallengeBond {
+                challenge_id: Some(challenge_id.to_string()),
             }),
         };
 
@@ -652,9 +677,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     distance_score: args
                         .distance_score
                         .ok_or_else(|| TryFromProtoError::missing("distance_score"))?,
-                    reconstruction_score: args
-                        .reconstruction_score
-                        .ok_or_else(|| TryFromProtoError::missing("reconstruction_score"))?,
                     bond_coin: args
                         .bond_coin
                         .as_ref()
@@ -670,6 +692,72 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
             }),
+            Kind::ReportSubmission(args) => Self::ReportSubmission {
+                target_id: args
+                    .target_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("target_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
+                challenger: args
+                    .challenger
+                    .as_ref()
+                    .map(|c| c.parse())
+                    .transpose()
+                    .map_err(|e| TryFromProtoError::invalid("challenger", e))?,
+            },
+            Kind::UndoReportSubmission(args) => Self::UndoReportSubmission {
+                target_id: args
+                    .target_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("target_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
+            },
+
+            // Challenge transactions
+            // All challenges are fraud challenges now (simplified design v2)
+            // ChallengeId is derived from tx_digest during execution, not client-provided
+            Kind::InitiateChallenge(args) => {
+                Self::InitiateChallenge(crate::types::InitiateChallengeArgs {
+                    target_id: args
+                        .target_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("target_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
+                    bond_coin: args
+                        .bond_coin
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("bond_coin"))?
+                        .try_into()?,
+                })
+            }
+            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
+            Kind::ReportChallenge(args) => Self::ReportChallenge {
+                challenge_id: args
+                    .challenge_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
+            },
+            Kind::UndoReportChallenge(args) => Self::UndoReportChallenge {
+                challenge_id: args
+                    .challenge_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
+            },
+            Kind::ClaimChallengeBond(args) => Self::ClaimChallengeBond {
+                challenge_id: args
+                    .challenge_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
+            },
         }
         .pipe(Ok)
     }
@@ -687,6 +775,7 @@ impl From<crate::types::AddValidatorArgs> for AddValidator {
             net_address: Some(value.net_address.into()),
             p2p_address: Some(value.p2p_address.into()),
             primary_address: Some(value.primary_address.into()),
+            proxy_address: Some(value.proxy_address.into()),
         }
     }
 }
@@ -726,6 +815,11 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("primary_address"))?
                 .into(),
+            proxy_address: value
+                .proxy_address
+                .clone()
+                .ok_or_else(|| TryFromProtoError::missing("proxy_address"))?
+                .into(),
         })
     }
 }
@@ -760,6 +854,7 @@ impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.map(|v| v.into()),
+            next_epoch_proxy_address: value.next_epoch_proxy_address.map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
@@ -775,6 +870,7 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.clone().map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.clone().map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.clone().map(|v| v.into()),
+            next_epoch_proxy_address: value.next_epoch_proxy_address.clone().map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),

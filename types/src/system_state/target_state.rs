@@ -29,11 +29,6 @@ pub struct TargetState {
     /// This threshold is dynamically adjusted based on hit_rate_ema_bps.
     pub distance_threshold: i64,
 
-    /// Current reconstruction error threshold (MSE, fixed-point) for new targets.
-    /// Lower reconstruction = better.
-    /// This threshold is dynamically adjusted based on hit_rate_ema_bps.
-    pub reconstruction_threshold: u64,
-
     /// Number of targets generated this epoch (initial + spawn-on-fill replacements).
     /// Reset to 0 at epoch boundary after difficulty adjustment.
     pub targets_generated_this_epoch: u64,
@@ -58,7 +53,6 @@ impl Default for TargetState {
     fn default() -> Self {
         Self {
             distance_threshold: 0,
-            reconstruction_threshold: 0,
             targets_generated_this_epoch: 0,
             hits_this_epoch: 0,
             hit_rate_ema_bps: 0,
@@ -73,10 +67,9 @@ impl TargetState {
     /// Epoch counters start at 0 and are reset at each epoch boundary.
     /// `hit_rate_ema_bps` starts at 0 (bootstrap mode).
     /// `reward_per_target` is calculated separately after construction.
-    pub fn new(initial_distance_threshold: i64, initial_reconstruction_threshold: u64) -> Self {
+    pub fn new(initial_distance_threshold: i64) -> Self {
         Self {
             distance_threshold: initial_distance_threshold,
-            reconstruction_threshold: initial_reconstruction_threshold,
             targets_generated_this_epoch: 0,
             hits_this_epoch: 0,
             hit_rate_ema_bps: 0,
@@ -145,7 +138,6 @@ mod tests {
     fn test_target_state_default() {
         let state = TargetState::default();
         assert_eq!(state.distance_threshold, 0);
-        assert_eq!(state.reconstruction_threshold, 0);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
         assert_eq!(state.hit_rate_ema_bps, 0);
@@ -154,9 +146,8 @@ mod tests {
 
     #[test]
     fn test_target_state_new() {
-        let state = TargetState::new(1_000_000, 500_000);
+        let state = TargetState::new(1_000_000);
         assert_eq!(state.distance_threshold, 1_000_000);
-        assert_eq!(state.reconstruction_threshold, 500_000);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
         assert_eq!(state.hit_rate_ema_bps, 0);
@@ -165,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_target_state_counters() {
-        let mut state = TargetState::new(1_000_000, 500_000);
+        let mut state = TargetState::new(1_000_000);
 
         // Record some targets and hits
         state.record_target_generated();
@@ -190,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_bootstrap() {
-        let mut state = TargetState::new(1_000_000, 500_000);
+        let mut state = TargetState::new(1_000_000);
 
         // Record 8/10 = 80% hit rate
         for _ in 0..10 {
@@ -209,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_update() {
-        let mut state = TargetState::new(1_000_000, 500_000);
+        let mut state = TargetState::new(1_000_000);
         state.hit_rate_ema_bps = 8000; // 80%
 
         // Epoch with 60% hit rate
@@ -228,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_no_targets() {
-        let mut state = TargetState::new(1_000_000, 500_000);
+        let mut state = TargetState::new(1_000_000);
         state.hit_rate_ema_bps = 8000; // 80%
 
         // No targets generated this epoch

@@ -82,9 +82,22 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
             E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
             E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
-            E::ReconstructionExceedsThreshold { .. } => (ExecutionErrorKind::ReconstructionExceedsThreshold, None),
             E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
             E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
+
+            // Challenge errors
+            E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
+            E::InsufficientChallengerBond { .. } => (ExecutionErrorKind::InsufficientChallengerBond, None),
+            E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
+            E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
+            E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
+            E::InvalidChallengeResult => (ExecutionErrorKind::InvalidChallengeResult, None),
+            E::InvalidChallengeQuorum => (ExecutionErrorKind::InvalidChallengeQuorum, None),
+            E::ChallengeAlreadyExists => (ExecutionErrorKind::ChallengeAlreadyExists, None),
+            E::DataExceedsMaxSize { size, max_size } => (
+                ExecutionErrorKind::DataExceedsMaxSize,
+                Some(ErrorDetails::OtherError(format!("size={}, max_size={}", size, max_size))),
+            ),
 
             E::InsufficientCoinBalance => (ExecutionErrorKind::InsufficientCoinBalance, None),
             E::CoinBalanceOverflow => (ExecutionErrorKind::CoinBalanceOverflow, None),
@@ -255,15 +268,38 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 score: 0,
                 threshold: 0,
             }),
-            K::ReconstructionExceedsThreshold => Ok(Self::ReconstructionExceedsThreshold {
-                score: 0,
-                threshold: 0,
-            }),
             K::InsufficientBond => Ok(Self::InsufficientBond {
                 required: 0,
                 provided: 0,
             }),
             K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),
+
+            // Challenge errors
+            K::ChallengeWindowClosed => Ok(Self::ChallengeWindowClosed {
+                fill_epoch: 0,
+                current_epoch: 0,
+            }),
+            K::InsufficientChallengerBond => Ok(Self::InsufficientChallengerBond {
+                required: 0,
+                provided: 0,
+            }),
+            K::ChallengeNotFound => Ok(Self::ChallengeNotFound {
+                challenge_id: crate::types::Address::new([0u8; 32]),
+            }),
+            K::ChallengeNotPending => Ok(Self::ChallengeNotPending {
+                challenge_id: crate::types::Address::new([0u8; 32]),
+            }),
+            K::ChallengeExpired => Ok(Self::ChallengeExpired {
+                challenge_epoch: 0,
+                current_epoch: 0,
+            }),
+            K::InvalidChallengeResult => Ok(Self::InvalidChallengeResult),
+            K::InvalidChallengeQuorum => Ok(Self::InvalidChallengeQuorum),
+            K::ChallengeAlreadyExists => Ok(Self::ChallengeAlreadyExists),
+            K::DataExceedsMaxSize => Ok(Self::DataExceedsMaxSize {
+                size: 0,
+                max_size: 0,
+            }),
 
             K::InsufficientCoinBalance => Ok(Self::InsufficientCoinBalance),
             K::CoinBalanceOverflow => Ok(Self::CoinBalanceOverflow),

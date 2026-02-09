@@ -29,6 +29,9 @@ message SystemState {
 
   // Model registry
   optional ModelRegistry model_registry = 11;
+
+  // Submission report records (target_id hex -> reporter addresses)
+  map<string, ReporterSet> submission_report_records = 13;
 }
 
 message ReporterSet {
@@ -58,24 +61,28 @@ message SystemParameters {
   optional uint64 target_models_per_target = 14;
   optional uint64 target_embedding_dim = 15;
   optional int64 target_initial_distance_threshold = 16;
-  optional uint64 target_initial_reconstruction_threshold = 17;
-  optional uint64 target_reward_allocation_bps = 18;
-  optional uint64 target_hit_rate_target_bps = 19;
-  optional uint64 target_hit_rate_ema_decay_bps = 20;
-  optional uint64 target_difficulty_adjustment_rate_bps = 21;
-  optional int64 target_max_distance_threshold = 22;
-  optional int64 target_min_distance_threshold = 23;
-  optional uint64 target_max_reconstruction_threshold = 24;
-  optional uint64 target_min_reconstruction_threshold = 25;
-  optional uint64 target_initial_targets_per_epoch = 26;
+  optional uint64 target_reward_allocation_bps = 17;
+  optional uint64 target_hit_rate_target_bps = 18;
+  optional uint64 target_hit_rate_ema_decay_bps = 19;
+  optional uint64 target_difficulty_adjustment_rate_bps = 20;
+  optional int64 target_max_distance_threshold = 21;
+  optional int64 target_min_distance_threshold = 22;
+  optional uint64 target_initial_targets_per_epoch = 23;
 
   // Reward distribution parameters
-  optional uint64 target_miner_reward_share_bps = 28;
-  optional uint64 target_model_reward_share_bps = 29;
-  optional uint64 target_claimer_incentive_bps = 30;
+  optional uint64 target_miner_reward_share_bps = 24;
+  optional uint64 target_model_reward_share_bps = 25;
+  optional uint64 target_claimer_incentive_bps = 26;
 
   // Submission parameters
-  optional uint64 submission_bond_per_byte = 31;
+  optional uint64 submission_bond_per_byte = 27;
+
+  // Challenge parameters
+  optional uint64 challenger_bond_per_byte = 28;
+  optional int64 challenge_distance_epsilon = 29;
+
+  // Data size limit
+  optional uint64 max_submission_data_size = 30;
 }
 
 message EmissionPool {
@@ -101,14 +108,15 @@ message Validator {
   optional string net_address = 5;
   optional string p2p_address = 6;
   optional string primary_address = 7;
-  
+  optional string proxy_address = 19;  // HTTP proxy address for serving data/model downloads
+
   optional uint64 voting_power = 8;
   optional uint64 commission_rate = 9;
   optional uint64 next_epoch_stake = 10;
   optional uint64 next_epoch_commission_rate = 11;
-  
+
   optional StakingPool staking_pool = 12;
-  
+
   // Next epoch metadata (only if set)
   optional bytes next_epoch_protocol_pubkey = 13;
   optional bytes next_epoch_network_pubkey = 14;
@@ -116,6 +124,7 @@ message Validator {
   optional string next_epoch_net_address = 16;
   optional string next_epoch_p2p_address = 17;
   optional string next_epoch_primary_address = 18;
+  optional string next_epoch_proxy_address = 20;  // HTTP proxy address for next epoch
 }
 
 message StakingPool {
@@ -170,21 +179,18 @@ message TargetState {
   // Current distance threshold for new targets (fixed-point i64)
   optional int64 distance_threshold = 1;
 
-  // Current reconstruction error threshold (MSE, fixed-point u64)
-  optional uint64 reconstruction_threshold = 2;
-
   // Count of targets generated this epoch
-  optional uint64 targets_generated_this_epoch = 3;
+  optional uint64 targets_generated_this_epoch = 2;
 
   // Count of successful hits this epoch
-  optional uint64 hits_this_epoch = 4;
+  optional uint64 hits_this_epoch = 3;
 
   // EMA of hit rate across epochs (bps, 0-10000)
   // 0 indicates bootstrap mode (no data yet)
-  optional uint64 hit_rate_ema_bps = 5;
+  optional uint64 hit_rate_ema_bps = 4;
 
   // Reward per target for current epoch (in shannons)
-  optional uint64 reward_per_target = 6;
+  optional uint64 reward_per_target = 5;
 }
 
 // A target in the Soma mining competition.
@@ -202,34 +208,29 @@ message Target {
   // Distance threshold (fixed-point i64)
   optional int64 distance_threshold = 4;
 
-  // Reconstruction error threshold (MSE, fixed-point u64)
-  optional uint64 reconstruction_threshold = 5;
-
   // Pre-allocated reward amount (in shannons)
-  optional uint64 reward_pool = 6;
+  optional uint64 reward_pool = 5;
 
   // Epoch in which this target was generated
-  optional uint64 generation_epoch = 7;
-
-  // Reserved: field 8 was generation_timestamp_ms (removed)
+  optional uint64 generation_epoch = 6;
 
   // Status: "open", "filled", or "claimed"
-  optional string status = 9;
+  optional string status = 7;
 
   // Fill epoch (only present if status is "filled")
-  optional uint64 fill_epoch = 10;
+  optional uint64 fill_epoch = 8;
 
   // Miner address who filled (only present if filled)
-  optional string miner = 11;
+  optional string miner = 9;
 
   // Model used by the miner (only present if filled)
-  optional string winning_model_id = 12;
+  optional string winning_model_id = 10;
 
   // Model owner address at fill time (only present if filled)
-  optional string winning_model_owner = 13;
+  optional string winning_model_owner = 11;
 
   // Bond amount held (in shannons, only present if filled)
-  optional uint64 bond_amount = 14;
+  optional uint64 bond_amount = 12;
 }
 
 // A data submission to a target.
@@ -252,13 +253,47 @@ message Submission {
   // Distance score reported by submitter (fixed-point i64)
   optional int64 distance_score = 6;
 
-  // Reconstruction error (MSE) reported by submitter (fixed-point u64)
-  optional uint64 reconstruction_score = 7;
-
   // Bond amount locked (in shannons)
-  optional uint64 bond_amount = 8;
+  optional uint64 bond_amount = 7;
 
   // Epoch when submission was made
   optional uint64 submit_epoch = 9;
+}
+
+// A challenge against a filled target's submission.
+message Challenge {
+  // Challenge ID (ObjectID hex)
+  optional string id = 1;
+
+  // Target being challenged (TargetId hex)
+  optional string target_id = 2;
+
+  // Address of the challenger
+  optional string challenger = 3;
+
+  // Bond locked by challenger (in shannons)
+  optional uint64 challenger_bond = 4;
+
+  // Epoch when challenge was initiated
+  optional uint64 challenge_epoch = 5;
+
+  // Status: "pending" or "resolved"
+  optional string status = 6;
+
+  // Verdict (only if resolved): "challenger_won" or "challenger_lost"
+  // Simplified: reports indicate "challenger is wrong". If 2f+1 report, challenger loses.
+  optional string verdict = 7;
+
+  // Win reason is no longer used in simplified design (field kept for backwards compatibility)
+  optional string win_reason = 8;
+
+  // Distance threshold of target (fixed-point i64)
+  optional int64 distance_threshold = 9;
+
+  // Claimed distance score by miner (fixed-point i64)
+  optional int64 winning_distance_score = 10;
+
+  // Winning model ID used by miner
+  optional string winning_model_id = 11;
 }
 

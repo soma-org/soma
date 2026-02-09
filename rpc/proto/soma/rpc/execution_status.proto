@@ -175,14 +175,42 @@ message ExecutionError {
     // Distance score exceeds threshold
     DISTANCE_EXCEEDS_THRESHOLD = 42;
 
-    // Reconstruction score exceeds threshold
-    RECONSTRUCTION_EXCEEDS_THRESHOLD = 43;
-
     // Insufficient bond for submission
-    INSUFFICIENT_BOND = 44;
+    INSUFFICIENT_BOND = 43;
 
     // Insufficient emission pool balance
-    INSUFFICIENT_EMISSION_BALANCE = 45;
+    INSUFFICIENT_EMISSION_BALANCE = 44;
+
+    //
+    // Challenge errors.
+    //
+
+    // Challenge window has closed
+    CHALLENGE_WINDOW_CLOSED = 45;
+
+    // Insufficient challenger bond
+    INSUFFICIENT_CHALLENGER_BOND = 46;
+
+    // Challenge not found
+    CHALLENGE_NOT_FOUND = 47;
+
+    // Challenge is not pending
+    CHALLENGE_NOT_PENDING = 48;
+
+    // Challenge has expired
+    CHALLENGE_EXPIRED = 49;
+
+    // Invalid challenge result
+    INVALID_CHALLENGE_RESULT = 50;
+
+    // Invalid challenge quorum
+    INVALID_CHALLENGE_QUORUM = 51;
+
+    // Data exceeds maximum allowed size
+    DATA_EXCEEDS_MAX_SIZE = 52;
+
+    // Challenge already exists for this target
+    CHALLENGE_ALREADY_EXISTS = 53;
   }
 
   optional ExecutionErrorKind kind = 2;

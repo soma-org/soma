@@ -57,6 +57,7 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
             types::object::ObjectType::Target => ObjectType::Target,
             types::object::ObjectType::Submission => ObjectType::Submission,
+            types::object::ObjectType::Challenge => ObjectType::Challenge,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -84,6 +85,7 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
             ObjectType::Target => types::object::ObjectType::Target,
             ObjectType::Submission => types::object::ObjectType::Submission,
+            ObjectType::Challenge => types::object::ObjectType::Challenge,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -345,6 +347,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 net_address: args.net_address,
                 p2p_address: args.p2p_address,
                 primary_address: args.primary_address,
+                proxy_address: args.proxy_address,
             }),
 
             TK::RemoveValidator(args) => TransactionKind::RemoveValidator(RemoveValidatorArgs {
@@ -364,6 +367,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
+                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
@@ -483,13 +487,38 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 model_id: args.model_id.into(),
                 embedding: args.embedding.to_vec(),
                 distance_score: args.distance_score,
-                reconstruction_score: args.reconstruction_score,
                 bond_coin: args.bond_coin.into(),
             }),
 
             TK::ClaimRewards(args) => TransactionKind::ClaimRewards(ClaimRewardsArgs {
                 target_id: args.target_id.into(),
             }),
+
+            TK::ReportSubmission { target_id, challenger } => TransactionKind::ReportSubmission {
+                target_id: target_id.into(),
+                challenger: challenger.map(|c| c.into()),
+            },
+            TK::UndoReportSubmission { target_id } => TransactionKind::UndoReportSubmission {
+                target_id: target_id.into(),
+            },
+
+            // Challenge transactions
+            // All challenges are fraud challenges now (simplified design v2)
+            // ChallengeId is derived from tx_digest during execution, not client-provided
+            TK::InitiateChallenge(args) => TransactionKind::InitiateChallenge(InitiateChallengeArgs {
+                target_id: args.target_id.into(),
+                bond_coin: args.bond_coin.into(),
+            }),
+            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
+            TK::ReportChallenge { challenge_id } => TransactionKind::ReportChallenge {
+                challenge_id: challenge_id.into(),
+            },
+            TK::UndoReportChallenge { challenge_id } => TransactionKind::UndoReportChallenge {
+                challenge_id: challenge_id.into(),
+            },
+            TK::ClaimChallengeBond { challenge_id } => TransactionKind::ClaimChallengeBond {
+                challenge_id: challenge_id.into(),
+            },
         })
     }
 }
@@ -541,6 +570,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     net_address: args.net_address,
                     p2p_address: args.p2p_address,
                     primary_address: args.primary_address,
+                    proxy_address: args.proxy_address,
                 })
             }
 
@@ -563,6 +593,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
+                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
@@ -717,7 +748,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     model_id: args.model_id.into(),
                     embedding,
                     distance_score: args.distance_score,
-                    reconstruction_score: args.reconstruction_score,
                     bond_coin: args.bond_coin.into(),
                 })
             }
@@ -726,6 +756,32 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 target_id: args.target_id.into(),
                 // target_initial_shared_version is ignored from proto - use protocol constant
             }),
+
+            TransactionKind::ReportSubmission { target_id, challenger } => TK::ReportSubmission {
+                target_id: target_id.into(),
+                challenger: challenger.map(|c| c.into()),
+            },
+            TransactionKind::UndoReportSubmission { target_id } => TK::UndoReportSubmission {
+                target_id: target_id.into(),
+            },
+
+            // Challenge transactions
+            // All challenges are fraud challenges now (simplified design v2)
+            // ChallengeId is derived from tx_digest during execution, not client-provided
+            TransactionKind::InitiateChallenge(args) => TK::InitiateChallenge(types::transaction::InitiateChallengeArgs {
+                target_id: args.target_id.into(),
+                bond_coin: args.bond_coin.into(),
+            }),
+            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
+            TransactionKind::ReportChallenge { challenge_id } => TK::ReportChallenge {
+                challenge_id: challenge_id.into(),
+            },
+            TransactionKind::UndoReportChallenge { challenge_id } => TK::UndoReportChallenge {
+                challenge_id: challenge_id.into(),
+            },
+            TransactionKind::ClaimChallengeBond { challenge_id } => TK::ClaimChallengeBond {
+                challenge_id: challenge_id.into(),
+            },
         })
     }
 }
@@ -1356,14 +1412,33 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::DistanceExceedsThreshold { score, threshold } => {
                 Self::DistanceExceedsThreshold { score, threshold }
             }
-            types::effects::ExecutionFailureStatus::ReconstructionExceedsThreshold { score, threshold } => {
-                Self::ReconstructionExceedsThreshold { score, threshold }
-            }
             types::effects::ExecutionFailureStatus::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
             }
             types::effects::ExecutionFailureStatus::InsufficientEmissionBalance => {
                 Self::InsufficientEmissionBalance
+            }
+
+            // Challenge errors
+            types::effects::ExecutionFailureStatus::ChallengeWindowClosed { fill_epoch, current_epoch } => {
+                Self::ChallengeWindowClosed { fill_epoch, current_epoch }
+            }
+            types::effects::ExecutionFailureStatus::InsufficientChallengerBond { required, provided } => {
+                Self::InsufficientChallengerBond { required, provided }
+            }
+            types::effects::ExecutionFailureStatus::ChallengeNotFound { challenge_id } => {
+                Self::ChallengeNotFound { challenge_id: challenge_id.into() }
+            }
+            types::effects::ExecutionFailureStatus::ChallengeNotPending { challenge_id } => {
+                Self::ChallengeNotPending { challenge_id: challenge_id.into() }
+            }
+            types::effects::ExecutionFailureStatus::ChallengeExpired { challenge_epoch, current_epoch } => {
+                Self::ChallengeExpired { challenge_epoch, current_epoch }
+            }
+            types::effects::ExecutionFailureStatus::InvalidChallengeResult => Self::InvalidChallengeResult,
+            types::effects::ExecutionFailureStatus::InvalidChallengeQuorum => Self::InvalidChallengeQuorum,
+            types::effects::ExecutionFailureStatus::DataExceedsMaxSize { size, max_size } => {
+                Self::DataExceedsMaxSize { size, max_size }
             }
 
             types::effects::ExecutionFailureStatus::InsufficientCoinBalance => {
@@ -1393,6 +1468,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             }
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
+            }
+            types::effects::ExecutionFailureStatus::ChallengeAlreadyExists => {
+                Self::ChallengeAlreadyExists
             }
         }
     }
@@ -1469,13 +1547,33 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::DistanceExceedsThreshold { score, threshold } => {
                 Self::DistanceExceedsThreshold { score, threshold }
             }
-            ExecutionError::ReconstructionExceedsThreshold { score, threshold } => {
-                Self::ReconstructionExceedsThreshold { score, threshold }
-            }
             ExecutionError::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
             }
             ExecutionError::InsufficientEmissionBalance => Self::InsufficientEmissionBalance,
+
+            // Challenge errors
+            ExecutionError::ChallengeWindowClosed { fill_epoch, current_epoch } => {
+                Self::ChallengeWindowClosed { fill_epoch, current_epoch }
+            }
+            ExecutionError::InsufficientChallengerBond { required, provided } => {
+                Self::InsufficientChallengerBond { required, provided }
+            }
+            ExecutionError::ChallengeNotFound { challenge_id } => {
+                Self::ChallengeNotFound { challenge_id: challenge_id.into() }
+            }
+            ExecutionError::ChallengeNotPending { challenge_id } => {
+                Self::ChallengeNotPending { challenge_id: challenge_id.into() }
+            }
+            ExecutionError::ChallengeExpired { challenge_epoch, current_epoch } => {
+                Self::ChallengeExpired { challenge_epoch, current_epoch }
+            }
+            ExecutionError::InvalidChallengeResult => Self::InvalidChallengeResult,
+            ExecutionError::InvalidChallengeQuorum => Self::InvalidChallengeQuorum,
+            ExecutionError::DataExceedsMaxSize { size, max_size } => {
+                Self::DataExceedsMaxSize { size, max_size }
+            }
+            ExecutionError::ChallengeAlreadyExists => Self::ChallengeAlreadyExists,
 
             // Coin errors
             ExecutionError::InsufficientCoinBalance => Self::InsufficientCoinBalance,

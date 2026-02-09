@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     base::FullObjectID,
+    challenge::ChallengeId,
     checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
     digests::{
         AdditionalConsensusStateDigest, DataCommitment, ModelWeightsCommitment,
@@ -135,6 +136,42 @@ pub enum TransactionKind {
     // Submission transactions
     SubmitData(SubmitDataArgs),
     ClaimRewards(ClaimRewardsArgs),
+    /// Report a submission as fraudulent (validators only).
+    /// Reports are stored on the Target object and accumulate until 2f+1 quorum.
+    /// Quorum triggers slashing at ClaimRewards time.
+    ReportSubmission {
+        target_id: TargetId,
+        /// Optional challenger to attribute fraud to.
+        /// If 2f+1 reports agree on this challenger, they get the miner's bond.
+        /// If None (availability case), reporting validators split the bond.
+        challenger: Option<SomaAddress>,
+    },
+    /// Undo a previous submission report.
+    UndoReportSubmission {
+        target_id: TargetId,
+    },
+
+    // Challenge transactions
+    InitiateChallenge(InitiateChallengeArgs),
+    /// Report that a challenge is invalid (validators only).
+    /// Validators submit this when they determine the challenger's claim is wrong
+    /// (i.e., the submission is actually valid). Reports accumulate on the Challenge object.
+    /// If 2f+1 validators report, the challenger loses their bond.
+    ReportChallenge {
+        challenge_id: ChallengeId,
+    },
+    /// Undo a previous challenge report.
+    UndoReportChallenge {
+        challenge_id: ChallengeId,
+    },
+    /// Claim the challenger's bond after challenge window closes.
+    /// Distributes the challenger's bond based on report quorum:
+    /// - 2f+1 reports: challenger bond → reporting validators (challenger loses)
+    /// - No quorum: challenger bond → challenger (benefit of doubt)
+    /// Note: The miner's bond is handled separately by ClaimRewards based on submission reports.
+    ClaimChallengeBond {
+        challenge_id: ChallengeId,
+    },
 }
 
 /// # AddValidatorArgs
@@ -165,6 +202,8 @@ pub struct AddValidatorArgs {
     pub p2p_address: Vec<u8>,
     /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
+    /// The validator's proxy server address for data/model serving
+    pub proxy_address: Vec<u8>,
 }
 
 /// # RemoveValidatorArgs
@@ -195,6 +234,8 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_p2p_address: Option<Vec<u8>>,
     /// Optional new primary address (serialized Multiaddr)
     pub next_epoch_primary_address: Option<Vec<u8>>,
+    /// Optional new proxy address (serialized Multiaddr)
+    pub next_epoch_proxy_address: Option<Vec<u8>>,
 
     /// Optional new protocol public key (BLS)
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
@@ -210,6 +251,7 @@ impl Default for UpdateValidatorMetadataArgs {
             next_epoch_network_address: None,
             next_epoch_p2p_address: None,
             next_epoch_primary_address: None,
+            next_epoch_proxy_address: None,
             next_epoch_protocol_pubkey: None,
             next_epoch_worker_pubkey: None,
             next_epoch_network_pubkey: None,
@@ -272,9 +314,6 @@ pub struct SubmitDataArgs {
     /// Distance score (fixed-point, scale DISTANCE_SCALE). Lower is better.
     pub distance_score: i64,
 
-    /// Reconstruction error score (MSE, fixed-point). Lower is better.
-    pub reconstruction_score: u64,
-
     /// Coin to use for bond payment (must cover submission_bond_per_byte * data_manifest.size)
     pub bond_coin: ObjectRef,
 }
@@ -284,6 +323,25 @@ pub struct SubmitDataArgs {
 pub struct ClaimRewardsArgs {
     /// Target to claim rewards from
     pub target_id: TargetId,
+}
+
+/// Arguments for initiating a fraud challenge against a filled target's submission.
+///
+/// The challenger must provide a bond (challenger_bond_per_byte * data_size).
+/// If the challenge succeeds (fraud proven), the miner's bond is slashed and the challenger is rewarded.
+/// If the challenge fails (no fraud), the challenger's bond is slashed.
+///
+/// **Note**: All challenges are fraud challenges. Availability issues are handled via
+/// submission reports (ReportSubmission/UndoReportSubmission) instead.
+///
+/// The ChallengeId is derived from the transaction digest during execution (not client-provided).
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct InitiateChallengeArgs {
+    /// Target being challenged (must be filled and within challenge window)
+    pub target_id: TargetId,
+
+    /// Coin to pay challenger bond (must cover challenger_bond_per_byte * data_size)
+    pub bond_coin: ObjectRef,
 }
 
 impl TransactionKind {
@@ -337,7 +395,20 @@ impl TransactionKind {
     pub fn is_submission_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::SubmitData(_) | TransactionKind::ClaimRewards(_)
+            TransactionKind::SubmitData(_)
+                | TransactionKind::ClaimRewards(_)
+                | TransactionKind::ReportSubmission { .. }
+                | TransactionKind::UndoReportSubmission { .. }
+        )
+    }
+
+    pub fn is_challenge_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::InitiateChallenge(_)
+                | TransactionKind::ReportChallenge { .. }
+                | TransactionKind::UndoReportChallenge { .. }
+                | TransactionKind::ClaimChallengeBond { .. }
         )
     }
 
@@ -347,6 +418,7 @@ impl TransactionKind {
             || self.is_staking_tx()
             || self.is_model_tx()
             || self.is_submission_tx()
+            || self.is_challenge_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -384,6 +456,54 @@ impl TransactionKind {
                 objects.push(SharedInputObject {
                     id: args.target_id,
                     initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::InitiateChallenge(args) => {
+                // Challenge reads target info and updates it with challenger/challenge_id
+                objects.push(SharedInputObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true, // writes challenger and challenge_id to target
+                });
+            }
+            TransactionKind::ReportSubmission { target_id, .. } => {
+                // ReportSubmission writes to the Target object
+                objects.push(SharedInputObject {
+                    id: *target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::UndoReportSubmission { target_id } => {
+                // UndoReportSubmission writes to the Target object
+                objects.push(SharedInputObject {
+                    id: *target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::ReportChallenge { challenge_id, .. } => {
+                // ReportChallenge writes to the Challenge object
+                objects.push(SharedInputObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::UndoReportChallenge { challenge_id } => {
+                // UndoReportChallenge writes to the Challenge object
+                objects.push(SharedInputObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+            TransactionKind::ClaimChallengeBond { challenge_id } => {
+                // ClaimChallengeBond writes to the Challenge object
+                objects.push(SharedInputObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
                     mutable: true,
                 });
             }
@@ -452,6 +572,62 @@ impl TransactionKind {
                 input_objects.push(InputObjectKind::SharedObject {
                     id: args.target_id,
                     initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::InitiateChallenge(args) => {
+                // Add bond coin as owned object
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.bond_coin));
+                // Add target as shared object (mutable - writes challenger and challenge_id)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: args.target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::ReportSubmission { target_id, .. } => {
+                // Add target as shared object (mutable - storing reports)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::UndoReportSubmission { target_id } => {
+                // Add target as shared object (mutable - removing reports)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *target_id,
+                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::ReportChallenge { challenge_id, .. } => {
+                // Add challenge as shared object (mutable - storing reports)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::UndoReportChallenge { challenge_id } => {
+                // Add challenge as shared object (mutable - removing reports)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
+                    mutable: true,
+                });
+            }
+
+            TransactionKind::ClaimChallengeBond { challenge_id } => {
+                // Add challenge as shared object (mutable - resolving and clearing reports)
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *challenge_id,
+                    initial_shared_version: crate::CHALLENGE_OBJECT_SHARED_VERSION,
                     mutable: true,
                 });
             }

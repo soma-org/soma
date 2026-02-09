@@ -50,6 +50,11 @@ pub struct ValidatorMetadata {
     /// The primary address for validator services
     pub primary_address: Multiaddr,
 
+    /// The proxy server address for serving data/model downloads to clients.
+    /// Clients use this address to fetch submission data and model weights.
+    /// Example: /dns/validator1.soma.io/tcp/8080/http
+    pub proxy_address: Multiaddr,
+
     /// Optional new protocol public key for the next epoch
     pub next_epoch_protocol_pubkey: Option<PublicKey>,
 
@@ -66,6 +71,9 @@ pub struct ValidatorMetadata {
     pub next_epoch_primary_address: Option<Multiaddr>,
 
     pub next_epoch_worker_pubkey: Option<crate::crypto::NetworkPublicKey>,
+
+    /// Optional new proxy address for the next epoch
+    pub next_epoch_proxy_address: Option<Multiaddr>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -94,6 +102,7 @@ impl Validator {
         net_address: Multiaddr,
         p2p_address: Multiaddr,
         primary_address: Multiaddr,
+        proxy_address: Multiaddr,
 
         voting_power: u64,
         commission_rate: u64,
@@ -108,6 +117,7 @@ impl Validator {
                 net_address,
                 p2p_address,
                 primary_address,
+                proxy_address,
 
                 next_epoch_protocol_pubkey: None,
                 next_epoch_network_pubkey: None,
@@ -115,6 +125,7 @@ impl Validator {
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
                 next_epoch_worker_pubkey: None,
+                next_epoch_proxy_address: None,
             },
             voting_power,
             commission_rate,
@@ -361,6 +372,9 @@ impl Validator {
         }
         if let Some(key) = self.metadata.next_epoch_worker_pubkey.take() {
             self.metadata.worker_pubkey = key;
+        }
+        if let Some(addr) = self.metadata.next_epoch_proxy_address.take() {
+            self.metadata.proxy_address = addr;
         }
     }
 }

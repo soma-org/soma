@@ -337,6 +337,7 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
     let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
     let p2p_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
     let primary_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
+    let proxy_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8083/http").unwrap();
 
     // Create validator
     let mut validator = Validator::new(
@@ -347,6 +348,7 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
         net_address,
         p2p_address,
         primary_address,
+        proxy_address,
         0, // Initial voting power is 0, will be set later
         0,
         ObjectID::random(),

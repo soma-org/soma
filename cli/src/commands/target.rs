@@ -83,7 +83,6 @@ impl TargetCommand {
                             model_count: t.model_ids.len(),
                             reward_pool: t.reward_pool.unwrap_or(0),
                             distance_threshold: t.distance_threshold.unwrap_or(0),
-                            reconstruction_threshold: t.reconstruction_threshold.unwrap_or(0),
                         })
                     })
                     .collect();
@@ -142,7 +141,6 @@ pub struct TargetSummary {
     pub model_count: usize,
     pub reward_pool: u64,
     pub distance_threshold: i64,
-    pub reconstruction_threshold: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,7 +216,6 @@ impl Display for TargetInfoOutput {
         builder.push_record(["Embedding Dimension", &t.embedding.len().to_string()]);
         builder.push_record(["Model Count", &t.model_ids.len().to_string()]);
         builder.push_record(["Distance Threshold", &t.distance_threshold.to_string()]);
-        builder.push_record(["Reconstruction Threshold", &t.reconstruction_threshold.to_string()]);
         builder.push_record(["Reward Pool", &format!("{} SHANNONS", t.reward_pool)]);
 
         if let Some(miner) = &t.miner {

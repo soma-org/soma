@@ -100,7 +100,6 @@ fn test_target_generation_single_model() {
 
     // Set up target_state with some thresholds
     system_state.target_state.distance_threshold = 1_000_000;
-    system_state.target_state.reconstruction_threshold = 500_000;
     system_state.target_state.reward_per_target = 1000;
 
     // Generate target - should succeed with single model
@@ -120,7 +119,6 @@ fn test_target_generation_single_model() {
     assert_eq!(target.model_ids[0], model_id);
     assert_eq!(target.embedding.len(), 768);
     assert_eq!(target.distance_threshold, 1_000_000);
-    assert_eq!(target.reconstruction_threshold, 500_000);
     assert_eq!(target.reward_pool, 1000);
     assert_eq!(target.generation_epoch, 1);
     assert!(matches!(target.status, TargetStatus::Open));
@@ -151,7 +149,6 @@ fn test_target_generation_multiple_models() {
 
     // Set up target_state
     system_state.target_state.distance_threshold = 1_000_000;
-    system_state.target_state.reconstruction_threshold = 500_000;
     system_state.target_state.reward_per_target = 1000;
 
     // Generate target with 3 models
@@ -217,20 +214,16 @@ fn test_difficulty_adjustment_high_hit_rate() {
 
     // Set initial thresholds
     system_state.target_state.distance_threshold = 1_000_000;
-    system_state.target_state.reconstruction_threshold = 500_000;
     system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target hit rate
     system_state.parameters.target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
     system_state.parameters.target_min_distance_threshold = 100_000;
     system_state.parameters.target_max_distance_threshold = 10_000_000;
-    system_state.parameters.target_min_reconstruction_threshold = 50_000;
-    system_state.parameters.target_max_reconstruction_threshold = 5_000_000;
 
     // Simulate high hit rate (95% of targets filled, target = 80%)
     system_state.target_state.targets_generated_this_epoch = 100;
     system_state.target_state.hits_this_epoch = 95;
 
     let old_distance = system_state.target_state.distance_threshold;
-    let old_reconstruction = system_state.target_state.reconstruction_threshold;
 
     system_state.adjust_difficulty();
 
@@ -238,10 +231,6 @@ fn test_difficulty_adjustment_high_hit_rate() {
     assert!(
         system_state.target_state.distance_threshold < old_distance,
         "Distance threshold should decrease when hit rate is too high"
-    );
-    assert!(
-        system_state.target_state.reconstruction_threshold < old_reconstruction,
-        "Reconstruction threshold should decrease when hit rate is too high"
     );
 }
 
@@ -253,20 +242,16 @@ fn test_difficulty_adjustment_low_hit_rate() {
 
     // Set initial thresholds
     system_state.target_state.distance_threshold = 1_000_000;
-    system_state.target_state.reconstruction_threshold = 500_000;
     system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target hit rate
     system_state.parameters.target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
     system_state.parameters.target_min_distance_threshold = 100_000;
     system_state.parameters.target_max_distance_threshold = 10_000_000;
-    system_state.parameters.target_min_reconstruction_threshold = 50_000;
-    system_state.parameters.target_max_reconstruction_threshold = 5_000_000;
 
     // Simulate low hit rate (50% of targets filled, target = 80%)
     system_state.target_state.targets_generated_this_epoch = 100;
     system_state.target_state.hits_this_epoch = 50;
 
     let old_distance = system_state.target_state.distance_threshold;
-    let old_reconstruction = system_state.target_state.reconstruction_threshold;
 
     system_state.adjust_difficulty();
 
@@ -274,10 +259,6 @@ fn test_difficulty_adjustment_low_hit_rate() {
     assert!(
         system_state.target_state.distance_threshold > old_distance,
         "Distance threshold should increase when hit rate is too low"
-    );
-    assert!(
-        system_state.target_state.reconstruction_threshold > old_reconstruction,
-        "Reconstruction threshold should increase when hit rate is too low"
     );
 }
 
@@ -289,13 +270,10 @@ fn test_difficulty_adjustment_min_bounds() {
 
     // Set thresholds at minimum already
     system_state.target_state.distance_threshold = 100_000;
-    system_state.target_state.reconstruction_threshold = 50_000;
     system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target
     system_state.parameters.target_difficulty_adjustment_rate_bps = 500;
     system_state.parameters.target_min_distance_threshold = 100_000;
     system_state.parameters.target_max_distance_threshold = 10_000_000;
-    system_state.parameters.target_min_reconstruction_threshold = 50_000;
-    system_state.parameters.target_max_reconstruction_threshold = 5_000_000;
 
     // Simulate very high hit rate (100%, target = 80%)
     system_state.target_state.targets_generated_this_epoch = 100;
@@ -309,11 +287,6 @@ fn test_difficulty_adjustment_min_bounds() {
         100_000,
         "Distance threshold should not go below min"
     );
-    assert_eq!(
-        system_state.target_state.reconstruction_threshold,
-        50_000,
-        "Reconstruction threshold should not go below min"
-    );
 }
 
 /// Test difficulty adjustment respects max bounds
@@ -324,13 +297,10 @@ fn test_difficulty_adjustment_max_bounds() {
 
     // Set thresholds at maximum already
     system_state.target_state.distance_threshold = 10_000_000;
-    system_state.target_state.reconstruction_threshold = 5_000_000;
     system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target
     system_state.parameters.target_difficulty_adjustment_rate_bps = 500;
     system_state.parameters.target_min_distance_threshold = 100_000;
     system_state.parameters.target_max_distance_threshold = 10_000_000;
-    system_state.parameters.target_min_reconstruction_threshold = 50_000;
-    system_state.parameters.target_max_reconstruction_threshold = 5_000_000;
 
     // Simulate very low hit rate (10%, target = 80%)
     system_state.target_state.targets_generated_this_epoch = 100;
@@ -344,11 +314,6 @@ fn test_difficulty_adjustment_max_bounds() {
         10_000_000,
         "Distance threshold should not go above max"
     );
-    assert_eq!(
-        system_state.target_state.reconstruction_threshold,
-        5_000_000,
-        "Reconstruction threshold should not go above max"
-    );
 }
 
 /// Test no adjustment in bootstrap mode (no targets generated)
@@ -359,11 +324,9 @@ fn test_difficulty_adjustment_bootstrap_mode() {
 
     // Set initial thresholds
     system_state.target_state.distance_threshold = 1_000_000;
-    system_state.target_state.reconstruction_threshold = 500_000;
     system_state.target_state.targets_generated_this_epoch = 0; // Bootstrap mode
 
     let old_distance = system_state.target_state.distance_threshold;
-    let old_reconstruction = system_state.target_state.reconstruction_threshold;
 
     system_state.adjust_difficulty();
 
@@ -371,10 +334,6 @@ fn test_difficulty_adjustment_bootstrap_mode() {
     assert_eq!(
         system_state.target_state.distance_threshold, old_distance,
         "Distance threshold should not change in bootstrap mode"
-    );
-    assert_eq!(
-        system_state.target_state.reconstruction_threshold, old_reconstruction,
-        "Reconstruction threshold should not change in bootstrap mode"
     );
 }
 
@@ -426,7 +385,6 @@ fn test_target_status_transitions() {
         embedding: Array1::zeros(10),
         model_ids: vec![],
         distance_threshold: 1000,
-        reconstruction_threshold: 1000,
         reward_pool: 1000,
         generation_epoch: 0,
         status: TargetStatus::Open,
@@ -434,6 +392,13 @@ fn test_target_status_transitions() {
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0,
+        winning_data_manifest: None,
+        winning_data_commitment: None,
+        winning_embedding: None,
+        winning_distance_score: None,
+        challenger: None,
+        challenge_id: None,
+        submission_reports: std::collections::BTreeMap::new(),
     };
 
     assert!(target.is_open());

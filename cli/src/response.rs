@@ -794,6 +794,7 @@ pub enum ObjectContent {
     SystemState,
     Target,
     Submission,
+    Challenge,
     Unknown,
 }
 
@@ -849,6 +850,7 @@ impl ObjectOutput {
             ObjectType::SystemState => Some(ObjectContent::SystemState),
             ObjectType::Target => Some(ObjectContent::Target),
             ObjectType::Submission => Some(ObjectContent::Submission),
+            ObjectType::Challenge => Some(ObjectContent::Challenge),
         }
     }
 }
@@ -947,6 +949,13 @@ impl Display for ObjectOutput {
                         f,
                         "{}",
                         "Submission object".dimmed()
+                    )?;
+                }
+                ObjectContent::Challenge => {
+                    writeln!(
+                        f,
+                        "{}",
+                        "Challenge object (use 'soma challenge info <id>' for details)".dimmed()
                     )?;
                 }
                 ObjectContent::Unknown => {}

@@ -498,6 +498,7 @@ fn make_validator_info(
             network_address: Multiaddr::try_from(format!("/dns/{}/tcp/8080/http", host_name))?,
             p2p_address: Multiaddr::try_from(format!("/dns/{}/tcp/8084/http", host_name))?,
             primary_address: Multiaddr::try_from(format!("/dns/{}/tcp/8081/http", host_name))?,
+            proxy_address: Multiaddr::try_from(format!("/dns/{}/tcp/8090/http", host_name))?,
         },
     };
 
@@ -527,6 +528,7 @@ fn build_join_committee_tx(file: &PathBuf) -> Result<TransactionKind> {
         net_address: bcs::to_bytes(&info.network_address.to_string())?,
         p2p_address: bcs::to_bytes(&info.p2p_address.to_string())?,
         primary_address: bcs::to_bytes(&info.primary_address.to_string())?,
+        proxy_address: bcs::to_bytes(&info.proxy_address.to_string())?,
     }))
 }
 

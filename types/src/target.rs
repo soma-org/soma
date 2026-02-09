@@ -1,8 +1,8 @@
 //! Target generation for the Soma mining competition.
 //!
 //! Targets are shared objects that miners compete to fill. Each target has an embedding
-//! (center point) and thresholds for distance and reconstruction score. Miners submit
-//! data that embeds within the target's radius.
+//! (center point) and a distance threshold. Miners submit data that embeds within the
+//! target's radius.
 //!
 //! Key design decisions:
 //! - Targets are shared objects (not SystemState fields) for parallelism
@@ -14,17 +14,22 @@ use ndarray::Array1;
 use rand::{rngs::StdRng, seq::SliceRandom as _, SeedableRng};
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 use crate::{
     base::SomaAddress,
+    challenge::ChallengeId,
     committee::EpochId,
     crypto::DefaultHash,
-    digests::TransactionDigest,
+    digests::{DataCommitment, TransactionDigest},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     model::ModelId,
     object::ObjectID,
+    submission::SubmissionManifest,
     system_state::model_registry::ModelRegistry,
     system_state::target_state::TargetState,
+    system_state::validator::ValidatorSet,
 };
 use fastcrypto::hash::HashFunction as _;
 
@@ -54,16 +59,12 @@ pub struct Target {
     pub embedding: Embedding,
 
     /// Multiple models assigned to this target (uniformly random selection).
-    /// Miners choose which model to use. Models are scored by reconstruction quality.
+    /// Miners choose which model to use.
     pub model_ids: Vec<ModelId>,
 
     /// Distance threshold (fixed-point, scale DISTANCE_SCALE).
     /// Submitter must report distance <= this value (lower is better).
     pub distance_threshold: i64,
-
-    /// Reconstruction error threshold (MSE, fixed-point).
-    /// Submitter must report reconstruction_score <= this value (lower is better).
-    pub reconstruction_threshold: u64,
 
     /// Pre-allocated reward amount (in shannons) for this target.
     /// Funded from emissions at target creation time.
@@ -92,6 +93,41 @@ pub struct Target {
     /// the bond is returned to the miner. On successful challenge,
     /// the bond is forfeited to the emission pool.
     pub bond_amount: u64,
+
+    // =========================================================================
+    // Fields for challenge audit (set when target is filled)
+    // =========================================================================
+    /// Manifest for the winning submission's data (URL + checksum + size).
+    /// Used by challengers and auditing validators to download and verify.
+    pub winning_data_manifest: Option<SubmissionManifest>,
+
+    /// Commitment to the winning submission's raw data: hash(data_bytes).
+    /// Used to verify data integrity during challenge audit.
+    pub winning_data_commitment: Option<DataCommitment>,
+
+    /// Embedding vector from the winning submission (fixed-point i64).
+    /// Verified during challenge audit by re-running inference.
+    pub winning_embedding: Option<Embedding>,
+
+    /// Distance score from the winning submission (fixed-point, scale DISTANCE_SCALE).
+    /// Verified during ScoreFraud challenge audit.
+    pub winning_distance_score: Option<i64>,
+
+    // =========================================================================
+    // Tally-based challenge fields (set when target is filled)
+    // =========================================================================
+    /// Challenger address (set by InitiateChallenge, first one wins).
+    /// If set, ReportSubmission reports can attribute fraud to this challenger.
+    pub challenger: Option<SomaAddress>,
+
+    /// Challenge object ID (set by InitiateChallenge).
+    /// Used to look up Challenge for ClaimChallengeBond.
+    pub challenge_id: Option<ChallengeId>,
+
+    /// Submission reports: reporter → optional challenger attribution.
+    /// Stored on Target object (not SystemState) for locality.
+    /// Cleared when target is claimed.
+    pub submission_reports: BTreeMap<SomaAddress, Option<SomaAddress>>,
 }
 
 /// Status of a target in its lifecycle.
@@ -128,6 +164,78 @@ impl Target {
             _ => None,
         }
     }
+
+    // =========================================================================
+    // Tally-based submission report methods
+    // =========================================================================
+
+    /// Record a submission report from a validator.
+    /// The optional challenger parameter allows attributing fraud to a specific challenger.
+    pub fn report_submission(
+        &mut self,
+        reporter: SomaAddress,
+        challenger: Option<SomaAddress>,
+    ) {
+        self.submission_reports.insert(reporter, challenger);
+    }
+
+    /// Remove a submission report.
+    pub fn undo_report_submission(&mut self, reporter: SomaAddress) -> bool {
+        self.submission_reports.remove(&reporter).is_some()
+    }
+
+    /// Get submission report quorum result.
+    /// Returns (has_quorum, winning_challenger, reporting_validators).
+    /// - has_quorum: true if total reporter stake >= 2f+1
+    /// - winning_challenger: Some if >2/3 of reporting stake agrees on same challenger
+    /// - reporting_validators: list of validators who reported (for bond distribution)
+    pub fn get_submission_report_quorum(
+        &self,
+        validator_set: &ValidatorSet,
+    ) -> (bool, Option<SomaAddress>, Vec<SomaAddress>) {
+        if self.submission_reports.is_empty() {
+            return (false, None, vec![]);
+        }
+
+        let quorum_threshold = crate::committee::QUORUM_THRESHOLD;
+
+        // Calculate total reporter stake
+        let mut total_stake = 0u64;
+        let mut reporters = vec![];
+        for reporter in self.submission_reports.keys() {
+            if let Some(v) = validator_set.find_validator(*reporter) {
+                total_stake += v.voting_power;
+                reporters.push(*reporter);
+            }
+        }
+
+        if total_stake < quorum_threshold {
+            return (false, None, reporters);
+        }
+
+        // Count stake by challenger attribution
+        let mut challenger_stakes: BTreeMap<Option<SomaAddress>, u64> = BTreeMap::new();
+        for (reporter, challenger) in &self.submission_reports {
+            if let Some(v) = validator_set.find_validator(*reporter) {
+                *challenger_stakes.entry(*challenger).or_default() += v.voting_power;
+            }
+        }
+
+        // Find if any challenger has quorum among reporting stake
+        for (challenger, stake) in challenger_stakes {
+            if stake >= quorum_threshold {
+                return (true, challenger, reporters);
+            }
+        }
+
+        // Has reporting quorum but no consensus on challenger
+        (true, None, reporters)
+    }
+
+    /// Clear submission reports (called when target is claimed).
+    pub fn clear_submission_reports(&mut self) {
+        self.submission_reports.clear();
+    }
 }
 
 /// Generate a new target with the given parameters.
@@ -161,7 +269,6 @@ pub fn generate_target(
         embedding,
         model_ids,
         distance_threshold: target_state.distance_threshold,
-        reconstruction_threshold: target_state.reconstruction_threshold,
         reward_pool: target_state.reward_per_target,
         generation_epoch: current_epoch,
         status: TargetStatus::Open,
@@ -169,6 +276,15 @@ pub fn generate_target(
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0, // Set when target is filled by a submission
+        // Challenge audit fields (set when target is filled)
+        winning_data_manifest: None,
+        winning_data_commitment: None,
+        winning_embedding: None,
+        winning_distance_score: None,
+        // Tally-based challenge fields (set when challenged)
+        challenger: None,
+        challenge_id: None,
+        submission_reports: BTreeMap::new(),
     })
 }
 
@@ -294,7 +410,6 @@ mod tests {
             embedding: Array1::zeros(10),
             model_ids: vec![],
             distance_threshold: 1000,
-            reconstruction_threshold: 1000,
             reward_pool: 1000,
             generation_epoch: 0,
             status: TargetStatus::Open,
@@ -302,6 +417,13 @@ mod tests {
             winning_model_id: None,
             winning_model_owner: None,
             bond_amount: 0,
+            winning_data_manifest: None,
+            winning_data_commitment: None,
+            winning_embedding: None,
+            winning_distance_score: None,
+            challenger: None,
+            challenge_id: None,
+            submission_reports: BTreeMap::new(),
         };
 
         assert!(target.is_open());
