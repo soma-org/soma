@@ -10,9 +10,15 @@ pub struct ByteSequenceItem {
     pub pos_ids: Vec<u32>,
 }
 
-pub(crate) struct ByteSequenceDataset {
+pub struct ByteSequenceDataset {
     pub seq_len: usize,
     pub buffer: Arc<[u8]>,
+}
+
+impl ByteSequenceDataset {
+    pub fn new(seq_len: usize, buffer: Arc<[u8]>) -> Self {
+        Self { seq_len, buffer }
+    }
 }
 
 impl Dataset<ByteSequenceItem> for ByteSequenceDataset {

@@ -4869,18 +4869,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inference"
-version = "0.1.0"
-dependencies = [
- "blobs",
- "burn",
- "models",
- "serde",
- "tonic-build 0.14.3",
- "tonic-prost-build",
-]
-
-[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5600,6 +5588,7 @@ name = "models"
 version = "1.0.0"
 dependencies = [
  "arrgen",
+ "async-trait",
  "burn",
  "ndarray",
  "num-traits",
@@ -7822,6 +7811,28 @@ dependencies = [
  "rustc_version",
  "syn 2.0.114",
  "unicode-ident",
+]
+
+[[package]]
+name = "runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bcs",
+ "blobs",
+ "burn",
+ "bytes",
+ "memmap2",
+ "models",
+ "object_store",
+ "prost 0.14.3",
+ "serde",
+ "tokio",
+ "tonic 0.14.3",
+ "tonic-build 0.14.3",
+ "tonic-prost-build",
+ "tower-http 0.5.2",
+ "types",
 ]
 
 [[package]]

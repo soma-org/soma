@@ -4,7 +4,6 @@ use std::fmt;
 use types::{checksum::Checksum, committee::Epoch};
 
 // pub mod services;
-pub mod buffer;
 pub mod downloader;
 pub mod readers;
 
