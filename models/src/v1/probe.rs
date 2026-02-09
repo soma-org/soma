@@ -1,9 +1,18 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use burn::{
     config::Config,
+    data::dataloader::DataLoader,
     module::Module,
-    nn::{Initializer, LayerNorm, LayerNormConfig, Linear, LinearConfig},
+    nn::{
+        Embedding, EmbeddingConfig, Initializer, LayerNorm, LayerNormConfig, Linear, LinearConfig,
+    },
     tensor::{Bool, Int, Tensor, backend::Backend},
 };
+use types::error::ModelResult;
+
+use crate::{ModelAPI, ModelOutput, v1::data::batcher::ByteSequenceBatch};
 
 use super::{
     V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_NUM_LAYERS, V1_PWFF_HIDDEN_DIM,
@@ -45,6 +54,7 @@ pub struct ProbeConfig {
 
 #[derive(Module, Debug)]
 pub struct Probe<B: Backend> {
+    embed: Embedding<B>,
     encoder: Encoder<B>,
     final_norm: LayerNorm<B>,
     predictor: Linear<B>,
@@ -54,6 +64,9 @@ impl ProbeConfig {
     /// Initialize a new module.
     pub fn init<B: Backend>(&self, device: &B::Device) -> Probe<B> {
         Probe {
+            embed: EmbeddingConfig::new(self.vocab_size, self.embedding_dim)
+                .with_initializer(self.weight_initializer.clone())
+                .init(device),
             encoder: EncoderConfig::new()
                 .with_embedding_dim(self.embedding_dim)
                 .with_pwff_hidden_dim(self.pwff_hidden_dim)
@@ -76,16 +89,29 @@ impl ProbeConfig {
 impl<B: Backend> Probe<B> {
     pub fn forward(
         &self,
-        context: Tensor<B, 3>,
+        tokens: Tensor<B, 2, Int>,
         positions: Tensor<B, 2, Int>,
         attn_mask: Tensor<B, 3, Bool>,
     ) -> Tensor<B, 3> {
-        let x = self.encoder.forward(context, positions, attn_mask);
+        let x = self.embed.forward(tokens);
+        let x = self.encoder.forward(x, positions, attn_mask);
         let x = self.final_norm.forward(x);
         x
     }
 
     pub fn predictor(&self, embeddings: Tensor<B, 3>) -> Tensor<B, 3> {
         self.predictor.forward(embeddings)
+    }
+}
+
+impl<B: Backend> ModelAPI for Probe<B> {
+    type Data = Arc<dyn DataLoader<B, ByteSequenceBatch<B>> + Send + Sync + 'static>;
+    type Backend = B;
+    fn call(&self, data: Self::Data) -> ModelResult<ModelOutput<Self::Backend>> {
+        // for batch in data.iter() {
+        //     self.forward(context, positions, attn_mask)
+        // }
+
+        unimplemented!()
     }
 }

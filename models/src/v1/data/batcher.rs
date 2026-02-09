@@ -5,16 +5,14 @@ use burn::{
     tensor::{Int, TensorData},
 };
 
-use crate::data::dataset::ByteSequenceItem;
+use crate::v1::data::dataset::ByteSequenceItem;
 
 #[derive(Clone)]
-pub struct ByteSequenceBatcher<B: Backend> {
-    device: B::Device,
-}
+pub struct ByteSequenceBatcher {}
 
-impl<B: Backend> ByteSequenceBatcher<B> {
-    pub fn new(device: B::Device) -> Self {
-        Self { device }
+impl ByteSequenceBatcher {
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -24,27 +22,21 @@ pub struct ByteSequenceBatch<B: Backend> {
     pub pos_ids: Tensor<B, 2, Int>,
 }
 
-impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequenceBatcher<B> {
+impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequenceBatcher {
     fn batch(&self, items: Vec<ByteSequenceItem>, device: &B::Device) -> ByteSequenceBatch<B> {
         let token_tensors = items
             .iter()
             .map(|item| {
-                Tensor::<B, 1, Int>::from_data(
-                    TensorData::from(item.token_ids.as_slice()),
-                    &self.device,
-                )
-                .unsqueeze()
+                Tensor::<B, 1, Int>::from_data(TensorData::from(item.token_ids.as_slice()), device)
+                    .unsqueeze()
             })
             .collect::<Vec<_>>();
 
         let pos_tensors = items
             .iter()
             .map(|item| {
-                Tensor::<B, 1, Int>::from_data(
-                    TensorData::from(item.pos_ids.as_slice()),
-                    &self.device,
-                )
-                .unsqueeze()
+                Tensor::<B, 1, Int>::from_data(TensorData::from(item.pos_ids.as_slice()), device)
+                    .unsqueeze()
             })
             .collect::<Vec<_>>();
 
@@ -57,8 +49,9 @@ impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequ
 
 #[cfg(test)]
 mod tests {
+    use crate::v1::data::dataset::ByteSequenceDataset;
+
     use super::*;
-    use crate::data::dataset::ByteSequenceDataset;
     use burn::{backend::NdArray, data::dataset::Dataset, tensor::Device};
     use std::sync::Arc;
 
@@ -76,8 +69,7 @@ mod tests {
         let data = ByteSequenceDataset { seq_len: seq, buffer: create_test_buffer(total_bytes) };
 
         let device: Device<TestBackend> = Default::default();
-        let byte_sequence_batcher: ByteSequenceBatcher<TestBackend> =
-            ByteSequenceBatcher::new(device.clone());
+        let byte_sequence_batcher = ByteSequenceBatcher::new();
 
         let items: Vec<ByteSequenceItem> = (0..data.len()).filter_map(|i| data.get(i)).collect();
 
@@ -85,7 +77,7 @@ mod tests {
         assert_eq!(items[0].token_ids.len(), seq, "Each item should have full sequence length");
         assert_eq!(items[1].token_ids.len(), seq, "Each item should have full sequence length");
 
-        let batch = byte_sequence_batcher.batch(items, &device);
+        let batch: ByteSequenceBatch<TestBackend> = byte_sequence_batcher.batch(items, &device);
 
         // Basic shape checks
         assert_eq!(batch.token_ids.dims().len(), 2, "token_ids should be 2D tensor");

@@ -843,10 +843,10 @@ pub enum BlobError {
 }
 pub type BlobResult<T> = Result<T, BlobError>;
 
-pub type InferenceResult<T> = Result<T, InferenceError>;
+pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
 #[derive(Debug, Error, IntoStaticStr)]
-pub enum InferenceError {
+pub enum RuntimeError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
     #[error("Failed to connect as client: {0:?}")]
@@ -867,10 +867,14 @@ pub enum InferenceError {
     SerializationFailure(bcs::Error),
     #[error("core processor error: {0:?}")]
     CoreProcessorError(String),
+    #[error("storage failure: {0:?}")]
+    StorageFailure(String),
     #[error("Object store error: {0}")]
     ObjectStoreError(object_store::Error),
     #[error("Reqwest error: {0}")]
     ReqwestError(reqwest::Error),
+    #[error("Blob error: {0}")]
+    BlobError(BlobError),
 }
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
