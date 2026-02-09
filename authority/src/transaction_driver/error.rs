@@ -159,19 +159,13 @@ impl TransactionDriverError {
         let mut msgs =
             vec!["Transaction processing aborted (retriable with another submission).".to_string()];
         if submission_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Retriable errors: [{submission_retriable_errors}]."
-            ));
+            msgs.push(format!("Retriable errors: [{submission_retriable_errors}]."));
         }
         if submission_non_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Non-retriable errors: [{submission_non_retriable_errors}]."
-            ));
+            msgs.push(format!("Non-retriable errors: [{submission_non_retriable_errors}]."));
         }
         if !observed_effects_digests.digests.is_empty() {
-            msgs.push(format!(
-                "Observed effects digests: [{observed_effects_digests}]."
-            ));
+            msgs.push(format!("Observed effects digests: [{observed_effects_digests}]."));
         }
         write!(f, "{}", msgs.join(" "))
     }
@@ -193,14 +187,10 @@ impl TransactionDriverError {
         };
         let mut msgs = vec!["Transaction is rejected as invalid by more than 1/3 of validators by stake (non-retriable).".to_string()];
         if submission_non_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Non-retriable errors: [{submission_non_retriable_errors}]."
-            ));
+            msgs.push(format!("Non-retriable errors: [{submission_non_retriable_errors}]."));
         }
         if submission_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Retriable errors: [{submission_retriable_errors}]."
-            ));
+            msgs.push(format!("Retriable errors: [{submission_retriable_errors}]."));
         }
         write!(f, "{}", msgs.join(" "))
     }
@@ -216,18 +206,12 @@ impl TransactionDriverError {
         };
         let mut msgs =
             vec!["Transaction execution observed forked outputs (non-retriable).".to_string()];
-        msgs.push(format!(
-            "Observed effects digests: [{observed_effects_digests}]."
-        ));
+        msgs.push(format!("Observed effects digests: [{observed_effects_digests}]."));
         if submission_non_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Non-retriable errors: [{submission_non_retriable_errors}]."
-            ));
+            msgs.push(format!("Non-retriable errors: [{submission_non_retriable_errors}]."));
         }
         if submission_retriable_errors.total_stake > 0 {
-            msgs.push(format!(
-                "Retriable errors: [{submission_retriable_errors}]."
-            ));
+            msgs.push(format!("Retriable errors: [{submission_retriable_errors}]."));
         }
         write!(f, "{}", msgs.join(" "))
     }
@@ -255,10 +239,7 @@ impl std::fmt::Display for TransactionDriverError {
                     "Transaction timed out after {} attempts. Timeout: {:?}. Last error: {}",
                     attempts,
                     timeout,
-                    last_error
-                        .as_ref()
-                        .map(|e| e.to_string())
-                        .unwrap_or_default()
+                    last_error.as_ref().map(|e| e.to_string()).unwrap_or_default()
                 )
             }
         }
@@ -320,9 +301,7 @@ pub(crate) fn aggregate_request_errors(
     for (name, stake, error) in errors {
         total_stake += stake;
         let key = format_transaction_request_error(&error);
-        let entry = aggregated_errors
-            .entry(key)
-            .or_insert_with(|| (vec![], 0, error.categorize()));
+        let entry = aggregated_errors.entry(key).or_insert_with(|| (vec![], 0, error.categorize()));
         entry.0.push(name);
         entry.1 += stake;
     }
@@ -333,10 +312,7 @@ pub(crate) fn aggregate_request_errors(
         .collect();
     errors.sort_by_key(|(_, _, stake, _)| std::cmp::Reverse(*stake));
 
-    AggregatedRequestErrors {
-        errors,
-        total_stake,
-    }
+    AggregatedRequestErrors { errors, total_stake }
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]

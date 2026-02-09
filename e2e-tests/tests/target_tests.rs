@@ -46,10 +46,7 @@ fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new([0xAA; 32]),
-    }
+    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
 }
 
 fn make_genesis_model_config(
@@ -100,27 +97,19 @@ async fn test_genesis_target_bootstrap() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Query system state to verify targets were created
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     // Verify we have an active model
     assert!(
-        system_state
-            .model_registry
-            .active_models
-            .contains_key(&model_id),
+        system_state.model_registry.active_models.contains_key(&model_id),
         "Genesis model should be active"
     );
 
@@ -153,22 +142,11 @@ async fn test_genesis_target_bootstrap() {
 
     // Verify each target has expected properties
     for target in &response.targets {
-        assert_eq!(
-            target.status.as_deref(),
-            Some("open"),
-            "Genesis target should be open"
-        );
-        assert_eq!(
-            target.generation_epoch,
-            Some(0),
-            "Genesis target epoch should be 0"
-        );
+        assert_eq!(target.status.as_deref(), Some("open"), "Genesis target should be open");
+        assert_eq!(target.generation_epoch, Some(0), "Genesis target epoch should be 0");
     }
 
-    info!(
-        "test_genesis_target_bootstrap passed: {} targets created",
-        response.targets.len()
-    );
+    info!("test_genesis_target_bootstrap passed: {} targets created", response.targets.len());
 }
 
 // ===================================================================
@@ -191,22 +169,17 @@ async fn test_submit_data_fills_target() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let miner = test_cluster.get_addresses()[0];
 
     // Get system state to find thresholds
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
@@ -279,10 +252,7 @@ async fn test_submit_data_fills_target() {
     filled_request.status_filter = Some("filled".to_string());
     filled_request.page_size = Some(100);
     let filled_response = client.list_targets(filled_request).await.unwrap();
-    assert!(
-        !filled_response.targets.is_empty(),
-        "Should have a filled target after submission"
-    );
+    assert!(!filled_response.targets.is_empty(), "Should have a filled target after submission");
 
     // Verify replacement target was spawned (total count should increase by 1)
     let mut final_request = ListTargetsRequest::default();
@@ -314,22 +284,17 @@ async fn test_claim_rewards_after_challenge_window() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let miner = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
@@ -370,10 +335,7 @@ async fn test_claim_rewards_after_challenge_window() {
     );
 
     let submit_response = test_cluster.sign_and_execute_transaction(&submit_tx).await;
-    assert!(
-        submit_response.effects.status().is_ok(),
-        "SubmitData should succeed"
-    );
+    assert!(submit_response.effects.status().is_ok(), "SubmitData should succeed");
 
     info!("Target filled in epoch 0");
 
@@ -415,16 +377,9 @@ async fn test_claim_rewards_after_challenge_window() {
     let claimed_target = claimed_response
         .targets
         .iter()
-        .find(|t| {
-            t.id.as_ref()
-                .and_then(|id_str| id_str.parse().ok())
-                == Some(target_id)
-        });
+        .find(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
 
-    assert!(
-        claimed_target.is_some(),
-        "Target should be claimed after ClaimRewards"
-    );
+    assert!(claimed_target.is_some(), "Target should be claimed after ClaimRewards");
 
     info!("test_claim_rewards_after_challenge_window passed");
 }
@@ -446,20 +401,15 @@ async fn test_epoch_boundary_issues_new_targets() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Get initial target count and parameters
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     let initial_targets_per_epoch = system_state.parameters.target_initial_targets_per_epoch;
 
@@ -471,10 +421,7 @@ async fn test_epoch_boundary_issues_new_targets() {
     let epoch0_response = client.list_targets(epoch0_request).await.unwrap();
     let epoch0_count = epoch0_response.targets.len();
 
-    info!(
-        "Epoch 0: {} targets (expected {})",
-        epoch0_count, initial_targets_per_epoch
-    );
+    info!("Epoch 0: {} targets (expected {})", epoch0_count, initial_targets_per_epoch);
 
     // Advance to epoch 1
     test_cluster.trigger_reconfiguration().await;
@@ -497,11 +444,7 @@ async fn test_epoch_boundary_issues_new_targets() {
     let total_response = client.list_targets(total_request).await.unwrap();
     let total_count = total_response.targets.len();
 
-    assert_eq!(
-        total_count,
-        epoch0_count + epoch1_count,
-        "Should have epoch 0 + epoch 1 targets"
-    );
+    assert_eq!(total_count, epoch0_count + epoch1_count, "Should have epoch 0 + epoch 1 targets");
 
     info!(
         "test_epoch_boundary_issues_new_targets passed: {} epoch 0 targets, {} epoch 1 targets",
@@ -526,10 +469,8 @@ async fn test_claim_expired_unfilled_target() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let claimer = test_cluster.get_addresses()[0];
 
@@ -584,16 +525,9 @@ async fn test_claim_expired_unfilled_target() {
     let claimed_target = claimed_response
         .targets
         .iter()
-        .find(|t| {
-            t.id.as_ref()
-                .and_then(|id_str| id_str.parse().ok())
-                == Some(target_id)
-        });
+        .find(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
 
-    assert!(
-        claimed_target.is_some(),
-        "Target should be claimed after ClaimRewards"
-    );
+    assert!(claimed_target.is_some(), "Target should be claimed after ClaimRewards");
 
     info!("test_claim_expired_unfilled_target passed");
 }
@@ -615,22 +549,17 @@ async fn test_submit_data_validation_errors() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let miner = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
     let distance_threshold = system_state.target_state.distance_threshold;
@@ -688,11 +617,7 @@ async fn test_submit_data_validation_errors() {
             .unwrap()
             .expect("Miner should have a gas object");
 
-        let wrong_dim = if embedding_dim > 10 {
-            embedding_dim - 10
-        } else {
-            embedding_dim + 10
-        };
+        let wrong_dim = if embedding_dim > 10 { embedding_dim - 10 } else { embedding_dim + 10 };
 
         let bad_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {

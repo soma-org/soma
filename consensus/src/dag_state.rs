@@ -14,12 +14,12 @@ use tracing::{debug, error, info, trace};
 use types::committee::AuthorityIndex;
 use types::consensus::{
     block::{
-        genesis_blocks, BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, Round, Slot,
-        TransactionIndex, VerifiedBlock, GENESIS_ROUND,
+        BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, GENESIS_ROUND, Round, Slot,
+        TransactionIndex, VerifiedBlock, genesis_blocks,
     },
     commit::{
-        load_committed_subdag_from_store, CommitAPI as _, CommitDigest, CommitIndex, CommitInfo,
-        CommitRef, CommitVote, CommittedSubDag, TrustedCommit, GENESIS_COMMIT_INDEX,
+        CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommitRef, CommitVote,
+        CommittedSubDag, GENESIS_COMMIT_INDEX, TrustedCommit, load_committed_subdag_from_store,
     },
     context::Context,
     leader_scoring::{ReputationScores, ScoringSubdag},
@@ -189,10 +189,8 @@ impl DagState {
                     .store
                     .scan_last_blocks_by_author(authority_index, 1, None)
                     .expect("Database error");
-                let last_block_round = last_block
-                    .last()
-                    .map(|b| b.round())
-                    .unwrap_or(GENESIS_ROUND);
+                let last_block_round =
+                    last_block.last().map(|b| b.round()).unwrap_or(GENESIS_ROUND);
 
                 let eviction_round =
                     Self::eviction_round(last_block_round, state.gc_round(), state.cached_rounds);
@@ -214,10 +212,7 @@ impl DagState {
             debug!(
                 "Recovered blocks {}: {:?}",
                 authority_index,
-                blocks
-                    .iter()
-                    .map(|b| b.reference())
-                    .collect::<Vec<BlockRef>>()
+                blocks.iter().map(|b| b.reference()).collect::<Vec<BlockRef>>()
             );
         }
 
@@ -278,11 +273,7 @@ impl DagState {
 
     /// Accepts a block into DagState and keeps it in memory.
     pub(crate) fn accept_block(&mut self, block: VerifiedBlock) {
-        assert_ne!(
-            block.round(),
-            0,
-            "Genesis block should not be accepted into DAG."
-        );
+        assert_ne!(block.round(), 0, "Genesis block should not be accepted into DAG.");
 
         let block_ref = block.reference();
         if self.contains_block(&block_ref) {
@@ -311,18 +302,13 @@ impl DagState {
         }
         self.update_block_metadata(&block);
         self.blocks_to_write.push(block);
-        let source = if self.context.own_index == block_ref.author {
-            "own"
-        } else {
-            "others"
-        };
+        let source = if self.context.own_index == block_ref.author { "own" } else { "others" };
     }
 
     /// Updates internal metadata for a block.
     fn update_block_metadata(&mut self, block: &VerifiedBlock) {
         let block_ref = block.reference();
-        self.recent_blocks
-            .insert(block_ref, BlockInfo::new(block.clone()));
+        self.recent_blocks.insert(block_ref, BlockInfo::new(block.clone()));
         self.recent_refs_by_authority[block_ref.author].insert(block_ref);
 
         if self.threshold_clock.add_block(block_ref) {
@@ -347,10 +333,7 @@ impl DagState {
 
     /// Accepts a blocks into DagState and keeps it in memory.
     pub(crate) fn accept_blocks(&mut self, blocks: Vec<VerifiedBlock>) {
-        debug!(
-            "Accepting blocks: {}",
-            blocks.iter().map(|b| b.reference().to_string()).join(",")
-        );
+        debug!("Accepting blocks: {}", blocks.iter().map(|b| b.reference().to_string()).join(","));
         for block in blocks {
             self.accept_block(block);
         }
@@ -359,9 +342,7 @@ impl DagState {
     /// Gets a block by checking cached recent blocks then storage.
     /// Returns None when the block is not found.
     pub(crate) fn get_block(&self, reference: &BlockRef) -> Option<VerifiedBlock> {
-        self.get_blocks(&[*reference])
-            .pop()
-            .expect("Exactly one element should be returned")
+        self.get_blocks(&[*reference]).pop().expect("Exactly one element should be returned")
     }
 
     /// Gets blocks by checking genesis, cached recent blocks in memory, then storage.
@@ -389,10 +370,7 @@ impl DagState {
             return blocks;
         }
 
-        let missing_refs = missing
-            .iter()
-            .map(|(_, block_ref)| **block_ref)
-            .collect::<Vec<_>>();
+        let missing_refs = missing.iter().map(|(_, block_ref)| **block_ref).collect::<Vec<_>>();
         let store_results = self
             .store
             .read_blocks(&missing_refs)
@@ -431,11 +409,7 @@ impl DagState {
         let mut blocks = vec![];
         for (_block_ref, block_info) in self.recent_blocks.range((
             Included(BlockRef::new(round, AuthorityIndex::ZERO, BlockDigest::MIN)),
-            Excluded(BlockRef::new(
-                round + 1,
-                AuthorityIndex::ZERO,
-                BlockDigest::MIN,
-            )),
+            Excluded(BlockRef::new(round + 1, AuthorityIndex::ZERO, BlockDigest::MIN)),
         )) {
             blocks.push(block_info.block.clone())
         }
@@ -464,11 +438,7 @@ impl DagState {
         }
         linked
             .range((
-                Included(BlockRef::new(
-                    earlier_round,
-                    AuthorityIndex::ZERO,
-                    BlockDigest::MIN,
-                )),
+                Included(BlockRef::new(earlier_round, AuthorityIndex::ZERO, BlockDigest::MIN)),
                 Unbounded,
             ))
             .map(|r| {
@@ -535,16 +505,10 @@ impl DagState {
         let mut blocks = vec![];
         for block_ref in self.recent_refs_by_authority[authority].range((
             Included(BlockRef::new(start_round, authority, BlockDigest::MIN)),
-            Excluded(BlockRef::new(
-                end_round,
-                AuthorityIndex::MIN,
-                BlockDigest::MIN,
-            )),
+            Excluded(BlockRef::new(end_round, AuthorityIndex::MIN, BlockDigest::MIN)),
         )) {
-            let block_info = self
-                .recent_blocks
-                .get(block_ref)
-                .expect("Block should exist in recent blocks");
+            let block_info =
+                self.recent_blocks.get(block_ref).expect("Block should exist in recent blocks");
             blocks.push(block_info.block.clone());
             if blocks.len() >= limit {
                 break;
@@ -567,17 +531,11 @@ impl DagState {
         let block_ref = self.recent_refs_by_authority[authority]
             .range((
                 Included(BlockRef::new(start_round, authority, BlockDigest::MIN)),
-                Excluded(BlockRef::new(
-                    end_round,
-                    AuthorityIndex::MIN,
-                    BlockDigest::MIN,
-                )),
+                Excluded(BlockRef::new(end_round, AuthorityIndex::MIN, BlockDigest::MIN)),
             ))
             .last()?;
 
-        self.recent_blocks
-            .get(block_ref)
-            .map(|block_info| block_info.block.clone())
+        self.recent_blocks.get(block_ref).map(|block_info| block_info.block.clone())
     }
 
     /// Returns the last block proposed per authority with `evicted round < round < end_round`.
@@ -605,11 +563,8 @@ impl DagState {
         }
 
         for (authority_index, block_refs) in self.recent_refs_by_authority.iter().enumerate() {
-            let authority_index = self
-                .context
-                .committee
-                .to_authority_index(authority_index)
-                .unwrap();
+            let authority_index =
+                self.context.committee.to_authority_index(authority_index).unwrap();
 
             let last_evicted_round = self.evicted_rounds[authority_index];
             if end_round.saturating_sub(1) <= last_evicted_round {
@@ -700,10 +655,7 @@ impl DagState {
             return exist;
         }
 
-        let missing_refs = missing
-            .iter()
-            .map(|(_, block_ref)| *block_ref)
-            .collect::<Vec<_>>();
+        let missing_refs = missing.iter().map(|(_, block_ref)| *block_ref).collect::<Vec<_>>();
         let store_results = self
             .store
             .contains_blocks(&missing_refs)
@@ -731,10 +683,7 @@ impl DagState {
             }
             false
         } else {
-            panic!(
-                "Block {:?} not found in cache to set as committed.",
-                block_ref
-            );
+            panic!("Block {:?} not found in cache to set as committed.", block_ref);
         }
     }
 
@@ -820,9 +769,7 @@ impl DagState {
                     last_commit, commit
                 );
             }
-            commit
-                .timestamp_ms()
-                .saturating_sub(last_commit.timestamp_ms())
+            commit.timestamp_ms().saturating_sub(last_commit.timestamp_ms())
         } else {
             assert_eq!(commit.index(), 1);
             0
@@ -843,10 +790,8 @@ impl DagState {
         }
 
         for block_ref in commit.blocks().iter() {
-            self.last_committed_rounds[block_ref.author] = max(
-                self.last_committed_rounds[block_ref.author],
-                block_ref.round,
-            );
+            self.last_committed_rounds[block_ref.author] =
+                max(self.last_committed_rounds[block_ref.author], block_ref.round);
         }
 
         for (i, round) in self.last_committed_rounds.iter().enumerate() {
@@ -876,16 +821,10 @@ impl DagState {
         // scoring_subdag should be empty in either case at this point.
         assert!(self.scoring_subdag.is_empty());
 
-        let commit_info = CommitInfo {
-            committed_rounds: self.last_committed_rounds.clone(),
-            reputation_scores,
-        };
-        let last_commit = self
-            .last_commit
-            .as_ref()
-            .expect("Last commit should already be set.");
-        self.commit_info_to_write
-            .push((last_commit.reference(), commit_info));
+        let commit_info =
+            CommitInfo { committed_rounds: self.last_committed_rounds.clone(), reputation_scores };
+        let last_commit = self.last_commit.as_ref().expect("Last commit should already be set.");
+        self.commit_info_to_write.push((last_commit.reference(), commit_info));
     }
 
     pub(crate) fn add_finalized_commit(
@@ -893,8 +832,7 @@ impl DagState {
         commit_ref: CommitRef,
         rejected_transactions: BTreeMap<BlockRef, Vec<TransactionIndex>>,
     ) {
-        self.finalized_commits_to_write
-            .push((commit_ref, rejected_transactions));
+        self.finalized_commits_to_write.push((commit_ref, rejected_transactions));
     }
 
     pub(crate) fn take_commit_votes(&mut self, limit: usize) -> Vec<CommitVote> {
@@ -995,20 +933,11 @@ impl DagState {
         debug!(
             "Flushing {} blocks ({}), {} commits ({}), {} commit infos ({}), {} finalized commits ({}) to storage.",
             pending_blocks.len(),
-            pending_blocks
-                .iter()
-                .map(|b| b.reference().to_string())
-                .join(","),
+            pending_blocks.iter().map(|b| b.reference().to_string()).join(","),
             pending_commits.len(),
-            pending_commits
-                .iter()
-                .map(|c| c.reference().to_string())
-                .join(","),
+            pending_commits.iter().map(|c| c.reference().to_string()).join(","),
             pending_commit_info.len(),
-            pending_commit_info
-                .iter()
-                .map(|(commit_ref, _)| commit_ref.to_string())
-                .join(","),
+            pending_commit_info.iter().map(|(commit_ref, _)| commit_ref.to_string()).join(","),
             pending_finalized_commits.len(),
             pending_finalized_commits
                 .iter()
@@ -1149,10 +1078,6 @@ struct BlockInfo {
 
 impl BlockInfo {
     fn new(block: VerifiedBlock) -> Self {
-        Self {
-            block,
-            committed: false,
-            included: false,
-        }
+        Self { block, committed: false, included: false }
     }
 }

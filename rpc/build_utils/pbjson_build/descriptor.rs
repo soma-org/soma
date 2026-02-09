@@ -32,15 +32,9 @@ impl Display for Package {
 impl Package {
     pub fn new(s: impl AsRef<str>) -> Self {
         let s = s.as_ref();
-        assert!(
-            !s.starts_with('.'),
-            "package cannot start with \'.\', got \"{}\"",
-            s
-        );
+        assert!(!s.starts_with('.'), "package cannot start with \'.\', got \"{}\"", s);
 
-        Self {
-            path: s.split('.').map(TypeName::new).collect(),
-        }
+        Self { path: s.split('.').map(TypeName::new).collect() }
     }
 
     pub fn path(&self) -> &[TypeName] {
@@ -60,11 +54,7 @@ impl Display for TypeName {
 impl TypeName {
     pub fn new(s: impl Into<String>) -> Self {
         let s = s.into();
-        assert!(
-            !s.contains('.'),
-            "type name cannot contain \'.\', got \"{}\"",
-            s
-        );
+        assert!(!s.contains('.'), "type name cannot contain \'.\', got \"{}\"", s);
         Self(s)
     }
 
@@ -97,10 +87,7 @@ impl Display for TypePath {
 
 impl TypePath {
     pub fn new(package: Package) -> Self {
-        Self {
-            package,
-            path: Default::default(),
-        }
+        Self { package, path: Default::default() }
     }
 
     pub fn package(&self) -> &Package {
@@ -118,17 +105,9 @@ impl TypePath {
     }
 
     pub fn child(&self, name: TypeName) -> Self {
-        let path = self
-            .path
-            .iter()
-            .cloned()
-            .chain(std::iter::once(name))
-            .collect();
+        let path = self.path.iter().cloned().chain(std::iter::once(name)).collect();
 
-        Self {
-            package: self.package.clone(),
-            path,
-        }
+        Self { package: self.package.clone(), path }
     }
 
     /// Performs a prefix match, returning the length of the match in path segments if any
@@ -223,9 +202,7 @@ impl DescriptorSet {
         let name = TypeName::new(descriptor.name.expect("expected name"));
         self.register_descriptor(
             path.child(name),
-            Descriptor::Enum(EnumDescriptor {
-                values: descriptor.value,
-            }),
+            Descriptor::Enum(EnumDescriptor { values: descriptor.value }),
         );
     }
 
@@ -266,10 +243,7 @@ pub struct MessageDescriptor {
 impl MessageDescriptor {
     /// Whether this is an auto-generated type for the map field
     pub fn is_map(&self) -> bool {
-        self.options
-            .as_ref()
-            .and_then(|options| options.map_entry)
-            .unwrap_or(false)
+        self.options.as_ref().and_then(|options| options.map_entry).unwrap_or(false)
     }
 }
 
@@ -296,17 +270,11 @@ mod tests {
 
     #[test]
     fn test_handle_camel_case_in_package() {
-        assert_eq!(
-            Package::new("fooBar.baz.boo").to_string(),
-            String::from("foo_bar.baz.boo")
-        )
+        assert_eq!(Package::new("fooBar.baz.boo").to_string(), String::from("foo_bar.baz.boo"))
     }
 
     #[test]
     fn escape_keywords() {
-        assert_eq!(
-            Package::new("type.abstract").to_string(),
-            "r#type.r#abstract"
-        );
+        assert_eq!(Package::new("type.abstract").to_string(), "r#type.r#abstract");
     }
 }

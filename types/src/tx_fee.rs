@@ -19,12 +19,7 @@ impl TransactionFee {
     pub fn new(base_fee: u64, operation_fee: u64, value_fee: u64) -> Self {
         let total_fee = base_fee + operation_fee + value_fee;
 
-        Self {
-            base_fee,
-            operation_fee,
-            value_fee,
-            total_fee,
-        }
+        Self { base_fee, operation_fee, value_fee, total_fee }
     }
 
     pub fn new_from_txn_effects<'a>(

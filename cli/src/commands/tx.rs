@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sdk::wallet_context::WalletContext;
 use types::digests::TransactionDigest;
 
@@ -16,7 +16,7 @@ pub async fn execute(
         .await
         .map_err(|e| anyhow!("Failed to get transaction: {}", e))?;
 
-    Ok(ClientCommandResponse::TransactionQuery(
-        TransactionQueryResponse::from_query_result(&result),
-    ))
+    Ok(ClientCommandResponse::TransactionQuery(TransactionQueryResponse::from_query_result(
+        &result,
+    )))
 }

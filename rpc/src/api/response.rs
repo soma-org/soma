@@ -27,10 +27,7 @@ pub async fn append_info_headers(
 
     if let Ok(latest_checkpoint) = state.reader.inner().get_latest_checkpoint() {
         headers.insert(X_SOMA_EPOCH, latest_checkpoint.epoch().into());
-        headers.insert(
-            X_SOMA_CHECKPOINT_HEIGHT,
-            latest_checkpoint.sequence_number.into(),
-        );
+        headers.insert(X_SOMA_CHECKPOINT_HEIGHT, latest_checkpoint.sequence_number.into());
         headers.insert(X_SOMA_TIMESTAMP_MS, latest_checkpoint.timestamp_ms.into());
 
         headers.insert(
@@ -44,16 +41,11 @@ pub async fn append_info_headers(
 
     if let Ok(lowest_available_checkpoint) = state.reader.inner().get_lowest_available_checkpoint()
     {
-        headers.insert(
-            X_SOMA_LOWEST_AVAILABLE_CHECKPOINT,
-            lowest_available_checkpoint.into(),
-        );
+        headers.insert(X_SOMA_LOWEST_AVAILABLE_CHECKPOINT, lowest_available_checkpoint.into());
     }
 
-    if let Ok(lowest_available_checkpoint_objects) = state
-        .reader
-        .inner()
-        .get_lowest_available_checkpoint_objects()
+    if let Ok(lowest_available_checkpoint_objects) =
+        state.reader.inner().get_lowest_available_checkpoint_objects()
     {
         headers.insert(
             X_SOMA_LOWEST_AVAILABLE_CHECKPOINT_OBJECTS,
@@ -61,9 +53,8 @@ pub async fn append_info_headers(
         );
     }
 
-    if let Some(server_version) = state
-        .server_version()
-        .and_then(|version| version.to_string().try_into().ok())
+    if let Some(server_version) =
+        state.server_version().and_then(|version| version.to_string().try_into().ok())
     {
         headers.insert(axum::http::header::SERVER, server_version);
     }

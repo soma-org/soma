@@ -8,16 +8,10 @@ use tap::Pipe;
 #[tracing::instrument(skip(service))]
 pub fn get_service_info(service: &RpcService) -> Result<GetServiceInfoResponse, RpcError> {
     let latest_checkpoint = service.reader.inner().get_latest_checkpoint()?;
-    let lowest_available_checkpoint = service
-        .reader
-        .inner()
-        .get_lowest_available_checkpoint()?
-        .pipe(Some);
-    let lowest_available_checkpoint_objects = service
-        .reader
-        .inner()
-        .get_lowest_available_checkpoint_objects()?
-        .pipe(Some);
+    let lowest_available_checkpoint =
+        service.reader.inner().get_lowest_available_checkpoint()?.pipe(Some);
+    let lowest_available_checkpoint_objects =
+        service.reader.inner().get_lowest_available_checkpoint_objects()?.pipe(Some);
 
     let mut message = GetServiceInfoResponse::default();
     message.chain_id = Some(Digest::new(service.chain_id().as_bytes().to_owned()).to_string());

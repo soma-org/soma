@@ -78,11 +78,7 @@ impl TransactionDependencies {
     fn from_effects(effects: TransactionEffects, rwlock_builder: &RWLockDependencyBuilder) -> Self {
         let mut dependencies: BTreeSet<_> = effects.dependencies().iter().cloned().collect();
         rwlock_builder.add_dependencies_for(*effects.transaction_digest(), &mut dependencies);
-        Self {
-            digest: *effects.transaction_digest(),
-            dependencies,
-            effects,
-        }
+        Self { digest: *effects.transaction_digest(), dependencies, effects }
     }
 }
 
@@ -124,10 +120,7 @@ impl RWLockDependencyBuilder {
                     InputSharedObject::ReadOnly(obj_ref) => {
                         let obj_key = obj_ref.into();
                         // Read only transaction
-                        read_version
-                            .entry(obj_key)
-                            .or_default()
-                            .push(*effect.transaction_digest());
+                        read_version.entry(obj_key).or_default().push(*effect.transaction_digest());
                     }
                     InputSharedObject::Mutate(obj_ref) => {
                         let obj_key = obj_ref.into();
@@ -149,10 +142,7 @@ impl RWLockDependencyBuilder {
                 }
             }
         }
-        Self {
-            read_version,
-            overwrite_versions,
-        }
+        Self { read_version, overwrite_versions }
     }
 
     pub fn add_dependencies_for(
@@ -170,8 +160,7 @@ impl RWLockDependencyBuilder {
             for dep in reads {
                 trace!(
                     "Assuming additional dependency when constructing checkpoint {:?} -> {:?}",
-                    digest,
-                    *dep
+                    digest, *dep
                 );
                 v.insert(*dep);
             }
@@ -198,10 +187,8 @@ impl InsertState {
                 return Some(InsertState::new(dep_transaction));
             }
         }
-        let transaction = self
-            .transaction
-            .take()
-            .expect("Can't use InsertState after it is finished");
+        let transaction =
+            self.transaction.take().expect("Can't use InsertState after it is finished");
         causal_order.output.push(transaction.effects);
         None
     }
@@ -223,12 +210,7 @@ mod tests {
         let e3 = e(d(3), vec![]);
         let e4 = e(d(4), vec![]);
 
-        let r = extract(CausalOrder::causal_sort(vec![
-            e1.clone(),
-            e2,
-            e3,
-            e4.clone(),
-        ]));
+        let r = extract(CausalOrder::causal_sort(vec![e1.clone(), e2, e3, e4.clone()]));
         assert_eq!(r, vec![3, 4, 2, 1]);
 
         // e1 and e4 are not (directly) causally dependent - ordered lexicographically
@@ -263,15 +245,13 @@ mod tests {
         let r = extract(CausalOrder::causal_sort(vec![e5, e2, e3]));
         assert_eq!(r.len(), 3);
         assert_eq!(*r.get(2).unwrap(), 3); // [3] is the last
-                                           // both [5] and [2] are present (but order is not fixed)
+        // both [5] and [2] are present (but order is not fixed)
         assert!(r.contains(&5));
         assert!(r.contains(&2));
     }
 
     fn extract(e: Vec<TransactionEffects>) -> Vec<u8> {
-        e.into_iter()
-            .map(|e| e.transaction_digest().inner()[0])
-            .collect()
+        e.into_iter().map(|e| e.transaction_digest().inner()[0]).collect()
     }
 
     fn d(i: u8) -> TransactionDigest {

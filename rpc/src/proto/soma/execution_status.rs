@@ -4,14 +4,10 @@ use crate::proto::TryFromProtoError;
 impl From<crate::types::ExecutionStatus> for ExecutionStatus {
     fn from(value: crate::types::ExecutionStatus) -> Self {
         match value {
-            crate::types::ExecutionStatus::Success => Self {
-                success: Some(true),
-                error: None,
-            },
-            crate::types::ExecutionStatus::Failure { error } => Self {
-                success: Some(false),
-                error: Some(error.into()),
-            },
+            crate::types::ExecutionStatus::Success => Self { success: Some(true), error: None },
+            crate::types::ExecutionStatus::Failure { error } => {
+                Self { success: Some(false), error: Some(error.into()) }
+            }
         }
     }
 }
@@ -47,10 +43,9 @@ impl From<crate::types::ExecutionError> for ExecutionError {
 
             E::InvalidTransactionType => (ExecutionErrorKind::InvalidTransactionType, None),
 
-            E::InvalidArguments { reason } => (
-                ExecutionErrorKind::InvalidArguments,
-                Some(ErrorDetails::OtherError(reason)),
-            ),
+            E::InvalidArguments { reason } => {
+                (ExecutionErrorKind::InvalidArguments, Some(ErrorDetails::OtherError(reason)))
+            }
 
             E::DuplicateValidator => (ExecutionErrorKind::DuplicateValidator, None),
             E::NotAValidator => (ExecutionErrorKind::NotAValidator, None),
@@ -65,7 +60,9 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
             E::ModelWeightsUrlMismatch => (ExecutionErrorKind::ModelWeightsUrlMismatch, None),
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
-            E::ModelArchitectureVersionMismatch => (ExecutionErrorKind::ModelArchitectureVersionMismatch, None),
+            E::ModelArchitectureVersionMismatch => {
+                (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
+            }
             E::ModelCommissionRateTooHigh => (ExecutionErrorKind::ModelCommissionRateTooHigh, None),
             E::ModelMinStakeNotMet => (ExecutionErrorKind::ModelMinStakeNotMet, None),
 
@@ -80,14 +77,22 @@ impl From<crate::types::ExecutionError> for ExecutionError {
 
             // Submission errors
             E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
-            E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
-            E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
+            E::EmbeddingDimensionMismatch { .. } => {
+                (ExecutionErrorKind::EmbeddingDimensionMismatch, None)
+            }
+            E::DistanceExceedsThreshold { .. } => {
+                (ExecutionErrorKind::DistanceExceedsThreshold, None)
+            }
             E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
-            E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
+            E::InsufficientEmissionBalance => {
+                (ExecutionErrorKind::InsufficientEmissionBalance, None)
+            }
 
             // Challenge errors
             E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
-            E::InsufficientChallengerBond { .. } => (ExecutionErrorKind::InsufficientChallengerBond, None),
+            E::InsufficientChallengerBond { .. } => {
+                (ExecutionErrorKind::InsufficientChallengerBond, None)
+            }
             E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
             E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
             E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
@@ -111,10 +116,9 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::CertificateDenied => (ExecutionErrorKind::CertificateDenied, None),
             E::SharedObjectCongestion => (ExecutionErrorKind::SharedObjectCongestion, None),
 
-            E::OtherError(msg) => (
-                ExecutionErrorKind::OtherError,
-                Some(ErrorDetails::OtherError(msg)),
-            ),
+            E::OtherError(msg) => {
+                (ExecutionErrorKind::OtherError, Some(ErrorDetails::OtherError(msg)))
+            }
         };
 
         message.kind = Some(kind.into());
@@ -129,15 +133,11 @@ impl TryFrom<&ExecutionStatus> for crate::types::ExecutionStatus {
     type Error = TryFromProtoError;
 
     fn try_from(value: &ExecutionStatus) -> Result<Self, Self::Error> {
-        let success = value
-            .success
-            .ok_or_else(|| TryFromProtoError::missing("success"))?;
+        let success = value.success.ok_or_else(|| TryFromProtoError::missing("success"))?;
 
         match (success, &value.error) {
             (true, None) => Ok(Self::Success),
-            (false, Some(error)) => Ok(Self::Failure {
-                error: error.try_into()?,
-            }),
+            (false, Some(error)) => Ok(Self::Failure { error: error.try_into()? }),
             (true, Some(_)) => Err(TryFromProtoError::invalid(
                 "ExecutionStatus",
                 "error present when success is true",
@@ -204,9 +204,7 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                             .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
                     })
                 } else {
-                    Err(TryFromProtoError::missing(
-                        "object_id for InvalidObjectType",
-                    ))
+                    Err(TryFromProtoError::missing("object_id for InvalidObjectType"))
                 }
             }
 
@@ -244,15 +242,11 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::NoActiveModels => Ok(Self::NoActiveModels),
             K::TargetNotFound => Ok(Self::TargetNotFound),
             K::TargetNotOpen => Ok(Self::TargetNotOpen),
-            K::TargetExpired => Ok(Self::TargetExpired {
-                generation_epoch: 0,
-                current_epoch: 0,
-            }),
+            K::TargetExpired => Ok(Self::TargetExpired { generation_epoch: 0, current_epoch: 0 }),
             K::TargetNotFilled => Ok(Self::TargetNotFilled),
-            K::ChallengeWindowOpen => Ok(Self::ChallengeWindowOpen {
-                fill_epoch: 0,
-                current_epoch: 0,
-            }),
+            K::ChallengeWindowOpen => {
+                Ok(Self::ChallengeWindowOpen { fill_epoch: 0, current_epoch: 0 })
+            }
             K::TargetAlreadyClaimed => Ok(Self::TargetAlreadyClaimed),
 
             // Submission errors
@@ -260,46 +254,35 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 model_id: crate::types::Address::new([0u8; 32]),
                 target_id: crate::types::Address::new([0u8; 32]),
             }),
-            K::EmbeddingDimensionMismatch => Ok(Self::EmbeddingDimensionMismatch {
-                expected: 0,
-                actual: 0,
-            }),
-            K::DistanceExceedsThreshold => Ok(Self::DistanceExceedsThreshold {
-                score: 0,
-                threshold: 0,
-            }),
-            K::InsufficientBond => Ok(Self::InsufficientBond {
-                required: 0,
-                provided: 0,
-            }),
+            K::EmbeddingDimensionMismatch => {
+                Ok(Self::EmbeddingDimensionMismatch { expected: 0, actual: 0 })
+            }
+            K::DistanceExceedsThreshold => {
+                Ok(Self::DistanceExceedsThreshold { score: 0, threshold: 0 })
+            }
+            K::InsufficientBond => Ok(Self::InsufficientBond { required: 0, provided: 0 }),
             K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),
 
             // Challenge errors
-            K::ChallengeWindowClosed => Ok(Self::ChallengeWindowClosed {
-                fill_epoch: 0,
-                current_epoch: 0,
-            }),
-            K::InsufficientChallengerBond => Ok(Self::InsufficientChallengerBond {
-                required: 0,
-                provided: 0,
-            }),
-            K::ChallengeNotFound => Ok(Self::ChallengeNotFound {
-                challenge_id: crate::types::Address::new([0u8; 32]),
-            }),
+            K::ChallengeWindowClosed => {
+                Ok(Self::ChallengeWindowClosed { fill_epoch: 0, current_epoch: 0 })
+            }
+            K::InsufficientChallengerBond => {
+                Ok(Self::InsufficientChallengerBond { required: 0, provided: 0 })
+            }
+            K::ChallengeNotFound => {
+                Ok(Self::ChallengeNotFound { challenge_id: crate::types::Address::new([0u8; 32]) })
+            }
             K::ChallengeNotPending => Ok(Self::ChallengeNotPending {
                 challenge_id: crate::types::Address::new([0u8; 32]),
             }),
-            K::ChallengeExpired => Ok(Self::ChallengeExpired {
-                challenge_epoch: 0,
-                current_epoch: 0,
-            }),
+            K::ChallengeExpired => {
+                Ok(Self::ChallengeExpired { challenge_epoch: 0, current_epoch: 0 })
+            }
             K::InvalidChallengeResult => Ok(Self::InvalidChallengeResult),
             K::InvalidChallengeQuorum => Ok(Self::InvalidChallengeQuorum),
             K::ChallengeAlreadyExists => Ok(Self::ChallengeAlreadyExists),
-            K::DataExceedsMaxSize => Ok(Self::DataExceedsMaxSize {
-                size: 0,
-                max_size: 0,
-            }),
+            K::DataExceedsMaxSize => Ok(Self::DataExceedsMaxSize { size: 0, max_size: 0 }),
 
             K::InsufficientCoinBalance => Ok(Self::InsufficientCoinBalance),
             K::CoinBalanceOverflow => Ok(Self::CoinBalanceOverflow),

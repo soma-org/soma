@@ -88,9 +88,7 @@ impl TransactionInputLoader {
             }
         }
 
-        let objects = self
-            .cache
-            .multi_get_objects_with_more_accurate_error_return(&object_refs)?;
+        let objects = self.cache.multi_get_objects_with_more_accurate_error_return(&object_refs)?;
         assert_eq!(objects.len(), object_refs.len());
         for (index, object) in fetch_indices.into_iter().zip(objects.into_iter()) {
             input_results[index] = Some(ObjectReadResult {
@@ -103,11 +101,7 @@ impl TransactionInputLoader {
             self.read_receiving_objects_for_signing(receiving_objects, epoch_id)?;
 
         Ok((
-            input_results
-                .into_iter()
-                .map(Option::unwrap)
-                .collect::<Vec<_>>()
-                .into(),
+            input_results.into_iter().map(Option::unwrap).collect::<Vec<_>>().into(),
             receiving_results,
         ))
     }
@@ -152,11 +146,7 @@ impl TransactionInputLoader {
                     object_keys.push(objref.into());
                     fetches.push((i, input));
                 }
-                InputObjectKind::SharedObject {
-                    id,
-                    initial_shared_version,
-                    ..
-                } => {
+                InputObjectKind::SharedObject { id, initial_shared_version, .. } => {
                     // If we find a set of assigned versions but one object's version assignments
                     // are missing from the set, it indicates a serious inconsistency:
                     let version = assigned_shared_versions.get(&(*id, *initial_shared_version)).unwrap_or_else(|| {
@@ -182,19 +172,14 @@ impl TransactionInputLoader {
 
         assert!(objects.len() == object_keys.len() && objects.len() == fetches.len());
 
-        for (object, key, (index, input)) in izip!(
-            objects.into_iter(),
-            object_keys.into_iter(),
-            fetches.into_iter()
-        ) {
+        for (object, key, (index, input)) in
+            izip!(objects.into_iter(), object_keys.into_iter(), fetches.into_iter())
+        {
             results[index] = Some(match (object, input) {
                 (Some(obj), InputObjectKind::SharedObject { .. })
                     if obj.full_id() == input.full_object_id() =>
                 {
-                    ObjectReadResult {
-                        input_object_kind: *input,
-                        object: obj.into(),
-                    }
+                    ObjectReadResult { input_object_kind: *input, object: obj.into() }
                 }
                 (_, InputObjectKind::SharedObject { .. }) => {
                     assert!(key.1.is_valid());
@@ -207,32 +192,26 @@ impl TransactionInputLoader {
                     ) {
                         ObjectReadResult {
                             input_object_kind: *input,
-                            object: ObjectReadResultKind::DeletedSharedObject(
-                                version, dependency,
-                            ),
+                            object: ObjectReadResultKind::DeletedSharedObject(version, dependency),
                         }
                     } else {
                         panic!(
                             "All dependencies of tx {tx_key:?} should have been executed now, but Shared Object id: {:?}, version: {:?} is absent in epoch {epoch_id}",
-                            input.full_object_id(), version
+                            input.full_object_id(),
+                            version
                         );
                     }
                 }
-                (Some(obj), input_object_kind) => ObjectReadResult {
-                    input_object_kind: *input_object_kind,
-                    object: obj.into(),
-                },
+                (Some(obj), input_object_kind) => {
+                    ObjectReadResult { input_object_kind: *input_object_kind, object: obj.into() }
+                }
                 _ => panic!(
                     "All dependencies of tx {tx_key:?} should have been executed now, but obj {key:?} is absent"
                 ),
             });
         }
 
-        Ok(results
-            .into_iter()
-            .map(Option::unwrap)
-            .collect::<Vec<_>>()
-            .into())
+        Ok(results.into_iter().map(Option::unwrap).collect::<Vec<_>>().into())
     }
 }
 

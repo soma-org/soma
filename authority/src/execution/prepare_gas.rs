@@ -76,10 +76,7 @@ pub fn prepare_gas(
             }
         }
 
-        return Err((
-            ExecutionFailureStatus::InsufficientGas,
-            TransactionFee::default(),
-        ));
+        return Err((ExecutionFailureStatus::InsufficientGas, TransactionFee::default()));
     }
 
     // Sufficient gas for base fee - deduct it
@@ -113,9 +110,7 @@ fn smash_gas_coins(
     gas_payment: Vec<ObjectRef>,
 ) -> ExecutionResult<ObjectID> {
     if gas_payment.is_empty() {
-        return Err(ExecutionFailureStatus::SomaError(SomaError::from(
-            "No gas payment provided",
-        )));
+        return Err(ExecutionFailureStatus::SomaError(SomaError::from("No gas payment provided")));
     }
 
     let primary_gas_id = gas_payment[0].0;
@@ -123,11 +118,9 @@ fn smash_gas_coins(
     // Skip if only one gas coin
     if gas_payment.len() == 1 {
         // Still need to check ownership and verify it's a coin
-        let primary_gas_obj = store.read_object(&primary_gas_id).ok_or_else(|| {
-            ExecutionFailureStatus::ObjectNotFound {
-                object_id: primary_gas_id,
-            }
-        })?;
+        let primary_gas_obj = store
+            .read_object(&primary_gas_id)
+            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: primary_gas_id })?;
 
         // Verify ownership of primary gas
         if primary_gas_obj.owner().get_owner_address()? != *signer {
@@ -146,11 +139,9 @@ fn smash_gas_coins(
         return Ok(primary_gas_id);
     }
 
-    let primary_gas_obj = store.read_object(&primary_gas_id).ok_or_else(|| {
-        ExecutionFailureStatus::ObjectNotFound {
-            object_id: primary_gas_id,
-        }
-    })?;
+    let primary_gas_obj = store
+        .read_object(&primary_gas_id)
+        .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: primary_gas_id })?;
 
     // Verify ownership of primary gas
     if primary_gas_obj.owner().get_owner_address()? != *signer {
@@ -285,9 +276,5 @@ fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> Execution
 
 // Helper function to merge fee components for reporting
 fn merge_fee_components(base_fee: u64, remaining_fee: TransactionFee) -> TransactionFee {
-    TransactionFee::new(
-        base_fee,
-        remaining_fee.operation_fee,
-        remaining_fee.value_fee,
-    )
+    TransactionFee::new(base_fee, remaining_fee.operation_fee, remaining_fee.value_fee)
 }

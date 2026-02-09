@@ -22,9 +22,7 @@ pub struct LinearModule<B: Backend> {
 
 impl<B: Backend> LinearModule<B> {
     pub fn new(device: &B::Device) -> Self {
-        LinearModule {
-            linear: LinearConfig::new(2, 4).init(device),
-        }
+        LinearModule { linear: LinearConfig::new(2, 4).init(device) }
     }
 
     pub fn forward(&self, input: Tensor<B, 1>) -> Tensor<B, 1> {
@@ -47,12 +45,7 @@ fn test_linear_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 1,
-            &vec![input_dim, output_dim],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 1, &vec![input_dim, output_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear.bias".to_string(),
@@ -63,9 +56,7 @@ fn test_linear_ones() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&vec![input_dim], 1.0)
-        .to_tensor_data()
-        .unwrap();
+    let input_data = constant_array(&vec![input_dim], 1.0).to_tensor_data().unwrap();
     let input_tensor = Tensor::from_data(input_data, &device);
 
     let output = model.forward(input_tensor);
@@ -74,9 +65,7 @@ fn test_linear_ones() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
 
 #[test]
@@ -87,12 +76,7 @@ fn test_linear_uniform() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 1,
-            &vec![input_dim, output_dim],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 1, &vec![input_dim, output_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear.bias".to_string(),
@@ -104,9 +88,7 @@ fn test_linear_uniform() {
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2, &vec![input_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
+    let input_data = uniform_array(seed + 2, &vec![input_dim], 0.0, 1.0).to_tensor_data().unwrap();
     let input_tensor = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
 
@@ -115,7 +97,5 @@ fn test_linear_uniform() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

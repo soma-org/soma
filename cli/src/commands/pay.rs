@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
 use types::base::SomaAddress;
@@ -49,9 +49,7 @@ pub async fn execute(
         }
         None => {
             // Auto-select coins from sender's balance
-            let gas_objects = context
-                .get_gas_objects_owned_by_address(sender, Some(10))
-                .await?;
+            let gas_objects = context.get_gas_objects_owned_by_address(sender, Some(10)).await?;
             if gas_objects.is_empty() {
                 bail!("No coins found for address {}", sender);
             }

@@ -49,14 +49,7 @@ pub fn generate_message<W: Write>(
 
     // Generate Serialize
     write_serialize_start(0, &rust_type, writer)?;
-    write_message_serialize(
-        resolver,
-        2,
-        message,
-        writer,
-        emit_fields,
-        preserve_proto_field_names,
-    )?;
+    write_message_serialize(resolver, 2, message, writer, emit_fields, preserve_proto_field_names)?;
     write_serialize_end(0, writer)?;
 
     // Generate Deserialize
@@ -147,11 +140,8 @@ fn write_struct_serialize_start<W: Write>(
 ) -> Result<()> {
     writeln!(writer, "{}use serde::ser::SerializeStruct;", Indent(indent))?;
 
-    let required_len = message
-        .fields
-        .iter()
-        .filter(|member| member.field_modifier.is_required())
-        .count();
+    let required_len =
+        message.fields.iter().filter(|member| member.field_modifier.is_required()).count();
 
     if required_len != message.fields.len() || !message.one_ofs.is_empty() {
         writeln!(writer, "{}let mut len = {};", Indent(indent), required_len)?;
@@ -171,12 +161,7 @@ fn write_struct_serialize_start<W: Write>(
     }
 
     for one_of in &message.one_ofs {
-        writeln!(
-            writer,
-            "{}if self.{}.is_some() {{",
-            Indent(indent),
-            one_of.rust_field_name()
-        )?;
+        writeln!(writer, "{}if self.{}.is_some() {{", Indent(indent), one_of.rust_field_name())?;
         writeln!(writer, "{}len += 1;", Indent(indent + 1))?;
         writeln!(writer, "{}}}", Indent(indent))?;
     }
@@ -240,11 +225,8 @@ fn write_serialize_variable<W: Write>(
     preserve_proto_field_names: bool,
 ) -> Result<()> {
     let json_name = field.json_name();
-    let field_name = if preserve_proto_field_names {
-        field.name.as_str()
-    } else {
-        json_name.as_str()
-    };
+    let field_name =
+        if preserve_proto_field_names { field.name.as_str() } else { json_name.as_str() };
     match &field.field_type {
         FieldType::Scalar(scalar) => write_serialize_scalar_variable(
             indent,
@@ -403,11 +385,7 @@ fn write_serialize_scalar_variable<W: Write>(
             )
         }
         _ => {
-            writeln!(
-                writer,
-                "{}#[allow(clippy::needless_borrow)]",
-                Indent(indent)
-            )?;
+            writeln!(writer, "{}#[allow(clippy::needless_borrow)]", Indent(indent))?;
             writeln!(
                 writer,
                 "{}#[allow(clippy::needless_borrows_for_generic_args)]",
@@ -458,11 +436,7 @@ fn write_serialize_field<W: Write>(
                 Indent(indent),
                 variable.as_unref
             )?;
-            let variable = Variable {
-                as_ref: "v",
-                as_unref: "*v",
-                raw: "v",
-            };
+            let variable = Variable { as_ref: "v", as_unref: "*v", raw: "v" };
             write_serialize_variable(
                 resolver,
                 indent + 1,
@@ -514,11 +488,7 @@ fn write_serialize_one_of<W: Write>(
             resolver.rust_type(&one_of.path),
             field.rust_type_name(),
         )?;
-        let variable = Variable {
-            as_ref: "v",
-            as_unref: "*v",
-            raw: "v",
-        };
+        let variable = Variable { as_ref: "v", as_unref: "*v", raw: "v" };
         write_serialize_variable(
             resolver,
             indent + 3,
@@ -547,11 +517,7 @@ fn write_deserialize_message<W: Write>(
 
     writeln!(writer, "{}struct GeneratedVisitor;", Indent(indent))?;
 
-    writeln!(
-        writer,
-        "{}#[allow(clippy::useless_conversion)]",
-        Indent(indent)
-    )?;
+    writeln!(writer, "{}#[allow(clippy::useless_conversion)]", Indent(indent))?;
     writeln!(writer, "{}#[allow(clippy::unit_arg)]", Indent(indent))?;
     writeln!(
         writer,
@@ -572,29 +538,15 @@ fn write_deserialize_message<W: Write>(
     )?;
 
     for field in &message.fields {
-        writeln!(
-            writer,
-            "{}let mut {}__ = None;",
-            Indent(indent + 2),
-            field.rust_field_name(),
-        )?;
+        writeln!(writer, "{}let mut {}__ = None;", Indent(indent + 2), field.rust_field_name(),)?;
     }
 
     for one_of in &message.one_ofs {
-        writeln!(
-            writer,
-            "{}let mut {}__ = None;",
-            Indent(indent + 2),
-            one_of.rust_field_name(),
-        )?;
+        writeln!(writer, "{}let mut {}__ = None;", Indent(indent + 2), one_of.rust_field_name(),)?;
     }
 
     if !message.fields.is_empty() || !message.one_ofs.is_empty() {
-        writeln!(
-            writer,
-            "{}while let Some(k) = map_.next_key()? {{",
-            Indent(indent + 2)
-        )?;
+        writeln!(writer, "{}while let Some(k) = map_.next_key()? {{", Indent(indent + 2))?;
 
         writeln!(writer, "{}match k {{", Indent(indent + 3))?;
 
@@ -620,11 +572,7 @@ fn write_deserialize_message<W: Write>(
         }
 
         if ignore_unknown_fields {
-            writeln!(
-                writer,
-                "{}GeneratedField::__SkipField__ => {{",
-                Indent(indent + 4),
-            )?;
+            writeln!(writer, "{}GeneratedField::__SkipField__ => {{", Indent(indent + 4),)?;
             writeln!(
                 writer,
                 "{}let _ = map_.next_value::<serde::de::IgnoredAny>()?;",
@@ -778,11 +726,7 @@ fn write_deserialize_field_name<W: Write>(
             }
         }
         if ignore_unknown_fields {
-            writeln!(
-                writer,
-                "{}_ => Ok(GeneratedField::__SkipField__),",
-                Indent(indent + 5)
-            )?;
+            writeln!(writer, "{}_ => Ok(GeneratedField::__SkipField__),", Indent(indent + 5))?;
         } else {
             writeln!(
                 writer,
@@ -792,11 +736,7 @@ fn write_deserialize_field_name<W: Write>(
         }
         writeln!(writer, "{}}}", Indent(indent + 4))?;
     } else if ignore_unknown_fields {
-        writeln!(
-            writer,
-            "{}Ok(GeneratedField::__SkipField__)",
-            Indent(indent + 5)
-        )?;
+        writeln!(writer, "{}Ok(GeneratedField::__SkipField__)", Indent(indent + 5))?;
     } else {
         writeln!(
             writer,
@@ -822,19 +762,10 @@ fn write_fields_enum<'a, W: Write, I: Iterator<Item = &'a str>>(
     fields: I,
     ignore_unknown_fields: bool,
 ) -> Result<()> {
-    writeln!(
-        writer,
-        "{}#[allow(clippy::enum_variant_names)]",
-        Indent(indent)
-    )?;
+    writeln!(writer, "{}#[allow(clippy::enum_variant_names)]", Indent(indent))?;
     writeln!(writer, "{}enum GeneratedField {{", Indent(indent))?;
     for type_name in fields {
-        writeln!(
-            writer,
-            "{}{},",
-            Indent(indent + 1),
-            escape_type(type_name.to_string())
-        )?;
+        writeln!(writer, "{}{},", Indent(indent + 1), escape_type(type_name.to_string()))?;
     }
 
     if ignore_unknown_fields {
@@ -858,18 +789,8 @@ fn write_deserialize_field<W: Write>(
     };
 
     let json_name = field.json_name();
-    writeln!(
-        writer,
-        "{}GeneratedField::{} => {{",
-        Indent(indent),
-        field.rust_type_name()
-    )?;
-    writeln!(
-        writer,
-        "{}if {}__.is_some() {{",
-        Indent(indent + 1),
-        field_name
-    )?;
+    writeln!(writer, "{}GeneratedField::{} => {{", Indent(indent), field.rust_type_name())?;
+    writeln!(writer, "{}if {}__.is_some() {{", Indent(indent + 1), field_name)?;
 
     // Note: this will report duplicate field if multiple value are specified for a one of
     writeln!(
@@ -1136,11 +1057,7 @@ fn write_encode_scalar_field<W: Write>(
                 Indent(indent + 1),
                 deserializer
             )?;
-            writeln!(
-                writer,
-                "{}.into_iter().map(|x| x.0).collect())",
-                Indent(indent + 2)
-            )?;
+            writeln!(writer, "{}.into_iter().map(|x| x.0).collect())", Indent(indent + 2))?;
         }
         _ => {
             writeln!(

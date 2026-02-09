@@ -1,13 +1,13 @@
-use rand::{rngs::StdRng, SeedableRng as _};
+use rand::{SeedableRng as _, rngs::StdRng};
 use tokio::sync::{broadcast, mpsc};
 use types::{
     crypto::NetworkKeyPair,
     multiaddr::Multiaddr,
     storage::write_store::WriteStore,
     sync::{
+        PeerEvent,
         active_peers::ActivePeers,
         channel_manager::{ChannelManager, ChannelManagerRequest},
-        PeerEvent,
     },
 };
 

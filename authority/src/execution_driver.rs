@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc::UnboundedReceiver, oneshot, Semaphore},
+    sync::{Semaphore, mpsc::UnboundedReceiver, oneshot},
     time::sleep,
 };
 use tracing::{Instrument, error, error_span, info, trace, warn};
@@ -30,16 +30,15 @@ pub async fn execution_process(
 
     // Loop whenever there is a signal that a new transactions is ready to process.
     loop {
-
         let certificate;
         let execution_env;
-        
+
         tokio::select! {
             result = rx_ready_certificates.recv() => {
                 if let Some(pending_cert) = result {
                     certificate = pending_cert.certificate;
                     execution_env = pending_cert.execution_env;
-                 
+
                 } else {
                     // Should only happen after the AuthorityState has shut down and tx_ready_certificate
                     // has been dropped by ExecutionScheduler.

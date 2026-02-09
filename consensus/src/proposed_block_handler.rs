@@ -21,11 +21,7 @@ impl ProposedBlockHandler {
         rx_block_broadcast: broadcast::Receiver<ExtendedBlock>,
         transaction_certifier: TransactionCertifier,
     ) -> Self {
-        Self {
-            context,
-            rx_block_broadcast,
-            transaction_certifier,
-        }
+        Self { context, rx_block_broadcast, transaction_certifier }
     }
 
     pub(crate) async fn run(&mut self) {
@@ -46,7 +42,6 @@ impl ProposedBlockHandler {
     }
 
     fn handle_proposed_block(&self, extended_block: ExtendedBlock) {
-        self.transaction_certifier
-            .add_proposed_block(extended_block.block.clone());
+        self.transaction_certifier.add_proposed_block(extended_block.block.clone());
     }
 }

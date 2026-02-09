@@ -22,9 +22,7 @@ pub struct LayerNormModule<B: Backend> {
 
 impl<B: Backend> LayerNormModule<B> {
     pub fn new(device: &B::Device) -> Self {
-        LayerNormModule {
-            layer_norm: LayerNormConfig::new(4).init(device),
-        }
+        LayerNormModule { layer_norm: LayerNormConfig::new(4).init(device) }
     }
 
     pub fn forward(&self, input: Tensor<B, 1>) -> Tensor<B, 1> {
@@ -64,9 +62,7 @@ fn test_layer_norm_ones() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
 
 #[test]
@@ -87,9 +83,7 @@ fn test_layer_norm_uniform() {
     let mut model = LayerNormModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2, &vec![4], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
+    let input_data = uniform_array(seed + 2, &vec![4], 0.0, 1.0).to_tensor_data().unwrap();
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
@@ -97,7 +91,5 @@ fn test_layer_norm_uniform() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

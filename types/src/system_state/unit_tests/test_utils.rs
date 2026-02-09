@@ -3,7 +3,10 @@ use crate::{
     base::SomaAddress,
     committee::TOTAL_VOTING_POWER,
     config::genesis_config::SHANNONS_PER_SOMA,
-    crypto::{self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair},
+    crypto::{
+        self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey,
+        ProtocolKeyPair,
+    },
     digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
@@ -51,16 +54,11 @@ impl ValidatorRewards {
     pub fn new(validators: &[Validator]) -> Self {
         let mut initial_stakes = BTreeMap::new();
         for validator in validators {
-            initial_stakes.insert(
-                validator.metadata.soma_address,
-                validator.staking_pool.soma_balance,
-            );
+            initial_stakes
+                .insert(validator.metadata.soma_address, validator.staking_pool.soma_balance);
         }
 
-        Self {
-            initial_stakes,
-            commission_rewards: BTreeMap::new(),
-        }
+        Self { initial_stakes, commission_rewards: BTreeMap::new() }
     }
 
     /// Get the initial stake for a validator
@@ -131,9 +129,7 @@ pub fn stake_with(
 
 // Helper function to request to withdraw stake
 pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> u64 {
-    system_state
-        .request_withdraw_stake(staked_soma)
-        .expect("Failed to withdraw stake")
+    system_state.request_withdraw_stake(staked_soma).expect("Failed to withdraw stake")
 }
 
 // Helper function to distribute rewards and advance epoch.
@@ -508,10 +504,7 @@ pub fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
     let url = Url::parse(url_str).expect("Invalid URL in test helper");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new([0xAA; 32]),
-    }
+    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
 }
 
 /// Commit a model into `pending_models`. Returns the StakedSoma receipt.
@@ -554,26 +547,16 @@ pub fn commit_model_with_commission(
 
 /// Reveal a previously committed model (moves pending -> active).
 /// Must be called in `commit_epoch + 1`.
-pub fn reveal_model(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-) {
+pub fn reveal_model(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
     let url_str = format!("https://example.com/models/{}", model_id);
     let manifest = make_weights_manifest(&url_str);
 
-    system_state
-        .request_reveal_model(owner, model_id, manifest)
-        .expect("Failed to reveal model");
+    system_state.request_reveal_model(owner, model_id, manifest).expect("Failed to reveal model");
 }
 
 /// Commit a model update for an active model.
 /// Uses a deterministic "update" URL derived from model_id.
-pub fn commit_model_update(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-) {
+pub fn commit_model_update(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
     let url_str = format!("https://example.com/models/{}/update", model_id);
     let url_commitment = url_commitment_for(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xCC; 32]);
@@ -584,11 +567,7 @@ pub fn commit_model_update(
 }
 
 /// Reveal a pending model update.
-pub fn reveal_model_update(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-) {
+pub fn reveal_model_update(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
     let url_str = format!("https://example.com/models/{}/update", model_id);
     let manifest = make_weights_manifest(&url_str);
 

@@ -7,19 +7,13 @@ use super::*;
 
 impl GetObjectRequest {
     pub fn new(object_id: &Address) -> Self {
-        Self {
-            object_id: Some(object_id.to_string()),
-            version: None,
-            read_mask: None,
-        }
+        Self { object_id: Some(object_id.to_string()), version: None, read_mask: None }
     }
 }
 
 impl GetObjectResponse {
     pub fn new(object: Object) -> Self {
-        Self {
-            object: Some(object),
-        }
+        Self { object: Some(object) }
     }
 }
 
@@ -31,15 +25,11 @@ impl BatchGetObjectsResponse {
 
 impl GetObjectResult {
     pub fn new_object(object: Object) -> Self {
-        Self {
-            result: Some(get_object_result::Result::Object(object)),
-        }
+        Self { result: Some(get_object_result::Result::Object(object)) }
     }
 
     pub fn new_error(error: crate::proto::google::rpc::Status) -> Self {
-        Self {
-            result: Some(get_object_result::Result::Error(error)),
-        }
+        Self { result: Some(get_object_result::Result::Error(error)) }
     }
 
     pub fn to_result(self) -> Result<Object, crate::proto::google::rpc::Status> {
@@ -56,10 +46,7 @@ impl GetObjectResult {
 
 impl GetTransactionRequest {
     pub fn new(digest: &Digest) -> Self {
-        Self {
-            digest: Some(digest.to_string()),
-            read_mask: None,
-        }
+        Self { digest: Some(digest.to_string()), read_mask: None }
     }
 
     pub fn with_read_mask(mut self, read_mask: FieldMask) -> Self {
@@ -70,9 +57,7 @@ impl GetTransactionRequest {
 
 impl GetTransactionResponse {
     pub fn new(transaction: ExecutedTransaction) -> Self {
-        Self {
-            transaction: Some(transaction),
-        }
+        Self { transaction: Some(transaction) }
     }
 }
 
@@ -84,15 +69,11 @@ impl BatchGetTransactionsResponse {
 
 impl GetTransactionResult {
     pub fn new_transaction(transaction: ExecutedTransaction) -> Self {
-        Self {
-            result: Some(get_transaction_result::Result::Transaction(transaction)),
-        }
+        Self { result: Some(get_transaction_result::Result::Transaction(transaction)) }
     }
 
     pub fn new_error(error: crate::proto::google::rpc::Status) -> Self {
-        Self {
-            result: Some(get_transaction_result::Result::Error(error)),
-        }
+        Self { result: Some(get_transaction_result::Result::Error(error)) }
     }
 
     pub fn to_result(self) -> Result<ExecutedTransaction, crate::proto::google::rpc::Status> {
@@ -109,27 +90,20 @@ impl GetTransactionResult {
 
 impl GetCheckpointRequest {
     pub fn latest() -> Self {
-        Self {
-            read_mask: None,
-            checkpoint_id: None,
-        }
+        Self { read_mask: None, checkpoint_id: None }
     }
 
     pub fn by_sequence_number(checkpoint: u64) -> Self {
         Self {
             read_mask: None,
-            checkpoint_id: Some(get_checkpoint_request::CheckpointId::SequenceNumber(
-                checkpoint,
-            )),
+            checkpoint_id: Some(get_checkpoint_request::CheckpointId::SequenceNumber(checkpoint)),
         }
     }
 
     pub fn by_digest(digest: &Digest) -> Self {
         Self {
             read_mask: None,
-            checkpoint_id: Some(get_checkpoint_request::CheckpointId::Digest(
-                digest.to_string(),
-            )),
+            checkpoint_id: Some(get_checkpoint_request::CheckpointId::Digest(digest.to_string())),
         }
     }
 
@@ -141,25 +115,17 @@ impl GetCheckpointRequest {
 
 impl GetCheckpointResponse {
     pub fn new(checkpoint: Checkpoint) -> Self {
-        Self {
-            checkpoint: Some(checkpoint),
-        }
+        Self { checkpoint: Some(checkpoint) }
     }
 }
 
 impl GetEpochRequest {
     pub fn latest() -> Self {
-        Self {
-            epoch: None,
-            read_mask: None,
-        }
+        Self { epoch: None, read_mask: None }
     }
 
     pub fn new(epoch: u64) -> Self {
-        Self {
-            epoch: Some(epoch),
-            read_mask: None,
-        }
+        Self { epoch: Some(epoch), read_mask: None }
     }
 
     pub fn with_read_mask(mut self, read_mask: FieldMask) -> Self {

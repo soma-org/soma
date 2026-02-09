@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
 use types::object::ObjectID;
@@ -34,11 +34,7 @@ pub async fn execute(
             .ok_or_else(|| anyhow!("No coins found for address {}", sender))?,
     };
 
-    let kind = TransactionKind::TransferCoin {
-        coin: coin_ref,
-        amount: Some(amount),
-        recipient,
-    };
+    let kind = TransactionKind::TransferCoin { coin: coin_ref, amount: Some(amount), recipient };
 
     // Use the coin itself as gas
     crate::client_commands::execute_or_serialize(context, sender, kind, Some(coin_ref), tx_args)

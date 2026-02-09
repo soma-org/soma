@@ -58,32 +58,25 @@ impl Store for MemStore {
 
         for block in write_batch.blocks {
             let block_ref = block.reference();
-            inner.blocks.insert(
-                (block_ref.round, block_ref.author, block_ref.digest),
-                block.clone(),
-            );
+            inner
+                .blocks
+                .insert((block_ref.round, block_ref.author, block_ref.digest), block.clone());
             inner.digests_by_authorities.insert((
                 block_ref.author,
                 block_ref.round,
                 block_ref.digest,
             ));
             for vote in block.commit_votes() {
-                inner
-                    .commit_votes
-                    .insert((vote.index, vote.digest, block_ref));
+                inner.commit_votes.insert((vote.index, vote.digest, block_ref));
             }
         }
 
         for commit in write_batch.commits {
-            inner
-                .commits
-                .insert((commit.index(), commit.digest()), commit);
+            inner.commits.insert((commit.index(), commit.digest()), commit);
         }
 
         for (commit_ref, commit_info) in write_batch.commit_info {
-            inner
-                .commit_info
-                .insert((commit_ref.index, commit_ref.digest), commit_info);
+            inner.commit_info.insert((commit_ref.index, commit_ref.digest), commit_info);
         }
 
         for (commit_ref, rejected_transactions) in write_batch.finalized_commits {
@@ -171,10 +164,7 @@ impl Store for MemStore {
 
     fn read_last_commit(&self) -> ConsensusResult<Option<TrustedCommit>> {
         let inner = self.inner.read();
-        Ok(inner
-            .commits
-            .last_key_value()
-            .map(|(_, commit)| commit.clone()))
+        Ok(inner.commits.last_key_value().map(|(_, commit)| commit.clone()))
     }
 
     fn scan_commits(&self, range: CommitRange) -> ConsensusResult<Vec<TrustedCommit>> {
@@ -204,18 +194,12 @@ impl Store for MemStore {
 
     fn read_last_commit_info(&self) -> ConsensusResult<Option<(CommitRef, CommitInfo)>> {
         let inner = self.inner.read();
-        Ok(inner
-            .commit_info
-            .last_key_value()
-            .map(|(k, v)| (CommitRef::new(k.0, k.1), v.clone())))
+        Ok(inner.commit_info.last_key_value().map(|(k, v)| (CommitRef::new(k.0, k.1), v.clone())))
     }
 
     fn read_last_finalized_commit(&self) -> ConsensusResult<Option<CommitRef>> {
         let inner = self.inner.read();
-        Ok(inner
-            .finalized_commits
-            .last_key_value()
-            .map(|(k, _)| CommitRef::new(k.0, k.1)))
+        Ok(inner.finalized_commits.last_key_value().map(|(k, _)| CommitRef::new(k.0, k.1)))
     }
 
     fn read_rejected_transactions(
@@ -223,9 +207,6 @@ impl Store for MemStore {
         commit_ref: CommitRef,
     ) -> ConsensusResult<Option<BTreeMap<BlockRef, Vec<TransactionIndex>>>> {
         let inner = self.inner.read();
-        Ok(inner
-            .finalized_commits
-            .get(&(commit_ref.index, commit_ref.digest))
-            .cloned())
+        Ok(inner.finalized_commits.get(&(commit_ref.index, commit_ref.digest)).cloned())
     }
 }

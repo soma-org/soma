@@ -3,7 +3,7 @@
 //! Most common operations have been promoted to top-level commands (balance, send, transfer, etc.).
 //! This module contains advanced operations like executing serialized transactions.
 
-use anyhow::{anyhow, bail, ensure, Result};
+use anyhow::{Result, anyhow, bail, ensure};
 use clap::*;
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto::traits::ToFromBytes;
@@ -80,10 +80,7 @@ pub enum SomaClientCommands {
 impl SomaClientCommands {
     pub async fn execute(self, context: &mut WalletContext) -> Result<ClientCommandResponse> {
         match self {
-            SomaClientCommands::ExecuteSerialized {
-                tx_bytes,
-                processing,
-            } => {
+            SomaClientCommands::ExecuteSerialized { tx_bytes, processing } => {
                 let bytes =
                     Base64::decode(&tx_bytes).map_err(|_| anyhow!("Invalid Base64 encoding"))?;
 
@@ -97,10 +94,7 @@ impl SomaClientCommands {
                 execute_or_serialize(context, sender, kind, gas, processing).await
             }
 
-            SomaClientCommands::ExecuteSignedTx {
-                tx_bytes,
-                signatures,
-            } => {
+            SomaClientCommands::ExecuteSignedTx { tx_bytes, signatures } => {
                 let data_bytes = Base64::decode(&tx_bytes)
                     .map_err(|_| anyhow!("Invalid Base64 encoding for tx_bytes"))?;
 
@@ -123,9 +117,9 @@ impl SomaClientCommands {
                 let transaction = Transaction::from_generic_sig_data(data, sigs);
                 let response = context.execute_transaction_may_fail(transaction).await?;
 
-                Ok(ClientCommandResponse::Transaction(
-                    TransactionResponse::from_response(&response),
-                ))
+                Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(
+                    &response,
+                )))
             }
 
             SomaClientCommands::ExecuteCombinedSignedTx { signed_tx_bytes } => {
@@ -143,9 +137,9 @@ impl SomaClientCommands {
                     Envelope::<SenderSignedData, types::crypto::EmptySignInfo>::new(sender_signed);
                 let response = context.execute_transaction_may_fail(transaction).await?;
 
-                Ok(ClientCommandResponse::Transaction(
-                    TransactionResponse::from_response(&response),
-                ))
+                Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(
+                    &response,
+                )))
             }
         }
     }
@@ -185,32 +179,17 @@ pub async fn execute_or_serialize(
 
         let status = match result.effects.status() {
             ExecutionStatus::Success => TransactionStatus::Success,
-            ExecutionStatus::Failure { error } => TransactionStatus::Failure {
-                error: format!("{}", error),
-            },
+            ExecutionStatus::Failure { error } => {
+                TransactionStatus::Failure { error: format!("{}", error) }
+            }
         };
 
         return Ok(ClientCommandResponse::Simulation(SimulationResponse {
             status,
             gas_used: result.effects.transaction_fee().total_fee,
-            created: result
-                .effects
-                .created()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            mutated: result
-                .effects
-                .mutated_excluding_gas()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            deleted: result
-                .effects
-                .deleted()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            created: result.effects.created().into_iter().map(Into::into).collect(),
+            mutated: result.effects.mutated_excluding_gas().into_iter().map(Into::into).collect(),
+            deleted: result.effects.deleted().into_iter().map(Into::into).collect(),
             balance_changes: result.balance_changes,
         }));
     }
@@ -219,9 +198,7 @@ pub async fn execute_or_serialize(
     if processing.serialize_unsigned_transaction {
         let bytes = bcs::to_bytes(&tx_data)?;
         let encoded = Base64::encode(&bytes);
-        return Ok(ClientCommandResponse::SerializedUnsignedTransaction(
-            encoded,
-        ));
+        return Ok(ClientCommandResponse::SerializedUnsignedTransaction(encoded));
     }
 
     // Sign the transaction
@@ -237,7 +214,5 @@ pub async fn execute_or_serialize(
     // Execute the transaction
     let response = context.execute_transaction_may_fail(tx).await?;
 
-    Ok(ClientCommandResponse::Transaction(
-        TransactionResponse::from_response(&response),
-    ))
+    Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(&response)))
 }

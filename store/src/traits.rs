@@ -23,9 +23,7 @@ where
     where
         J: Borrow<K>,
     {
-        keys.into_iter()
-            .map(|key| self.contains_key(key.borrow()))
-            .collect()
+        keys.into_iter().map(|key| self.contains_key(key.borrow())).collect()
     }
 
     /// Returns the value for the given key from the map, if it exists.
@@ -83,8 +81,7 @@ where
     where
         J: Borrow<K>,
     {
-        keys.into_iter()
-            .try_for_each(|key| self.remove(key.borrow()))
+        keys.into_iter().try_for_each(|key| self.remove(key.borrow()))
     }
 
     /// Try to catch up with primary when running as secondary

@@ -134,9 +134,7 @@ impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for ValidatorI
 
 impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for GenesisValidatorInfo {
     fn from(config: &crate::config::genesis_config::ValidatorGenesisConfig) -> Self {
-        Self {
-            info: ValidatorInfo::from(config),
-        }
+        Self { info: ValidatorInfo::from(config) }
     }
 }
 

@@ -43,10 +43,7 @@ impl ScalarType {
     }
 
     pub fn is_numeric(&self) -> bool {
-        matches!(
-            self,
-            Self::F64 | Self::F32 | Self::I32 | Self::I64 | Self::U32 | Self::U64
-        )
+        matches!(self, Self::F64 | Self::F32 | Self::I32 | Self::I64 | Self::U32 | Self::U64)
     }
 }
 
@@ -93,9 +90,7 @@ impl Field {
 
     pub fn json_name(&self) -> String {
         use heck::ToLowerCamelCase;
-        self.json_name
-            .clone()
-            .unwrap_or_else(|| self.name.to_lower_camel_case())
+        self.json_name.clone().unwrap_or_else(|| self.name.to_lower_camel_case())
     }
 }
 
@@ -122,9 +117,7 @@ pub struct Message {
 
 impl Message {
     pub fn all_fields(&self) -> impl Iterator<Item = &Field> + '_ {
-        self.fields
-            .iter()
-            .chain(self.one_ofs.iter().flat_map(|one_of| one_of.fields.iter()))
+        self.fields.iter().chain(self.one_ofs.iter().flat_map(|one_of| one_of.fields.iter()))
     }
 }
 
@@ -173,11 +166,7 @@ pub fn resolve_message(
         }
     }
 
-    Some(Message {
-        path: message.path.clone(),
-        fields,
-        one_ofs,
-    })
+    Some(Message { path: message.path.clone(), fields, one_ofs })
 }
 
 fn field_modifier(
@@ -241,9 +230,8 @@ fn resolve_type(descriptors: &DescriptorSet, type_name: &str) -> FieldType {
         type_name.starts_with('.'),
         "pbjson does not currently support resolving relative types"
     );
-    let maybe_descriptor = descriptors
-        .iter()
-        .find(|(path, _)| path.prefix_match(type_name).is_some());
+    let maybe_descriptor =
+        descriptors.iter().find(|(path, _)| path.prefix_match(type_name).is_some());
 
     match maybe_descriptor {
         Some((path, Descriptor::Enum(_))) => FieldType::Enum(path.clone()),

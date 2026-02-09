@@ -12,9 +12,8 @@ impl BufferAPI for LocalFileSystem {
         let fs_path = self
             .path_to_filesystem(&path.path())
             .map_err(|e| BlobError::StorageFailure(e.to_string()))?;
-        let file = File::open(fs_path)
-            .await
-            .map_err(|e| BlobError::StorageFailure(e.to_string()))?;
+        let file =
+            File::open(fs_path).await.map_err(|e| BlobError::StorageFailure(e.to_string()))?;
         let mmap = unsafe { MmapOptions::new().map(&file) }
             .map_err(|e| BlobError::StorageFailure(e.to_string()))?;
         Ok(mmap)

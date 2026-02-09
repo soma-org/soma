@@ -6,7 +6,7 @@ use crate::{
     storage::WriteKind,
 };
 
-use super::{storage_error::Result, ObjectKey};
+use super::{ObjectKey, storage_error::Result};
 
 pub trait ObjectStore {
     fn get_object(&self, object_id: &ObjectID) -> Option<Object>;
@@ -14,17 +14,11 @@ pub trait ObjectStore {
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object>;
 
     fn multi_get_objects(&self, object_ids: &[ObjectID]) -> Vec<Option<Object>> {
-        object_ids
-            .iter()
-            .map(|digest| self.get_object(digest))
-            .collect()
+        object_ids.iter().map(|digest| self.get_object(digest)).collect()
     }
 
     fn multi_get_objects_by_key(&self, object_keys: &[ObjectKey]) -> Vec<Option<Object>> {
-        object_keys
-            .iter()
-            .map(|k| self.get_object_by_key(&k.0, k.1))
-            .collect()
+        object_keys.iter().map(|k| self.get_object_by_key(&k.0, k.1)).collect()
     }
 }
 
@@ -88,9 +82,7 @@ impl ObjectStore for &[Object] {
     }
 
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
-        self.iter()
-            .find(|o| o.id() == *object_id && o.version() == version)
-            .cloned()
+        self.iter().find(|o| o.id() == *object_id && o.version() == version).cloned()
     }
 }
 
@@ -101,13 +93,7 @@ impl ObjectStore for BTreeMap<ObjectID, (ObjectRef, Object, WriteKind)> {
 
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
         self.get(object_id)
-            .and_then(|(_, obj, _)| {
-                if obj.version() == version {
-                    Some(obj)
-                } else {
-                    None
-                }
-            })
+            .and_then(|(_, obj, _)| if obj.version() == version { Some(obj) } else { None })
             .cloned()
     }
 }
@@ -118,12 +104,10 @@ impl ObjectStore for BTreeMap<ObjectID, Object> {
     }
 
     fn get_object_by_key(&self, object_id: &ObjectID, version: Version) -> Option<Object> {
-        self.get(object_id).and_then(|o| {
-            if o.version() == version {
-                Some(o.clone())
-            } else {
-                None
-            }
-        })
+        self.get(object_id).and_then(
+            |o| {
+                if o.version() == version { Some(o.clone()) } else { None }
+            },
+        )
     }
 }

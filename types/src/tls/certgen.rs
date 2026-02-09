@@ -51,10 +51,7 @@ fn generate_self_signed_tls_certificate(
 }
 
 fn generate_cert(keypair: &KeyPair, server_name: &str) -> rcgen::Certificate {
-    CertificateParams::new(vec![server_name.to_owned()])
-        .unwrap()
-        .self_signed(keypair)
-        .expect(
-            "unreachable! from_params should only fail if the key is incompatible with params.algo",
-        )
+    CertificateParams::new(vec![server_name.to_owned()]).unwrap().self_signed(keypair).expect(
+        "unreachable! from_params should only fail if the key is incompatible with params.algo",
+    )
 }

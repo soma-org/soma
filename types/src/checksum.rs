@@ -6,7 +6,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::crypto::{DefaultHash as DefaultHashFunction, DIGEST_LENGTH};
+use crate::crypto::{DIGEST_LENGTH, DefaultHash as DefaultHashFunction};
 
 /// Checksum is a bytes checksum for data. We use the same default hash function
 /// as the rest of the network. There are associated functions for new from bytes

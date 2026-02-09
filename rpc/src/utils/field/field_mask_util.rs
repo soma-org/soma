@@ -34,11 +34,7 @@ impl FieldMaskUtil for FieldMask {
                 .into_iter()
                 .filter_map(|path| {
                     let path = path.as_ref();
-                    if path.is_empty() {
-                        None
-                    } else {
-                        Some(path.to_owned())
-                    }
+                    if path.is_empty() { None } else { Some(path.to_owned()) }
                 })
                 .collect(),
         }
@@ -127,11 +123,7 @@ mod tests {
 
     #[test]
     fn test_to_string() {
-        assert!(
-            FieldMask::display(&FieldMask::default())
-                .to_string()
-                .is_empty()
-        );
+        assert!(FieldMask::display(&FieldMask::default()).to_string().is_empty());
 
         let mask = FieldMask::from_paths(["foo"]);
         assert_eq!(FieldMask::display(&mask).to_string(), "foo");
@@ -178,18 +170,8 @@ mod tests {
 
         impl MessageFields for Bar {
             const FIELDS: &'static [&'static MessageField] = &[
-                &MessageField {
-                    name: "a",
-                    json_name: "a",
-                    number: 1,
-                    message_fields: None,
-                },
-                &MessageField {
-                    name: "b",
-                    json_name: "b",
-                    number: 2,
-                    message_fields: None,
-                },
+                &MessageField { name: "a", json_name: "a", number: 1, message_fields: None },
+                &MessageField { name: "b", json_name: "b", number: 2, message_fields: None },
             ];
         }
 

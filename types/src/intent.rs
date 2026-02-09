@@ -118,19 +118,11 @@ impl FromStr for Intent {
 
 impl Intent {
     pub fn soma_app(scope: IntentScope) -> Self {
-        Self {
-            version: IntentVersion::V0,
-            scope,
-            app_id: AppId::Soma,
-        }
+        Self { version: IntentVersion::V0, scope, app_id: AppId::Soma }
     }
 
     pub fn consensus_app(scope: IntentScope) -> Self {
-        Self {
-            scope,
-            version: IntentVersion::V0,
-            app_id: AppId::Consensus,
-        }
+        Self { scope, version: IntentVersion::V0, app_id: AppId::Consensus }
     }
 }
 

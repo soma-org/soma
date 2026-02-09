@@ -8,7 +8,7 @@ use types::committee::Stake;
 use types::consensus::{
     block::{
         BlockAPI as _, BlockRef, BlockTransactionVotes, CertifiedBlock, CertifiedBlocksOutput,
-        Round, TransactionIndex, VerifiedBlock, GENESIS_ROUND,
+        GENESIS_ROUND, Round, TransactionIndex, VerifiedBlock,
     },
     context::Context,
     stake_aggregator::{QuorumThreshold, StakeAggregator},
@@ -77,20 +77,13 @@ impl TransactionCertifier {
         let store = self.dag_state.read().store().clone();
 
         let recovery_start_round = after_round + 1;
-        info!(
-            "Recovering certifier state from round {}",
-            recovery_start_round,
-        );
+        info!("Recovering certifier state from round {}", recovery_start_round,);
 
-        let authorities = context
-            .committee
-            .authorities()
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
+        let authorities =
+            context.committee.authorities().map(|(index, _)| index).collect::<Vec<_>>();
         for authority_index in authorities {
-            let blocks = store
-                .scan_blocks_by_author(authority_index, recovery_start_round)
-                .unwrap();
+            let blocks =
+                store.scan_blocks_by_author(authority_index, recovery_start_round).unwrap();
             info!(
                 "Recovered and voting on {} blocks from authority {}",
                 blocks.len(),
@@ -152,10 +145,7 @@ impl TransactionCertifier {
     /// Aggregates accept votes from the own proposed block.
     /// Newly certified blocks are sent to the fastpath output channel.
     pub(crate) fn add_proposed_block(&self, proposed_block: VerifiedBlock) {
-        let certified_blocks = self
-            .certifier_state
-            .write()
-            .add_proposed_block(proposed_block);
+        let certified_blocks = self.certifier_state.write().add_proposed_block(proposed_block);
         self.send_certified_blocks(certified_blocks);
     }
 
@@ -164,9 +154,9 @@ impl TransactionCertifier {
         if certified_blocks.is_empty() {
             return;
         }
-        if let Err(e) = self.certified_blocks_sender.send(CertifiedBlocksOutput {
-            blocks: certified_blocks,
-        }) {
+        if let Err(e) =
+            self.certified_blocks_sender.send(CertifiedBlocksOutput { blocks: certified_blocks })
+        {
             tracing::warn!("Failed to send certified blocks: {:?}", e);
         }
     }
@@ -246,11 +236,7 @@ struct CertifierState {
 
 impl CertifierState {
     fn new(context: Arc<Context>) -> Self {
-        Self {
-            context,
-            votes: BTreeMap::new(),
-            gc_round: GENESIS_ROUND,
-        }
+        Self { context, votes: BTreeMap::new(), gc_round: GENESIS_ROUND }
     }
 
     fn add_voted_blocks(
@@ -321,11 +307,7 @@ impl CertifierState {
             // commit finalization, which advances the GC round of the certifier.
             return vec![];
         }
-        debug!(
-            "Adding proposed block {}; gc round: {}",
-            proposed_block.reference(),
-            self.gc_round
-        );
+        debug!("Adding proposed block {}; gc round: {}", proposed_block.reference(), self.gc_round);
 
         if !self.votes.contains_key(&proposed_block.reference()) {
             debug!(
@@ -460,10 +442,7 @@ impl VoteInfo {
             // and can be sent to fastpath. However, the computation here will not certify the transaction
             // or the block. This is still fine because the fastpath certification is optional.
             // The definite status of the transaction will be decided during post commit finalization.
-            if self
-                .accept_block_votes
-                .stake()
-                .saturating_sub(reject_txn_votes.stake())
+            if self.accept_block_votes.stake().saturating_sub(reject_txn_votes.stake())
                 < committee.quorum_threshold()
             {
                 return None;
@@ -478,10 +457,7 @@ impl VoteInfo {
         );
 
         self.is_certified = true;
-        Some(CertifiedBlock {
-            block: block.clone(),
-            rejected,
-        })
+        Some(CertifiedBlock { block: block.clone(), rejected })
     }
 }
 

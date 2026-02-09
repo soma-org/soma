@@ -32,20 +32,14 @@ pub struct ClaimCommand {
 }
 
 impl ClaimCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<ClaimCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<ClaimCommandResponse> {
         let sender = context.active_address()?;
 
-        let kind = TransactionKind::ClaimRewards(ClaimRewardsArgs {
-            target_id: self.target_id,
-        });
+        let kind = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: self.target_id });
 
-        let result = crate::client_commands::execute_or_serialize(
-            context, sender, kind, None, self.tx_args,
-        )
-        .await?;
+        let result =
+            crate::client_commands::execute_or_serialize(context, sender, kind, None, self.tx_args)
+                .await?;
 
         // Convert ClientCommandResponse to ClaimCommandResponse
         match result {
@@ -81,9 +75,7 @@ impl ClaimCommand {
 #[serde(untagged)]
 pub enum ClaimCommandResponse {
     Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
+    SerializedTransaction { serialized_unsigned_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
 }
@@ -94,9 +86,7 @@ impl Display for ClaimCommandResponse {
             ClaimCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            ClaimCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
+            ClaimCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_unsigned_transaction)?;

@@ -35,9 +35,7 @@ pub(crate) struct BarrierDependencyBuilder {
 
 impl BarrierDependencyBuilder {
     pub fn new() -> Self {
-        Self {
-            dep_state: Default::default(),
-        }
+        Self { dep_state: Default::default() }
     }
 
     /// process_tx must be called for each transaction in scheduling order. If the
@@ -102,12 +100,7 @@ impl ExecutionScheduler {
     ) -> Self {
         tracing::info!("Creating new ExecutionScheduler");
 
-        Self {
-            object_cache_read,
-            transaction_cache_read,
-
-            tx_ready_certificates,
-        }
+        Self { object_cache_read, transaction_cache_read, tx_ready_certificates }
     }
 
     #[instrument(level = "debug", skip_all, fields(tx_digest = ?cert.digest()))]
@@ -122,9 +115,7 @@ impl ExecutionScheduler {
         let digests = [*tx_digest];
 
         let tx_data = cert.transaction_data();
-        let input_object_kinds = tx_data
-            .input_objects()
-            .expect("input_objects() cannot fail");
+        let input_object_kinds = tx_data.input_objects().expect("input_objects() cannot fail");
         let input_object_keys: Vec<_> = epoch_store
             .get_input_object_keys(
                 &cert.key(),
@@ -145,11 +136,8 @@ impl ExecutionScheduler {
                 }
             })
             .collect();
-        let input_and_receiving_keys = [
-            input_object_keys,
-            receiving_object_keys.iter().cloned().collect(),
-        ]
-        .concat();
+        let input_and_receiving_keys =
+            [input_object_keys, receiving_object_keys.iter().cloned().collect()].concat();
 
         let epoch = epoch_store.epoch();
         debug!(
@@ -213,10 +201,7 @@ impl ExecutionScheduler {
         execution_env: ExecutionEnv,
         enqueue_time: Instant,
     ) {
-        let pending_cert = PendingCertificate {
-            certificate: cert.clone(),
-            execution_env,
-        };
+        let pending_cert = PendingCertificate { certificate: cert.clone(), execution_env };
         let _ = self.tx_ready_certificates.send(pending_cert);
     }
 
@@ -227,11 +212,8 @@ impl ExecutionScheduler {
         let epoch = cert.epoch();
         let digest = *cert.digest();
         let digests = [digest];
-        let executed = self
-            .transaction_cache_read
-            .multi_get_executed_effects(&digests)
-            .pop()
-            .unwrap();
+        let executed =
+            self.transaction_cache_read.multi_get_executed_effects(&digests).pop().unwrap();
         // Due to pruning, we may not always have an executed effects for the certificate
         // even if it was executed. So this is a best-effort check.
         if let Some(executed) = executed {
@@ -294,22 +276,17 @@ impl ExecutionScheduler {
             })
             .collect();
         let digests: Vec<_> = certs.iter().map(|(cert, _)| *cert.digest()).collect();
-        let executed = self
-            .transaction_cache_read
-            .multi_get_executed_effects_digests(&digests);
+        let executed = self.transaction_cache_read.multi_get_executed_effects_digests(&digests);
         let mut already_executed_certs_num = 0;
         let pending_certs =
-            certs
-                .into_iter()
-                .zip(executed)
-                .filter_map(|((cert, execution_env), executed)| {
-                    if executed.is_none() {
-                        Some((cert, execution_env))
-                    } else {
-                        already_executed_certs_num += 1;
-                        None
-                    }
-                });
+            certs.into_iter().zip(executed).filter_map(|((cert, execution_env), executed)| {
+                if executed.is_none() {
+                    Some((cert, execution_env))
+                } else {
+                    already_executed_certs_num += 1;
+                    None
+                }
+            });
 
         for (cert, execution_env) in pending_certs {
             let scheduler = self.clone();

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use clap::*;
 use object_store::aws::AmazonS3Builder;
@@ -113,10 +113,8 @@ impl ObjectStoreConfig {
     fn new_local_fs(&self) -> Result<Arc<DynObjectStore>, anyhow::Error> {
         info!(directory=?self.directory, object_store_type="File", "Object Store");
         if let Some(path) = &self.directory {
-            fs::create_dir_all(path).context(anyhow!(
-                "Failed to create local directory: {}",
-                path.display()
-            ))?;
+            fs::create_dir_all(path)
+                .context(anyhow!("Failed to create local directory: {}", path.display()))?;
             let store = object_store::local::LocalFileSystem::new_with_prefix(path)
                 .context(anyhow!("Failed to create local object store"))?;
             Ok(Arc::new(store))
@@ -129,9 +127,8 @@ impl ObjectStoreConfig {
 
         info!(bucket=?self.bucket, object_store_type="S3", "Object Store");
 
-        let mut builder = AmazonS3Builder::new()
-            .with_client_options(no_timeout_options())
-            .with_imdsv1_fallback();
+        let mut builder =
+            AmazonS3Builder::new().with_client_options(no_timeout_options()).with_imdsv1_fallback();
 
         if self.aws_virtual_hosted_style_request {
             builder = builder.with_virtual_hosted_style_request(true);

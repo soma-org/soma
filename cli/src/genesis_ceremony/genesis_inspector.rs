@@ -21,29 +21,21 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
 
     // Prepare Validator info
     let consensus_set = &system_state.validators.validators;
-    let consensus_validator_map: BTreeMap<String, &Validator> = consensus_set
-        .iter()
-        .map(|v| (v.metadata.soma_address.to_string(), v))
-        .collect();
+    let consensus_validator_map: BTreeMap<String, &Validator> =
+        consensus_set.iter().map(|v| (v.metadata.soma_address.to_string(), v)).collect();
 
     let mut consensus_validator_options: Vec<&str> =
         consensus_validator_map.keys().map(|s| s.as_str()).collect();
     consensus_validator_options.push(STR_ALL);
     consensus_validator_options.push(STR_EXIT);
-    println!(
-        "Total Number of Consensus Validators: {}",
-        consensus_set.len()
-    );
+    println!("Total Number of Consensus Validators: {}", consensus_set.len());
 
     // Prepare Soma distribution info
     let mut soma_distribution: BTreeMap<String, BTreeMap<String, (&str, u64)>> = BTreeMap::new();
 
     // Add emission pool
     let entry = soma_distribution.entry("System".to_string()).or_default();
-    entry.insert(
-        "Emission Pool".to_string(),
-        (STR_SOMA, system_state.emission_pool.balance),
-    );
+    entry.insert("Emission Pool".to_string(), (STR_SOMA, system_state.emission_pool.balance));
 
     println!("Total Number of Objects: {}", genesis.objects().len());
 
@@ -208,10 +200,7 @@ fn display_validator(validator: &Validator) {
     println!("Voting Power: {}", validator.voting_power);
     println!("Commission Rate: {}", validator.commission_rate);
     println!("Staking Pool ID: {}", validator.staking_pool.id);
-    println!(
-        "Staking Pool Soma Balance: {}",
-        validator.staking_pool.soma_balance
-    );
+    println!("Staking Pool Soma Balance: {}", validator.staking_pool.soma_balance);
     println!("Next Epoch Stake: {}", validator.next_epoch_stake);
     print_divider(&validator.metadata.soma_address.to_string());
 }

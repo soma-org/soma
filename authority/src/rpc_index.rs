@@ -97,11 +97,7 @@ fn balance_compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> Decision
         Err(_) => return Decision::Keep,
     };
 
-    if balance_info.balance_delta == 0 {
-        Decision::Remove
-    } else {
-        Decision::Keep
-    }
+    if balance_info.balance_delta == 0 { Decision::Remove } else { Decision::Keep }
 }
 
 /// Convert a TargetStatus to a string for indexing.
@@ -156,12 +152,7 @@ impl OwnerIndexKey {
 
         let inverted_balance = object.as_coin();
 
-        Self {
-            owner: *owner,
-            object_type,
-            inverted_balance,
-            object_id: object.id(),
-        }
+        Self { owner: *owner, object_type, inverted_balance, object_id: object.id() }
     }
 }
 
@@ -173,9 +164,7 @@ pub struct OwnerIndexInfo {
 
 impl OwnerIndexInfo {
     pub fn new(object: &Object) -> Self {
-        Self {
-            version: object.version(),
-        }
+        Self { version: object.version() }
     }
 }
 
@@ -191,9 +180,7 @@ pub struct BalanceIndexInfo {
 
 impl From<u64> for BalanceIndexInfo {
     fn from(coin_value: u64) -> Self {
-        Self {
-            balance_delta: coin_value as i128,
-        }
+        Self { balance_delta: coin_value as i128 }
     }
 }
 
@@ -205,9 +192,7 @@ impl BalanceIndexInfo {
             "Cannot invert balance_delta: would overflow i128"
         );
 
-        Self {
-            balance_delta: -self.balance_delta,
-        }
+        Self { balance_delta: -self.balance_delta }
     }
 
     fn merge_delta(&mut self, other: &Self) {
@@ -379,10 +364,8 @@ impl IndexStoreTables {
 
     // Check if the index watermark is behind the highets_executed watermark.
     fn is_indexed_watermark_out_of_date(&self, checkpoint_store: &CheckpointStore) -> bool {
-        let highest_executed_checkpint = checkpoint_store
-            .get_highest_executed_checkpoint_seq_number()
-            .ok()
-            .flatten();
+        let highest_executed_checkpint =
+            checkpoint_store.get_highest_executed_checkpoint_seq_number().ok().flatten();
         let watermark = self.watermark.get(&Watermark::Indexed).ok().flatten();
         watermark < highest_executed_checkpint
     }
@@ -426,25 +409,15 @@ impl IndexStoreTables {
         // If genesis hasn't been executed yet, the objects will be properly indexed
         // as checkpoints are processed through the normal checkpoint execution path.
         if highest_executed_checkpoint.is_some() {
-            let make_live_object_indexer = RpcParLiveObjectSetIndexer {
-                tables: self,
-                batch_size_limit,
-            };
+            let make_live_object_indexer =
+                RpcParLiveObjectSetIndexer { tables: self, batch_size_limit };
 
             par_index_live_object_set(authority_store, &make_live_object_indexer)?;
         }
 
-        self.watermark.insert(
-            &Watermark::Indexed,
-            &highest_executed_checkpoint.unwrap_or(0),
-        )?;
+        self.watermark.insert(&Watermark::Indexed, &highest_executed_checkpoint.unwrap_or(0))?;
 
-        self.meta.insert(
-            &(),
-            &MetadataInfo {
-                version: CURRENT_DB_VERSION,
-            },
-        )?;
+        self.meta.insert(&(), &MetadataInfo { version: CURRENT_DB_VERSION })?;
 
         info!("Finished initializing RPC indexes");
 
@@ -473,15 +446,10 @@ impl IndexStoreTables {
             self.index_epoch(&checkpoint_data, &mut batch)?;
             self.index_transactions(&checkpoint_data, &mut batch)?;
 
-            batch
-                .write_opt(&(bulk_ingestion_write_options()))
-                .map_err(StorageError::from)
+            batch.write_opt(&(bulk_ingestion_write_options())).map_err(StorageError::from)
         })?;
 
-        info!(
-            "Indexing checkpoints took {} seconds",
-            start_time.elapsed().as_secs()
-        );
+        info!("Indexing checkpoints took {} seconds", start_time.elapsed().as_secs());
         Ok(())
     }
 
@@ -498,10 +466,7 @@ impl IndexStoreTables {
             .flat_map(|contents| contents.iter().map(|digests| digests.transaction));
 
         batch.delete_batch(&self.transactions, transactions_to_prune)?;
-        batch.insert_batch(
-            &self.watermark,
-            [(Watermark::Pruned, pruned_checkpoint_watermark)],
-        )?;
+        batch.insert_batch(&self.watermark, [(Watermark::Pruned, pruned_checkpoint_watermark)])?;
 
         batch.write()
     }
@@ -511,10 +476,7 @@ impl IndexStoreTables {
         &self,
         checkpoint: &CheckpointData,
     ) -> Result<store::rocks::DBBatch, StorageError> {
-        debug!(
-            checkpoint = checkpoint.checkpoint_summary.sequence_number,
-            "indexing checkpoint"
-        );
+        debug!(checkpoint = checkpoint.checkpoint_summary.sequence_number, "indexing checkpoint");
 
         let mut batch = self.transactions.batch();
 
@@ -524,10 +486,7 @@ impl IndexStoreTables {
 
         batch.insert_batch(
             &self.watermark,
-            [(
-                Watermark::Indexed,
-                checkpoint.checkpoint_summary.sequence_number,
-            )],
+            [(Watermark::Indexed, checkpoint.checkpoint_summary.sequence_number)],
         )?;
 
         debug!(
@@ -664,9 +623,7 @@ impl IndexStoreTables {
                             generation_epoch: target.generation_epoch,
                             target_id: object.id(),
                         };
-                        let info = TargetIndexInfo {
-                            version: object.version(),
-                        };
+                        let info = TargetIndexInfo { version: object.version() };
                         batch.insert_batch(&self.targets, [(key, info)])?;
                     }
                 }
@@ -776,32 +733,27 @@ impl IndexStoreTables {
             object_id: ObjectID::ZERO,
         });
 
-        Ok(self
-            .owner
-            .safe_iter_with_bounds(Some(lower_bound), None)
-            .take_while(move |item| {
-                // If there's an error let if flow through
-                let Ok((key, _)) = item else {
-                    return true;
-                };
+        Ok(self.owner.safe_iter_with_bounds(Some(lower_bound), None).take_while(move |item| {
+            // If there's an error let if flow through
+            let Ok((key, _)) = item else {
+                return true;
+            };
 
-                // Only take if owner matches
-                key.owner == owner
+            // Only take if owner matches
+            key.owner == owner
                     // and if an object type was supplied that the type matches
                     && object_type
                         .as_ref()
                         .map(|ty| ty == &key.object_type)
                         .unwrap_or(true)
-            }))
+        }))
     }
 
     fn get_balance(
         &self,
         owner: &SomaAddress,
     ) -> Result<Option<BalanceIndexInfo>, TypedStoreError> {
-        let key = BalanceKey {
-            owner: owner.to_owned(),
-        };
+        let key = BalanceKey { owner: owner.to_owned() };
         self.balance.get(&key)
     }
 
@@ -815,16 +767,13 @@ impl IndexStoreTables {
     > {
         let lower_bound = cursor.unwrap_or_else(|| BalanceKey { owner });
 
-        Ok(self
-            .balance
-            .safe_iter_with_bounds(Some(lower_bound), None)
-            .scan((), move |_, item| {
-                match item {
-                    Ok((key, value)) if key.owner == owner => Some(Ok((key, value))),
-                    Ok(_) => None,          // Different owner, stop iteration
-                    Err(e) => Some(Err(e)), // Propagate error
-                }
-            }))
+        Ok(self.balance.safe_iter_with_bounds(Some(lower_bound), None).scan((), move |_, item| {
+            match item {
+                Ok((key, value)) if key.owner == owner => Some(Ok((key, value))),
+                Ok(_) => None,          // Different owner, stop iteration
+                Err(e) => Some(Err(e)), // Propagate error
+            }
+        }))
     }
 
     /// Iterate over targets, optionally filtered by status and/or epoch.
@@ -846,34 +795,31 @@ impl IndexStoreTables {
         });
 
         let status_filter_clone = status_filter.clone();
-        let iter = self
-            .targets
-            .safe_iter_with_bounds(lower_bound, None)
-            .filter_map(move |item| {
-                match item {
-                    Ok((key, info)) => {
-                        // Apply status filter if specified
-                        if let Some(ref filter) = status_filter_clone {
-                            if &key.status != filter {
-                                return None;
-                            }
+        let iter = self.targets.safe_iter_with_bounds(lower_bound, None).filter_map(move |item| {
+            match item {
+                Ok((key, info)) => {
+                    // Apply status filter if specified
+                    if let Some(ref filter) = status_filter_clone {
+                        if &key.status != filter {
+                            return None;
                         }
-                        // Apply epoch filter if specified
-                        if let Some(epoch) = epoch_filter {
-                            if key.generation_epoch != epoch {
-                                return None;
-                            }
-                        }
-                        Some(Ok(types::storage::read_store::TargetInfo {
-                            target_id: key.target_id,
-                            version: info.version,
-                            status: key.status,
-                            generation_epoch: key.generation_epoch,
-                        }))
                     }
-                    Err(e) => Some(Err(e)),
+                    // Apply epoch filter if specified
+                    if let Some(epoch) = epoch_filter {
+                        if key.generation_epoch != epoch {
+                            return None;
+                        }
+                    }
+                    Some(Ok(types::storage::read_store::TargetInfo {
+                        target_id: key.target_id,
+                        version: info.version,
+                        status: key.status,
+                        generation_epoch: key.generation_epoch,
+                    }))
                 }
-            });
+                Err(e) => Some(Err(e)),
+            }
+        });
 
         Ok(iter)
     }
@@ -1009,9 +955,7 @@ impl IndexStoreTables {
                             generation_epoch: target.generation_epoch,
                             target_id: *id,
                         };
-                        let info = TargetIndexInfo {
-                            version: new_object.version(),
-                        };
+                        let info = TargetIndexInfo { version: new_object.version() };
                         batch.insert_batch(&self.targets, [(key, info)])?;
                     }
                 }
@@ -1124,10 +1068,8 @@ fn sparse_checkpoint_data_for_backfill(
         .get_checkpoint_contents(&summary.content_digest)?
         .ok_or_else(|| StorageError::missing(format!("missing checkpoint {checkpoint}")))?;
 
-    let transaction_digests = contents
-        .iter()
-        .map(|execution_digests| execution_digests.transaction)
-        .collect::<Vec<_>>();
+    let transaction_digests =
+        contents.iter().map(|execution_digests| execution_digests.transaction).collect::<Vec<_>>();
     let transactions = authority_store
         .multi_get_transaction_blocks(&transaction_digests)?
         .into_iter()
@@ -1212,10 +1154,7 @@ impl RpcIndexStore {
                         jobs
                     } else {
                         let jobs = num_cpus::get() as i32;
-                        debug!(
-                            "Calculated max_background_jobs: {} (based on CPU count)",
-                            jobs
-                        );
+                        debug!("Calculated max_background_jobs: {} (based on CPU count)", jobs);
                         jobs
                     };
                     options.set_max_background_jobs(max_background_jobs);
@@ -1233,10 +1172,7 @@ impl RpcIndexStore {
                     let db_buffer_size = if let Some(size) = None
                     //TODO:index_config.as_ref().and_then(|c| c.db_write_buffer_size)
                     {
-                        debug!(
-                            "Using config override for db_write_buffer_size: {} bytes",
-                            size
-                        );
+                        debug!("Using config override for db_write_buffer_size: {} bytes", size);
                         size
                     } else {
                         // Default to 80% of system RAM
@@ -1360,10 +1296,7 @@ impl RpcIndexStore {
                 // This is critical because WAL is disabled during bulk indexing.
                 // Note we only need to call flush on one table because all tables share the same
                 // underlying database.
-                tables
-                    .meta
-                    .flush()
-                    .expect("Failed to flush RPC index tables to disk");
+                tables.meta.flush().expect("Failed to flush RPC index tables to disk");
 
                 let weak_db = Arc::downgrade(&tables.meta.db);
                 drop(tables);
@@ -1400,20 +1333,14 @@ impl RpcIndexStore {
             }
         };
 
-        Self {
-            tables,
-            pending_updates: Default::default(),
-        }
+        Self { tables, pending_updates: Default::default() }
     }
 
     pub fn new_without_init(dir: &Path) -> Self {
         let path = Self::db_path(dir);
         let tables = IndexStoreTables::open_with_index_options(path);
 
-        Self {
-            tables,
-            pending_updates: Default::default(),
-        }
+        Self { tables, pending_updates: Default::default() }
     }
 
     pub fn prune(
@@ -1421,8 +1348,7 @@ impl RpcIndexStore {
         pruned_checkpoint_watermark: u64,
         checkpoint_contents_to_prune: &[CheckpointContents],
     ) -> Result<(), TypedStoreError> {
-        self.tables
-            .prune(pruned_checkpoint_watermark, checkpoint_contents_to_prune)
+        self.tables.prune(pruned_checkpoint_watermark, checkpoint_contents_to_prune)
     }
 
     /// Index a checkpoint and stage the index updated in `pending_updates`.
@@ -1437,10 +1363,7 @@ impl RpcIndexStore {
         let sequence_number = checkpoint.checkpoint_summary.sequence_number;
         let batch = self.tables.index_checkpoint(checkpoint).expect("db error");
 
-        self.pending_updates
-            .lock()
-            .unwrap()
-            .insert(sequence_number.into(), batch);
+        self.pending_updates.lock().unwrap().insert(sequence_number.into(), batch);
     }
 
     /// Commits the pending updates for the provided checkpoint number.
@@ -1544,8 +1467,7 @@ impl RpcIndexStore {
         written: &WrittenObjects,
         input_objects: &BTreeMap<ObjectID, Object>,
     ) -> Result<(), StorageError> {
-        self.tables
-            .index_executed_tx_objects(effects, written, input_objects)
+        self.tables.index_executed_tx_objects(effects, written, input_objects)
     }
 }
 
@@ -1578,20 +1500,15 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
     fn index_object(&mut self, object: Object) -> Result<(), StorageError> {
         // Index Target objects (shared objects)
         if object.type_() == &ObjectType::Target {
-            if let Ok(target) =
-                bcs::from_bytes::<types::target::Target>(object.data.contents())
-            {
+            if let Ok(target) = bcs::from_bytes::<types::target::Target>(object.data.contents()) {
                 let status = target_status_string(&target.status);
                 let key = TargetIndexKey {
                     status,
                     generation_epoch: target.generation_epoch,
                     target_id: object.id(),
                 };
-                let info = TargetIndexInfo {
-                    version: object.version(),
-                };
-                self.batch
-                    .insert_batch(&self.tables.targets, [(key, info)])?;
+                let info = TargetIndexInfo { version: object.version() };
+                self.batch.insert_batch(&self.tables.targets, [(key, info)])?;
             }
         }
 
@@ -1620,16 +1537,12 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
             Owner::AddressOwner(owner) => {
                 let owner_key = OwnerIndexKey::from_object(&object);
                 let owner_info = OwnerIndexInfo::new(&object);
-                self.batch
-                    .insert_batch(&self.tables.owner, [(owner_key, owner_info)])?;
+                self.batch.insert_batch(&self.tables.owner, [(owner_key, owner_info)])?;
 
                 if let Some(value) = object.as_coin() {
                     let balance_key = BalanceKey { owner };
                     let balance_info = BalanceIndexInfo::from(value);
-                    self.balance_changes
-                        .entry(balance_key)
-                        .or_default()
-                        .merge_delta(&balance_info);
+                    self.balance_changes.entry(balance_key).or_default().merge_delta(&balance_info);
 
                     if self.balance_changes.len() >= BALANCE_FLUSH_THRESHOLD {
                         self.batch.partial_merge_batch(
@@ -1654,10 +1567,8 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
     }
 
     fn finish(mut self) -> Result<(), StorageError> {
-        self.batch.partial_merge_batch(
-            &self.tables.balance,
-            std::mem::take(&mut self.balance_changes),
-        )?;
+        self.batch
+            .partial_merge_batch(&self.tables.balance, std::mem::take(&mut self.balance_changes))?;
         self.batch.write_opt(&bulk_ingestion_write_options())?;
 
         Ok(())
@@ -1713,10 +1624,7 @@ pub fn par_index_live_object_set<T: ParMakeLiveObjectIndexer>(
         Ok(())
     })?;
 
-    info!(
-        "Indexing Live Object Set took {} seconds",
-        start_time.elapsed().as_secs()
-    );
+    info!("Indexing Live Object Set took {} seconds", start_time.elapsed().as_secs());
 
     Ok(())
 }
@@ -1746,10 +1654,7 @@ fn live_object_set_index_task<T: LiveObjectIndexer>(
     {
         object_scanned += 1;
         if object_scanned % 2_000_000 == 0 {
-            info!(
-                "[Index] Task {}: object scanned: {}",
-                task_id, object_scanned
-            );
+            info!("[Index] Task {}: object scanned: {}", task_id, object_scanned);
         }
 
         object_indexer.index_object(object)?

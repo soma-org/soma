@@ -120,10 +120,7 @@ pub const TOTAL_SUPPLY_SHANNONS: u64 = TOTAL_SUPPLY_SOMA * SHANNONS_PER_SOMA;
 
 impl GenesisConfig {
     pub fn for_local_testing() -> Self {
-        Self::custom_genesis(
-            DEFAULT_NUMBER_OF_ACCOUNTS,
-            DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT,
-        )
+        Self::custom_genesis(DEFAULT_NUMBER_OF_ACCOUNTS, DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT)
     }
 
     pub fn for_local_testing_with_addresses(addresses: Vec<SomaAddress>) -> Self {
@@ -139,10 +136,7 @@ impl GenesisConfig {
             })
         }
 
-        Self {
-            accounts,
-            ..Default::default()
-        }
+        Self { accounts, ..Default::default() }
     }
 
     pub fn custom_genesis_with_addresses(
@@ -157,10 +151,7 @@ impl GenesisConfig {
             })
         }
 
-        Self {
-            accounts,
-            ..Default::default()
-        }
+        Self { accounts, ..Default::default() }
     }
 
     pub fn generate_accounts<R: rand::RngCore + rand::CryptoRng>(
@@ -246,9 +237,8 @@ impl ValidatorGenesisConfigBuilder {
         let ip = self.ip.unwrap_or_else(local_ip_utils::get_new_ip);
         let stake = self.stake.unwrap_or(default_stake());
         let localhost = local_ip_utils::localhost_for_testing();
-        let protocol_key_pair = self
-            .protocol_key_pair
-            .unwrap_or_else(|| get_key_pair_from_rng(rng).1);
+        let protocol_key_pair =
+            self.protocol_key_pair.unwrap_or_else(|| get_key_pair_from_rng(rng).1);
         let account_key_pair = self
             .account_key_pair
             .unwrap_or_else(|| SomaKeyPair::Ed25519(get_key_pair_from_rng(rng).1));
@@ -323,10 +313,8 @@ impl GenesisCeremonyParameters {
     }
 
     fn default_timestamp_ms() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+            as u64
     }
 
     fn default_epoch_duration_ms() -> u64 {
@@ -440,10 +428,8 @@ impl TokenDistributionSchedule {
             "Can't stake the emission fund with a model",
         );
 
-        let schedule = Self {
-            emission_fund_shannons: emission_fund_allocation.amount_shannons,
-            allocations,
-        };
+        let schedule =
+            Self { emission_fund_shannons: emission_fund_allocation.amount_shannons, allocations };
 
         schedule.validate();
         Ok(schedule)
@@ -477,10 +463,7 @@ pub struct TokenDistributionScheduleBuilder {
 impl TokenDistributionScheduleBuilder {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self {
-            pool: TOTAL_SUPPLY_SHANNONS,
-            allocations: vec![],
-        }
+        Self { pool: TOTAL_SUPPLY_SHANNONS, allocations: vec![] }
     }
 
     pub fn add_allocation(&mut self, allocation: TokenAllocation) {

@@ -21,10 +21,7 @@ pub(crate) fn iterator_bounds<K>(
 where
     K: Serialize,
 {
-    (
-        lower_bound.map(|b| be_fix_int_ser(&b)),
-        upper_bound.map(|b| be_fix_int_ser(&b)),
-    )
+    (lower_bound.map(|b| be_fix_int_ser(&b)), upper_bound.map(|b| be_fix_int_ser(&b)))
 }
 
 pub(crate) fn iterator_bounds_with_range<K>(

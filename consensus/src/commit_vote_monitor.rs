@@ -18,10 +18,7 @@ pub(crate) struct CommitVoteMonitor {
 impl CommitVoteMonitor {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         let highest_voted_commits = Mutex::new(vec![0; context.committee.size()]);
-        Self {
-            context,
-            highest_voted_commits,
-        }
+        Self { context, highest_voted_commits }
     }
 
     /// Keeps track of the highest commit voted by each authority.

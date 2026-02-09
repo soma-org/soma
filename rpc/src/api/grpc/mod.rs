@@ -34,9 +34,7 @@ impl Services {
         S::Future: Send + 'static,
         S::Error: Into<BoxError> + Send,
     {
-        self.router = self
-            .router
-            .route_service(&format!("/{}/{{*rest}}", S::NAME), svc);
+        self.router = self.router.route_service(&format!("/{}/{{*rest}}", S::NAME), svc);
         self
     }
 

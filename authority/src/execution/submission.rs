@@ -73,14 +73,15 @@ impl SubmissionExecutor {
     }
 
     /// Load a Target from the temporary store.
-    fn load_target(store: &TemporaryStore, target_id: &ObjectID) -> ExecutionResult<(Object, Target)> {
-        let target_object = store
-            .read_object(target_id)
-            .ok_or(ExecutionFailureStatus::TargetNotFound)?
-            .clone();
+    fn load_target(
+        store: &TemporaryStore,
+        target_id: &ObjectID,
+    ) -> ExecutionResult<(Object, Target)> {
+        let target_object =
+            store.read_object(target_id).ok_or(ExecutionFailureStatus::TargetNotFound)?.clone();
 
-        let target = bcs::from_bytes::<Target>(target_object.as_inner().data.contents())
-            .map_err(|e| {
+        let target =
+            bcs::from_bytes::<Target>(target_object.as_inner().data.contents()).map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize target: {}",
                     e
@@ -200,9 +201,8 @@ impl SubmissionExecutor {
 
         check_ownership(&bond_object, signer)?;
 
-        let bond_balance = bond_object
-            .as_coin()
-            .ok_or(ExecutionFailureStatus::InvalidObjectType {
+        let bond_balance =
+            bond_object.as_coin().ok_or(ExecutionFailureStatus::InvalidObjectType {
                 object_id: bond_coin_id,
                 expected_type: ObjectType::Coin,
                 actual_type: bond_object.type_().clone(),
@@ -271,11 +271,7 @@ impl SubmissionExecutor {
             "SubmitData: creating submission object with id={:?}, creation_num={}",
             submission_id, submission_creation_num
         );
-        let submission_object = Object::new_submission_object(
-            submission_id,
-            submission,
-            tx_digest,
-        );
+        let submission_object = Object::new_submission_object(submission_id, submission, tx_digest);
         store.create_object(submission_object);
 
         // 15. Spawn replacement target if there are active models and emission pool has funds
@@ -314,13 +310,11 @@ impl SubmissionExecutor {
             let new_target_id = ObjectID::derive_id(tx_digest, target_creation_num);
             info!(
                 "SubmitData: creating replacement target with id={:?}, creation_num={}, embedding[0..3]={:?}",
-                new_target_id, target_creation_num, &new_target.embedding.as_slice().unwrap()[0..3]
-            );
-            let new_target_object = Object::new_target_object(
                 new_target_id,
-                new_target,
-                tx_digest,
+                target_creation_num,
+                &new_target.embedding.as_slice().unwrap()[0..3]
             );
+            let new_target_object = Object::new_target_object(new_target_id, new_target, tx_digest);
             store.create_object(new_target_object);
         }
 
@@ -417,10 +411,7 @@ impl SubmissionExecutor {
         // Can claim when current_epoch > fill_epoch + 1
         let challenge_window_end = fill_epoch + 1;
         if current_epoch <= challenge_window_end {
-            return Err(ExecutionFailureStatus::ChallengeWindowOpen {
-                fill_epoch,
-                current_epoch,
-            });
+            return Err(ExecutionFailureStatus::ChallengeWindowOpen { fill_epoch, current_epoch });
         }
 
         // Get reward amount and recipient info
@@ -594,7 +585,8 @@ impl SubmissionExecutor {
 
         // Return most of the reward pool to emissions, pay claimer incentive
         if reward > 0 {
-            let claimer_share = (reward * state.parameters.target_claimer_incentive_bps) / BPS_DENOMINATOR;
+            let claimer_share =
+                (reward * state.parameters.target_claimer_incentive_bps) / BPS_DENOMINATOR;
             let return_to_pool = reward - claimer_share;
 
             // Return to emission pool
@@ -760,12 +752,10 @@ impl FeeCalculator for SubmissionExecutor {
                 // Value fee on the reward amount
                 // Load target to get reward_pool - if not found, return 0
                 let target = match store.read_object(&args.target_id) {
-                    Some(obj) => {
-                        match bcs::from_bytes::<Target>(obj.as_inner().data.contents()) {
-                            Ok(t) => t,
-                            Err(_) => return 0,
-                        }
-                    }
+                    Some(obj) => match bcs::from_bytes::<Target>(obj.as_inner().data.contents()) {
+                        Ok(t) => t,
+                        Err(_) => return 0,
+                    },
                     None => return 0,
                 };
 

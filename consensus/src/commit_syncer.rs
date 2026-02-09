@@ -28,12 +28,12 @@ use std::{
 };
 
 use crate::{
-    block_verifier::BlockVerifier, commit_vote_monitor::CommitVoteMonitor,
+    CommitConsumerMonitor, block_verifier::BlockVerifier, commit_vote_monitor::CommitVoteMonitor,
     core_thread::CoreThreadDispatcher, dag_state::DagState, network::NetworkClient,
-    transaction_certifier::TransactionCertifier, CommitConsumerMonitor,
+    transaction_certifier::TransactionCertifier,
 };
 use bytes::Bytes;
-use futures::{stream::FuturesOrdered, StreamExt as _};
+use futures::{StreamExt as _, stream::FuturesOrdered};
 use itertools::Itertools as _;
 use parking_lot::RwLock;
 use rand::{prelude::SliceRandom as _, rngs::ThreadRng};
@@ -41,7 +41,7 @@ use tokio::{
     runtime::Handle,
     sync::oneshot,
     task::{JoinHandle, JoinSet},
-    time::{sleep, MissedTickBehavior},
+    time::{MissedTickBehavior, sleep},
 };
 use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
@@ -135,10 +135,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
     pub(crate) fn start(self) -> CommitSyncerHandle {
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
         let schedule_task = tokio::spawn(self.schedule_loop(rx_shutdown));
-        CommitSyncerHandle {
-            schedule_task,
-            tx_shutdown,
-        }
+        CommitSyncerHandle { schedule_task, tx_shutdown }
     }
 
     async fn schedule_loop(mut self, mut rx_shutdown: oneshot::Receiver<()>) {
@@ -197,9 +194,8 @@ impl<C: NetworkClient> CommitSyncer<C> {
         );
 
         // TODO: cleanup inflight fetches that are no longer needed.
-        let fetch_after_index = self
-            .synced_commit_index
-            .max(self.highest_scheduled_index.unwrap_or(0));
+        let fetch_after_index =
+            self.synced_commit_index.max(self.highest_scheduled_index.unwrap_or(0));
         // When the node is falling behind, schedule pending fetches which will be executed on later.
         for prev_end in (fetch_after_index..=quorum_commit_index)
             .step_by(self.inner.context.parameters.commit_sync_batch_size as usize)
@@ -221,8 +217,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                 );
                 break;
             }
-            self.pending_fetches
-                .insert((range_start..=range_end).into());
+            self.pending_fetches.insert((range_start..=range_end).into());
             // quorum_commit_index should be non-decreasing, so highest_scheduled_index should not
             // decrease either.
             self.highest_scheduled_index = Some(range_end);
@@ -236,17 +231,11 @@ impl<C: NetworkClient> CommitSyncer<C> {
     ) {
         assert!(!certified_commits.commits().is_empty());
 
-        let (total_blocks_fetched, total_blocks_size_bytes) = certified_commits
-            .commits()
-            .iter()
-            .fold((0, 0), |(blocks, bytes), c| {
+        let (total_blocks_fetched, total_blocks_size_bytes) =
+            certified_commits.commits().iter().fold((0, 0), |(blocks, bytes), c| {
                 (
                     blocks + c.blocks().len(),
-                    bytes
-                        + c.blocks()
-                            .iter()
-                            .map(|b| b.serialized().len())
-                            .sum::<usize>() as u64,
+                    bytes + c.blocks().iter().map(|b| b.serialized().len()).sum::<usize>() as u64,
                 )
             });
 
@@ -258,17 +247,14 @@ impl<C: NetworkClient> CommitSyncer<C> {
 
         // Allow returning partial results, and try fetching the rest separately.
         if commit_end < target_end {
-            self.pending_fetches
-                .insert((commit_end + 1..=target_end).into());
+            self.pending_fetches.insert((commit_end + 1..=target_end).into());
         }
         // Make sure synced_commit_index is up to date.
-        self.synced_commit_index = self
-            .synced_commit_index
-            .max(self.inner.dag_state.read().last_commit_index());
+        self.synced_commit_index =
+            self.synced_commit_index.max(self.inner.dag_state.read().last_commit_index());
         // Only add new blocks if at least some of them are not already synced.
         if self.synced_commit_index < commit_end {
-            self.fetched_ranges
-                .insert((commit_start..=commit_end).into(), certified_commits);
+            self.fetched_ranges.insert((commit_start..=commit_end).into(), certified_commits);
         }
         // Try to process as many fetched blocks as possible.
         while let Some((fetched_commit_range, _commits)) = self.fetched_ranges.first_key_value() {
@@ -301,12 +287,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
 
             // If core thread cannot handle the incoming blocks, it is ok to block here
             // to slow down the commit syncer.
-            match self
-                .inner
-                .core_thread_dispatcher
-                .add_certified_commits(commits)
-                .await
-            {
+            match self.inner.core_thread_dispatcher.add_certified_commits(commits).await {
                 // Missing ancestors are possible from certification blocks, but
                 // it is unnecessary to try to sync their causal history. If they are required
                 // for the progress of the DAG, they will be included in a future commit.
@@ -356,8 +337,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
             let Some(commit_range) = self.pending_fetches.pop_first() else {
                 break;
             };
-            self.inflight_fetches
-                .spawn(Self::fetch_loop(self.inner.clone(), commit_range));
+            self.inflight_fetches.spawn(Self::fetch_loop(self.inner.clone(), commit_range));
         }
     }
 
@@ -385,13 +365,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                 .context
                 .committee
                 .authorities()
-                .filter_map(|(i, _)| {
-                    if i != inner.context.own_index {
-                        Some(i)
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(|(i, _)| if i != inner.context.own_index { Some(i) } else { None })
                 .collect_vec();
             target_authorities.shuffle(&mut ThreadRng::default());
             target_authorities.truncate(MAX_NUM_TARGETS);
@@ -470,10 +444,8 @@ impl<C: NetworkClient> CommitSyncer<C> {
         // 3. Fetch blocks referenced by the commits, from the same peer where commits are fetched.
         let mut block_refs: Vec<_> = commits.iter().flat_map(|c| c.blocks()).cloned().collect();
         block_refs.sort();
-        let num_chunks = block_refs
-            .len()
-            .div_ceil(inner.context.parameters.max_blocks_per_fetch)
-            as u32;
+        let num_chunks =
+            block_refs.len().div_ceil(inner.context.parameters.max_blocks_per_fetch) as u32;
         let mut requests: FuturesOrdered<_> = block_refs
             .chunks(inner.context.parameters.max_blocks_per_fetch)
             .enumerate()
@@ -551,11 +523,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
             let blocks = commit
                 .blocks()
                 .iter()
-                .map(|block_ref| {
-                    fetched_blocks
-                        .remove(block_ref)
-                        .expect("Block should exist")
-                })
+                .map(|block_ref| fetched_blocks.remove(block_ref).expect("Block should exist"))
                 .collect::<Vec<_>>();
             certified_commits.push(CertifiedCommit::new_certified(commit.clone(), blocks));
         }
@@ -566,9 +534,7 @@ impl<C: NetworkClient> CommitSyncer<C> {
                 // Only account for reject votes in the block, since they may vote on uncommitted
                 // blocks or transactions. It is unnecessary to vote on the committed blocks
                 // themselves.
-                inner
-                    .transaction_certifier
-                    .add_voted_blocks(vec![(block.clone(), vec![])]);
+                inner.transaction_certifier.add_voted_blocks(vec![(block.clone(), vec![])]);
             }
         }
 

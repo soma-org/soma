@@ -216,10 +216,7 @@ impl SomaValidatorCommand {
                 Ok(ValidatorCommandResponse::Started)
             }
 
-            SomaValidatorCommand::MakeValidatorInfo {
-                host_name,
-                commission_rate,
-            } => {
+            SomaValidatorCommand::MakeValidatorInfo { host_name, commission_rate } => {
                 make_validator_info(context, &host_name, commission_rate)?;
                 Ok(ValidatorCommandResponse::MakeValidatorInfo)
             }
@@ -239,10 +236,7 @@ impl SomaValidatorCommand {
                 execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
-            SomaValidatorCommand::DisplayMetadata {
-                validator_address,
-                json,
-            } => {
+            SomaValidatorCommand::DisplayMetadata { validator_address, json } => {
                 let address = validator_address.unwrap_or(sender);
                 display_metadata(context, address, json).await?;
                 Ok(ValidatorCommandResponse::DisplayMetadata)
@@ -260,10 +254,7 @@ impl SomaValidatorCommand {
                 execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
-            SomaValidatorCommand::SetCommissionRate {
-                commission_rate,
-                tx_args,
-            } => {
+            SomaValidatorCommand::SetCommissionRate { commission_rate, tx_args } => {
                 // Verify sender is active or pending
                 check_status(
                     context,
@@ -276,17 +267,11 @@ impl SomaValidatorCommand {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
 
-                let kind = TransactionKind::SetCommissionRate {
-                    new_rate: commission_rate,
-                };
+                let kind = TransactionKind::SetCommissionRate { new_rate: commission_rate };
                 execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
-            SomaValidatorCommand::ReportValidator {
-                reportee_address,
-                undo_report,
-                tx_args,
-            } => {
+            SomaValidatorCommand::ReportValidator { reportee_address, undo_report, tx_args } => {
                 // Only active validators can report
                 check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
 
@@ -296,22 +281,14 @@ impl SomaValidatorCommand {
                 }
 
                 let kind = if undo_report {
-                    TransactionKind::UndoReportValidator {
-                        reportee: reportee_address,
-                    }
+                    TransactionKind::UndoReportValidator { reportee: reportee_address }
                 } else {
-                    TransactionKind::ReportValidator {
-                        reportee: reportee_address,
-                    }
+                    TransactionKind::ReportValidator { reportee: reportee_address }
                 };
                 execute_or_serialize(context, sender, kind, tx_args.into()).await
             }
 
-            SomaValidatorCommand::ReportModel {
-                model_id,
-                undo_report,
-                tx_args,
-            } => {
+            SomaValidatorCommand::ReportModel { model_id, undo_report, tx_args } => {
                 // Only active validators can report models
                 check_status(context, HashSet::from([ValidatorStatus::Active])).await?;
 
@@ -331,17 +308,10 @@ async fn start_validator_node(config_path: PathBuf) -> Result<()> {
     info!("Loading validator config from {:?}", config_path);
 
     let node_config: NodeConfig = PersistedConfig::read(&config_path).map_err(|err| {
-        anyhow!(
-            "Cannot open validator config file at {:?}: {}",
-            config_path,
-            err
-        )
+        anyhow!("Cannot open validator config file at {:?}: {}", config_path, err)
     })?;
 
-    info!(
-        "Starting validator node with protocol key: {:?}",
-        node_config.protocol_public_key()
-    );
+    info!("Starting validator node with protocol key: {:?}", node_config.protocol_public_key());
 
     // Start the validator node
     let node = SomaNode::start(node_config)
@@ -402,9 +372,7 @@ async fn execute_or_serialize(
     let builder = TransactionBuilder::new(context);
 
     if options.serialize_unsigned {
-        let serialized = builder
-            .build_serialized_unsigned(sender, kind, options.gas)
-            .await?;
+        let serialized = builder.build_serialized_unsigned(sender, kind, options.gas).await?;
         Ok(ValidatorCommandResponse::SerializedTransaction {
             serialized_unsigned_transaction: serialized,
         })
@@ -507,10 +475,7 @@ fn make_validator_info(
     fs::write(&validator_info_file, validator_info_yaml)?;
 
     println!("Generated key files in: {}", dir.display());
-    println!(
-        "Generated validator info: {}",
-        validator_info_file.display()
-    );
+    println!("Generated validator info: {}", validator_info_file.display());
 
     Ok(())
 }
@@ -617,10 +582,7 @@ async fn display_metadata(
             }
         }
         None => {
-            println!(
-                "{} is not an active, networking, or pending validator.",
-                address
-            );
+            println!("{} is not an active, networking, or pending validator.", address);
         }
     }
     Ok(())

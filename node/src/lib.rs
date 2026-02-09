@@ -24,8 +24,8 @@ use authority::{
     consensus_store_pruner::ConsensusStorePruner,
     consensus_validator::TxValidator,
     execution_scheduler::SchedulingSource,
-    global_state_hasher::GlobalStateHasher,
     fullnode_proxy::FullnodeProxy,
+    global_state_hasher::GlobalStateHasher,
     proxy_server::{ProxyConfig, ProxyServer, spawn_report_handler},
     reconfiguration::ReconfigurationInitiator,
     rpc_index::RpcIndexStore,
@@ -102,9 +102,7 @@ mod simulator {
 
     impl Default for SimState {
         fn default() -> Self {
-            Self {
-                sim_node: msim::runtime::NodeHandle::current(),
-            }
+            Self { sim_node: msim::runtime::NodeHandle::current() }
         }
     }
 }
@@ -246,10 +244,8 @@ impl SomaNode {
         ));
 
         let pruner_watermarks = Arc::new(PrunerWatermarks::default());
-        let checkpoint_store = CheckpointStore::new(
-            &config.db_path().join("checkpoints"),
-            pruner_watermarks.clone(),
-        );
+        let checkpoint_store =
+            CheckpointStore::new(&config.db_path().join("checkpoints"), pruner_watermarks.clone());
 
         Self::check_and_recover_forks(
             &checkpoint_store,
@@ -259,29 +255,22 @@ impl SomaNode {
         .await?;
 
         let mut pruner_db = None;
-        if config
-            .authority_store_pruning_config
-            .enable_compaction_filter
-        {
-            pruner_db = Some(Arc::new(AuthorityPrunerTables::open(
-                &config.db_path().join("store"),
-            )));
+        if config.authority_store_pruning_config.enable_compaction_filter {
+            pruner_db =
+                Some(Arc::new(AuthorityPrunerTables::open(&config.db_path().join("store"))));
         }
         let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
 
         // By default, only enable write stall on validators for perpetual db.
         // TODO: let enable_write_stall = config.enable_db_write_stall.unwrap_or(is_validator);
-        let perpetual_tables_options = AuthorityPerpetualTablesOptions {
-            enable_write_stall: true,
-            compaction_filter,
-        };
+        let perpetual_tables_options =
+            AuthorityPerpetualTablesOptions { enable_write_stall: true, compaction_filter };
         let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(
             &config.db_path().join("store"),
             Some(perpetual_tables_options),
         ));
-        let is_genesis = perpetual_tables
-            .database_is_empty()
-            .expect("Database read should not fail at init.");
+        let is_genesis =
+            perpetual_tables.database_is_empty().expect("Database read should not fail at init.");
 
         let backpressure_manager =
             BackpressureManager::new_from_checkpoint_store(&checkpoint_store);
@@ -296,19 +285,14 @@ impl SomaNode {
             .get_epoch_start_configuration()?
             .expect("EpochStartConfiguration of the current epoch must exist");
 
-        let cache_traits = build_execution_cache(
-            &config.execution_cache,
-            &store,
-            backpressure_manager.clone(),
-        );
+        let cache_traits =
+            build_execution_cache(&config.execution_cache, &store, backpressure_manager.clone());
 
         let auth_agg = {
-            Arc::new(ArcSwap::new(Arc::new(
-                AuthorityAggregator::new_from_epoch_start_state(
-                    epoch_start_configuration.epoch_start_state(),
-                    &committee_store,
-                ),
-            )))
+            Arc::new(ArcSwap::new(Arc::new(AuthorityAggregator::new_from_epoch_start_state(
+                epoch_start_configuration.epoch_start_state(),
+                &committee_store,
+            ))))
         };
 
         let chain_id = ChainIdentifier::from(*genesis.checkpoint().digest());
@@ -334,9 +318,8 @@ impl SomaNode {
         info!("created epoch store");
 
         let effective_buffer_stake = epoch_store.get_effective_buffer_stake_bps();
-        let default_buffer_stake = epoch_store
-            .protocol_config()
-            .buffer_stake_for_protocol_upgrade_bps();
+        let default_buffer_stake =
+            epoch_store.protocol_config().buffer_stake_for_protocol_upgrade_bps();
         if effective_buffer_stake != default_buffer_stake {
             warn!(
                 ?effective_buffer_stake,
@@ -359,9 +342,7 @@ impl SomaNode {
         );
 
         let rpc_index = if is_full_node && config.rpc().is_some_and(|rpc| rpc.enable_indexing()) {
-            Some(Arc::new(
-                RpcIndexStore::new(&config.db_path(), &store, &checkpoint_store).await,
-            ))
+            Some(Arc::new(RpcIndexStore::new(&config.db_path(), &store, &checkpoint_store).await))
         } else {
             None
         };
@@ -369,15 +350,12 @@ impl SomaNode {
         let chain_identifier = epoch_store.get_chain_identifier();
 
         // TOD:  let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
-        let P2pComponents {
-            channel_manager_tx,
-            discovery_handle,
-            state_sync_handle,
-        } = Self::create_p2p_network(
-            &config,
-            state_sync_store.clone(),
-            // trusted_peer_change_rx,
-        )?;
+        let P2pComponents { channel_manager_tx, discovery_handle, state_sync_handle } =
+            Self::create_p2p_network(
+                &config,
+                state_sync_store.clone(),
+                // trusted_peer_change_rx,
+            )?;
 
         // We must explicitly send this instead of relying on the initial value to trigger
         // watch value change, so that state-sync is able to process it.
@@ -484,13 +462,11 @@ impl SomaNode {
         )
         .await?;
 
-        let global_state_hasher = Arc::new(GlobalStateHasher::new(
-            cache_traits.global_state_hash_store.clone(),
-        ));
+        let global_state_hasher =
+            Arc::new(GlobalStateHasher::new(cache_traits.global_state_hash_store.clone()));
 
-        let authority_names_to_peer_ids = epoch_store
-            .epoch_start_state()
-            .get_authority_names_to_peer_ids();
+        let authority_names_to_peer_ids =
+            epoch_store.epoch_start_state().get_authority_names_to_peer_ids();
 
         let authority_names_to_peer_ids = ArcSwap::from_pointee(authority_names_to_peer_ids);
 
@@ -588,11 +564,8 @@ impl SomaNode {
             .archive_config(config.state_archive_read_config.clone())
             .build();
 
-        let own_address = config
-            .p2p_config
-            .external_address
-            .clone()
-            .expect("External address must be set");
+        let own_address =
+            config.p2p_config.external_address.clone().expect("External address must be set");
 
         let active_peers = ActivePeers::new(1000);
         let (channel_manager, channel_manager_tx) = ChannelManager::new(
@@ -615,11 +588,7 @@ impl SomaNode {
         );
         let state_sync_handle = state_sync.start(active_peers, peer_event_receiver);
 
-        Ok(P2pComponents {
-            channel_manager_tx,
-            discovery_handle,
-            state_sync_handle,
-        })
+        Ok(P2pComponents { channel_manager_tx, discovery_handle, state_sync_handle })
     }
 
     async fn construct_validator_components(
@@ -657,12 +626,9 @@ impl SomaNode {
             consensus_config.db_pruner_period(),
         );
 
-        let validator_server_handle = Self::start_grpc_validator_service(
-            &config,
-            state.clone(),
-            consensus_adapter.clone(),
-        )
-        .await?;
+        let validator_server_handle =
+            Self::start_grpc_validator_service(&config, state.clone(), consensus_adapter.clone())
+                .await?;
 
         // Starts an overload monitor that monitors the execution of the authority.
         // Don't start the overload monitor when max_load_shedding_percentage is 0.
@@ -747,26 +713,16 @@ impl SomaNode {
             let consensus_manager = consensus_manager.clone();
             async move {
                 consensus_manager
-                    .start(
-                        &config,
-                        epoch_store,
-                        consensus_handler_initializer,
-                        tx_validator,
-                    )
+                    .start(&config, epoch_store, consensus_handler_initializer, tx_validator)
                     .await;
             }
         });
         let replay_waiter = consensus_manager.replay_waiter();
 
         info!("Spawning checkpoint service");
-        let replay_waiter = if std::env::var("DISABLE_REPLAY_WAITER").is_ok() {
-            None
-        } else {
-            Some(replay_waiter)
-        };
-        checkpoint_service
-            .spawn(epoch_store.clone(), replay_waiter)
-            .await;
+        let replay_waiter =
+            if std::env::var("DISABLE_REPLAY_WAITER").is_ok() { None } else { Some(replay_waiter) };
+        checkpoint_service.spawn(epoch_store.clone(), replay_waiter).await;
 
         // Create channel for AuditService to receive new Challenge objects from checkpoint execution.
         let (challenge_tx, challenge_rx) = tokio::sync::mpsc::channel(100);
@@ -781,13 +737,12 @@ impl SomaNode {
             &epoch_store,
             consensus_adapter.clone(),
             challenge_rx,
-        ).await;
+        )
+        .await;
 
         // Start proxy server if proxy_port is configured
-        let proxy_server_handle = if let Some(proxy_port) = config
-            .consensus_config
-            .as_ref()
-            .and_then(|c| c.proxy_port())
+        let proxy_server_handle = if let Some(proxy_port) =
+            config.consensus_config.as_ref().and_then(|c| c.proxy_port())
         {
             // Create report channel for availability reports
             let (report_tx, report_rx) = tokio::sync::mpsc::channel(100);
@@ -806,7 +761,8 @@ impl SomaNode {
                     report_state,
                     report_consensus_adapter,
                     report_epoch_store,
-                ).await;
+                )
+                .await;
             });
 
             // Create and start the proxy server
@@ -926,8 +882,7 @@ impl SomaNode {
         state: Arc<AuthorityState>,
         consensus_adapter: Arc<ConsensusAdapter>,
     ) -> Result<SpawnOnce> {
-        let validator_service =
-            ValidatorService::new(state.clone(), consensus_adapter);
+        let validator_service = ValidatorService::new(state.clone(), consensus_adapter);
 
         let mut server_conf = Config::new();
         server_conf.connect_timeout = Some(DEFAULT_GRPC_CONNECT_TIMEOUT);
@@ -997,9 +952,8 @@ impl SomaNode {
                     );
                     // we only need to re-execute if we previously signed the effects (which indicates we
                     // returned the effects to a client).
-                    if let Some(fx_digest) = epoch_store
-                        .get_signed_effects_digest(tx.digest())
-                        .expect("db error")
+                    if let Some(fx_digest) =
+                        epoch_store.get_signed_effects_digest(tx.digest()).expect("db error")
                     {
                         pending_consensus_certificates.push((
                             Schedulable::Transaction(tx),
@@ -1023,18 +977,10 @@ impl SomaNode {
             .map(|(tx, _)| *tx.key().unwrap_digest())
             .collect::<Vec<_>>();
 
-        info!(
-            "reexecuting {} pending consensus certificates: {:?}",
-            digests.len(),
-            digests
-        );
+        info!("reexecuting {} pending consensus certificates: {:?}", digests.len(), digests);
 
-        state
-            .execution_scheduler()
-            .enqueue(pending_consensus_certificates, epoch_store);
-        state
-            .execution_scheduler()
-            .enqueue(additional_certs, epoch_store);
+        state.execution_scheduler().enqueue(pending_consensus_certificates, epoch_store);
+        state.execution_scheduler().enqueue(additional_certs, epoch_store);
 
         // If this times out, the validator will still almost certainly start up fine. But, it is
         // possible that it may temporarily "forget" about transactions that it had previously
@@ -1043,32 +989,24 @@ impl SomaNode {
         let timeout = if cfg!(msim) { 120 } else { 60 };
         if tokio::time::timeout(
             std::time::Duration::from_secs(timeout),
-            state
-                .get_transaction_cache_reader()
-                .notify_read_executed_effects_digests(&digests),
+            state.get_transaction_cache_reader().notify_read_executed_effects_digests(&digests),
         )
         .await
         .is_err()
         {
             // Log all the digests that were not executed to help debugging.
-            let executed_effects_digests = state
-                .get_transaction_cache_reader()
-                .multi_get_executed_effects_digests(&digests);
+            let executed_effects_digests =
+                state.get_transaction_cache_reader().multi_get_executed_effects_digests(&digests);
             let pending_digests = digests
                 .iter()
                 .zip(executed_effects_digests.iter())
-                .filter_map(|(digest, executed_effects_digest)| {
-                    if executed_effects_digest.is_none() {
-                        Some(digest)
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(
+                    |(digest, executed_effects_digest)| {
+                        if executed_effects_digest.is_none() { Some(digest) } else { None }
+                    },
+                )
                 .collect::<Vec<_>>();
-            debug!(
-                "Timed out waiting for effects digests to be executed: {:?}",
-                pending_digests
-            );
+            debug!("Timed out waiting for effects digests to be executed: {:?}", pending_digests);
         }
     }
 
@@ -1085,18 +1023,13 @@ impl SomaNode {
         loop {
             let mut hasher_guard = self.global_state_hasher.lock().await;
             let hasher = hasher_guard.take().unwrap();
-            info!(
-                "Creating checkpoint executor for epoch {}",
-                epoch_store.epoch()
-            );
+            info!("Creating checkpoint executor for epoch {}", epoch_store.epoch());
 
             // Get the challenge observer sender from ValidatorComponents if this is a validator.
             // Fullnodes don't run the AuditService, so they get None.
             let challenge_observer_sender = {
                 let guard = self.validator_components.lock().await;
-                guard
-                    .as_ref()
-                    .map(|c| c.challenge_observer_sender.clone())
+                guard.as_ref().map(|c| c.challenge_observer_sender.clone())
             };
 
             let checkpoint_executor = CheckpointExecutor::new(
@@ -1162,19 +1095,14 @@ impl SomaNode {
 
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
                 if self.state.is_fullnode(&cur_epoch_store) {
-                    warn!(
-                        "Failed to send end of epoch notification to subscriber: {:?}",
-                        err
-                    );
+                    warn!("Failed to send end of epoch notification to subscriber: {:?}", err);
                 }
             }
 
             let new_epoch_start_state = latest_system_state.into_epoch_start_state();
 
             self.auth_agg.store(Arc::new(
-                self.auth_agg
-                    .load()
-                    .recreate_with_new_epoch_start_state(&new_epoch_start_state),
+                self.auth_agg.load().recreate_with_new_epoch_start_state(&new_epoch_start_state),
             ));
 
             let next_epoch_committee = new_epoch_start_state.get_committee();
@@ -1391,18 +1319,16 @@ impl SomaNode {
             Self::try_recover_transaction_fork(checkpoint_store, recovery)?;
         }
 
-        if let Some((checkpoint_seq, checkpoint_digest)) = checkpoint_store
-            .get_checkpoint_fork_detected()
-            .map_err(|e| {
+        if let Some((checkpoint_seq, checkpoint_digest)) =
+            checkpoint_store.get_checkpoint_fork_detected().map_err(|e| {
                 error!("Failed to check for checkpoint fork: {:?}", e);
                 e
             })?
         {
             Self::handle_checkpoint_fork(checkpoint_seq, checkpoint_digest, fork_recovery).await?;
         }
-        if let Some((tx_digest, expected_effects, actual_effects)) = checkpoint_store
-            .get_transaction_fork_detected()
-            .map_err(|e| {
+        if let Some((tx_digest, expected_effects, actual_effects)) =
+            checkpoint_store.get_transaction_fork_detected().map_err(|e| {
                 error!("Failed to check for transaction fork: {:?}", e);
                 e
             })?
@@ -1444,11 +1370,9 @@ impl SomaNode {
                         "Fork recovery: clearing locally_computed_checkpoints from {} due to digest mismatch",
                         seq
                     );
-                    checkpoint_store
-                        .clear_locally_computed_checkpoints_from(*seq)
-                        .context(
-                            "Failed to clear locally computed checkpoints from override seq",
-                        )?;
+                    checkpoint_store.clear_locally_computed_checkpoints_from(*seq).context(
+                        "Failed to clear locally computed checkpoints from override seq",
+                    )?;
                 }
             }
         }
@@ -1472,11 +1396,7 @@ impl SomaNode {
     /// Get a short prefix of a digest for metric labels
     fn get_digest_prefix(digest: impl std::fmt::Display) -> String {
         let digest_str = digest.to_string();
-        if digest_str.len() >= 8 {
-            digest_str[0..8].to_string()
-        } else {
-            digest_str
-        }
+        if digest_str.len() >= 8 { digest_str[0..8].to_string() } else { digest_str }
     }
 
     fn try_recover_transaction_fork(
@@ -1488,14 +1408,8 @@ impl SomaNode {
         }
 
         if let Some((tx_digest, _, _)) = checkpoint_store.get_transaction_fork_detected()? {
-            if recovery
-                .transaction_overrides
-                .contains_key(&tx_digest.to_string())
-            {
-                info!(
-                    "Fork recovery enabled: clearing transaction fork for tx {:?}",
-                    tx_digest
-                );
+            if recovery.transaction_overrides.contains_key(&tx_digest.to_string()) {
+                info!("Fork recovery enabled: clearing transaction fork for tx {:?}", tx_digest);
                 checkpoint_store
                     .clear_transaction_fork_detected()
                     .expect("Failed to clear transaction fork detected marker");
@@ -1516,9 +1430,7 @@ impl SomaNode {
         checkpoint_digest: CheckpointDigest,
         fork_recovery: Option<&ForkRecoveryConfig>,
     ) -> Result<()> {
-        let behavior = fork_recovery
-            .map(|fr| fr.fork_crash_behavior)
-            .unwrap_or_default();
+        let behavior = fork_recovery.map(|fr| fr.fork_crash_behavior).unwrap_or_default();
 
         match behavior {
             ForkCrashBehavior::AwaitForkRecovery => {
@@ -1551,9 +1463,7 @@ impl SomaNode {
         actual_effects_digest: TransactionEffectsDigest,
         fork_recovery: Option<&ForkRecoveryConfig>,
     ) -> Result<()> {
-        let behavior = fork_recovery
-            .map(|fr| fr.fork_crash_behavior)
-            .unwrap_or_default();
+        let behavior = fork_recovery.map(|fr| fr.fork_crash_behavior).unwrap_or_default();
 
         match behavior {
             ForkCrashBehavior::AwaitForkRecovery => {
@@ -1598,9 +1508,7 @@ impl SomaNode {
     pub fn clone_authority_aggregator(
         &self,
     ) -> Option<Arc<AuthorityAggregator<NetworkAuthorityClient>>> {
-        self.transaction_orchestrator
-            .as_ref()
-            .map(|to| to.clone_authority_aggregator())
+        self.transaction_orchestrator.as_ref().map(|to| to.clone_authority_aggregator())
     }
 
     pub fn get_config(&self) -> &NodeConfig {
@@ -1709,14 +1617,10 @@ async fn build_http_servers(
                 .allow_headers(tower_http::cors::Any),
         );
 
-    router = router
-        .merge(rpc_router)
-        .merge(fullnode_proxy_router)
-        .layer(layers);
+    router = router.merge(rpc_router).merge(fullnode_proxy_router).layer(layers);
 
-    let https = if let Some((tls_config, https_address)) = config
-        .rpc()
-        .and_then(|config| config.tls_config().map(|tls| (tls, config.https_address())))
+    let https = if let Some((tls_config, https_address)) =
+        config.rpc().and_then(|config| config.tls_config().map(|tls| (tls, config.https_address())))
     {
         let https = soma_http::Builder::new()
             .tls_single_cert(tls_config.cert(), tls_config.key())
@@ -1744,13 +1648,7 @@ async fn build_http_servers(
         http.local_addr()
     );
 
-    Ok((
-        HttpServers {
-            http: Some(http),
-            https,
-        },
-        Some(subscription_service_checkpoint_sender),
-    ))
+    Ok((HttpServers { http: Some(http), https }, Some(subscription_service_checkpoint_sender)))
 }
 
 #[cfg(not(test))]

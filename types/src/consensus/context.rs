@@ -37,14 +37,7 @@ impl Context {
         protocol_config: ProtocolConfig,
         clock: Arc<Clock>,
     ) -> Self {
-        Self {
-            epoch_start_timestamp_ms,
-            own_index,
-            committee,
-            parameters,
-            protocol_config,
-            clock,
-        }
+        Self { epoch_start_timestamp_ms, own_index, committee, parameters, protocol_config, clock }
     }
 
     /// Create a test context with a committee of given size and even stake
@@ -69,10 +62,7 @@ impl Context {
             0,
             AuthorityIndex::new_for_test(0),
             committee,
-            Parameters {
-                db_path: temp_dir.keep(),
-                ..Default::default()
-            },
+            Parameters { db_path: temp_dir.keep(), ..Default::default() },
             ProtocolConfig::get_for_version(
                 protocol_config::MAX_PROTOCOL_VERSION.into(),
                 protocol_config::Chain::Testnet,
@@ -153,15 +143,9 @@ impl Clock {
         let now: Instant = Instant::now();
         let monotonic_system_time = self
             .initial_system_time
-            .checked_add(
-                now.checked_duration_since(self.initial_instant)
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "current instant ({:?}) < initial instant ({:?})",
-                            now, self.initial_instant
-                        )
-                    }),
-            )
+            .checked_add(now.checked_duration_since(self.initial_instant).unwrap_or_else(|| {
+                panic!("current instant ({:?}) < initial instant ({:?})", now, self.initial_instant)
+            }))
             .expect("Computing system time should not overflow");
         monotonic_system_time
             .duration_since(SystemTime::UNIX_EPOCH)

@@ -67,17 +67,15 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
 
         let (kind, details) = match value {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
-            E::InvalidOwnership { object_id, .. } => (
-                ExecutionErrorKind::InvalidOwnership,
-                Some(object_id.to_hex()),
-            ),
+            E::InvalidOwnership { object_id, .. } => {
+                (ExecutionErrorKind::InvalidOwnership, Some(object_id.to_hex()))
+            }
             E::ObjectNotFound { object_id } => {
                 (ExecutionErrorKind::ObjectNotFound, Some(object_id.to_hex()))
             }
-            E::InvalidObjectType { object_id, .. } => (
-                ExecutionErrorKind::InvalidObjectType,
-                Some(object_id.to_hex()),
-            ),
+            E::InvalidObjectType { object_id, .. } => {
+                (ExecutionErrorKind::InvalidObjectType, Some(object_id.to_hex()))
+            }
             E::InvalidTransactionType => (ExecutionErrorKind::InvalidTransactionType, None),
             E::InvalidArguments { reason } => (ExecutionErrorKind::InvalidArguments, Some(reason)),
             E::DuplicateValidator => (ExecutionErrorKind::DuplicateValidator, None),
@@ -92,7 +90,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
             E::ModelWeightsUrlMismatch => (ExecutionErrorKind::ModelWeightsUrlMismatch, None),
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
-            E::ModelArchitectureVersionMismatch => (ExecutionErrorKind::ModelArchitectureVersionMismatch, None),
+            E::ModelArchitectureVersionMismatch => {
+                (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
+            }
             E::ModelCommissionRateTooHigh => (ExecutionErrorKind::ModelCommissionRateTooHigh, None),
             E::ModelMinStakeNotMet => (ExecutionErrorKind::ModelMinStakeNotMet, None),
             E::InsufficientCoinBalance => (ExecutionErrorKind::InsufficientCoinBalance, None),
@@ -440,9 +440,7 @@ impl From<types::object::Owner> for Owner {
                 message.address = Some(address.to_string());
                 OwnerKind::Address
             }
-            O::Shared {
-                initial_shared_version,
-            } => {
+            O::Shared { initial_shared_version } => {
                 message.version = Some(initial_shared_version.value());
                 OwnerKind::Shared
             }
@@ -479,12 +477,8 @@ impl Merge<&types::transaction::TransactionData> for Transaction {
         }
 
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
-            self.gas_payment = source
-                .gas_payment
-                .clone()
-                .into_iter()
-                .map(|g| object_ref_to_proto(g))
-                .collect();
+            self.gas_payment =
+                source.gas_payment.clone().into_iter().map(|g| object_ref_to_proto(g)).collect();
         }
     }
 }
@@ -506,50 +500,35 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::ChangeEpoch(change_epoch) => Kind::ChangeEpoch(change_epoch.into()),
             K::AddValidator(args) => Kind::AddValidator(args.into()),
             K::RemoveValidator(args) => Kind::RemoveValidator(args.into()),
-            K::ReportValidator { reportee } => Kind::ReportValidator(ReportValidator {
-                reportee: Some(reportee.to_string()),
-            }),
+            K::ReportValidator { reportee } => {
+                Kind::ReportValidator(ReportValidator { reportee: Some(reportee.to_string()) })
+            }
             K::UndoReportValidator { reportee } => Kind::UndoReportValidator(UndoReportValidator {
                 reportee: Some(reportee.to_string()),
             }),
             K::UpdateValidatorMetadata(args) => Kind::UpdateValidatorMetadata(args.into()),
-            K::SetCommissionRate { new_rate } => Kind::SetCommissionRate(SetCommissionRate {
-                new_rate: Some(new_rate),
-            }),
+            K::SetCommissionRate { new_rate } => {
+                Kind::SetCommissionRate(SetCommissionRate { new_rate: Some(new_rate) })
+            }
 
-            K::TransferCoin {
-                coin,
-                amount,
-                recipient,
-            } => Kind::TransferCoin(TransferCoin {
+            K::TransferCoin { coin, amount, recipient } => Kind::TransferCoin(TransferCoin {
                 coin: Some(object_ref_to_proto(coin)),
-                amount: amount,
+                amount,
                 recipient: Some(recipient.to_string()),
             }),
-            K::PayCoins {
-                coins,
-                amounts,
-                recipients,
-            } => Kind::PayCoins(PayCoins {
+            K::PayCoins { coins, amounts, recipients } => Kind::PayCoins(PayCoins {
                 coins: coins.into_iter().map(|c| object_ref_to_proto(c)).collect(),
                 amounts: amounts.unwrap_or_default(),
                 recipients: recipients.into_iter().map(|r| r.to_string()).collect(),
             }),
             K::TransferObjects { objects, recipient } => Kind::TransferObjects(TransferObjects {
-                objects: objects
-                    .into_iter()
-                    .map(|o| object_ref_to_proto(o))
-                    .collect(),
+                objects: objects.into_iter().map(|o| object_ref_to_proto(o)).collect(),
                 recipient: Some(recipient.to_string()),
             }),
-            K::AddStake {
-                address,
-                coin_ref,
-                amount,
-            } => Kind::AddStake(AddStake {
+            K::AddStake { address, coin_ref, amount } => Kind::AddStake(AddStake {
                 address: Some(address.to_string()),
                 coin_ref: Some(object_ref_to_proto(coin_ref)),
-                amount: amount,
+                amount,
             }),
 
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
@@ -559,7 +538,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             // Model transactions
             K::CommitModel(args) => Kind::CommitModel(CommitModel {
                 model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(args.weights_url_commitment.into_inner().to_vec().into()),
+                weights_url_commitment: Some(
+                    args.weights_url_commitment.into_inner().to_vec().into(),
+                ),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
                 architecture_version: Some(args.architecture_version),
                 stake_amount: Some(args.stake_amount),
@@ -572,37 +553,37 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
             K::CommitModelUpdate(args) => Kind::CommitModelUpdate(CommitModelUpdate {
                 model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(args.weights_url_commitment.into_inner().to_vec().into()),
+                weights_url_commitment: Some(
+                    args.weights_url_commitment.into_inner().to_vec().into(),
+                ),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
             }),
             K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
                 model_id: Some(args.model_id.to_string()),
                 weights_manifest: Some(args.weights_manifest.into()),
             }),
-            K::AddStakeToModel {
-                model_id,
-                coin_ref,
-                amount,
-            } => Kind::AddStakeToModel(AddStakeToModel {
-                model_id: Some(model_id.to_string()),
-                coin_ref: Some(object_ref_to_proto(coin_ref)),
-                amount,
-            }),
+            K::AddStakeToModel { model_id, coin_ref, amount } => {
+                Kind::AddStakeToModel(AddStakeToModel {
+                    model_id: Some(model_id.to_string()),
+                    coin_ref: Some(object_ref_to_proto(coin_ref)),
+                    amount,
+                })
+            }
             K::SetModelCommissionRate { model_id, new_rate } => {
                 Kind::SetModelCommissionRate(SetModelCommissionRate {
                     model_id: Some(model_id.to_string()),
                     new_rate: Some(new_rate),
                 })
             }
-            K::DeactivateModel { model_id } => Kind::DeactivateModel(DeactivateModel {
-                model_id: Some(model_id.to_string()),
-            }),
-            K::ReportModel { model_id } => Kind::ReportModel(ReportModel {
-                model_id: Some(model_id.to_string()),
-            }),
-            K::UndoReportModel { model_id } => Kind::UndoReportModel(UndoReportModel {
-                model_id: Some(model_id.to_string()),
-            }),
+            K::DeactivateModel { model_id } => {
+                Kind::DeactivateModel(DeactivateModel { model_id: Some(model_id.to_string()) })
+            }
+            K::ReportModel { model_id } => {
+                Kind::ReportModel(ReportModel { model_id: Some(model_id.to_string()) })
+            }
+            K::UndoReportModel { model_id } => {
+                Kind::UndoReportModel(UndoReportModel { model_id: Some(model_id.to_string()) })
+            }
             // Submission transactions
             K::SubmitData(args) => Kind::SubmitData(SubmitData {
                 target_id: Some(args.target_id.to_string()),
@@ -668,9 +649,7 @@ impl From<types::transaction::AddValidatorArgs> for AddValidator {
 
 impl From<types::transaction::RemoveValidatorArgs> for RemoveValidator {
     fn from(args: types::transaction::RemoveValidatorArgs) -> Self {
-        Self {
-            pubkey_bytes: Some(args.pubkey_bytes.into()),
-        }
+        Self { pubkey_bytes: Some(args.pubkey_bytes.into()) }
     }
 }
 
@@ -697,9 +676,8 @@ impl From<types::consensus::ConsensusCommitPrologue> for ConsensusCommitPrologue
         let mut message = Self::default();
         message.epoch = Some(value.epoch);
         message.round = Some(value.round);
-        message.commit_timestamp = Some(crate::proto::timestamp_ms_to_proto(
-            value.commit_timestamp_ms,
-        ));
+        message.commit_timestamp =
+            Some(crate::proto::timestamp_ms_to_proto(value.commit_timestamp_ms));
         message
     }
 }
@@ -766,11 +744,7 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
-            self.dependencies = source
-                .dependencies
-                .iter()
-                .map(ToString::to_string)
-                .collect();
+            self.dependencies = source.dependencies.iter().map(ToString::to_string).collect();
         }
 
         if mask.contains(Self::LAMPORT_VERSION_FIELD.name) {
@@ -908,27 +882,16 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
     fn try_from(proto_state: SystemState) -> Result<Self, Self::Error> {
         let epoch = proto_state.epoch.ok_or("Missing epoch")?;
-        let protocol_version = proto_state
-            .protocol_version
-            .ok_or("Missing protocol_version")?;
-        let epoch_start_timestamp_ms = proto_state
-            .epoch_start_timestamp_ms
-            .ok_or("Missing epoch_start_timestamp_ms")?;
+        let protocol_version = proto_state.protocol_version.ok_or("Missing protocol_version")?;
+        let epoch_start_timestamp_ms =
+            proto_state.epoch_start_timestamp_ms.ok_or("Missing epoch_start_timestamp_ms")?;
 
-        let parameters: protocol_config::SystemParameters = proto_state
-            .parameters
-            .ok_or("Missing parameters")?
-            .try_into()?;
+        let parameters: protocol_config::SystemParameters =
+            proto_state.parameters.ok_or("Missing parameters")?.try_into()?;
 
-        let validators = proto_state
-            .validators
-            .ok_or("Missing validators")?
-            .try_into()?;
+        let validators = proto_state.validators.ok_or("Missing validators")?.try_into()?;
 
-        let emission_pool = proto_state
-            .emission_pool
-            .ok_or("Missing emission_pool")?
-            .try_into()?;
+        let emission_pool = proto_state.emission_pool.ok_or("Missing emission_pool")?.try_into()?;
 
         // Convert validator report records
         let validator_report_records =
@@ -937,18 +900,12 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
 
         // Convert model registry
-        let model_registry = proto_state
-            .model_registry
-            .map(|mr| mr.try_into())
-            .transpose()?
-            .unwrap_or_default();
+        let model_registry =
+            proto_state.model_registry.map(|mr| mr.try_into()).transpose()?.unwrap_or_default();
 
         // Convert target state
-        let target_state = proto_state
-            .target_state
-            .map(|ts| ts.try_into())
-            .transpose()?
-            .unwrap_or_default();
+        let target_state =
+            proto_state.target_state.map(|ts| ts.try_into()).transpose()?.unwrap_or_default();
 
         // Build initial committees
         let system_state = types::system_state::SystemState {
@@ -976,15 +933,11 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
 
     fn try_from(proto_params: SystemParameters) -> Result<Self, Self::Error> {
         Ok(protocol_config::SystemParameters {
-            epoch_duration_ms: proto_params
-                .epoch_duration_ms
-                .ok_or("Missing epoch_duration_ms")?,
+            epoch_duration_ms: proto_params.epoch_duration_ms.ok_or("Missing epoch_duration_ms")?,
             validator_reward_allocation_bps: proto_params
                 .validator_reward_allocation_bps
                 .ok_or("Missing validator_reward_allocation_bps")?,
-            model_min_stake: proto_params
-                .model_min_stake
-                .ok_or("Missing model_min_stake")?,
+            model_min_stake: proto_params.model_min_stake.ok_or("Missing model_min_stake")?,
             model_architecture_version: proto_params
                 .model_architecture_version
                 .ok_or("Missing model_architecture_version")?,
@@ -998,16 +951,10 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
                 .target_epoch_fee_collection
                 .ok_or("Missing target_epoch_fee_collection")?,
             base_fee: proto_params.base_fee.ok_or("Missing base_fee")?,
-            write_object_fee: proto_params
-                .write_object_fee
-                .ok_or("Missing write_object_fee")?,
+            write_object_fee: proto_params.write_object_fee.ok_or("Missing write_object_fee")?,
             value_fee_bps: proto_params.value_fee_bps.ok_or("Missing value_fee_bps")?,
-            min_value_fee_bps: proto_params
-                .min_value_fee_bps
-                .ok_or("Missing min_value_fee_bps")?,
-            max_value_fee_bps: proto_params
-                .max_value_fee_bps
-                .ok_or("Missing max_value_fee_bps")?,
+            min_value_fee_bps: proto_params.min_value_fee_bps.ok_or("Missing min_value_fee_bps")?,
+            max_value_fee_bps: proto_params.max_value_fee_bps.ok_or("Missing max_value_fee_bps")?,
             fee_adjustment_rate_bps: proto_params
                 .fee_adjustment_rate_bps
                 .ok_or("Missing fee_adjustment_rate_bps")?,
@@ -1160,25 +1107,16 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             .parse()
             .map_err(|_| "Invalid SomaAddress")?;
 
-        let protocol_pubkey = proto_val
-            .protocol_pubkey
-            .ok_or("Missing protocol_pubkey")?
-            .to_vec();
+        let protocol_pubkey = proto_val.protocol_pubkey.ok_or("Missing protocol_pubkey")?.to_vec();
         let protocol_pubkey = BLS12381PublicKey::from_bytes(&protocol_pubkey)
             .map_err(|e| format!("Invalid protocol_pubkey: {}", e))?;
 
-        let network_pubkey = proto_val
-            .network_pubkey
-            .ok_or("Missing network_pubkey")?
-            .to_vec();
+        let network_pubkey = proto_val.network_pubkey.ok_or("Missing network_pubkey")?.to_vec();
         let network_pubkey = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&network_pubkey)
             .map_err(|e| format!("Invalid network_pubkey: {}", e))?;
         let network_pubkey = types::crypto::NetworkPublicKey::new(network_pubkey);
 
-        let worker_pubkey = proto_val
-            .worker_pubkey
-            .ok_or("Missing worker_pubkey")?
-            .to_vec();
+        let worker_pubkey = proto_val.worker_pubkey.ok_or("Missing worker_pubkey")?.to_vec();
         let worker_pubkey = fastcrypto::ed25519::Ed25519PublicKey::from_bytes(&worker_pubkey)
             .map_err(|e| format!("Invalid worker_pubkey: {}", e))?;
         let worker_pubkey = types::crypto::NetworkPublicKey::new(worker_pubkey);
@@ -1285,19 +1223,14 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             next_epoch_proxy_address,
         };
 
-        let staking_pool = proto_val
-            .staking_pool
-            .ok_or("Missing staking_pool")?
-            .try_into()?;
+        let staking_pool = proto_val.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
 
         Ok(types::system_state::validator::Validator {
             metadata,
             voting_power: proto_val.voting_power.ok_or("Missing voting_power")?,
             staking_pool,
             commission_rate: proto_val.commission_rate.ok_or("Missing commission_rate")?,
-            next_epoch_stake: proto_val
-                .next_epoch_stake
-                .ok_or("Missing next_epoch_stake")?,
+            next_epoch_stake: proto_val.next_epoch_stake.ok_or("Missing next_epoch_stake")?,
             next_epoch_commission_rate: proto_val
                 .next_epoch_commission_rate
                 .ok_or("Missing next_epoch_commission_rate")?,
@@ -1309,11 +1242,7 @@ impl TryFrom<StakingPool> for types::system_state::staking::StakingPool {
     type Error = String;
 
     fn try_from(proto_pool: StakingPool) -> Result<Self, Self::Error> {
-        let id = proto_pool
-            .id
-            .ok_or("Missing id")?
-            .parse()
-            .map_err(|_| "Invalid ObjectID")?;
+        let id = proto_pool.id.ok_or("Missing id")?.parse().map_err(|_| "Invalid ObjectID")?;
 
         let exchange_rates = proto_pool
             .exchange_rates
@@ -1351,9 +1280,7 @@ impl TryFrom<PoolTokenExchangeRate> for types::system_state::staking::PoolTokenE
     fn try_from(proto_rate: PoolTokenExchangeRate) -> Result<Self, Self::Error> {
         Ok(types::system_state::staking::PoolTokenExchangeRate {
             soma_amount: proto_rate.soma_amount.ok_or("Missing soma_amount")?,
-            pool_token_amount: proto_rate
-                .pool_token_amount
-                .ok_or("Missing pool_token_amount")?,
+            pool_token_amount: proto_rate.pool_token_amount.ok_or("Missing pool_token_amount")?,
         })
     }
 }
@@ -1487,7 +1414,9 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
             target_hit_rate_target_bps: Some(domain_params.target_hit_rate_target_bps),
             target_hit_rate_ema_decay_bps: Some(domain_params.target_hit_rate_ema_decay_bps),
-            target_difficulty_adjustment_rate_bps: Some(domain_params.target_difficulty_adjustment_rate_bps),
+            target_difficulty_adjustment_rate_bps: Some(
+                domain_params.target_difficulty_adjustment_rate_bps,
+            ),
             target_max_distance_threshold: Some(domain_params.target_max_distance_threshold),
             target_min_distance_threshold: Some(domain_params.target_min_distance_threshold),
             target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
@@ -1537,11 +1466,8 @@ impl TryFrom<types::system_state::validator::ValidatorSet> for ValidatorSet {
             .map(|v| v.try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let pending_removals = domain_set
-            .pending_removals
-            .into_iter()
-            .map(|index| index as u32)
-            .collect();
+        let pending_removals =
+            domain_set.pending_removals.into_iter().map(|index| index as u32).collect();
 
         let staking_pool_mappings = domain_set
             .staking_pool_mappings
@@ -1588,17 +1514,14 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
         let metadata = domain_val.metadata;
 
         // Convert optional next epoch fields
-        let next_epoch_protocol_pubkey = metadata
-            .next_epoch_protocol_pubkey
-            .map(|key| Bytes::from(key.as_bytes().to_vec()));
+        let next_epoch_protocol_pubkey =
+            metadata.next_epoch_protocol_pubkey.map(|key| Bytes::from(key.as_bytes().to_vec()));
 
-        let next_epoch_network_pubkey = metadata
-            .next_epoch_network_pubkey
-            .map(|key| Bytes::from(key.to_bytes().to_vec()));
+        let next_epoch_network_pubkey =
+            metadata.next_epoch_network_pubkey.map(|key| Bytes::from(key.to_bytes().to_vec()));
 
-        let next_epoch_worker_pubkey = metadata
-            .next_epoch_worker_pubkey
-            .map(|key| Bytes::from(key.to_bytes().to_vec()));
+        let next_epoch_worker_pubkey =
+            metadata.next_epoch_worker_pubkey.map(|key| Bytes::from(key.to_bytes().to_vec()));
 
         let next_epoch_net_address = metadata.next_epoch_net_address.map(|addr| addr.to_string());
 
@@ -1725,13 +1648,9 @@ impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
             .try_into()
             .map_err(|e: TryFromProtoError| e.to_string())?;
 
-        let key_bytes: Vec<u8> = proto
-            .decryption_key
-            .ok_or("Missing decryption_key")?
-            .into();
-        let key_array: [u8; 32] = key_bytes
-            .try_into()
-            .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
+        let key_bytes: Vec<u8> = proto.decryption_key.ok_or("Missing decryption_key")?.into();
+        let key_array: [u8; 32] =
+            key_bytes.try_into().map_err(|_| "decryption_key must be 32 bytes".to_string())?;
 
         Ok(types::model::ModelWeightsManifest {
             manifest,
@@ -1758,21 +1677,16 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
     type Error = String;
 
     fn try_from(proto: PendingModelUpdate) -> Result<Self, Self::Error> {
-        let url_bytes: Vec<u8> = proto
-            .weights_url_commitment
-            .ok_or("Missing weights_url_commitment")?
-            .into();
+        let url_bytes: Vec<u8> =
+            proto.weights_url_commitment.ok_or("Missing weights_url_commitment")?.into();
         let url_array: [u8; 32] = url_bytes
             .try_into()
             .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
 
-        let wt_bytes: Vec<u8> = proto
-            .weights_commitment
-            .ok_or("Missing weights_commitment")?
-            .into();
-        let wt_array: [u8; 32] = wt_bytes
-            .try_into()
-            .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+        let wt_bytes: Vec<u8> =
+            proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
+        let wt_array: [u8; 32] =
+            wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
 
         Ok(types::model::PendingModelUpdate {
             weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(url_array),
@@ -1817,31 +1731,20 @@ impl TryFrom<Model> for types::model::Model {
             .parse()
             .map_err(|_| "Invalid SomaAddress".to_string())?;
 
-        let url_bytes: Vec<u8> = proto
-            .weights_url_commitment
-            .ok_or("Missing weights_url_commitment")?
-            .into();
+        let url_bytes: Vec<u8> =
+            proto.weights_url_commitment.ok_or("Missing weights_url_commitment")?.into();
         let url_array: [u8; 32] = url_bytes
             .try_into()
             .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
 
-        let wt_bytes: Vec<u8> = proto
-            .weights_commitment
-            .ok_or("Missing weights_commitment")?
-            .into();
-        let wt_array: [u8; 32] = wt_bytes
-            .try_into()
-            .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+        let wt_bytes: Vec<u8> =
+            proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
+        let wt_array: [u8; 32] =
+            wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
 
-        let weights_manifest = proto
-            .weights_manifest
-            .map(TryInto::try_into)
-            .transpose()?;
+        let weights_manifest = proto.weights_manifest.map(TryInto::try_into).transpose()?;
 
-        let staking_pool = proto
-            .staking_pool
-            .ok_or("Missing staking_pool")?
-            .try_into()?;
+        let staking_pool = proto.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
 
         let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
 
@@ -1936,9 +1839,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .active_models
             .into_iter()
             .map(|(k, v)| {
-                let id = k
-                    .parse()
-                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
                 let model: types::model::Model = v.try_into()?;
                 Ok((id, model))
             })
@@ -1948,9 +1849,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .pending_models
             .into_iter()
             .map(|(k, v)| {
-                let id = k
-                    .parse()
-                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
                 let model: types::model::Model = v.try_into()?;
                 Ok((id, model))
             })
@@ -1960,12 +1859,8 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .staking_pool_mappings
             .into_iter()
             .map(|(k, v)| {
-                let pool_id = k
-                    .parse()
-                    .map_err(|_| "Invalid ObjectID".to_string())?;
-                let model_id = v
-                    .parse()
-                    .map_err(|_| "Invalid ModelId".to_string())?;
+                let pool_id = k.parse().map_err(|_| "Invalid ObjectID".to_string())?;
+                let model_id = v.parse().map_err(|_| "Invalid ModelId".to_string())?;
                 Ok((pool_id, model_id))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
@@ -1974,9 +1869,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .inactive_models
             .into_iter()
             .map(|(k, v)| {
-                let id = k
-                    .parse()
-                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
                 let model: types::model::Model = v.try_into()?;
                 Ok((id, model))
             })
@@ -1986,9 +1879,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .model_report_records
             .into_iter()
             .map(|(k, v)| {
-                let model_id = k
-                    .parse()
-                    .map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
+                let model_id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
                 let reporters = v
                     .reporters
                     .into_iter()
@@ -2072,9 +1963,7 @@ impl TryFrom<&Metadata> for types::metadata::Metadata {
                     .try_into()
                     .map_err(|e| TryFromProtoError::invalid("size", e))?;
 
-                Ok(types::metadata::Metadata::V1(
-                    types::metadata::MetadataV1::new(checksum, size),
-                ))
+                Ok(types::metadata::Metadata::V1(types::metadata::MetadataV1::new(checksum, size)))
             }
         }
     }
@@ -2118,21 +2007,19 @@ impl TryFrom<&Manifest> for types::metadata::Manifest {
             .ok_or_else(|| TryFromProtoError::missing("manifest version"))?
         {
             Version::V1(v1) => {
-                let url = Url::parse(v1
-                    .url.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("url"))?.as_str()
-                    )
-                    .map_err(|e| TryFromProtoError::invalid("url", e))?;
+                let url = Url::parse(
+                    v1.url.as_ref().ok_or_else(|| TryFromProtoError::missing("url"))?.as_str(),
+                )
+                .map_err(|e| TryFromProtoError::invalid("url", e))?;
 
                 let metadata = v1
-                    .metadata.as_ref()
+                    .metadata
+                    .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("metadata"))?
                     .try_into()
                     .map_err(|e| TryFromProtoError::invalid("metadata", e))?;
 
-                Ok(types::metadata::Manifest::V1(
-                    types::metadata::ManifestV1::new(url, metadata),
-                ))
+                Ok(types::metadata::Manifest::V1(types::metadata::ManifestV1::new(url, metadata)))
             }
         }
     }
@@ -2211,11 +2098,8 @@ impl Merge<&types::full_checkpoint_content::ExecutedTransaction> for ExecutedTra
         }
 
         if let Some(submask) = mask.subtree(ExecutedTransaction::SIGNATURES_FIELD) {
-            self.signatures = source
-                .signatures
-                .iter()
-                .map(|s| UserSignature::merge_from(s, &submask))
-                .collect();
+            self.signatures =
+                source.signatures.iter().map(|s| UserSignature::merge_from(s, &submask)).collect();
         }
 
         if let Some(submask) = mask.subtree(ExecutedTransaction::EFFECTS_FIELD) {
@@ -2232,9 +2116,8 @@ impl TryFrom<&Checkpoint> for types::full_checkpoint_content::Checkpoint {
         // Convert proto CheckpointSummary -> crate::types::CheckpointSummary -> types::checkpoints::CheckpointSummary
         let summary = {
             let proto_summary = checkpoint.summary();
-            let crate_summary: crate::types::CheckpointSummary = proto_summary
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("summary", e))?;
+            let crate_summary: crate::types::CheckpointSummary =
+                proto_summary.try_into().map_err(|e| TryFromProtoError::invalid("summary", e))?;
 
             let domain_summary: types::checkpoints::CheckpointSummary = crate_summary
                 .try_into()
@@ -2255,29 +2138,20 @@ impl TryFrom<&Checkpoint> for types::full_checkpoint_content::Checkpoint {
         // Convert proto CheckpointContents -> crate::types::CheckpointContents -> types::checkpoints::CheckpointContents
         let contents = {
             let proto_contents = checkpoint.contents();
-            let crate_contents: crate::types::CheckpointContents = proto_contents
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("contents", e))?;
+            let crate_contents: crate::types::CheckpointContents =
+                proto_contents.try_into().map_err(|e| TryFromProtoError::invalid("contents", e))?;
 
             crate_contents
                 .try_into()
                 .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("contents", e))?
         };
 
-        let transactions = checkpoint
-            .transactions()
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let transactions =
+            checkpoint.transactions().iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
         let object_set = checkpoint.objects().try_into()?;
 
-        Ok(Self {
-            summary,
-            contents,
-            transactions,
-            object_set,
-        })
+        Ok(Self { summary, contents, transactions, object_set })
     }
 }
 
@@ -2286,10 +2160,7 @@ impl TryFrom<&ObjectReference> for types::storage::ObjectKey {
 
     fn try_from(value: &ObjectReference) -> Result<Self, Self::Error> {
         Ok(Self(
-            value
-                .object_id()
-                .parse()
-                .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+            value.object_id().parse().map_err(|e| TryFromProtoError::invalid("object_id", e))?,
             value.version().into(),
         ))
     }
@@ -2396,11 +2267,7 @@ impl From<types::checkpoints::EndOfEpochData> for EndOfEpochData {
         Self {
             next_epoch_validator_committee: Some(value.next_epoch_validator_committee.into()),
             next_epoch_protocol_version: Some(value.next_epoch_protocol_version.as_u64()),
-            epoch_commitments: value
-                .epoch_commitments
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            epoch_commitments: value.epoch_commitments.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -2491,9 +2358,8 @@ impl TryFrom<&ObjectSet> for types::full_checkpoint_content::ObjectSet {
         let mut objects = Self::default();
 
         for o in value.objects() {
-            let crate_object: crate::types::Object = o
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("object", e))?;
+            let crate_object: crate::types::Object =
+                o.try_into().map_err(|e| TryFromProtoError::invalid("object", e))?;
             let object = crate_object
                 .try_into()
                 .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("object", e))?;
@@ -2525,10 +2391,7 @@ impl TryFrom<&ExecutedTransaction> for types::full_checkpoint_content::ExecutedT
             let proto_signature = value.signatures();
             let crate_signatures: Vec<crate::types::UserSignature> = proto_signature
                 .iter()
-                .map(|s| {
-                    s.try_into()
-                        .map_err(|e| TryFromProtoError::invalid("signature", e))
-                })
+                .map(|s| s.try_into().map_err(|e| TryFromProtoError::invalid("signature", e)))
                 .collect::<Result<Vec<_>, _>>()?;
 
             crate_signatures
@@ -2544,9 +2407,8 @@ impl TryFrom<&ExecutedTransaction> for types::full_checkpoint_content::ExecutedT
         // Convert proto TransactionEffects -> crate::types::TransactionEffects -> types::effects::TransactionEffects
         let effects = {
             let proto_effects = value.effects();
-            let crate_effects: crate::types::TransactionEffects = proto_effects
-                .try_into()
-                .map_err(|e| TryFromProtoError::invalid("effects", e))?;
+            let crate_effects: crate::types::TransactionEffects =
+                proto_effects.try_into().map_err(|e| TryFromProtoError::invalid("effects", e))?;
 
             // Now convert crate::types::TransactionEffects to types::effects::TransactionEffects
             crate_effects
@@ -2554,10 +2416,6 @@ impl TryFrom<&ExecutedTransaction> for types::full_checkpoint_content::ExecutedT
                 .map_err(|e: SdkTypeConversionError| TryFromProtoError::invalid("effects", e))?
         };
 
-        Ok(Self {
-            transaction,
-            signatures,
-            effects,
-        })
+        Ok(Self { transaction, signatures, effects })
     }
 }

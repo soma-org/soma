@@ -4,8 +4,8 @@ use fastcrypto::ed25519::Ed25519KeyPair;
 use futures::future::join_all;
 use tracing::info;
 use types::{
-    base::{dbg_addr, SomaAddress},
-    crypto::{get_key_pair, SomaKeyPair},
+    base::{SomaAddress, dbg_addr},
+    crypto::{SomaKeyPair, get_key_pair},
     effects::{
         ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
     },
@@ -48,55 +48,31 @@ async fn test_pay_coin_success_one_input_coin() -> anyhow::Result<()> {
     info!("Effects: {:?}", effects);
     // make sure each recipient receives the specified amount
     assert_eq!(effects.created().len(), 3);
-    let created_obj_id1 = effects.created()[0].0 .0;
-    let created_obj_id2 = effects.created()[1].0 .0;
-    let created_obj_id3 = effects.created()[2].0 .0;
-    let created_obj1 = res
-        .authority_state
-        .get_object(&created_obj_id1)
-        .await
-        .unwrap();
-    let created_obj2 = res
-        .authority_state
-        .get_object(&created_obj_id2)
-        .await
-        .unwrap();
-    let created_obj3 = res
-        .authority_state
-        .get_object(&created_obj_id3)
-        .await
-        .unwrap();
+    let created_obj_id1 = effects.created()[0].0.0;
+    let created_obj_id2 = effects.created()[1].0.0;
+    let created_obj_id3 = effects.created()[2].0.0;
+    let created_obj1 = res.authority_state.get_object(&created_obj_id1).await.unwrap();
+    let created_obj2 = res.authority_state.get_object(&created_obj_id2).await.unwrap();
+    let created_obj3 = res.authority_state.get_object(&created_obj_id3).await.unwrap();
 
     let addr1 = effects.created()[0].1.get_owner_address()?;
     let addr2 = effects.created()[1].1.get_owner_address()?;
     let addr3 = effects.created()[2].1.get_owner_address()?;
-    let coin_val1 = *recipient_amount_map
-        .get(&addr1)
-        .ok_or(SomaError::InvalidAddress)?;
-    let coin_val2 = *recipient_amount_map
-        .get(&addr2)
-        .ok_or(SomaError::InvalidAddress)?;
-    let coin_val3 = *recipient_amount_map
-        .get(&addr3)
-        .ok_or(SomaError::InvalidAddress)?;
+    let coin_val1 = *recipient_amount_map.get(&addr1).ok_or(SomaError::InvalidAddress)?;
+    let coin_val2 = *recipient_amount_map.get(&addr2).ok_or(SomaError::InvalidAddress)?;
+    let coin_val3 = *recipient_amount_map.get(&addr3).ok_or(SomaError::InvalidAddress)?;
     assert_eq!(created_obj1.as_coin().unwrap(), coin_val1);
     assert_eq!(created_obj2.as_coin().unwrap(), coin_val2);
     assert_eq!(created_obj3.as_coin().unwrap(), coin_val3);
 
     // make sure the first object still belongs to the sender,
     // the value is equal to all residual values after amounts transferred and gas payment.
-    assert_eq!(effects.mutated()[0].0 .0, object_id);
-    assert_eq!(
-        effects.mutated()[0].1.get_address_owner_address().unwrap(),
-        sender
-    );
+    assert_eq!(effects.mutated()[0].0.0, object_id);
+    assert_eq!(effects.mutated()[0].1.get_address_owner_address().unwrap(), sender);
     let gas_used = effects.transaction_fee().total_fee as u64;
     info!("{:?}", effects.transaction_fee());
     let gas_object = res.authority_state.get_object(&object_id).await.unwrap();
-    assert_eq!(
-        gas_object.as_coin().unwrap(),
-        coin_amount - 100 - 200 - 300 - gas_used,
-    );
+    assert_eq!(gas_object.as_coin().unwrap(), coin_amount - 100 - 200 - 300 - gas_used,);
 
     info!("Sender final balance: {}", gas_object.as_coin().unwrap());
 
@@ -130,41 +106,23 @@ async fn test_pay_coin_success_multiple_input_coins() -> anyhow::Result<()> {
 
     // make sure each recipient receives the specified amount
     assert_eq!(effects.created().len(), 2);
-    let created_obj_id1 = effects.created()[0].0 .0;
-    let created_obj_id2 = effects.created()[1].0 .0;
-    let created_obj1 = res
-        .authority_state
-        .get_object(&created_obj_id1)
-        .await
-        .unwrap();
-    let created_obj2 = res
-        .authority_state
-        .get_object(&created_obj_id2)
-        .await
-        .unwrap();
+    let created_obj_id1 = effects.created()[0].0.0;
+    let created_obj_id2 = effects.created()[1].0.0;
+    let created_obj1 = res.authority_state.get_object(&created_obj_id1).await.unwrap();
+    let created_obj2 = res.authority_state.get_object(&created_obj_id2).await.unwrap();
     let addr1 = effects.created()[0].1.get_owner_address()?;
     let addr2 = effects.created()[1].1.get_owner_address()?;
-    let coin_val1 = *recipient_amount_map
-        .get(&addr1)
-        .ok_or(SomaError::InvalidAddress)?;
-    let coin_val2 = *recipient_amount_map
-        .get(&addr2)
-        .ok_or(SomaError::InvalidAddress)?;
+    let coin_val1 = *recipient_amount_map.get(&addr1).ok_or(SomaError::InvalidAddress)?;
+    let coin_val2 = *recipient_amount_map.get(&addr2).ok_or(SomaError::InvalidAddress)?;
     assert_eq!(created_obj1.as_coin().unwrap(), coin_val1);
     assert_eq!(created_obj2.as_coin().unwrap(), coin_val2);
     // make sure the first input coin still belongs to the sender,
     // the value is equal to all residual values after amounts transferred and gas payment.
-    assert_eq!(effects.mutated()[0].0 .0, object_id1);
-    assert_eq!(
-        effects.mutated()[0].1.get_address_owner_address().unwrap(),
-        sender
-    );
+    assert_eq!(effects.mutated()[0].0.0, object_id1);
+    assert_eq!(effects.mutated()[0].1.get_address_owner_address().unwrap(), sender);
     let gas_used = effects.transaction_fee().total_fee as u64;
     let gas_object = res.authority_state.get_object(&object_id1).await.unwrap();
-    assert_eq!(
-        gas_object.as_coin().unwrap(),
-        5002000 - 500 - 1500 - gas_used,
-    );
+    assert_eq!(gas_object.as_coin().unwrap(), 5002000 - 500 - 1500 - gas_used,);
 
     // make sure the second and third input coins are deleted
     let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
@@ -195,10 +153,7 @@ async fn test_pay_all_coins_success_one_input_coin() -> anyhow::Result<()> {
     let deleted = &effects.deleted()[0];
     // input gas should be deleted
     assert_eq!(deleted.0, object_id);
-    assert_eq!(
-        effects.created()[0].1.get_address_owner_address().unwrap(),
-        recipient
-    );
+    assert_eq!(effects.created()[0].1.get_address_owner_address().unwrap(), recipient);
 
     let gas_used = effects.transaction_fee().total_fee;
     let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
@@ -232,16 +187,9 @@ async fn test_pay_all_coins_success_multiple_input_coins() -> anyhow::Result<()>
     let deleted = &effects.deleted();
     // inputs should be deleted
     for input in vec![object_id1, object_id2, object_id3] {
-        assert!(deleted
-            .iter()
-            .map(|(id, _, _)| *id)
-            .collect::<Vec<ObjectID>>()
-            .contains(&input));
+        assert!(deleted.iter().map(|(id, _, _)| *id).collect::<Vec<ObjectID>>().contains(&input));
     }
-    assert_eq!(
-        effects.created()[0].1.get_address_owner_address().unwrap(),
-        recipient
-    );
+    assert_eq!(effects.created()[0].1.get_address_owner_address().unwrap(), recipient);
 
     let gas_used = effects.transaction_fee().total_fee;
     let obj = res.authority_state.get_object(&obj_ref.0).await.unwrap();
@@ -271,9 +219,7 @@ async fn test_pay_coin_failure_insufficient_total_balance_multiple_input_coins()
     .await;
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientCoinBalance,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientCoinBalance },
     );
 }
 
@@ -296,9 +242,7 @@ async fn test_pay_coin_failure_insufficient_total_balance_one_input_coin() {
 
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientCoinBalance,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientCoinBalance },
     );
 }
 
@@ -320,9 +264,7 @@ async fn test_pay_coin_failure_insufficient_gas_one_input_coin() {
 
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientGas,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientGas },
     );
 }
 
@@ -345,9 +287,7 @@ async fn test_pay_coin_failure_insufficient_gas_multiple_input_coins() {
 
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientGas,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientGas },
     );
 }
 
@@ -368,9 +308,7 @@ async fn test_pay_all_coins_failure_insufficient_gas_one_input_coin() {
 
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientGas,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientGas },
     );
 }
 
@@ -391,9 +329,7 @@ async fn test_pay_all_coins_failure_insufficient_gas_multiple_input_coins() {
 
     assert_eq!(
         res.txn_result.as_ref().unwrap().status(),
-        &ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::InsufficientGas,
-        },
+        &ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientGas },
     );
 }
 
@@ -412,10 +348,8 @@ async fn execute_pay_coin(
 ) -> PayCoinTransactionBlockExecutionResult {
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    let input_coin_refs: Vec<ObjectRef> = input_coin_objects
-        .iter()
-        .map(|coin_obj| coin_obj.compute_object_reference())
-        .collect();
+    let input_coin_refs: Vec<ObjectRef> =
+        input_coin_objects.iter().map(|coin_obj| coin_obj.compute_object_reference()).collect();
     let handles: Vec<_> = input_coin_objects
         .into_iter()
         .map(|obj| authority_state.insert_genesis_object(obj))
@@ -425,12 +359,8 @@ async fn execute_pay_coin(
 
     let data = TransactionData::new_pay_coins(input_coin_refs, amounts, recipients, sender);
     let tx = to_sender_signed_transaction(data, &sender_key);
-    let txn_result = send_and_confirm_transaction(&authority_state, tx)
-        .await
-        .map(|(_, effects)| effects);
+    let txn_result =
+        send_and_confirm_transaction(&authority_state, tx).await.map(|(_, effects)| effects);
 
-    PayCoinTransactionBlockExecutionResult {
-        authority_state,
-        txn_result,
-    }
+    PayCoinTransactionBlockExecutionResult { authority_state, txn_result }
 }

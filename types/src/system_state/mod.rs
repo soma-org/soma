@@ -6,7 +6,6 @@ use std::{
 use crate::{checksum::Checksum, crypto::DefaultHash, metadata::ManifestAPI as _};
 use emission::EmissionPool;
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
-use target_state::TargetState;
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519::Ed25519PublicKey,
@@ -17,6 +16,7 @@ use model_registry::ModelRegistry;
 use protocol_config::{ProtocolConfig, SystemParameters};
 use serde::{Deserialize, Serialize};
 use staking::{StakedSoma, StakingPool};
+use target_state::TargetState;
 use tracing::{error, info};
 use url::Url;
 use validator::{Validator, ValidatorSet};
@@ -224,9 +224,7 @@ impl SystemState {
         );
 
         // Request to add validator to the validator set
-        self.validators
-            .request_add_validator(validator)
-            .map_err(|e| e) // Pass through error
+        self.validators.request_add_validator(validator).map_err(|e| e) // Pass through error
     }
 
     pub fn request_remove_validator(
@@ -272,9 +270,7 @@ impl SystemState {
             let staked_soma = validator.request_add_stake(amount, signer, self.epoch);
 
             // Update staking pool mappings
-            self.validators
-                .staking_pool_mappings
-                .insert(staked_soma.pool_id, address);
+            self.validators.staking_pool_mappings.insert(staked_soma.pool_id, address);
 
             Ok(staked_soma)
         } else {
@@ -300,9 +296,7 @@ impl SystemState {
             let staked_soma = validator.request_add_stake_at_genesis(amount, signer, self.epoch);
 
             // Update staking pool mappings
-            self.validators
-                .staking_pool_mappings
-                .insert(staked_soma.pool_id, address);
+            self.validators.staking_pool_mappings.insert(staked_soma.pool_id, address);
 
             Ok(staked_soma)
         } else {
@@ -328,21 +322,14 @@ impl SystemState {
         commission_rate: u64,
     ) {
         assert!(self.epoch == 0, "Must be called during genesis");
-        assert!(
-            commission_rate <= BPS_DENOMINATOR,
-            "Commission rate exceeds max"
-        );
+        assert!(commission_rate <= BPS_DENOMINATOR, "Commission rate exceeds max");
 
         let mut staking_pool = StakingPool::new(ObjectID::random());
         // Activate the pool at epoch 0 (same as validator.activate(0))
         staking_pool.activation_epoch = Some(0);
-        staking_pool.exchange_rates.insert(
-            0,
-            staking::PoolTokenExchangeRate {
-                soma_amount: 0,
-                pool_token_amount: 0,
-            },
-        );
+        staking_pool
+            .exchange_rates
+            .insert(0, staking::PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 });
 
         let model = Model {
             owner,
@@ -357,9 +344,7 @@ impl SystemState {
             pending_update: None,
         };
 
-        self.model_registry
-            .staking_pool_mappings
-            .insert(model.staking_pool.id, model_id);
+        self.model_registry.staking_pool_mappings.insert(model.staking_pool.id, model_id);
         self.model_registry.active_models.insert(model_id, model);
     }
 
@@ -400,9 +385,8 @@ impl SystemState {
         if let Some(validator_address) =
             self.validators.staking_pool_mappings.get(&pool_id).cloned()
         {
-            if let Some(validator) = self
-                .validators
-                .find_validator_with_pending_mut(validator_address)
+            if let Some(validator) =
+                self.validators.find_validator_with_pending_mut(validator_address)
             {
                 let withdrawn_amount = validator.request_withdraw_stake(staked_soma, self.epoch);
                 return Ok(withdrawn_amount);
@@ -417,37 +401,27 @@ impl SystemState {
         }
 
         // Then check model pools (active, pending, inactive)
-        if let Some(model_id) = self
-            .model_registry
-            .staking_pool_mappings
-            .get(&pool_id)
-            .cloned()
-        {
+        if let Some(model_id) = self.model_registry.staking_pool_mappings.get(&pool_id).cloned() {
             // Check active models
             if let Some(model) = self.model_registry.active_models.get_mut(&model_id) {
-                let withdrawn_amount = model
-                    .staking_pool
-                    .request_withdraw_stake(staked_soma, self.epoch);
-                self.model_registry.total_model_stake = self
-                    .model_registry
-                    .total_model_stake
-                    .saturating_sub(withdrawn_amount);
+                let withdrawn_amount =
+                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
+                self.model_registry.total_model_stake =
+                    self.model_registry.total_model_stake.saturating_sub(withdrawn_amount);
                 return Ok(withdrawn_amount);
             }
 
             // Check pending models
             if let Some(model) = self.model_registry.pending_models.get_mut(&model_id) {
-                let withdrawn_amount = model
-                    .staking_pool
-                    .request_withdraw_stake(staked_soma, self.epoch);
+                let withdrawn_amount =
+                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
                 return Ok(withdrawn_amount);
             }
 
             // Check inactive models
             if let Some(model) = self.model_registry.inactive_models.get_mut(&model_id) {
-                let withdrawn_amount = model
-                    .staking_pool
-                    .request_withdraw_stake(staked_soma, self.epoch);
+                let withdrawn_amount =
+                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
                 return Ok(withdrawn_amount);
             }
         }
@@ -593,9 +567,7 @@ impl SystemState {
         };
 
         self.model_registry.pending_models.insert(model_id, model);
-        self.model_registry
-            .staking_pool_mappings
-            .insert(staking_pool_id, model_id);
+        self.model_registry.staking_pool_mappings.insert(staking_pool_id, model_id);
 
         Ok(staked_soma)
     }
@@ -698,10 +670,8 @@ impl SystemState {
             return Err(ExecutionFailureStatus::NotModelOwner);
         }
 
-        let pending = model
-            .pending_update
-            .as_ref()
-            .ok_or(ExecutionFailureStatus::ModelNoPendingUpdate)?;
+        let pending =
+            model.pending_update.as_ref().ok_or(ExecutionFailureStatus::ModelNoPendingUpdate)?;
 
         if self.epoch != pending.commit_epoch + 1 {
             return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
@@ -757,9 +727,7 @@ impl SystemState {
         }
 
         let stake_activation_epoch = current_epoch + 1;
-        let staked_soma = model
-            .staking_pool
-            .request_add_stake(amount, stake_activation_epoch);
+        let staked_soma = model.staking_pool.request_add_stake(amount, stake_activation_epoch);
 
         // If pool is preactive, process stake immediately
         if model.staking_pool.is_preactive() {
@@ -774,9 +742,7 @@ impl SystemState {
         }
 
         // Ensure staking pool mapping exists
-        self.model_registry
-            .staking_pool_mappings
-            .insert(pool_id, *model_id);
+        self.model_registry.staking_pool_mappings.insert(pool_id, *model_id);
 
         Ok(staked_soma)
     }
@@ -824,10 +790,8 @@ impl SystemState {
 
         let mut model = self.model_registry.active_models.remove(model_id).unwrap();
 
-        self.model_registry.total_model_stake = self
-            .model_registry
-            .total_model_stake
-            .saturating_sub(model.staking_pool.soma_balance);
+        self.model_registry.total_model_stake =
+            self.model_registry.total_model_stake.saturating_sub(model.staking_pool.soma_balance);
 
         model.staking_pool.deactivation_epoch = Some(self.epoch);
         self.model_registry.inactive_models.insert(*model_id, model);
@@ -1001,9 +965,7 @@ impl SystemState {
 
         // --- Step 5: Process model staking pools ---
         for model in self.model_registry.active_models.values_mut() {
-            model
-                .staking_pool
-                .process_pending_stakes_and_withdraws(new_epoch);
+            model.staking_pool.process_pending_stakes_and_withdraws(new_epoch);
         }
 
         // Also process pending model pools (they may have accumulated stake)
@@ -1013,12 +975,8 @@ impl SystemState {
         }
 
         // Recompute total_model_stake from active models
-        self.model_registry.total_model_stake = self
-            .model_registry
-            .active_models
-            .values()
-            .map(|m| m.staking_pool.soma_balance)
-            .sum();
+        self.model_registry.total_model_stake =
+            self.model_registry.active_models.values().map(|m| m.staking_pool.soma_balance).sum();
     }
 
     pub fn advance_epoch(
@@ -1042,10 +1000,7 @@ impl SystemState {
 
         // Check if protocol version is changing
         if next_protocol_version != self.protocol_version {
-            info!(
-                "Protocol upgrade: {} -> {}",
-                self.protocol_version, next_protocol_version
-            );
+            info!("Protocol upgrade: {} -> {}", self.protocol_version, next_protocol_version);
 
             // Update parameters from new protocol config
             // Preserve current value_fee_bps since it's dynamically adjusted
@@ -1155,8 +1110,7 @@ impl SystemState {
         let adjustment_factor = if ema_bps > target_hit_rate_bps {
             // Too easy - make harder (decrease thresholds)
             // factor < 1.0
-            let decrease_pct =
-                (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as i64;
+            let decrease_pct = (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as i64;
             decrease_pct
         } else {
             // Too hard - make easier (increase thresholds)
@@ -1166,8 +1120,8 @@ impl SystemState {
         };
 
         // Apply adjustment to distance threshold
-        let new_distance = (self.target_state.distance_threshold * adjustment_factor)
-            / BPS_DENOMINATOR as i64;
+        let new_distance =
+            (self.target_state.distance_threshold * adjustment_factor) / BPS_DENOMINATOR as i64;
         self.target_state.distance_threshold = new_distance.clamp(min_distance, max_distance);
 
         info!(
@@ -1232,10 +1186,7 @@ impl SystemState {
                 (current_bps * excess_ratio) / BPS_DENOMINATOR,
                 (current_bps * adjustment_rate) / BPS_DENOMINATOR,
             );
-            std::cmp::min(
-                current_bps.saturating_add(increase),
-                self.parameters.max_value_fee_bps,
-            )
+            std::cmp::min(current_bps.saturating_add(increase), self.parameters.max_value_fee_bps)
         } else {
             // Under target - decrease fees to encourage activity
             let deficit_ratio = BPS_DENOMINATOR - ratio;
@@ -1243,10 +1194,7 @@ impl SystemState {
                 (current_bps * deficit_ratio) / BPS_DENOMINATOR,
                 (current_bps * adjustment_rate) / BPS_DENOMINATOR,
             );
-            std::cmp::max(
-                current_bps.saturating_sub(decrease),
-                self.parameters.min_value_fee_bps,
-            )
+            std::cmp::max(current_bps.saturating_sub(decrease), self.parameters.min_value_fee_bps)
         };
 
         if new_bps != current_bps {

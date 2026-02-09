@@ -10,8 +10,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Mutex, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{sync::Arc, time::Duration};
-use store::rocksdb::compaction_filter::Decision;
 use store::rocksdb::LiveFile;
+use store::rocksdb::compaction_filter::Decision;
 use store::{Map, TypedStoreError};
 use tokio::sync::oneshot::{self, Sender};
 use tokio::time::Instant;
@@ -26,16 +26,10 @@ use types::object::{ObjectID, Version};
 use types::storage::ObjectKey;
 
 static PERIODIC_PRUNING_TABLES: Lazy<BTreeSet<String>> = Lazy::new(|| {
-    [
-        "objects",
-        "effects",
-        "transactions",
-        "executed_effects",
-        "executed_transactions_to_commit",
-    ]
-    .into_iter()
-    .map(|cf| cf.to_string())
-    .collect()
+    ["objects", "effects", "transactions", "executed_effects", "executed_transactions_to_commit"]
+        .into_iter()
+        .map(|cf| cf.to_string())
+        .collect()
 });
 pub const EPOCH_DURATION_MS_FOR_TESTING: u64 = 24 * 60 * 60 * 1000;
 pub struct AuthorityStorePruner {
@@ -93,10 +87,7 @@ impl AuthorityStorePruner {
         }
 
         for (object_id, (min_version, max_version)) in updates {
-            debug!(
-                "Pruning object {:?} versions {:?} - {:?}",
-                object_id, min_version, max_version
-            );
+            debug!("Pruning object {:?} versions {:?} - {:?}", object_id, min_version, max_version);
             match pruner_db_wb {
                 Some(ref mut batch) => {
                     batch.insert_batch(
@@ -182,10 +173,8 @@ impl AuthorityStorePruner {
             checkpoint_content_digests,
         )?;
 
-        checkpoints_batch.delete_batch(
-            &checkpoint_db.tables.checkpoint_by_digest,
-            checkpoints_to_prune,
-        )?;
+        checkpoints_batch
+            .delete_batch(&checkpoint_db.tables.checkpoint_by_digest, checkpoints_to_prune)?;
 
         checkpoints_batch.insert_batch(
             &checkpoint_db.tables.watermarks,
@@ -217,9 +206,8 @@ impl AuthorityStorePruner {
             .get_highest_executed_checkpoint()?
             .map(|c| (*c.sequence_number(), c.epoch))
             .unwrap_or_default();
-        let pruned_checkpoint_number = perpetual_db
-            .get_highest_pruned_checkpoint()?
-            .unwrap_or_default();
+        let pruned_checkpoint_number =
+            perpetual_db.get_highest_pruned_checkpoint()?.unwrap_or_default();
         if config.smooth && config.num_epochs_to_retain > 0 {
             max_eligible_checkpoint_number = Self::smoothed_max_eligible_checkpoint_number(
                 checkpoint_store,
@@ -254,9 +242,8 @@ impl AuthorityStorePruner {
         epoch_duration_ms: u64,
         pruner_watermarks: &Arc<PrunerWatermarks>,
     ) -> anyhow::Result<()> {
-        let pruned_checkpoint_number = checkpoint_store
-            .get_highest_pruned_checkpoint_seq_number()?
-            .unwrap_or(0);
+        let pruned_checkpoint_number =
+            checkpoint_store.get_highest_pruned_checkpoint_seq_number()?.unwrap_or(0);
         let (mut max_eligible_checkpoint, epoch_id) = checkpoint_store
             .get_highest_executed_checkpoint()?
             .map(|c| (*c.sequence_number(), c.epoch))
@@ -264,9 +251,7 @@ impl AuthorityStorePruner {
         if config.num_epochs_to_retain != u64::MAX {
             max_eligible_checkpoint = min(
                 max_eligible_checkpoint,
-                perpetual_db
-                    .get_highest_pruned_checkpoint()?
-                    .unwrap_or_default(),
+                perpetual_db.get_highest_pruned_checkpoint()?.unwrap_or_default(),
             );
         }
         if config.smooth {
@@ -330,10 +315,8 @@ impl AuthorityStorePruner {
         let mut effects_to_prune = vec![];
 
         loop {
-            let Some(ckpt) = checkpoint_store
-                .tables
-                .certified_checkpoints
-                .get(&(checkpoint_number + 1))?
+            let Some(ckpt) =
+                checkpoint_store.tables.certified_checkpoints.get(&(checkpoint_number + 1))?
             else {
                 break;
             };
@@ -357,9 +340,7 @@ impl AuthorityStorePruner {
                         checkpoint.sequence_number
                     )
                 })?;
-            let effects = perpetual_db
-                .effects
-                .multi_get(content.iter().map(|tx| tx.effects))?;
+            let effects = perpetual_db.effects.multi_get(content.iter().map(|tx| tx.effects))?;
 
             info!("scheduling pruning for checkpoint {:?}", checkpoint_number);
             checkpoints_to_prune.push(*checkpoint.digest());
@@ -447,17 +428,10 @@ impl AuthorityStorePruner {
             return Ok(false);
         }
         info!("relocation: setting epoch watermark to {}", new_watermark);
-        pruning_watermark
-            .epoch_id
-            .store(new_watermark, Ordering::Relaxed);
+        pruning_watermark.epoch_id.store(new_watermark, Ordering::Relaxed);
         if let Some(checkpoint_id) = checkpoint_id {
-            info!(
-                "relocation: setting checkpoint watermark to {}",
-                checkpoint_id
-            );
-            pruning_watermark
-                .checkpoint_id
-                .store(checkpoint_id, Ordering::Relaxed);
+            info!("relocation: setting checkpoint watermark to {}", checkpoint_id);
+            pruning_watermark.checkpoint_id.store(checkpoint_id, Ordering::Relaxed);
         }
         Ok(true)
     }
@@ -468,9 +442,8 @@ impl AuthorityStorePruner {
         last_processed: Arc<Mutex<HashMap<String, SystemTime>>>,
     ) -> anyhow::Result<Option<LiveFile>> {
         let db_path = perpetual_db.objects.db.path_for_pruning();
-        let mut state = last_processed
-            .lock()
-            .expect("failed to obtain a lock for last processed SST files");
+        let mut state =
+            last_processed.lock().expect("failed to obtain a lock for last processed SST files");
         let mut sst_file_for_compaction: Option<LiveFile> = None;
         let time_threshold =
             SystemTime::now() - Duration::from_secs(delay_days as u64 * 24 * 60 * 60);
@@ -670,9 +643,7 @@ pub struct ObjectsCompactionFilter {
 
 impl ObjectsCompactionFilter {
     pub fn new(db: Arc<AuthorityPrunerTables>) -> Self {
-        Self {
-            db: Arc::downgrade(&db),
-        }
+        Self { db: Arc::downgrade(&db) }
     }
     pub fn filter(&mut self, key: &[u8], value: &[u8]) -> anyhow::Result<Decision> {
         let ObjectKey(object_id, version) = bincode::DefaultOptions::new()

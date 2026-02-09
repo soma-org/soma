@@ -32,10 +32,7 @@ fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new([0xAA; 32]),
-    }
+    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
 }
 
 fn make_genesis_model_config(
@@ -80,36 +77,24 @@ async fn test_genesis_model_bootstrap() {
 
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Query system state from the fullnode
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     // Model should be in active_models (genesis models skip commit-reveal)
     assert!(
-        system_state
-            .model_registry
-            .active_models
-            .contains_key(&model_id),
+        system_state.model_registry.active_models.contains_key(&model_id),
         "Genesis model should be in active_models"
     );
 
     // Verify model fields
-    let model = system_state
-        .model_registry
-        .active_models
-        .get(&model_id)
-        .unwrap();
+    let model = system_state.model_registry.active_models.get(&model_id).unwrap();
     assert_eq!(model.owner, model_owner);
     assert_eq!(model.architecture_version, 1);
     assert_eq!(model.commission_rate, 0);
@@ -120,20 +105,11 @@ async fn test_genesis_model_bootstrap() {
     assert_eq!(model.staking_pool.soma_balance, initial_stake);
 
     // total_model_stake should match
-    assert_eq!(
-        system_state.model_registry.total_model_stake,
-        initial_stake
-    );
+    assert_eq!(system_state.model_registry.total_model_stake, initial_stake);
 
     // Staking pool mapping should exist
     let pool_id = model.staking_pool.id;
-    assert_eq!(
-        system_state
-            .model_registry
-            .staking_pool_mappings
-            .get(&pool_id),
-        Some(&model_id),
-    );
+    assert_eq!(system_state.model_registry.staking_pool_mappings.get(&pool_id), Some(&model_id),);
 
     // No pending or inactive models
     assert!(system_state.model_registry.pending_models.is_empty());
@@ -193,9 +169,7 @@ async fn test_model_commit_reveal_round_trip() {
         vec![gas_object],
     );
 
-    let commit_response = test_cluster
-        .sign_and_execute_transaction(&commit_tx_data)
-        .await;
+    let commit_response = test_cluster.sign_and_execute_transaction(&commit_tx_data).await;
 
     assert!(
         commit_response.effects.status().is_ok(),
@@ -206,35 +180,22 @@ async fn test_model_commit_reveal_round_trip() {
     info!("CommitModel transaction succeeded");
 
     // Verify model is in pending_models
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     assert!(
-        system_state
-            .model_registry
-            .pending_models
-            .contains_key(&model_id),
+        system_state.model_registry.pending_models.contains_key(&model_id),
         "Model should be in pending_models after CommitModel"
     );
     assert!(
-        !system_state
-            .model_registry
-            .active_models
-            .contains_key(&model_id),
+        !system_state.model_registry.active_models.contains_key(&model_id),
         "Model should NOT be in active_models yet"
     );
 
-    let pending_model = system_state
-        .model_registry
-        .pending_models
-        .get(&model_id)
-        .unwrap();
+    let pending_model = system_state.model_registry.pending_models.get(&model_id).unwrap();
     assert!(pending_model.is_committed());
     assert_eq!(pending_model.owner, model_owner);
     assert_eq!(pending_model.commit_epoch, 0);
@@ -243,21 +204,15 @@ async fn test_model_commit_reveal_round_trip() {
 
     test_cluster.trigger_reconfiguration().await;
 
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     // Model should still be in pending_models (reveal window is now open)
     assert!(
-        system_state
-            .model_registry
-            .pending_models
-            .contains_key(&model_id),
+        system_state.model_registry.pending_models.contains_key(&model_id),
         "Model should still be in pending_models after first reconfig"
     );
 
@@ -275,17 +230,12 @@ async fn test_model_commit_reveal_round_trip() {
         .expect("Model owner should have a gas object for reveal");
 
     let reveal_tx_data = TransactionData::new(
-        TransactionKind::RevealModel(RevealModelArgs {
-            model_id,
-            weights_manifest,
-        }),
+        TransactionKind::RevealModel(RevealModelArgs { model_id, weights_manifest }),
         model_owner,
         vec![gas_object],
     );
 
-    let reveal_response = test_cluster
-        .sign_and_execute_transaction(&reveal_tx_data)
-        .await;
+    let reveal_response = test_cluster.sign_and_execute_transaction(&reveal_tx_data).await;
 
     assert!(
         reveal_response.effects.status().is_ok(),
@@ -297,35 +247,22 @@ async fn test_model_commit_reveal_round_trip() {
 
     // ----- Step 4: Verify model is now active -----
 
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     assert!(
-        !system_state
-            .model_registry
-            .pending_models
-            .contains_key(&model_id),
+        !system_state.model_registry.pending_models.contains_key(&model_id),
         "Model should no longer be in pending_models after reveal"
     );
     assert!(
-        system_state
-            .model_registry
-            .active_models
-            .contains_key(&model_id),
+        system_state.model_registry.active_models.contains_key(&model_id),
         "Model should be in active_models after reveal"
     );
 
-    let active_model = system_state
-        .model_registry
-        .active_models
-        .get(&model_id)
-        .unwrap();
+    let active_model = system_state.model_registry.active_models.get(&model_id).unwrap();
     assert!(active_model.is_active());
     assert!(active_model.weights_manifest.is_some());
     assert_eq!(active_model.owner, model_owner);
@@ -333,20 +270,11 @@ async fn test_model_commit_reveal_round_trip() {
     assert_eq!(active_model.staking_pool.soma_balance, stake_amount);
 
     // total_model_stake should reflect the newly active model
-    assert_eq!(
-        system_state.model_registry.total_model_stake,
-        stake_amount,
-    );
+    assert_eq!(system_state.model_registry.total_model_stake, stake_amount,);
 
     // Staking pool mapping should exist
     let pool_id = active_model.staking_pool.id;
-    assert_eq!(
-        system_state
-            .model_registry
-            .staking_pool_mappings
-            .get(&pool_id),
-        Some(&model_id),
-    );
+    assert_eq!(system_state.model_registry.staking_pool_mappings.get(&pool_id), Some(&model_id),);
 
     info!("test_model_commit_reveal_round_trip passed");
 }

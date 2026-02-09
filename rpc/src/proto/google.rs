@@ -102,10 +102,7 @@ pub mod rpc {
 
     impl bad_request::FieldViolation {
         pub fn new<T: Into<String>>(field: T) -> Self {
-            Self {
-                field: field.into(),
-                ..Default::default()
-            }
+            Self { field: field.into(), ..Default::default() }
         }
 
         pub fn new_at<T: Into<String>>(field: T, index: usize) -> Self {
@@ -114,10 +111,7 @@ pub mod rpc {
             let mut field = field.into();
             write!(&mut field, "[{index}]").expect("write to String cannot fail");
 
-            Self {
-                field,
-                ..Default::default()
-            }
+            Self { field, ..Default::default() }
         }
 
         pub fn with_description<T: Into<String>>(mut self, description: T) -> Self {
@@ -136,13 +130,8 @@ pub mod rpc {
             let mut field = field.into();
 
             if !self.field.is_empty() {
-                write!(
-                    &mut field,
-                    "{}{}",
-                    crate::utils::field::FIELD_SEPARATOR,
-                    self.field
-                )
-                .expect("write to String cannot fail");
+                write!(&mut field, "{}{}", crate::utils::field::FIELD_SEPARATOR, self.field)
+                    .expect("write to String cannot fail");
             }
 
             self.field = field;
@@ -156,13 +145,8 @@ pub mod rpc {
             write!(&mut field, "[{index}]").expect("write to String cannot fail");
 
             if !self.field.is_empty() {
-                write!(
-                    &mut field,
-                    "{}{}",
-                    crate::utils::field::FIELD_SEPARATOR,
-                    self.field
-                )
-                .expect("write to String cannot fail");
+                write!(&mut field, "{}{}", crate::utils::field::FIELD_SEPARATOR, self.field)
+                    .expect("write to String cannot fail");
             }
 
             self.field = field;
@@ -172,9 +156,7 @@ pub mod rpc {
 
     impl From<bad_request::FieldViolation> for BadRequest {
         fn from(value: bad_request::FieldViolation) -> Self {
-            Self {
-                field_violations: vec![value],
-            }
+            Self { field_violations: vec![value] }
         }
     }
 

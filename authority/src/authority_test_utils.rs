@@ -62,9 +62,7 @@ pub async fn certify_transaction(
 
     let transaction = epoch_store.verify_transaction(transaction).unwrap();
 
-    let response = authority
-        .handle_transaction(&epoch_store, transaction.clone())
-        .await?;
+    let response = authority.handle_transaction(&epoch_store, transaction.clone()).await?;
     let vote = response.status.into_signed_for_testing();
 
     // Collect signatures from a quorum of authorities
@@ -82,14 +80,7 @@ pub async fn execute_certificate_with_execution_error(
     certificate: VerifiedCertificate,
     with_shared: bool, // transaction includes shared objects
     fake_consensus: bool,
-) -> Result<
-    (
-        CertifiedTransaction,
-        SignedTransactionEffects,
-        Option<ExecutionError>,
-    ),
-    SomaError,
-> {
+) -> Result<(CertifiedTransaction, SignedTransactionEffects, Option<ExecutionError>), SomaError> {
     let epoch_store = authority.load_epoch_store_one_call_per_task();
     // We also check the incremental effects of the transaction on the live object set against StateAccumulator
     // for testing and regression detection.
@@ -104,19 +95,12 @@ pub async fn execute_certificate_with_execution_error(
             send_consensus(authority, &certificate).await
         } else {
             // Just set object locks directly if send_consensus is not requested.
-            let assigned_versions = authority
-                .epoch_store_for_testing()
-                .assign_shared_object_versions_for_tests(
+            let assigned_versions =
+                authority.epoch_store_for_testing().assign_shared_object_versions_for_tests(
                     authority.get_object_cache_reader().as_ref(),
-                    &vec![VerifiedExecutableTransaction::new_from_certificate(
-                        certificate.clone(),
-                    )],
+                    &vec![VerifiedExecutableTransaction::new_from_certificate(certificate.clone())],
                 )?;
-            assigned_versions
-                .into_map()
-                .get(&certificate.key())
-                .cloned()
-                .unwrap()
+            assigned_versions.into_map().get(&certificate.key()).cloned().unwrap()
         }
     } else {
         AssignedVersions::new(vec![])
@@ -131,10 +115,8 @@ pub async fn execute_certificate_with_execution_error(
         )
         .await;
     let state_after = state_acc.accumulate_cached_live_object_set_for_testing(false);
-    let effects_acc = state_acc.accumulate_effects(
-        &[result.inner().data().clone()],
-        epoch_store.protocol_config(),
-    );
+    let effects_acc = state_acc
+        .accumulate_effects(&[result.inner().data().clone()], epoch_store.protocol_config());
     state.union(&effects_acc);
 
     assert_eq!(state_after.digest(), state.digest());
@@ -147,11 +129,7 @@ pub async fn execute_certificate_with_execution_error(
             )
             .await;
     }
-    Ok((
-        certificate.into_inner(),
-        result.into_inner(),
-        execution_error_opt,
-    ))
+    Ok((certificate.into_inner(), result.into_inner(), execution_error_opt))
 }
 
 pub async fn send_and_confirm_transaction_with_execution_error(
@@ -160,14 +138,7 @@ pub async fn send_and_confirm_transaction_with_execution_error(
     transaction: Transaction,
     with_shared: bool,    // transaction includes shared objects
     fake_consensus: bool, // runs consensus handler if true
-) -> Result<
-    (
-        CertifiedTransaction,
-        SignedTransactionEffects,
-        Option<ExecutionError>,
-    ),
-    SomaError,
-> {
+) -> Result<(CertifiedTransaction, SignedTransactionEffects, Option<ExecutionError>), SomaError> {
     let certificate = certify_transaction(authority, transaction).await?;
     execute_certificate_with_execution_error(
         authority,
@@ -184,10 +155,7 @@ pub async fn init_state_validator_with_fullnode() -> (Arc<AuthorityState>, Arc<A
 
     let validator = TestAuthorityBuilder::new().build().await;
     let fullnode_key_pair = get_key_pair().1;
-    let fullnode = TestAuthorityBuilder::new()
-        .with_keypair(&fullnode_key_pair)
-        .build()
-        .await;
+    let fullnode = TestAuthorityBuilder::new().with_keypair(&fullnode_key_pair).build().await;
     (validator, fullnode)
 }
 
@@ -240,9 +208,7 @@ pub async fn init_state_with_objects<I: IntoIterator<Item = Object>>(
     let dir = tempfile::TempDir::new().unwrap();
     let network_config = types::config::network_config::ConfigBuilder::new(dir.as_ref()).build();
     let genesis = network_config.genesis;
-    let keypair = network_config.validator_configs[0]
-        .protocol_key_pair()
-        .copy();
+    let keypair = network_config.validator_configs[0].protocol_key_pair().copy();
     init_state_with_objects_and_committee(objects, &genesis, &keypair).await
 }
 
@@ -271,10 +237,7 @@ pub async fn init_state_with_ids_and_expensive_checks<
     objects: I,
     config: ExpensiveSafetyCheckConfig,
 ) -> Arc<AuthorityState> {
-    let state = TestAuthorityBuilder::new()
-        .with_expensive_safety_checks(config)
-        .build()
-        .await;
+    let state = TestAuthorityBuilder::new().with_expensive_safety_checks(config).build().await;
     for (address, object_id) in objects {
         let obj = Object::with_id_owner_for_testing(object_id, address);
         // TODO: Make this part of genesis initialization instead of explicit insert.
@@ -293,10 +256,7 @@ pub fn init_transfer_transaction(
 ) -> VerifiedTransaction {
     let data = TransactionData::new_transfer(recipient, object_ref, sender, vec![gas_object_ref]);
     let tx = to_sender_signed_transaction(data, secret);
-    authority_state
-        .epoch_store_for_testing()
-        .verify_transaction(tx)
-        .unwrap()
+    authority_state.epoch_store_for_testing().verify_transaction(tx).unwrap()
 }
 
 pub fn init_certified_transfer_transaction(
@@ -347,9 +307,7 @@ pub async fn certify_shared_obj_transaction_no_execution(
 ) -> Result<(VerifiedCertificate, AssignedVersions), SomaError> {
     let epoch_store = authority.load_epoch_store_one_call_per_task();
     let transaction = epoch_store.verify_transaction(transaction).unwrap();
-    let response = authority
-        .handle_transaction(&epoch_store, transaction.clone())
-        .await?;
+    let response = authority.handle_transaction(&epoch_store, transaction.clone()).await?;
     let vote = response.status.into_signed_for_testing();
 
     // Collect signatures from a quorum of authorities
@@ -416,9 +374,7 @@ pub async fn send_consensus(
         .epoch_store_for_testing()
         .assign_shared_object_versions_for_tests(
             authority.get_object_cache_reader().as_ref(),
-            &vec![VerifiedExecutableTransaction::new_from_certificate(
-                cert.clone(),
-            )],
+            &vec![VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
         )
         .unwrap();
 
@@ -450,9 +406,7 @@ pub async fn send_consensus_no_execution(
         .epoch_store_for_testing()
         .assign_shared_object_versions_for_tests(
             authority.get_object_cache_reader().as_ref(),
-            &vec![VerifiedExecutableTransaction::new_from_certificate(
-                cert.clone(),
-            )],
+            &vec![VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
         )
         .unwrap();
 

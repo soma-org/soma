@@ -37,11 +37,7 @@ impl SubmittedTransactionCache {
             .and_then(NonZeroUsize::new)
             .unwrap_or_else(|| NonZeroUsize::new(DEFAULT_CACHE_CAPACITY).unwrap());
 
-        Self {
-            inner: RwLock::new(Inner {
-                transactions: LruCache::new(capacity),
-            }),
-        }
+        Self { inner: RwLock::new(Inner { transactions: LruCache::new(capacity) }) }
     }
 
     pub(crate) fn record_submitted_tx(
@@ -117,10 +113,6 @@ impl SubmittedTransactionCache {
 
     #[cfg(test)]
     pub(crate) fn get_submission_count(&self, digest: &TransactionDigest) -> Option<u32> {
-        self.inner
-            .read()
-            .transactions
-            .peek(digest)
-            .map(|m| m.submission_count)
+        self.inner.read().transactions.peek(digest).map(|m| m.submission_count)
     }
 }

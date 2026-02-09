@@ -211,8 +211,7 @@ impl ModelExecutor {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
-                    let staked_soma =
-                        state.request_add_stake_to_model(&model_id, stake_amount)?;
+                    let staked_soma = state.request_add_stake_to_model(&model_id, stake_amount)?;
 
                     let staked_soma_object = Object::new_staked_soma_object(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -231,8 +230,7 @@ impl ModelExecutor {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
-                    let staked_soma =
-                        state.request_add_stake_to_model(&model_id, stake_amount)?;
+                    let staked_soma = state.request_add_stake_to_model(&model_id, stake_amount)?;
 
                     let staked_soma_object = Object::new_staked_soma_object(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -265,8 +263,7 @@ impl ModelExecutor {
 
                     stake_amount = source_balance - total_fee;
 
-                    let staked_soma =
-                        state.request_add_stake_to_model(&model_id, stake_amount)?;
+                    let staked_soma = state.request_add_stake_to_model(&model_id, stake_amount)?;
 
                     let staked_soma_object = Object::new_staked_soma_object(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -280,8 +277,7 @@ impl ModelExecutor {
                 } else {
                     stake_amount = source_balance;
 
-                    let staked_soma =
-                        state.request_add_stake_to_model(&model_id, stake_amount)?;
+                    let staked_soma = state.request_add_stake_to_model(&model_id, stake_amount)?;
 
                     let staked_soma_object = Object::new_staked_soma_object(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -370,22 +366,17 @@ impl TransactionExecutor for ModelExecutor {
             TransactionKind::CommitModel(_) => {
                 self.execute_commit_model(store, signer, kind, tx_digest, value_fee)
             }
-            TransactionKind::RevealModel(_) => {
-                self.execute_reveal_model(store, signer, kind)
-            }
+            TransactionKind::RevealModel(_) => self.execute_reveal_model(store, signer, kind),
             TransactionKind::CommitModelUpdate(_) => {
                 self.execute_commit_model_update(store, signer, kind)
             }
             TransactionKind::RevealModelUpdate(_) => {
                 self.execute_reveal_model_update(store, signer, kind)
             }
-            TransactionKind::AddStakeToModel {
-                model_id,
-                coin_ref,
-                amount,
-            } => self.execute_add_stake_to_model(
-                store, signer, model_id, coin_ref, amount, tx_digest, value_fee,
-            ),
+            TransactionKind::AddStakeToModel { model_id, coin_ref, amount } => self
+                .execute_add_stake_to_model(
+                    store, signer, model_id, coin_ref, amount, tx_digest, value_fee,
+                ),
             TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
                 self.execute_set_model_commission_rate(store, signer, model_id, new_rate)
             }
@@ -415,16 +406,11 @@ impl FeeCalculator for ModelExecutor {
                 }
                 (args.stake_amount * value_fee_bps) / BPS_DENOMINATOR
             }
-            TransactionKind::AddStakeToModel {
-                coin_ref, amount, ..
-            } => {
+            TransactionKind::AddStakeToModel { coin_ref, amount, .. } => {
                 let stake_amount = if let Some(specific_amount) = amount {
                     *specific_amount
                 } else {
-                    store
-                        .read_object(&coin_ref.0)
-                        .and_then(|obj| obj.as_coin())
-                        .unwrap_or(0)
+                    store.read_object(&coin_ref.0).and_then(|obj| obj.as_coin()).unwrap_or(0)
                 };
 
                 if stake_amount == 0 {
@@ -441,11 +427,9 @@ impl FeeCalculator for ModelExecutor {
 
 /// Verifies an object is a coin and returns its balance
 fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    object
-        .as_coin()
-        .ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-            object_id: object.id(),
-            expected_type: ObjectType::Coin,
-            actual_type: object.type_().clone(),
-        })
+    object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
+        object_id: object.id(),
+        expected_type: ObjectType::Coin,
+        actual_type: object.type_().clone(),
+    })
 }

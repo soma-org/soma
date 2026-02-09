@@ -92,10 +92,7 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
     }
 
     fn get_validator_addresses(&self) -> Vec<SomaAddress> {
-        self.active_validators
-            .iter()
-            .map(|validator| validator.soma_address)
-            .collect()
+        self.active_validators.iter().map(|validator| validator.soma_address).collect()
     }
 
     fn get_committee_with_network_metadata(&self) -> CommitteeWithNetworkMetadata {
@@ -128,11 +125,8 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
     }
 
     fn get_committee(&self) -> Committee {
-        let voting_rights: BTreeMap<_, _> = self
-            .active_validators
-            .iter()
-            .map(|v| (v.authority_name(), v.voting_power))
-            .collect();
+        let voting_rights: BTreeMap<_, _> =
+            self.active_validators.iter().map(|v| (v.authority_name(), v.voting_power)).collect();
 
         let authorities: BTreeMap<_, _> = self
             .active_validators

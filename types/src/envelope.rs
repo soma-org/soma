@@ -6,7 +6,7 @@ use std::{
 };
 
 use fastcrypto::traits::{KeyPair, Signer};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     base::AuthorityName,
@@ -42,11 +42,7 @@ pub struct Envelope<T: Message, S> {
 
 impl<T: Message, S> Envelope<T, S> {
     pub fn new_from_data_and_sig(data: T, sig: S) -> Self {
-        Self {
-            digest: Default::default(),
-            data,
-            auth_signature: sig,
-        }
+        Self { digest: Default::default(), data, auth_signature: sig }
     }
 
     pub fn data(&self) -> &T {
@@ -62,11 +58,7 @@ impl<T: Message, S> Envelope<T, S> {
     }
 
     pub fn into_data_and_sig(self) -> (T, S) {
-        let Self {
-            data,
-            auth_signature,
-            ..
-        } = self;
+        let Self { data, auth_signature, .. } = self;
         (data, auth_signature)
     }
 
@@ -94,11 +86,7 @@ impl<T: Message, S> Envelope<T, S> {
 
 impl<T: Message> Envelope<T, EmptySignInfo> {
     pub fn new(data: T) -> Self {
-        Self {
-            digest: OnceLock::new(),
-            data,
-            auth_signature: EmptySignInfo {},
-        }
+        Self { digest: OnceLock::new(), data, auth_signature: EmptySignInfo {} }
     }
 }
 
@@ -113,11 +101,7 @@ where
         authority: AuthorityName,
     ) -> Self {
         let auth_signature = Self::sign(epoch, &data, secret, authority);
-        Self {
-            digest: OnceLock::new(),
-            data,
-            auth_signature,
-        }
+        Self { digest: OnceLock::new(), data, auth_signature }
     }
 
     pub fn sign(
@@ -244,14 +228,14 @@ where
     T: Message + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0 .0)
+        write!(f, "{:?}", self.0.0)
     }
 }
 
 impl<T: Message, S> Deref for VerifiedEnvelope<T, S> {
     type Target = Envelope<T, S>;
     fn deref(&self) -> &Self::Target {
-        &self.0 .0
+        &self.0.0
     }
 }
 
@@ -273,7 +257,7 @@ where
     Envelope<T, S>: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.0 .0 == other.0 .0
+        self.0.0 == other.0.0
     }
 }
 
@@ -293,11 +277,11 @@ impl<T: Message, S> VerifiedEnvelope<T, S> {
     }
 
     pub fn into_inner(self) -> Envelope<T, S> {
-        self.0 .0
+        self.0.0
     }
 
     pub fn inner(&self) -> &Envelope<T, S> {
-        &self.0 .0
+        &self.0.0
     }
 
     pub fn into_message(self) -> T {
@@ -342,11 +326,7 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         certificate: VerifiedEnvelope<T, AuthorityStrongQuorumSignInfo>,
     ) -> Self {
         let inner = certificate.into_inner();
-        let Envelope {
-            digest,
-            data,
-            auth_signature,
-        } = inner;
+        let Envelope { digest, data, auth_signature } = inner;
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
@@ -360,11 +340,7 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         checkpoint: CheckpointSequenceNumber,
     ) -> Self {
         let inner = transaction.into_inner();
-        let Envelope {
-            digest,
-            data,
-            auth_signature: _,
-        } = inner;
+        let Envelope { digest, data, auth_signature: _ } = inner;
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
@@ -377,11 +353,7 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         epoch: EpochId,
     ) -> Self {
         let inner = transaction.into_inner();
-        let Envelope {
-            digest,
-            data,
-            auth_signature: _,
-        } = inner;
+        let Envelope { digest, data, auth_signature: _ } = inner;
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
@@ -391,11 +363,7 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
 
     pub fn new_system(transaction: VerifiedEnvelope<T, EmptySignInfo>, epoch: EpochId) -> Self {
         let inner = transaction.into_inner();
-        let Envelope {
-            digest,
-            data,
-            auth_signature: _,
-        } = inner;
+        let Envelope { digest, data, auth_signature: _ } = inner;
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
@@ -408,11 +376,7 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
         epoch: EpochId,
     ) -> Self {
         let inner = transaction.into_inner();
-        let Envelope {
-            digest,
-            data,
-            auth_signature: _,
-        } = inner;
+        let Envelope { digest, data, auth_signature: _ } = inner;
         VerifiedEnvelope::new_unchecked(Envelope {
             digest,
             data,
@@ -427,6 +391,6 @@ impl<T: Message> VerifiedEnvelope<T, CertificateProof> {
 
 impl<T: Message, S> From<VerifiedEnvelope<T, S>> for Envelope<T, S> {
     fn from(v: VerifiedEnvelope<T, S>) -> Self {
-        v.0 .0
+        v.0.0
     }
 }

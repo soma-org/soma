@@ -51,9 +51,7 @@ impl StateReader {
 
     #[tracing::instrument(skip(self))]
     pub fn get_committee(&self, epoch: EpochId) -> Option<ValidatorCommittee> {
-        self.inner
-            .get_committee(epoch)
-            .map(|committee| (*committee).clone().into())
+        self.inner.get_committee(epoch).map(|committee| (*committee).clone().into())
     }
 
     #[tracing::instrument(skip(self))]
@@ -94,11 +92,7 @@ impl StateReader {
         &self,
         digest: &types::digests::TransactionDigest,
     ) -> Option<TransactionInfo> {
-        self.inner()
-            .indexes()?
-            .get_transaction_info(digest)
-            .ok()
-            .flatten()
+        self.inner().indexes()?.get_transaction_info(digest).ok().flatten()
     }
 
     #[tracing::instrument(skip(self))]
@@ -106,21 +100,12 @@ impl StateReader {
         &self,
         digest: crate::types::Digest,
     ) -> crate::api::error::Result<TransactionRead> {
-        let (
-            SignedTransaction {
-                transaction,
-                signatures,
-            },
-            effects,
-        ) = self.get_transaction(digest)?;
+        let (SignedTransaction { transaction, signatures }, effects) =
+            self.get_transaction(digest)?;
 
         let (checkpoint, balance_changes, object_types) =
             if let Some(info) = self.get_transaction_info(&(digest.into())) {
-                (
-                    Some(info.checkpoint),
-                    Some(info.balance_changes),
-                    Some(info.object_types),
-                )
+                (Some(info.checkpoint), Some(info.balance_changes), Some(info.object_types))
             } else {
                 (None, None, None)
             };
@@ -180,10 +165,8 @@ pub struct CheckpointTransactionsIter {
     direction: Direction,
 
     next_cursor: Option<(CheckpointSequenceNumber, Option<usize>)>,
-    checkpoint: Option<(
-        types::checkpoints::CheckpointSummary,
-        types::checkpoints::CheckpointContents,
-    )>,
+    checkpoint:
+        Option<(types::checkpoints::CheckpointSummary, types::checkpoints::CheckpointContents)>,
 }
 
 impl CheckpointTransactionsIter {
@@ -193,12 +176,7 @@ impl CheckpointTransactionsIter {
         direction: Direction,
         start: (CheckpointSequenceNumber, Option<usize>),
     ) -> Self {
-        Self {
-            reader,
-            direction,
-            next_cursor: Some(start),
-            checkpoint: None,
-        }
+        Self { reader, direction, next_cursor: Some(start), checkpoint: None }
     }
 }
 
@@ -217,10 +195,8 @@ impl Iterator for CheckpointTransactionsIter {
                     checkpoint
                 }
             } else {
-                let checkpoint = self
-                    .reader
-                    .inner()
-                    .get_checkpoint_by_sequence_number(current_checkpoint)?;
+                let checkpoint =
+                    self.reader.inner().get_checkpoint_by_sequence_number(current_checkpoint)?;
                 let contents = self
                     .reader
                     .inner()
@@ -241,11 +217,7 @@ impl Iterator for CheckpointTransactionsIter {
                 let next_index = match self.direction {
                     Direction::Ascending => {
                         let next_index = index + 1;
-                        if next_index >= contents.size() {
-                            None
-                        } else {
-                            Some(next_index)
-                        }
+                        if next_index >= contents.size() { None } else { Some(next_index) }
                     }
                     Direction::Descending => index.checked_sub(1),
                 };
@@ -301,11 +273,7 @@ pub struct CheckpointIter {
 impl CheckpointIter {
     #[allow(unused)]
     pub fn new(reader: StateReader, direction: Direction, start: CheckpointSequenceNumber) -> Self {
-        Self {
-            reader,
-            direction,
-            next_cursor: Some(start),
-        }
+        Self { reader, direction, next_cursor: Some(start) }
     }
 }
 
@@ -318,11 +286,8 @@ impl Iterator for CheckpointIter {
     fn next(&mut self) -> Option<Self::Item> {
         let current_checkpoint = self.next_cursor?;
 
-        let checkpoint = self
-            .reader
-            .inner()
-            .get_checkpoint_by_sequence_number(current_checkpoint)?
-            .into_inner();
+        let checkpoint =
+            self.reader.inner().get_checkpoint_by_sequence_number(current_checkpoint)?.into_inner();
         let contents = self
             .reader
             .inner()

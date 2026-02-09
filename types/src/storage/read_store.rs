@@ -99,10 +99,7 @@ pub trait ReadStore: ObjectStore {
         &self,
         tx_digests: &[TransactionDigest],
     ) -> Vec<Option<Arc<VerifiedTransaction>>> {
-        tx_digests
-            .iter()
-            .map(|digest| self.get_transaction(digest))
-            .collect()
+        tx_digests.iter().map(|digest| self.get_transaction(digest)).collect()
     }
 
     fn get_transaction_effects(&self, tx_digest: &TransactionDigest) -> Option<TransactionEffects>;
@@ -111,10 +108,7 @@ pub trait ReadStore: ObjectStore {
         &self,
         tx_digests: &[TransactionDigest],
     ) -> Vec<Option<TransactionEffects>> {
-        tx_digests
-            .iter()
-            .map(|digest| self.get_transaction_effects(digest))
-            .collect()
+        tx_digests.iter().map(|digest| self.get_transaction_effects(digest)).collect()
     }
 
     //
@@ -592,11 +586,7 @@ impl TransactionInfo {
             .map(|object| (object.id(), ObjectType::from(object)))
             .collect();
 
-        TransactionInfo {
-            checkpoint,
-            balance_changes,
-            object_types,
-        }
+        TransactionInfo { checkpoint, balance_changes, object_types }
     }
 }
 

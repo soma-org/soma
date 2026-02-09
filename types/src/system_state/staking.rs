@@ -60,10 +60,7 @@ impl StakingPool {
     /// Request to withdraw stake from the staking pool
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma, current_epoch: u64) -> u64 {
         // Validate the staking pool ID matches
-        assert!(
-            staked_soma.pool_id == self.id,
-            "StakedSoma belongs to a different pool"
-        );
+        assert!(staked_soma.pool_id == self.id, "StakedSoma belongs to a different pool");
 
         // If stake is not yet active (activation is in the future), just return principal
         if staked_soma.stake_activation_epoch > current_epoch {
@@ -185,10 +182,7 @@ impl StakingPool {
     pub fn pool_token_exchange_rate_at_epoch(&self, epoch: u64) -> PoolTokenExchangeRate {
         // If pool is preactive, return initial exchange rate (which is essentially 1:1)
         if self.is_preactive() {
-            return PoolTokenExchangeRate {
-                soma_amount: 0,
-                pool_token_amount: 0,
-            };
+            return PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 };
         }
 
         // Determine activation epoch (we know it's Some since pool is not preactive)
@@ -196,10 +190,7 @@ impl StakingPool {
 
         // If requested epoch is before activation, return initial rate
         if epoch < activation_epoch {
-            return PoolTokenExchangeRate {
-                soma_amount: 0,
-                pool_token_amount: 0,
-            };
+            return PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 };
         }
 
         // Cap epoch at deactivation epoch if the pool is inactive
@@ -223,10 +214,7 @@ impl StakingPool {
         }
 
         // If no rate was found, return initial rate (this should be unreachable in normal operation)
-        PoolTokenExchangeRate {
-            soma_amount: 0,
-            pool_token_amount: 0,
-        }
+        PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 }
     }
 
     /// Convert pool tokens to SOMA amount
@@ -369,10 +357,6 @@ pub struct StakedSoma {
 
 impl StakedSoma {
     pub fn new(pool_id: ObjectID, stake_activation_epoch: u64, principal: u64) -> Self {
-        StakedSoma {
-            pool_id,
-            stake_activation_epoch,
-            principal,
-        }
+        StakedSoma { pool_id, stake_activation_epoch, principal }
     }
 }

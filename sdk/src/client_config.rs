@@ -62,11 +62,7 @@ impl SomaClientConfig {
     }
 
     pub fn add_env(&mut self, env: SomaEnv) {
-        if !self
-            .envs
-            .iter()
-            .any(|other_env| other_env.alias == env.alias)
-        {
+        if !self.envs.iter().any(|other_env| other_env.alias == env.alias) {
             self.envs.push(env)
         }
     }
@@ -181,11 +177,7 @@ impl Display for SomaClientConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut writer = String::new();
 
-        writeln!(
-            writer,
-            "Managed addresses : {}",
-            self.keystore.addresses().len()
-        )?;
+        writeln!(writer, "Managed addresses : {}", self.keystore.addresses().len())?;
         write!(writer, "Active address: ")?;
         match self.active_address {
             Some(r) => writeln!(writer, "{}", r)?,

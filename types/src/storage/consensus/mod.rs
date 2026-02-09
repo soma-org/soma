@@ -77,12 +77,7 @@ impl WriteBatch {
         commit_info: Vec<(CommitRef, CommitInfo)>,
         finalized_commits: Vec<(CommitRef, BTreeMap<BlockRef, Vec<TransactionIndex>>)>,
     ) -> Self {
-        WriteBatch {
-            blocks,
-            commits,
-            commit_info,
-            finalized_commits,
-        }
+        WriteBatch { blocks, commits, commit_info, finalized_commits }
     }
 
     // Test setters.

@@ -70,13 +70,7 @@ impl Genesis {
         effects: TransactionEffects,
         objects: Vec<Object>,
     ) -> Self {
-        Self {
-            checkpoint,
-            checkpoint_contents,
-            transaction,
-            effects,
-            objects,
-        }
+        Self { checkpoint, checkpoint_contents, transaction, effects, objects }
     }
 
     pub fn objects(&self) -> &[Object] {
@@ -96,10 +90,7 @@ impl Genesis {
     }
 
     pub fn checkpoint(&self) -> VerifiedCheckpoint {
-        self.checkpoint
-            .clone()
-            .try_into_verified(&self.committee().unwrap())
-            .unwrap()
+        self.checkpoint.clone().try_into_verified(&self.committee().unwrap()).unwrap()
     }
 
     pub fn checkpoint_contents(&self) -> &CheckpointContents {
@@ -213,21 +204,10 @@ impl<'de> Deserialize<'de> for Genesis {
             data
         };
 
-        let RawGenesis {
-            checkpoint,
-            checkpoint_contents,
-            transaction,
-            effects,
-            objects,
-        } = bcs::from_bytes(&bytes).map_err(|e| Error::custom(e.to_string()))?;
+        let RawGenesis { checkpoint, checkpoint_contents, transaction, effects, objects } =
+            bcs::from_bytes(&bytes).map_err(|e| Error::custom(e.to_string()))?;
 
-        Ok(Genesis {
-            checkpoint,
-            checkpoint_contents,
-            transaction,
-            effects,
-            objects,
-        })
+        Ok(Genesis { checkpoint, checkpoint_contents, transaction, effects, objects })
     }
 }
 

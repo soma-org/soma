@@ -150,10 +150,7 @@ impl CheckpointReader {
         let start_checkpoint = self.current_checkpoint_seq;
         let (sender, receiver) = mpsc::channel(batch_size);
 
-        let url = self
-            .remote_store_url
-            .clone()
-            .expect("remote store url must be set");
+        let url = self.remote_store_url.clone().expect("remote store url must be set");
         let store = create_remote_store_client(
             url,
             self.remote_store_options.clone(),
@@ -253,10 +250,7 @@ impl CheckpointReader {
     }
 
     fn parse_checkpoint_seq(file_name: &std::ffi::OsStr) -> Option<CheckpointSequenceNumber> {
-        file_name
-            .to_str()
-            .and_then(|s| s.strip_suffix(".chk"))
-            .and_then(|s| s.parse().ok())
+        file_name.to_str().and_then(|s| s.strip_suffix(".chk")).and_then(|s| s.parse().ok())
     }
 
     /// Main run loop

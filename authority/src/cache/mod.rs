@@ -9,8 +9,8 @@ use crate::{
     start_epoch::EpochStartConfiguration,
 };
 use futures::{
-    future::{BoxFuture, Either},
     FutureExt,
+    future::{BoxFuture, Either},
 };
 use protocol_config::ProtocolVersion;
 use store::rocks::DBBatch;
@@ -25,8 +25,8 @@ use types::{
     error::{SomaError, SomaResult},
     object::{Object, ObjectID, ObjectRef, Version},
     storage::{
-        object_store::ObjectStore, FullObjectKey, InputKey, MarkerValue, ObjectKey,
-        ObjectOrTombstone,
+        FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone,
+        object_store::ObjectStore,
     },
     system_state::SystemState,
     transaction::{VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction},
@@ -208,20 +208,16 @@ pub trait ObjectCacheRead: Send + Sync {
 
         for ((idx, (id, version)), has_key) in object_keys.iter().zip(
             self.multi_object_exists_by_key(
-                &object_keys
-                    .iter()
-                    .map(|(_, k)| ObjectKey(k.0.id(), *k.1))
-                    .collect::<Vec<_>>(),
+                &object_keys.iter().map(|(_, k)| ObjectKey(k.0.id(), *k.1)).collect::<Vec<_>>(),
             )
             .into_iter(),
         ) {
             // If the key exists at the specified version, then the object is available.
             if has_key {
                 results[*idx] = true;
-            } else if receiving_objects.contains(&InputKey::VersionedObject {
-                id: **id,
-                version: **version,
-            }) {
+            } else if receiving_objects
+                .contains(&InputKey::VersionedObject { id: **id, version: **version })
+            {
                 // There could be a more recent version of this object, and the object at the
                 // specified version could have already been pruned. In such a case `has_key` will
                 // be false, but since this is a receiving object we should mark it as available if
@@ -254,7 +250,7 @@ pub trait ObjectCacheRead: Send + Sync {
     /// We do not store the version of the child object, but because of lamport timestamp,
     /// we know the child must have version number less then or eq to the parent.
     fn find_object_lt_or_eq_version(&self, object_id: ObjectID, version: Version)
-        -> Option<Object>;
+    -> Option<Object>;
 
     fn get_lock(&self, obj_ref: ObjectRef, epoch_store: &AuthorityPerEpochStore) -> LockResult;
 
@@ -271,7 +267,7 @@ pub trait ObjectCacheRead: Send + Sync {
 
     /// Get the marker at a specific version
     fn get_marker_value(&self, object_key: FullObjectKey, epoch_id: EpochId)
-        -> Option<MarkerValue>;
+    -> Option<MarkerValue>;
 
     /// Get the latest marker for a given object.
     fn get_latest_marker(
@@ -311,10 +307,7 @@ pub trait ObjectCacheRead: Send + Sync {
         object_key: FullObjectKey,
         epoch_id: EpochId,
     ) -> bool {
-        matches!(
-            self.get_marker_value(object_key, epoch_id),
-            Some(MarkerValue::Received)
-        )
+        matches!(self.get_marker_value(object_key, epoch_id), Some(MarkerValue::Received))
     }
 
     fn fastpath_stream_ended_at_version_or_after(
@@ -592,9 +585,7 @@ macro_rules! implement_passthrough_traits {
             }
 
             fn set_epoch_start_configuration(&self, epoch_start_config: &EpochStartConfiguration) {
-                self.store
-                    .set_epoch_start_configuration(epoch_start_config)
-                    .expect("db error");
+                self.store.set_epoch_start_configuration(epoch_start_config).expect("db error");
             }
 
             fn clear_state_end_of_epoch(&self, execution_guard: &ExecutionLockWriteGuard<'_>) {

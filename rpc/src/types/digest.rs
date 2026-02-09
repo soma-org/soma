@@ -8,7 +8,7 @@
     PartialOrd,
     Ord,
     serde_derive::Serialize,
-    serde_derive::Deserialize,
+    serde_derive::Deserialize
 )]
 #[doc(alias = "CheckpointDigest")]
 #[doc(alias = "TransactionDigest")]
@@ -54,9 +54,7 @@ impl Digest {
     pub fn from_base58<T: AsRef<[u8]>>(base58: T) -> Result<Self, DigestParseError> {
         let buf = bs58::decode(base58.as_ref())
             .into_array_const::<{ Self::LENGTH }>()
-            .map_err(|e| DigestParseError {
-                bs58_error: Some(e),
-            })?;
+            .map_err(|e| DigestParseError { bs58_error: Some(e) })?;
 
         Ok(Self(buf))
     }
@@ -130,9 +128,7 @@ impl std::fmt::Display for Digest {
 
 impl std::fmt::Debug for Digest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Digest")
-            .field(&format_args!("\"{self}\""))
-            .finish()
+        f.debug_tuple("Digest").field(&format_args!("\"{self}\"")).finish()
     }
 }
 
@@ -185,11 +181,7 @@ pub struct DigestParseError {
 
 impl std::fmt::Display for DigestParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "Unable to parse Digest (must be Base58 string of length {})",
-            Digest::LENGTH
-        )
+        write!(f, "Unable to parse Digest (must be Base58 string of length {})", Digest::LENGTH)
     }
 }
 

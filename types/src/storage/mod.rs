@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::BTreeSet;
 use std::ops::Range;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use storage_error::Error as StorageError;
 use tracing::debug;
 
@@ -59,10 +59,7 @@ impl InputKey {
 
 impl From<&Object> for InputKey {
     fn from(obj: &Object) -> Self {
-        InputKey::VersionedObject {
-            id: obj.full_id(),
-            version: obj.version(),
-        }
+        InputKey::VersionedObject { id: obj.full_id(), version: obj.version() }
     }
 }
 
@@ -160,18 +157,18 @@ impl FullObjectKey {
     pub fn max_for_id(id: &FullObjectID) -> Self {
         match id {
             FullObjectID::Fastpath(object_id) => Self::Fastpath(ObjectKey::max_for_id(object_id)),
-            FullObjectID::Consensus(consensus_object_sequence_key) => Self::Consensus(
-                ConsensusObjectKey(*consensus_object_sequence_key, Version::MAX),
-            ),
+            FullObjectID::Consensus(consensus_object_sequence_key) => {
+                Self::Consensus(ConsensusObjectKey(*consensus_object_sequence_key, Version::MAX))
+            }
         }
     }
 
     pub fn min_for_id(id: &FullObjectID) -> Self {
         match id {
             FullObjectID::Fastpath(object_id) => Self::Fastpath(ObjectKey::min_for_id(object_id)),
-            FullObjectID::Consensus(consensus_object_sequence_key) => Self::Consensus(
-                ConsensusObjectKey(*consensus_object_sequence_key, Version::MIN),
-            ),
+            FullObjectID::Consensus(consensus_object_sequence_key) => {
+                Self::Consensus(ConsensusObjectKey(*consensus_object_sequence_key, Version::MIN))
+            }
         }
     }
 
@@ -207,7 +204,7 @@ impl FullObjectKey {
         match self {
             FullObjectKey::Fastpath(object_key) => object_key,
             FullObjectKey::Consensus(consensus_object_key) => {
-                ObjectKey(consensus_object_key.0 .0, consensus_object_key.1)
+                ObjectKey(consensus_object_key.0.0, consensus_object_key.1)
             }
         }
     }
@@ -242,12 +239,7 @@ pub fn transaction_non_shared_input_object_keys(
 }
 
 pub fn transaction_receiving_object_keys(tx: &SenderSignedData) -> Vec<ObjectKey> {
-    tx.intent_message()
-        .value
-        .receiving_objects()
-        .into_iter()
-        .map(|oref| oref.into())
-        .collect()
+    tx.intent_message().value.receiving_objects().into_iter().map(|oref| oref.into()).collect()
 }
 pub fn get_transaction_input_objects(
     object_store: &dyn ObjectStore,
@@ -318,11 +310,7 @@ pub fn get_transaction_object_set(
         .input_objects()
         .expect("txn was executed and must have valid input objects")
         .into_iter()
-        .filter_map(|input| {
-            input
-                .version()
-                .map(|version| ObjectKey(input.object_id(), version))
-        });
+        .filter_map(|input| input.version().map(|version| ObjectKey(input.object_id(), version)));
 
     // The full set of output/written objects as well as any of their initial versions
     let modified_set = effects
@@ -330,34 +318,23 @@ pub fn get_transaction_object_set(
         .into_iter()
         .flat_map(|change| {
             [
-                change
-                    .input_version
-                    .map(|version| ObjectKey(change.id, version)),
-                change
-                    .output_version
-                    .map(|version| ObjectKey(change.id, version)),
+                change.input_version.map(|version| ObjectKey(change.id, version)),
+                change.output_version.map(|version| ObjectKey(change.id, version)),
             ]
         })
         .flatten();
 
     // The set of unchanged consensus objects
     let unchanged_consensus =
-        effects
-            .unchanged_shared_objects()
-            .into_iter()
-            .flat_map(|unchanged| {
-                if let crate::effects::UnchangedSharedKind::ReadOnlyRoot((version, _)) = unchanged.1
-                {
-                    Some(ObjectKey(unchanged.0, version))
-                } else {
-                    None
-                }
-            });
+        effects.unchanged_shared_objects().into_iter().flat_map(|unchanged| {
+            if let crate::effects::UnchangedSharedKind::ReadOnlyRoot((version, _)) = unchanged.1 {
+                Some(ObjectKey(unchanged.0, version))
+            } else {
+                None
+            }
+        });
 
-    input_objects
-        .chain(modified_set)
-        .chain(unchanged_consensus)
-        .collect()
+    input_objects.chain(modified_set).chain(unchanged_consensus).collect()
 }
 
 pub fn verify_checkpoint_with_committee(
@@ -365,10 +342,7 @@ pub fn verify_checkpoint_with_committee(
     current: &VerifiedCheckpoint,
     checkpoint: CertifiedCheckpointSummary,
 ) -> Result<VerifiedCheckpoint, Box<CertifiedCheckpointSummary>> {
-    assert_eq!(
-        *checkpoint.sequence_number(),
-        current.sequence_number().checked_add(1).unwrap()
-    );
+    assert_eq!(*checkpoint.sequence_number(), current.sequence_number().checked_add(1).unwrap());
 
     if Some(*current.digest()) != checkpoint.previous_digest {
         debug!(
@@ -410,12 +384,10 @@ pub fn verify_checkpoint_with_committee(
         return Err(Box::new(checkpoint));
     }
 
-    checkpoint
-        .verify_authority_signatures(&committee)
-        .map_err(|e| {
-            debug!("error verifying checkpoint: {e}");
-            checkpoint.clone()
-        })?;
+    checkpoint.verify_authority_signatures(&committee).map_err(|e| {
+        debug!("error verifying checkpoint: {e}");
+        checkpoint.clone()
+    })?;
     Ok(VerifiedCheckpoint::new_unchecked(checkpoint))
 }
 
@@ -449,22 +421,12 @@ pub async fn verify_checkpoint_range<S>(
     let range_clone = checkpoint_range.clone();
     futures::stream::iter(range_clone.into_iter().tuple_windows())
         .map(|(a, b)| {
-            let current = store
-                .get_checkpoint_by_sequence_number(a)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Checkpoint {} should exist in store after summary sync but does not",
-                        a
-                    );
-                });
-            let next = store
-                .get_checkpoint_by_sequence_number(b)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Checkpoint {} should exist in store after summary sync but does not",
-                        a
-                    );
-                });
+            let current = store.get_checkpoint_by_sequence_number(a).unwrap_or_else(|| {
+                panic!("Checkpoint {} should exist in store after summary sync but does not", a);
+            });
+            let next = store.get_checkpoint_by_sequence_number(b).unwrap_or_else(|| {
+                panic!("Checkpoint {} should exist in store after summary sync but does not", a);
+            });
             let committee = store.get_committee(next.epoch()).unwrap_or_else(|| {
                 panic!(
                     "BUG: should have committee for epoch {} before we try to verify checkpoint {}",
@@ -484,9 +446,7 @@ pub async fn verify_checkpoint_range<S>(
             futures::future::ready(())
         })
         .await;
-    let last = checkpoint_range
-        .last()
-        .expect("Received empty checkpoint range");
+    let last = checkpoint_range.last().expect("Received empty checkpoint range");
     let final_checkpoint = store
         .get_checkpoint_by_sequence_number(last)
         .expect("Expected end of checkpoint range to exist in store");

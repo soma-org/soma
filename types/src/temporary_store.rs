@@ -8,8 +8,8 @@ use crate::{
     committee::EpochId,
     digests::{ObjectDigest, TransactionDigest},
     effects::{
-        object_change::EffectsObjectChange, ExecutionStatus, TransactionEffects,
-        TransactionEffectsAPI,
+        ExecutionStatus, TransactionEffects, TransactionEffectsAPI,
+        object_change::EffectsObjectChange,
     },
     error::SomaResult,
     object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
@@ -147,10 +147,7 @@ impl ExecutionResults {
             // Record the version that the shared object was created at in its owner field.  Note,
             // this only works because shared objects must be created as shared (not created as
             // owned in one transaction and later converted to shared in another).
-            if let Owner::Shared {
-                initial_shared_version,
-            } = &mut obj.owner
-            {
+            if let Owner::Shared { initial_shared_version } = &mut obj.owner {
                 if self.created_object_ids.contains(id) {
                     // Objects created with Version::new() (0) get their initial_shared_version
                     // set to the lamport timestamp. Objects created with OBJECT_START_VERSION (1)
@@ -268,17 +265,16 @@ impl TemporaryStore {
         #[cfg(debug_assertions)]
         {
             // Ensure that input objects and receiving objects must not overlap.
-            assert!(objects
-                .keys()
-                .collect::<HashSet<_>>()
-                .intersection(
-                    &receiving_objects
-                        .iter()
-                        .map(|oref| &oref.0)
-                        .collect::<HashSet<_>>()
-                )
-                .next()
-                .is_none());
+            assert!(
+                objects
+                    .keys()
+                    .collect::<HashSet<_>>()
+                    .intersection(
+                        &receiving_objects.iter().map(|oref| &oref.0).collect::<HashSet<_>>()
+                    )
+                    .next()
+                    .is_none()
+            );
         }
 
         Self {
@@ -320,14 +316,12 @@ impl TemporaryStore {
         if self.execution_results.modified_objects.contains(object_id) {
             self.mutable_input_refs
                 .get(object_id)
-                .map(
-                    |((version, digest), owner)| DynamicallyLoadedObjectMetadata {
-                        version: *version,
-                        digest: *digest,
-                        owner: owner.clone(),
-                        previous_transaction: self.input_objects[object_id].previous_transaction,
-                    },
-                )
+                .map(|((version, digest), owner)| DynamicallyLoadedObjectMetadata {
+                    version: *version,
+                    digest: *digest,
+                    owner: owner.clone(),
+                    previous_transaction: self.input_objects[object_id].previous_transaction,
+                })
                 .or_else(|| self.loaded_runtime_objects.get(object_id).cloned())
             // if let Some(obj) = self.input_objects.get(object_id) {
             //     return Some(obj.clone());
@@ -509,12 +503,8 @@ impl TemporaryStore {
             .collect();
 
         // check all modified objects are authenticated (excluding gas objects)
-        let mut objects_to_authenticate = self
-            .execution_results
-            .modified_objects
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
+        let mut objects_to_authenticate =
+            self.execution_results.modified_objects.iter().copied().collect::<Vec<_>>();
         // Map from an ObjectID to the ObjectID that covers it.
         while let Some(to_authenticate) = objects_to_authenticate.pop() {
             if authenticated_for_mutation.contains(&to_authenticate) {
@@ -587,8 +577,7 @@ impl TemporaryStore {
             // using the ORIGINAL version and digest
             if !matches!(object.owner, Owner::Immutable) {
                 let version_digest = (original_version, original_digest);
-                self.mutable_input_refs
-                    .insert(id, (version_digest, object.owner().clone()));
+                self.mutable_input_refs.insert(id, (version_digest, object.owner().clone()));
             }
         } else {
             // For objects already at Version::MIN, we can just add them as is
@@ -597,8 +586,7 @@ impl TemporaryStore {
             // If this object is at all mutable, we should track it in mutable inputs
             if !matches!(object.owner, Owner::Immutable) {
                 let version_digest = (modified_object.version(), modified_object.digest());
-                self.mutable_input_refs
-                    .insert(id, (version_digest, object.owner().clone()));
+                self.mutable_input_refs.insert(id, (version_digest, object.owner().clone()));
             }
         }
     }
@@ -621,9 +609,7 @@ impl TemporaryStore {
                     if !self.execution_results.written_objects.contains_key(id)
                         && !self.execution_results.deleted_object_ids.contains(id)
                     {
-                        self.execution_results
-                            .written_objects
-                            .insert(*id, obj.clone());
+                        self.execution_results.written_objects.insert(*id, obj.clone());
                         self.execution_results.modified_objects.insert(*id);
                     }
                 }
@@ -671,13 +657,7 @@ impl InnerTemporaryStore {
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
     ) -> Self {
-        Self {
-            input_objects,
-            written,
-            mutable_inputs,
-            lamport_version,
-            deleted_shared_objects,
-        }
+        Self { input_objects, written, mutable_inputs, lamport_version, deleted_shared_objects }
     }
 
     pub fn get_output_keys(&self, effects: &TransactionEffects) -> Vec<InputKey> {
@@ -690,11 +670,8 @@ impl InnerTemporaryStore {
             })
             .collect();
 
-        let deleted: HashMap<_, _> = effects
-            .deleted()
-            .iter()
-            .map(|oref| (oref.0, oref.1))
-            .collect();
+        let deleted: HashMap<_, _> =
+            effects.deleted().iter().map(|oref| (oref.0, oref.1)).collect();
 
         // add deleted shared objects to the outputkeys that then get sent to notify_commit
         let deleted_output_keys = deleted
@@ -704,10 +681,7 @@ impl InnerTemporaryStore {
                     .get(id)
                     .and_then(|obj| obj.is_shared().then_some((obj.full_id(), *seq)))
             })
-            .map(|(full_id, seq)| InputKey::VersionedObject {
-                id: full_id,
-                version: seq,
-            });
+            .map(|(full_id, seq)| InputKey::VersionedObject { id: full_id, version: seq });
         output_keys.extend(deleted_output_keys);
 
         // For any previously deleted shared objects that appeared mutably in the transaction,
@@ -715,21 +689,15 @@ impl InnerTemporaryStore {
         let smeared_version = self.lamport_version;
         let deleted_accessed_objects = effects.deleted_mutably_accessed_shared_objects();
         for object_id in deleted_accessed_objects.into_iter() {
-            let id = self
-                .input_objects
-                .get(&object_id)
-                .map(|obj| obj.full_id())
-                .unwrap_or_else(|| {
+            let id =
+                self.input_objects.get(&object_id).map(|obj| obj.full_id()).unwrap_or_else(|| {
                     let start_version = self.deleted_shared_objects.get(&object_id).expect(
                         "deleted object must be in either input_objects or \
                          deleted_consensus_objects",
                     );
                     FullObjectID::new(object_id, Some(*start_version))
                 });
-            let key = InputKey::VersionedObject {
-                id,
-                version: smeared_version,
-            };
+            let key = InputKey::VersionedObject { id, version: smeared_version };
             output_keys.push(key);
         }
 

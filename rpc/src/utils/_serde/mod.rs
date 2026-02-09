@@ -141,9 +141,6 @@ mod tests {
             "foobar": null,
         });
         let proto: ValueDeserializer = serde_json::from_value(v).unwrap();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&ValueSerializer(&proto.0)).unwrap()
-        );
+        println!("{}", serde_json::to_string_pretty(&ValueSerializer(&proto.0)).unwrap());
     }
 }

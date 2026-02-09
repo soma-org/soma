@@ -16,10 +16,7 @@ pub struct SomaNodeHandle {
 
 impl SomaNodeHandle {
     pub fn new(node: Arc<SomaNode>) -> Self {
-        Self {
-            node: Some(node),
-            shutdown_on_drop: false,
-        }
+        Self { node: Some(node), shutdown_on_drop: false }
     }
 
     pub fn inner(&self) -> &Arc<SomaNode> {
@@ -42,10 +39,7 @@ impl SomaNodeHandle {
 
 impl Clone for SomaNodeHandle {
     fn clone(&self) -> Self {
-        Self {
-            node: self.node.clone(),
-            shutdown_on_drop: false,
-        }
+        Self { node: self.node.clone(), shutdown_on_drop: false }
     }
 }
 
@@ -77,11 +71,7 @@ impl SomaNodeHandle {
         R: Future<Output = T>,
     {
         let fut = cb(self.node.as_ref().unwrap());
-        self.inner()
-            .sim_state
-            .sim_node
-            .await_future_in_node(fut)
-            .await
+        self.inner().sim_state.sim_node.await_future_in_node(fut).await
     }
 }
 

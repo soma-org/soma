@@ -10,10 +10,11 @@ mod model_tests {
             SystemState,
             staking::StakedSoma,
             test_utils::{
-                self, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
-                commit_model, commit_model_update, commit_model_with_commission,
-                create_test_system_state, create_validator_for_testing, reveal_model,
-                reveal_model_update, stake_with_model, unstake, ValidatorRewards,
+                self, ValidatorRewards, advance_epoch_with_reward_amounts,
+                advance_epoch_with_rewards, commit_model, commit_model_update,
+                commit_model_with_commission, create_test_system_state,
+                create_validator_for_testing, reveal_model, reveal_model_update, stake_with_model,
+                unstake,
             },
         },
     };
@@ -173,14 +174,8 @@ mod model_tests {
 
         // Total model stake should be initial + delegation
         let model = state.model_registry.active_models.get(&model_id_1()).unwrap();
-        assert_eq!(
-            model.staking_pool.soma_balance,
-            initial_stake + 20 * SHANNONS_PER_SOMA
-        );
-        assert_eq!(
-            state.model_registry.total_model_stake,
-            initial_stake + 20 * SHANNONS_PER_SOMA
-        );
+        assert_eq!(model.staking_pool.soma_balance, initial_stake + 20 * SHANNONS_PER_SOMA);
+        assert_eq!(state.model_registry.total_model_stake, initial_stake + 20 * SHANNONS_PER_SOMA);
 
         // Delegator withdraws
         let withdrawn = unstake(&mut state, delegator_staked);
@@ -216,19 +211,14 @@ mod model_tests {
         advance_epoch_with_reward_amounts(&mut state, 0, &mut vr);
 
         // Owner deactivates
-        state
-            .request_deactivate_model(model_owner(), &model_id_1())
-            .expect("Failed to deactivate");
+        state.request_deactivate_model(model_owner(), &model_id_1()).expect("Failed to deactivate");
 
         assert!(!state.model_registry.active_models.contains_key(&model_id_1()));
         assert!(state.model_registry.inactive_models.contains_key(&model_id_1()));
 
         // No slash — balance should be intact
         let model = state.model_registry.inactive_models.get(&model_id_1()).unwrap();
-        assert_eq!(
-            model.staking_pool.soma_balance,
-            initial_stake + 5 * SHANNONS_PER_SOMA
-        );
+        assert_eq!(model.staking_pool.soma_balance, initial_stake + 5 * SHANNONS_PER_SOMA);
 
         // total_model_stake should be 0
         assert_eq!(state.model_registry.total_model_stake, 0);
@@ -251,12 +241,7 @@ mod model_tests {
 
         // The executor validates min stake, not SystemState directly.
         // But we can verify that committing with the min stake works...
-        let staked = commit_model(
-            &mut state,
-            model_owner(),
-            model_id_1(),
-            min_stake,
-        );
+        let staked = commit_model(&mut state, model_owner(), model_id_1(), min_stake);
         assert!(state.model_registry.pending_models.contains_key(&model_id_1()));
 
         // ...and that commit_model itself accepts exactly model_min_stake
@@ -274,8 +259,7 @@ mod model_tests {
 
         let url_str = format!("https://example.com/models/{}", model_id_1());
         let url_commitment = test_utils::url_commitment_for(&url_str);
-        let weights_commitment =
-            crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
+        let weights_commitment = crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
         let staking_pool_id = ObjectID::random();
 
         // Use wrong architecture version
@@ -316,12 +300,8 @@ mod model_tests {
         reveal_model(&mut state, model_owner(), &model_id_1());
 
         // Save original weights_commitment
-        let original_commitment = state
-            .model_registry
-            .active_models
-            .get(&model_id_1())
-            .unwrap()
-            .weights_commitment;
+        let original_commitment =
+            state.model_registry.active_models.get(&model_id_1()).unwrap().weights_commitment;
 
         // Commit model update (same epoch as reveal is fine)
         commit_model_update(&mut state, model_owner(), &model_id_1());
@@ -361,12 +341,7 @@ mod model_tests {
         // Commit update
         commit_model_update(&mut state, model_owner(), &model_id_1());
         assert!(
-            state
-                .model_registry
-                .active_models
-                .get(&model_id_1())
-                .unwrap()
-                .has_pending_update()
+            state.model_registry.active_models.get(&model_id_1()).unwrap().has_pending_update()
         );
 
         // Advance to reveal window epoch
@@ -412,8 +387,7 @@ mod model_tests {
         // Second commit update in the same epoch — should overwrite
         let url_str2 = format!("https://example.com/models/{}/update-v2", model_id_1());
         let url_commitment2 = test_utils::url_commitment_for(&url_str2);
-        let weights_commitment2 =
-            crate::digests::ModelWeightsCommitment::new([0xDD; 32]);
+        let weights_commitment2 = crate::digests::ModelWeightsCommitment::new([0xDD; 32]);
 
         state
             .request_commit_model_update(
@@ -455,9 +429,7 @@ mod model_tests {
         reveal_model(&mut state, model_owner(), &model_id_1());
 
         // Set commission rate for next epoch
-        state
-            .request_set_model_commission_rate(model_owner(), &model_id_1(), 1000)
-            .unwrap();
+        state.request_set_model_commission_rate(model_owner(), &model_id_1(), 1000).unwrap();
 
         // Current rate should still be 0
         let model = state.model_registry.active_models.get(&model_id_1()).unwrap();
@@ -484,8 +456,7 @@ mod model_tests {
         // Commit with rate > BPS_DENOMINATOR should fail
         let url_str = format!("https://example.com/models/{}", model_id_1());
         let url_commitment = test_utils::url_commitment_for(&url_str);
-        let weights_commitment =
-            crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
+        let weights_commitment = crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
         let staking_pool_id = ObjectID::random();
 
         let result = state.request_commit_model(
@@ -502,10 +473,7 @@ mod model_tests {
         assert!(result.is_err());
         match result {
             Err(ExecutionFailureStatus::ModelCommissionRateTooHigh) => {}
-            other => panic!(
-                "Expected ModelCommissionRateTooHigh, got {:?}",
-                other
-            ),
+            other => panic!("Expected ModelCommissionRateTooHigh, got {:?}", other),
         }
 
         // Also test set_model_commission_rate on an active model
@@ -519,10 +487,7 @@ mod model_tests {
         assert!(result.is_err());
         match result {
             Err(ExecutionFailureStatus::ModelCommissionRateTooHigh) => {}
-            other => panic!(
-                "Expected ModelCommissionRateTooHigh, got {:?}",
-                other
-            ),
+            other => panic!("Expected ModelCommissionRateTooHigh, got {:?}", other),
         }
     }
 
@@ -542,12 +507,8 @@ mod model_tests {
         reveal_model(&mut state, model_owner(), &model_id_1());
 
         // Reports from validators 1 and 2 (combined voting power exceeds QUORUM_THRESHOLD)
-        state
-            .report_model(validator_addr_1(), &model_id_1())
-            .unwrap();
-        state
-            .report_model(validator_addr_2(), &model_id_1())
-            .unwrap();
+        state.report_model(validator_addr_1(), &model_id_1()).unwrap();
+        state.report_model(validator_addr_2(), &model_id_1()).unwrap();
 
         // Model is still active until epoch boundary
         assert!(state.model_registry.active_models.contains_key(&model_id_1()));
@@ -589,9 +550,7 @@ mod model_tests {
         reveal_model(&mut state, model_owner(), &model_id_1());
 
         // Only validator 3 reports (not enough voting power for quorum)
-        state
-            .report_model(validator_addr_3(), &model_id_1())
-            .unwrap();
+        state.report_model(validator_addr_3(), &model_id_1()).unwrap();
 
         // Advance epoch
         advance_epoch_with_reward_amounts(&mut state, 0, &mut vr);
@@ -624,15 +583,11 @@ mod model_tests {
         reveal_model(&mut state, model_owner(), &model_id_1());
 
         // Report from validator 1
-        state
-            .report_model(validator_addr_1(), &model_id_1())
-            .unwrap();
+        state.report_model(validator_addr_1(), &model_id_1()).unwrap();
         assert!(state.model_registry.model_report_records.contains_key(&model_id_1()));
 
         // Undo the report
-        state
-            .undo_report_model(validator_addr_1(), &model_id_1())
-            .unwrap();
+        state.undo_report_model(validator_addr_1(), &model_id_1()).unwrap();
 
         // Report record should be removed (empty set cleaned up)
         assert!(!state.model_registry.model_report_records.contains_key(&model_id_1()));
@@ -668,9 +623,7 @@ mod model_tests {
         advance_epoch_with_reward_amounts(&mut state, 0, &mut vr);
 
         // Deactivate model
-        state
-            .request_deactivate_model(model_owner(), &model_id_1())
-            .unwrap();
+        state.request_deactivate_model(model_owner(), &model_id_1()).unwrap();
 
         // Delegator withdraws from inactive model
         let withdrawn = unstake(&mut state, delegator_staked);
@@ -722,7 +675,8 @@ mod model_tests {
         let url_str2 = format!("https://example.com/models/{}/update", model_id_1());
         let url_commitment2 = test_utils::url_commitment_for(&url_str2);
         let wc2 = crate::digests::ModelWeightsCommitment::new([0xCC; 32]);
-        let result = state.request_commit_model_update(not_owner, &model_id_1(), url_commitment2, wc2);
+        let result =
+            state.request_commit_model_update(not_owner, &model_id_1(), url_commitment2, wc2);
         match result {
             Err(ExecutionFailureStatus::NotModelOwner) => {}
             other => panic!("Expected NotModelOwner, got {:?}", other),

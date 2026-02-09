@@ -1,8 +1,8 @@
 use fastcrypto::traits::Signer;
-use rand::{rngs::StdRng, SeedableRng as _};
+use rand::{SeedableRng as _, rngs::StdRng};
 
 use crate::{
-    crypto::{get_key_pair_from_rng, Signature, SomaKeyPair},
+    crypto::{Signature, SomaKeyPair, get_key_pair_from_rng},
     transaction::{Transaction, TransactionData},
 };
 

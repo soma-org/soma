@@ -18,10 +18,7 @@ pub enum Error {
     #[error(
         "Client/Server api version mismatch, client api version : {client_version}, server api version : {server_version}"
     )]
-    ServerVersionMismatch {
-        client_version: String,
-        server_version: String,
-    },
+    ServerVersionMismatch { client_version: String, server_version: String },
     #[error("Insufficient fund for address [{address}], requested amount: {amount}")]
     InsufficientFund { address: SomaAddress, amount: u128 },
     #[error("Invalid signature")]

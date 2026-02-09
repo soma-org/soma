@@ -2,9 +2,7 @@ use super::*;
 use rstest::rstest;
 
 fn temp_dir() -> std::path::PathBuf {
-    tempfile::tempdir()
-        .expect("Failed to open temporary directory")
-        .keep()
+    tempfile::tempdir().expect("Failed to open temporary directory").keep()
 }
 
 fn get_iter<K, V>(db: &DBMap<K, V>) -> impl Iterator<Item = (K, V)> + use<'_, K, V>
@@ -24,8 +22,7 @@ where
     K: Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
 {
-    db.reversed_safe_iter_with_bounds(lower_bound, upper_bound)
-        .unwrap()
+    db.reversed_safe_iter_with_bounds(lower_bound, upper_bound).unwrap()
 }
 
 fn get_iter_with_bounds<K, V>(
@@ -37,8 +34,7 @@ where
     K: Serialize + DeserializeOwned,
     V: Serialize + DeserializeOwned,
 {
-    db.safe_iter_with_bounds(lower_bound, upper_bound)
-        .map(|item| item.unwrap())
+    db.safe_iter_with_bounds(lower_bound, upper_bound).map(|item| item.unwrap())
 }
 
 fn get_range_iter<'a, K, V>(
@@ -61,32 +57,21 @@ async fn test_open() {
 async fn test_reopen() {
     let arc = {
         let db = open_map::<_, u32, String>(temp_dir(), None);
-        db.insert(&123456789, &"123456789".to_string())
-            .expect("Failed to insert");
+        db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
         db
     };
     let db = DBMap::<u32, String>::reopen(&arc.db, None, &ReadWriteOptions::default(), false)
         .expect("Failed to re-open storage");
-    assert!(
-        db.contains_key(&123456789)
-            .expect("Failed to retrieve item in storage")
-    );
+    assert!(db.contains_key(&123456789).expect("Failed to retrieve item in storage"));
 }
 
 #[tokio::test]
 async fn test_contains_key() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123456789, &"123456789".to_string())
-        .expect("Failed to insert");
-    assert!(
-        db.contains_key(&123456789)
-            .expect("Failed to call contains key")
-    );
-    assert!(
-        !db.contains_key(&000000000)
-            .expect("Failed to call contains key")
-    );
+    db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+    assert!(db.contains_key(&123456789).expect("Failed to call contains key"));
+    assert!(!db.contains_key(&000000000).expect("Failed to call contains key"));
 }
 
 #[tokio::test]
@@ -98,33 +83,25 @@ async fn test_safe_drop_db() {
         let db: DBMap<i32, String> = open_map(tmp_path.clone(), Some("table-0"));
         db.insert(&777, &"123".to_string()).unwrap();
     }
-    safe_drop_db(tmp_path, Duration::from_secs(30))
-        .await
-        .unwrap();
+    safe_drop_db(tmp_path, Duration::from_secs(30)).await.unwrap();
 }
 
 #[tokio::test]
 async fn test_multi_contain() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123, &"123".to_string())
-        .expect("Failed to insert");
-    db.insert(&456, &"456".to_string())
-        .expect("Failed to insert");
-    db.insert(&789, &"789".to_string())
-        .expect("Failed to insert");
+    db.insert(&123, &"123".to_string()).expect("Failed to insert");
+    db.insert(&456, &"456".to_string()).expect("Failed to insert");
+    db.insert(&789, &"789".to_string()).expect("Failed to insert");
 
-    let result = db
-        .multi_contains_keys([123, 456])
-        .expect("Failed to check multi keys existence");
+    let result = db.multi_contains_keys([123, 456]).expect("Failed to check multi keys existence");
 
     assert_eq!(result.len(), 2);
     assert!(result[0]);
     assert!(result[1]);
 
-    let result = db
-        .multi_contains_keys([123, 987, 789])
-        .expect("Failed to check multi keys existence");
+    let result =
+        db.multi_contains_keys([123, 987, 789]).expect("Failed to check multi keys existence");
 
     assert_eq!(result.len(), 3);
     assert!(result[0]);
@@ -136,12 +113,8 @@ async fn test_multi_contain() {
 async fn test_get() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123456789, &"123456789".to_string())
-        .expect("Failed to insert");
-    assert_eq!(
-        Some("123456789".to_string()),
-        db.get(&123456789).expect("Failed to get")
-    );
+    db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+    assert_eq!(Some("123456789".to_string()), db.get(&123456789).expect("Failed to get"));
     assert_eq!(None, db.get(&000000000).expect("Failed to get"));
 }
 
@@ -149,10 +122,8 @@ async fn test_get() {
 async fn test_multi_get() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123, &"123".to_string())
-        .expect("Failed to insert");
-    db.insert(&456, &"456".to_string())
-        .expect("Failed to insert");
+    db.insert(&123, &"123".to_string()).expect("Failed to insert");
+    db.insert(&456, &"456".to_string()).expect("Failed to insert");
 
     let result = db.multi_get([123, 456, 789]).expect("Failed to multi get");
 
@@ -166,12 +137,9 @@ async fn test_multi_get() {
 async fn test_skip() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123, &"123".to_string())
-        .expect("Failed to insert");
-    db.insert(&456, &"456".to_string())
-        .expect("Failed to insert");
-    db.insert(&789, &"789".to_string())
-        .expect("Failed to insert");
+    db.insert(&123, &"123".to_string()).expect("Failed to insert");
+    db.insert(&456, &"456".to_string()).expect("Failed to insert");
+    db.insert(&789, &"789".to_string()).expect("Failed to insert");
 
     // Skip all smaller
     let key_vals: Vec<_> = get_iter_with_bounds(&db, Some(456), None).collect();
@@ -183,10 +151,7 @@ async fn test_skip() {
     assert_eq!(get_iter_with_bounds(&db, Some(999), None).count(), 0);
 
     // Skip to last
-    assert_eq!(
-        get_reverse_iter(&db, None, None).next(),
-        Some(Ok((789, "789".to_string()))),
-    );
+    assert_eq!(get_reverse_iter(&db, None, None).next(), Some(Ok((789, "789".to_string()))),);
 
     // Skip to successor of first value
     assert_eq!(get_iter_with_bounds(&db, Some(000), None).count(), 3);
@@ -196,18 +161,14 @@ async fn test_skip() {
 #[tokio::test]
 async fn test_reverse_iter_with_bounds() {
     let db = open_map(temp_dir(), None);
-    db.insert(&123, &"123".to_string())
-        .expect("Failed to insert");
-    db.insert(&456, &"456".to_string())
-        .expect("Failed to insert");
-    db.insert(&789, &"789".to_string())
-        .expect("Failed to insert");
+    db.insert(&123, &"123".to_string()).expect("Failed to insert");
+    db.insert(&456, &"456".to_string()).expect("Failed to insert");
+    db.insert(&789, &"789".to_string()).expect("Failed to insert");
 
     let mut iter = get_reverse_iter(&db, None, Some(999));
     assert_eq!(iter.next().unwrap(), Ok((789, "789".to_string())));
 
-    db.insert(&999, &"999".to_string())
-        .expect("Failed to insert");
+    db.insert(&999, &"999".to_string()).expect("Failed to insert");
     let mut iter = get_reverse_iter(&db, None, Some(999));
     assert_eq!(iter.next().unwrap(), Ok((999, "999".to_string())));
 
@@ -219,8 +180,7 @@ async fn test_reverse_iter_with_bounds() {
 async fn test_remove() {
     let db = open_map(temp_dir(), None);
 
-    db.insert(&123456789, &"123456789".to_string())
-        .expect("Failed to insert");
+    db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
     assert!(db.get(&123456789).expect("Failed to get").is_some());
 
     db.remove(&123456789).expect("Failed to remove");
@@ -230,10 +190,8 @@ async fn test_remove() {
 #[tokio::test]
 async fn test_iter() {
     let db = open_map(temp_dir(), None);
-    db.insert(&123456789, &"123456789".to_string())
-        .expect("Failed to insert");
-    db.insert(&987654321, &"987654321".to_string())
-        .expect("Failed to insert");
+    db.insert(&123456789, &"123456789".to_string()).expect("Failed to insert");
+    db.insert(&987654321, &"987654321".to_string()).expect("Failed to insert");
 
     let mut iter = get_iter(&db);
 
@@ -266,9 +224,7 @@ async fn test_insert_batch() {
     let db = open_map(temp_dir(), None);
     let keys_vals = (1..100).map(|i| (i, i.to_string()));
     let mut insert_batch = db.batch();
-    insert_batch
-        .insert_batch(&db, keys_vals.clone())
-        .expect("Failed to batch insert");
+    insert_batch.insert_batch(&db, keys_vals.clone()).expect("Failed to batch insert");
     insert_batch.write().expect("Failed to execute batch");
     for (k, v) in keys_vals {
         let val = db.get(&k).expect("Failed to get inserted key");
@@ -280,22 +236,12 @@ async fn test_insert_batch() {
 async fn test_insert_batch_across_cf() {
     let rocks = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"]);
 
-    let db_cf_1 = DBMap::reopen(
-        &rocks,
-        Some("First_CF"),
-        &ReadWriteOptions::default(),
-        false,
-    )
-    .expect("Failed to open storage");
+    let db_cf_1 = DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default(), false)
+        .expect("Failed to open storage");
     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 
-    let db_cf_2 = DBMap::reopen(
-        &rocks,
-        Some("Second_CF"),
-        &ReadWriteOptions::default(),
-        false,
-    )
-    .expect("Failed to open storage");
+    let db_cf_2 = DBMap::reopen(&rocks, Some("Second_CF"), &ReadWriteOptions::default(), false)
+        .expect("Failed to open storage");
     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 
     let mut batch = db_cf_1.batch();
@@ -322,22 +268,14 @@ async fn test_insert_batch_across_different_db() {
     let rocks = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"]);
     let rocks2 = open_rocksdb(temp_dir(), &["First_CF", "Second_CF"]);
 
-    let db_cf_1: DBMap<i32, String> = DBMap::reopen(
-        &rocks,
-        Some("First_CF"),
-        &ReadWriteOptions::default(),
-        false,
-    )
-    .expect("Failed to open storage");
+    let db_cf_1: DBMap<i32, String> =
+        DBMap::reopen(&rocks, Some("First_CF"), &ReadWriteOptions::default(), false)
+            .expect("Failed to open storage");
     let keys_vals_1 = (1..100).map(|i| (i, i.to_string()));
 
-    let db_cf_2: DBMap<i32, String> = DBMap::reopen(
-        &rocks2,
-        Some("Second_CF"),
-        &ReadWriteOptions::default(),
-        false,
-    )
-    .expect("Failed to open storage");
+    let db_cf_2: DBMap<i32, String> =
+        DBMap::reopen(&rocks2, Some("Second_CF"), &ReadWriteOptions::default(), false)
+            .expect("Failed to open storage");
     let keys_vals_2 = (1000..1100).map(|i| (i, i.to_string()));
 
     assert!(
@@ -356,15 +294,11 @@ async fn test_delete_batch() {
 
     let keys_vals = (1..100).map(|i| (i, i.to_string()));
     let mut batch = db.batch();
-    batch
-        .insert_batch(&db, keys_vals)
-        .expect("Failed to batch insert");
+    batch.insert_batch(&db, keys_vals).expect("Failed to batch insert");
 
     // delete the odd-index keys
     let deletion_keys = (1..100).step_by(2);
-    batch
-        .delete_batch(&db, deletion_keys)
-        .expect("Failed to batch delete");
+    batch.delete_batch(&db, deletion_keys).expect("Failed to batch delete");
 
     batch.write().expect("Failed to execute batch");
 
@@ -387,13 +321,9 @@ async fn test_delete_range() {
     // Note that the last element is (100, "100".to_owned()) here
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
     let mut batch = db.batch();
-    batch
-        .insert_batch(&db, keys_vals)
-        .expect("Failed to batch insert");
+    batch.insert_batch(&db, keys_vals).expect("Failed to batch insert");
 
-    batch
-        .schedule_delete_range(&db, &50, &100)
-        .expect("Failed to delete range");
+    batch.schedule_delete_range(&db, &50, &100).expect("Failed to delete range");
 
     batch.write().expect("Failed to execute batch");
 
@@ -422,40 +352,28 @@ async fn test_iter_with_bounds() {
     // Tests basic bounded scan.
     let db_iter = get_iter_with_bounds(&db, Some(20), Some(90));
     assert_eq!(
-        (20..50)
-            .chain(51..90)
-            .map(|i| (i, i.to_string()))
-            .collect::<Vec<_>>(),
+        (20..50).chain(51..90).map(|i| (i, i.to_string())).collect::<Vec<_>>(),
         db_iter.collect::<Vec<_>>()
     );
 
     // Don't specify upper bound.
     let db_iter = get_iter_with_bounds(&db, Some(20), None);
     assert_eq!(
-        (20..50)
-            .chain(51..100)
-            .map(|i| (i, i.to_string()))
-            .collect::<Vec<_>>(),
+        (20..50).chain(51..100).map(|i| (i, i.to_string())).collect::<Vec<_>>(),
         db_iter.collect::<Vec<_>>()
     );
 
     // Don't specify lower bound.
     let db_iter = get_iter_with_bounds(&db, None, Some(90));
     assert_eq!(
-        (1..50)
-            .chain(51..90)
-            .map(|i| (i, i.to_string()))
-            .collect::<Vec<_>>(),
+        (1..50).chain(51..90).map(|i| (i, i.to_string())).collect::<Vec<_>>(),
         db_iter.collect::<Vec<_>>()
     );
 
     // Don't specify any bounds.
     let db_iter = get_iter_with_bounds(&db, None, None);
     assert_eq!(
-        (1..50)
-            .chain(51..100)
-            .map(|i| (i, i.to_string()))
-            .collect::<Vec<_>>(),
+        (1..50).chain(51..100).map(|i| (i, i.to_string())).collect::<Vec<_>>(),
         db_iter.collect::<Vec<_>>()
     );
 
@@ -520,9 +438,7 @@ async fn test_is_empty() {
 
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
     let mut insert_batch = db.batch();
-    insert_batch
-        .insert_batch(&db, keys_vals)
-        .expect("Failed to batch insert");
+    insert_batch.insert_batch(&db, keys_vals).expect("Failed to batch insert");
 
     insert_batch.write().expect("Failed to execute batch");
 
@@ -538,8 +454,7 @@ async fn test_multi_insert() {
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-    db.multi_insert(keys_vals.clone())
-        .expect("Failed to multi-insert");
+    db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
 
     for (k, v) in keys_vals {
         let val = db.get(&k).expect("Failed to get inserted key");
@@ -555,16 +470,12 @@ async fn test_checkpoint() {
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-    db.multi_insert(keys_vals.clone())
-        .expect("Failed to multi-insert");
+    db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
     let checkpointed_path = path_prefix.join("checkpointed_db");
-    db.db
-        .checkpoint(&checkpointed_path)
-        .expect("Failed to create db checkpoint");
+    db.db.checkpoint(&checkpointed_path).expect("Failed to create db checkpoint");
     // Create more kv pairs
     let new_keys_vals = (101..201).map(|i| (i, i.to_string()));
-    db.multi_insert(new_keys_vals.clone())
-        .expect("Failed to multi-insert");
+    db.multi_insert(new_keys_vals.clone()).expect("Failed to multi-insert");
     // Verify checkpoint
     let checkpointed_db: DBMap<i32, String> = open_map(checkpointed_path, Some("table"));
     // Ensure keys inserted before checkpoint are present in original and checkpointed db
@@ -591,8 +502,7 @@ async fn test_multi_remove() {
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-    db.multi_insert(keys_vals.clone())
-        .expect("Failed to multi-insert");
+    db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
 
     // Check insertion
     for (k, v) in keys_vals.clone() {
@@ -601,8 +511,7 @@ async fn test_multi_remove() {
     }
 
     // Remove 50 items
-    db.multi_remove(keys_vals.clone().map(|kv| kv.0).take(50))
-        .expect("Failed to multi-remove");
+    db.multi_remove(keys_vals.clone().map(|kv| kv.0).take(50)).expect("Failed to multi-remove");
     assert_eq!(db.safe_iter().count(), 101 - 50);
 
     // Check that the remaining are present
@@ -621,9 +530,7 @@ async fn open_as_secondary_test() {
     // Create kv pairs
     let keys_vals = (0..101).map(|i| (i, i.to_string()));
 
-    primary_db
-        .multi_insert(keys_vals.clone())
-        .expect("Failed to multi-insert");
+    primary_db.multi_insert(keys_vals.clone()).expect("Failed to multi-insert");
 
     let opt = rocksdb::Options::default();
     let secondary_store =
@@ -669,13 +576,6 @@ fn open_map<P: AsRef<Path>, K, V>(path: P, opt_cf: Option<&str>) -> DBMap<K, V> 
 
 fn open_rocksdb<P: AsRef<Path>>(path: P, opt_cfs: &[&str]) -> Arc<Database> {
     let opts = rocksdb::Options::default();
-    open_cf_opts(
-        path,
-        None,
-        &opt_cfs
-            .iter()
-            .map(|cf| (*cf, opts.clone()))
-            .collect::<Vec<_>>(),
-    )
-    .expect("failed to open rocksdb")
+    open_cf_opts(path, None, &opt_cfs.iter().map(|cf| (*cf, opts.clone())).collect::<Vec<_>>())
+        .expect("failed to open rocksdb")
 }

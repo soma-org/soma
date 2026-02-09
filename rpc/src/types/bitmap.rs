@@ -262,8 +262,7 @@ impl serde::Serialize for Bitmap {
 
         let mut bytes = vec![];
 
-        self.serialize_into(&mut bytes)
-            .map_err(serde::ser::Error::custom)?;
+        self.serialize_into(&mut bytes).map_err(serde::ser::Error::custom)?;
 
         if serializer.is_human_readable() {
             let b64 = <base64ct::Base64 as base64ct::Encoding>::encode_string(&bytes);

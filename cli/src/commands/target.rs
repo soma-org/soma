@@ -6,10 +6,7 @@ use serde::Serialize;
 use std::fmt::{self, Display, Formatter};
 use tabled::{
     builder::Builder as TableBuilder,
-    settings::{
-        Panel as TablePanel, Style as TableStyle,
-        style::HorizontalLine,
-    },
+    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
 };
 
 use sdk::wallet_context::WalletContext;
@@ -52,10 +49,7 @@ pub enum TargetCommand {
 // =============================================================================
 
 impl TargetCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<TargetCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<TargetCommandResponse> {
         match self {
             TargetCommand::List { status, epoch, limit } => {
                 let client = context.get_client().await?;
@@ -74,8 +68,8 @@ impl TargetCommand {
                     .targets
                     .into_iter()
                     .filter_map(|t| {
-                        let target_id = t.id.as_ref()
-                            .and_then(|s| ObjectID::from_hex_literal(s).ok())?;
+                        let target_id =
+                            t.id.as_ref().and_then(|s| ObjectID::from_hex_literal(s).ok())?;
                         Some(TargetSummary {
                             target_id,
                             status: t.status.unwrap_or_else(|| "unknown".to_string()),
@@ -87,10 +81,7 @@ impl TargetCommand {
                     })
                     .collect();
 
-                Ok(TargetCommandResponse::List(TargetListOutput {
-                    targets,
-                    message: None,
-                }))
+                Ok(TargetCommandResponse::List(TargetListOutput { targets, message: None }))
             }
 
             TargetCommand::Info { target_id } => {
@@ -106,10 +97,7 @@ impl TargetCommand {
                 let target: Target = bcs::from_bytes(object.data.contents())
                     .map_err(|e| anyhow!("Failed to deserialize target: {}", e))?;
 
-                Ok(TargetCommandResponse::Info(TargetInfoOutput {
-                    target_id,
-                    target,
-                }))
+                Ok(TargetCommandResponse::Info(TargetInfoOutput { target_id, target }))
             }
         }
     }
@@ -173,7 +161,14 @@ impl Display for TargetListOutput {
         }
 
         let mut builder = TableBuilder::default();
-        builder.push_record(["Target ID", "Status", "Epoch", "Models", "Reward", "Distance Thresh"]);
+        builder.push_record([
+            "Target ID",
+            "Status",
+            "Epoch",
+            "Models",
+            "Reward",
+            "Distance Thresh",
+        ]);
 
         for t in &self.targets {
             builder.push_record([
@@ -188,18 +183,9 @@ impl Display for TargetListOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!(
-            "Open Targets ({} total)",
-            self.targets.len()
-        )));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(TablePanel::header(format!("Open Targets ({} total)", self.targets.len())));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -234,10 +220,7 @@ impl Display for TargetInfoOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Target Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)?;
@@ -262,17 +245,15 @@ impl Display for TargetInfoOutput {
 fn format_status(status: &TargetStatus) -> String {
     match status {
         TargetStatus::Open => "Open".green().to_string(),
-        TargetStatus::Filled { fill_epoch } => format!("{} (epoch {})", "Filled".yellow(), fill_epoch),
+        TargetStatus::Filled { fill_epoch } => {
+            format!("{} (epoch {})", "Filled".yellow(), fill_epoch)
+        }
         TargetStatus::Claimed => "Claimed".red().to_string(),
     }
 }
 
 fn truncate_id(s: &str) -> String {
-    if s.len() <= 16 {
-        s.to_string()
-    } else {
-        format!("{}...{}", &s[..10], &s[s.len() - 6..])
-    }
+    if s.len() <= 16 { s.to_string() } else { format!("{}...{}", &s[..10], &s[s.len() - 6..]) }
 }
 
 impl TargetCommandResponse {

@@ -42,13 +42,11 @@ pub struct TransactionDenyConfig {
 
 impl TransactionDenyConfig {
     pub fn get_object_deny_set(&self) -> &HashSet<ObjectID> {
-        self.object_deny_set
-            .get_or_init(|| self.object_deny_list.iter().cloned().collect())
+        self.object_deny_set.get_or_init(|| self.object_deny_list.iter().cloned().collect())
     }
 
     pub fn get_address_deny_set(&self) -> &HashSet<SomaAddress> {
-        self.address_deny_set
-            .get_or_init(|| self.address_deny_list.iter().cloned().collect())
+        self.address_deny_set.get_or_init(|| self.address_deny_list.iter().cloned().collect())
     }
 
     pub fn shared_object_disabled(&self) -> bool {

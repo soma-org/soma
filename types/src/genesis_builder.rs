@@ -218,10 +218,7 @@ impl GenesisBuilder {
     fn validate_inputs(&self) -> anyhow::Result<()> {
         for validator in &self.validators {
             validator.validate().with_context(|| {
-                format!(
-                    "metadata for validator {} is invalid",
-                    validator.info.account_address
-                )
+                format!("metadata for validator {} is invalid", validator.info.account_address)
             })?;
         }
 
@@ -251,16 +248,11 @@ impl GenesisBuilder {
 
         let committee = system_state.into_epoch_start_state().get_committee();
         for signature in self.signatures.values() {
-            let validator_exists = self
-                .validators
-                .iter()
-                .any(|v| v.info.protocol_key == signature.authority);
+            let validator_exists =
+                self.validators.iter().any(|v| v.info.protocol_key == signature.authority);
 
             if !validator_exists {
-                panic!(
-                    "found signature for unknown validator: {:?}",
-                    signature.authority
-                );
+                panic!("found signature for unknown validator: {:?}", signature.authority);
             }
 
             signature
@@ -377,10 +369,7 @@ impl GenesisBuilder {
             );
 
             let built = builder.build_unsigned_genesis();
-            assert_eq!(
-                built, loaded_genesis,
-                "loaded genesis does not match built genesis"
-            );
+            assert_eq!(built, loaded_genesis, "loaded genesis does not match built genesis");
         }
 
         Ok(builder)
@@ -439,10 +428,7 @@ impl GenesisBuilder {
         // Write unsigned genesis if present
         if let Some(genesis) = &self.built_genesis {
             let genesis_bytes = bcs::to_bytes(genesis)?;
-            fs::write(
-                path.join(GENESIS_BUILDER_UNSIGNED_GENESIS_FILE),
-                genesis_bytes,
-            )?;
+            fs::write(path.join(GENESIS_BUILDER_UNSIGNED_GENESIS_FILE), genesis_bytes)?;
         }
 
         Ok(())
@@ -575,8 +561,7 @@ impl GenesisBuilder {
             let emission_per_epoch = system_state.emission_pool.emission_per_epoch;
             let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
             let bps_denominator: u64 = 10000;
-            let target_allocation =
-                (emission_per_epoch * target_allocation_bps) / bps_denominator;
+            let target_allocation = (emission_per_epoch * target_allocation_bps) / bps_denominator;
 
             // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
             let initial_target_count = system_state.parameters.target_initial_targets_per_epoch;
@@ -619,19 +604,11 @@ impl GenesisBuilder {
 
                         // Create target as shared object
                         let target_id = ObjectID::random();
-                        let target_object = Object::new_target_object(
-                            target_id,
-                            t,
-                            genesis_digest,
-                        );
+                        let target_object = Object::new_target_object(target_id, t, genesis_digest);
                         objects.push(target_object);
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            "Failed to generate genesis target {}: {:?}",
-                            i,
-                            e
-                        );
+                        tracing::warn!("Failed to generate genesis target {}: {:?}", i, e);
                         break;
                     }
                 }
@@ -652,9 +629,7 @@ impl GenesisBuilder {
                 Version::MIN,
                 bcs::to_bytes(&system_state).unwrap(),
             ),
-            Owner::Shared {
-                initial_shared_version: Version::new(),
-            },
+            Owner::Shared { initial_shared_version: Version::new() },
             TransactionDigest::default(),
         );
         objects.push(state_object);
@@ -704,10 +679,8 @@ impl GenesisBuilder {
         transaction: &Transaction,
         effects: &TransactionEffects,
     ) -> (CheckpointSummary, CheckpointContents) {
-        let execution_digests = ExecutionDigests {
-            transaction: *transaction.digest(),
-            effects: effects.digest(),
-        };
+        let execution_digests =
+            ExecutionDigests { transaction: *transaction.digest(), effects: effects.digest() };
 
         let contents = CheckpointContents::new_with_digests_and_signatures(
             vec![execution_digests],

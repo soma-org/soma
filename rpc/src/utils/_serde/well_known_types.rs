@@ -45,10 +45,7 @@ impl<'de> serde::Deserialize<'de> for EmptyDeserializer {
                 A: serde::de::MapAccess<'de>,
             {
                 if map.next_key::<serde::de::IgnoredAny>()?.is_some() {
-                    return Err(<A::Error as serde::de::Error>::invalid_length(
-                        1,
-                        &"an empty map",
-                    ));
+                    return Err(<A::Error as serde::de::Error>::invalid_length(1, &"an empty map"));
                 }
                 Ok(())
             }
@@ -195,10 +192,7 @@ impl serde::Serialize for DurationSerializer<'_> {
         S: serde::Serializer,
     {
         if !is_duration_valid(self.0) {
-            return Err(serde::ser::Error::custom(format!(
-                "duration is invalid: d={:?}",
-                self.0
-            )));
+            return Err(serde::ser::Error::custom(format!("duration is invalid: d={:?}", self.0)));
         }
 
         serializer.serialize_str(&self.0.to_string())
@@ -470,9 +464,7 @@ impl<'de> serde::Deserialize<'de> for FieldMaskDeserializer {
                         }
                     }
                 }
-                Ok(FieldMask {
-                    paths: paths__.unwrap_or_default(),
-                })
+                Ok(FieldMask { paths: paths__.unwrap_or_default() })
             }
         }
 
@@ -562,24 +554,18 @@ impl<'de> serde::Deserialize<'de> for NullValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                i32::try_from(v)
-                    .ok()
-                    .and_then(|x| x.try_into().ok())
-                    .ok_or_else(|| {
-                        serde::de::Error::invalid_value(serde::de::Unexpected::Signed(v), &self)
-                    })
+                i32::try_from(v).ok().and_then(|x| x.try_into().ok()).ok_or_else(|| {
+                    serde::de::Error::invalid_value(serde::de::Unexpected::Signed(v), &self)
+                })
             }
 
             fn visit_u64<E>(self, v: u64) -> std::result::Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                i32::try_from(v)
-                    .ok()
-                    .and_then(|x| x.try_into().ok())
-                    .ok_or_else(|| {
-                        serde::de::Error::invalid_value(serde::de::Unexpected::Unsigned(v), &self)
-                    })
+                i32::try_from(v).ok().and_then(|x| x.try_into().ok()).ok_or_else(|| {
+                    serde::de::Error::invalid_value(serde::de::Unexpected::Unsigned(v), &self)
+                })
             }
 
             fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
@@ -820,9 +806,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::NullValue(0)),
-                })
+                Ok(Value { kind: Some(value::Kind::NullValue(0)) })
             }
 
             #[inline]
@@ -830,9 +814,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::NullValue(0)),
-                })
+                Ok(Value { kind: Some(value::Kind::NullValue(0)) })
             }
 
             #[inline]
@@ -840,9 +822,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::NumberValue(v as f64)),
-                })
+                Ok(Value { kind: Some(value::Kind::NumberValue(v as f64)) })
             }
 
             #[inline]
@@ -850,9 +830,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::NumberValue(v as f64)),
-                })
+                Ok(Value { kind: Some(value::Kind::NumberValue(v as f64)) })
             }
 
             #[inline]
@@ -860,9 +838,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::NumberValue(v)),
-                })
+                Ok(Value { kind: Some(value::Kind::NumberValue(v)) })
             }
 
             #[inline]
@@ -870,9 +846,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::StringValue(v.to_owned())),
-                })
+                Ok(Value { kind: Some(value::Kind::StringValue(v.to_owned())) })
             }
 
             #[inline]
@@ -880,9 +854,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
             where
                 E: serde::de::Error,
             {
-                Ok(Value {
-                    kind: Some(value::Kind::BoolValue(v)),
-                })
+                Ok(Value { kind: Some(value::Kind::BoolValue(v)) })
             }
 
             #[inline]
@@ -891,9 +863,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
                 A: serde::de::MapAccess<'de>,
             {
                 let value = deserialize_struct(map)?;
-                Ok(Value {
-                    kind: Some(value::Kind::StructValue(value)),
-                })
+                Ok(Value { kind: Some(value::Kind::StructValue(value)) })
             }
 
             #[inline]
@@ -902,9 +872,7 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
                 A: serde::de::SeqAccess<'de>,
             {
                 let value = deserialize_list_value(seq)?;
-                Ok(Value {
-                    kind: Some(value::Kind::ListValue(value)),
-                })
+                Ok(Value { kind: Some(value::Kind::ListValue(value)) })
             }
         }
 

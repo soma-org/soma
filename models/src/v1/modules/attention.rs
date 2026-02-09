@@ -42,10 +42,7 @@ pub fn apply_rope<B: Backend>(
 
     let chunks = inputs.chunk(2, 3);
     if chunks.len() != 2 {
-        panic!(
-            "Expected 2 chunks from splitting head_dim, got {}",
-            chunks.len()
-        );
+        panic!("Expected 2 chunks from splitting head_dim, got {}", chunks.len());
     }
     let first_half = chunks[0].clone();
     let second_half = chunks[1].clone();
@@ -152,12 +149,7 @@ impl<B: Backend> MhaInput<B> {
         positions: Option<Tensor<B, 2, Int>>,
         mask_attn: Option<Tensor<B, 3, Bool>>,
     ) -> Self {
-        Self {
-            query,
-            positions,
-            mask_attn,
-            mask_pad: None,
-        }
+        Self { query, positions, mask_attn, mask_pad: None }
     }
     /// Register the padding mask.
     pub fn mask_pad(mut self, mask_pad: Tensor<B, 2, Bool>) -> Self {
@@ -190,13 +182,7 @@ impl<B: Backend> MultiHeadAttention<B> {
                 self.max_wavelength,
                 self.scale_factor,
             );
-            key = apply_rope(
-                key,
-                positions,
-                self.head_dim,
-                self.max_wavelength,
-                self.scale_factor,
-            );
+            key = apply_rope(key, positions, self.head_dim, self.max_wavelength, self.scale_factor);
 
             // Swap dimensions back to [batch_size, num_heads, seq_length, head_dim] for attention computation
             query = query.swap_dims(1, 2);
@@ -206,18 +192,14 @@ impl<B: Backend> MultiHeadAttention<B> {
         let attn_scores = self.attn_scores(query, key);
         let weights = self.attn_weights(attn_scores, input.mask_pad, input.mask_attn);
         let context = weights.clone().matmul(value);
-        let context = context
-            .swap_dims(1, 2)
-            .reshape([batch_size, seq_length_1, d_model]);
+        let context = context.swap_dims(1, 2).reshape([batch_size, seq_length_1, d_model]);
         let context = self.output.forward(context);
 
         context
     }
 
     fn attn_scores(&self, query: Tensor<B, 4>, key: Tensor<B, 4>) -> Tensor<B, 4> {
-        let attn_scores = query
-            .matmul(key.transpose())
-            .div_scalar((self.head_dim as f32).sqrt());
+        let attn_scores = query.matmul(key.transpose()).div_scalar((self.head_dim as f32).sqrt());
 
         self.dropout.forward(attn_scores)
     }
@@ -231,10 +213,8 @@ impl<B: Backend> MultiHeadAttention<B> {
         if let Some(mask_pad) = mask_pad {
             let [batch_size, seq_length] = mask_pad.dims();
 
-            attn_scores = attn_scores.mask_fill(
-                mask_pad.reshape([batch_size, 1, 1, seq_length]),
-                self.min_float,
-            );
+            attn_scores = attn_scores
+                .mask_fill(mask_pad.reshape([batch_size, 1, 1, seq_length]), self.min_float);
         }
 
         if let Some(mask_attn) = mask_attn {

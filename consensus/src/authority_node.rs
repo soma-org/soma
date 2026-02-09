@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
+    CommitConsumerArgs,
     authority_service::AuthorityService,
     block_manager::BlockManager,
     block_verifier::SignedBlockVerifier,
@@ -12,7 +13,7 @@ use crate::{
     dag_state::DagState,
     leader_schedule::LeaderSchedule,
     leader_timeout::{LeaderTimeoutTask, LeaderTimeoutTaskHandle},
-    network::{tonic_network::TonicManager, NetworkManager},
+    network::{NetworkManager, tonic_network::TonicManager},
     proposed_block_handler::ProposedBlockHandler,
     round_prober::{RoundProber, RoundProberHandle},
     round_tracker::PeerRoundTracker,
@@ -20,7 +21,6 @@ use crate::{
     synchronizer::{Synchronizer, SynchronizerHandle},
     transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
     transaction_certifier::TransactionCertifier,
-    CommitConsumerArgs,
 };
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -142,11 +142,7 @@ where
         commit_consumer: CommitConsumerArgs,
         boot_counter: u64,
     ) -> Self {
-        assert!(
-            committee.is_valid_index(own_index),
-            "Invalid own index {}",
-            own_index
-        );
+        assert!(committee.is_valid_index(own_index), "Invalid own index {}", own_index);
         let own_hostname = committee
             .authority_by_authority_index(own_index)
             .expect("Own index should be present in committee")
@@ -164,10 +160,7 @@ where
         );
         info!(
             "Consensus authorities: {}",
-            committee
-                .authorities()
-                .map(|(i, a)| format!("{}: {}", i, a.hostname))
-                .join(", ")
+            committee.authorities().map(|(i, a)| format!("{}: {}", i, a.hostname)).join(", ")
         );
         info!("Consensus parameters: {:?}", parameters);
         info!("Consensus committee: {:?}", committee);
@@ -193,10 +186,8 @@ where
         let store = Arc::new(RocksDBStore::new(store_path));
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
 
-        let block_verifier = Arc::new(SignedBlockVerifier::new(
-            context.clone(),
-            transaction_verifier,
-        ));
+        let block_verifier =
+            Arc::new(SignedBlockVerifier::new(context.clone(), transaction_verifier));
 
         let transaction_certifier = TransactionCertifier::new(
             context.clone(),
@@ -216,18 +207,13 @@ where
 
         let sync_last_known_own_block = boot_counter == 0
             && dag_state.read().highest_accepted_round() == 0
-            && !context
-                .parameters
-                .sync_last_known_own_block_timeout
-                .is_zero();
+            && !context.parameters.sync_last_known_own_block_timeout.is_zero();
         info!("Sync last known own block: {sync_last_known_own_block}");
 
         let block_manager = BlockManager::new(context.clone(), dag_state.clone());
 
-        let leader_schedule = Arc::new(LeaderSchedule::from_store(
-            context.clone(),
-            dag_state.clone(),
-        ));
+        let leader_schedule =
+            Arc::new(LeaderSchedule::from_store(context.clone(), dag_state.clone()));
 
         let commit_consumer_monitor = commit_consumer.monitor();
         let commit_observer = CommitObserver::new(
@@ -325,10 +311,7 @@ where
 
         network_manager.install_service(network_service).await;
 
-        info!(
-            "Consensus authority started, took {:?}",
-            start_time.elapsed()
-        );
+        info!("Consensus authority started, took {:?}", start_time.elapsed());
 
         Self {
             context,
@@ -346,20 +329,14 @@ where
     }
 
     pub(crate) async fn stop(mut self) {
-        info!(
-            "Stopping authority. Total run time: {:?}",
-            self.start_time.elapsed()
-        );
+        info!("Stopping authority. Total run time: {:?}", self.start_time.elapsed());
 
         // First shutdown components calling into Core.
         if let Err(e) = self.synchronizer.stop().await {
             if e.is_panic() {
                 std::panic::resume_unwind(e.into_panic());
             }
-            warn!(
-                "Failed to stop synchronizer when shutting down consensus: {:?}",
-                e
-            );
+            warn!("Failed to stop synchronizer when shutting down consensus: {:?}", e);
         };
         self.commit_syncer_handle.stop().await;
         self.round_prober_handle.stop().await;

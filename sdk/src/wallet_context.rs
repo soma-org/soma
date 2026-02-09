@@ -36,19 +36,12 @@ impl WalletContext {
     /// Create a new WalletContext from a config file path
     pub fn new(config_path: &Path) -> Result<Self, anyhow::Error> {
         let config: SomaClientConfig = PersistedConfig::read(config_path).map_err(|err| {
-            anyhow!(
-                "Cannot open wallet config file at {:?}. Err: {err}",
-                config_path
-            )
+            anyhow!("Cannot open wallet config file at {:?}. Err: {err}", config_path)
         })?;
 
         let config = config.persisted(config_path);
-        let context = Self {
-            config,
-            request_timeout: None,
-            client: Default::default(),
-            env_override: None,
-        };
+        let context =
+            Self { config, request_timeout: None, client: Default::default(), env_override: None };
         Ok(context)
     }
 
@@ -109,9 +102,7 @@ impl WalletContext {
                 return Ok(address);
             }
 
-            Err(anyhow!(
-                "No address found for the provided key identity: {key_identity}"
-            ))
+            Err(anyhow!("No address found for the provided key identity: {key_identity}"))
         } else {
             self.active_address()
         }
@@ -125,10 +116,7 @@ impl WalletContext {
             client.clone()
         } else {
             drop(read);
-            let client = self
-                .get_active_env()?
-                .create_rpc_client(self.request_timeout)
-                .await?;
+            let client = self.get_active_env()?.create_rpc_client(self.request_timeout).await?;
             self.client.write().await.insert(client).clone()
         })
     }
@@ -305,11 +293,7 @@ impl WalletContext {
         &self,
         id: &Option<ObjectID>,
     ) -> Result<Option<SomaAddress>, anyhow::Error> {
-        if let Some(id) = id {
-            Ok(Some(self.get_object_owner(id).await?))
-        } else {
-            Ok(None)
-        }
+        if let Some(id) = id { Ok(Some(self.get_object_owner(id).await?)) } else { Ok(None) }
     }
 
     pub async fn get_all_gas_objects_owned_by_address(
@@ -325,19 +309,13 @@ impl WalletContext {
         &self,
         address: SomaAddress,
     ) -> anyhow::Result<Option<ObjectRef>> {
-        Ok(self
-            .get_gas_objects_owned_by_address(address, Some(1))
-            .await?
-            .pop())
+        Ok(self.get_gas_objects_owned_by_address(address, Some(1)).await?.pop())
     }
 
     /// Returns one address and all gas objects owned by that address.
     pub async fn get_one_account(&self) -> anyhow::Result<(SomaAddress, Vec<ObjectRef>)> {
         let address = self.get_addresses().pop().unwrap();
-        Ok((
-            address,
-            self.get_all_gas_objects_owned_by_address(address).await?,
-        ))
+        Ok((address, self.get_all_gas_objects_owned_by_address(address).await?))
     }
 
     /// Return a gas object owned by an arbitrary address managed by the wallet.
@@ -370,9 +348,7 @@ impl WalletContext {
             }
         }
 
-        Err(anyhow!(
-            "No keystore found for the provided key identity: {key_identity}"
-        ))
+        Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))
     }
 
     /// Get a mutable reference to the keystore that contains the given key identity
@@ -390,9 +366,7 @@ impl WalletContext {
             }
         }
 
-        Err(anyhow!(
-            "No keystore found for the provided key identity: {key_identity}"
-        ))
+        Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))
     }
 
     /// Sign transaction data with the specified key identity
@@ -427,11 +401,7 @@ impl WalletContext {
         tracing::debug!("Executing transaction: {:?}", tx);
         let response = self.execute_transaction_may_fail(tx).await.unwrap();
 
-        assert!(
-            response.effects.status.is_ok(),
-            "Transaction failed: {:?}",
-            response
-        );
+        assert!(response.effects.status.is_ok(), "Transaction failed: {:?}", response);
 
         response
     }

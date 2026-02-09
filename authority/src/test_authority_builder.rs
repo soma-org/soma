@@ -97,10 +97,7 @@ impl<'a> TestAuthorityBuilder<'a> {
     pub fn with_reference_gas_price(mut self, reference_gas_price: u64) -> Self {
         // If genesis is already set then setting rgp is meaningless since it will be overwritten.
         assert!(self.genesis.is_none());
-        assert!(self
-            .reference_gas_price
-            .replace(reference_gas_price)
-            .is_none());
+        assert!(self.reference_gas_price.replace(reference_gas_price).is_none());
         self
     }
 
@@ -184,10 +181,7 @@ impl<'a> TestAuthorityBuilder<'a> {
         let mut config = local_network_config.validator_configs()[0].clone();
 
         let mut pruner_db = None;
-        if config
-            .authority_store_pruning_config
-            .enable_compaction_filter
-        {
+        if config.authority_store_pruning_config.enable_compaction_filter {
             pruner_db = Some(Arc::new(AuthorityPrunerTables::open(&path.join("store"))));
         }
         let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
@@ -195,10 +189,8 @@ impl<'a> TestAuthorityBuilder<'a> {
         let authority_store = match self.store {
             Some(store) => store,
             None => {
-                let perpetual_tables_options = AuthorityPerpetualTablesOptions {
-                    compaction_filter,
-                    ..Default::default()
-                };
+                let perpetual_tables_options =
+                    AuthorityPerpetualTablesOptions { compaction_filter, ..Default::default() };
                 let perpetual_tables = Arc::new(AuthorityPerpetualTables::open(
                     &path.join("store"),
                     Some(perpetual_tables_options),
@@ -258,17 +250,11 @@ impl<'a> TestAuthorityBuilder<'a> {
             None,
             epoch_start_configuration,
             (chain_id, chain),
-            checkpoint_store
-                .get_highest_executed_checkpoint_seq_number()
-                .unwrap()
-                .unwrap_or(0),
+            checkpoint_store.get_highest_executed_checkpoint_seq_number().unwrap().unwrap_or(0),
         )
         .expect("failed to create authority per epoch store");
-        let committee_store = Arc::new(CommitteeStore::new(
-            path.join("epochs"),
-            &genesis_committee,
-            None,
-        ));
+        let committee_store =
+            Arc::new(CommitteeStore::new(path.join("epochs"), &genesis_committee, None));
 
         if self.insert_genesis_checkpoint {
             checkpoint_store.insert_genesis_checkpoint(
@@ -281,9 +267,7 @@ impl<'a> TestAuthorityBuilder<'a> {
         let rpc_index = if self.disable_indexer {
             None
         } else {
-            Some(Arc::new(
-                RpcIndexStore::new(&path, &authority_store, &checkpoint_store).await,
-            ))
+            Some(Arc::new(RpcIndexStore::new(&path, &authority_store, &checkpoint_store).await))
         };
 
         let transaction_deny_config = self.transaction_deny_config.unwrap_or_default();
@@ -350,10 +334,7 @@ impl<'a> TestAuthorityBuilder<'a> {
         // these objects directly.
         // TODO: we should probably have a better way to do this.
         if let Some(starting_objects) = self.starting_objects {
-            state
-                .insert_objects_unsafe_for_testing_only(starting_objects)
-                .await
-                .unwrap();
+            state.insert_objects_unsafe_for_testing_only(starting_objects).await.unwrap();
         };
         state
     }

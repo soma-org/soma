@@ -23,8 +23,8 @@ use tokio::{
 };
 use tokio_rustls::TlsAcceptor;
 use tonic::{
-    codegen::{Service, StdError},
     Status,
+    codegen::{Service, StdError},
 };
 use tonic::{server::NamedService, transport::Server};
 use tonic_rustls::Channel;
@@ -46,25 +46,16 @@ use crate::{
     },
 };
 
-use super::{active_peers::ActivePeers, DisconnectReason, PeerEvent};
+use super::{DisconnectReason, PeerEvent, active_peers::ActivePeers};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CONNECTIONS_BACKLOG: u32 = 1024;
 
 #[derive(Debug)]
 pub enum ChannelManagerRequest {
-    Connect {
-        address: Multiaddr,
-        peer_id: PeerId,
-        response: oneshot::Sender<SomaResult<PeerId>>,
-    },
-    Disconnect {
-        peer_id: PeerId,
-        response: oneshot::Sender<SomaResult<()>>,
-    },
-    Shutdown {
-        response: oneshot::Sender<()>,
-    },
+    Connect { address: Multiaddr, peer_id: PeerId, response: oneshot::Sender<SomaResult<PeerId>> },
+    Disconnect { peer_id: PeerId, response: oneshot::Sender<SomaResult<()>> },
+    Shutdown { response: oneshot::Sender<()> },
 }
 
 pub struct ChannelManager<S> {
@@ -277,8 +268,7 @@ where
         channel: Channel,
         public_key: NetworkPublicKey,
     ) -> SomaResult<bool> {
-        self.active_peers
-            .insert(peer_id, address.clone(), channel, public_key);
+        self.active_peers.insert(peer_id, address.clone(), channel, public_key);
         Ok(true)
     }
 
@@ -287,9 +277,8 @@ where
         peer_id: PeerId,
         response: oneshot::Sender<SomaResult<()>>,
     ) {
-        let result = if let Some(_channel) = self
-            .active_peers
-            .remove(&peer_id, DisconnectReason::RequestedDisconnect)
+        let result = if let Some(_channel) =
+            self.active_peers.remove(&peer_id, DisconnectReason::RequestedDisconnect)
         {
             Ok(())
         } else {
@@ -359,10 +348,7 @@ where
 
         match self.add_peer(peer_id, address, channel, target_pubkey.into())? {
             true => {
-                debug!(
-                    "Successfully established new connection with peer {}",
-                    peer_id
-                );
+                debug!("Successfully established new connection with peer {}", peer_id);
                 Ok(peer_id)
             }
             false => {
@@ -387,25 +373,16 @@ where
         let peers_to_disconnect: Vec<PeerId> = self.active_peers.peers();
         for peer_id in peers_to_disconnect {
             debug!("Closing connection to peer {}", peer_id);
-            if let Some(_channel) = self
-                .active_peers
-                .remove(&peer_id, DisconnectReason::Shutdown)
-            {
+            if let Some(_channel) = self.active_peers.remove(&peer_id, DisconnectReason::Shutdown) {
                 debug!("Removed peer {} from active peers", peer_id);
             }
         }
 
-        info!(
-            "Waiting for {} connection handlers to complete",
-            self.connection_handlers.len()
-        );
+        info!("Waiting for {} connection handlers to complete", self.connection_handlers.len());
         self.connection_handlers.shutdown().await;
         debug!("All connection handlers completed");
 
-        debug_assert!(
-            self.active_peers.is_empty(),
-            "ActivePeers should be empty after shutdown"
-        );
+        debug_assert!(self.active_peers.is_empty(), "ActivePeers should be empty after shutdown");
         debug_assert!(
             self.connection_handlers.is_empty(),
             "All connection handlers should be completed"

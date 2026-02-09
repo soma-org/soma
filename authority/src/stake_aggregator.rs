@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, hash_map::Entry},
     hash::Hash,
     sync::Arc,
 };
@@ -32,11 +32,7 @@ pub struct StakeAggregator<S, const STRENGTH: bool> {
 /// implementation for `AuthoritySignInfo` is followed below.
 impl<S: Clone + Eq, const STRENGTH: bool> StakeAggregator<S, STRENGTH> {
     pub fn new(committee: Arc<Committee>) -> Self {
-        Self {
-            data: Default::default(),
-            total_votes: Default::default(),
-            committee,
-        }
+        Self { data: Default::default(), total_votes: Default::default(), committee }
     }
 
     pub fn from_iter<I: Iterator<Item = Result<(AuthorityName, S), TypedStoreError>>>(
@@ -81,15 +77,10 @@ impl<S: Clone + Eq, const STRENGTH: bool> StakeAggregator<S, STRENGTH> {
             if self.total_votes >= self.committee.threshold::<STRENGTH>() {
                 InsertResult::QuorumReached(&self.data)
             } else {
-                InsertResult::NotEnoughVotes {
-                    bad_votes: 0,
-                    bad_authorities: vec![],
-                }
+                InsertResult::NotEnoughVotes { bad_votes: 0, bad_authorities: vec![] }
             }
         } else {
-            InsertResult::Failed {
-                error: SomaError::InvalidAuthenticator,
-            }
+            InsertResult::Failed { error: SomaError::InvalidAuthenticator }
         }
     }
 
@@ -183,10 +174,7 @@ impl<const STRENGTH: bool> StakeAggregator<AuthoritySignInfo, STRENGTH> {
                                         bad_authorities.push(*name);
                                     }
                                 }
-                                InsertResult::NotEnoughVotes {
-                                    bad_votes,
-                                    bad_authorities,
-                                }
+                                InsertResult::NotEnoughVotes { bad_votes, bad_authorities }
                             }
                         }
                     }
@@ -195,26 +183,17 @@ impl<const STRENGTH: bool> StakeAggregator<AuthoritySignInfo, STRENGTH> {
             }
             // The following is necessary to change the template type of InsertResult.
             InsertResult::Failed { error } => InsertResult::Failed { error },
-            InsertResult::NotEnoughVotes {
-                bad_votes,
-                bad_authorities,
-            } => InsertResult::NotEnoughVotes {
-                bad_votes,
-                bad_authorities,
-            },
+            InsertResult::NotEnoughVotes { bad_votes, bad_authorities } => {
+                InsertResult::NotEnoughVotes { bad_votes, bad_authorities }
+            }
         }
     }
 }
 
 pub enum InsertResult<CertT> {
     QuorumReached(CertT),
-    Failed {
-        error: SomaError,
-    },
-    NotEnoughVotes {
-        bad_votes: u64,
-        bad_authorities: Vec<AuthorityName>,
-    },
+    Failed { error: SomaError },
+    NotEnoughVotes { bad_votes: u64, bad_authorities: Vec<AuthorityName> },
 }
 
 impl<CertT> InsertResult<CertT> {
@@ -235,10 +214,7 @@ pub struct MultiStakeAggregator<K, V, const STRENGTH: bool> {
 
 impl<K, V, const STRENGTH: bool> MultiStakeAggregator<K, V, STRENGTH> {
     pub fn new(committee: Arc<Committee>) -> Self {
-        Self {
-            committee,
-            stake_maps: Default::default(),
-        }
+        Self { committee, stake_maps: Default::default() }
     }
 
     pub fn unique_key_count(&self) -> usize {
@@ -246,10 +222,7 @@ impl<K, V, const STRENGTH: bool> MultiStakeAggregator<K, V, STRENGTH> {
     }
 
     pub fn total_votes(&self) -> VotingPower {
-        self.stake_maps
-            .values()
-            .map(|(_, stake_aggregator)| stake_aggregator.total_votes())
-            .sum()
+        self.stake_maps.values().map(|(_, stake_aggregator)| stake_aggregator.total_votes()).sum()
     }
 }
 
@@ -307,11 +280,7 @@ where
 
     /// Total stake of the largest faction
     pub fn plurality_stake(&self) -> VotingPower {
-        self.stake_maps
-            .values()
-            .map(|(_, agg)| agg.total_votes())
-            .max()
-            .unwrap_or_default()
+        self.stake_maps.values().map(|(_, agg)| agg.total_votes()).max().unwrap_or_default()
     }
 
     /// If true, there isn't enough uncommitted stake to reach quorum for any value
@@ -333,11 +302,7 @@ where
     K: Hash + Eq,
 {
     pub fn new(committee: Arc<Committee>) -> Self {
-        Self {
-            committee,
-            stake_maps: Default::default(),
-            votes_per_authority: Default::default(),
-        }
+        Self { committee, stake_maps: Default::default(), votes_per_authority: Default::default() }
     }
 
     pub fn insert(
@@ -358,18 +323,11 @@ where
     }
 
     pub fn has_quorum_for_key(&self, k: &K) -> bool {
-        if let Some(entry) = self.stake_maps.get(k) {
-            entry.has_quorum()
-        } else {
-            false
-        }
+        if let Some(entry) = self.stake_maps.get(k) { entry.has_quorum() } else { false }
     }
 
     pub fn votes_for_authority(&self, authority: AuthorityName) -> u64 {
-        self.votes_per_authority
-            .get(&authority)
-            .copied()
-            .unwrap_or_default()
+        self.votes_per_authority.get(&authority).copied().unwrap_or_default()
     }
 }
 

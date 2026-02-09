@@ -19,9 +19,7 @@ pin_project_lite::pin_project! {
 
 impl<F> Fuse<F> {
     pub fn new(future: F) -> Self {
-        Self {
-            inner: Some(future),
-        }
+        Self { inner: Some(future) }
     }
 }
 

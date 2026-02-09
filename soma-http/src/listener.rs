@@ -47,10 +47,7 @@ pub trait ListenerExt: Listener + Sized {
     where
         F: FnMut(&mut Self::Io) + Send + 'static,
     {
-        TapIo {
-            listener: self,
-            tap_fn,
-        }
+        TapIo { listener: self, tap_fn }
     }
 }
 
@@ -101,11 +98,7 @@ impl TcpListenerWithOptions {
         nodelay: bool,
         keepalive: Option<Duration>,
     ) -> Self {
-        Self {
-            inner: listener,
-            nodelay,
-            keepalive,
-        }
+        Self { inner: listener, nodelay, keepalive }
     }
 
     // Consistent with hyper-0.14, this function does not return an error.
@@ -177,9 +170,7 @@ where
     L: Listener + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TapIo")
-            .field("listener", &self.listener)
-            .finish_non_exhaustive()
+        f.debug_struct("TapIo").field("listener", &self.listener).finish_non_exhaustive()
     }
 }
 

@@ -47,10 +47,7 @@ where
         config: ValidatorClientMonitorConfig,
         authority_aggregator: Arc<ArcSwap<AuthorityAggregator<A>>>,
     ) -> Arc<Self> {
-        info!(
-            "Validator client monitor starting with config: {:?}",
-            config
-        );
+        info!("Validator client monitor starting with config: {:?}", config);
 
         let monitor = Arc::new(Self {
             config: config.clone(),
@@ -81,9 +78,7 @@ where
             let authority_agg = self.authority_aggregator.load();
 
             let current_validators: Vec<_> = authority_agg.committee.names().cloned().collect();
-            self.client_stats
-                .write()
-                .retain_validators(&current_validators);
+            self.client_stats.write().retain_validators(&current_validators);
 
             let mut tasks = JoinSet::new();
 
@@ -158,10 +153,8 @@ impl<A: Clone> ValidatorClientMonitor<A> {
         let mut cached_latencies = self.cached_latencies.write();
 
         for tx_type in TxType::iter() {
-            let latencies_map = self
-                .client_stats
-                .read()
-                .get_all_validator_stats(committee, tx_type);
+            let latencies_map =
+                self.client_stats.read().get_all_validator_stats(committee, tx_type);
 
             for (validator, latency) in latencies_map.iter() {
                 debug!(
@@ -220,12 +213,7 @@ impl<A: Clone> ValidatorClientMonitor<A> {
         // an out-of-date committee.
         let mut validator_with_latencies: Vec<_> = committee
             .names()
-            .map(|v| {
-                (
-                    *v,
-                    cached_latencies.get(v).cloned().unwrap_or(Duration::ZERO),
-                )
-            })
+            .map(|v| (*v, cached_latencies.get(v).cloned().unwrap_or(Duration::ZERO)))
             .collect();
         if validator_with_latencies.is_empty() {
             return vec![];
@@ -246,10 +234,7 @@ impl<A: Clone> ValidatorClientMonitor<A> {
             .unwrap_or(validator_with_latencies.len());
         validator_with_latencies[..k].shuffle(&mut rng);
 
-        validator_with_latencies
-            .into_iter()
-            .map(|(v, _)| v)
-            .collect()
+        validator_with_latencies.into_iter().map(|(v, _)| v).collect()
     }
 
     #[cfg(test)]
@@ -264,9 +249,6 @@ impl<A: Clone> ValidatorClientMonitor<A> {
 
     #[cfg(test)]
     pub fn has_validator_stats(&self, validator: &AuthorityName) -> bool {
-        self.client_stats
-            .read()
-            .validator_stats
-            .contains_key(validator)
+        self.client_stats.read().validator_stats.contains_key(validator)
     }
 }

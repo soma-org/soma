@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
 use types::object::ObjectID;
@@ -20,16 +20,11 @@ pub async fn execute(
     let client = context.get_client().await?;
 
     // Get the object reference
-    let object = client
-        .get_object(object_id)
-        .await
-        .map_err(|e| anyhow!("Failed to get object: {}", e))?;
+    let object =
+        client.get_object(object_id).await.map_err(|e| anyhow!("Failed to get object: {}", e))?;
     let object_ref = object.compute_object_reference();
 
-    let kind = TransactionKind::TransferObjects {
-        objects: vec![object_ref],
-        recipient,
-    };
+    let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
 
     // Resolve gas payment
     let gas_ref = match gas {

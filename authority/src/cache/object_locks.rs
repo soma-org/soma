@@ -1,8 +1,8 @@
 use core::panic;
 
 use crate::{authority_per_epoch_store::AuthorityPerEpochStore, authority_store::LockDetails};
-use dashmap::mapref::entry::Entry as DashMapEntry;
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry as DashMapEntry;
 use tracing::{debug, error, info, instrument, trace};
 use types::{
     digests::TransactionDigest,
@@ -31,9 +31,7 @@ pub(super) struct ObjectLocks {
 
 impl ObjectLocks {
     pub fn new() -> Self {
-        Self {
-            locked_transactions: DashMap::new(),
-        }
+        Self { locked_transactions: DashMap::new() }
     }
 
     pub(crate) fn get_transaction_lock(
@@ -95,10 +93,7 @@ impl ObjectLocks {
         };
 
         if prev_lock != new_lock {
-            debug!(
-                "lock conflict detected for {:?}: {:?} != {:?}",
-                obj_ref, prev_lock, new_lock
-            );
+            debug!("lock conflict detected for {:?}: {:?} != {:?}", obj_ref, prev_lock, new_lock);
             Err(SomaError::ObjectLockConflict {
                 obj_ref: *obj_ref,
                 pending_transaction: prev_lock.tx_digest,
@@ -175,10 +170,7 @@ impl ObjectLocks {
             if let Some(object) = object {
                 result.push(object);
             } else {
-                return Err(SomaError::ObjectNotFound {
-                    object_id: object_ids[i],
-                    version: None,
-                });
+                return Err(SomaError::ObjectNotFound { object_id: object_ids[i], version: None });
             }
         }
         Ok(result)

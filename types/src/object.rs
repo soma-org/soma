@@ -42,7 +42,7 @@ pub const GAS_VALUE_FOR_TESTING: u64 = 300_000_000_000_000;
     Debug,
     Serialize,
     Deserialize,
-    JsonSchema,
+    JsonSchema
 )]
 pub struct Version(u64);
 
@@ -102,11 +102,7 @@ impl Version {
 
     /// Returns the version one before the current, or None if at 0
     pub fn one_before(&self) -> Option<Version> {
-        if self.0 == 0 {
-            None
-        } else {
-            Some(Version(self.0 - 1))
-        }
+        if self.0 == 0 { None } else { Some(Version(self.0 - 1)) }
     }
 
     /// Returns the next version (current + 1)
@@ -297,12 +293,7 @@ impl Object {
 
     /// Creates a new Object with the specified data, owner, and transaction digest
     pub fn new(data: ObjectData, owner: Owner, previous_transaction: TransactionDigest) -> Self {
-        ObjectInner {
-            data,
-            owner,
-            previous_transaction,
-        }
-        .into()
+        ObjectInner { data, owner, previous_transaction }.into()
     }
 
     /// Returns a reference to the object's owner
@@ -337,8 +328,7 @@ impl Object {
 
     /// Update the balance of a coin object
     pub fn update_coin_balance(&mut self, new_balance: u64) {
-        self.data
-            .update_contents(bcs::to_bytes(&new_balance).unwrap());
+        self.data.update_contents(bcs::to_bytes(&new_balance).unwrap());
     }
 
     pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
@@ -363,11 +353,7 @@ impl Object {
             Version::MIN,
             bcs::to_bytes(&balance).unwrap(),
         );
-        Self::new(
-            data,
-            Owner::AddressOwner(owner),
-            TransactionDigest::genesis_marker(),
-        )
+        Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
     }
 
     /// Create a new Object containing a StakedSoma
@@ -421,9 +407,7 @@ impl Object {
 
         // Targets are shared objects - any address can submit to them
         // Use Version::new() as the initial shared version (matches genesis pattern)
-        let owner = Owner::Shared {
-            initial_shared_version: Version::new(),
-        };
+        let owner = Owner::Shared { initial_shared_version: Version::new() };
 
         Object::new(data, owner, previous_transaction)
     }
@@ -449,17 +433,11 @@ impl Object {
         let submission_bytes = bcs::to_bytes(&submission).unwrap();
 
         // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Submission,
-            Version::MIN,
-            submission_bytes,
-        );
+        let data =
+            ObjectData::new_with_id(id, ObjectType::Submission, Version::MIN, submission_bytes);
 
         // Submissions are shared objects - use Version::new() as initial shared version
-        let owner = Owner::Shared {
-            initial_shared_version: Version::new(),
-        };
+        let owner = Owner::Shared { initial_shared_version: Version::new() };
 
         Object::new(data, owner, previous_transaction)
     }
@@ -577,11 +555,7 @@ impl ObjectData {
         data.extend_from_slice(&id.into_bytes());
         data.extend_from_slice(&contents);
 
-        Self {
-            object_type,
-            version,
-            contents: data,
-        }
+        Self { object_type, version, contents: data }
     }
 
     /// Increments the version to a specific next version
@@ -1122,9 +1096,7 @@ impl Owner {
     // Returns initial_shared_version for Shared objects, and start_version for ConsensusV2 objects.
     pub fn start_version(&self) -> Option<Version> {
         match self {
-            Self::Shared {
-                initial_shared_version,
-            } => Some(*initial_shared_version),
+            Self::Shared { initial_shared_version } => Some(*initial_shared_version),
             Self::Immutable | Self::AddressOwner(_) => None,
         }
     }
@@ -1152,9 +1124,7 @@ impl Display for Owner {
             Self::Immutable => {
                 write!(f, "Immutable")
             }
-            Self::Shared {
-                initial_shared_version,
-            } => {
+            Self::Shared { initial_shared_version } => {
                 write!(f, "Shared( {} )", initial_shared_version.value())
             }
         }

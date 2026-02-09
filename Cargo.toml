@@ -9,7 +9,7 @@ members = [
   "e2e-tests",
   "sync",
   "cli",
-  "intelligence",
+  "runtime",
   "soma-http",
   "soma-tls",
   "blobs",
@@ -189,7 +189,7 @@ prost-build = "0.14.3"
 prost-types = "0.14.3"
 
 
-intelligence = { path = "intelligence" }
+runtime = { path = "runtime" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 blobs = { path = "blobs" }
@@ -241,7 +241,7 @@ mockall = "0.13.1"
 quick_cache = "0.6.18"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { version = "0.19.1", features = ["ndarray", "store", "wgpu"] }
+burn = { version = "0.19.1", features = ["ndarray", "store", "wgpu", "train"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"

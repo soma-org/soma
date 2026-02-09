@@ -46,21 +46,11 @@ impl SubscriptionService {
         let (subscription_request_sender, mailbox) = mpsc::channel(MAILBOX_SIZE);
 
         tokio::spawn(
-            Self {
-                checkpoint_mailbox,
-                mailbox,
-                subscribers: Vec::new(),
-                last_sequence_number: 0,
-            }
-            .start(),
+            Self { checkpoint_mailbox, mailbox, subscribers: Vec::new(), last_sequence_number: 0 }
+                .start(),
         );
 
-        (
-            checkpoint_sender,
-            SubscriptionServiceHandle {
-                sender: subscription_request_sender,
-            },
-        )
+        (checkpoint_sender, SubscriptionServiceHandle { sender: subscription_request_sender })
     }
 
     async fn start(mut self) {

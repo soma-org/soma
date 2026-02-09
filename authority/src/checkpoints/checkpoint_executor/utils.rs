@@ -1,6 +1,6 @@
 use crate::cache::TransactionCacheRead;
 use crate::checkpoints::CheckpointStore;
-use futures::{future::Either, Stream};
+use futures::{Stream, future::Either};
 use std::time::Duration;
 use std::{sync::Arc, time::Instant};
 use strum::VariantNames;
@@ -49,10 +49,7 @@ pub(super) fn stream_synced_checkpoints(
                     state.panic_timeout,
                 )
                 .await;
-                info!(
-                    "received synced checkpoint: {:?}",
-                    checkpoint.sequence_number
-                );
+                info!("received synced checkpoint: {:?}", checkpoint.sequence_number);
                 if checkpoint.end_of_epoch_data.is_some() {
                     Some((checkpoint, None))
                 } else {
@@ -130,10 +127,7 @@ fn get_scheduling_timeout() -> CheckpointTimeoutConfig {
             .map(Duration::from_millis)
             .unwrap_or(Duration::from_secs(5));
 
-        CheckpointTimeoutConfig {
-            panic_timeout,
-            warning_timeout,
-        }
+        CheckpointTimeoutConfig { panic_timeout, warning_timeout }
     }
 
     SCHEDULING_TIMEOUT.with(|s| *s.get_or_init(inner))
@@ -147,18 +141,11 @@ pub(super) fn assert_not_forked(
     cache_reader: &dyn TransactionCacheRead,
 ) {
     if *expected_digest != *actual_effects_digest {
-        let actual_effects = cache_reader
-            .get_executed_effects(tx_digest)
-            .expect("actual effects should exist");
+        let actual_effects =
+            cache_reader.get_executed_effects(tx_digest).expect("actual effects should exist");
 
         // log observed effects (too big for panic message) and then panic.
-        error!(
-            ?checkpoint,
-            ?tx_digest,
-            ?expected_digest,
-            ?actual_effects,
-            "fork detected!"
-        );
+        error!(?checkpoint, ?tx_digest, ?expected_digest, ?actual_effects, "fork detected!");
         panic!(
             "When executing checkpoint {}, transaction {} \
             is expected to have effects digest {}, but got {}!",
@@ -191,8 +178,7 @@ pub(super) fn assert_checkpoint_not_forked(
         // fork is in the checkpoint header
         panic!(
             "Checkpoint fork detected in header! Locally built checkpoint: {:?}, verified checkpoint: {:?}",
-            locally_built_checkpoint,
-            verified_checkpoint
+            locally_built_checkpoint, verified_checkpoint
         );
     } else {
         let local_contents = checkpoint_store
@@ -225,8 +211,7 @@ pub(super) fn assert_checkpoint_not_forked(
                 (None, Some(_)) | (Some(_), None) => {
                     panic!(
                         "Checkpoint contents have different lengths! Locally built checkpoint: {:?}, verified checkpoint: {:?}",
-                        locally_built_checkpoint,
-                        verified_checkpoint
+                        locally_built_checkpoint, verified_checkpoint
                     );
                 }
                 (None, None) => {
@@ -238,8 +223,7 @@ pub(super) fn assert_checkpoint_not_forked(
 
         panic!(
             "Checkpoint fork detected in contents! Locally built checkpoint: {:?}, verified checkpoint: {:?}",
-            locally_built_checkpoint,
-            verified_checkpoint
+            locally_built_checkpoint, verified_checkpoint
         );
     }
 }
@@ -252,9 +236,7 @@ struct SequenceWatch {
 
 impl SequenceWatch {
     fn new(starting_seq: CheckpointSequenceNumber) -> Self {
-        Self {
-            watch: watch::channel(starting_seq).0,
-        }
+        Self { watch: watch::channel(starting_seq).0 }
     }
 
     async fn wait_for(&self, seq: CheckpointSequenceNumber) {
@@ -327,7 +309,7 @@ impl SequenceWatch {
     strum::EnumIter,
     strum_macros::VariantNames,
     strum_macros::FromRepr,
-    strum_macros::EnumCount,
+    strum_macros::EnumCount
 )]
 
 /// Names of the pipeline stages for CheckpointExecutor.
@@ -370,12 +352,7 @@ pub(super) struct PipelineHandle {
 
 impl PipelineHandle {
     fn new(stages: Arc<PipelineStages>, seq: CheckpointSequenceNumber) -> Self {
-        Self {
-            seq,
-            cur_stage: PipelineStage::first(),
-            stages,
-            timer: Instant::now(),
-        }
+        Self { seq, cur_stage: PipelineStage::first(), stages, timer: Instant::now() }
     }
 
     /// Begin at the first stage.
@@ -414,9 +391,7 @@ pub(super) struct PipelineStages {
 
 impl PipelineStages {
     pub fn new(starting_seq: CheckpointSequenceNumber) -> Arc<Self> {
-        Arc::new(Self {
-            stages: std::array::from_fn(|_| SequenceWatch::new(starting_seq)),
-        })
+        Arc::new(Self { stages: std::array::from_fn(|_| SequenceWatch::new(starting_seq)) })
     }
 
     /// Create a new PipelineHandle for the given sequence number.

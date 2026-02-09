@@ -37,15 +37,15 @@ use crate::serde::Readable;
 use crate::transaction::{Transaction, VerifiedTransaction};
 use crate::{crypto::AuthorityPublicKeyBytes, error::SomaError};
 use anyhow::anyhow;
-use fastcrypto::encoding::{decode_bytes_hex, Encoding, Hex};
+use fastcrypto::encoding::{Encoding, Hex, decode_bytes_hex};
 use fastcrypto::hash::HashFunction;
 use hex::FromHex;
-use rand::rngs::OsRng;
 use rand::Rng;
+use rand::rngs::OsRng;
 use schemars::JsonSchema;
 use serde::Deserializer;
-use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
-use serde_with::{serde_as, DeserializeAs, SerializeAs};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeSeq};
+use serde_with::{DeserializeAs, SerializeAs, serde_as};
 use std::fmt;
 use std::str::FromStr;
 
@@ -222,9 +222,7 @@ impl<T> TryFrom<Vec<T>> for SizeOneVec<T> {
         if v.len() != 1 {
             Err(anyhow!("Expected a vec of size 1"))
         } else {
-            Ok(SizeOneVec {
-                e: v.pop().unwrap(),
-            })
+            Ok(SizeOneVec { e: v.pop().unwrap() })
         }
     }
 }
@@ -407,11 +405,7 @@ impl SomaAddress {
 
     pub fn short_str_lossless(&self) -> String {
         let hex_str = hex::encode(self.0).trim_start_matches('0').to_string();
-        if hex_str.is_empty() {
-            "0".to_string()
-        } else {
-            hex_str
-        }
+        if hex_str.is_empty() { "0".to_string() } else { hex_str }
     }
 
     pub fn to_hex_literal(&self) -> String {
@@ -419,9 +413,7 @@ impl SomaAddress {
     }
 
     pub fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, AccountAddressParseError> {
-        <[u8; Self::LENGTH]>::from_hex(hex)
-            .map_err(|_| AccountAddressParseError)
-            .map(Self)
+        <[u8; Self::LENGTH]>::from_hex(hex).map_err(|_| AccountAddressParseError).map(Self)
     }
 
     pub fn to_hex(&self) -> String {
@@ -505,9 +497,7 @@ impl TryFrom<&GenericSignature> for SomaAddress {
                 let scheme = sig.scheme();
                 let pub_key_bytes = sig.public_key_bytes();
                 let pub_key = PublicKey::try_from_bytes(scheme, pub_key_bytes).map_err(|_| {
-                    SomaError::InvalidSignature {
-                        error: "Cannot parse pubkey".to_string(),
-                    }
+                    SomaError::InvalidSignature { error: "Cannot parse pubkey".to_string() }
                 })?;
                 Ok(SomaAddress::from(&pub_key))
             }
@@ -814,7 +804,17 @@ pub type FullObjectRef = (FullObjectID, Version, ObjectDigest);
 pub type ConsensusObjectSequenceKey = (ObjectID, Version);
 
 #[derive(
-    Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Serialize, Deserialize, JsonSchema, Debug,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Copy,
+    Clone,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Debug
 )]
 pub struct ExecutionDigests {
     pub transaction: TransactionDigest,
@@ -823,10 +823,7 @@ pub struct ExecutionDigests {
 
 impl ExecutionDigests {
     pub fn new(transaction: TransactionDigest, effects: TransactionEffectsDigest) -> Self {
-        Self {
-            transaction,
-            effects,
-        }
+        Self { transaction, effects }
     }
 
     pub fn random() -> Self {
@@ -846,10 +843,7 @@ pub struct ExecutionData {
 impl ExecutionData {
     pub fn new(transaction: Transaction, effects: TransactionEffects) -> ExecutionData {
         debug_assert_eq!(transaction.digest(), effects.transaction_digest());
-        Self {
-            transaction,
-            effects,
-        }
+        Self { transaction, effects }
     }
 
     pub fn digests(&self) -> ExecutionDigests {
@@ -866,10 +860,7 @@ pub struct VerifiedExecutionData {
 impl VerifiedExecutionData {
     pub fn new(transaction: VerifiedTransaction, effects: TransactionEffects) -> Self {
         debug_assert_eq!(transaction.digest(), effects.transaction_digest());
-        Self {
-            transaction,
-            effects,
-        }
+        Self { transaction, effects }
     }
 
     pub fn new_unchecked(data: ExecutionData) -> Self {
@@ -880,10 +871,7 @@ impl VerifiedExecutionData {
     }
 
     pub fn into_inner(self) -> ExecutionData {
-        ExecutionData {
-            transaction: self.transaction.into_inner(),
-            effects: self.effects,
-        }
+        ExecutionData { transaction: self.transaction.into_inner(), effects: self.effects }
     }
 
     pub fn digests(&self) -> ExecutionDigests {

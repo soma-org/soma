@@ -1,10 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use challenge::ChallengeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
+use model::ModelExecutor;
+use model::ModelExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
 use staking::StakingExecutor;
+use submission::SubmissionExecutor;
+use submission::SubmissionExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
 use types::{
@@ -26,9 +31,6 @@ use types::{
     },
     tx_fee::TransactionFee,
 };
-use challenge::ChallengeExecutor;
-use model::ModelExecutor;
-use submission::SubmissionExecutor;
 use validator::ValidatorExecutor;
 
 mod challenge;
@@ -91,11 +93,7 @@ pub fn execute_transaction(
     input_objects: CheckedInputObjects,
     execution_params: ExecutionOrEarlyError,
     fee_parameters: FeeParameters,
-) -> (
-    InnerTemporaryStore,
-    TransactionEffects,
-    Option<ExecutionError>,
-) {
+) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
     let shared_object_refs = input_objects.filter_shared_objects();
@@ -113,27 +111,22 @@ pub fn execute_transaction(
     let mut executor = create_executor(&kind);
 
     // Phase 1: Gas preparation (validation, smashing, base fee deduction)
-    let gas_result = match prepare_gas(
-        &mut temporary_store,
-        &kind,
-        &signer,
-        gas_payment,
-        &*executor,
-    ) {
-        Ok(result) => result,
-        Err((error_status, transaction_fee)) => {
-            // Gas preparation failed, return with error
-            return error_result(
-                tx_digest,
-                shared_object_refs,
-                transaction_dependencies,
-                epoch_id,
-                transaction_fee,
-                None, // No gas object on failure
-                error_status,
-            );
-        }
-    };
+    let gas_result =
+        match prepare_gas(&mut temporary_store, &kind, &signer, gas_payment, &*executor) {
+            Ok(result) => result,
+            Err((error_status, transaction_fee)) => {
+                // Gas preparation failed, return with error
+                return error_result(
+                    tx_digest,
+                    shared_object_refs,
+                    transaction_dependencies,
+                    epoch_id,
+                    transaction_fee,
+                    None, // No gas object on failure
+                    error_status,
+                );
+            }
+        };
 
     // Phase 2: Check for early validation errors AFTER gas is prepared
     if let Err(early_error) = execution_params {
@@ -143,9 +136,7 @@ pub fn execute_transaction(
             shared_object_refs,
             &tx_digest,
             transaction_dependencies,
-            ExecutionStatus::Failure {
-                error: early_error.clone(),
-            },
+            ExecutionStatus::Failure { error: early_error.clone() },
             epoch_id,
             gas_result.transaction_fee.clone(),
             gas_result.primary_gas_id,
@@ -200,10 +191,7 @@ pub fn execute_transaction(
                 pre_execution_deleted.clone(),
             );
 
-            (
-                ExecutionStatus::Failure { error: err.clone() },
-                Some(ExecutionError::new(err, None)),
-            )
+            (ExecutionStatus::Failure { error: err.clone() }, Some(ExecutionError::new(err, None)))
         }
     };
 
@@ -241,9 +229,7 @@ pub fn execute_transaction(
                     let error_msg = format!("Ownership invariant violated: {}", err);
                     let error_status =
                         ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
-                    execution_status = ExecutionStatus::Failure {
-                        error: error_status.clone(),
-                    };
+                    execution_status = ExecutionStatus::Failure { error: error_status.clone() };
                     execution_error = Some(ExecutionError::new(error_status, None));
                 }
             }
@@ -317,17 +303,13 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::SubmitData(_)
         | TransactionKind::ClaimRewards(_)
         | TransactionKind::ReportSubmission { .. }
-        | TransactionKind::UndoReportSubmission { .. } => {
-            Box::new(SubmissionExecutor::new())
-        }
+        | TransactionKind::UndoReportSubmission { .. } => Box::new(SubmissionExecutor::new()),
 
         // Challenge transactions
         TransactionKind::InitiateChallenge(_)
         | TransactionKind::ReportChallenge { .. }
         | TransactionKind::UndoReportChallenge { .. }
-        | TransactionKind::ClaimChallengeBond { .. } => {
-            Box::new(ChallengeExecutor::new())
-        }
+        | TransactionKind::ClaimChallengeBond { .. } => Box::new(ChallengeExecutor::new()),
     }
 }
 
@@ -356,11 +338,8 @@ fn has_assigned_shared_versions(
         if let ObjectReadResultKind::CancelledTransactionSharedObject(version) = &obj.object {
             if !version.is_cancelled() {
                 // This is a placeholder for an assigned shared version
-                if let InputObjectKind::SharedObject {
-                    id,
-                    initial_shared_version,
-                    ..
-                } = obj.input_object_kind
+                if let InputObjectKind::SharedObject { id, initial_shared_version, .. } =
+                    obj.input_object_kind
                 {
                     shared_objects_to_load.insert(id);
                     shared_object_versions.insert(id, *version);
@@ -370,11 +349,7 @@ fn has_assigned_shared_versions(
         }
     }
 
-    (
-        has_assigned_shared_version_placeholders,
-        shared_objects_to_load,
-        shared_object_versions,
-    )
+    (has_assigned_shared_version_placeholders, shared_objects_to_load, shared_object_versions)
 }
 
 /// Loads shared objects with their assigned versions
@@ -416,11 +391,7 @@ fn handle_shared_object_transaction(
     epoch_id: EpochId,
     mut temporary_store: TemporaryStore,
     gas_result: GasPreparationResult,
-) -> (
-    InnerTemporaryStore,
-    TransactionEffects,
-    Option<ExecutionError>,
-) {
+) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     // Save pre-execution state for potential reversion
     let pre_execution_objects = temporary_store.execution_results.written_objects.clone();
     let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
@@ -428,9 +399,8 @@ fn handle_shared_object_transaction(
     // Load all required shared objects
     if let Err(err) = load_shared_objects(store, &mut temporary_store, &shared_objects_to_load) {
         // Shared object loading failed - just return the current state with error
-        let execution_status = ExecutionStatus::Failure {
-            error: ExecutionFailureStatus::SomaError(err.clone()),
-        };
+        let execution_status =
+            ExecutionStatus::Failure { error: ExecutionFailureStatus::SomaError(err.clone()) };
 
         let (inner, effects) = temporary_store.into_effects(
             shared_object_refs,
@@ -445,10 +415,7 @@ fn handle_shared_object_transaction(
         return (
             inner,
             effects,
-            Some(ExecutionError::new(
-                ExecutionFailureStatus::SomaError(err),
-                None,
-            )),
+            Some(ExecutionError::new(ExecutionFailureStatus::SomaError(err), None)),
         );
     }
 
@@ -580,11 +547,7 @@ fn handle_shared_object_transaction(
 
             object_changes.insert(
                 id,
-                EffectsObjectChange {
-                    input_state,
-                    output_state,
-                    id_operation: IDOperation::None,
-                },
+                EffectsObjectChange { input_state, output_state, id_operation: IDOperation::None },
             );
         }
     }
@@ -600,9 +563,7 @@ fn handle_shared_object_transaction(
         let mut final_obj = obj.clone();
 
         // Set version to temporary_store's lamport_timestamp
-        final_obj
-            .data
-            .increment_version_to(temporary_store.lamport_timestamp);
+        final_obj.data.increment_version_to(temporary_store.lamport_timestamp);
 
         // Update the previous_transaction field
         final_obj.previous_transaction = tx_digest;
@@ -621,10 +582,8 @@ fn handle_shared_object_transaction(
 
             // Add to mutable inputs if not immutable
             if !original.owner().is_immutable() {
-                mutable_inputs.insert(
-                    *id,
-                    ((input_version, input_digest), original.owner().clone()),
-                );
+                mutable_inputs
+                    .insert(*id, ((input_version, input_digest), original.owner().clone()));
             }
 
             // Create effect object change
@@ -733,17 +692,11 @@ fn error_result(
     transaction_fee: TransactionFee,
     gas_object: Option<ObjectID>,
     error_status: ExecutionFailureStatus,
-) -> (
-    InnerTemporaryStore,
-    TransactionEffects,
-    Option<ExecutionError>,
-) {
+) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let execution_error = Some(ExecutionError::new(error_status.clone(), None));
 
     let effects = TransactionEffects::new(
-        ExecutionStatus::Failure {
-            error: error_status,
-        },
+        ExecutionStatus::Failure { error: error_status },
         epoch_id,
         shared_object_refs,
         tx_digest,

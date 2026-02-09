@@ -3,7 +3,7 @@ use rand::seq::IteratorRandom;
 use std::sync::Arc;
 use std::{collections::HashMap, result::Result};
 use tokio::sync::mpsc;
-use tonic::{async_trait, Request, Response, Status};
+use tonic::{Request, Response, Status, async_trait};
 use tracing::{debug, info};
 use types::checkpoints::VerifiedCheckpoint;
 use types::sync::channel_manager::PeerInfo;
@@ -47,14 +47,8 @@ where
 
         let PushCheckpointSummaryRequest { checkpoint } = request.into_inner();
 
-        if !self
-            .peer_heights
-            .write()
-            .update_peer_info(peer_id, checkpoint.clone(), None)
-        {
-            return Ok(Response::new(PushCheckpointSummaryResponse {
-                _unused: true,
-            }));
+        if !self.peer_heights.write().update_peer_info(peer_id, checkpoint.clone(), None) {
+            return Ok(Response::new(PushCheckpointSummaryResponse { _unused: true }));
         }
 
         let highest_verified_checkpoint = *self
@@ -71,9 +65,7 @@ where
             }
         }
 
-        Ok(Response::new(PushCheckpointSummaryResponse {
-            _unused: true,
-        }))
+        Ok(Response::new(PushCheckpointSummaryResponse { _unused: true }))
     }
 
     async fn get_checkpoint_summary(
@@ -89,9 +81,9 @@ where
             GetCheckpointSummaryRequest::ByDigest(digest) => {
                 self.store.get_checkpoint_by_digest(&digest)
             }
-            GetCheckpointSummaryRequest::BySequenceNumber(sequence_number) => self
-                .store
-                .get_checkpoint_by_sequence_number(sequence_number),
+            GetCheckpointSummaryRequest::BySequenceNumber(sequence_number) => {
+                self.store.get_checkpoint_by_sequence_number(sequence_number)
+            }
         }
         .map(VerifiedCheckpoint::into_inner);
 
@@ -140,12 +132,7 @@ where
         let their_info = request.into_inner().own_info;
 
         let known_peers = if state.known_peers.len() < MAX_PEERS_TO_SEND {
-            state
-                .known_peers
-                .values()
-                .map(|e| e.inner())
-                .cloned()
-                .collect()
+            state.known_peers.values().map(|e| e.inner()).cloned().collect()
         } else {
             let mut rng = rand::thread_rng();
             // TODO: prefer returning peers that we are connected to as they are known-good
@@ -175,11 +162,7 @@ where
                 }
             }
 
-            known_peers
-                .into_values()
-                .map(|e| e.inner())
-                .cloned()
-                .collect()
+            known_peers.into_values().map(|e| e.inner()).cloned().collect()
         };
 
         if let Err(e) = self.discovery_sender.try_send(their_info.clone()) {
@@ -189,9 +172,6 @@ where
         }
         info!("Sending known peers and our info {}", own_info.peer_id);
 
-        Ok(Response::new(GetKnownPeersResponse {
-            own_info,
-            known_peers,
-        }))
+        Ok(Response::new(GetKnownPeersResponse { own_info, known_peers }))
     }
 }

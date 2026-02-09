@@ -27,9 +27,7 @@ pub struct ReconfigState {
 
 impl Default for ReconfigState {
     fn default() -> Self {
-        Self {
-            status: ReconfigCertStatus::AcceptAllCerts,
-        }
+        Self { status: ReconfigCertStatus::AcceptAllCerts }
     }
 }
 

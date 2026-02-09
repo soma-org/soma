@@ -40,20 +40,12 @@ fn test_v1_rope_ones() {
     let input_tensor: Tensor<TestBackend, 4> = Tensor::from_primitive(primitive);
     let positions: Tensor<TestBackend, 2, Int> = Tensor::from_data([[1]], &device);
 
-    let output = apply_rope(
-        input_tensor,
-        positions,
-        head_dim,
-        max_wavelength,
-        scale_factor,
-    );
+    let output = apply_rope(input_tensor, positions, head_dim, max_wavelength, scale_factor);
 
     let expected_output =
         Tensor::<TestBackend, 4>::from_floats([[[[-0.30116868, 1.38177323]]]], &device);
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
 
 #[derive(Module, Debug)]
@@ -97,12 +89,7 @@ fn test_v1_attention() {
     );
     tensors.insert(
         "mha.query.bias".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 2,
-            &vec![head_dim * num_heads],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 2, &vec![head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.key.weight".to_string(),
@@ -115,12 +102,7 @@ fn test_v1_attention() {
     );
     tensors.insert(
         "mha.key.bias".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 4,
-            &vec![head_dim * num_heads],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 4, &vec![head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.value.weight".to_string(),
@@ -133,12 +115,7 @@ fn test_v1_attention() {
     );
     tensors.insert(
         "mha.value.bias".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 6,
-            &vec![head_dim * num_heads],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 6, &vec![head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.output.weight".to_string(),
@@ -151,12 +128,7 @@ fn test_v1_attention() {
     );
     tensors.insert(
         "mha.output.bias".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 8,
-            &vec![head_dim * num_heads],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 8, &vec![head_dim * num_heads], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -165,18 +137,13 @@ fn test_v1_attention() {
 
     model.load_from(&mut store).unwrap();
 
-    let input_data = normal_array(
-        seed + 9,
-        &vec![batch_size, seq_len, num_heads * head_dim],
-        0.0,
-        1.0,
-    )
-    .to_tensor_data()
-    .unwrap();
+    let input_data =
+        normal_array(seed + 9, &vec![batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap();
     let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
-    let positions: Tensor<TestBackend, 2, Int> = Tensor::arange(0..seq_len as i64, &device)
-        .unsqueeze()
-        .repeat_dim(0, batch_size);
+    let positions: Tensor<TestBackend, 2, Int> =
+        Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     println!("{}", positions);
     let mha_input = MhaInput::new(
         input_tensor,
@@ -200,7 +167,5 @@ fn test_v1_attention() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

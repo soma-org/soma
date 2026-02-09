@@ -27,12 +27,7 @@ fn test_v1_pwff_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 1,
-            &vec![embedding_dim, hidden_dim],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 1, &vec![embedding_dim, hidden_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
@@ -40,12 +35,7 @@ fn test_v1_pwff_ones() {
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        ArrayWrapper(normal_array(
-            seed + 3,
-            &vec![hidden_dim, embedding_dim],
-            0.0,
-            1.0,
-        )),
+        ArrayWrapper(normal_array(seed + 3, &vec![hidden_dim, embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
@@ -60,9 +50,7 @@ fn test_v1_pwff_ones() {
         .with_hidden_dim(hidden_dim)
         .init(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&vec![embedding_dim], 1.0)
-        .to_tensor_data()
-        .unwrap();
+    let input_data = constant_array(&vec![embedding_dim], 1.0).to_tensor_data().unwrap();
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
 
@@ -71,7 +59,5 @@ fn test_v1_pwff_ones() {
         &device,
     );
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

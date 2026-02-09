@@ -55,10 +55,7 @@ pub fn derive_balance_changes(
                 return None;
             }
 
-            Some(BalanceChange {
-                address: *address,
-                amount,
-            })
+            Some(BalanceChange { address: *address, amount })
         })
         .collect()
 }
@@ -100,10 +97,7 @@ pub fn derive_balance_changes_2(
                 return None;
             }
 
-            Some(BalanceChange {
-                address: *address,
-                amount,
-            })
+            Some(BalanceChange { address: *address, amount })
         })
         .collect()
 }

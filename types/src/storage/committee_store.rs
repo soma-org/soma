@@ -11,10 +11,9 @@ use crate::{
 };
 use parking_lot::RwLock;
 use store::{
-    nondeterministic,
-    rocks::{default_db_options, DBMap, DBOptions},
+    DBMapUtils, Map as _, nondeterministic,
+    rocks::{DBMap, DBOptions, default_db_options},
     rocksdb::Options,
-    DBMapUtils, Map as _,
 };
 
 pub struct CommitteeStore {
@@ -33,14 +32,8 @@ impl CommitteeStore {
     pub fn new(path: PathBuf, genesis_committee: &Committee, db_options: Option<Options>) -> Self {
         let tables = CommitteeStoreTables::open_tables_read_write(path, db_options, None);
         // );
-        let mut store = Self {
-            tables,
-            cache: RwLock::new(HashMap::new()),
-        };
-        if store
-            .database_is_empty()
-            .expect("CommitteeStore initialization failed")
-        {
+        let mut store = Self { tables, cache: RwLock::new(HashMap::new()) };
+        if store.database_is_empty().expect("CommitteeStore initialization failed") {
             store
                 .init_genesis_committee(genesis_committee.clone())
                 .expect("Init genesis committee data must not fail");
@@ -66,12 +59,8 @@ impl CommitteeStore {
             // If somehow we already have this committee in the store, they must be the same.
             assert_eq!(&*old_committee, new_committee);
         } else {
-            self.tables
-                .committee_map
-                .insert(&new_committee.epoch, new_committee)?;
-            self.cache
-                .write()
-                .insert(new_committee.epoch, Arc::new(new_committee.clone()));
+            self.tables.committee_map.insert(&new_committee.epoch, new_committee)?;
+            self.cache.write().insert(new_committee.epoch, Arc::new(new_committee.clone()));
         }
         Ok(())
     }
@@ -111,12 +100,6 @@ impl CommitteeStore {
     // }
 
     fn database_is_empty(&self) -> SomaResult<bool> {
-        Ok(self
-            .tables
-            .committee_map
-            .safe_iter()
-            .next()
-            .transpose()?
-            .is_none())
+        Ok(self.tables.committee_map.safe_iter().next().transpose()?.is_none())
     }
 }

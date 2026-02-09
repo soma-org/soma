@@ -21,14 +21,11 @@ impl ResponseExt for http::header::HeaderMap {
     }
 
     fn chain(&self) -> Option<&str> {
-        self.get(headers::X_SOMA_CHAIN)
-            .and_then(|h| h.to_str().ok())
+        self.get(headers::X_SOMA_CHAIN).and_then(|h| h.to_str().ok())
     }
 
     fn epoch(&self) -> Option<u64> {
-        self.get(headers::X_SOMA_EPOCH)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|s| s.parse().ok())
+        self.get(headers::X_SOMA_EPOCH).and_then(|h| h.to_str().ok()).and_then(|s| s.parse().ok())
     }
 
     fn checkpoint_height(&self) -> Option<u64> {
@@ -44,8 +41,7 @@ impl ResponseExt for http::header::HeaderMap {
     }
 
     fn timestamp(&self) -> Option<&str> {
-        self.get(headers::X_SOMA_TIMESTAMP)
-            .and_then(|h| h.to_str().ok())
+        self.get(headers::X_SOMA_TIMESTAMP).and_then(|h| h.to_str().ok())
     }
 
     fn lowest_available_checkpoint(&self) -> Option<u64> {

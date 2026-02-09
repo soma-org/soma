@@ -58,11 +58,7 @@ impl<C: Clone> SafeClient<C> {
         committee_store: Arc<CommitteeStore>,
         address: AuthorityPublicKeyBytes,
     ) -> Self {
-        Self {
-            authority_client,
-            committee_store,
-            address,
-        }
+        Self { authority_client, committee_store, address }
     }
 }
 
@@ -140,9 +136,10 @@ impl<C: Clone> SafeClient<C> {
         match status {
             TransactionStatus::Signed(signed) => {
                 self.get_committee(&signed.epoch)?;
-                Ok(PlainTransactionInfoResponse::Signed(
-                    SignedTransaction::new_from_data_and_sig(transaction.into_data(), signed),
-                ))
+                Ok(PlainTransactionInfoResponse::Signed(SignedTransaction::new_from_data_and_sig(
+                    transaction.into_data(),
+                    signed,
+                )))
             }
             TransactionStatus::Executed(cert_opt, effects) => {
                 let signed_effects = self.check_signed_effects_plain(digest, effects, None)?;
@@ -159,10 +156,7 @@ impl<C: Clone> SafeClient<C> {
                                 error: e.to_string(),
                             }
                         })?;
-                        Ok(PlainTransactionInfoResponse::ExecutedWithCert(
-                            ct,
-                            signed_effects,
-                        ))
+                        Ok(PlainTransactionInfoResponse::ExecutedWithCert(ct, signed_effects))
                     }
                     None => Ok(PlainTransactionInfoResponse::ExecutedWithoutCert(
                         transaction,
@@ -206,9 +200,7 @@ where
         request: SubmitTxRequest,
         client_addr: Option<SocketAddr>,
     ) -> Result<SubmitTxResponse, SomaError> {
-        self.authority_client
-            .submit_transaction(request, client_addr)
-            .await
+        self.authority_client.submit_transaction(request, client_addr).await
     }
 
     /// Wait for effects of a transaction that has been submitted to the network
@@ -218,10 +210,8 @@ where
         request: WaitForEffectsRequest,
         client_addr: Option<SocketAddr>,
     ) -> Result<WaitForEffectsResponse, SomaError> {
-        let wait_for_effects_resp = self
-            .authority_client
-            .wait_for_effects(request, client_addr)
-            .await?;
+        let wait_for_effects_resp =
+            self.authority_client.wait_for_effects(request, client_addr).await?;
 
         match &wait_for_effects_resp {
             WaitForEffectsResponse::Executed {
@@ -246,10 +236,8 @@ where
         client_addr: Option<SocketAddr>,
     ) -> Result<PlainTransactionInfoResponse, SomaError> {
         let digest = *transaction.digest();
-        let response = self
-            .authority_client
-            .handle_transaction(transaction.clone(), client_addr)
-            .await?;
+        let response =
+            self.authority_client.handle_transaction(transaction.clone(), client_addr).await?;
         let response = check_error!(
             self.address,
             self.check_transaction_info(&digest, transaction, response.status),
@@ -267,10 +255,7 @@ where
 
             for object in objects {
                 let object_ref = object.compute_object_reference();
-                if expected
-                    .get(&object_ref.0)
-                    .is_none_or(|expect| &object_ref != expect)
-                {
+                if expected.get(&object_ref.0).is_none_or(|expect| &object_ref != expect) {
                     return Err(SomaError::ByzantineAuthoritySuspicion {
                         authority: self.address,
                         reason: "Returned object that wasn't present in effects".to_string(),
@@ -311,20 +296,12 @@ where
                 .map(|(object_ref, _, _)| (object_ref.0, object_ref)),
         )?;
 
-        Ok(HandleCertificateResponse {
-            effects,
-            input_objects,
-            output_objects,
-        })
+        Ok(HandleCertificateResponse { effects, input_objects, output_objects })
     }
 
     fn verify_executed_data(
         &self,
-        ExecutedData {
-            effects,
-            input_objects,
-            output_objects,
-        }: ExecutedData,
+        ExecutedData { effects, input_objects, output_objects }: ExecutedData,
     ) -> SomaResult<()> {
         // Check Input Objects
         self.verify_objects(
@@ -355,10 +332,7 @@ where
     ) -> Result<HandleCertificateResponse, SomaError> {
         let digest = *request.certificate.digest();
 
-        let response = self
-            .authority_client
-            .handle_certificate(request, client_addr)
-            .await?;
+        let response = self.authority_client.handle_certificate(request, client_addr).await?;
 
         let verified = check_error!(
             self.address,
@@ -372,10 +346,7 @@ where
         &self,
         request: ObjectInfoRequest,
     ) -> Result<VerifiedObjectInfoResponse, SomaError> {
-        let response = self
-            .authority_client
-            .handle_object_info_request(request.clone())
-            .await?;
+        let response = self.authority_client.handle_object_info_request(request.clone()).await?;
         let response = self
             .check_object_response(&request, response)
             .tap_err(|err| error!(?err, authority=?self.address, "Client error in handle_object_info_request"))?;
@@ -390,10 +361,8 @@ where
         &self,
         request: TransactionInfoRequest,
     ) -> Result<PlainTransactionInfoResponse, SomaError> {
-        let transaction_info = self
-            .authority_client
-            .handle_transaction_info_request(request.clone())
-            .await?;
+        let transaction_info =
+            self.authority_client.handle_transaction_info_request(request.clone()).await?;
 
         let transaction = Transaction::new(transaction_info.transaction);
         let transaction_info = self.check_transaction_info(
@@ -435,9 +404,9 @@ where
             // it's an error.
             // If content is not requested, or checkpoint is None, yet we are still getting content,
             // it's an error.
-            (true, _, None) | (false, _, Some(_)) | (_, _, Some(_)) => Err(SomaError::from(
-                "Checkpoint contents inconsistent with request",
-            )),
+            (true, _, None) | (false, _, Some(_)) | (_, _, Some(_)) => {
+                Err(SomaError::from("Checkpoint contents inconsistent with request"))
+            }
             _ => Ok(()),
         }
     }
@@ -448,10 +417,7 @@ where
         response: &CheckpointResponse,
     ) -> SomaResult {
         // Verify response data was correct for request
-        let CheckpointResponse {
-            checkpoint,
-            contents,
-        } = &response;
+        let CheckpointResponse { checkpoint, contents } = &response;
 
         if let Some(CheckpointSummaryResponse::Certified(checkpoint)) = checkpoint {
             // Checks that the sequence number is correct.
@@ -470,14 +436,10 @@ where
         &self,
         request: CheckpointRequest,
     ) -> Result<CheckpointResponse, SomaError> {
-        let resp = self
-            .authority_client
-            .handle_checkpoint(request.clone())
-            .await?;
-        self.verify_checkpoint_response(&request, &resp)
-            .tap_err(|err| {
-                error!(?err, authority=?self.address, "Client error in handle_checkpoint");
-            })?;
+        let resp = self.authority_client.handle_checkpoint(request.clone()).await?;
+        self.verify_checkpoint_response(&request, &resp).tap_err(|err| {
+            error!(?err, authority=?self.address, "Client error in handle_checkpoint");
+        })?;
         Ok(resp)
     }
 

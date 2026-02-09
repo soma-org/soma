@@ -96,10 +96,7 @@ impl<C: NetworkClient> RoundProber<C> {
                 }
             }
         });
-        RoundProberHandle {
-            prober_task,
-            shutdown_notify,
-        }
+        RoundProberHandle { prober_task, shutdown_notify }
     }
 
     // Probes each peer for the latest rounds they received from others.
@@ -130,14 +127,9 @@ impl<C: NetworkClient> RoundProber<C> {
         let mut highest_accepted_rounds =
             vec![vec![0; self.context.committee.size()]; self.context.committee.size()];
 
-        let blocks = self
-            .dag_state
-            .read()
-            .get_last_cached_block_per_authority(Round::MAX);
-        let local_highest_accepted_rounds = blocks
-            .into_iter()
-            .map(|(block, _)| block.round())
-            .collect::<Vec<_>>();
+        let blocks = self.dag_state.read().get_last_cached_block_per_authority(Round::MAX);
+        let local_highest_accepted_rounds =
+            blocks.into_iter().map(|(block, _)| block.round()).collect::<Vec<_>>();
         let last_proposed_round = local_highest_accepted_rounds[own_index];
 
         // For our own index, the highest received & accepted round is our last
@@ -196,14 +188,10 @@ impl<C: NetworkClient> RoundProber<C> {
         self.round_tracker
             .write()
             .update_from_probe(highest_accepted_rounds, highest_received_rounds);
-        let propagation_delay = self
-            .round_tracker
-            .read()
-            .calculate_propagation_delay(last_proposed_round);
+        let propagation_delay =
+            self.round_tracker.read().calculate_propagation_delay(last_proposed_round);
 
-        let _ = self
-            .core_thread_dispatcher
-            .set_propagation_delay(propagation_delay);
+        let _ = self.core_thread_dispatcher.set_propagation_delay(propagation_delay);
 
         propagation_delay
     }

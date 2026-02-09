@@ -20,10 +20,7 @@ pub struct EpochStartConfiguration {
 
 impl EpochStartConfiguration {
     pub fn new(system_state: EpochStartSystemState, epoch_digest: CheckpointDigest) -> Self {
-        EpochStartConfiguration {
-            system_state,
-            epoch_digest,
-        }
+        EpochStartConfiguration { system_state, epoch_digest }
     }
 
     pub fn epoch_data(&self) -> EpochData {
@@ -79,19 +76,11 @@ impl EpochData {
         epoch_start_timestamp: CheckpointTimestamp,
         epoch_digest: CheckpointDigest,
     ) -> Self {
-        Self {
-            epoch_id,
-            epoch_start_timestamp,
-            epoch_digest,
-        }
+        Self { epoch_id, epoch_start_timestamp, epoch_digest }
     }
 
     pub fn new_genesis(epoch_start_timestamp: CheckpointTimestamp) -> Self {
-        Self {
-            epoch_id: 0,
-            epoch_start_timestamp,
-            epoch_digest: Default::default(),
-        }
+        Self { epoch_id: 0, epoch_start_timestamp, epoch_digest: Default::default() }
     }
 
     pub fn new_from_epoch_checkpoint(

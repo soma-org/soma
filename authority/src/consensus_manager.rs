@@ -15,13 +15,13 @@ use async_trait::async_trait;
 use consensus::{CommitConsumerArgs, CommitConsumerMonitor, ConsensusAuthority};
 use fastcrypto::traits::KeyPair as _;
 use protocol_config::ProtocolVersion;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::time::{sleep, timeout};
 use tracing::{error, info};
 use types::committee::Committee;
+use types::consensus::ConsensusPosition;
 use types::consensus::commit::CommitIndex;
 use types::consensus::context::Clock;
-use types::consensus::ConsensusPosition;
 use types::parameters::Parameters;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::{
@@ -119,9 +119,8 @@ impl ConsensusManager {
 
         self.consensus_client.set(self.client.clone());
 
-        let consensus_config = node_config
-            .consensus_config()
-            .expect("consensus_config should exist");
+        let consensus_config =
+            node_config.consensus_config().expect("consensus_config should exist");
 
         let parameters = Parameters {
             db_path: self.get_store_path(epoch),
@@ -302,9 +301,7 @@ pub struct UpdatableConsensusClient {
 
 impl UpdatableConsensusClient {
     pub fn new() -> Self {
-        Self {
-            client: ArcSwapOption::empty(),
-        }
+        Self { client: ArcSwapOption::empty() }
     }
 
     async fn get(&self) -> Arc<Arc<dyn ConsensusClient>> {
@@ -324,10 +321,7 @@ impl UpdatableConsensusClient {
             return client;
         }
 
-        panic!(
-            "Timed out after {:?} waiting for Consensus to start!",
-            START_TIMEOUT,
-        );
+        panic!("Timed out after {:?} waiting for Consensus to start!", START_TIMEOUT,);
     }
 
     pub fn set(&self, client: Arc<dyn ConsensusClient>) {
@@ -360,9 +354,7 @@ impl ReplayWaiter {
     pub(crate) fn new(
         consumer_monitor_receiver: broadcast::Receiver<Arc<CommitConsumerMonitor>>,
     ) -> Self {
-        Self {
-            consumer_monitor_receiver,
-        }
+        Self { consumer_monitor_receiver }
     }
 
     pub(crate) async fn wait_for_replay(mut self) {
@@ -372,9 +364,7 @@ impl ReplayWaiter {
                 continue;
             };
             info!("Waiting for consensus handler to finish replaying ...");
-            monitor
-                .replay_to_consumer_last_processed_commit_complete()
-                .await;
+            monitor.replay_to_consumer_last_processed_commit_complete().await;
             break;
         }
     }
@@ -382,8 +372,6 @@ impl ReplayWaiter {
 
 impl Clone for ReplayWaiter {
     fn clone(&self) -> Self {
-        Self {
-            consumer_monitor_receiver: self.consumer_monitor_receiver.resubscribe(),
-        }
+        Self { consumer_monitor_receiver: self.consumer_monitor_receiver.resubscribe() }
     }
 }

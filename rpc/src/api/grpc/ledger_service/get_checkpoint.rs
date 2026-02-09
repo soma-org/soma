@@ -23,9 +23,7 @@ pub fn get_checkpoint(
     request: GetCheckpointRequest,
 ) -> Result<GetCheckpointResponse, RpcError> {
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Checkpoint>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -84,10 +82,8 @@ pub fn get_checkpoint(
         if read_mask.contains(Checkpoint::TRANSACTIONS_FIELD.name)
             || read_mask.contains(Checkpoint::OBJECTS_FIELD.name)
         {
-            let checkpoint_data = service
-                .reader
-                .inner()
-                .get_checkpoint_data(verified_summary, core_contents)?;
+            let checkpoint_data =
+                service.reader.inner().get_checkpoint_data(verified_summary, core_contents)?;
 
             if let Some(submask) = read_mask
                 .subtree(Checkpoint::OBJECTS_FIELD)
@@ -109,15 +105,14 @@ pub fn get_checkpoint(
                         let balance_changes = submask
                             .contains(ExecutedTransaction::BALANCE_CHANGES_FIELD)
                             .then(|| {
-                                service
-                                    .reader
-                                    .get_transaction_info(&t.transaction.digest())
-                                    .map(|info| {
+                                service.reader.get_transaction_info(&t.transaction.digest()).map(
+                                    |info| {
                                         info.balance_changes
                                             .into_iter()
                                             .map(crate::proto::soma::BalanceChange::from)
                                             .collect::<Vec<_>>()
-                                    })
+                                    },
+                                )
                             })
                             .flatten()
                             .unwrap_or_default();

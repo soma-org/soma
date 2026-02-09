@@ -57,10 +57,7 @@ impl ReadWriteOptions {
 
 impl Default for ReadWriteOptions {
     fn default() -> Self {
-        Self {
-            ignore_range_deletions: true,
-            log_value_hash: false,
-        }
+        Self { ignore_range_deletions: true, log_value_hash: false }
     }
 }
 
@@ -88,8 +85,7 @@ impl DBOptions {
     // specify optimize_for_large_values_no_scan().
     pub fn optimize_for_point_lookup(mut self, block_cache_size_mb: usize) -> DBOptions {
         // NOTE: this overwrites the block options.
-        self.options
-            .optimize_for_point_lookup(block_cache_size_mb as u64);
+        self.options.optimize_for_point_lookup(block_cache_size_mb as u64);
         self
     }
 
@@ -103,8 +99,7 @@ impl DBOptions {
 
         // Blob settings.
         self.options.set_enable_blob_files(true);
-        self.options
-            .set_blob_compression_type(rocksdb::DBCompressionType::Lz4);
+        self.options.set_blob_compression_type(rocksdb::DBCompressionType::Lz4);
         self.options.set_enable_blob_gc(true);
         // Since each blob can have non-trivial size overhead, and compression does not work across blobs,
         // set a min blob size in bytes to so small transactions and effects are kept in sst files.
@@ -119,8 +114,7 @@ impl DBOptions {
         // Since large blobs are not in sst files, reduce the target file size and base level
         // target size.
         let target_file_size_base = 64 << 20;
-        self.options
-            .set_target_file_size_base(target_file_size_base);
+        self.options.set_target_file_size_base(target_file_size_base);
         // Level 1 default to 64MiB * 4 ~ 256MiB.
         let max_level_zero_file_num = read_size_from_env(ENV_VAR_L0_NUM_FILES_COMPACTION_TRIGGER)
             .unwrap_or(DEFAULT_L0_NUM_FILES_COMPACTION_TRIGGER);
@@ -139,10 +133,8 @@ impl DBOptions {
 
     // Optimize DB receiving significant insertions.
     pub fn optimize_db_for_write_throughput(mut self, db_max_write_buffer_gb: u64) -> DBOptions {
-        self.options
-            .set_db_write_buffer_size(db_max_write_buffer_gb as usize * 1024 * 1024 * 1024);
-        self.options
-            .set_max_total_wal_size(db_max_write_buffer_gb * 1024 * 1024 * 1024);
+        self.options.set_db_write_buffer_size(db_max_write_buffer_gb as usize * 1024 * 1024 * 1024);
+        self.options.set_max_total_wal_size(db_max_write_buffer_gb * 1024 * 1024 * 1024);
         self
     }
 
@@ -157,11 +149,9 @@ impl DBOptions {
         // Increase write buffers to keep to 6 before slowing down writes.
         let max_write_buffer_number = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_NUMBER)
             .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_NUMBER);
-        self.options
-            .set_max_write_buffer_number(max_write_buffer_number.try_into().unwrap());
+        self.options.set_max_write_buffer_number(max_write_buffer_number.try_into().unwrap());
         // Keep 1 write buffer so recent writes can be read from memory.
-        self.options
-            .set_max_write_buffer_size_to_maintain((write_buffer_size).try_into().unwrap());
+        self.options.set_max_write_buffer_size_to_maintain((write_buffer_size).try_into().unwrap());
 
         // Increase compaction trigger for level 0 to 6.
         let max_level_zero_file_num = read_size_from_env(ENV_VAR_L0_NUM_FILES_COMPACTION_TRIGGER)
@@ -203,20 +193,16 @@ impl DBOptions {
         // Increase write buffers to keep to 6 before slowing down writes.
         let max_write_buffer_number = read_size_from_env(ENV_VAR_MAX_WRITE_BUFFER_NUMBER)
             .unwrap_or(DEFAULT_MAX_WRITE_BUFFER_NUMBER);
-        self.options
-            .set_max_write_buffer_number(max_write_buffer_number.try_into().unwrap());
+        self.options.set_max_write_buffer_number(max_write_buffer_number.try_into().unwrap());
         // Keep 1 write buffer so recent writes can be read from memory.
-        self.options
-            .set_max_write_buffer_size_to_maintain((write_buffer_size).try_into().unwrap());
+        self.options.set_max_write_buffer_size_to_maintain((write_buffer_size).try_into().unwrap());
 
         // Switch to universal compactions.
-        self.options
-            .set_compaction_style(rocksdb::DBCompactionStyle::Universal);
+        self.options.set_compaction_style(rocksdb::DBCompactionStyle::Universal);
         let mut compaction_options = rocksdb::UniversalCompactOptions::default();
         compaction_options.set_max_size_amplification_percent(10000);
         compaction_options.set_stop_style(rocksdb::UniversalCompactionStopStyle::Similar);
-        self.options
-            .set_universal_compaction_options(&compaction_options);
+        self.options.set_universal_compaction_options(&compaction_options);
 
         let max_level_zero_file_num = read_size_from_env(ENV_VAR_L0_NUM_FILES_COMPACTION_TRIGGER)
             .unwrap_or(DEFAULT_UNIVERSAL_COMPACTION_L0_NUM_FILES_COMPACTION_TRIGGER);
@@ -250,11 +236,10 @@ impl DBOptions {
         block_cache_size_mb: usize,
         block_size_bytes: usize,
     ) -> DBOptions {
-        self.options
-            .set_block_based_table_factory(&get_block_options(
-                block_cache_size_mb,
-                block_size_bytes,
-            ));
+        self.options.set_block_based_table_factory(&get_block_options(
+            block_cache_size_mb,
+            block_size_bytes,
+        ));
         self
     }
 
@@ -338,10 +323,7 @@ pub fn default_db_options() -> DBOptions {
     // Set memtable bloomfilter.
     opt.set_memtable_prefix_bloom_ratio(0.02);
 
-    DBOptions {
-        options: opt,
-        rw_options: ReadWriteOptions::default(),
-    }
+    DBOptions { options: opt, rw_options: ReadWriteOptions::default() }
 }
 
 fn get_block_options(block_cache_size_mb: usize, block_size_bytes: usize) -> BlockBasedOptions {
@@ -365,11 +347,6 @@ pub fn read_size_from_env(var_name: &str) -> Option<usize> {
     env::var(var_name)
         .ok()?
         .parse::<usize>()
-        .tap_err(|e| {
-            warn!(
-                "Env var {} does not contain valid usize integer: {}",
-                var_name, e
-            )
-        })
+        .tap_err(|e| warn!("Env var {} does not contain valid usize integer: {}", var_name, e))
         .ok()
 }

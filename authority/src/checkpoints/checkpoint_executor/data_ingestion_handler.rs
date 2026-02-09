@@ -20,10 +20,7 @@ pub(crate) fn store_checkpoint_locally(
     let file_name = format!("{}.chk", checkpoint_data.checkpoint_summary.sequence_number);
 
     std::fs::create_dir_all(path).map_err(|err| {
-        SomaError::FileIOError(format!(
-            "failed to save full checkpoint content locally {:?}",
-            err
-        ))
+        SomaError::FileIOError(format!("failed to save full checkpoint content locally {:?}", err))
     })?;
 
     bcs::to_bytes(&checkpoint_data)
@@ -46,11 +43,7 @@ pub(crate) fn load_checkpoint(
     transaction_cache_reader: &dyn TransactionCacheRead,
 ) -> SomaResult<Checkpoint> {
     let mut transactions = Vec::with_capacity(ckpt_tx_data.transactions.len());
-    for (tx, fx) in ckpt_tx_data
-        .transactions
-        .iter()
-        .zip(ckpt_tx_data.effects.iter())
-    {
+    for (tx, fx) in ckpt_tx_data.transactions.iter().zip(ckpt_tx_data.effects.iter()) {
         let transaction = ExecutedTransaction {
             transaction: tx.transaction_data().clone(),
             signatures: tx.tx_signatures().to_vec(),

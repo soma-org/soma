@@ -125,14 +125,8 @@ impl Message for NodeInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PeerEvent {
-    NewPeer {
-        peer_id: PeerId,
-        address: Multiaddr,
-    },
-    LostPeer {
-        peer_id: PeerId,
-        reason: DisconnectReason,
-    },
+    NewPeer { peer_id: PeerId, address: Multiaddr },
+    LostPeer { peer_id: PeerId, reason: DisconnectReason },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

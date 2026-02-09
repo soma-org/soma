@@ -22,8 +22,8 @@ use types::{
     crypto::NetworkKeyPair,
     storage::write_store::WriteStore,
     sync::{
-        active_peers::ActivePeers, channel_manager::ChannelManagerRequest, PeerEvent,
-        SignedNodeInfo,
+        PeerEvent, SignedNodeInfo, active_peers::ActivePeers,
+        channel_manager::ChannelManagerRequest,
     },
 };
 
@@ -52,13 +52,7 @@ impl UnstartedDiscovery {
         channel_manager_tx: mpsc::Sender<ChannelManagerRequest>,
         keypair: NetworkKeyPair,
     ) -> (DiscoveryEventLoop, DiscoveryHandle) {
-        let Self {
-            handle,
-            config,
-            shutdown_handle,
-            state,
-            their_info_receiver,
-        } = self;
+        let Self { handle, config, shutdown_handle, state, their_info_receiver } = self;
 
         let discovery_config = config.discovery.clone().unwrap_or_default();
         let allowlisted_peers = Arc::new(
@@ -68,8 +62,7 @@ impl UnstartedDiscovery {
                 .into_iter()
                 .map(|ap| (ap.peer_id, ap.address))
                 .chain(config.seed_peers.iter().filter_map(|peer| {
-                    peer.peer_id
-                        .map(|peer_id| (peer_id, Some(peer.address.clone())))
+                    peer.peer_id.map(|peer_id| (peer_id, Some(peer.address.clone())))
                 }))
                 .collect::<HashMap<_, _>>(),
         );
@@ -122,10 +115,7 @@ impl StateSyncHandle {
     /// persistent storage. This includes CheckpointContents and all Transactions and
     /// TransactionEffects included therein.
     pub async fn send_checkpoint(&self, checkpoint: VerifiedCheckpoint) {
-        self.sender
-            .send(StateSyncMessage::VerifiedCheckpoint(Box::new(checkpoint)))
-            .await
-            .unwrap()
+        self.sender.send(StateSyncMessage::VerifiedCheckpoint(Box::new(checkpoint))).await.unwrap()
     }
 
     /// Subscribe to the stream of checkpoints that have been fully synchronized and downloaded.
@@ -207,21 +197,13 @@ pub struct P2pBuilder<S> {
 impl P2pBuilder<()> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self {
-            store: None,
-            config: None,
-            archive_config: None,
-        }
+        Self { store: None, config: None, archive_config: None }
     }
 }
 
 impl<S> P2pBuilder<S> {
     pub fn store<NewStore>(self, store: NewStore) -> P2pBuilder<NewStore> {
-        P2pBuilder {
-            store: Some(store),
-            config: self.config,
-            archive_config: None,
-        }
+        P2pBuilder { store: Some(store), config: self.config, archive_config: None }
     }
 
     pub fn config(mut self, config: P2pConfig) -> Self {
@@ -239,13 +221,7 @@ impl<S> P2pBuilder<S>
 where
     S: WriteStore + Clone + Send + Sync + 'static,
 {
-    pub fn build(
-        self,
-    ) -> (
-        UnstartedDiscovery,
-        UnstartedStateSync<S>,
-        P2pServer<P2pService<S>>,
-    ) {
+    pub fn build(self) -> (UnstartedDiscovery, UnstartedStateSync<S>, P2pServer<P2pService<S>>) {
         let (discovery_builder, state_sync_builder, server) = self.build_internal();
         let server = P2pServer::new(server);
 
@@ -261,9 +237,7 @@ where
         let state_sync_config = config.state_sync.clone().unwrap();
 
         let (discovery_sender, discovery_receiver) = oneshot::channel();
-        let discovery_handle = DiscoveryHandle {
-            _shutdown_handle: Arc::new(discovery_sender),
-        };
+        let discovery_handle = DiscoveryHandle { _shutdown_handle: Arc::new(discovery_sender) };
 
         let (state_sync_sender, mailbox) = mpsc::channel(state_sync_config.mailbox_capacity());
         let (their_info_sender, their_info_receiver) =
@@ -286,12 +260,9 @@ where
         .pipe(RwLock::new)
         .pipe(Arc::new);
 
-        let discovery_state = DiscoveryState {
-            our_info: None,
-            known_peers: HashMap::default(),
-        }
-        .pipe(RwLock::new)
-        .pipe(Arc::new);
+        let discovery_state = DiscoveryState { our_info: None, known_peers: HashMap::default() }
+            .pipe(RwLock::new)
+            .pipe(Arc::new);
 
         let server = P2pService {
             discovery_state: discovery_state.clone(),

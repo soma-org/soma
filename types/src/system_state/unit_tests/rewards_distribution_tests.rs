@@ -62,21 +62,11 @@ mod rewards_distribution_tests {
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                115_000_000_000,
-                225_000_000_000,
-                330_000_000_000,
-                430_000_000_000,
-            ],
+            vec![115_000_000_000, 225_000_000_000, 330_000_000_000, 430_000_000_000],
         );
 
         // Add a lot more stake to validator 2 to test voting power cap
-        stake_with(
-            &mut system_state,
-            validator_addr_2(),
-            validator_addr_2(),
-            720,
-        );
+        stake_with(&mut system_state, validator_addr_2(), validator_addr_2(), 720);
 
         // Advance epoch to activate new stake
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -90,12 +80,7 @@ mod rewards_distribution_tests {
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                128_040_000_000,
-                976_740_000_000,
-                354_860_000_000,
-                460_360_000_000,
-            ],
+            vec![128_040_000_000, 976_740_000_000, 354_860_000_000, 460_360_000_000],
         );
     }
 
@@ -181,12 +166,7 @@ mod rewards_distribution_tests {
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                109_808_000_000,
-                219_616_000_000,
-                329_412_000_000,
-                431_740_000_000,
-            ],
+            vec![109_808_000_000, 219_616_000_000, 329_412_000_000, 431_740_000_000],
             &validator_stakes,
         );
 
@@ -202,21 +182,13 @@ mod rewards_distribution_tests {
 
         // Staker 1 should have received rewards proportional to their stake
         // Withdrawal: 200 SOMA principal + 200/300 * 29.424 SOMA reward = 219.616 SOMA
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            219_616_000_000
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 219_616_000_000);
 
         // Validator self-stake amounts after second round of 120 SOMA rewards
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                139_268_000_000,
-                239_256_000_000,
-                358_860_000_000,
-                463_372_000_000,
-            ],
+            vec![139_268_000_000, 239_256_000_000, 358_860_000_000, 463_372_000_000],
             &validator_stakes,
         );
 
@@ -225,10 +197,7 @@ mod rewards_distribution_tests {
         staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
 
         // Verify staker 2's first withdrawal includes rewards
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            119_628_000_000
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 119_628_000_000);
 
         // Distribute more rewards (40 SOMA)
         advance_epoch_with_reward_amounts(&mut system_state, 40, &mut validator_stakes);
@@ -253,12 +222,8 @@ mod rewards_distribution_tests {
         let mut validator_stakes = ValidatorRewards::new(&system_state.validators.validators);
 
         // Stake a large amount
-        let staked_soma_1 = stake_with(
-            &mut system_state,
-            staker_addr_1(),
-            validator_addr_1(),
-            200_000_000,
-        );
+        let staked_soma_1 =
+            stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 200_000_000);
 
         // Advance epoch to activate stake
         advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
@@ -280,10 +245,7 @@ mod rewards_distribution_tests {
 
         // Unstake the large stake and verify it succeeded
         let withdrawn = unstake(&mut system_state, staked_soma_1);
-        assert!(
-            withdrawn > 200_000_000 * SHANNONS_PER_SOMA,
-            "Should have received rewards"
-        );
+        assert!(withdrawn > 200_000_000 * SHANNONS_PER_SOMA, "Should have received rewards");
     }
 
     #[test]
@@ -328,12 +290,7 @@ mod rewards_distribution_tests {
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                111_244_000_000,
-                223_839_200_000,
-                332_496_000_000,
-                432_508_000_000,
-            ],
+            vec![111_244_000_000, 223_839_200_000, 332_496_000_000, 432_508_000_000],
             &validator_stakes,
         );
 
@@ -350,24 +307,14 @@ mod rewards_distribution_tests {
         assert_validator_total_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                267_800_000_000,
-                397_404_000_000,
-                397_392_000_000,
-                497_404_000_000,
-            ],
+            vec![267_800_000_000, 397_404_000_000, 397_392_000_000, 497_404_000_000],
         );
 
         // Verify split between validator and staker stakes
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                136_165_600_000,
-                271_767_980_095,
-                397_392_000_000,
-                497_404_000_000,
-            ],
+            vec![136_165_600_000, 271_767_980_095, 397_392_000_000, 497_404_000_000],
             &validator_stakes,
         );
 
@@ -419,12 +366,7 @@ mod rewards_distribution_tests {
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                449_853_258_537,
-                785_144_000_000,
-                1_311_102_053_490,
-                1_411_475_429_433,
-            ],
+            vec![449_853_258_537, 785_144_000_000, 1_311_102_053_490, 1_411_475_429_433],
             &validator_stakes,
         );
 
@@ -436,16 +378,10 @@ mod rewards_distribution_tests {
         staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
 
         // Staker 1 gets full rewards (same share as v1 self-stake)
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            449_853_258_537
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 449_853_258_537);
 
         // Staker 2 gets reduced rewards (v2 was slashed 10%)
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            392_572_000_000
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 392_572_000_000);
     }
 
     #[test]
@@ -484,12 +420,7 @@ mod rewards_distribution_tests {
         assert_validator_self_stake_amounts(
             &system_state,
             validator_addrs(),
-            vec![
-                562_652_585_379,
-                200_000_000_000,
-                1_637_100_534_906,
-                1_737_594_294_335,
-            ],
+            vec![562_652_585_379, 200_000_000_000, 1_637_100_534_906, 1_737_594_294_335],
             &validator_stakes,
         );
 
@@ -501,16 +432,10 @@ mod rewards_distribution_tests {
         staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
 
         // Staker 1 gets enhanced rewards (redistribution from slashed v2)
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_1()),
-            562_652_585_379
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 562_652_585_379);
 
         // Staker 2 only gets principal back (v2 was 100% slashed on rewards)
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_2()),
-            100_000_000_000
-        );
+        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 100_000_000_000);
     }
 
     #[test]
@@ -564,8 +489,7 @@ mod rewards_distribution_tests {
         // Verify total stake in validator 1's pool
         // Rewards are proportional to voting power, not equal splits
         assert_eq!(
-            validator_1.staking_pool.soma_balance,
-            3_264_872_000_000,
+            validator_1.staking_pool.soma_balance, 3_264_872_000_000,
             "Unexpected validator 1 pool balance"
         );
 
@@ -622,8 +546,7 @@ mod rewards_distribution_tests {
             .expect("Validator 1 not found");
 
         assert_eq!(
-            validator_1.staking_pool.soma_balance,
-            140_929_659_227,
+            validator_1.staking_pool.soma_balance, 140_929_659_227,
             "Unexpected validator 1 pool after all withdrawals"
         );
     }
@@ -712,12 +635,7 @@ mod rewards_distribution_tests {
 
     // Helper to get vector of validator addresses
     fn validator_addrs() -> Vec<SomaAddress> {
-        vec![
-            validator_addr_1(),
-            validator_addr_2(),
-            validator_addr_3(),
-            validator_addr_4(),
-        ]
+        vec![validator_addr_1(), validator_addr_2(), validator_addr_3(), validator_addr_4()]
     }
 
     // Helper to report a validator
@@ -726,9 +644,7 @@ mod rewards_distribution_tests {
         reporter: SomaAddress,
         reportee: SomaAddress,
     ) {
-        system_state
-            .report_validator(reporter, reportee)
-            .expect("Failed to report validator");
+        system_state.report_validator(reporter, reportee).expect("Failed to report validator");
     }
 
     // Helper to set validator commission rate

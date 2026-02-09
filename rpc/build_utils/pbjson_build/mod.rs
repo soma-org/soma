@@ -161,8 +161,7 @@ impl Builder {
         proto_path: impl Into<String>,
         rust_path: impl Into<String>,
     ) -> &mut Self {
-        self.extern_paths
-            .push((proto_path.into(), rust_path.into()));
+        self.extern_paths.push((proto_path.into(), rust_path.into()));
         self
     }
 
@@ -176,8 +175,7 @@ impl Builder {
 
     /// Generate Rust BTreeMap implementations for Protobuf map type fields.
     pub fn btree_map<S: Into<String>, I: IntoIterator<Item = S>>(&mut self, paths: I) -> &mut Self {
-        self.btree_map_paths
-            .extend(paths.into_iter().map(Into::into));
+        self.btree_map_paths.extend(paths.into_iter().map(Into::into));
         self
     }
 
@@ -243,13 +241,9 @@ impl Builder {
         mut write_factory: F,
     ) -> Result<Vec<(Package, W)>> {
         let iter = self.descriptors.iter().filter(move |(t, _)| {
-            let exclude = self
-                .exclude
-                .iter()
-                .any(|prefix| t.prefix_match(prefix.as_ref()).is_some());
-            let include = prefixes
-                .iter()
-                .any(|prefix| t.prefix_match(prefix.as_ref()).is_some());
+            let exclude =
+                self.exclude.iter().any(|prefix| t.prefix_match(prefix.as_ref()).is_some());
+            let include = prefixes.iter().any(|prefix| t.prefix_match(prefix.as_ref()).is_some());
             include && !exclude
         });
 
@@ -265,11 +259,8 @@ impl Builder {
                 }
             };
 
-            let resolver = Resolver::new(
-                &self.extern_paths,
-                type_path.package(),
-                self.retain_enum_prefix,
-            );
+            let resolver =
+                Resolver::new(&self.extern_paths, type_path.package(), self.retain_enum_prefix);
 
             match descriptor {
                 Descriptor::Enum(descriptor) => generate_enum(

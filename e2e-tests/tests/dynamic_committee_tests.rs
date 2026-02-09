@@ -106,10 +106,7 @@ impl StressTestRunner {
         system_state
             .validators
             .validators
-            .get(
-                self.rng
-                    .gen_range(0..system_state.validators.validators.len()),
-            )
+            .get(self.rng.gen_range(0..system_state.validators.validators.len()))
             .unwrap()
             .clone()
     }
@@ -145,10 +142,7 @@ impl StressTestRunner {
         let pre_state_summary = self.system_state();
         self.test_cluster.trigger_reconfiguration().await;
         let post_state_summary = self.system_state();
-        info!(
-            "Changing epoch form {} to {}",
-            pre_state_summary.epoch, post_state_summary.epoch
-        );
+        info!("Changing epoch form {} to {}", pre_state_summary.epoch, post_state_summary.epoch);
     }
 
     pub async fn get_created_object_of_type(
@@ -173,30 +167,16 @@ impl StressTestRunner {
         effects: &[(ObjectRef, Owner)],
         object_type: ObjectType,
     ) -> Option<Object> {
-        let db = self
-            .test_cluster
-            .fullnode_handle
-            .soma_node
-            .state()
-            .get_object_store()
-            .clone();
+        let db = self.test_cluster.fullnode_handle.soma_node.state().get_object_store().clone();
         let found: Vec<_> = effects
             .iter()
             .filter_map(|(obj_ref, _)| {
                 let object = db.get_object(&obj_ref.0).unwrap();
 
-                if object.type_() == &object_type {
-                    Some(object)
-                } else {
-                    None
-                }
+                if object.type_() == &object_type { Some(object) } else { None }
             })
             .collect();
-        assert!(
-            found.len() <= 1,
-            "Multiple objects of type {:?} found",
-            object_type
-        );
+        assert!(found.len() <= 1, "Multiple objects of type {:?} found", object_type);
         found.first().cloned()
     }
 }
@@ -217,16 +197,10 @@ mod add_stake {
         type StateChange = RequestAddStake;
 
         fn create(&self, runner: &mut StressTestRunner) -> Self::StateChange {
-            let stake_amount = runner
-                .rng
-                .gen_range(MIN_DELEGATION_AMOUNT..=MAX_DELEGATION_AMOUNT);
+            let stake_amount = runner.rng.gen_range(MIN_DELEGATION_AMOUNT..=MAX_DELEGATION_AMOUNT);
             let staked_with = runner.pick_random_active_validator().metadata.soma_address;
             let sender = runner.pick_random_sender();
-            RequestAddStake {
-                sender: sender.clone(),
-                stake_amount,
-                staked_with,
-            }
+            RequestAddStake { sender: sender.clone(), stake_amount, staked_with }
         }
     }
 
@@ -260,10 +234,8 @@ mod add_stake {
         ) {
             // Assert that a `StakedSoma` object matching the amount delegated is created.
             // Assert that this staked soma
-            let object = runner
-                .get_created_object_of_type(effects, ObjectType::StakedSoma)
-                .await
-                .unwrap();
+            let object =
+                runner.get_created_object_of_type(effects, ObjectType::StakedSoma).await.unwrap();
 
             // Get object contents and make sure that the values in it are correct.
             let staked_soma: StakedSoma = object.as_staked_soma().unwrap();
@@ -277,12 +249,7 @@ mod add_stake {
             // Keep track of all delegations, we will need it in stake withdrawals.
             runner.delegations.insert(
                 object.id(),
-                (
-                    self.sender.clone(),
-                    object.id(),
-                    object.digest(),
-                    object.version(),
-                ),
+                (self.sender.clone(), object.id(), object.digest(), object.version()),
             );
             // TODO: runner.display_effects(effects);
         }
@@ -319,12 +286,7 @@ mod remove_stake {
             let (sender, object_id, digest, version) =
                 runner.delegations.remove(&delegation_object_id).unwrap();
 
-            RequestWithdrawStake {
-                object_id,
-                digest,
-                sender,
-                version,
-            }
+            RequestWithdrawStake { object_id, digest, sender, version }
         }
     }
 
@@ -396,9 +358,7 @@ async fn fuzz_dynamic_committee() {
     // Collect information about total stake of validators, and then check if each validator's
     // voting power is the right % of the total stake.
     let active_validators = runner.system_state().validators.validators;
-    let total_stake = active_validators
-        .iter()
-        .fold(0, |acc, v| acc + v.staking_pool.soma_balance);
+    let total_stake = active_validators.iter().fold(0, |acc, v| acc + v.staking_pool.soma_balance);
 
     // Use the formula for voting_power from System to check if the voting power is correctly
     // set.
@@ -436,11 +396,8 @@ async fn fuzz_dynamic_committee() {
         .collect::<Vec<_>>();
 
     post_epoch_committee.sort_by(|a, b| a.0.cmp(&b.0));
-    post_epoch_committee
-        .iter()
-        .zip(initial_committee.iter())
-        .for_each(|(a, b)| {
-            assert_eq!(a.0, b.0); // same address
-            assert!(a.1.abs_diff(b.1) < 2); // rounding error correction
-        });
+    post_epoch_committee.iter().zip(initial_committee.iter()).for_each(|(a, b)| {
+        assert_eq!(a.0, b.0); // same address
+        assert!(a.1.abs_diff(b.1) < 2); // rounding error correction
+    });
 }

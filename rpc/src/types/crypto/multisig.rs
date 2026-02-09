@@ -130,10 +130,7 @@ impl MultisigCommittee {
                 .sum::<ThresholdUnit>()
                 >= self.threshold
             && !self.members.iter().enumerate().any(|(i, member)| {
-                self.members
-                    .iter()
-                    .skip(i + 1)
-                    .any(|m| member.public_key == m.public_key)
+                self.members.iter().skip(i + 1).any(|m| member.public_key == m.public_key)
             })
     }
 }
@@ -175,11 +172,7 @@ impl MultisigAggregatedSignature {
         signatures: Vec<MultisigMemberSignature>,
         bitmap: BitmapUnit,
     ) -> Self {
-        Self {
-            signatures,
-            bitmap,
-            committee,
-        }
+        Self { signatures, bitmap, committee }
     }
 
     /// The list of signatures from committee members
@@ -419,9 +412,7 @@ mod serialization {
             if serializer.is_human_readable() {
                 let readable = match self {
                     MultisigMemberPublicKey::Ed25519(public_key) => {
-                        ReadableMemberPublicKey::Ed25519 {
-                            public_key: *public_key,
-                        }
+                        ReadableMemberPublicKey::Ed25519 { public_key: *public_key }
                     }
                 };
                 readable.serialize(serializer)
@@ -475,9 +466,7 @@ mod serialization {
             if serializer.is_human_readable() {
                 let readable = match self {
                     MultisigMemberSignature::Ed25519(signature) => {
-                        ReadableMemberSignature::Ed25519 {
-                            signature: *signature,
-                        }
+                        ReadableMemberSignature::Ed25519 { signature: *signature }
                     }
                 };
                 readable.serialize(serializer)

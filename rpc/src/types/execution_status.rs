@@ -52,64 +52,30 @@ pub enum ExecutionError {
     NoActiveModels,
     TargetNotFound,
     TargetNotOpen,
-    TargetExpired {
-        generation_epoch: u64,
-        current_epoch: u64,
-    },
+    TargetExpired { generation_epoch: u64, current_epoch: u64 },
     TargetNotFilled,
-    ChallengeWindowOpen {
-        fill_epoch: u64,
-        current_epoch: u64,
-    },
+    ChallengeWindowOpen { fill_epoch: u64, current_epoch: u64 },
     TargetAlreadyClaimed,
 
     // Submission errors
-    ModelNotInTarget {
-        model_id: Address,
-        target_id: Address,
-    },
-    EmbeddingDimensionMismatch {
-        expected: u64,
-        actual: u64,
-    },
-    DistanceExceedsThreshold {
-        score: i64,
-        threshold: i64,
-    },
-    InsufficientBond {
-        required: u64,
-        provided: u64,
-    },
+    ModelNotInTarget { model_id: Address, target_id: Address },
+    EmbeddingDimensionMismatch { expected: u64, actual: u64 },
+    DistanceExceedsThreshold { score: i64, threshold: i64 },
+    InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 
     // Challenge errors
-    ChallengeWindowClosed {
-        fill_epoch: u64,
-        current_epoch: u64,
-    },
-    InsufficientChallengerBond {
-        required: u64,
-        provided: u64,
-    },
-    ChallengeNotFound {
-        challenge_id: Address,
-    },
-    ChallengeNotPending {
-        challenge_id: Address,
-    },
-    ChallengeExpired {
-        challenge_epoch: u64,
-        current_epoch: u64,
-    },
+    ChallengeWindowClosed { fill_epoch: u64, current_epoch: u64 },
+    InsufficientChallengerBond { required: u64, provided: u64 },
+    ChallengeNotFound { challenge_id: Address },
+    ChallengeNotPending { challenge_id: Address },
+    ChallengeExpired { challenge_epoch: u64, current_epoch: u64 },
     InvalidChallengeResult,
     InvalidChallengeQuorum,
     ChallengeAlreadyExists,
 
     // Data size errors
-    DataExceedsMaxSize {
-        size: u64,
-        max_size: u64,
-    },
+    DataExceedsMaxSize { size: u64, max_size: u64 },
 
     // Coin errors
     InsufficientCoinBalance,

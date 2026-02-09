@@ -105,8 +105,7 @@ impl DiscoveryConfig {
     pub fn target_concurrent_connections(&self) -> usize {
         const TARGET_CONCURRENT_CONNECTIONS: usize = 4;
 
-        self.target_concurrent_connections
-            .unwrap_or(TARGET_CONCURRENT_CONNECTIONS)
+        self.target_concurrent_connections.unwrap_or(TARGET_CONCURRENT_CONNECTIONS)
     }
 
     pub fn peers_to_query(&self) -> usize {

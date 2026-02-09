@@ -212,9 +212,7 @@ impl StakingExecutor {
         // Get StakedSoma object
         let staked_soma_object = store
             .read_object(&staked_soma_ref.0)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
-                object_id: staked_soma_ref.0,
-            })?
+            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: staked_soma_ref.0 })?
             .clone();
 
         // Check ownership
@@ -287,13 +285,8 @@ impl TransactionExecutor for StakingExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::AddStake {
-                address,
-                coin_ref,
-                amount,
-            } => self.execute_add_stake(
-                store, signer, address, coin_ref, amount, tx_digest, value_fee,
-            ),
+            TransactionKind::AddStake { address, coin_ref, amount } => self
+                .execute_add_stake(store, signer, address, coin_ref, amount, tx_digest, value_fee),
             TransactionKind::WithdrawStake { staked_soma } => {
                 self.execute_withdraw_stake(store, signer, staked_soma, tx_digest)
             }
@@ -308,16 +301,11 @@ impl FeeCalculator for StakingExecutor {
         let value_fee_bps = store.fee_parameters.value_fee_bps / 2;
 
         match kind {
-            TransactionKind::AddStake {
-                coin_ref, amount, ..
-            } => {
+            TransactionKind::AddStake { coin_ref, amount, .. } => {
                 let stake_amount = if let Some(specific_amount) = amount {
                     *specific_amount
                 } else {
-                    store
-                        .read_object(&coin_ref.0)
-                        .and_then(|obj| obj.as_coin())
-                        .unwrap_or(0)
+                    store.read_object(&coin_ref.0).and_then(|obj| obj.as_coin()).unwrap_or(0)
                 };
 
                 if stake_amount == 0 {
@@ -345,11 +333,9 @@ impl FeeCalculator for StakingExecutor {
 
 /// Verifies an object is a coin and returns its balance
 fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    object
-        .as_coin()
-        .ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-            object_id: object.id(),
-            expected_type: ObjectType::Coin,
-            actual_type: object.type_().clone(),
-        })
+    object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
+        object_id: object.id(),
+        expected_type: ObjectType::Coin,
+        actual_type: object.type_().clone(),
+    })
 }

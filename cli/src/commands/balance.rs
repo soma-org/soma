@@ -16,10 +16,9 @@ pub async fn execute(
 ) -> Result<BalanceOutput> {
     let address = match address {
         Some(key_id) => context.config.keystore.get_by_identity(&key_id)?,
-        None => context
-            .config
-            .active_address
-            .ok_or_else(|| anyhow::anyhow!("No active address set"))?,
+        None => {
+            context.config.active_address.ok_or_else(|| anyhow::anyhow!("No active address set"))?
+        }
     };
 
     let client = context.get_client().await?;
@@ -28,12 +27,7 @@ pub async fn execute(
     request.owner = Some(address.to_string());
     request.object_type = Some(ObjectType::Coin.into());
     request.page_size = Some(1000);
-    request.read_mask = Some(FieldMask::from_paths([
-        "object_id",
-        "version",
-        "digest",
-        "contents",
-    ]));
+    request.read_mask = Some(FieldMask::from_paths(["object_id", "version", "digest", "contents"]));
 
     let stream = client.list_owned_objects(request).await;
     tokio::pin!(stream);

@@ -17,20 +17,6 @@ fn main() -> Result<()> {
 #[allow(clippy::too_many_lines)]
 fn build_tonic_services(out_dir: &Path) {
     let codec_path = "tonic_prost::ProstCodec";
-    let inference_tonic_service = tonic_build::manual::Service::builder()
-        .name("InferenceTonicService")
-        .package("soma")
-        .comment("soma inference tonic service")
-        .method(
-            tonic_build::manual::Method::builder()
-                .name("inference")
-                .route_name("Inference")
-                .input_type("crate::inference::networking::tonic::InferenceRequest")
-                .output_type("crate::inference::networking::tonic::InferenceResponse")
-                .codec_path(codec_path)
-                .build(),
-        )
-        .build();
     let evaluation_tonic_service = tonic_build::manual::Service::builder()
         .name("EvaluationTonicService")
         .package("soma")
@@ -45,7 +31,5 @@ fn build_tonic_services(out_dir: &Path) {
                 .build(),
         )
         .build();
-    tonic_build::manual::Builder::new()
-        .out_dir(out_dir)
-        .compile(&[inference_tonic_service, evaluation_tonic_service]);
+    tonic_build::manual::Builder::new().out_dir(out_dir).compile(&[evaluation_tonic_service]);
 }

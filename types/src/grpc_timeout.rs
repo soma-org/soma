@@ -9,7 +9,7 @@ use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
 use tokio::time::Sleep;
@@ -28,10 +28,7 @@ pub struct GrpcTimeout<S> {
 
 impl<S> GrpcTimeout<S> {
     pub fn new(inner: S, server_timeout: Duration) -> Self {
-        Self {
-            inner,
-            server_timeout,
-        }
+        Self { inner, server_timeout }
     }
 }
 
@@ -59,10 +56,7 @@ where
             Some(d) => self.server_timeout.min(d),
         };
 
-        ResponseFuture {
-            inner: self.inner.call(req),
-            sleep: tokio::time::sleep(resp_timeout),
-        }
+        ResponseFuture { inner: self.inner.call(req), sleep: tokio::time::sleep(resp_timeout) }
     }
 }
 

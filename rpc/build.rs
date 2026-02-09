@@ -81,11 +81,7 @@ fn main() {
     for mut file in fds.file {
         // Clear out the source code info as its not required for reflection
         file.source_code_info = None;
-        packages
-            .entry(file.package().to_owned())
-            .or_default()
-            .file
-            .push(file);
+        packages.entry(file.package().to_owned()).or_default().file.push(file);
     }
 
     // Generate custom field info

@@ -37,7 +37,7 @@ use crate::intent::{Intent, IntentMessage};
 use crate::multisig::MultiSig;
 use crate::serde::Readable;
 use crate::serde::SomaBitmap;
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use core::hash::Hash;
 use derive_more::{AsMut, AsRef, From};
 use enum_dispatch::enum_dispatch;
@@ -61,11 +61,11 @@ pub use fastcrypto::traits::{
 };
 use fastcrypto::traits::{ToFromBytes, VerifyingKey};
 use rand::rngs::OsRng;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use roaring::RoaringBitmap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_with::{serde_as, Bytes};
+use serde_with::{Bytes, serde_as};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
@@ -149,7 +149,7 @@ pub type AggregateAuthoritySignatureAsBytes = BLS12381AggregateSignatureAsBytes;
     Serialize,
     Deserialize,
     schemars::JsonSchema,
-    AsRef,
+    AsRef
 )]
 #[as_ref(forward)]
 pub struct AuthorityPublicKeyBytes(
@@ -206,9 +206,8 @@ impl Display for AuthorityPublicKeyBytes {
 
 impl ToFromBytes for AuthorityPublicKeyBytes {
     fn from_bytes(bytes: &[u8]) -> Result<Self, fastcrypto::error::FastCryptoError> {
-        let bytes: [u8; AuthorityPublicKey::LENGTH] = bytes
-            .try_into()
-            .map_err(|_| fastcrypto::error::FastCryptoError::InvalidInput)?;
+        let bytes: [u8; AuthorityPublicKey::LENGTH] =
+            bytes.try_into().map_err(|_| fastcrypto::error::FastCryptoError::InvalidInput)?;
         Ok(AuthorityPublicKeyBytes(bytes))
     }
 }
@@ -269,7 +268,7 @@ pub struct ConciseAuthorityPublicKeyBytesRef<'a>(&'a AuthorityPublicKeyBytes);
 
 impl Debug for ConciseAuthorityPublicKeyBytesRef<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let s = Hex::encode(self.0 .0.get(0..4).ok_or(std::fmt::Error)?);
+        let s = Hex::encode(self.0.0.get(0..4).ok_or(std::fmt::Error)?);
         write!(f, "k#{}..", s)
     }
 }
@@ -286,7 +285,7 @@ pub struct ConciseAuthorityPublicKeyBytes(AuthorityPublicKeyBytes);
 
 impl Debug for ConciseAuthorityPublicKeyBytes {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let s = Hex::encode(self.0 .0.get(0..4).ok_or(std::fmt::Error)?);
+        let s = Hex::encode(self.0.0.get(0..4).ok_or(std::fmt::Error)?);
         write!(f, "k#{}..", s)
     }
 }
@@ -449,11 +448,7 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
 
 impl Display for AuthoritySignInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "AuthoritySignInfo {{ epoch: {:?}, authority: {} }}",
-            self.epoch, self.authority,
-        )
+        write!(f, "AuthoritySignInfo {{ epoch: {:?}, authority: {} }}", self.epoch, self.authority,)
     }
 }
 
@@ -548,19 +543,17 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
                 error: "Signature Aggregation failed".to_string(),
             })?;
 
-        let selected_public_keys = obligation
-            .public_keys
-            .get_mut(message_index)
-            .ok_or(SomaError::InvalidAuthenticator)?;
+        let selected_public_keys =
+            obligation.public_keys.get_mut(message_index).ok_or(SomaError::InvalidAuthenticator)?;
 
         for authority_index in self.signers_map.iter() {
-            let authority = committee
-                .authority_by_index(authority_index)
-                .ok_or_else(|| SomaError::UnknownSigner {
+            let authority = committee.authority_by_index(authority_index).ok_or_else(|| {
+                SomaError::UnknownSigner {
                     signer: None,
                     index: Some(authority_index),
                     committee: Box::new(committee.clone()),
-                })?;
+                }
+            })?;
 
             // Update weight.
             let voting_rights = committee.weight(authority);
@@ -618,10 +611,8 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         }
 
         // Calculate total stake and verify it meets the quorum threshold
-        let total_stake: VotingPower = auth_sign_infos
-            .iter()
-            .map(|a| committee.weight(&a.authority))
-            .sum();
+        let total_stake: VotingPower =
+            auth_sign_infos.iter().map(|a| committee.weight(&a.authority)).sum();
         if !(total_stake >= Self::quorum_threshold(committee)) {
             return Err(SomaError::InvalidSignature {
                 error: "Signatures don't have enough stake to form a quorum".to_string(),
@@ -629,23 +620,17 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         }
 
         // Organize signatures by authority
-        let signatures: BTreeMap<_, _> = auth_sign_infos
-            .into_iter()
-            .map(|a| (a.authority, a.signature))
-            .collect();
+        let signatures: BTreeMap<_, _> =
+            auth_sign_infos.into_iter().map(|a| (a.authority, a.signature)).collect();
 
         // Create bitmap of signers using their committee indices
         let mut map = RoaringBitmap::new();
         for pk in signatures.keys() {
-            map.insert(
-                committee
-                    .authority_index(pk)
-                    .ok_or_else(|| SomaError::UnknownSigner {
-                        signer: Some(pk.concise().to_string()),
-                        index: None,
-                        committee: Box::new(committee.clone()),
-                    })?,
-            );
+            map.insert(committee.authority_index(pk).ok_or_else(|| SomaError::UnknownSigner {
+                signer: Some(pk.concise().to_string()),
+                index: None,
+                committee: Box::new(committee.clone()),
+            })?);
         }
 
         // Extract signatures for aggregation
@@ -654,11 +639,8 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         // Create the quorum signature info with aggregated signature
         Ok(AuthorityQuorumSignInfo {
             epoch: committee.epoch,
-            signature: AggregateAuthoritySignature::aggregate(&sigs).map_err(|e| {
-                SomaError::InvalidSignature {
-                    error: e.to_string(),
-                }
-            })?,
+            signature: AggregateAuthoritySignature::aggregate(&sigs)
+                .map_err(|e| SomaError::InvalidSignature { error: e.to_string() })?,
             signers_map: map,
         })
     }
@@ -793,16 +775,14 @@ impl SomaAuthoritySignature for AuthoritySignature {
         })?;
 
         // Verify the signature
-        public_key
-            .verify(&message[..], self)
-            .map_err(|e| SomaError::InvalidSignature {
-                error: format!(
-                    "Fail to verify auth sig {} epoch: {} author: {}",
-                    e,
-                    epoch,
-                    author.concise()
-                ),
-            })
+        public_key.verify(&message[..], self).map_err(|e| SomaError::InvalidSignature {
+            error: format!(
+                "Fail to verify auth sig {} epoch: {} author: {}",
+                e,
+                epoch,
+                author.concise()
+            ),
+        })
     }
 }
 
@@ -1073,7 +1053,7 @@ where
     EnumString,
     strum_macros::Display,
     PartialEq,
-    Eq,
+    Eq
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum SignatureScheme {
@@ -1096,9 +1076,7 @@ impl SignatureScheme {
             0x00 => Ok(SignatureScheme::ED25519),
             0x01 => Ok(SignatureScheme::BLS12381),
             0x02 => Ok(SignatureScheme::MultiSig),
-            _ => Err(SomaError::KeyConversionError(
-                "Invalid key scheme".to_string(),
-            )),
+            _ => Err(SomaError::KeyConversionError("Invalid key scheme".to_string())),
         }
     }
 }
@@ -1248,9 +1226,9 @@ impl PublicKey {
         key_bytes: &[u8],
     ) -> Result<PublicKey, eyre::Report> {
         match curve {
-            SignatureScheme::ED25519 => Ok(PublicKey::Ed25519(
-                (&Ed25519PublicKey::from_bytes(key_bytes)?).into(),
-            )),
+            SignatureScheme::ED25519 => {
+                Ok(PublicKey::Ed25519((&Ed25519PublicKey::from_bytes(key_bytes)?).into()))
+            }
             _ => Err(eyre!("Unsupported curve")),
         }
     }
@@ -1461,9 +1439,7 @@ pub trait SomaSignatureInner: Sized + ToFromBytes + PartialEq + Eq + Hash {
 
         // deserialize the signature
         let signature = Self::Sig::from_bytes(self.signature_bytes()).map_err(|_| {
-            SomaError::InvalidSignature {
-                error: "Fail to get pubkey and sig".to_string(),
-            }
+            SomaError::InvalidSignature { error: "Fail to get pubkey and sig".to_string() }
         })?;
 
         Ok((signature, pk))
@@ -1542,10 +1518,9 @@ impl<S: SomaSignatureInner + Sized> SomaSignature for S {
                 error: format!("Incorrect signer, expected {:?}, got {:?}", author, address),
             });
         }
-        pk.verify(&digest, sig)
-            .map_err(|e| SomaError::InvalidSignature {
-                error: format!("Fail to verify user sig {}", e),
-            })
+        pk.verify(&digest, sig).map_err(|e| SomaError::InvalidSignature {
+            error: format!("Fail to verify user sig {}", e),
+        })
     }
 }
 
@@ -1568,7 +1543,7 @@ impl NetworkPublicKey {
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
-        self.0 .0.to_bytes()
+        self.0.0.to_bytes()
     }
     pub fn verify(&self, msg: &[u8], signature: &NetworkSignature) -> Result<(), FastCryptoError> {
         self.0.verify(msg, &signature.0)
@@ -1713,10 +1688,7 @@ impl<'a> VerificationObligation<'a> {
         public_key: &'a AuthorityPublicKey,
         idx: usize,
     ) -> SomaResult<()> {
-        self.public_keys
-            .get_mut(idx)
-            .ok_or(SomaError::InvalidAuthenticator)?
-            .push(public_key);
+        self.public_keys.get_mut(idx).ok_or(SomaError::InvalidAuthenticator)?.push(public_key);
         self.signatures
             .get_mut(idx)
             .ok_or(SomaError::InvalidAuthenticator)?
@@ -1741,10 +1713,7 @@ impl<'a> VerificationObligation<'a> {
             let message = format!(
                 "pks: {:?}, messages: {:?}, sigs: {:?}",
                 &self.public_keys,
-                self.messages
-                    .iter()
-                    .map(Base64::encode)
-                    .collect::<Vec<String>>(),
+                self.messages.iter().map(Base64::encode).collect::<Vec<String>>(),
                 &self
                     .signatures
                     .iter()
@@ -1756,11 +1725,8 @@ impl<'a> VerificationObligation<'a> {
 
             // This error message may be very long, so we print out the error in chunks of to avoid
             // hitting a max log line length on the system.
-            for (i, chunk) in message
-                .as_bytes()
-                .chunks(chunk_size)
-                .map(std::str::from_utf8)
-                .enumerate()
+            for (i, chunk) in
+                message.as_bytes().chunks(chunk_size).map(std::str::from_utf8).enumerate()
             {
                 warn!(
                     "Failed to batch verify aggregated auth sig: {} (chunk {}): {}",
@@ -1804,10 +1770,7 @@ impl FromStr for GenericSignature {
 /// of model weights in the CLI/inference-engine.
 #[serde_as]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DecryptionKey(
-    #[serde_as(as = "Bytes")]
-    [u8; 32],
-);
+pub struct DecryptionKey(#[serde_as(as = "Bytes")] [u8; 32]);
 
 impl DecryptionKey {
     pub fn new(key: [u8; 32]) -> Self {

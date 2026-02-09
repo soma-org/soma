@@ -20,12 +20,7 @@ pub(crate) struct ThresholdClock {
 impl ThresholdClock {
     pub(crate) fn new(round: Round, context: Arc<Context>) -> Self {
         info!("Recovered ThresholdClock at round {}", round);
-        Self {
-            context,
-            aggregator: StakeAggregator::new(),
-            round,
-            quorum_ts: Instant::now(),
-        }
+        Self { context, aggregator: StakeAggregator::new(), round, quorum_ts: Instant::now() }
     }
 
     /// Adds the block reference that have been accepted and advance the round accordingly.

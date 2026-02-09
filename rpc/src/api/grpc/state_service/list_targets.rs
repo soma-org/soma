@@ -13,8 +13,8 @@ use prost_types::FieldMask;
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
 use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::{ErrorReason, ListTargetsRequest, ListTargetsResponse, Target};
 use crate::proto::soma::target::target_to_proto_with_id;
+use crate::proto::soma::{ErrorReason, ListTargetsRequest, ListTargetsResponse, Target};
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
 use types::storage::read_store::TargetInfo;
 
@@ -31,8 +31,10 @@ pub fn list_targets(
     request: ListTargetsRequest,
 ) -> Result<ListTargetsResponse> {
     // Validate status filter if provided
-    let status_filter = request.status_filter.as_ref().map(|s| {
-        match s.to_lowercase().as_str() {
+    let status_filter = request
+        .status_filter
+        .as_ref()
+        .map(|s| match s.to_lowercase().as_str() {
             "open" | "filled" | "claimed" => Ok(s.to_lowercase()),
             _ => Err(FieldViolation::new("status_filter")
                 .with_description(format!(
@@ -40,8 +42,8 @@ pub fn list_targets(
                     s
                 ))
                 .with_reason(ErrorReason::FieldInvalid)),
-        }
-    }).transpose()?;
+        })
+        .transpose()?;
 
     let epoch_filter = request.epoch_filter;
 
@@ -50,11 +52,8 @@ pub fn list_targets(
         .map(|s| (s as usize).clamp(1, MAX_PAGE_SIZE))
         .unwrap_or(DEFAULT_PAGE_SIZE);
 
-    let page_token = request
-        .page_token
-        .as_ref()
-        .map(|token| decode_page_token(token))
-        .transpose()?;
+    let page_token =
+        request.page_token.as_ref().map(|token| decode_page_token(token)).transpose()?;
 
     // Validate page token parameters match request
     if let Some(ref token) = page_token {
@@ -68,9 +67,7 @@ pub fn list_targets(
 
     // Validate and build field mask
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Target>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -80,11 +77,7 @@ pub fn list_targets(
     };
 
     // Get indexes for target iteration
-    let indexes = service
-        .reader
-        .inner()
-        .indexes()
-        .ok_or_else(RpcError::not_found)?;
+    let indexes = service.reader.inner().indexes().ok_or_else(RpcError::not_found)?;
 
     // Get the cursor from page token if present
     let cursor = page_token.as_ref().map(|t| t.cursor.clone());
@@ -97,16 +90,12 @@ pub fn list_targets(
     let mut targets = Vec::with_capacity(page_size);
     let mut size_bytes = 0;
 
-    while let Some(target_info) = iter
-        .next()
-        .transpose()
-        .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
+    while let Some(target_info) =
+        iter.next().transpose().map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
     {
         // Load the full target object
-        let Some(object) = service
-            .reader
-            .inner()
-            .get_object_by_key(&target_info.target_id, target_info.version)
+        let Some(object) =
+            service.reader.inner().get_object_by_key(&target_info.target_id, target_info.version)
         else {
             tracing::debug!(
                 "unable to find target {}:{} while iterating",
@@ -120,11 +109,7 @@ pub fn list_targets(
         let target: types::target::Target = match bcs::from_bytes(object.data.contents()) {
             Ok(t) => t,
             Err(e) => {
-                tracing::warn!(
-                    "failed to deserialize target {}: {}",
-                    target_info.target_id,
-                    e
-                );
+                tracing::warn!("failed to deserialize target {}: {}", target_info.target_id, e);
                 continue;
             }
         };

@@ -1,7 +1,14 @@
 use crate::types::Address;
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde_derive::Serialize, serde_derive::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde_derive::Serialize,
+    serde_derive::Deserialize
 )]
 
 pub struct BalanceChange {

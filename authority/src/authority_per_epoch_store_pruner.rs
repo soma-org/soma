@@ -61,17 +61,11 @@ impl AuthorityPerEpochStorePruner {
             for (_, path) in candidates.into_iter().sorted().take(to_prune) {
                 info!("Dropping epoch directory {:?}", path);
                 pruned += 1;
-                gc_tasks.push(safe_drop_db(
-                    path.join("recovery_log"),
-                    Duration::from_secs(30),
-                ));
+                gc_tasks.push(safe_drop_db(path.join("recovery_log"), Duration::from_secs(30)));
                 gc_tasks.push(safe_drop_db(path, Duration::from_secs(30)));
             }
         }
-        futures::future::join_all(gc_tasks)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
+        futures::future::join_all(gc_tasks).await.into_iter().collect::<Result<Vec<_>, _>>()?;
         Ok(pruned)
     }
 }
@@ -97,10 +91,7 @@ mod tests {
             .unwrap();
         assert_eq!(pruned, 2);
         assert_eq!(
-            directories
-                .into_iter()
-                .map(|f| fs::metadata(f).is_ok())
-                .collect::<Vec<_>>(),
+            directories.into_iter().map(|f| fs::metadata(f).is_ok()).collect::<Vec<_>>(),
             vec![false, false, true, true]
         );
     }

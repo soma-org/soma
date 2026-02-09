@@ -17,12 +17,12 @@ use crate::{
     authority_client::AuthorityAPI,
     safe_client::SafeClient,
     transaction_driver::{
+        SubmitTransactionOptions,
         error::{
-            aggregate_request_errors, AggregatedEffectsDigests, TransactionDriverError,
-            TransactionRequestError,
+            AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+            aggregate_request_errors,
         },
         request_retrier::RequestRetrier,
-        SubmitTransactionOptions,
     },
     validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
 };
@@ -65,11 +65,7 @@ impl TransactionSubmitter {
             options.blocked_validators.clone(),
         );
 
-        let ping_label = if request.ping_type.is_some() {
-            "true"
-        } else {
-            "false"
-        };
+        let ping_label = if request.ping_type.is_some() { "true" } else { "false" };
         let mut retries = 0;
         let mut request_rpcs = FuturesUnordered::new();
 
@@ -103,9 +99,7 @@ impl TransactionSubmitter {
                         // No more targets and no requests in flight
                         return Err(TransactionDriverError::Aborted {
                             submission_non_retriable_errors: aggregate_request_errors(
-                                retrier
-                                    .non_retriable_errors_aggregator
-                                    .status_by_authority(),
+                                retrier.non_retriable_errors_aggregator.status_by_authority(),
                             ),
                             submission_retriable_errors: aggregate_request_errors(
                                 retrier.retriable_errors_aggregator.status_by_authority(),
@@ -136,16 +130,12 @@ impl TransactionSubmitter {
                     // All requests have been processed.
                     return Err(TransactionDriverError::Aborted {
                         submission_non_retriable_errors: aggregate_request_errors(
-                            retrier
-                                .non_retriable_errors_aggregator
-                                .status_by_authority(),
+                            retrier.non_retriable_errors_aggregator.status_by_authority(),
                         ),
                         submission_retriable_errors: aggregate_request_errors(
                             retrier.retriable_errors_aggregator.status_by_authority(),
                         ),
-                        observed_effects_digests: AggregatedEffectsDigests {
-                            digests: Vec::new(),
-                        },
+                        observed_effects_digests: AggregatedEffectsDigests { digests: Vec::new() },
                     });
                 }
             };

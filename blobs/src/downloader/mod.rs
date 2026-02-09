@@ -19,15 +19,9 @@ pub struct BlobDownloader {
 impl BlobDownloader {
     pub fn new(semaphore: Arc<Semaphore>, chunk_size: u64, ns_per_byte: u16) -> BlobResult<Self> {
         if chunk_size < MIN_PART_SIZE || chunk_size > MAX_PART_SIZE {
-            return Err(BlobError::VerificationError(
-                "invalid chunk size".to_string(),
-            ));
+            return Err(BlobError::VerificationError("invalid chunk size".to_string()));
         }
-        Ok(Self {
-            semaphore,
-            chunk_size,
-            ns_per_byte,
-        })
+        Ok(Self { semaphore, chunk_size, ns_per_byte })
     }
 
     fn compute_timeout(num_bytes: u64, ns_per_byte: u16) -> Duration {
@@ -63,10 +57,7 @@ impl BlobDownloader {
         if metadata.size() as u64 <= self.chunk_size {
             println!("this ran");
             let bytes = reader
-                .get_full(Self::compute_timeout(
-                    metadata.size() as u64,
-                    self.ns_per_byte,
-                ))
+                .get_full(Self::compute_timeout(metadata.size() as u64, self.ns_per_byte))
                 .await?;
             hasher.update(&bytes);
             let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
@@ -75,9 +66,7 @@ impl BlobDownloader {
             println!("{}", bytes.len());
             println!("{}", metadata.size());
             if computed_checksum != metadata.checksum() || bytes.len() != metadata.size() {
-                return Err(BlobError::VerificationError(
-                    "verification failed".to_string(),
-                ));
+                return Err(BlobError::VerificationError("verification failed".to_string()));
             }
 
             println!("this ran");
@@ -152,9 +141,7 @@ impl BlobDownloader {
 
             if next_idx != num_parts {
                 let _ = multipart.abort().await;
-                return Err(BlobError::ReadError(
-                    "Missing parts at end of transfer".into(),
-                ));
+                return Err(BlobError::ReadError("Missing parts at end of transfer".into()));
             }
 
             let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
@@ -166,9 +153,7 @@ impl BlobDownloader {
                 || total_downloaded != metadata.size() as u64
             {
                 let _ = multipart.abort().await;
-                return Err(BlobError::VerificationError(
-                    "verification failed".to_string(),
-                ));
+                return Err(BlobError::VerificationError("verification failed".to_string()));
             }
 
             while let Some(res) = put_join_set.join_next().await {
@@ -185,14 +170,9 @@ impl BlobDownloader {
                 }
             }
 
-            multipart
-                .complete()
-                .await
-                .map_err(BlobError::ObjectStoreError)?;
+            multipart.complete().await.map_err(BlobError::ObjectStoreError)?;
 
-            driver
-                .await
-                .map_err(|e| BlobError::ReadError(e.to_string()))??;
+            driver.await.map_err(|e| BlobError::ReadError(e.to_string()))??;
         }
 
         Ok(())
@@ -229,10 +209,7 @@ mod tests {
 
         // Source store (with data)
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        source_store
-            .put(&blob_path.path(), data.clone().into())
-            .await
-            .unwrap();
+        source_store.put(&blob_path.path(), data.clone().into()).await.unwrap();
 
         // Destination store (empty)
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
@@ -245,12 +222,7 @@ mod tests {
 
         // Perform download
         downloader
-            .download(
-                reader,
-                dest_store.clone(),
-                blob_path.clone(),
-                metadata.clone(),
-            )
+            .download(reader, dest_store.clone(), blob_path.clone(), metadata.clone())
             .await
             .unwrap();
 
@@ -279,10 +251,7 @@ mod tests {
 
         // Source store
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        source_store
-            .put(&blob_path.path(), data.clone().into())
-            .await
-            .unwrap();
+        source_store.put(&blob_path.path(), data.clone().into()).await.unwrap();
 
         // Destination store
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
@@ -295,12 +264,7 @@ mod tests {
 
         // Download
         downloader
-            .download(
-                reader,
-                dest_store.clone(),
-                blob_path.clone(),
-                metadata.clone(),
-            )
+            .download(reader, dest_store.clone(), blob_path.clone(), metadata.clone())
             .await
             .unwrap();
 
@@ -323,27 +287,18 @@ mod tests {
         let blob_path = BlobPath::Data(2, checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        source_store
-            .put(&blob_path.path(), data.clone().into())
-            .await
-            .unwrap();
+        source_store.put(&blob_path.path(), data.clone().into()).await.unwrap();
 
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         // Pre-populate destination so download should skip
-        dest_store
-            .put(&blob_path.path(), data.clone().into())
-            .await
-            .unwrap();
+        dest_store.put(&blob_path.path(), data.clone().into()).await.unwrap();
 
         let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
         let concurrency = Arc::new(Semaphore::new(2));
         let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
         // Should succeed and skip download
-        downloader
-            .download(reader, dest_store.clone(), blob_path.clone(), metadata)
-            .await
-            .unwrap();
+        downloader.download(reader, dest_store.clone(), blob_path.clone(), metadata).await.unwrap();
 
         // Data should still be correct
         let result = dest_store.get(&blob_path.path()).await.unwrap();
@@ -366,20 +321,15 @@ mod tests {
         let blob_path = BlobPath::Data(3, wrong_checksum);
 
         let source_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        source_store
-            .put(&blob_path.path(), data.into())
-            .await
-            .unwrap();
+        source_store.put(&blob_path.path(), data.into()).await.unwrap();
 
         let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let reader = Arc::new(BlobStoreReader::new(source_store.clone(), &blob_path));
         let concurrency = Arc::new(Semaphore::new(2));
         let downloader = BlobDownloader::new(concurrency, chunk_size, ns_per_byte).unwrap();
 
-        let err = downloader
-            .download(reader, dest_store.clone(), blob_path, metadata)
-            .await
-            .unwrap_err();
+        let err =
+            downloader.download(reader, dest_store.clone(), blob_path, metadata).await.unwrap_err();
 
         assert!(matches!(err, BlobError::VerificationError(_)));
     }

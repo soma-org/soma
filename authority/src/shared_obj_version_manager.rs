@@ -9,7 +9,7 @@ use types::{
     error::SomaResult,
     object::Version,
     storage::{
-        transaction_non_shared_input_object_keys, transaction_receiving_object_keys, ObjectKey,
+        ObjectKey, transaction_non_shared_input_object_keys, transaction_receiving_object_keys,
     },
     transaction::{SharedInputObject, TransactionKey, VerifiedExecutableTransaction},
 };
@@ -29,9 +29,7 @@ pub struct AssignedVersions {
 
 impl AssignedVersions {
     pub fn new(shared_object_versions: Vec<(ConsensusObjectSequenceKey, Version)>) -> Self {
-        Self {
-            shared_object_versions,
-        }
+        Self { shared_object_versions }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &(ConsensusObjectSequenceKey, Version)> {
@@ -164,9 +162,7 @@ impl SharedObjVerManager {
         T: AsTx + 'a,
     {
         let mut shared_input_next_versions = get_or_init_versions(
-            assignables
-                .clone()
-                .flat_map(|a| a.shared_input_objects(epoch_store)),
+            assignables.clone().flat_map(|a| a.shared_input_objects(epoch_store)),
             epoch_store,
             cache_reader,
         )?;
@@ -256,49 +252,27 @@ impl SharedObjVerManager {
         let receiving_object_keys = assignable.receiving_object_keys();
         input_object_keys.extend(receiving_object_keys);
 
-        for (
-            SharedInputObject {
-                id,
-                initial_shared_version,
-                mutable,
-            },
-            assigned_version,
-        ) in shared_input_objects.iter().map(|obj| {
-            (
-                obj,
-                *shared_input_next_versions
-                    .get(&obj.id_and_version())
-                    .unwrap(),
-            )
-        }) {
+        for (SharedInputObject { id, initial_shared_version, mutable }, assigned_version) in
+            shared_input_objects
+                .iter()
+                .map(|obj| (obj, *shared_input_next_versions.get(&obj.id_and_version()).unwrap()))
+        {
             assigned_versions.push(((*id, *initial_shared_version), assigned_version));
             input_object_keys.push(ObjectKey(*id, assigned_version));
         }
 
         let next_version = Version::lamport_increment(input_object_keys.iter().map(|obj| obj.1));
-        assert!(
-            next_version.is_valid(),
-            "Assigned version must be valid. Got {:?}",
-            next_version
-        );
+        assert!(next_version.is_valid(), "Assigned version must be valid. Got {:?}", next_version);
 
         // Update the next version for the shared objects.
         assigned_versions.iter().for_each(|(id, version)| {
-            assert!(
-                version.is_valid(),
-                "Assigned version must be a valid version."
-            );
+            assert!(version.is_valid(), "Assigned version must be a valid version.");
             shared_input_next_versions
                 .insert(*id, next_version)
                 .expect("Object must exist in shared_input_next_versions.");
         });
 
-        trace!(
-            ?tx_key,
-            ?assigned_versions,
-            ?next_version,
-            "locking shared objects"
-        );
+        trace!(?tx_key, ?assigned_versions, ?next_version, "locking shared objects");
 
         AssignedVersions::new(assigned_versions)
     }
@@ -309,9 +283,8 @@ fn get_or_init_versions<'a>(
     epoch_store: &AuthorityPerEpochStore,
     cache_reader: &dyn ObjectCacheRead,
 ) -> SomaResult<HashMap<ConsensusObjectSequenceKey, Version>> {
-    let mut shared_input_objects: Vec<_> = shared_input_objects
-        .map(|so| so.into_id_and_version())
-        .collect();
+    let mut shared_input_objects: Vec<_> =
+        shared_input_objects.map(|so| so.into_id_and_version()).collect();
 
     shared_input_objects.sort();
     shared_input_objects.dedup();

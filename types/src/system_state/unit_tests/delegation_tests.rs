@@ -162,9 +162,7 @@ mod delegation_tests {
         }
 
         // Request to remove validator 1
-        let _ = system_state
-            .request_remove_validator(validator_addr_1(), vec![])
-            .unwrap();
+        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -175,11 +173,8 @@ mod delegation_tests {
 
         // Verify withdrawn amount includes principal + rewards
         // Staker gets ~23.336 SOMA reward via exchange rate (100/200 of v1's reward)
-        let expected_staker = if should_distribute_rewards {
-            123_336_000_000
-        } else {
-            100 * SHANNONS_PER_SOMA
-        };
+        let expected_staker =
+            if should_distribute_rewards { 123_336_000_000 } else { 100 * SHANNONS_PER_SOMA };
         assert_eq!(
             total_soma_balance(&staker_withdrawals, staker_addr_1()),
             expected_staker,
@@ -191,33 +186,19 @@ mod delegation_tests {
             .validators
             .staking_pool_mappings
             .iter()
-            .find_map(|(id, addr)| {
-                if *addr == validator_addr_1() {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
+            .find_map(|(id, addr)| if *addr == validator_addr_1() { Some(id) } else { None })
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state
-            .validators
-            .inactive_validators
-            .get(validator_pool_id)
-            .unwrap();
+        let validator = system_state.validators.inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator should still have their self-stake + rewards.
         // v1 gets ~53.336 SOMA reward total; validator owns 100/200 of pool, same as staker.
         // After staker withdrawal, validator retains their 100 + reward share.
-        let expected_validator = if should_distribute_rewards {
-            123_336_000_000
-        } else {
-            100 * SHANNONS_PER_SOMA
-        };
+        let expected_validator =
+            if should_distribute_rewards { 123_336_000_000 } else { 100 * SHANNONS_PER_SOMA };
         assert_eq!(
-            validator.staking_pool.soma_balance,
-            expected_validator,
+            validator.staking_pool.soma_balance, expected_validator,
             "Validator should retain self-stake + rewards"
         );
     }
@@ -234,9 +215,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Request to remove validator 1
-        let _ = system_state
-            .request_remove_validator(validator_addr_1(), vec![])
-            .unwrap();
+        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Add rewards after the validator requests to leave
         // Since the validator is still active this epoch, it should get rewards.
@@ -259,26 +238,15 @@ mod delegation_tests {
             .validators
             .staking_pool_mappings
             .iter()
-            .find_map(|(id, addr)| {
-                if *addr == validator_addr_1() {
-                    Some(id)
-                } else {
-                    None
-                }
-            })
+            .find_map(|(id, addr)| if *addr == validator_addr_1() { Some(id) } else { None })
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state
-            .validators
-            .inactive_validators
-            .get(validator_pool_id)
-            .unwrap();
+        let validator = system_state.validators.inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator retains their 100 SOMA + same reward share as staker
         assert_eq!(
-            validator.staking_pool.soma_balance,
-            123_336_000_000,
+            validator.staking_pool.soma_balance, 123_336_000_000,
             "Validator should retain self-stake + rewards from last epoch"
         );
     }
@@ -294,19 +262,13 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Request to remove validator 1
-        let _ = system_state
-            .request_remove_validator(validator_addr_1(), vec![])
-            .unwrap();
+        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Verify validator is no longer active
-        assert!(
-            !system_state
-                .validators
-                .is_active_validator(validator_addr_1())
-        );
+        assert!(!system_state.validators.is_active_validator(validator_addr_1()));
 
         // Try to add stake to the inactive validator - should fail
         let result = system_state.request_add_stake(
@@ -335,22 +297,14 @@ mod delegation_tests {
         add_validator(&mut system_state, new_validator_addr());
 
         // Delegate to the preactive validator
-        let staked_soma_1 = stake_with(
-            &mut system_state,
-            staker_addr_1(),
-            new_validator_addr(),
-            100,
-        );
+        let staked_soma_1 =
+            stake_with(&mut system_state, staker_addr_1(), new_validator_addr(), 100);
 
         // Add more stakes
         let staked_soma_2 =
             stake_with(&mut system_state, staker_addr_2(), new_validator_addr(), 50);
-        let staked_soma_3 = stake_with(
-            &mut system_state,
-            staker_addr_3(),
-            new_validator_addr(),
-            100,
-        );
+        let staked_soma_3 =
+            stake_with(&mut system_state, staker_addr_3(), new_validator_addr(), 100);
 
         // Advance epoch to activate validator
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -397,12 +351,7 @@ mod delegation_tests {
         add_validator(&mut system_state, new_validator_addr());
 
         // Delegate to the preactive validator
-        let staked_soma = stake_with(
-            &mut system_state,
-            staker_addr_1(),
-            new_validator_addr(),
-            100,
-        );
+        let staked_soma = stake_with(&mut system_state, staker_addr_1(), new_validator_addr(), 100);
 
         // Advance epoch to activate validator
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -411,9 +360,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 90 * SHANNONS_PER_SOMA).unwrap();
 
         // Remove validator
-        let _ = system_state
-            .request_remove_validator(new_validator_addr(), vec![])
-            .unwrap();
+        let _ = system_state.request_remove_validator(new_validator_addr(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();

@@ -12,9 +12,7 @@ use store::traits::Map;
 use store::{DBMapUtils, be_fix_int_ser};
 
 fn temp_dir() -> std::path::PathBuf {
-    tempfile::tempdir()
-        .expect("Failed to open temporary directory")
-        .keep()
+    tempfile::tempdir().expect("Failed to open temporary directory").keep()
 }
 /// This struct is used to illustrate how the utility works
 #[derive(DBMapUtils)]
@@ -77,10 +75,7 @@ async fn macro_test() {
         raw_value_bytes1 += value_buf.len();
     }
     let keys_vals_1 = kv_range.map(|i| (i.to_string(), i.to_string()));
-    tbls_primary
-        .table1
-        .multi_insert(keys_vals_1.clone())
-        .expect("Failed to multi-insert");
+    tbls_primary.table1.multi_insert(keys_vals_1.clone()).expect("Failed to multi-insert");
 
     let mut raw_key_bytes2 = 0;
     let mut raw_value_bytes2 = 0;
@@ -94,19 +89,14 @@ async fn macro_test() {
         raw_value_bytes2 += value_buf.len();
     }
     let keys_vals_2 = kv_range.map(|i| (i, i.to_string()));
-    tbls_primary
-        .table2
-        .multi_insert(keys_vals_2.clone())
-        .expect("Failed to multi-insert");
+    tbls_primary.table2.multi_insert(keys_vals_2.clone()).expect("Failed to multi-insert");
 
     // Open in secondary mode
     let tbls_secondary = Tables::get_read_only_handle(primary_path.clone(), None, None);
 
     // Check all the tables can be listed
-    let observed_table_names: HashSet<_> = Tables::describe_tables()
-        .iter()
-        .map(|q| q.0.clone())
-        .collect();
+    let observed_table_names: HashSet<_> =
+        Tables::describe_tables().iter().map(|q| q.0.clone()).collect();
 
     let exp: HashSet<String> =
         HashSet::from_iter(vec!["table1", "table2"].into_iter().map(|s| s.to_owned()));
@@ -125,10 +115,7 @@ async fn macro_test() {
 
     // Check that catchup logic works
     let keys_vals_1 = (100..110).map(|i| (i.to_string(), i.to_string()));
-    tbls_primary
-        .table1
-        .multi_insert(keys_vals_1)
-        .expect("Failed to multi-insert");
+    tbls_primary.table1.multi_insert(keys_vals_1).expect("Failed to multi-insert");
 
     // Test pagination
     let m = tbls_secondary.dump("table1", 2, 0).unwrap();

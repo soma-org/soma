@@ -64,10 +64,7 @@ pub struct SubmitCommand {
 // =============================================================================
 
 impl SubmitCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<SubmitCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<SubmitCommandResponse> {
         let sender = context.active_address()?;
         let client = context.get_client().await?;
 
@@ -108,17 +105,12 @@ impl SubmitCommand {
 fn parse_hex_digest_32(hex_str: &str, field_name: &str) -> Result<[u8; 32]> {
     let bytes = Hex::decode(hex_str.strip_prefix("0x").unwrap_or(hex_str))
         .map_err(|e| anyhow!("Invalid hex for {}: {}", field_name, e))?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
+    let arr: [u8; 32] =
+        bytes.try_into().map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
     Ok(arr)
 }
 
-fn build_data_manifest(
-    url: &str,
-    checksum_hex: &str,
-    size: usize,
-) -> Result<SubmissionManifest> {
+fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<SubmissionManifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;
     let checksum_bytes = parse_hex_digest_32(checksum_hex, "data-checksum")?;
 
@@ -132,9 +124,7 @@ fn parse_embedding(embedding_str: &str) -> Result<Vec<i64>> {
     embedding_str
         .split(',')
         .map(|s| {
-            s.trim()
-                .parse::<i64>()
-                .map_err(|e| anyhow!("Invalid embedding value '{}': {}", s, e))
+            s.trim().parse::<i64>().map_err(|e| anyhow!("Invalid embedding value '{}': {}", s, e))
         })
         .collect()
 }
@@ -146,10 +136,8 @@ async fn execute_tx(
     kind: TransactionKind,
     tx_args: TxProcessingArgs,
 ) -> Result<SubmitCommandResponse> {
-    let result = crate::client_commands::execute_or_serialize(
-        context, sender, kind, None, tx_args,
-    )
-    .await?;
+    let result =
+        crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
 
     // Convert ClientCommandResponse to SubmitCommandResponse
     match result {
@@ -157,14 +145,10 @@ async fn execute_tx(
             Ok(SubmitCommandResponse::Transaction(tx))
         }
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
-            Ok(SubmitCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
-            })
+            Ok(SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
         }
         crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
-            Ok(SubmitCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
-            })
+            Ok(SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
         }
         crate::response::ClientCommandResponse::TransactionDigest(d) => {
             Ok(SubmitCommandResponse::TransactionDigest(d))
@@ -184,9 +168,7 @@ async fn execute_tx(
 #[serde(untagged)]
 pub enum SubmitCommandResponse {
     Transaction(TransactionResponse),
-    SerializedTransaction {
-        serialized_unsigned_transaction: String,
-    },
+    SerializedTransaction { serialized_unsigned_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
 }
@@ -197,9 +179,7 @@ impl Display for SubmitCommandResponse {
             SubmitCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            SubmitCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
-            } => {
+            SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_unsigned_transaction)?;

@@ -20,22 +20,16 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
         }
 
         if let Some(submask) = mask.subtree(Self::TRANSACTION_FIELD.name) {
-            self.transaction = transaction
-                .as_ref()
-                .map(|t| Transaction::merge_from(t, &submask));
+            self.transaction = transaction.as_ref().map(|t| Transaction::merge_from(t, &submask));
         }
 
         if let Some(submask) = mask.subtree(Self::SIGNATURES_FIELD.name) {
-            self.signatures = signatures
-                .iter()
-                .map(|s| UserSignature::merge_from(s, &submask))
-                .collect();
+            self.signatures =
+                signatures.iter().map(|s| UserSignature::merge_from(s, &submask)).collect();
         }
 
         if let Some(submask) = mask.subtree(Self::EFFECTS_FIELD.name) {
-            self.effects = effects
-                .as_ref()
-                .map(|e| TransactionEffects::merge_from(e, &submask));
+            self.effects = effects.as_ref().map(|e| TransactionEffects::merge_from(e, &submask));
         }
 
         if mask.contains(Self::CHECKPOINT_FIELD.name) {
@@ -51,9 +45,7 @@ impl Merge<&ExecutedTransaction> for ExecutedTransaction {
         }
 
         if let Some(submask) = mask.subtree(Self::OBJECTS_FIELD) {
-            self.objects = objects
-                .as_ref()
-                .map(|objects| ObjectSet::merge_from(objects, &submask));
+            self.objects = objects.as_ref().map(|objects| ObjectSet::merge_from(objects, &submask));
         }
     }
 }

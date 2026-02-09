@@ -36,9 +36,7 @@ impl<C: NetworkClient, S: NetworkService> Subscriber<C, S> {
         authority_service: Arc<S>,
         dag_state: Arc<RwLock<DagState>>,
     ) -> Self {
-        let subscriptions = (0..context.committee.size())
-            .map(|_| None)
-            .collect::<Vec<_>>();
+        let subscriptions = (0..context.committee.size()).map(|_| None).collect::<Vec<_>>();
         Self {
             context,
             network_client,
@@ -58,10 +56,7 @@ impl<C: NetworkClient, S: NetworkService> Subscriber<C, S> {
         let authority_service = self.authority_service.clone();
         let (mut last_received, gc_round) = {
             let dag_state = self.dag_state.read();
-            (
-                dag_state.get_last_block_for_authority(peer).round(),
-                dag_state.gc_round(),
-            )
+            (dag_state.get_last_block_for_authority(peer).round(), dag_state.gc_round())
         };
 
         // If the latest block we have accepted by an authority is older than the current gc round,
@@ -129,9 +124,7 @@ impl<C: NetworkClient, S: NetworkService> Subscriber<C, S> {
                 );
                 sleep(delay).await;
                 // Update delay for the next retry.
-                delay = delay
-                    .mul_f32(RETRY_INTERVAL_MULTIPLIER)
-                    .min(MAX_RETRY_INTERVAL);
+                delay = delay.mul_f32(RETRY_INTERVAL_MULTIPLIER).min(MAX_RETRY_INTERVAL);
             } else if retries > 0 {
                 // Retry immediately, but still yield to avoid monopolizing the thread.
                 tokio::task::yield_now().await;
@@ -168,9 +161,7 @@ impl<C: NetworkClient, S: NetworkService> Subscriber<C, S> {
             'stream: loop {
                 match blocks.next().await {
                     Some(block) => {
-                        let result = authority_service
-                            .handle_send_block(peer, block.clone())
-                            .await;
+                        let result = authority_service.handle_send_block(peer, block.clone()).await;
                         if let Err(e) = result {
                             match e {
                                 ConsensusError::BlockRejected { block_ref, reason } => {
@@ -191,10 +182,7 @@ impl<C: NetworkClient, S: NetworkService> Subscriber<C, S> {
                         retries = 0;
                     }
                     None => {
-                        debug!(
-                            "Subscription to blocks from peer {} {} ended",
-                            peer, peer_hostname
-                        );
+                        debug!("Subscription to blocks from peer {} {} ended", peer, peer_hostname);
                         retries += 1;
                         break 'stream;
                     }

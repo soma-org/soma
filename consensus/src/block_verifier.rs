@@ -3,7 +3,7 @@ use bytes::Bytes;
 use std::{collections::BTreeSet, sync::Arc};
 use types::consensus::block::{BlockRef, TransactionIndex};
 use types::consensus::{
-    block::{genesis_blocks, BlockAPI, SignedBlock, VerifiedBlock, GENESIS_ROUND},
+    block::{BlockAPI, GENESIS_ROUND, SignedBlock, VerifiedBlock, genesis_blocks},
     context::Context,
 };
 use types::error::{ConsensusError, ConsensusResult};
@@ -48,15 +48,8 @@ impl SignedBlockVerifier {
         context: Arc<Context>,
         transaction_verifier: Arc<dyn TransactionVerifier>,
     ) -> Self {
-        let genesis = genesis_blocks(&context)
-            .into_iter()
-            .map(|b| b.reference())
-            .collect();
-        Self {
-            context,
-            genesis,
-            transaction_verifier,
-        }
+        let genesis = genesis_blocks(&context).into_iter().map(|b| b.reference()).collect();
+        Self { context, genesis, transaction_verifier }
     }
 
     fn verify_block(&self, block: &SignedBlock) -> ConsensusResult<()> {
@@ -124,9 +117,7 @@ impl SignedBlockVerifier {
                 return Err(ConsensusError::InvalidGenesisAncestor(*ancestor));
             }
             if seen_ancestors[ancestor.author] {
-                return Err(ConsensusError::DuplicatedAncestorsAuthority(
-                    ancestor.author,
-                ));
+                return Err(ConsensusError::DuplicatedAncestorsAuthority(ancestor.author));
             }
             seen_ancestors[ancestor.author] = true;
             // Block must have round >= 1 so checked_sub(1) should be safe.
@@ -167,10 +158,8 @@ impl SignedBlockVerifier {
             });
         }
 
-        let total_transactions_size_limit = self
-            .context
-            .protocol_config
-            .max_transactions_in_block_bytes() as usize;
+        let total_transactions_size_limit =
+            self.context.protocol_config.max_transactions_in_block_bytes() as usize;
         if batch.iter().map(|t| t.len()).sum::<usize>() > total_transactions_size_limit
             && total_transactions_size_limit > 0
         {
@@ -216,10 +205,7 @@ impl BlockVerifier for NoopBlockVerifier {
         _block: SignedBlock,
         _serialized_block: Bytes,
     ) -> ConsensusResult<(VerifiedBlock, Vec<TransactionIndex>)> {
-        Ok((
-            VerifiedBlock::new_verified(_block, _serialized_block),
-            vec![],
-        ))
+        Ok((VerifiedBlock::new_verified(_block, _serialized_block), vec![]))
     }
 
     fn vote(&self, _block: &VerifiedBlock) -> ConsensusResult<Vec<TransactionIndex>> {

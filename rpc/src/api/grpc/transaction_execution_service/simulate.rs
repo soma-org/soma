@@ -55,10 +55,7 @@ pub fn simulate_transaction(
             service.reader.inner().get_chain_identifier()?.chain(),
         )
         .ok_or_else(|| {
-            RpcError::new(
-                tonic::Code::Internal,
-                "unable to get current protocol config",
-            )
+            RpcError::new(tonic::Code::Internal, "unable to get current protocol config")
         })?;
 
         protocol_config
@@ -98,14 +95,8 @@ pub fn simulate_transaction(
         }
     }
 
-    let SimulateTransactionResult {
-        effects,
-        objects,
-        execution_result,
-        mock_gas_id: _,
-    } = executor
-        .simulate_transaction(transaction.clone(), checks)
-        .map_err(anyhow::Error::from)?;
+    let SimulateTransactionResult { effects, objects, execution_result, mock_gas_id: _ } =
+        executor.simulate_transaction(transaction.clone(), checks).map_err(anyhow::Error::from)?;
 
     let transaction = if let Some(submask) = read_mask.subtree("transaction") {
         let mut message = ExecutedTransaction::default();
@@ -113,53 +104,45 @@ pub fn simulate_transaction(
 
         message.balance_changes =
             if submask.contains(ExecutedTransaction::BALANCE_CHANGES_FIELD.name) {
-                derive_balance_changes_2(&effects, &objects)
-                    .into_iter()
-                    .map(Into::into)
-                    .collect()
+                derive_balance_changes_2(&effects, &objects).into_iter().map(Into::into).collect()
             } else {
                 vec![]
             };
 
         message.effects = {
             let effects = crate::types::TransactionEffects::try_from(effects)?;
-            submask
-                .subtree(ExecutedTransaction::EFFECTS_FIELD)
-                .map(|mask| {
-                    let mut effects = TransactionEffects::merge_from(&effects, &mask);
+            submask.subtree(ExecutedTransaction::EFFECTS_FIELD).map(|mask| {
+                let mut effects = TransactionEffects::merge_from(&effects, &mask);
 
-                    if mask.contains(TransactionEffects::CHANGED_OBJECTS_FIELD.name) {
-                        for changed_object in effects.changed_objects.iter_mut() {
-                            let Ok(object_id) = changed_object.object_id().parse::<ObjectID>()
-                            else {
-                                continue;
-                            };
+                if mask.contains(TransactionEffects::CHANGED_OBJECTS_FIELD.name) {
+                    for changed_object in effects.changed_objects.iter_mut() {
+                        let Ok(object_id) = changed_object.object_id().parse::<ObjectID>() else {
+                            continue;
+                        };
 
-                            if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
-                                changed_object.object_type = Some((*object.type_()).to_string());
-                            }
+                        if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
+                            changed_object.object_type = Some((*object.type_()).to_string());
                         }
                     }
+                }
 
-                    if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
-                        for unchanged_consensus_object in
-                            effects.unchanged_shared_objects.iter_mut()
-                        {
-                            let Ok(object_id) =
-                                unchanged_consensus_object.object_id().parse::<ObjectID>()
-                            else {
-                                continue;
-                            };
+                if mask.contains(TransactionEffects::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+                    for unchanged_consensus_object in effects.unchanged_shared_objects.iter_mut() {
+                        let Ok(object_id) =
+                            unchanged_consensus_object.object_id().parse::<ObjectID>()
+                        else {
+                            continue;
+                        };
 
-                            if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
-                                unchanged_consensus_object.object_type =
-                                    Some((*object.type_()).to_string());
-                            }
+                        if let Some(object) = objects.iter().find(|o| o.id() == object_id) {
+                            unchanged_consensus_object.object_type =
+                                Some((*object.type_()).to_string());
                         }
                     }
+                }
 
-                    effects
-                })
+                effects
+            })
         };
 
         message.transaction = submask
@@ -167,19 +150,10 @@ pub fn simulate_transaction(
             .map(|mask| Transaction::merge_from(transaction, &mask));
 
         message.objects = submask
-            .subtree(
-                ExecutedTransaction::path_builder()
-                    .objects()
-                    .objects()
-                    .finish(),
-            )
+            .subtree(ExecutedTransaction::path_builder().objects().objects().finish())
             .map(|mask| {
-                ObjectSet::default().with_objects(
-                    objects
-                        .iter()
-                        .map(|o| Object::merge_from(o, &mask))
-                        .collect(),
-                )
+                ObjectSet::default()
+                    .with_objects(objects.iter().map(|o| Object::merge_from(o, &mask)).collect())
             });
 
         Some(message)
@@ -209,9 +183,7 @@ fn select_gas(
         // since only Address owned can be used for gas payments today
         .filter_ok(|object| !object.is_shared())
         .filter_map_ok(|object| {
-            object
-                .as_coin()
-                .map(|coin| (object.compute_object_reference(), coin))
+            object.as_coin().map(|coin| (object.compute_object_reference(), coin))
         })
         .take(max_gas_payment_objects as usize);
 

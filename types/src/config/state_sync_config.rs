@@ -147,17 +147,13 @@ impl StateSyncConfig {
     pub fn timeout(&self) -> Duration {
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
-        self.timeout_ms
-            .map(Duration::from_millis)
-            .unwrap_or(DEFAULT_TIMEOUT)
+        self.timeout_ms.map(Duration::from_millis).unwrap_or(DEFAULT_TIMEOUT)
     }
 
     pub fn checkpoint_content_timeout(&self) -> Duration {
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-        self.checkpoint_content_timeout_ms
-            .map(Duration::from_millis)
-            .unwrap_or(DEFAULT_TIMEOUT)
+        self.checkpoint_content_timeout_ms.map(Duration::from_millis).unwrap_or(DEFAULT_TIMEOUT)
     }
 
     pub fn wait_interval_when_no_peer_to_sync_content(&self) -> Duration {
@@ -167,10 +163,6 @@ impl StateSyncConfig {
     }
 
     fn default_wait_interval_when_no_peer_to_sync_content(&self) -> Duration {
-        if cfg!(msim) {
-            Duration::from_secs(5)
-        } else {
-            Duration::from_secs(10)
-        }
+        if cfg!(msim) { Duration::from_secs(5) } else { Duration::from_secs(10) }
     }
 }

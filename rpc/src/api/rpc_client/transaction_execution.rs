@@ -31,10 +31,7 @@ pub enum ExecuteAndWaitError {
     /// Transaction executed but checkpoint wait timed out
     CheckpointTimeout(Response<ExecuteTransactionResponse>),
     /// Transaction executed but checkpoint stream had an error
-    CheckpointStreamError {
-        response: Response<ExecuteTransactionResponse>,
-        error: tonic::Status,
-    },
+    CheckpointStreamError { response: Response<ExecuteTransactionResponse>, error: tonic::Status },
 }
 
 impl std::fmt::Display for ExecuteAndWaitError {
@@ -49,10 +46,7 @@ impl std::fmt::Display for ExecuteAndWaitError {
                 write!(f, "Transaction executed but checkpoint wait timed out")
             }
             Self::CheckpointStreamError { error, .. } => {
-                write!(
-                    f,
-                    "Transaction executed but checkpoint stream had an error: {error}"
-                )
+                write!(f, "Transaction executed but checkpoint stream had an error: {error}")
             }
         }
     }
@@ -138,9 +132,7 @@ impl Client {
                     }
                 }
             }
-            Err(tonic::Status::aborted(
-                "checkpoint stream ended unexpectedly",
-            ))
+            Err(tonic::Status::aborted("checkpoint stream ended unexpectedly"))
         };
 
         tokio::select! {

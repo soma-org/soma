@@ -47,8 +47,7 @@ impl RpcConfig {
     }
 
     pub fn https_address(&self) -> SocketAddr {
-        self.https_address
-            .unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], 9443)))
+        self.https_address.unwrap_or_else(|| SocketAddr::from(([0, 0, 0, 0], 9443)))
     }
 
     pub fn tls_config(&self) -> Option<&RpcTlsConfig> {

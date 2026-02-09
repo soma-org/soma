@@ -54,20 +54,14 @@ impl Config {
     ///
     /// [spec]: https://httpwg.org/specs/rfc9113.html#InitialWindowSize
     pub fn initial_stream_window_size(self, sz: impl Into<Option<u32>>) -> Self {
-        Self {
-            init_stream_window_size: sz.into(),
-            ..self
-        }
+        Self { init_stream_window_size: sz.into(), ..self }
     }
 
     /// Sets the max connection-level flow control for HTTP2
     ///
     /// Default is 65,535
     pub fn initial_connection_window_size(self, sz: impl Into<Option<u32>>) -> Self {
-        Self {
-            init_connection_window_size: sz.into(),
-            ..self
-        }
+        Self { init_connection_window_size: sz.into(), ..self }
     }
 
     /// Sets the [`SETTINGS_MAX_CONCURRENT_STREAMS`][spec] option for HTTP2
@@ -77,20 +71,14 @@ impl Config {
     ///
     /// [spec]: https://httpwg.org/specs/rfc9113.html#n-stream-concurrency
     pub fn max_concurrent_streams(self, max: impl Into<Option<u32>>) -> Self {
-        Self {
-            max_concurrent_streams: max.into(),
-            ..self
-        }
+        Self { max_concurrent_streams: max.into(), ..self }
     }
 
     /// Sets the maximum time option in milliseconds that a connection may exist
     ///
     /// Default is no limit (`None`).
     pub fn max_connection_age(self, max_connection_age: Duration) -> Self {
-        Self {
-            max_connection_age: Some(max_connection_age),
-            ..self
-        }
+        Self { max_connection_age: Some(max_connection_age), ..self }
     }
 
     /// Set whether HTTP2 Ping frames are enabled on accepted connections.
@@ -102,10 +90,7 @@ impl Config {
     ///
     /// Default is no HTTP2 keepalive (`None`)
     pub fn http2_keepalive_interval(self, http2_keepalive_interval: Option<Duration>) -> Self {
-        Self {
-            http2_keepalive_interval,
-            ..self
-        }
+        Self { http2_keepalive_interval, ..self }
     }
 
     /// Sets a timeout for receiving an acknowledgement of the keepalive ping.
@@ -115,20 +100,14 @@ impl Config {
     ///
     /// Default is 20 seconds.
     pub fn http2_keepalive_timeout(self, http2_keepalive_timeout: Option<Duration>) -> Self {
-        Self {
-            http2_keepalive_timeout,
-            ..self
-        }
+        Self { http2_keepalive_timeout, ..self }
     }
 
     /// Sets whether to use an adaptive flow control. Defaults to false.
     /// Enabling this will override the limits set in http2_initial_stream_window_size and
     /// http2_initial_connection_window_size.
     pub fn http2_adaptive_window(self, enabled: Option<bool>) -> Self {
-        Self {
-            http2_adaptive_window: enabled,
-            ..self
-        }
+        Self { http2_adaptive_window: enabled, ..self }
     }
 
     /// Configures the maximum number of pending reset streams allowed before a GOAWAY will be sent.
@@ -137,10 +116,7 @@ impl Config {
     ///
     /// See <https://github.com/hyperium/hyper/issues/2877> for more information.
     pub fn http2_max_pending_accept_reset_streams(self, max: Option<usize>) -> Self {
-        Self {
-            http2_max_pending_accept_reset_streams: max,
-            ..self
-        }
+        Self { http2_max_pending_accept_reset_streams: max, ..self }
     }
 
     /// Set whether TCP keepalive messages are enabled on accepted connections.
@@ -151,28 +127,19 @@ impl Config {
     ///
     /// Default is no keepalive (`None`)
     pub fn tcp_keepalive(self, tcp_keepalive: Option<Duration>) -> Self {
-        Self {
-            tcp_keepalive,
-            ..self
-        }
+        Self { tcp_keepalive, ..self }
     }
 
     /// Set the value of `TCP_NODELAY` option for accepted connections. Enabled by default.
     pub fn tcp_nodelay(self, enabled: bool) -> Self {
-        Self {
-            tcp_nodelay: enabled,
-            ..self
-        }
+        Self { tcp_nodelay: enabled, ..self }
     }
 
     /// Sets the max size of received header frames.
     ///
     /// This will default to whatever the default in hyper is. As of v1.4.1, it is 16 KiB.
     pub fn http2_max_header_list_size(self, max: impl Into<Option<u32>>) -> Self {
-        Self {
-            http2_max_header_list_size: max.into(),
-            ..self
-        }
+        Self { http2_max_header_list_size: max.into(), ..self }
     }
 
     /// Sets the maximum frame size to use for HTTP2.
@@ -181,20 +148,14 @@ impl Config {
     ///
     /// If not set, will default from underlying transport.
     pub fn max_frame_size(self, frame_size: impl Into<Option<u32>>) -> Self {
-        Self {
-            max_frame_size: frame_size.into(),
-            ..self
-        }
+        Self { max_frame_size: frame_size.into(), ..self }
     }
 
     /// Allow this accepting http1 requests.
     ///
     /// Default is `true`.
     pub fn accept_http1(self, accept_http1: bool) -> Self {
-        Config {
-            accept_http1,
-            ..self
-        }
+        Config { accept_http1, ..self }
     }
 
     /// Allow accepting insecure connections when a tls_config is provided.
@@ -206,10 +167,7 @@ impl Config {
     ///
     /// NOTE: This presently will only work for `tokio::net::TcpStream` IO connections
     pub fn allow_insecure(self, allow_insecure: bool) -> Self {
-        Config {
-            allow_insecure,
-            ..self
-        }
+        Config { allow_insecure, ..self }
     }
 
     pub(crate) fn connection_builder(

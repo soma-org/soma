@@ -123,9 +123,7 @@ impl TryFrom<&Object> for crate::types::Object {
             .parse()
             .map_err(|e| TryFromProtoError::invalid("object_id", e))?;
 
-        let version = value
-            .version
-            .ok_or_else(|| TryFromProtoError::missing("version"))?
+        let version = value.version.ok_or_else(|| TryFromProtoError::missing("version"))?
             as crate::types::Version;
 
         let object_type = value
@@ -135,11 +133,8 @@ impl TryFrom<&Object> for crate::types::Object {
             .parse()
             .map_err(|e| TryFromProtoError::invalid("object_type", e))?;
 
-        let owner = value
-            .owner
-            .as_ref()
-            .ok_or_else(|| TryFromProtoError::missing("owner"))?
-            .try_into()?;
+        let owner =
+            value.owner.as_ref().ok_or_else(|| TryFromProtoError::missing("owner"))?.try_into()?;
 
         let previous_transaction = value
             .previous_transaction
@@ -148,11 +143,8 @@ impl TryFrom<&Object> for crate::types::Object {
             .parse()
             .map_err(|e| TryFromProtoError::invalid("previous_transaction", e))?;
 
-        let contents = value
-            .contents
-            .clone()
-            .ok_or_else(|| TryFromProtoError::missing("contents"))?
-            .into();
+        let contents =
+            value.contents.clone().ok_or_else(|| TryFromProtoError::missing("contents"))?.into();
 
         Ok(crate::types::Object::new(
             object_id,
@@ -221,9 +213,7 @@ impl TryFrom<&ObjectReference> for crate::types::ObjectReference {
             .parse()
             .map_err(|e| TryFromProtoError::invalid(ObjectReference::OBJECT_ID_FIELD, e))?;
 
-        let version = value
-            .version
-            .ok_or_else(|| TryFromProtoError::missing("version"))?;
+        let version = value.version.ok_or_else(|| TryFromProtoError::missing("version"))?;
 
         let digest = value
             .digest
@@ -273,10 +263,7 @@ impl TryFrom<&Owner> for crate::types::Owner {
 
         match value.kind() {
             OwnerKind::Unknown => {
-                return Err(TryFromProtoError::invalid(
-                    Owner::KIND_FIELD,
-                    "unknown OwnerKind",
-                ));
+                return Err(TryFromProtoError::invalid(Owner::KIND_FIELD, "unknown OwnerKind"));
             }
             OwnerKind::Address => Self::Address(
                 value

@@ -171,15 +171,10 @@ impl TryFrom<&CheckpointSummary> for crate::types::CheckpointSummary {
             .ok_or_else(|| TryFromProtoError::missing("timestamp_ms"))?
             .pipe(crate::proto::proto_to_timestamp_ms)?;
 
-        let checkpoint_commitments = commitments
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let checkpoint_commitments =
+            commitments.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        let end_of_epoch_data = end_of_epoch_data
-            .as_ref()
-            .map(TryInto::try_into)
-            .transpose()?;
+        let end_of_epoch_data = end_of_epoch_data.as_ref().map(TryInto::try_into).transpose()?;
 
         Ok(Self {
             epoch,
@@ -339,17 +334,10 @@ impl TryFrom<&CheckpointedTransactionInfo> for crate::types::CheckpointTransacti
                 TryFromProtoError::invalid(CheckpointedTransactionInfo::EFFECTS_FIELD, e)
             })?;
 
-        let signatures = value
-            .signatures
-            .iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?;
+        let signatures =
+            value.signatures.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        Ok(Self {
-            transaction,
-            effects,
-            signatures,
-        })
+        Ok(Self { transaction, effects, signatures })
     }
 }
 
@@ -381,11 +369,7 @@ impl Merge<crate::types::CheckpointContents> for CheckpointContents {
 
 impl Merge<&CheckpointContents> for CheckpointContents {
     fn merge(&mut self, source: &CheckpointContents, mask: &FieldMaskTree) {
-        let CheckpointContents {
-            digest,
-            version,
-            transactions,
-        } = source;
+        let CheckpointContents { digest, version, transactions } = source;
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -415,13 +399,7 @@ impl TryFrom<&CheckpointContents> for crate::types::CheckpointContents {
             }
         }
 
-        Ok(Self::new(
-            value
-                .transactions
-                .iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        ))
+        Ok(Self::new(value.transactions.iter().map(TryInto::try_into).collect::<Result<_, _>>()?))
     }
 }
 
@@ -482,9 +460,8 @@ impl Merge<&Checkpoint> for Checkpoint {
         }
 
         if let Some(submask) = mask.subtree(Self::SUMMARY_FIELD.name) {
-            self.summary = summary
-                .as_ref()
-                .map(|summary| CheckpointSummary::merge_from(summary, &submask));
+            self.summary =
+                summary.as_ref().map(|summary| CheckpointSummary::merge_from(summary, &submask));
         }
 
         if mask.contains(Self::SIGNATURE_FIELD.name) {
@@ -505,9 +482,7 @@ impl Merge<&Checkpoint> for Checkpoint {
         }
 
         if let Some(submask) = mask.subtree(Self::OBJECTS_FIELD) {
-            self.objects = objects
-                .as_ref()
-                .map(|objects| ObjectSet::merge_from(objects, &submask));
+            self.objects = objects.as_ref().map(|objects| ObjectSet::merge_from(objects, &submask));
         }
     }
 }

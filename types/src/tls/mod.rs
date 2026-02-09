@@ -1,7 +1,7 @@
 use crate::crypto::NetworkKeyPair;
 use certgen::SelfSignedCertificate;
 use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
-use rustls::{pki_types::CertificateDer, ClientConfig};
+use rustls::{ClientConfig, pki_types::CertificateDer};
 use std::collections::BTreeSet;
 use tokio_rustls::rustls::ServerConfig;
 use verifier::{Allower, ClientCertVerifier, ServerCertVerifier};
@@ -132,11 +132,7 @@ mod tests {
 
         // The alice passes validation
         verifier
-            .verify_client_cert(
-                &random_cert_alice.rustls_certificate(),
-                &[],
-                UnixTime::now(),
-            )
+            .verify_client_cert(&random_cert_alice.rustls_certificate(), &[], UnixTime::now())
             .unwrap();
     }
 
@@ -174,10 +170,7 @@ mod tests {
                 UnixTime::now(),
             )
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
     }
 
     #[test]
@@ -197,11 +190,7 @@ mod tests {
             ClientCertVerifier::new(allowlist.clone(), VALIDATOR_SERVER_NAME.to_string());
 
         // Add our public key to the allower
-        allowlist
-            .inner_mut()
-            .write()
-            .unwrap()
-            .insert(allowed_public_key);
+        allowlist.inner_mut().write().unwrap().insert(allowed_public_key);
 
         // The allowed cert passes validation
         verifier
@@ -212,20 +201,14 @@ mod tests {
         let err = verifier
             .verify_client_cert(&disallowed_cert.rustls_certificate(), &[], UnixTime::now())
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
 
         // After removing the allowed public key from the set it now fails validation
         allowlist.inner_mut().write().unwrap().clear();
         let err = verifier
             .verify_client_cert(&allowed_cert.rustls_certificate(), &[], UnixTime::now())
             .unwrap_err();
-        assert!(
-            matches!(err, rustls::Error::General(_)),
-            "Actual error: {err:?}"
-        );
+        assert!(matches!(err, rustls::Error::General(_)), "Actual error: {err:?}");
     }
 
     #[test]
@@ -240,11 +223,7 @@ mod tests {
             ClientCertVerifier::new(allowlist.clone(), VALIDATOR_SERVER_NAME.to_string());
 
         // Add our public key to the allower
-        allowlist
-            .inner_mut()
-            .write()
-            .unwrap()
-            .insert(public_key.clone());
+        allowlist.inner_mut().write().unwrap().insert(public_key.clone());
 
         // Allowed public key but the server-name in the cert is not the required
         let err = client_verifier
@@ -292,9 +271,7 @@ mod tests {
         // Build a rustls ClientConfig using aws-lc-rs as the crypto provider.
         // The default ring provider does not support Ed25519 TLS identity keys.
         let mut root_store = rustls::RootCertStore::empty();
-        root_store
-            .add(server_certificate.rustls_certificate())
-            .unwrap();
+        root_store.add(server_certificate.rustls_certificate()).unwrap();
         let client_tls_config = rustls::ClientConfig::builder_with_provider(
             rustls::crypto::aws_lc_rs::default_provider().into(),
         )
@@ -343,11 +320,7 @@ mod tests {
         client.get(&server_url).send().await.unwrap_err();
 
         // Insert the client's public key into the allowlist and verify the request is successful
-        allowlist
-            .inner_mut()
-            .write()
-            .unwrap()
-            .insert(client_public_key.clone());
+        allowlist.inner_mut().write().unwrap().insert(client_public_key.clone());
 
         let res = client.get(&server_url).send().await.unwrap();
         let body = res.text().await.unwrap();

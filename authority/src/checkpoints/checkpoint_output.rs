@@ -72,9 +72,8 @@ impl<T: SubmitToConsensus + ReconfigurationInitiator> CheckpointOutput
         let checkpoint_timestamp = summary.timestamp_ms;
         let checkpoint_seq = summary.sequence_number;
 
-        let highest_verified_checkpoint = checkpoint_store
-            .get_highest_verified_checkpoint()?
-            .map(|x| *x.sequence_number());
+        let highest_verified_checkpoint =
+            checkpoint_store.get_highest_verified_checkpoint()?.map(|x| *x.sequence_number());
 
         if Some(checkpoint_seq) > highest_verified_checkpoint {
             debug!(
@@ -92,8 +91,7 @@ impl<T: SubmitToConsensus + ReconfigurationInitiator> CheckpointOutput
 
             let message = CheckpointSignatureMessage { summary };
             let transaction = ConsensusTransaction::new_checkpoint_signature_message(message);
-            self.sender
-                .submit_to_consensus(&vec![transaction], epoch_store)?;
+            self.sender.submit_to_consensus(&vec![transaction], epoch_store)?;
         } else {
             debug!(
                 "Checkpoint at sequence {checkpoint_seq} is already certified, skipping signature submission to consensus",
@@ -123,8 +121,7 @@ impl CheckpointOutput for LogCheckpointOutput {
     ) -> SomaResult {
         trace!(
             "Including following transactions in checkpoint {}: {:?}",
-            summary.sequence_number,
-            contents
+            summary.sequence_number, contents
         );
         info!(
             "Creating checkpoint {:?} at epoch {}, sequence {}, previous digest {:?}, transactions count {}, content digest {:?}, end_of_epoch_data {:?}",
@@ -178,9 +175,7 @@ impl CertifiedCheckpointOutput for SendCheckpointToStateSync {
             summary.sequence_number,
             summary.digest()
         );
-        self.handle
-            .send_checkpoint(VerifiedCheckpoint::new_unchecked(summary.to_owned()))
-            .await;
+        self.handle.send_checkpoint(VerifiedCheckpoint::new_unchecked(summary.to_owned())).await;
 
         Ok(())
     }

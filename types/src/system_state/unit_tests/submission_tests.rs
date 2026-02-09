@@ -25,10 +25,8 @@ use url::Url;
 /// Helper to create a test SubmissionManifest
 fn test_submission_manifest(size: usize) -> SubmissionManifest {
     let url = Url::parse("https://example.com/data/test.bin").unwrap();
-    let metadata = Metadata::V1(MetadataV1::new(
-        Checksum::new_from_hash([0u8; DIGEST_LENGTH]),
-        size,
-    ));
+    let metadata =
+        Metadata::V1(MetadataV1::new(Checksum::new_from_hash([0u8; DIGEST_LENGTH]), size));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
     SubmissionManifest::new(manifest)
 }
@@ -71,9 +69,9 @@ fn test_submission_new() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        500,      // distance_score
-        10240,    // bond_amount
-        5,        // submit_epoch
+        500,   // distance_score
+        10240, // bond_amount
+        5,     // submit_epoch
     );
 
     assert_eq!(submission.miner, miner);
@@ -102,9 +100,9 @@ fn test_submission_embedding() {
         data_manifest,
         model_id,
         embedding.clone(),
-        1000,  // distance_score
-        5120,  // bond_amount
-        1,     // submit_epoch
+        1000, // distance_score
+        5120, // bond_amount
+        1,    // submit_epoch
     );
 
     assert_eq!(submission.embedding.len(), 768);
@@ -144,7 +142,8 @@ fn test_submit_data_transaction_kind() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
     let embedding: Embedding = Array1::zeros(768);
-    let bond_coin = (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random());
+    let bond_coin =
+        (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random());
 
     let args = SubmitDataArgs {
         target_id,
@@ -168,9 +167,7 @@ fn test_submit_data_transaction_kind() {
 fn test_claim_rewards_transaction_kind() {
     let target_id = ObjectID::random();
 
-    let args = ClaimRewardsArgs {
-        target_id,
-    };
+    let args = ClaimRewardsArgs { target_id };
     let kind = TransactionKind::ClaimRewards(args);
 
     // Test is_submission_tx helper
@@ -183,7 +180,11 @@ fn test_claim_rewards_transaction_kind() {
 fn test_non_submission_transactions() {
     // TransferCoin is not a submission tx
     let transfer = TransactionKind::TransferCoin {
-        coin: (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random()),
+        coin: (
+            ObjectID::random(),
+            crate::object::Version::new(),
+            crate::digests::ObjectDigest::random(),
+        ),
         recipient: SomaAddress::random(),
         amount: Some(1000),
     };
@@ -192,7 +193,11 @@ fn test_non_submission_transactions() {
     // AddStake is not a submission tx
     let stake = TransactionKind::AddStake {
         address: SomaAddress::random(),
-        coin_ref: (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random()),
+        coin_ref: (
+            ObjectID::random(),
+            crate::object::Version::new(),
+            crate::digests::ObjectDigest::random(),
+        ),
         amount: None,
     };
     assert!(!stake.is_submission_tx());
@@ -232,9 +237,9 @@ fn test_submission_scores() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        -500,  // negative distance score
-        5000,  // bond_amount
-        1,     // submit_epoch
+        -500, // negative distance score
+        5000, // bond_amount
+        1,    // submit_epoch
     );
     assert_eq!(submission_negative.distance_score, -500);
 
@@ -245,9 +250,9 @@ fn test_submission_scores() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        0,     // distance_score
-        5000,  // bond_amount
-        1,     // submit_epoch
+        0,    // distance_score
+        5000, // bond_amount
+        1,    // submit_epoch
     );
     assert_eq!(submission_zero.distance_score, 0);
 
@@ -258,9 +263,9 @@ fn test_submission_scores() {
         data_manifest,
         model_id,
         embedding,
-        i64::MAX / 2,  // distance_score
-        5000,          // bond_amount
-        1,             // submit_epoch
+        i64::MAX / 2, // distance_score
+        5000,         // bond_amount
+        1,            // submit_epoch
     );
     assert_eq!(submission_large.distance_score, i64::MAX / 2);
 }
@@ -280,9 +285,9 @@ fn test_submission_serialization() {
         data_manifest,
         model_id,
         embedding,
-        1000,   // distance_score
-        10240,  // bond_amount
-        5,      // submit_epoch
+        1000,  // distance_score
+        10240, // bond_amount
+        5,     // submit_epoch
     );
 
     // Serialize and deserialize
@@ -307,7 +312,9 @@ use crate::target::{Target, TargetStatus};
 use std::collections::BTreeMap;
 
 /// Helper to create a test system state with voting power properly set.
-fn create_test_system_state_with_voting_power(stakes: Vec<u64>) -> crate::system_state::SystemState {
+fn create_test_system_state_with_voting_power(
+    stakes: Vec<u64>,
+) -> crate::system_state::SystemState {
     let validators = create_validators_with_stakes(stakes);
     let mut system_state = create_test_system_state(validators, 1000, 100);
     // Voting power is calculated from stake at epoch boundary, so we need to set it explicitly
@@ -414,7 +421,8 @@ fn test_target_quorum_no_reports() {
     let target = create_test_target();
     let system_state = create_test_system_state_with_voting_power(vec![100, 100]);
 
-    let (has_quorum, challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    let (has_quorum, challenger, reporters) =
+        target.get_submission_report_quorum(&system_state.validators);
     assert!(!has_quorum);
     assert!(challenger.is_none());
     assert!(reporters.is_empty());
@@ -431,7 +439,8 @@ fn test_target_quorum_insufficient_stake() {
     // Single validator reports (25% stake, need 67%)
     target.report_submission(validator_addr, None);
 
-    let (has_quorum, _challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    let (has_quorum, _challenger, reporters) =
+        target.get_submission_report_quorum(&system_state.validators);
     assert!(!has_quorum);
     assert_eq!(reporters.len(), 1); // Still tracked as reporter
 }
@@ -454,7 +463,8 @@ fn test_target_quorum_sufficient_stake() {
     target.report_submission(validator2_addr, Some(challenger_addr));
     target.report_submission(validator3_addr, Some(challenger_addr));
 
-    let (has_quorum, winning_challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    let (has_quorum, winning_challenger, reporters) =
+        target.get_submission_report_quorum(&system_state.validators);
     assert!(has_quorum);
     assert_eq!(winning_challenger, Some(challenger_addr));
     assert_eq!(reporters.len(), 3);
@@ -476,7 +486,8 @@ fn test_target_quorum_no_challenger_consensus() {
     target.report_submission(validator2_addr, Some(challenger2));
     target.report_submission(validator3_addr, None); // No challenger
 
-    let (has_quorum, winning_challenger, reporters) = target.get_submission_report_quorum(&system_state.validators);
+    let (has_quorum, winning_challenger, reporters) =
+        target.get_submission_report_quorum(&system_state.validators);
     // Has quorum (3 of 4) but no single challenger has quorum
     assert!(has_quorum);
     assert!(winning_challenger.is_none()); // No consensus on challenger
@@ -515,7 +526,8 @@ fn test_target_quorum_with_varied_stakes() {
 
     // Add big validator (50% + 25% = 75%) - should have quorum
     target.report_submission(big_validator_addr, Some(challenger_addr));
-    let (has_quorum, winning_challenger, _) = target.get_submission_report_quorum(&system_state.validators);
+    let (has_quorum, winning_challenger, _) =
+        target.get_submission_report_quorum(&system_state.validators);
     assert!(has_quorum);
     assert_eq!(winning_challenger, Some(challenger_addr));
 }
@@ -539,9 +551,9 @@ fn test_submission_with_zero_size_data() {
         data_manifest.clone(),
         model_id,
         embedding,
-        0,  // distance_score
-        0,  // bond_amount (zero because zero data size)
-        1,  // submit_epoch
+        0, // distance_score
+        0, // bond_amount (zero because zero data size)
+        1, // submit_epoch
     );
 
     assert_eq!(submission.bond_amount, 0);

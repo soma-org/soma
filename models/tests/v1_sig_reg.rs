@@ -19,25 +19,15 @@ fn test_v1_sig_reg_normal() {
     let sig_reg_config = SIGRegConfig::new();
     let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
     let input: Tensor<TestBackend, 3> = Tensor::from_data(
-        normal_array(
-            seed + 1,
-            &vec![batch_size, seq_len, embedding_dim],
-            0.0,
-            1.0,
-        )
-        .to_tensor_data()
-        .unwrap(),
+        normal_array(seed + 1, &vec![batch_size, seq_len, embedding_dim], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
         &device,
     );
     let noise: Tensor<TestBackend, 2> = Tensor::from_data(
-        normal_array(
-            seed + 2,
-            &vec![embedding_dim, sig_reg_config.slices],
-            0.0,
-            1.0,
-        )
-        .to_tensor_data()
-        .unwrap(),
+        normal_array(seed + 2, &vec![embedding_dim, sig_reg_config.slices], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
         &device,
     );
 
@@ -50,9 +40,7 @@ fn test_v1_sig_reg_normal() {
     println!("{}", output);
     let expected_output = Tensor::<TestBackend, 1>::from_floats([1.33955204], &device);
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
 
 #[test]
@@ -66,25 +54,15 @@ fn test_v1_sig_reg_uniform() {
     let sig_reg_config = SIGRegConfig::new();
     let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
     let input: Tensor<TestBackend, 3> = Tensor::from_data(
-        uniform_array(
-            seed + 1,
-            &vec![batch_size, seq_len, embedding_dim],
-            0.0,
-            1.0,
-        )
-        .to_tensor_data()
-        .unwrap(),
+        uniform_array(seed + 1, &vec![batch_size, seq_len, embedding_dim], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
         &device,
     );
     let noise: Tensor<TestBackend, 2> = Tensor::from_data(
-        normal_array(
-            seed + 2,
-            &vec![embedding_dim, sig_reg_config.slices],
-            0.0,
-            1.0,
-        )
-        .to_tensor_data()
-        .unwrap(),
+        normal_array(seed + 2, &vec![embedding_dim, sig_reg_config.slices], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
         &device,
     );
 
@@ -97,7 +75,5 @@ fn test_v1_sig_reg_uniform() {
     println!("{}", output);
     let expected_output = Tensor::<TestBackend, 1>::from_floats([121.57125092], &device);
 
-    output
-        .to_data()
-        .assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

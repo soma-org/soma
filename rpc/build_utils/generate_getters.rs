@@ -119,11 +119,8 @@ fn generate_getter_function(
     field: &FieldDescriptorProto,
     map_types: &HashSet<String>,
 ) -> Option<TokenStream> {
-    let name = quote::format_ident!(
-        "{}{}",
-        if field.name() == "type" { "r#" } else { "" },
-        field.name()
-    );
+    let name =
+        quote::format_ident!("{}{}", if field.name() == "type" { "r#" } else { "" }, field.name());
     let name_opt = quote::format_ident!("{}_opt", field.name());
     let name_mut = quote::format_ident!("{}_mut", field.name());
     let name_opt_mut = quote::format_ident!("{}_opt_mut", field.name());
@@ -199,10 +196,7 @@ fn generate_getter_function(
                 self
             }
         }
-    } else if matches!(
-        field.label(),
-        prost_types::field_descriptor_proto::Label::Repeated
-    ) {
+    } else if matches!(field.label(), prost_types::field_descriptor_proto::Label::Repeated) {
         quote! {
             pub fn #name(&self) -> &[#field_message_ty] {
                 &self.#name
@@ -283,11 +277,8 @@ fn generate_const_default_field(
     map_types: &HashSet<String>,
     oneofs: &mut BTreeSet<usize>,
 ) -> Option<TokenStream> {
-    let name = quote::format_ident!(
-        "{}{}",
-        if field.name() == "type" { "r#" } else { "" },
-        field.name()
-    );
+    let name =
+        quote::format_ident!("{}{}", if field.name() == "type" { "r#" } else { "" }, field.name());
     let is_map = if matches!(field.r#type(), Type::Message) && !field.type_name().contains("google")
     {
         let field_message_name = field.type_name().split('.').next_back().unwrap();
@@ -307,10 +298,7 @@ fn generate_const_default_field(
         quote! {
             #name: std::collections::BTreeMap::new(),
         }
-    } else if matches!(
-        field.label(),
-        prost_types::field_descriptor_proto::Label::Repeated
-    ) {
+    } else if matches!(field.label(), prost_types::field_descriptor_proto::Label::Repeated) {
         // Repeated fields
         quote! {
             #name: Vec::new(),

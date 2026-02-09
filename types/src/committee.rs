@@ -201,27 +201,16 @@ impl Committee {
     // We call this if these have not yet been computed
     pub fn load_inner(
         voting_rights: &[(AuthorityName, VotingPower)],
-    ) -> (
-        HashMap<AuthorityName, AuthorityPublicKey>,
-        HashMap<AuthorityName, usize>,
-    ) {
+    ) -> (HashMap<AuthorityName, AuthorityPublicKey>, HashMap<AuthorityName, usize>) {
         let expanded_keys: HashMap<AuthorityName, AuthorityPublicKey> = voting_rights
             .iter()
             .map(|(addr, _)| {
-                (
-                    *addr,
-                    (*addr)
-                        .try_into()
-                        .expect("Validator pubkey is always verified on-chain"),
-                )
+                (*addr, (*addr).try_into().expect("Validator pubkey is always verified on-chain"))
             })
             .collect();
 
-        let index_map: HashMap<AuthorityName, usize> = voting_rights
-            .iter()
-            .enumerate()
-            .map(|(index, (addr, _))| (*addr, index))
-            .collect();
+        let index_map: HashMap<AuthorityName, usize> =
+            voting_rights.iter().enumerate().map(|(index, (addr, _))| (*addr, index)).collect();
         (expanded_keys, index_map)
     }
 
@@ -296,11 +285,7 @@ impl Committee {
     }
 
     pub fn threshold<const STRENGTH: bool>(&self) -> VotingPower {
-        if STRENGTH {
-            QUORUM_THRESHOLD
-        } else {
-            VALIDITY_THRESHOLD
-        }
+        if STRENGTH { QUORUM_THRESHOLD } else { VALIDITY_THRESHOLD }
     }
 
     pub fn num_members(&self) -> usize {
@@ -320,9 +305,7 @@ impl Committee {
     }
 
     pub fn authority_exists(&self, name: &AuthorityName) -> bool {
-        self.voting_rights
-            .binary_search_by_key(name, |(a, _)| *a)
-            .is_ok()
+        self.voting_rights.binary_search_by_key(name, |(a, _)| *a).is_ok()
     }
 
     /// Derive a seed deterministically from the transaction digest and shuffle the validators.
@@ -351,15 +334,9 @@ impl Committee {
     }
 
     pub fn authorities(&self) -> impl Iterator<Item = (AuthorityIndex, &Authority)> {
-        self.voting_rights
-            .iter()
-            .enumerate()
-            .map(|(idx, (name, _))| {
-                (
-                    AuthorityIndex(idx as u32),
-                    self.authorities.get(name).expect("Authority must exist"),
-                )
-            })
+        self.voting_rights.iter().enumerate().map(|(idx, (name, _))| {
+            (AuthorityIndex(idx as u32), self.authorities.get(name).expect("Authority must exist"))
+        })
     }
 
     pub fn reached_quorum(&self, stake: VotingPower) -> bool {
@@ -379,25 +356,15 @@ impl Committee {
     }
 
     pub fn stake_by_index(&self, index: AuthorityIndex) -> VotingPower {
-        self.voting_rights
-            .get(index.value())
-            .map(|(_, stake)| *stake)
-            .unwrap_or(0)
+        self.voting_rights.get(index.value()).map(|(_, stake)| *stake).unwrap_or(0)
     }
 
     pub fn authority_by_authority_index(&self, index: AuthorityIndex) -> Option<&Authority> {
-        self.voting_rights
-            .get(index.value())
-            .map(|(name, _)| self.authorities.get(name))
-            .flatten()
+        self.voting_rights.get(index.value()).map(|(name, _)| self.authorities.get(name)).flatten()
     }
 
     pub fn to_authority_index(&self, index: usize) -> Option<AuthorityIndex> {
-        if index < self.voting_rights.len() {
-            Some(AuthorityIndex(index as u32))
-        } else {
-            None
-        }
+        if index < self.voting_rights.len() { Some(AuthorityIndex(index as u32)) } else { None }
     }
 }
 
@@ -414,11 +381,7 @@ impl CommitteeTrait<AuthorityName> for Committee {
             .voting_rights
             .iter()
             .filter(|(name, _)| {
-                if let Some(restrict_to) = restrict_to {
-                    restrict_to.contains(name)
-                } else {
-                    true
-                }
+                if let Some(restrict_to) = restrict_to { restrict_to.contains(name) } else { true }
             })
             .cloned();
 
@@ -472,11 +435,7 @@ impl Display for Committee {
         for (name, vote) in &self.voting_rights {
             write!(voting_rights, "{}: {}, ", name.concise(), vote)?;
         }
-        write!(
-            f,
-            "Committee (epoch={:?}, voting_rights=[{}])",
-            self.epoch, voting_rights
-        )
+        write!(f, "Committee (epoch={:?}, voting_rights=[{}])", self.epoch, voting_rights)
     }
 }
 
@@ -529,11 +488,7 @@ impl CommitteeWithNetworkMetadata {
         epoch_id: EpochId,
         validators: BTreeMap<AuthorityName, (VotingPower, NetworkMetadata)>,
     ) -> Self {
-        Self {
-            epoch_id,
-            validators,
-            committee: OnceCell::new(),
-        }
+        Self { epoch_id, validators, committee: OnceCell::new() }
     }
     pub fn epoch(&self) -> EpochId {
         self.epoch_id
@@ -545,11 +500,8 @@ impl CommitteeWithNetworkMetadata {
 
     pub fn committee(&self) -> &Committee {
         self.committee.get_or_init(|| {
-            let voting_rights: BTreeMap<_, _> = self
-                .validators
-                .iter()
-                .map(|(name, (stake, _))| (*name, *stake))
-                .collect();
+            let voting_rights: BTreeMap<_, _> =
+                self.validators.iter().map(|(name, (stake, _))| (*name, *stake)).collect();
 
             let authorities = self
                 .validators
@@ -611,9 +563,7 @@ pub struct Authority {
     pub authority_key: AuthorityPublicKey,
 }
 
-#[derive(
-    Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
-)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize)]
 pub struct AuthorityIndex(pub u32);
 
 impl AuthorityIndex {
@@ -659,11 +609,7 @@ impl<T> IndexMut<AuthorityIndex> for Vec<T> {
 pub fn local_committee_and_keys(
     epoch: Epoch,
     authorities_stake: Vec<Stake>,
-) -> (
-    Committee,
-    Vec<(NetworkKeyPair, ProtocolKeyPair)>,
-    Vec<AuthorityKeyPair>,
-) {
+) -> (Committee, Vec<(NetworkKeyPair, ProtocolKeyPair)>, Vec<AuthorityKeyPair>) {
     let mut authorities = BTreeMap::new();
     let mut voting_weights = BTreeMap::new();
     let mut key_pairs = vec![];

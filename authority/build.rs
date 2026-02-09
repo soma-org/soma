@@ -93,9 +93,7 @@ fn main() -> Result<()> {
         )
         .build();
 
-    tonic_build::manual::Builder::new()
-        .out_dir("src/proto")
-        .compile(&[validator_service]);
+    tonic_build::manual::Builder::new().out_dir("src/proto").compile(&[validator_service]);
 
     Ok(())
 }
