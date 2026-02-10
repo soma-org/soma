@@ -1,8 +1,8 @@
 use burn::data::dataset::Dataset;
 use std::sync::Arc;
 
-const PAD_TOKEN_ID: u16 = 256;
-const EOS_TOKEN_ID: u16 = 257;
+pub const PAD_TOKEN_ID: u16 = 256;
+pub const EOS_TOKEN_ID: u16 = 257;
 
 #[derive(Debug, Clone)]
 pub struct ByteSequenceItem {

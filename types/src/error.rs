@@ -875,6 +875,8 @@ pub enum RuntimeError {
     ReqwestError(reqwest::Error),
     #[error("Blob error: {0}")]
     BlobError(BlobError),
+    #[error("Model error: {0:?}")]
+    ModelError(String),
 }
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
