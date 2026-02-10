@@ -1,10 +1,7 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
-use burn::{Tensor, data::dataloader::DataLoader, prelude::Backend, tensor::TensorData};
+use burn::{Tensor, prelude::Backend};
 use types::error::ModelResult;
 
-pub mod tensor;
+pub mod tensor_conversions;
 pub mod v1;
 
 pub struct ModelOutput<B: Backend> {

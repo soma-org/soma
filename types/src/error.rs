@@ -822,8 +822,12 @@ pub enum BlobError {
     ObjectStorage(String),
     #[error("Not found: {0}")]
     NotFound(String),
-    #[error("Verification error: {0}")]
-    VerificationError(String),
+    #[error("checksum mismatch: expected {expected}, computed {actual}")]
+    ChecksumMismatch { expected: String, actual: String },
+    #[error("size mismatch: expected {expected} bytes, got {actual} bytes")]
+    SizeMismatch { expected: u64, actual: u64 },
+    #[error("invalid chunk size: {size} bytes (must be between {min} and {max})")]
+    InvalidChunkSize { size: u64, min: u64, max: u64 },
     #[error("url error: {0}")]
     UrlError(String),
     #[error("Io error: {0}, {1}")]
@@ -832,13 +836,13 @@ pub enum BlobError {
     MissingHeader(String),
     #[error("file too large")]
     FileTooLarge,
-    #[error("unexpected status code: {0}")]
-    UnexpectedStatusCode(u16),
+    #[error("HTTP {status} from {url}")]
+    HttpStatus { status: u16, url: String },
     #[error("object store error: {0}")]
     ObjectStoreError(object_store::Error),
     #[error("Storage failed: {0}")]
     StorageFailure(String),
-    #[error("Timeout hit ")]
+    #[error("Timeout hit")]
     Timeout,
 }
 pub type BlobResult<T> = Result<T, BlobError>;

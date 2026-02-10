@@ -19,7 +19,11 @@ pub struct BlobDownloader {
 impl BlobDownloader {
     pub fn new(semaphore: Arc<Semaphore>, chunk_size: u64, ns_per_byte: u16) -> BlobResult<Self> {
         if chunk_size < MIN_PART_SIZE || chunk_size > MAX_PART_SIZE {
-            return Err(BlobError::VerificationError("invalid chunk size".to_string()));
+            return Err(BlobError::InvalidChunkSize {
+                size: chunk_size,
+                min: MIN_PART_SIZE,
+                max: MAX_PART_SIZE,
+            });
         }
         Ok(Self { semaphore, chunk_size, ns_per_byte })
     }
@@ -55,21 +59,25 @@ impl BlobDownloader {
         let mut hasher = DefaultHash::new();
 
         if metadata.size() as u64 <= self.chunk_size {
-            println!("this ran");
             let bytes = reader
                 .get_full(Self::compute_timeout(metadata.size() as u64, self.ns_per_byte))
                 .await?;
             hasher.update(&bytes);
             let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
 
-            println!("this ran");
-            println!("{}", bytes.len());
-            println!("{}", metadata.size());
-            if computed_checksum != metadata.checksum() || bytes.len() != metadata.size() {
-                return Err(BlobError::VerificationError("verification failed".to_string()));
+            if bytes.len() != metadata.size() {
+                return Err(BlobError::SizeMismatch {
+                    expected: metadata.size() as u64,
+                    actual: bytes.len() as u64,
+                });
+            }
+            if computed_checksum != metadata.checksum() {
+                return Err(BlobError::ChecksumMismatch {
+                    expected: metadata.checksum().to_string(),
+                    actual: computed_checksum.to_string(),
+                });
             }
 
-            println!("this ran");
             storage
                 .put(&blob_path.path(), bytes.into())
                 .await
@@ -84,7 +92,7 @@ impl BlobDownloader {
                 );
             let semaphore = self.semaphore.clone();
             let reader_clone = reader.clone();
-            let ns_per_byte = self.ns_per_byte.clone();
+            let ns_per_byte = self.ns_per_byte;
             let driver = tokio::spawn(async move {
                 for (idx, range) in ranges.into_iter().enumerate() {
                     let permit = semaphore
@@ -145,15 +153,19 @@ impl BlobDownloader {
             }
 
             let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
-            println!("{}", total_downloaded);
-            println!("{}", metadata.size());
-            println!("{}", computed_checksum);
-            println!("{}", metadata.checksum());
-            if computed_checksum != metadata.checksum()
-                || total_downloaded != metadata.size() as u64
-            {
+            if total_downloaded != metadata.size() as u64 {
                 let _ = multipart.abort().await;
-                return Err(BlobError::VerificationError("verification failed".to_string()));
+                return Err(BlobError::SizeMismatch {
+                    expected: metadata.size() as u64,
+                    actual: total_downloaded,
+                });
+            }
+            if computed_checksum != metadata.checksum() {
+                let _ = multipart.abort().await;
+                return Err(BlobError::ChecksumMismatch {
+                    expected: metadata.checksum().to_string(),
+                    actual: computed_checksum.to_string(),
+                });
             }
 
             while let Some(res) = put_join_set.join_next().await {
@@ -331,6 +343,6 @@ mod tests {
         let err =
             downloader.download(reader, dest_store.clone(), blob_path, metadata).await.unwrap_err();
 
-        assert!(matches!(err, BlobError::VerificationError(_)));
+        assert!(matches!(err, BlobError::ChecksumMismatch { .. }));
     }
 }

@@ -8,7 +8,7 @@ use burn::{
     nn::{LayerNorm, LayerNormConfig},
     prelude::Backend,
 };
-use models::tensor::{ArrayWrapper, IntoTensorData};
+use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use safetensors::serialize;
 use std::collections::HashMap;
 

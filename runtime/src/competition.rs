@@ -17,7 +17,7 @@ use models::{
     ModelAPI, ModelOutput,
     v1::{
         data::{batcher::ByteSequenceBatcher, dataset::ByteSequenceDataset},
-        probe::ProbeConfig,
+        modules::model::ModelConfig,
     },
 };
 use object_store::local::LocalFileSystem;
@@ -79,7 +79,7 @@ impl<B: Backend> CompetitionAPI for CompetitonV1<B> {
             .num_workers(self.num_workers)
             .build(dataset);
 
-        let mut model = ProbeConfig::new().init(&self.device);
+        let mut model = ModelConfig::new().init(&self.device);
 
         let mut embeddings: Vec<Tensor<B, 1>> = Vec::new();
         let mut losses: Vec<Tensor<B, 1>> = Vec::new();

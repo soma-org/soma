@@ -2,7 +2,7 @@ use burn::{
     config::Config,
     module::Module,
     nn::Initializer,
-    tensor::{Bool, Int, Tensor, backend::Backend},
+    tensor::{Int, Tensor, backend::Backend},
 };
 
 use crate::v1::{
@@ -57,11 +57,10 @@ impl<B: Backend> Encoder<B> {
         &self,
         context: Tensor<B, 3>,
         positions: Tensor<B, 2, Int>,
-        attn_mask: Tensor<B, 3, Bool>,
     ) -> Tensor<B, 3> {
         let mut x = context;
         for layer in self.layers.iter() {
-            x = layer.forward(x, positions.clone(), attn_mask.clone());
+            x = layer.forward(x, positions.clone());
         }
         x
     }

@@ -2,8 +2,8 @@ use arrgen::{normal_array, uniform_array};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tolerance, set_print_options};
 use burn::{Tensor, backend::NdArray};
-use models::tensor::IntoTensorData;
-use models::v1::sig_reg::{SIGReg, SIGRegConfig};
+use models::tensor_conversions::IntoTensorData;
+use models::v1::modules::sig_reg::{SIGReg, SIGRegConfig};
 
 type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;

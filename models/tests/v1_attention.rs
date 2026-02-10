@@ -4,12 +4,12 @@ use arrgen::{constant_array, normal_array, uniform_array};
 use burn::backend::NdArray;
 use burn::backend::ndarray::NdArrayTensor;
 use burn::module::Module;
-use burn::nn::attention::generate_autoregressive_mask;
+
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{Int, PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use models::tensor::{ArrayWrapper, IntoTensorData};
+use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use models::v1::modules::attention::{
     MhaInput, MultiHeadAttention, MultiHeadAttentionConfig, apply_rope,
 };
@@ -145,11 +145,7 @@ fn test_v1_attention() {
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     println!("{}", positions);
-    let mha_input = MhaInput::new(
-        input_tensor,
-        Some(positions),
-        Some(generate_autoregressive_mask(batch_size, seq_len, &device)),
-    );
+    let mha_input = MhaInput::new(input_tensor, positions);
     let output = model.forward(mha_input);
     set_print_options(PrintOptions {
         threshold: 1000,    // Default or custom threshold for summarization.

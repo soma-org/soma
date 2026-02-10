@@ -8,25 +8,25 @@ use burn::{
         Embedding, EmbeddingConfig, Initializer, LayerNorm, LayerNormConfig, Linear, LinearConfig,
         loss::CrossEntropyLossConfig,
     },
-    tensor::{Bool, Int, Tensor, backend::Backend},
+    tensor::{Int, Tensor, backend::Backend},
 };
 use types::error::{ModelError, ModelResult};
 
 use crate::{
     ModelAPI, ModelOutput,
-    tensor::IntoTensorData,
-    v1::data::{batcher::ByteSequenceBatch, dataset::PAD_TOKEN_ID},
-};
-
-use super::{
-    V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_NUM_LAYERS, V1_PWFF_HIDDEN_DIM,
-    V1_SCALE_FACTOR, V1_VOCAB_SIZE,
-    modules::encoder::{Encoder, EncoderConfig},
-    sig_reg::{SIGReg, SIGRegConfig},
+    tensor_conversions::IntoTensorData,
+    v1::{
+        V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_NUM_LAYERS, V1_PWFF_HIDDEN_DIM,
+        V1_SCALE_FACTOR, V1_SIG_REG_POINTS, V1_SIG_REG_SLICES, V1_SIG_REG_T_MAX, V1_VOCAB_SIZE,
+        data::{batcher::ByteSequenceBatch, dataset::PAD_TOKEN_ID},
+        modules::{
+            encoder::Encoder, encoder::EncoderConfig, sig_reg::SIGReg, sig_reg::SIGRegConfig,
+        },
+    },
 };
 
 #[derive(Config, Debug)]
-pub struct ProbeConfig {
+pub struct ModelConfig {
     /// The size of the input and output features.
     #[config(default = "V1_EMBEDDING_DIM")]
     pub embedding_dim: usize,
@@ -55,24 +55,29 @@ pub struct ProbeConfig {
     /// The RoPE scale factor.
     #[config(default = "V1_SCALE_FACTOR")]
     pub scale_factor: f32,
+
+    #[config(default = "V1_SIG_REG_T_MAX")]
+    pub sig_reg_t_max: f64,
+    #[config(default = "V1_SIG_REG_SLICES")]
+    pub sig_reg_slices: usize,
+    #[config(default = "V1_SIG_REG_POINTS")]
+    pub sig_reg_points: usize,
 }
 
 #[derive(Module, Debug)]
-pub struct Probe<B: Backend> {
-    embed: Embedding<B>,
+pub struct Model<B: Backend> {
+    embedding: Embedding<B>,
     encoder: Encoder<B>,
     final_norm: LayerNorm<B>,
     predictor: Linear<B>,
     sig_reg: SIGReg<B>,
-    #[module(skip)]
-    sig_reg_slices: usize,
 }
 
-impl ProbeConfig {
+impl ModelConfig {
     /// Initialize a new module.
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Probe<B> {
-        Probe {
-            embed: EmbeddingConfig::new(self.vocab_size, self.embedding_dim)
+    pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
+        Model {
+            embedding: EmbeddingConfig::new(self.vocab_size, self.embedding_dim)
                 .with_initializer(self.weight_initializer.clone())
                 .init(device),
             encoder: EncoderConfig::new()
@@ -90,23 +95,20 @@ impl ProbeConfig {
             predictor: LinearConfig::new(self.embedding_dim, self.vocab_size)
                 .with_initializer(self.weight_initializer.clone())
                 .init(device),
-            sig_reg: SIGRegConfig::new().init(device),
-            sig_reg_slices: SIGRegConfig::new().slices,
+            sig_reg: SIGRegConfig::new()
+                .with_t_max(self.sig_reg_t_max)
+                .with_slices(self.sig_reg_slices)
+                .with_points(self.sig_reg_points)
+                .init(device),
         }
     }
 }
 
-impl<B: Backend> Probe<B> {
-    pub fn forward(
-        &self,
-        tokens: Tensor<B, 2, Int>,
-        positions: Tensor<B, 2, Int>,
-        attn_mask: Tensor<B, 3, Bool>,
-    ) -> Tensor<B, 3> {
-        let x = self.embed.forward(tokens);
-        let x = self.encoder.forward(x, positions, attn_mask);
-        let x = self.final_norm.forward(x);
-        x
+impl<B: Backend> Model<B> {
+    pub fn forward(&self, tokens: Tensor<B, 2, Int>, positions: Tensor<B, 2, Int>) -> Tensor<B, 3> {
+        let x = self.embedding.forward(tokens);
+        let x = self.encoder.forward(x, positions);
+        self.final_norm.forward(x)
     }
 
     pub fn predictor(&self, embeddings: Tensor<B, 3>) -> Tensor<B, 3> {
@@ -114,11 +116,11 @@ impl<B: Backend> Probe<B> {
     }
 }
 
-impl<B: Backend> ModelAPI for Probe<B> {
+impl<B: Backend> ModelAPI for Model<B> {
     type Data = Arc<dyn DataLoader<B, ByteSequenceBatch<B>> + Send + Sync + 'static>;
     type Backend = B;
     fn call(&self, data: Self::Data) -> ModelResult<ModelOutput<Self::Backend>> {
-        let embedding_dim = self.embed.weight.val().dims()[1];
+        let embedding_dim = self.embedding.weight.val().dims()[1];
         let loss_config =
             CrossEntropyLossConfig::new().with_pad_tokens(Some(vec![PAD_TOKEN_ID as usize]));
 
@@ -135,13 +137,10 @@ impl<B: Backend> ModelAPI for Probe<B> {
 
             let loss_fn = loss_fn.get_or_insert_with(|| loss_config.init::<B>(&device));
 
-            let causal_mask =
-                burn::nn::attention::generate_autoregressive_mask(batch_size, seq_len, &device);
-
-            let embeddings = self.forward(token_ids.clone(), pos_ids, causal_mask);
+            let embeddings = self.forward(token_ids.clone(), pos_ids);
 
             let noise: Tensor<B, 2> = Tensor::from_data(
-                arrgen::normal_array(n as u64, &[embedding_dim, self.sig_reg_slices], 0.0, 1.0)
+                arrgen::normal_array(n as u64, &[embedding_dim, self.sig_reg.slices], 0.0, 1.0)
                     .to_tensor_data()
                     .unwrap(),
                 &device,
@@ -175,10 +174,12 @@ impl<B: Backend> ModelAPI for Probe<B> {
             });
         }
 
-        let loss = mean_loss
-            .ok_or_else(|| ModelError::FailedTypeVerification("data must contain at least one batch".into()))?;
-        let embedding = mean_embedding
-            .ok_or_else(|| ModelError::FailedTypeVerification("data must contain at least one batch".into()))?;
+        let loss = mean_loss.ok_or_else(|| {
+            ModelError::FailedTypeVerification("data must contain at least one batch".into())
+        })?;
+        let embedding = mean_embedding.ok_or_else(|| {
+            ModelError::FailedTypeVerification("data must contain at least one batch".into())
+        })?;
 
         Ok(ModelOutput { loss, embedding })
     }

@@ -1,10 +1,9 @@
 use arrgen::{constant_array, normal_array};
 use burn::backend::NdArray;
-use burn::backend::ndarray::NdArrayTensor;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Tensor, TensorPrimitive, Tolerance};
-use models::tensor::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Tensor, Tolerance};
+use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use models::v1::modules::pwff::PositionWiseFeedForwardConfig;
 use safetensors::serialize;
 use std::collections::HashMap;

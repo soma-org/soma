@@ -1,12 +1,10 @@
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::normal_array;
 use burn::backend::NdArray;
-use burn::backend::ndarray::NdArrayTensor;
-use burn::nn::attention::generate_autoregressive_mask;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Int, PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use models::tensor::{ArrayWrapper, IntoTensorData};
-use models::v1::probe::ProbeConfig;
+use burn::tensor::{Int, PrintOptions, Tensor, Tolerance, set_print_options};
+use models::tensor_conversions::ArrayWrapper;
+use models::v1::modules::model::ModelConfig;
 use safetensors::serialize;
 use std::collections::HashMap;
 
@@ -34,7 +32,7 @@ fn test_v1_probe() {
     let hidden_dim = embedding_dim * 2;
 
     let device = Default::default();
-    let mut model = ProbeConfig::new()
+    let mut model = ModelConfig::new()
         .with_embedding_dim(embedding_dim)
         .with_pwff_hidden_dim(hidden_dim)
         .with_num_layers(num_layers)
@@ -127,7 +125,7 @@ fn test_v1_probe() {
         ArrayWrapper(normal_array(seed + 200, &vec![embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
-        "embed.weight".to_string(),
+        "embedding.weight".to_string(),
         ArrayWrapper(normal_array(seed + 250, &vec![vocab_size, embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
@@ -147,11 +145,7 @@ fn test_v1_probe() {
     let tokens: Tensor<TestBackend, 2, Int> = Tensor::from_ints([[0, 1, 2, 3]], &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
-    let output = model.forward(
-        tokens,
-        positions,
-        generate_autoregressive_mask(batch_size, seq_len, &device),
-    );
+    let output = model.forward(tokens, positions);
     set_print_options(PrintOptions {
         threshold: 1000,    // Default or custom threshold for summarization.
         edge_items: 3,      // Default or custom edge items to display.
@@ -161,10 +155,10 @@ fn test_v1_probe() {
 
     let expected_output = Tensor::<TestBackend, 3>::from_floats(
         [[
-            [1.98016202, 0.81204247, 1.52166390, 2.38146710],
-            [1.77488256, 0.79269153, 1.61762166, 2.30634165],
-            [1.94405246, 0.93004227, 1.48189783, 2.45317531],
-            [1.45131588, 0.90625042, 1.68207979, 2.26099873],
+            [2.09210730, 0.69636524, 1.51327145, 2.31296515],
+            [1.90634847, 0.86709338, 1.53078938, 2.40285897],
+            [1.77797925, 0.66600311, 1.65812206, 2.19417143],
+            [1.96223700, 0.77187395, 1.54670000, 2.34615612],
         ]],
         &device,
     );

@@ -6,7 +6,7 @@ use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
 use burn::{module::Module, prelude::Backend};
-use models::tensor::{ArrayWrapper, IntoTensorData};
+use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use safetensors::serialize;
 use std::collections::HashMap;
 

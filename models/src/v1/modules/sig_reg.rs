@@ -1,7 +1,7 @@
 use burn::{
     config::Config,
     module::Module,
-    tensor::{Float, Int, Tensor, backend::Backend, linalg::l2_norm, s},
+    tensor::{Int, Tensor, backend::Backend, linalg::l2_norm, s},
 };
 
 use crate::v1::{V1_SIG_REG_POINTS, V1_SIG_REG_SLICES, V1_SIG_REG_T_MAX};
@@ -21,6 +21,7 @@ pub struct SIGReg<B: Backend> {
     pub t: Tensor<B, 1>,
     pub phi: Tensor<B, 1>,
     pub weights: Tensor<B, 1>,
+    pub slices: usize,
 }
 
 impl SIGRegConfig {
@@ -34,7 +35,7 @@ impl SIGRegConfig {
             weights.slice_assign(s![1..-1], Tensor::full([self.points - 2], dt * 2.0, device));
         let phi: Tensor<B, 1> = (-t.clone().square() / 2.0).exp();
         let weights = weights * phi.clone();
-        SIGReg { t, phi, weights }
+        SIGReg { t, phi, weights, slices: self.slices }
     }
 }
 

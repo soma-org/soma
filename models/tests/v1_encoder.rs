@@ -1,11 +1,10 @@
 use arrgen::{constant_array, normal_array};
 use burn::backend::NdArray;
 use burn::backend::ndarray::NdArrayTensor;
-use burn::nn::attention::generate_autoregressive_mask;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{Int, PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use models::tensor::{ArrayWrapper, IntoTensorData};
+use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use models::v1::modules::encoder::EncoderConfig;
 use safetensors::serialize;
 use std::collections::HashMap;
@@ -121,11 +120,7 @@ fn test_v1_encoder_ones() {
     let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
-    let output = model.forward(
-        input_tensor,
-        positions,
-        generate_autoregressive_mask(batch_size, seq_len, &device),
-    );
+    let output = model.forward(input_tensor, positions);
 
     let expected_output = Tensor::<TestBackend, 3>::from_floats(
         [[

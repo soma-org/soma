@@ -1,7 +1,5 @@
 pub mod data;
 pub mod modules;
-pub mod probe;
-pub mod sig_reg;
 
 const V1_EMBEDDING_DIM: usize = 2048;
 const V1_NUM_HEADS: usize = 8;

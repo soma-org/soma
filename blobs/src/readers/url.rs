@@ -3,7 +3,6 @@ use bytes::Bytes;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use std::{ops::Range, sync::Arc, time::Duration};
-use tracing::info;
 use types::{
     error::{BlobError, BlobResult},
     metadata::{Manifest, ManifestAPI},
@@ -60,16 +59,16 @@ impl BlobHttpReader {
 #[async_trait]
 impl BlobReader for BlobHttpReader {
     async fn get_full(&self, timeout: Duration) -> BlobResult<Bytes> {
-        info!("get_full_called");
         let req = self.client.get(self.url.clone()).timeout(timeout);
         let response = req.send().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
 
-        info!("{:?}", response);
         if !response.status().is_success() {
-            return Err(BlobError::NetworkRequest("status threw error".to_string()));
+            return Err(BlobError::HttpStatus {
+                status: response.status().as_u16(),
+                url: self.url.to_string(),
+            });
         }
 
-        info!("response non error?");
         let bytes = response.bytes().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
         Ok(bytes)
     }
@@ -82,9 +81,11 @@ impl BlobReader for BlobHttpReader {
             .timeout(timeout);
 
         let response = req.send().await.map_err(|e| BlobError::NetworkRequest(format!("{e:?}")))?;
-        info!("{:?}", response);
         if !response.status().is_success() {
-            return Err(BlobError::NetworkRequest("status threw error".to_string()));
+            return Err(BlobError::HttpStatus {
+                status: response.status().as_u16(),
+                url: self.url.to_string(),
+            });
         }
         let bytes = response.bytes().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
         Ok(bytes)

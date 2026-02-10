@@ -6,7 +6,7 @@ use crate::v1::modules::attention::{MhaInput, MultiHeadAttention, MultiHeadAtten
 use burn::{
     module::Module,
     nn::{Dropout, DropoutConfig, LayerNorm, LayerNormConfig},
-    tensor::{Bool, Int, Tensor, backend::Backend},
+    tensor::{Int, Tensor, backend::Backend},
 };
 
 #[derive(Module, Debug)]
@@ -42,11 +42,10 @@ impl<B: Backend> Layer<B> {
         &self,
         context: Tensor<B, 3>,
         positions: Tensor<B, 2, Int>,
-        attn_mask: Tensor<B, 3, Bool>,
     ) -> Tensor<B, 3> {
         let x = context;
         let residual_path = self.norm_1.forward(x.clone());
-        let input_mha = MhaInput::new(residual_path, Some(positions), Some(attn_mask));
+        let input_mha = MhaInput::new(residual_path, positions);
         let residual_path = self.attention.forward(input_mha);
         let residual_path = self.dropout.forward(residual_path);
         let x = x + residual_path;

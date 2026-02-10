@@ -132,6 +132,9 @@ def test_v1_probe():
         "final_norm.beta": normal_array(
             seed + 200, [embedding_dim], mean=0.0, std_dev=1.0
         ),
+        "embed.weight": normal_array(
+            seed + 250, [vocab_size, embedding_dim], mean=0.0, std_dev=1.0
+        ),
         "predictor.weight": normal_array(
             seed + 300, [embedding_dim, vocab_size], mean=0.0, std_dev=1.0
         ),

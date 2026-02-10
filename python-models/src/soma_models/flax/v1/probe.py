@@ -33,6 +33,7 @@ class ProbeConfig:
 class Probe(nnx.Module):
     def __init__(self, config: ProbeConfig, rngs: nnx.Rngs) -> None:
         self.config = config
+        self.embed = nnx.Embed(config.vocab_size, config.embedding_dim, rngs=rngs)
         self.encoder = Encoder(
             EncoderConfig(
                 dropout_rate=config.dropout_rate,
@@ -56,6 +57,7 @@ class Probe(nnx.Module):
         positions: Array,
         attn_mask: Array,
     ) -> Array:
+        x = self.embed(input)  # [batch, seq_len, embedding_dim]
         x = self.encoder(input, positions, attn_mask)
         x = self.final_norm(x)
         return x

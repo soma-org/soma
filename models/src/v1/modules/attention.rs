@@ -2,7 +2,10 @@ use crate::v1::{V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_SCALE_FACT
 use burn::{
     config::Config,
     module::Module,
-    nn::{Dropout, DropoutConfig, Initializer, Linear, LinearConfig},
+    nn::{
+        Dropout, DropoutConfig, Initializer, Linear, LinearConfig,
+        attention::{generate_autoregressive_mask, generate_padding_mask},
+    },
     prelude::Backend,
     tensor::{Bool, Int, Tensor, activation::softmax},
 };
@@ -144,36 +147,25 @@ pub struct MhaInput<B: Backend> {
 }
 
 impl<B: Backend> MhaInput<B> {
-    pub fn new(
-        query: Tensor<B, 3>,
-        positions: Option<Tensor<B, 2, Int>>,
-        mask_attn: Option<Tensor<B, 3, Bool>>,
-    ) -> Self {
-        Self { query, positions, mask_attn, mask_pad: None }
-    }
-    /// Register the padding mask.
-    pub fn mask_pad(mut self, mask_pad: Tensor<B, 2, Bool>) -> Self {
-        self.mask_pad = Some(mask_pad);
-        self
+    pub fn new(query: Tensor<B, 3>, positions: Tensor<B, 2, Int>) -> Self {
+        let [batch_size, seq_length, _d_model] = query.dims();
+
+        let mask_attn = generate_autoregressive_mask(batch_size, seq_length, &query.device());
+        Self { query, positions: Some(positions), mask_attn: Some(mask_attn), mask_pad: None }
     }
 }
 
 impl<B: Backend> MultiHeadAttention<B> {
-    /// # Shapes
-    ///
-    /// - query: `[batch_size, seq_length, d_model]`
-    /// - output: `[batch_size, seq_length, d_model]`
     pub fn forward(&self, input: MhaInput<B>) -> Tensor<B, 3> {
-        let [batch_size, seq_length_1, d_model] = input.query.dims();
+        let [batch_size, seq_length, d_model] = input.query.dims();
 
         let mut query = self.attention_linear(input.query.clone(), &self.query);
         let mut key = self.attention_linear(input.query.clone(), &self.key);
         let value = self.attention_linear(input.query, &self.value);
 
         if let Some(positions) = input.positions {
-            // Swap dimensions to match apply_rope's expected input: [batch_size, seq_len, num_heads, head_dim]
-            query = query.swap_dims(1, 2); // [batch_size, num_heads, seq_length, head_dim] -> [batch_size, seq_length, num_heads, head_dim]
-            key = key.swap_dims(1, 2); // [batch_size, num_heads, seq_length, head_dim] -> [batch_size, seq_length, num_heads, head_dim]
+            query = query.swap_dims(1, 2);
+            key = key.swap_dims(1, 2);
 
             query = apply_rope(
                 query,
@@ -184,7 +176,6 @@ impl<B: Backend> MultiHeadAttention<B> {
             );
             key = apply_rope(key, positions, self.head_dim, self.max_wavelength, self.scale_factor);
 
-            // Swap dimensions back to [batch_size, num_heads, seq_length, head_dim] for attention computation
             query = query.swap_dims(1, 2);
             key = key.swap_dims(1, 2);
         }
@@ -192,7 +183,7 @@ impl<B: Backend> MultiHeadAttention<B> {
         let attn_scores = self.attn_scores(query, key);
         let weights = self.attn_weights(attn_scores, input.mask_pad, input.mask_attn);
         let context = weights.clone().matmul(value);
-        let context = context.swap_dims(1, 2).reshape([batch_size, seq_length_1, d_model]);
+        let context = context.swap_dims(1, 2).reshape([batch_size, seq_length, d_model]);
         let context = self.output.forward(context);
 
         context
