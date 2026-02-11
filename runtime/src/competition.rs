@@ -29,8 +29,6 @@ use types::{
     model::ModelId,
 };
 
-pub(crate) struct MockCompetition {}
-
 pub(crate) struct CompetitonV1<B: Backend> {
     store: Arc<LocalFileSystem>,
     blob_client: BlobClient,
@@ -107,8 +105,10 @@ impl<B: Backend> CompetitionAPI for CompetitonV1<B> {
                     .path_to_filesystem(&model_blob_path.path())
                     .map_err(RuntimeError::ObjectStoreError)?,
             );
-            model.load_from(&mut store).unwrap();
-            let model_output: ModelOutput<B> = model.call(data_loader.clone()).unwrap();
+            model.load_from(&mut store).map_err(|e| RuntimeError::ModelError(e.to_string()))?;
+            let model_output: ModelOutput<B> = model
+                .call(data_loader.clone())
+                .map_err(|e| RuntimeError::ModelError(e.to_string()))?;
 
             embeddings.push(model_output.embedding);
             losses.push(model_output.loss);

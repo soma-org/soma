@@ -127,12 +127,16 @@ fn test_v1_probe() {
         ArrayWrapper(normal_array(seed + 200, &vec![embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
+        "embed.weight".to_string(),
+        ArrayWrapper(normal_array(seed + 250, &vec![vocab_size, embedding_dim], 0.0, 1.0)),
+    );
+    tensors.insert(
         "predictor.weight".to_string(),
         ArrayWrapper(normal_array(seed + 300, &vec![embedding_dim, vocab_size], 0.0, 1.0)),
     );
     tensors.insert(
         "predictor.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 400, &vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 400, &vec![vocab_size], 0.0, 1.0)),
     );
 
     let st = serialize(tensors, &None).unwrap();
@@ -140,14 +144,11 @@ fn test_v1_probe() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     model.load_from(&mut store).unwrap();
 
-    let input_data = normal_array(seed + 100, &vec![batch_size, seq_len, embedding_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
+    let tokens: Tensor<TestBackend, 2, Int> = Tensor::from_ints([[0, 1, 2, 3]], &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     let output = model.forward(
-        input_tensor,
+        tokens,
         positions,
         generate_autoregressive_mask(batch_size, seq_len, &device),
     );

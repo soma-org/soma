@@ -10,8 +10,6 @@ burn.workspace = true
 safetensors.workspace = true
 types.workspace = true
 async-trait.workspace = true
-
-[dev-dependencies]
 arrgen.workspace = true
 
 [lints]

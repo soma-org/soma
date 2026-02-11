@@ -875,16 +875,8 @@ pub enum RuntimeError {
     ReqwestError(reqwest::Error),
     #[error("Blob error: {0}")]
     BlobError(BlobError),
-
-    // Competition/Evaluation errors (used by AuditService)
-    #[error("Data not available: {0}")]
-    DataNotAvailable(String),
-    #[error("Data hash mismatch")]
-    DataHashMismatch,
-    #[error("Model not available: {0}")]
-    ModelNotAvailable(crate::object::ObjectID),
-    #[error("Computation failed: {0}")]
-    ComputationFailed(String),
+    #[error("Model error: {0:?}")]
+    ModelError(String),
 }
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]
