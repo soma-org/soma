@@ -37,7 +37,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if",
- "getrandom 0.3.4",
  "once_cell",
  "version_check",
  "zerocopy",
@@ -537,7 +536,6 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.5",
  "pin-project-lite",
- "prost 0.14.3",
  "protocol-config",
  "rand 0.8.5",
  "runtime",
@@ -556,7 +554,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-rustls",
- "tokio-stream",
  "tonic 0.14.3",
  "tonic-build 0.14.3",
  "tonic-health",
@@ -565,7 +562,6 @@ dependencies = [
  "tower 0.5.3",
  "tower-http 0.5.2",
  "tracing",
- "tracing-subscriber",
  "types",
  "url",
  "utils",
@@ -796,12 +792,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "az"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be5eb007b7cacc6c660343e96f650fedf4b5a77512399eb952ca6642cf8d13f7"
-
-[[package]]
 name = "backoff"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -848,15 +838,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "base64-url"
-version = "3.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5b428e9fb429c6fda7316e9b006f993e6b4c33005e4659339fb5214479dddec"
-dependencies = [
- "base64 0.22.1",
-]
 
 [[package]]
 name = "base64ct"
@@ -1082,7 +1063,6 @@ dependencies = [
  "reqwest-retry",
  "serde",
  "tempdir",
- "thiserror 1.0.69",
  "tokio",
  "types",
  "url",
@@ -1901,7 +1881,6 @@ dependencies = [
  "bcs",
  "bin-version",
  "bip32",
- "bytes",
  "camino",
  "chrono",
  "clap",
@@ -1913,23 +1892,18 @@ dependencies = [
  "inquire",
  "json_to_table",
  "node",
- "object_store",
  "protocol-config",
  "rand 0.8.5",
- "reqwest",
  "rpc",
  "sdk",
  "serde",
  "serde_json",
  "serde_yaml",
  "soma-keys",
- "soma-tls",
- "strum_macros 0.27.2",
  "tabled",
  "tap",
  "tempfile",
  "test-cluster",
- "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2050,34 +2024,22 @@ name = "consensus"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
- "base64-url",
  "bcs",
  "bytes",
  "cfg-if",
- "ed25519",
- "eyre",
- "fastcrypto",
  "futures",
  "http",
- "hyper",
- "hyper-rustls",
- "hyper-util",
  "itertools 0.13.0",
- "multiaddr",
  "nom 7.1.3",
  "parking_lot 0.12.5",
  "prost 0.14.3",
  "protocol-config",
  "rand 0.8.5",
- "serde",
  "soma-http",
  "soma-tls",
  "tap",
- "tempfile",
  "thiserror 1.0.69",
  "tokio",
- "tokio-rustls",
  "tokio-stream",
  "tokio-util 0.7.18",
  "tonic 0.14.3",
@@ -2088,7 +2050,6 @@ dependencies = [
  "tower 0.5.3",
  "tower-http 0.5.2",
  "tracing",
- "tracing-subscriber",
  "types",
  "utils",
 ]
@@ -3256,18 +3217,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "authority",
  "bcs",
- "chrono",
  "fastcrypto",
  "futures",
  "msim",
- "ndarray",
  "node",
- "prost-types 0.14.3",
- "protocol-config",
  "rand 0.8.5",
- "regex",
  "rpc",
  "sdk",
  "test-cluster",
@@ -3696,19 +3651,6 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
-
-[[package]]
-name = "fixed"
-version = "1.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c566da967934c6c7ee0458a9773de9b2a685bd2ce26a3b28ddfc740e640182f5"
-dependencies = [
- "az",
- "bytemuck",
- "half",
- "serde",
- "typenum",
-]
 
 [[package]]
 name = "fixedbitset"
@@ -5601,7 +5543,6 @@ name = "models"
 version = "1.0.0"
 dependencies = [
  "arrgen",
- "async-trait",
  "burn",
  "ndarray",
  "num-traits",
@@ -5856,7 +5797,6 @@ dependencies = [
  "futures",
  "http",
  "msim",
- "object_store",
  "parking_lot 0.12.5",
  "protocol-config",
  "rpc",
@@ -6837,7 +6777,6 @@ dependencies = [
  "protocol-config-macros",
  "schemars 0.8.22",
  "serde",
- "serde-env",
  "serde_with",
  "tracing",
 ]
@@ -7016,18 +6955,6 @@ checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
 dependencies = [
  "memchr",
  "serde",
-]
-
-[[package]]
-name = "quick_cache"
-version = "0.6.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ada44a88ef953a3294f6eb55d2007ba44646015e18613d2f213016379203ef3"
-dependencies = [
- "ahash 0.8.12",
- "equivalent",
- "hashbrown 0.16.1",
- "parking_lot 0.12.5",
 ]
 
 [[package]]
@@ -7720,10 +7647,8 @@ dependencies = [
  "fastcrypto",
  "futures",
  "heck 0.5.0",
- "hex",
  "http",
  "itertools 0.13.0",
- "ndarray",
  "prettyplease",
  "proc-macro2",
  "prost 0.13.5",
@@ -7834,20 +7759,14 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bcs",
  "blobs",
  "burn",
- "bytes",
  "memmap2",
  "models",
  "object_store",
- "prost 0.14.3",
- "serde",
  "tokio",
- "tonic 0.14.3",
  "tonic-build 0.14.3",
  "tonic-prost-build",
- "tower-http 0.5.2",
  "types",
 ]
 
@@ -8249,16 +8168,6 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde-env"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d13536c0c431652192b75c7d5afa83dedae98f91d7e687ff30a009e9d15284fb"
-dependencies = [
- "anyhow",
- "serde",
 ]
 
 [[package]]
@@ -8667,7 +8576,6 @@ dependencies = [
  "reqwest",
  "rustls",
  "socket2 0.5.10",
- "soma-tls",
  "tokio",
  "tokio-rustls",
  "tokio-util 0.7.18",
@@ -8681,8 +8589,6 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.1",
- "bcs",
  "bip32",
  "colored 2.2.0",
  "enum_dispatch",
@@ -8693,8 +8599,6 @@ dependencies = [
  "serde_json",
  "signature 1.6.4",
  "slip10_ed25519",
- "strum_macros 0.27.2",
- "thiserror 1.0.69",
  "tiny-bip39",
  "tokio",
  "types",
@@ -8800,24 +8704,17 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "store"
 version = "1.0.0"
 dependencies = [
- "anyhow",
- "async-trait",
  "backoff",
  "bcs",
  "bincode 1.3.3",
  "eyre",
  "fastcrypto",
  "fdlimit",
- "itertools 0.13.0",
  "once_cell",
- "proc-macro2",
- "quote",
- "rand 0.8.5",
  "rocksdb",
  "rstest 0.16.0",
  "serde",
  "store-derive",
- "syn 1.0.109",
  "tap",
  "tempfile",
  "thiserror 1.0.69",
@@ -8934,18 +8831,13 @@ dependencies = [
  "bcs",
  "bytes",
  "data-ingestion",
- "eyre",
  "fastcrypto",
  "futures",
  "itertools 0.13.0",
  "parking_lot 0.12.5",
- "prost 0.14.3",
  "rand 0.8.5",
- "serde",
  "tap",
- "tempfile",
  "tokio",
- "tokio-stream",
  "tonic 0.14.3",
  "tonic-build 0.14.3",
  "tonic-rustls",
@@ -9178,25 +9070,19 @@ name = "test-cluster"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "axum 0.8.8",
- "bcs",
  "bytes",
  "fastcrypto",
  "futures",
- "hex",
  "msim",
  "node",
  "object_store",
  "rand 0.8.5",
  "rpc",
  "sdk",
- "serde",
- "soma-http",
  "soma-keys",
  "tempfile",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "types",
  "url",
 ]
@@ -9408,17 +9294,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
 dependencies = [
  "native-tls",
- "tokio",
-]
-
-[[package]]
-name = "tokio-retry"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f57eb36ecbe0fc510036adff84824dd3c24bb781e21bfa67b69d556aa85214f"
-dependencies = [
- "pin-project",
- "rand 0.8.5",
  "tokio",
 ]
 
@@ -10072,7 +9947,6 @@ name = "types"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "arc-swap",
  "arrgen",
  "async-trait",
  "axum 0.7.9",
@@ -10092,9 +9966,7 @@ dependencies = [
  "enum_dispatch",
  "eyre",
  "fastcrypto",
- "fixed",
  "futures",
- "futures-util",
  "hex",
  "http",
  "http-body",
@@ -10105,7 +9977,6 @@ dependencies = [
  "itertools 0.13.0",
  "lru 0.10.1",
  "multiaddr",
- "ndarray",
  "nonempty",
  "object_store",
  "once_cell",
@@ -10113,23 +9984,19 @@ dependencies = [
  "pin-project-lite",
  "prost 0.14.3",
  "protocol-config",
- "quick_cache",
  "rand 0.8.5",
  "rcgen",
  "reqwest",
  "roaring",
- "rstest 0.16.0",
  "rustls",
  "rustls-webpki 0.102.8",
  "schemars 0.8.22",
  "serde",
  "serde-name",
  "serde_repr",
- "serde_urlencoded",
  "serde_with",
  "serde_yaml",
  "soma-http",
- "soma-tls",
  "static_assertions",
  "store",
  "strum 0.27.2",
@@ -10138,11 +10005,8 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
- "tokio-retry",
  "tokio-rustls",
- "tokio-util 0.7.18",
  "tonic 0.14.3",
- "tonic-prost",
  "tonic-rustls",
  "tower 0.5.3",
  "tower-http 0.5.2",
@@ -10150,7 +10014,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "uuid",
  "x509-parser 0.16.0",
 ]
 

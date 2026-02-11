@@ -6,10 +6,8 @@ version.workspace = true
 [dependencies]
 fastcrypto.workspace = true
 bip32.workspace = true
-tiny-bip39.workspace = true
 slip10_ed25519.workspace = true
-strum_macros.workspace = true
-thiserror.workspace = true
+tiny-bip39.workspace = true
 types.workspace = true
 enum_dispatch.workspace = true
 serde.workspace = true
@@ -21,8 +19,6 @@ async-trait.workspace = true
 signature = "1.6.4"
 colored = "2.2.0"
 tokio.workspace = true
-bcs.workspace = true
-base64.workspace = true
 
 [lints]
 workspace = true

@@ -10,7 +10,6 @@ serde_with = { version = "3.16", default-features = false, features = ["alloc"] 
 protocol-config-macros.workspace = true
 schemars = { version = "0.8.22", features = ["either"] }
 clap.workspace = true
-serde-env = "0.2.0"
 fastcrypto = { workspace = true }
 burn = { workspace = true }
 bcs.workspace = true

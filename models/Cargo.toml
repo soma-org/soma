@@ -9,7 +9,6 @@ ndarray.workspace = true
 burn.workspace = true
 safetensors.workspace = true
 types.workspace = true
-async-trait.workspace = true
 arrgen.workspace = true
 
 [lints]

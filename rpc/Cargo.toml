@@ -8,7 +8,6 @@ build = "build.rs"
 bcs.workspace = true
 serde.workspace = true
 bytes.workspace = true
-ndarray.workspace = true
 protocol-config.workspace = true
 futures.workspace = true
 tonic = { version = "0.13", default-features = false, features = [
@@ -37,7 +36,6 @@ base64.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 bs58.workspace = true
-hex.workspace = true
 tonic-web = "0.13.1"
 serde_derive = { version = "1.0.228" }
 serde_with = { version = "3.16", default-features = false, features = ["alloc"] }

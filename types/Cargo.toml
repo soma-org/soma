@@ -36,26 +36,18 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 prost.workspace = true
 bytes.workspace = true
-soma-tls.workspace = true
 strum_macros.workspace = true
 strum.workspace = true
-tokio-util.workspace = true
-quick_cache.workspace = true
-arc-swap.workspace = true
 tonic-rustls.workspace = true
 http.workspace = true
 pin-project-lite.workspace = true
-serde_urlencoded.workspace = true
 url.workspace = true
 store.workspace = true
 object_store.workspace = true
-uuid.workspace = true
-ndarray.workspace = true
 burn.workspace = true
 arrgen.workspace = true
 clap.workspace = true
 soma-http.workspace = true
-tonic-prost.workspace = true
 byteorder = "1.5.0"
 serde_yaml = "0.8.26"
 serde_with = { version = "3.16", features = ["schemars_0_8"] }
@@ -69,8 +61,6 @@ roaring = "0.10.12"
 rustls.workspace = true
 dirs = "4.0.0"
 camino = "1.2.2"
-futures-util = { version = "0.3" }
-tokio-retry = "0.3"
 webpki = { version = "0.102", package = "rustls-webpki", features = [
   "alloc",
   "std",
@@ -94,7 +84,5 @@ tower-layer = "0.3.3"
 http-body = "1"
 http-body-util = "0.1"
 once_cell = "1.21.3"
-rstest = "0.16.0"
 lru = "0.10"
 csv = "1.4.0"
-fixed.workspace = true

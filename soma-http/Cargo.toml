@@ -5,7 +5,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-soma-tls.workspace = true
 bytes.workspace = true
 http.workspace = true
 http-body.workspace = true

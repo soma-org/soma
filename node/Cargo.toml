@@ -23,5 +23,4 @@ http.workspace = true
 tower-http.workspace = true
 store.workspace = true
 soma-tls.workspace = true
-object_store.workspace = true
 protocol-config.workspace = true
