@@ -14,3 +14,6 @@ rand.workspace = true
 ndarray.workspace = true
 ndarray-rand.workspace = true
 numpy.workspace = true
+
+[lints]
+workspace = true

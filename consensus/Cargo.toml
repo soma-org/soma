@@ -36,3 +36,6 @@ cfg-if.workspace = true
 [build-dependencies]
 tonic-build.workspace = true
 tonic-prost-build.workspace = true
+
+[lints]
+workspace = true

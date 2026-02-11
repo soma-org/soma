@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fmt::Debug;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use store::rocks::DBMap;
 use store::traits::Map;
@@ -190,8 +190,8 @@ struct TablesCustomOptions {
     table4: DBMap<i32, String>,
 }
 
-static TABLE1_OPTIONS_SET_FLAG: Lazy<Mutex<Vec<bool>>> = Lazy::new(|| Mutex::new(vec![]));
-static TABLE2_OPTIONS_SET_FLAG: Lazy<Mutex<Vec<bool>>> = Lazy::new(|| Mutex::new(vec![]));
+static TABLE1_OPTIONS_SET_FLAG: LazyLock<Mutex<Vec<bool>>> = LazyLock::new(|| Mutex::new(vec![]));
+static TABLE2_OPTIONS_SET_FLAG: LazyLock<Mutex<Vec<bool>>> = LazyLock::new(|| Mutex::new(vec![]));
 
 fn custom_fn_name() -> store::rocks::DBOptions {
     TABLE1_OPTIONS_SET_FLAG.lock().unwrap().push(false);

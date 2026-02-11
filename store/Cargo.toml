@@ -15,24 +15,17 @@ serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing.workspace = true
-backoff = { version = "0.4.0", features = [
-    "futures",
-    "futures-core",
-    "pin-project-lite",
-    "tokio",
-    "tokio_1",
-] }
+backoff.workspace = true
 bcs.workspace = true
-bincode = "1.3.3"
+bincode.workspace = true
 # collectable.workspace = true
 fastcrypto.workspace = true
-uint = "0.9.5"
+uint.workspace = true
 store-derive.workspace = true
-fdlimit = "0.2.1"
-once_cell = { version = "1.21.3" }
+fdlimit.workspace = true
 tempfile.workspace = true
 tap.workspace = true
-rstest = "0.16.0"
+rstest.workspace = true
 
 [dev-dependencies]
 eyre.workspace = true

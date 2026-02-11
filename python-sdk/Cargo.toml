@@ -10,3 +10,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3.workspace = true
+
+[lints]
+workspace = true

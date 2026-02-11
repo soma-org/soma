@@ -17,3 +17,6 @@ tracing-subscriber.workspace = true
 regex.workspace = true
 chrono.workspace = true
 snap = "1.1.1"
+
+[lints]
+workspace = true

@@ -21,3 +21,6 @@ rpc.workspace = true
 sdk.workspace = true
 fastcrypto.workspace = true
 url.workspace = true
+
+[lints]
+workspace = true

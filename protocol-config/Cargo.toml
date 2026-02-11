@@ -13,3 +13,6 @@ clap.workspace = true
 fastcrypto = { workspace = true }
 burn = { workspace = true }
 bcs.workspace = true
+
+[lints]
+workspace = true

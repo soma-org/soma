@@ -20,3 +20,6 @@ bytes.workspace = true
 object_store.workspace = true
 url.workspace = true
 tempfile = "3.24.0"
+
+[lints]
+workspace = true

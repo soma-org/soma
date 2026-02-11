@@ -61,23 +61,10 @@ roaring = "0.10.12"
 rustls.workspace = true
 dirs = "4.0.0"
 camino = "1.2.2"
-webpki = { version = "0.102", package = "rustls-webpki", features = [
-  "alloc",
-  "std",
-] }
-x509-parser = "0.16.0"
+webpki.workspace = true
+x509-parser.workspace = true
 reqwest = { version = "0.12", features = ["http2", "json", "rustls-tls"] }
-axum = { version = "0.7.9", features = [
-  "tokio",
-  "http1",
-  "http2",
-  "json",
-  "matched-path",
-  "original-uri",
-  "form",
-  "query",
-  "ws",
-] }
+axum.workspace = true
 axum-server.workspace = true
 rcgen = "0.13.2"
 tower-layer = "0.3.3"
@@ -86,3 +73,6 @@ http-body-util = "0.1"
 once_cell = "1.21.3"
 lru = "0.10"
 csv = "1.4.0"
+
+[lints]
+workspace = true
