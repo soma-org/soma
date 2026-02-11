@@ -881,6 +881,12 @@ pub enum RuntimeError {
     BlobError(BlobError),
     #[error("Model error: {0:?}")]
     ModelError(String),
+    #[error("Data not available: {0}")]
+    DataNotAvailable(String),
+    #[error("Data hash mismatch")]
+    DataHashMismatch,
+    #[error("Model not available: {0:?}")]
+    ModelNotAvailable(String),
 }
 
 #[derive(Clone, Debug, Error, IntoStaticStr)]

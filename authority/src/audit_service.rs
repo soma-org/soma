@@ -26,7 +26,7 @@ use types::{
     challenge::{Challenge, ChallengeId},
     committee::EpochId,
     consensus::ConsensusTransaction,
-    crypto::{SomaKeyPair, Signature},
+    crypto::{Signature, SomaKeyPair},
     error::RuntimeResult,
     intent::{Intent, IntentMessage},
     metadata::Manifest,
@@ -37,8 +37,7 @@ use types::{
 };
 
 use crate::{
-    authority::AuthorityState,
-    authority_per_epoch_store::AuthorityPerEpochStore,
+    authority::AuthorityState, authority_per_epoch_store::AuthorityPerEpochStore,
     consensus_adapter::ConsensusAdapter,
 };
 
@@ -57,11 +56,7 @@ impl CompetitionAPI for MockCompetitionAPI {
     async fn run(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
         // Return first model as winner with zero embedding and distance.
         // This matches the miner's claimed values in tests (distance=0 or within tolerance).
-        let winner = input
-            .models()
-            .first()
-            .map(|(id, _)| *id)
-            .unwrap_or_else(ObjectID::random);
+        let winner = input.models().first().map(|(id, _)| *id).unwrap_or_else(ObjectID::random);
 
         Ok(CompetitionOutput::new(
             winner,
@@ -205,10 +200,7 @@ impl AuditService {
     /// - `ReportSubmission`: "This submission is fraudulent" → miner loses bond
     /// - `ReportChallenge`: "This challenge is invalid" → challenger loses bond
     async fn handle_new_challenge(&self, challenge: Challenge) {
-        info!(
-            "Auditing challenge {:?} for target {:?}",
-            challenge.id, challenge.target_id
-        );
+        info!("Auditing challenge {:?} for target {:?}", challenge.id, challenge.target_id);
 
         // Run fraud audit - returns true if fraud was found
         let fraud_found = self.audit_fraud(&challenge).await;
@@ -216,8 +208,7 @@ impl AuditService {
         if fraud_found {
             // Fraud confirmed: report submission with challenger attribution
             // Don't report challenge (challenger was right)
-            self.submit_report_submission(challenge.target_id, Some(challenge.challenger))
-                .await;
+            self.submit_report_submission(challenge.target_id, Some(challenge.challenger)).await;
         } else {
             // No fraud: report challenge (challenger was wrong)
             self.submit_report_challenge(challenge.id).await;
@@ -225,30 +216,20 @@ impl AuditService {
     }
 
     /// Submit a ReportSubmission transaction via consensus.
-    async fn submit_report_submission(
-        &self,
-        target_id: TargetId,
-        challenger: Option<SomaAddress>,
-    ) {
+    async fn submit_report_submission(&self, target_id: TargetId, challenger: Option<SomaAddress>) {
         info!(
             "Submitting ReportSubmission for target {:?} with challenger {:?}",
             target_id, challenger
         );
 
-        let kind = types::transaction::TransactionKind::ReportSubmission {
-            target_id,
-            challenger,
-        };
+        let kind = types::transaction::TransactionKind::ReportSubmission { target_id, challenger };
 
         self.submit_validator_transaction(kind).await;
     }
 
     /// Submit a ReportChallenge transaction via consensus.
     async fn submit_report_challenge(&self, challenge_id: ChallengeId) {
-        info!(
-            "Submitting ReportChallenge for challenge {:?} (challenger was wrong)",
-            challenge_id
-        );
+        info!("Submitting ReportChallenge for challenge {:?} (challenger was wrong)", challenge_id);
 
         let kind = types::transaction::TransactionKind::ReportChallenge { challenge_id };
 
@@ -345,10 +326,7 @@ impl AuditService {
             // No models could be loaded from registry.
             // This is a system issue (models should be available for active targets).
             // Cannot determine fraud without models → default to no fraud.
-            warn!(
-                "No models available for challenge {:?}, cannot determine fraud",
-                challenge.id
-            );
+            warn!("No models available for challenge {:?}, cannot determine fraud", challenge.id);
             return false;
         }
 
@@ -364,10 +342,7 @@ impl AuditService {
             Ok(result) => result,
             Err(types::error::RuntimeError::DataNotAvailable(msg)) => {
                 // Miner is responsible for keeping data available during challenge window
-                info!(
-                    "FRAUD: data unavailable for challenge {:?}: {}",
-                    challenge.id, msg
-                );
+                info!("FRAUD: data unavailable for challenge {:?}: {}", challenge.id, msg);
                 return true;
             }
             Err(types::error::RuntimeError::DataHashMismatch) => {
@@ -378,19 +353,13 @@ impl AuditService {
             Err(types::error::RuntimeError::ModelNotAvailable(model_id)) => {
                 // Model weights couldn't be downloaded. This is a system/model-owner issue,
                 // not the miner's fault. Cannot determine fraud.
-                warn!(
-                    "Model {:?} unavailable during evaluation, cannot determine fraud",
-                    model_id
-                );
+                warn!("Model {:?} unavailable during evaluation, cannot determine fraud", model_id);
                 return false;
             }
             Err(e) => {
                 // Other errors (computation failed, etc). This is a validator-side issue.
                 // Cannot determine fraud.
-                warn!(
-                    "Computation failed for challenge {:?}: {:?}",
-                    challenge.id, e
-                );
+                warn!("Computation failed for challenge {:?}: {:?}", challenge.id, e);
                 return false;
             }
         };
@@ -499,9 +468,6 @@ mod tests {
         let actual_winner = ObjectID::random();
 
         // Different models = fraud, regardless of distance
-        assert_ne!(
-            claimed_model, actual_winner,
-            "Different models should trigger fraud"
-        );
+        assert_ne!(claimed_model, actual_winner, "Different models should trigger fraud");
     }
 }
