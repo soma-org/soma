@@ -1,7 +1,7 @@
 use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE, readers::BlobReader};
 use bytes::Bytes;
 use fastcrypto::hash::HashFunction;
-use object_store::{ObjectStore, PutPayload};
+use object_store::{MultipartUpload, ObjectStore, PutPayload};
 use std::{collections::HashMap, ops::Range, sync::Arc, time::Duration};
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, mpsc},
@@ -9,6 +9,36 @@ use tokio::{
 };
 use types::{checksum::Checksum, crypto::DefaultHash, error::BlobError, metadata::Metadata};
 use types::{error::BlobResult, metadata::MetadataAPI};
+
+struct MultipartGuard {
+    upload: Option<Box<dyn MultipartUpload>>,
+}
+
+impl MultipartGuard {
+    fn new(upload: Box<dyn MultipartUpload>) -> Self {
+        Self { upload: Some(upload) }
+    }
+
+    fn upload_mut(&mut self) -> &mut Box<dyn MultipartUpload> {
+        self.upload.as_mut().expect("multipart already consumed")
+    }
+
+    async fn complete(mut self) -> Result<(), BlobError> {
+        let mut upload = self.upload.take().expect("multipart already consumed");
+        upload.complete().await.map_err(BlobError::ObjectStoreError)?;
+        Ok(())
+    }
+}
+
+impl Drop for MultipartGuard {
+    fn drop(&mut self) {
+        if let Some(mut upload) = self.upload.take() {
+            tokio::spawn(async move {
+                let _ = upload.abort().await;
+            });
+        }
+    }
+}
 
 pub struct BlobDownloader {
     semaphore: Arc<Semaphore>,
@@ -33,16 +63,21 @@ impl BlobDownloader {
         Duration::from_nanos(nanos)
     }
 
-    fn generate_ranges(total_size: u64, chunk_size: u64) -> Vec<Range<usize>> {
-        let num_chunks = ((total_size + chunk_size - 1) / chunk_size) as usize;
+    fn generate_ranges(total_size: u64, chunk_size: u64) -> BlobResult<Vec<Range<usize>>> {
+        if total_size > usize::MAX as u64 {
+            return Err(BlobError::FileTooLarge);
+        }
+        let total = total_size as usize;
+        let chunk = chunk_size as usize;
+        let num_chunks = (total + chunk - 1) / chunk;
         let mut ranges = Vec::with_capacity(num_chunks);
 
         for i in 0..num_chunks {
-            let start = (i) * chunk_size as usize;
-            let end = ((i + 1) * chunk_size as usize).min(total_size as usize);
+            let start = i * chunk;
+            let end = ((i + 1) * chunk).min(total);
             ranges.push(start..end);
         }
-        ranges
+        Ok(ranges)
     }
 
     pub async fn download(
@@ -83,13 +118,15 @@ impl BlobDownloader {
                 .await
                 .map_err(BlobError::ObjectStoreError)?;
         } else {
-            let mut total_downloaded = 0u64;
-            let ranges = Self::generate_ranges(metadata.size() as u64, self.chunk_size);
+            let ranges = Self::generate_ranges(metadata.size() as u64, self.chunk_size)?;
             let num_parts = ranges.len();
-            let (tx, mut rx) =
-                mpsc::channel::<(usize, OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>)>(
-                    ranges.len(),
-                );
+            let concurrency = self.semaphore.available_permits().max(1) * 2;
+            let (tx, mut rx) = mpsc::channel::<(
+                usize,
+                usize,
+                OwnedSemaphorePermit,
+                JoinHandle<BlobResult<Bytes>>,
+            )>(concurrency);
             let semaphore = self.semaphore.clone();
             let reader_clone = reader.clone();
             let ns_per_byte = self.ns_per_byte;
@@ -102,89 +139,144 @@ impl BlobDownloader {
                         .map_err(|e| BlobError::ReadError(e.to_string()))?;
 
                     let reader = reader_clone.clone();
-                    let num_bytes = range.end - range.start;
-                    let timeout = Self::compute_timeout(num_bytes as u64, ns_per_byte);
+                    let expected_len = range.end - range.start;
+                    let timeout = Self::compute_timeout(expected_len as u64, ns_per_byte);
                     let range_clone = range.clone();
                     let get_handle =
                         tokio::spawn(async move { reader.get_range(range_clone, timeout).await });
 
-                    if tx.send((idx, permit, get_handle)).await.is_err() {
+                    if tx.send((idx, expected_len, permit, get_handle)).await.is_err() {
                         return Err(BlobError::ReadError("Receiver dropped".to_string()));
                     }
                 }
                 Ok(())
             });
 
-            let mut multipart = storage
-                .put_multipart(&blob_path.path())
-                .await
-                .map_err(BlobError::ObjectStoreError)?;
+            let mut guard = MultipartGuard::new(
+                storage
+                    .put_multipart(&blob_path.path())
+                    .await
+                    .map_err(BlobError::ObjectStoreError)?,
+            );
 
-            let mut buffer: HashMap<usize, (OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>)> =
-                HashMap::new();
-            let mut next_idx = 0;
-            let mut put_join_set = JoinSet::new();
+            let result = Self::run_multipart_transfer(
+                &mut guard,
+                &mut rx,
+                hasher,
+                num_parts,
+                &metadata,
+            )
+            .await;
 
-            while let Some((idx, permit, get_handle)) = rx.recv().await {
-                buffer.insert(idx, (permit, get_handle));
+            driver.abort();
 
-                while let Some((permit, get_handle)) = buffer.remove(&next_idx) {
-                    let bytes = get_handle
-                        .await
-                        .map_err(|e| BlobError::ReadError(e.to_string()))?
-                        .map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
-
-                    hasher.update(&bytes);
-                    total_downloaded += bytes.len() as u64;
-                    let put_fut = multipart.put_part(PutPayload::from_bytes(bytes));
-                    put_join_set.spawn(async move {
-                        let result = put_fut.await.map_err(BlobError::ObjectStoreError);
-                        drop(permit);
-                        result
-                    });
-
-                    next_idx += 1;
-                }
+            if let Err(e) = result {
+                drop(guard);
+                let _ = driver.await;
+                return Err(e);
             }
 
-            if next_idx != num_parts {
-                let _ = multipart.abort().await;
-                return Err(BlobError::ReadError("Missing parts at end of transfer".into()));
-            }
+            guard.complete().await?;
+            let _ = driver.await;
+        }
 
-            let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
-            if total_downloaded != metadata.size() as u64 {
-                let _ = multipart.abort().await;
-                return Err(BlobError::SizeMismatch {
-                    expected: metadata.size() as u64,
-                    actual: total_downloaded,
-                });
-            }
-            if computed_checksum != metadata.checksum() {
-                let _ = multipart.abort().await;
-                return Err(BlobError::ChecksumMismatch {
-                    expected: metadata.checksum().to_string(),
-                    actual: computed_checksum.to_string(),
-                });
-            }
+        Ok(())
+    }
 
-            while let Some(res) = put_join_set.join_next().await {
-                match res {
-                    Ok(Ok(_)) => {}
+    async fn run_multipart_transfer(
+        guard: &mut MultipartGuard,
+        rx: &mut mpsc::Receiver<(usize, usize, OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>)>,
+        mut hasher: DefaultHash,
+        num_parts: usize,
+        metadata: &Metadata,
+    ) -> BlobResult<()> {
+        let mut buffer: HashMap<
+            usize,
+            (usize, OwnedSemaphorePermit, JoinHandle<BlobResult<Bytes>>),
+        > = HashMap::new();
+        let mut next_idx = 0;
+        let mut total_downloaded = 0u64;
+        let mut put_join_set: JoinSet<BlobResult<()>> = JoinSet::new();
+
+        while let Some((idx, expected_len, permit, get_handle)) = rx.recv().await {
+            buffer.insert(idx, (expected_len, permit, get_handle));
+
+            while let Some((expected_len, permit, get_handle)) = buffer.remove(&next_idx) {
+                let bytes = match get_handle.await {
+                    Ok(Ok(b)) => b,
                     Ok(Err(e)) => {
-                        let _ = multipart.abort().await;
+                        put_join_set.abort_all();
+                        for (_, (_, _, h)) in buffer.drain() {
+                            h.abort();
+                        }
                         return Err(e);
                     }
                     Err(join_err) => {
-                        let _ = multipart.abort().await;
+                        put_join_set.abort_all();
+                        for (_, (_, _, h)) in buffer.drain() {
+                            h.abort();
+                        }
                         return Err(BlobError::ReadError(join_err.to_string()));
                     }
+                };
+
+                if bytes.len() != expected_len {
+                    put_join_set.abort_all();
+                    for (_, (_, _, h)) in buffer.drain() {
+                        h.abort();
+                    }
+                    return Err(BlobError::SizeMismatch {
+                        expected: expected_len as u64,
+                        actual: bytes.len() as u64,
+                    });
+                }
+
+                hasher.update(&bytes);
+                total_downloaded += bytes.len() as u64;
+                let put_fut = guard.upload_mut().put_part(PutPayload::from_bytes(bytes));
+                put_join_set.spawn(async move {
+                    let result = put_fut.await.map_err(BlobError::ObjectStoreError);
+                    drop(permit);
+                    result
+                });
+
+                next_idx += 1;
+            }
+        }
+
+        if next_idx != num_parts {
+            put_join_set.abort_all();
+            return Err(BlobError::ReadError("Missing parts at end of transfer".into()));
+        }
+
+        let computed_checksum = Checksum::new_from_hash(hasher.finalize().into());
+        if total_downloaded != metadata.size() as u64 {
+            put_join_set.abort_all();
+            return Err(BlobError::SizeMismatch {
+                expected: metadata.size() as u64,
+                actual: total_downloaded,
+            });
+        }
+        if computed_checksum != metadata.checksum() {
+            put_join_set.abort_all();
+            return Err(BlobError::ChecksumMismatch {
+                expected: metadata.checksum().to_string(),
+                actual: computed_checksum.to_string(),
+            });
+        }
+
+        while let Some(res) = put_join_set.join_next().await {
+            match res {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => {
+                    put_join_set.abort_all();
+                    return Err(e);
+                }
+                Err(join_err) => {
+                    put_join_set.abort_all();
+                    return Err(BlobError::ReadError(join_err.to_string()));
                 }
             }
-
-            multipart.complete().await.map_err(BlobError::ObjectStoreError)?;
-
-            driver.await.map_err(|e| BlobError::ReadError(e.to_string()))??;
         }
 
         Ok(())
@@ -344,5 +436,62 @@ mod tests {
             downloader.download(reader, dest_store.clone(), blob_path, metadata).await.unwrap_err();
 
         assert!(matches!(err, BlobError::ChecksumMismatch { .. }));
+    }
+
+    #[test]
+    fn compute_timeout_scales_linearly() {
+        let d = BlobDownloader::compute_timeout(1_000, 40);
+        assert_eq!(d, Duration::from_nanos(40_000));
+
+        let d = BlobDownloader::compute_timeout(0, 40);
+        assert_eq!(d, Duration::ZERO);
+
+        let d = BlobDownloader::compute_timeout(1, 1);
+        assert_eq!(d, Duration::from_nanos(1));
+    }
+
+    #[test]
+    fn compute_timeout_saturates_on_overflow() {
+        let d = BlobDownloader::compute_timeout(u64::MAX, u16::MAX);
+        assert_eq!(d, Duration::from_nanos(u64::MAX));
+    }
+
+    struct ShortReader {
+        data: Vec<u8>,
+    }
+
+    #[async_trait::async_trait]
+    impl BlobReader for ShortReader {
+        async fn get_full(&self, _timeout: Duration) -> BlobResult<Bytes> {
+            Ok(Bytes::from(self.data.clone()))
+        }
+        async fn get_range(&self, range: Range<usize>, _timeout: Duration) -> BlobResult<Bytes> {
+            let end = range.end.min(self.data.len());
+            let start = range.start.min(end);
+            Ok(Bytes::from(self.data[start..end].to_vec()))
+        }
+    }
+
+    #[tokio::test]
+    async fn download_size_mismatch_on_short_read() {
+        let real_data = vec![6u8; 100];
+        let short_data = vec![6u8; 50];
+
+        let mut hasher = DefaultHash::new();
+        hasher.update(&real_data);
+        let checksum = Checksum::new_from_hash(hasher.finalize().into());
+        let metadata = Metadata::V1(MetadataV1::new(checksum, real_data.len()));
+        let blob_path = BlobPath::Data(5, checksum);
+
+        let dest_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let reader: Arc<dyn BlobReader> = Arc::new(ShortReader { data: short_data });
+        let concurrency = Arc::new(Semaphore::new(2));
+        let downloader = BlobDownloader::new(concurrency, MIN_PART_SIZE, 40).unwrap();
+
+        let err = downloader.download(reader, dest_store, blob_path, metadata).await.unwrap_err();
+        assert!(
+            matches!(err, BlobError::SizeMismatch { expected: 100, actual: 50 }),
+            "expected SizeMismatch, got {err:?}"
+        );
     }
 }

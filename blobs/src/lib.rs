@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use types::{checksum::Checksum, committee::Epoch};
 
-// pub mod services;
 pub mod downloader;
 pub mod readers;
 

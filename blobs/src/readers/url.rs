@@ -81,13 +81,102 @@ impl BlobReader for BlobHttpReader {
             .timeout(timeout);
 
         let response = req.send().await.map_err(|e| BlobError::NetworkRequest(format!("{e:?}")))?;
-        if !response.status().is_success() {
+        let status = response.status();
+        if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
             return Err(BlobError::HttpStatus {
-                status: response.status().as_u16(),
+                status: status.as_u16(),
                 url: self.url.to_string(),
             });
         }
         let bytes = response.bytes().await.map_err(|e| BlobError::NetworkRequest(e.to_string()))?;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path, header},
+    };
+
+    fn test_client() -> ClientWithMiddleware {
+        ClientBuilder::new(reqwest::Client::new()).build()
+    }
+
+    #[tokio::test]
+    async fn get_full_returns_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"hello blob"))
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/blob", server.uri())).unwrap();
+        let reader = BlobHttpReader::new(url, test_client());
+        let result = reader.get_full(Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result.as_ref(), b"hello blob");
+    }
+
+    #[tokio::test]
+    async fn get_full_returns_error_on_404() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/blob", server.uri())).unwrap();
+        let reader = BlobHttpReader::new(url.clone(), test_client());
+        let err = reader.get_full(Duration::from_secs(5)).await.unwrap_err();
+        match err {
+            BlobError::HttpStatus { status, url: u } => {
+                assert_eq!(status, 404);
+                assert_eq!(u, url.to_string());
+            }
+            other => panic!("expected HttpStatus, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_range_sends_range_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .and(header("range", "bytes=10-49"))
+            .respond_with(ResponseTemplate::new(206).set_body_bytes(b"partial content"))
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/blob", server.uri())).unwrap();
+        let reader = BlobHttpReader::new(url, test_client());
+        let result = reader.get_range(10..50, Duration::from_secs(5)).await.unwrap();
+        assert_eq!(result.as_ref(), b"partial content");
+    }
+
+    #[tokio::test]
+    async fn get_range_returns_error_on_500() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/blob", server.uri())).unwrap();
+        let reader = BlobHttpReader::new(url, test_client());
+        let err = reader.get_range(0..10, Duration::from_secs(5)).await.unwrap_err();
+        assert!(matches!(err, BlobError::HttpStatus { status: 500, .. }));
+    }
+
+    #[tokio::test]
+    async fn get_full_connection_refused() {
+        let url = Url::parse("http://127.0.0.1:1/blob").unwrap();
+        let reader = BlobHttpReader::new(url, test_client());
+        let err = reader.get_full(Duration::from_secs(2)).await.unwrap_err();
+        assert!(matches!(err, BlobError::NetworkRequest(_)));
     }
 }
