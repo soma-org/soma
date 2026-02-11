@@ -13,7 +13,8 @@ use crate::{
     },
     model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
     submission::SubmissionManifest,
-    target::{Embedding, TargetId},
+    target::TargetId,
+    tensor::SomaTensor,
 };
 use fastcrypto::{
     hash::HashFunction,
@@ -274,6 +275,9 @@ pub struct CommitModelArgs {
 pub struct RevealModelArgs {
     pub model_id: ModelId,
     pub weights_manifest: ModelWeightsManifest,
+    /// Model embedding for stake-weighted KNN target selection.
+    /// This positions the model in the shared embedding space.
+    pub embedding: SomaTensor,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -287,6 +291,9 @@ pub struct CommitModelUpdateArgs {
 pub struct RevealModelUpdateArgs {
     pub model_id: ModelId,
     pub weights_manifest: ModelWeightsManifest,
+    /// Updated model embedding for stake-weighted KNN target selection.
+    /// Allows repositioning the model in the shared embedding space.
+    pub embedding: SomaTensor,
 }
 
 /// Arguments for a data submission to a target.
@@ -308,11 +315,11 @@ pub struct SubmitDataArgs {
     /// Which model the miner chose from the target's model_ids
     pub model_id: ModelId,
 
-    /// Pre-computed embedding (fixed-point i64)
-    pub embedding: Embedding,
+    /// Pre-computed embedding as SomaTensor (f32 values)
+    pub embedding: SomaTensor,
 
-    /// Distance score (fixed-point, scale DISTANCE_SCALE). Lower is better.
-    pub distance_score: i64,
+    /// Distance score as SomaTensor (scalar, shape [1]). Lower is better.
+    pub distance_score: SomaTensor,
 
     /// Coin to use for bond payment (must cover submission_bond_per_byte * data_manifest.size)
     pub bond_coin: ObjectRef,

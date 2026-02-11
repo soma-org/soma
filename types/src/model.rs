@@ -8,6 +8,7 @@ use crate::{
     metadata::Manifest,
     object::ObjectID,
     system_state::staking::StakingPool,
+    tensor::SomaTensor,
 };
 
 /// Version identifier for model architecture. Protocol config controls the current version.
@@ -64,6 +65,14 @@ pub struct Model {
     /// Set when RevealModel is executed; contains manifest URL + decryption key
     pub weights_manifest: Option<ModelWeightsManifest>,
 
+    // -- Model embedding for stake-weighted KNN selection --
+    /// The model's embedding vector in the shared embedding space.
+    /// Used for stake-weighted KNN model selection: targets prefer nearby models
+    /// weighted by normalized stake (voting power). This encourages specialization
+    /// and reputation building within specific regions of the embedding space.
+    /// Set during reveal (derived from model weights or specified by owner).
+    pub embedding: Option<SomaTensor>,
+
     // -- Staking (reuses existing StakingPool, identical to validators) --
     pub staking_pool: StakingPool,
 
@@ -96,5 +105,16 @@ impl Model {
     /// Returns true if this model has a pending weight update.
     pub fn has_pending_update(&self) -> bool {
         self.pending_update.is_some()
+    }
+
+    /// Returns true if this model is eligible for stake-weighted selection.
+    /// A model is selectable if it's active and has an embedding.
+    pub fn is_selectable(&self) -> bool {
+        self.is_active() && self.embedding.is_some()
+    }
+
+    /// Get the model's stake (soma_balance in the staking pool).
+    pub fn stake(&self) -> u64 {
+        self.staking_pool.soma_balance
     }
 }

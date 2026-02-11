@@ -13,7 +13,7 @@ use types::{
     metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
     object::ObjectID,
     submission::SubmissionManifest,
-    target::Embedding,
+    tensor::SomaTensor,
     transaction::{SubmitDataArgs, TransactionKind},
 };
 
@@ -46,12 +46,12 @@ pub struct SubmitCommand {
     /// Model ID to use for this submission (must be in target's model_ids)
     #[clap(long)]
     pub model_id: ObjectID,
-    /// Embedding vector (comma-separated fixed-point i64 values)
+    /// Embedding vector (comma-separated f32 values)
     #[clap(long)]
     pub embedding: String,
-    /// Distance score (fixed-point i64, must be <= target threshold)
+    /// Distance score (f32, must be <= target threshold)
     #[clap(long)]
-    pub distance_score: i64,
+    pub distance_score: f32,
     /// Coin object to use for bond payment
     #[clap(long)]
     pub bond_coin: ObjectID,
@@ -89,8 +89,8 @@ impl SubmitCommand {
             data_commitment: DataCommitment::new(commitment_bytes),
             data_manifest: manifest,
             model_id: self.model_id,
-            embedding: Embedding::from(embedding_vec),
-            distance_score: self.distance_score,
+            embedding: SomaTensor::new(embedding_vec.clone(), vec![embedding_vec.len()]),
+            distance_score: SomaTensor::scalar(self.distance_score),
             bond_coin: bond_coin_ref,
         });
 
@@ -120,11 +120,11 @@ fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<Sub
     Ok(SubmissionManifest::new(manifest))
 }
 
-fn parse_embedding(embedding_str: &str) -> Result<Vec<i64>> {
+fn parse_embedding(embedding_str: &str) -> Result<Vec<f32>> {
     embedding_str
         .split(',')
         .map(|s| {
-            s.trim().parse::<i64>().map_err(|e| anyhow!("Invalid embedding value '{}': {}", s, e))
+            s.trim().parse::<f32>().map_err(|e| anyhow!("Invalid embedding value '{}': {}", s, e))
         })
         .collect()
 }

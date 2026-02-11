@@ -25,6 +25,7 @@ use crate::{
     },
     storage::WriteKind,
     temporary_store::SharedInput,
+    tensor::SomaTensor,
     tx_fee::TransactionFee,
 };
 
@@ -49,7 +50,7 @@ pub mod object_change;
 ///
 /// ## Thread Safety
 /// This structure is immutable after creation and can be safely shared across threads.
-#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct TransactionEffects {
     /// The status of the execution (success or failure with reason)
     pub status: ExecutionStatus,
@@ -595,7 +596,7 @@ impl CertifiedTransactionEffects {
 /// ## Purpose
 /// Provides a clear indication of whether a transaction executed successfully or failed,
 /// and if it failed, the specific reason for the failure.
-#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum ExecutionStatus {
     /// Transaction executed successfully
     Success,
@@ -646,7 +647,7 @@ impl ExecutionStatus {
 /// ## Purpose
 /// Provides specific error information when a transaction fails, allowing clients
 /// to understand exactly why their transaction was not executed successfully.
-#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Error)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, Error)]
 pub enum ExecutionFailureStatus {
     //
     // General transaction errors
@@ -764,7 +765,7 @@ pub enum ExecutionFailureStatus {
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
 
     #[error("Distance score {score} exceeds threshold {threshold}.")]
-    DistanceExceedsThreshold { score: i64, threshold: i64 },
+    DistanceExceedsThreshold { score: SomaTensor, threshold: SomaTensor },
 
     #[error("Insufficient bond: required {required}, provided {provided}.")]
     InsufficientBond { required: u64, provided: u64 },

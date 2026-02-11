@@ -258,7 +258,7 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::EmbeddingDimensionMismatch { expected: 0, actual: 0 })
             }
             K::DistanceExceedsThreshold => {
-                Ok(Self::DistanceExceedsThreshold { score: 0, threshold: 0 })
+                Ok(Self::DistanceExceedsThreshold { score: 0.0, threshold: 0.0 })
             }
             K::InsufficientBond => Ok(Self::InsufficientBond { required: 0, provided: 0 }),
             K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),

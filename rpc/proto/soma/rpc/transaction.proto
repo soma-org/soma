@@ -197,6 +197,8 @@ message CommitModel {
 message RevealModel {
   optional string model_id = 1;
   optional ModelWeightsManifest weights_manifest = 2;
+  // Model embedding for stake-weighted KNN target selection (f32 values)
+  repeated float embedding = 3;
 }
 
 message CommitModelUpdate {
@@ -208,6 +210,8 @@ message CommitModelUpdate {
 message RevealModelUpdate {
   optional string model_id = 1;
   optional ModelWeightsManifest weights_manifest = 2;
+  // Updated model embedding for stake-weighted KNN target selection (f32 values)
+  repeated float embedding = 3;
 }
 
 message AddStakeToModel {
@@ -308,11 +312,11 @@ message SubmitData {
   // Model ID used for submission (must be in target's model_ids)
   optional string model_id = 4;
 
-  // Pre-computed embedding (fixed-point i64 values)
-  repeated int64 embedding = 5;
+  // Pre-computed embedding (f32 values)
+  repeated float embedding = 5;
 
-  // Distance score (fixed-point i64, lower is better)
-  optional int64 distance_score = 6;
+  // Distance score (f32 cosine distance, lower is better)
+  optional float distance_score = 6;
 
   // Bond coin reference
   optional ObjectReference bond_coin = 7;

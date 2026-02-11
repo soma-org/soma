@@ -1114,14 +1114,10 @@ impl serde::Serialize for Challenge {
             struct_ser.serialize_field("winReason", v)?;
         }
         if let Some(v) = self.distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("distanceThreshold", v)?;
         }
         if let Some(v) = self.winning_distance_score.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("winningDistanceScore", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("winningDistanceScore", v)?;
         }
         if let Some(v) = self.winning_model_id.as_ref() {
             struct_ser.serialize_field("winningModelId", v)?;
@@ -9008,6 +9004,9 @@ impl serde::Serialize for Model {
         if self.weights_manifest.is_some() {
             len += 1;
         }
+        if !self.embedding.is_empty() {
+            len += 1;
+        }
         if self.staking_pool.is_some() {
             len += 1;
         }
@@ -9047,6 +9046,9 @@ impl serde::Serialize for Model {
         if let Some(v) = self.weights_manifest.as_ref() {
             struct_ser.serialize_field("weightsManifest", v)?;
         }
+        if !self.embedding.is_empty() {
+            struct_ser.serialize_field("embedding", &self.embedding)?;
+        }
         if let Some(v) = self.staking_pool.as_ref() {
             struct_ser.serialize_field("stakingPool", v)?;
         }
@@ -9084,6 +9086,7 @@ impl<'de> serde::Deserialize<'de> for Model {
             "commitEpoch",
             "weights_manifest",
             "weightsManifest",
+            "embedding",
             "staking_pool",
             "stakingPool",
             "commission_rate",
@@ -9102,6 +9105,7 @@ impl<'de> serde::Deserialize<'de> for Model {
             WeightsCommitment,
             CommitEpoch,
             WeightsManifest,
+            Embedding,
             StakingPool,
             CommissionRate,
             NextEpochCommissionRate,
@@ -9134,6 +9138,7 @@ impl<'de> serde::Deserialize<'de> for Model {
                             "weightsCommitment" | "weights_commitment" => Ok(GeneratedField::WeightsCommitment),
                             "commitEpoch" | "commit_epoch" => Ok(GeneratedField::CommitEpoch),
                             "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "embedding" => Ok(GeneratedField::Embedding),
                             "stakingPool" | "staking_pool" => Ok(GeneratedField::StakingPool),
                             "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
                             "nextEpochCommissionRate" | "next_epoch_commission_rate" => Ok(GeneratedField::NextEpochCommissionRate),
@@ -9165,6 +9170,7 @@ impl<'de> serde::Deserialize<'de> for Model {
                 let mut weights_commitment__ = None;
                 let mut commit_epoch__ = None;
                 let mut weights_manifest__ = None;
+                let mut embedding__ = None;
                 let mut staking_pool__ = None;
                 let mut commission_rate__ = None;
                 let mut next_epoch_commission_rate__ = None;
@@ -9215,6 +9221,15 @@ impl<'de> serde::Deserialize<'de> for Model {
                             }
                             weights_manifest__ = map_.next_value()?;
                         }
+                        GeneratedField::Embedding => {
+                            if embedding__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embedding"));
+                            }
+                            embedding__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
                         GeneratedField::StakingPool => {
                             if staking_pool__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("stakingPool"));
@@ -9255,6 +9270,7 @@ impl<'de> serde::Deserialize<'de> for Model {
                     weights_commitment: weights_commitment__,
                     commit_epoch: commit_epoch__,
                     weights_manifest: weights_manifest__,
+                    embedding: embedding__.unwrap_or_default(),
                     staking_pool: staking_pool__,
                     commission_rate: commission_rate__,
                     next_epoch_commission_rate: next_epoch_commission_rate__,
@@ -12016,12 +12032,18 @@ impl serde::Serialize for RevealModel {
         if self.weights_manifest.is_some() {
             len += 1;
         }
+        if !self.embedding.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RevealModel", len)?;
         if let Some(v) = self.model_id.as_ref() {
             struct_ser.serialize_field("modelId", v)?;
         }
         if let Some(v) = self.weights_manifest.as_ref() {
             struct_ser.serialize_field("weightsManifest", v)?;
+        }
+        if !self.embedding.is_empty() {
+            struct_ser.serialize_field("embedding", &self.embedding)?;
         }
         struct_ser.end()
     }
@@ -12037,12 +12059,14 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
             "modelId",
             "weights_manifest",
             "weightsManifest",
+            "embedding",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ModelId,
             WeightsManifest,
+            Embedding,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -12067,6 +12091,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                         match value {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "embedding" => Ok(GeneratedField::Embedding),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -12090,6 +12115,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
             {
                 let mut model_id__ = None;
                 let mut weights_manifest__ = None;
+                let mut embedding__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ModelId => {
@@ -12104,6 +12130,15 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                             }
                             weights_manifest__ = map_.next_value()?;
                         }
+                        GeneratedField::Embedding => {
+                            if embedding__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embedding"));
+                            }
+                            embedding__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -12112,6 +12147,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                 Ok(RevealModel {
                     model_id: model_id__,
                     weights_manifest: weights_manifest__,
+                    embedding: embedding__.unwrap_or_default(),
                 })
             }
         }
@@ -12132,12 +12168,18 @@ impl serde::Serialize for RevealModelUpdate {
         if self.weights_manifest.is_some() {
             len += 1;
         }
+        if !self.embedding.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.RevealModelUpdate", len)?;
         if let Some(v) = self.model_id.as_ref() {
             struct_ser.serialize_field("modelId", v)?;
         }
         if let Some(v) = self.weights_manifest.as_ref() {
             struct_ser.serialize_field("weightsManifest", v)?;
+        }
+        if !self.embedding.is_empty() {
+            struct_ser.serialize_field("embedding", &self.embedding)?;
         }
         struct_ser.end()
     }
@@ -12153,12 +12195,14 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
             "modelId",
             "weights_manifest",
             "weightsManifest",
+            "embedding",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ModelId,
             WeightsManifest,
+            Embedding,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -12183,6 +12227,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                         match value {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "embedding" => Ok(GeneratedField::Embedding),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -12206,6 +12251,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
             {
                 let mut model_id__ = None;
                 let mut weights_manifest__ = None;
+                let mut embedding__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ModelId => {
@@ -12220,6 +12266,15 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                             }
                             weights_manifest__ = map_.next_value()?;
                         }
+                        GeneratedField::Embedding => {
+                            if embedding__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embedding"));
+                            }
+                            embedding__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -12228,6 +12283,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                 Ok(RevealModelUpdate {
                     model_id: model_id__,
                     weights_manifest: weights_manifest__,
+                    embedding: embedding__.unwrap_or_default(),
                 })
             }
         }
@@ -13316,12 +13372,10 @@ impl serde::Serialize for Submission {
             struct_ser.serialize_field("modelId", v)?;
         }
         if !self.embedding.is_empty() {
-            struct_ser.serialize_field("embedding", &self.embedding.iter().map(ToString::to_string).collect::<Vec<_>>())?;
+            struct_ser.serialize_field("embedding", &self.embedding)?;
         }
         if let Some(v) = self.distance_score.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("distanceScore", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("distanceScore", v)?;
         }
         if let Some(v) = self.bond_amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -13651,12 +13705,10 @@ impl serde::Serialize for SubmitData {
             struct_ser.serialize_field("modelId", v)?;
         }
         if !self.embedding.is_empty() {
-            struct_ser.serialize_field("embedding", &self.embedding.iter().map(ToString::to_string).collect::<Vec<_>>())?;
+            struct_ser.serialize_field("embedding", &self.embedding)?;
         }
         if let Some(v) = self.distance_score.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("distanceScore", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("distanceScore", v)?;
         }
         if let Some(v) = self.bond_coin.as_ref() {
             struct_ser.serialize_field("bondCoin", v)?;
@@ -14130,9 +14182,6 @@ impl serde::Serialize for SystemParameters {
         if self.challenger_bond_per_byte.is_some() {
             len += 1;
         }
-        if self.challenge_distance_epsilon.is_some() {
-            len += 1;
-        }
         if self.max_submission_data_size.is_some() {
             len += 1;
         }
@@ -14213,9 +14262,7 @@ impl serde::Serialize for SystemParameters {
             struct_ser.serialize_field("targetEmbeddingDim", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.target_initial_distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetInitialDistanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetInitialDistanceThreshold", v)?;
         }
         if let Some(v) = self.target_reward_allocation_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14238,14 +14285,10 @@ impl serde::Serialize for SystemParameters {
             struct_ser.serialize_field("targetDifficultyAdjustmentRateBps", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.target_max_distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetMaxDistanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetMaxDistanceThreshold", v)?;
         }
         if let Some(v) = self.target_min_distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetMinDistanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetMinDistanceThreshold", v)?;
         }
         if let Some(v) = self.target_initial_targets_per_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14276,11 +14319,6 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("challengerBondPerByte", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.challenge_distance_epsilon.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("challengeDistanceEpsilon", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.max_submission_data_size.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14353,8 +14391,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "submissionBondPerByte",
             "challenger_bond_per_byte",
             "challengerBondPerByte",
-            "challenge_distance_epsilon",
-            "challengeDistanceEpsilon",
             "max_submission_data_size",
             "maxSubmissionDataSize",
         ];
@@ -14389,7 +14425,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             TargetClaimerIncentiveBps,
             SubmissionBondPerByte,
             ChallengerBondPerByte,
-            ChallengeDistanceEpsilon,
             MaxSubmissionDataSize,
             __SkipField__,
         }
@@ -14441,7 +14476,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                             "targetClaimerIncentiveBps" | "target_claimer_incentive_bps" => Ok(GeneratedField::TargetClaimerIncentiveBps),
                             "submissionBondPerByte" | "submission_bond_per_byte" => Ok(GeneratedField::SubmissionBondPerByte),
                             "challengerBondPerByte" | "challenger_bond_per_byte" => Ok(GeneratedField::ChallengerBondPerByte),
-                            "challengeDistanceEpsilon" | "challenge_distance_epsilon" => Ok(GeneratedField::ChallengeDistanceEpsilon),
                             "maxSubmissionDataSize" | "max_submission_data_size" => Ok(GeneratedField::MaxSubmissionDataSize),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -14492,7 +14526,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 let mut target_claimer_incentive_bps__ = None;
                 let mut submission_bond_per_byte__ = None;
                 let mut challenger_bond_per_byte__ = None;
-                let mut challenge_distance_epsilon__ = None;
                 let mut max_submission_data_size__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -14720,14 +14753,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::ChallengeDistanceEpsilon => {
-                            if challenge_distance_epsilon__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("challengeDistanceEpsilon"));
-                            }
-                            challenge_distance_epsilon__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::MaxSubmissionDataSize => {
                             if max_submission_data_size__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("maxSubmissionDataSize"));
@@ -14770,7 +14795,6 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     target_claimer_incentive_bps: target_claimer_incentive_bps__,
                     submission_bond_per_byte: submission_bond_per_byte__,
                     challenger_bond_per_byte: challenger_bond_per_byte__,
-                    challenge_distance_epsilon: challenge_distance_epsilon__,
                     max_submission_data_size: max_submission_data_size__,
                 })
             }
@@ -15100,15 +15124,13 @@ impl serde::Serialize for Target {
             struct_ser.serialize_field("id", v)?;
         }
         if !self.embedding.is_empty() {
-            struct_ser.serialize_field("embedding", &self.embedding.iter().map(ToString::to_string).collect::<Vec<_>>())?;
+            struct_ser.serialize_field("embedding", &self.embedding)?;
         }
         if !self.model_ids.is_empty() {
             struct_ser.serialize_field("modelIds", &self.model_ids)?;
         }
         if let Some(v) = self.distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("distanceThreshold", v)?;
         }
         if let Some(v) = self.reward_pool.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -15391,9 +15413,7 @@ impl serde::Serialize for TargetState {
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TargetState", len)?;
         if let Some(v) = self.distance_threshold.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("distanceThreshold", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("distanceThreshold", v)?;
         }
         if let Some(v) = self.targets_generated_this_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]

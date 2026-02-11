@@ -10,7 +10,6 @@
 //! - Epoch-scoped: all targets expire at epoch boundary
 //! - Spawn-on-fill: filling a target spawns 1 replacement
 
-use ndarray::Array1;
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom as _};
 use serde::{Deserialize, Serialize};
 
@@ -25,28 +24,19 @@ use crate::{
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     model::ModelId,
+    model_selection::{ModelSelectionData, select_models},
     object::ObjectID,
     submission::SubmissionManifest,
     system_state::model_registry::ModelRegistry,
     system_state::target_state::TargetState,
     system_state::validator::ValidatorSet,
+    tensor::SomaTensor,
 };
+use burn::backend::NdArray;
 use fastcrypto::hash::HashFunction as _;
 
 /// Type alias: targets are identified by their ObjectID.
 pub type TargetId = ObjectID;
-
-/// Scale factor for converting f32 normal values to fixed-point i64.
-/// Using 10^6 gives 6 decimal places of precision.
-pub const EMBEDDING_SCALE: i64 = 1_000_000;
-
-/// Fixed-point embedding vector. Scale factor is a protocol constant.
-/// i64 gives ~18 decimal digits — more than enough for f32-origin values
-/// while allowing safe accumulation in dot products without overflow
-/// for reasonable embedding dimensions (up to ~10k dims).
-///
-/// Using ndarray::Array1 for seamless NumPy interop in the Python SDK.
-pub type Embedding = Array1<i64>;
 
 /// A target in the Soma mining competition.
 ///
@@ -56,15 +46,17 @@ pub type Embedding = Array1<i64>;
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Target {
     /// Center embedding point miners must get close to.
-    pub embedding: Embedding,
+    /// Stored as SomaTensor (wraps Burn's TensorData) for f32 embeddings.
+    pub embedding: SomaTensor,
 
     /// Multiple models assigned to this target (uniformly random selection).
     /// Miners choose which model to use.
     pub model_ids: Vec<ModelId>,
 
-    /// Distance threshold (fixed-point, scale DISTANCE_SCALE).
+    /// Distance threshold (cosine distance).
+    /// Stored as scalar SomaTensor for consistency with CompetitionAPI.
     /// Submitter must report distance <= this value (lower is better).
-    pub distance_threshold: i64,
+    pub distance_threshold: SomaTensor,
 
     /// Pre-allocated reward amount (in shannons) for this target.
     /// Funded from emissions at target creation time.
@@ -105,13 +97,14 @@ pub struct Target {
     /// Used to verify data integrity during challenge audit.
     pub winning_data_commitment: Option<DataCommitment>,
 
-    /// Embedding vector from the winning submission (fixed-point i64).
+    /// Embedding vector from the winning submission.
     /// Verified during challenge audit by re-running inference.
-    pub winning_embedding: Option<Embedding>,
+    pub winning_embedding: Option<SomaTensor>,
 
-    /// Distance score from the winning submission (fixed-point, scale DISTANCE_SCALE).
+    /// Distance score from the winning submission (cosine distance).
+    /// Stored as scalar SomaTensor for consistency with CompetitionAPI.
     /// Verified during ScoreFraud challenge audit.
-    pub winning_distance_score: Option<i64>,
+    pub winning_distance_score: Option<SomaTensor>,
 
     // =========================================================================
     // Tally-based challenge fields (set when target is filled)
@@ -236,9 +229,13 @@ impl Target {
 
 /// Generate a new target with the given parameters.
 ///
+/// Uses stake-weighted KNN model selection: models with embeddings closer to the
+/// target embedding are preferred, weighted by their normalized stake (voting power).
+/// Falls back to uniform random selection if no models have embeddings.
+///
 /// # Arguments
 /// * `seed` - Deterministic seed derived from transaction digest + creation number
-/// * `model_registry` - Registry of active models for random selection
+/// * `model_registry` - Registry of active models for selection
 /// * `target_state` - Current difficulty thresholds and reward per target
 /// * `models_per_target` - Number of models to assign to this target
 /// * `embedding_dim` - Dimension of the embedding vector
@@ -254,17 +251,18 @@ pub fn generate_target(
     embedding_dim: u64,
     current_epoch: EpochId,
 ) -> ExecutionResult<Target> {
-    // 1. Select models via uniform random sampling (no replacement)
-    let model_ids = select_models_uniform(seed, model_registry, models_per_target)?;
-
-    // 2. Generate deterministic embedding
+    // 1. Generate deterministic embedding for the target
     let embedding = deterministic_embedding(seed, embedding_dim);
+
+    // 2. Select models via stake-weighted KNN (falls back to uniform if no embeddings)
+    let model_ids =
+        select_models_weighted_knn(seed, model_registry, &embedding, models_per_target)?;
 
     // 3. Create target with current difficulty thresholds and reward
     Ok(Target {
         embedding,
         model_ids,
-        distance_threshold: target_state.distance_threshold,
+        distance_threshold: target_state.distance_threshold.clone(),
         reward_pool: target_state.reward_per_target,
         generation_epoch: current_epoch,
         status: TargetStatus::Open,
@@ -282,6 +280,61 @@ pub fn generate_target(
         challenge_id: None,
         submission_reports: BTreeMap::new(),
     })
+}
+
+/// Select models using stake-weighted KNN based on target embedding.
+///
+/// Models are scored by: `weighted_score = distance² / voting_power`
+/// where voting_power is the model's normalized stake (sums to 1.0).
+/// Lower scores are better (closer distance and/or higher stake).
+///
+/// Falls back to uniform random selection if no models have embeddings.
+///
+/// # Arguments
+/// * `seed` - Random seed for fallback selection
+/// * `model_registry` - Registry containing active models
+/// * `target_embedding` - The target's embedding vector
+/// * `count` - Number of models to select
+///
+/// # Errors
+/// Returns `ExecutionFailureStatus::NoActiveModels` if no active models exist.
+pub fn select_models_weighted_knn(
+    seed: u64,
+    model_registry: &ModelRegistry,
+    target_embedding: &SomaTensor,
+    count: u64,
+) -> ExecutionResult<Vec<ModelId>> {
+    if model_registry.active_models.is_empty() {
+        return Err(ExecutionFailureStatus::NoActiveModels);
+    }
+
+    // Collect models that have embeddings for weighted selection
+    let models_with_embeddings: Vec<(ModelId, SomaTensor, u64)> = model_registry
+        .active_models
+        .iter()
+        .filter_map(|(id, model)| {
+            model.embedding.as_ref().map(|emb| (*id, emb.clone(), model.stake()))
+        })
+        .collect();
+
+    // If no models have embeddings, fall back to uniform selection
+    if models_with_embeddings.is_empty() {
+        return select_models_uniform(seed, model_registry, count);
+    }
+
+    let count = count.min(models_with_embeddings.len() as u64) as usize;
+
+    // Use NdArray backend for deterministic CPU computation
+    type B = NdArray;
+    let device: <B as burn::prelude::Backend>::Device = Default::default();
+
+    // Prepare model data for selection
+    let selection_data = ModelSelectionData::<B>::new(models_with_embeddings, &device);
+
+    // Select top-k models by weighted score
+    let matches = select_models(target_embedding, &selection_data, count);
+
+    Ok(matches.into_iter().map(|m| m.model_id).collect())
 }
 
 /// Select models uniformly at random from the active model registry.
@@ -317,30 +370,20 @@ pub fn select_models_uniform(
 
 /// Generate a deterministic embedding vector from a seed.
 ///
-/// Uses standard normal distribution (mean=0, std_dev=1) scaled to fixed-point i64.
+/// Uses standard normal distribution (mean=0, std_dev=1).
 /// The implementation uses the same RNG as `arrgen` for consistency.
 ///
 /// # Arguments
 /// * `seed` - Random seed for reproducibility
 /// * `dim` - Dimension of the embedding vector
-pub fn deterministic_embedding(seed: u64, dim: u64) -> Embedding {
+pub fn deterministic_embedding(seed: u64, dim: u64) -> SomaTensor {
     // Generate standard normal distribution (mean=0, std_dev=1)
     // We use arrgen's normal_array which provides deterministic generation
     let f32_array = arrgen::normal_array(seed, &[dim as usize], 0.0, 1.0);
 
-    // Convert from dynamic to 1D array, then map to fixed-point i64
-    // The f32_array is ArrayD<f32>, we need to convert to Array1<i64>
+    // Convert from dynamic array to Vec<f32>
     let flat: Vec<f32> = f32_array.into_iter().collect();
-    Array1::from_vec(
-        flat.into_iter()
-            .map(|v| {
-                let scaled = f64::from(v) * EMBEDDING_SCALE as f64;
-                // Clamp to i64 range to prevent overflow (though standard normal
-                // values scaled by 10^6 should never approach these bounds)
-                scaled.clamp(i64::MIN as f64, i64::MAX as f64) as i64
-            })
-            .collect(),
-    )
+    SomaTensor::new(flat, vec![dim as usize])
 }
 
 /// Construct a deterministic seed from transaction digest and creation number.
@@ -399,9 +442,9 @@ mod tests {
     #[test]
     fn test_target_status_methods() {
         let mut target = Target {
-            embedding: Array1::zeros(10),
+            embedding: SomaTensor::zeros(vec![10]),
             model_ids: vec![],
-            distance_threshold: 1000,
+            distance_threshold: SomaTensor::scalar(0.5),
             reward_pool: 1000,
             generation_epoch: 0,
             status: TargetStatus::Open,

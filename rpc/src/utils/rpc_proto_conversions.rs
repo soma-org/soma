@@ -550,6 +550,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::RevealModel(args) => Kind::RevealModel(RevealModel {
                 model_id: Some(args.model_id.to_string()),
                 weights_manifest: Some(args.weights_manifest.into()),
+                embedding: args.embedding.to_vec(),
             }),
             K::CommitModelUpdate(args) => Kind::CommitModelUpdate(CommitModelUpdate {
                 model_id: Some(args.model_id.to_string()),
@@ -561,6 +562,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
                 model_id: Some(args.model_id.to_string()),
                 weights_manifest: Some(args.weights_manifest.into()),
+                embedding: args.embedding.to_vec(),
             }),
             K::AddStakeToModel { model_id, coin_ref, amount } => {
                 Kind::AddStakeToModel(AddStakeToModel {
@@ -593,7 +595,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 }),
                 model_id: Some(args.model_id.to_string()),
                 embedding: args.embedding.to_vec(),
-                distance_score: Some(args.distance_score),
+                distance_score: Some(args.distance_score.as_scalar()),
                 bond_coin: Some(object_ref_to_proto(args.bond_coin)),
             }),
             K::ClaimRewards(args) => Kind::ClaimRewards(ClaimRewards {
@@ -965,9 +967,11 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             target_embedding_dim: proto_params
                 .target_embedding_dim
                 .ok_or("Missing target_embedding_dim")?,
-            target_initial_distance_threshold: proto_params
-                .target_initial_distance_threshold
-                .ok_or("Missing target_initial_distance_threshold")?,
+            target_initial_distance_threshold: types::tensor::SomaTensor::scalar(
+                proto_params
+                    .target_initial_distance_threshold
+                    .ok_or("Missing target_initial_distance_threshold")?,
+            ),
             target_reward_allocation_bps: proto_params
                 .target_reward_allocation_bps
                 .ok_or("Missing target_reward_allocation_bps")?,
@@ -980,12 +984,16 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             target_difficulty_adjustment_rate_bps: proto_params
                 .target_difficulty_adjustment_rate_bps
                 .ok_or("Missing target_difficulty_adjustment_rate_bps")?,
-            target_max_distance_threshold: proto_params
-                .target_max_distance_threshold
-                .ok_or("Missing target_max_distance_threshold")?,
-            target_min_distance_threshold: proto_params
-                .target_min_distance_threshold
-                .ok_or("Missing target_min_distance_threshold")?,
+            target_max_distance_threshold: types::tensor::SomaTensor::scalar(
+                proto_params
+                    .target_max_distance_threshold
+                    .ok_or("Missing target_max_distance_threshold")?,
+            ),
+            target_min_distance_threshold: types::tensor::SomaTensor::scalar(
+                proto_params
+                    .target_min_distance_threshold
+                    .ok_or("Missing target_min_distance_threshold")?,
+            ),
             target_initial_targets_per_epoch: proto_params
                 .target_initial_targets_per_epoch
                 .ok_or("Missing target_initial_targets_per_epoch")?,
@@ -1007,9 +1015,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             challenger_bond_per_byte: proto_params
                 .challenger_bond_per_byte
                 .ok_or("Missing challenger_bond_per_byte")?,
-            challenge_distance_epsilon: proto_params
-                .challenge_distance_epsilon
-                .ok_or("Missing challenge_distance_epsilon")?,
             // Data size limit
             max_submission_data_size: proto_params
                 .max_submission_data_size
@@ -1364,7 +1369,7 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
 impl From<types::system_state::target_state::TargetState> for TargetState {
     fn from(domain: types::system_state::target_state::TargetState) -> Self {
         TargetState {
-            distance_threshold: Some(domain.distance_threshold),
+            distance_threshold: Some(domain.distance_threshold.as_scalar()),
             targets_generated_this_epoch: Some(domain.targets_generated_this_epoch),
             hits_this_epoch: Some(domain.hits_this_epoch),
             hit_rate_ema_bps: Some(domain.hit_rate_ema_bps),
@@ -1378,7 +1383,9 @@ impl TryFrom<TargetState> for types::system_state::target_state::TargetState {
 
     fn try_from(proto: TargetState) -> Result<Self, Self::Error> {
         Ok(types::system_state::target_state::TargetState {
-            distance_threshold: proto.distance_threshold.ok_or("Missing distance_threshold")?,
+            distance_threshold: types::tensor::SomaTensor::scalar(
+                proto.distance_threshold.ok_or("Missing distance_threshold")?,
+            ),
             targets_generated_this_epoch: proto
                 .targets_generated_this_epoch
                 .ok_or("Missing targets_generated_this_epoch")?,
@@ -1410,15 +1417,21 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             // Target/Mining parameters
             target_models_per_target: Some(domain_params.target_models_per_target),
             target_embedding_dim: Some(domain_params.target_embedding_dim),
-            target_initial_distance_threshold: Some(domain_params.target_initial_distance_threshold),
+            target_initial_distance_threshold: Some(
+                domain_params.target_initial_distance_threshold.as_scalar(),
+            ),
             target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
             target_hit_rate_target_bps: Some(domain_params.target_hit_rate_target_bps),
             target_hit_rate_ema_decay_bps: Some(domain_params.target_hit_rate_ema_decay_bps),
             target_difficulty_adjustment_rate_bps: Some(
                 domain_params.target_difficulty_adjustment_rate_bps,
             ),
-            target_max_distance_threshold: Some(domain_params.target_max_distance_threshold),
-            target_min_distance_threshold: Some(domain_params.target_min_distance_threshold),
+            target_max_distance_threshold: Some(
+                domain_params.target_max_distance_threshold.as_scalar(),
+            ),
+            target_min_distance_threshold: Some(
+                domain_params.target_min_distance_threshold.as_scalar(),
+            ),
             target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
             // Reward distribution parameters
             target_miner_reward_share_bps: Some(domain_params.target_miner_reward_share_bps),
@@ -1428,7 +1441,6 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             submission_bond_per_byte: Some(domain_params.submission_bond_per_byte),
             // Challenge parameters
             challenger_bond_per_byte: Some(domain_params.challenger_bond_per_byte),
-            challenge_distance_epsilon: Some(domain_params.challenge_distance_epsilon),
             // Data size limit
             max_submission_data_size: Some(domain_params.max_submission_data_size),
         })
@@ -1713,6 +1725,7 @@ impl TryFrom<types::model::Model> for Model {
             weights_commitment: Some(domain.weights_commitment.into_inner().to_vec().into()),
             commit_epoch: Some(domain.commit_epoch),
             weights_manifest: domain.weights_manifest.map(Into::into),
+            embedding: domain.embedding.map(|e| e.to_vec()).unwrap_or_default(),
             staking_pool: Some(domain.staking_pool.try_into()?),
             commission_rate: Some(domain.commission_rate),
             next_epoch_commission_rate: Some(domain.next_epoch_commission_rate),
@@ -1748,6 +1761,14 @@ impl TryFrom<Model> for types::model::Model {
 
         let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
 
+        // Convert embedding from repeated float to Option<SomaTensor>
+        let embedding = if proto.embedding.is_empty() {
+            None
+        } else {
+            let dim = proto.embedding.len();
+            Some(types::tensor::SomaTensor::new(proto.embedding, vec![dim]))
+        };
+
         Ok(types::model::Model {
             owner,
             architecture_version: proto
@@ -1757,6 +1778,7 @@ impl TryFrom<Model> for types::model::Model {
             weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
             commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
             weights_manifest,
+            embedding,
             staking_pool,
             commission_rate: proto.commission_rate.ok_or("Missing commission_rate")?,
             next_epoch_commission_rate: proto

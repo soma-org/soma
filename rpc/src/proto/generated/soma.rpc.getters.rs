@@ -2479,7 +2479,6 @@ mod _getter_impls {
                 target_claimer_incentive_bps: None,
                 submission_bond_per_byte: None,
                 challenger_bond_per_byte: None,
-                challenge_distance_epsilon: None,
                 max_submission_data_size: None,
             }
         }
@@ -2548,7 +2547,7 @@ mod _getter_impls {
             self.target_embedding_dim = Some(field.into());
             self
         }
-        pub fn with_target_initial_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_target_initial_distance_threshold(mut self, field: f32) -> Self {
             self.target_initial_distance_threshold = Some(field.into());
             self
         }
@@ -2568,11 +2567,11 @@ mod _getter_impls {
             self.target_difficulty_adjustment_rate_bps = Some(field.into());
             self
         }
-        pub fn with_target_max_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_target_max_distance_threshold(mut self, field: f32) -> Self {
             self.target_max_distance_threshold = Some(field.into());
             self
         }
-        pub fn with_target_min_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_target_min_distance_threshold(mut self, field: f32) -> Self {
             self.target_min_distance_threshold = Some(field.into());
             self
         }
@@ -2598,10 +2597,6 @@ mod _getter_impls {
         }
         pub fn with_challenger_bond_per_byte(mut self, field: u64) -> Self {
             self.challenger_bond_per_byte = Some(field.into());
-            self
-        }
-        pub fn with_challenge_distance_epsilon(mut self, field: i64) -> Self {
-            self.challenge_distance_epsilon = Some(field.into());
             self
         }
         pub fn with_max_submission_data_size(mut self, field: u64) -> Self {
@@ -2904,6 +2899,7 @@ mod _getter_impls {
                 weights_commitment: None,
                 commit_epoch: None,
                 weights_manifest: None,
+                embedding: Vec::new(),
                 staking_pool: None,
                 commission_rate: None,
                 next_epoch_commission_rate: None,
@@ -2955,6 +2951,16 @@ mod _getter_impls {
         }
         pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
             self.weights_manifest = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[f32] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
+            self.embedding = field;
             self
         }
         pub fn staking_pool(&self) -> &StakingPool {
@@ -3040,7 +3046,7 @@ mod _getter_impls {
             static DEFAULT: TargetState = TargetState::const_default();
             &DEFAULT
         }
-        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_distance_threshold(mut self, field: f32) -> Self {
             self.distance_threshold = Some(field.into());
             self
         }
@@ -3087,13 +3093,13 @@ mod _getter_impls {
             self.id = Some(field.into());
             self
         }
-        pub fn embedding(&self) -> &[i64] {
+        pub fn embedding(&self) -> &[f32] {
             &self.embedding
         }
-        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
             &mut self.embedding
         }
-        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
             self.embedding = field;
             self
         }
@@ -3107,7 +3113,7 @@ mod _getter_impls {
             self.model_ids = field;
             self
         }
-        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_distance_threshold(mut self, field: f32) -> Self {
             self.distance_threshold = Some(field.into());
             self
         }
@@ -3193,17 +3199,17 @@ mod _getter_impls {
             self.model_id = Some(field.into());
             self
         }
-        pub fn embedding(&self) -> &[i64] {
+        pub fn embedding(&self) -> &[f32] {
             &self.embedding
         }
-        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
             &mut self.embedding
         }
-        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
             self.embedding = field;
             self
         }
-        pub fn with_distance_score(mut self, field: i64) -> Self {
+        pub fn with_distance_score(mut self, field: f32) -> Self {
             self.distance_score = Some(field.into());
             self
         }
@@ -3269,11 +3275,11 @@ mod _getter_impls {
             self.win_reason = Some(field.into());
             self
         }
-        pub fn with_distance_threshold(mut self, field: i64) -> Self {
+        pub fn with_distance_threshold(mut self, field: f32) -> Self {
             self.distance_threshold = Some(field.into());
             self
         }
-        pub fn with_winning_distance_score(mut self, field: i64) -> Self {
+        pub fn with_winning_distance_score(mut self, field: f32) -> Self {
             self.winning_distance_score = Some(field.into());
             self
         }
@@ -5071,6 +5077,7 @@ mod _getter_impls {
             Self {
                 model_id: None,
                 weights_manifest: None,
+                embedding: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5099,6 +5106,16 @@ mod _getter_impls {
         }
         pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
             self.weights_manifest = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[f32] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
+            self.embedding = field;
             self
         }
     }
@@ -5136,6 +5153,7 @@ mod _getter_impls {
             Self {
                 model_id: None,
                 weights_manifest: None,
+                embedding: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5164,6 +5182,16 @@ mod _getter_impls {
         }
         pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
             self.weights_manifest = Some(field.into());
+            self
+        }
+        pub fn embedding(&self) -> &[f32] {
+            &self.embedding
+        }
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
+            &mut self.embedding
+        }
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
+            self.embedding = field;
             self
         }
     }
@@ -5443,17 +5471,17 @@ mod _getter_impls {
             self.model_id = Some(field.into());
             self
         }
-        pub fn embedding(&self) -> &[i64] {
+        pub fn embedding(&self) -> &[f32] {
             &self.embedding
         }
-        pub fn embedding_mut(&mut self) -> &mut Vec<i64> {
+        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
             &mut self.embedding
         }
-        pub fn with_embedding(mut self, field: Vec<i64>) -> Self {
+        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
             self.embedding = field;
             self
         }
-        pub fn with_distance_score(mut self, field: i64) -> Self {
+        pub fn with_distance_score(mut self, field: f32) -> Self {
             self.distance_score = Some(field.into());
             self
         }

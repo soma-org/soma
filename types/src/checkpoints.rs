@@ -695,7 +695,7 @@ impl CheckpointContents {
 // to estimate its size in CheckpointBuilder in order to limit the maximum serialized
 // size of a checkpoint sent over the network. If this struct is modified,
 // CheckpointBuilder::split_checkpoint_chunks should also be updated accordingly.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FullCheckpointContents {
     transactions: Vec<ExecutionData>,
     /// This field 'pins' user signatures for the checkpoint
@@ -782,7 +782,7 @@ impl IntoIterator for FullCheckpointContents {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VerifiedCheckpointContents {
     transactions: Vec<VerifiedExecutionData>,
     /// This field 'pins' user signatures for the checkpoint

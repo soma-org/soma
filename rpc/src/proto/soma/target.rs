@@ -14,7 +14,8 @@ impl Merge<&DomainTarget> for Target {
         // as the domain Target struct doesn't contain its own id
 
         if mask.contains(Self::EMBEDDING_FIELD.name) {
-            self.embedding = source.embedding.iter().copied().collect();
+            // Convert SomaTensor to Vec<f32>
+            self.embedding = source.embedding.to_vec();
         }
 
         if mask.contains(Self::MODEL_IDS_FIELD.name) {
@@ -22,7 +23,8 @@ impl Merge<&DomainTarget> for Target {
         }
 
         if mask.contains(Self::DISTANCE_THRESHOLD_FIELD.name) {
-            self.distance_threshold = Some(source.distance_threshold);
+            // Extract scalar f32 from SomaTensor
+            self.distance_threshold = Some(source.distance_threshold.as_scalar());
         }
 
         if mask.contains(Self::REWARD_POOL_FIELD.name) {

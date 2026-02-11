@@ -648,7 +648,8 @@ mod model_tests {
         // Non-owner tries to reveal
         let url_str = format!("https://example.com/models/{}", model_id_1());
         let manifest = test_utils::make_weights_manifest(&url_str);
-        let result = state.request_reveal_model(not_owner, &model_id_1(), manifest);
+        let embedding = crate::tensor::SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
+        let result = state.request_reveal_model(not_owner, &model_id_1(), manifest, embedding);
         match result {
             Err(ExecutionFailureStatus::NotModelOwner) => {}
             other => panic!("Expected NotModelOwner, got {:?}", other),
@@ -698,7 +699,8 @@ mod model_tests {
         // Try to reveal in the same epoch (should fail — must be commit_epoch + 1)
         let url_str = format!("https://example.com/models/{}", model_id_1());
         let manifest = test_utils::make_weights_manifest(&url_str);
-        let result = state.request_reveal_model(model_owner(), &model_id_1(), manifest);
+        let embedding = crate::tensor::SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
+        let result = state.request_reveal_model(model_owner(), &model_id_1(), manifest, embedding);
 
         match result {
             Err(ExecutionFailureStatus::ModelRevealEpochMismatch) => {}

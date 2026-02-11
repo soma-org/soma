@@ -35,7 +35,7 @@ pub struct Genesis {
     objects: Vec<Object>,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct UnsignedGenesis {
     pub checkpoint: CheckpointSummary,
     pub checkpoint_contents: CheckpointContents,

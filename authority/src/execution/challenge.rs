@@ -300,7 +300,7 @@ impl ChallengeExecutor {
                 "Target missing winning_embedding for challenge",
             ))
         })?;
-        let winning_distance_score = target.winning_distance_score.ok_or_else(|| {
+        let winning_distance_score = target.winning_distance_score.clone().ok_or_else(|| {
             ExecutionFailureStatus::SomaError(SomaError::from(
                 "Target missing winning_distance_score for challenge",
             ))
@@ -325,7 +325,7 @@ impl ChallengeExecutor {
             // Audit data from target
             target.model_ids.clone(),
             target.embedding.clone(),
-            target.distance_threshold,
+            target.distance_threshold.clone(),
             winning_model_id,
             winning_data_manifest,
             winning_data_commitment,

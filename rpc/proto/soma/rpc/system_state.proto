@@ -60,13 +60,13 @@ message SystemParameters {
   // Target/Mining parameters
   optional uint64 target_models_per_target = 14;
   optional uint64 target_embedding_dim = 15;
-  optional int64 target_initial_distance_threshold = 16;
+  optional float target_initial_distance_threshold = 16;
   optional uint64 target_reward_allocation_bps = 17;
   optional uint64 target_hit_rate_target_bps = 18;
   optional uint64 target_hit_rate_ema_decay_bps = 19;
   optional uint64 target_difficulty_adjustment_rate_bps = 20;
-  optional int64 target_max_distance_threshold = 21;
-  optional int64 target_min_distance_threshold = 22;
+  optional float target_max_distance_threshold = 21;
+  optional float target_min_distance_threshold = 22;
   optional uint64 target_initial_targets_per_epoch = 23;
 
   // Reward distribution parameters
@@ -79,7 +79,7 @@ message SystemParameters {
 
   // Challenge parameters
   optional uint64 challenger_bond_per_byte = 28;
-  optional int64 challenge_distance_epsilon = 29;
+  // challenge_distance_epsilon removed - using Burn's Tolerance::permissive() instead
 
   // Data size limit
   optional uint64 max_submission_data_size = 30;
@@ -157,10 +157,11 @@ message Model {
   optional bytes weights_commitment = 4;                  // 32-byte digest
   optional uint64 commit_epoch = 5;
   optional ModelWeightsManifest weights_manifest = 6;     // absent while committed
-  optional StakingPool staking_pool = 7;
-  optional uint64 commission_rate = 8;
-  optional uint64 next_epoch_commission_rate = 9;
-  optional PendingModelUpdate pending_update = 10;        // absent if no update in flight
+  repeated float embedding = 7;                           // Model embedding for KNN selection (f32 values)
+  optional StakingPool staking_pool = 8;
+  optional uint64 commission_rate = 9;
+  optional uint64 next_epoch_commission_rate = 10;
+  optional PendingModelUpdate pending_update = 11;        // absent if no update in flight
 }
 
 // Registry of all models in the mining system.
@@ -176,8 +177,8 @@ message ModelRegistry {
 // Target state coordination (stored in SystemState).
 // Tracks difficulty thresholds and statistics for target generation.
 message TargetState {
-  // Current distance threshold for new targets (fixed-point i64)
-  optional int64 distance_threshold = 1;
+  // Current distance threshold for new targets (f32 cosine distance)
+  optional float distance_threshold = 1;
 
   // Count of targets generated this epoch
   optional uint64 targets_generated_this_epoch = 2;
@@ -199,14 +200,14 @@ message Target {
   // Target ID (ObjectID hex)
   optional string id = 1;
 
-  // Center embedding point (fixed-point i64 values)
-  repeated int64 embedding = 2;
+  // Center embedding point (f32 values)
+  repeated float embedding = 2;
 
   // Models assigned to this target (ModelId hex strings)
   repeated string model_ids = 3;
 
-  // Distance threshold (fixed-point i64)
-  optional int64 distance_threshold = 4;
+  // Distance threshold (f32 cosine distance)
+  optional float distance_threshold = 4;
 
   // Pre-allocated reward amount (in shannons)
   optional uint64 reward_pool = 5;
@@ -247,11 +248,11 @@ message Submission {
   // Model ID used for this submission
   optional string model_id = 4;
 
-  // Embedding vector (fixed-point i64 values)
-  repeated int64 embedding = 5;
+  // Embedding vector (f32 values)
+  repeated float embedding = 5;
 
-  // Distance score reported by submitter (fixed-point i64)
-  optional int64 distance_score = 6;
+  // Distance score reported by submitter (f32 cosine distance)
+  optional float distance_score = 6;
 
   // Bond amount locked (in shannons)
   optional uint64 bond_amount = 7;
@@ -287,11 +288,11 @@ message Challenge {
   // Win reason is no longer used in simplified design (field kept for backwards compatibility)
   optional string win_reason = 8;
 
-  // Distance threshold of target (fixed-point i64)
-  optional int64 distance_threshold = 9;
+  // Distance threshold of target (f32 cosine distance)
+  optional float distance_threshold = 9;
 
-  // Claimed distance score by miner (fixed-point i64)
-  optional int64 winning_distance_score = 10;
+  // Claimed distance score by miner (f32 cosine distance)
+  optional float winning_distance_score = 10;
 
   // Winning model ID used by miner
   optional string winning_model_id = 11;

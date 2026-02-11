@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 sync.workspace = true
 authority.workspace = true
+runtime.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 types.workspace = true

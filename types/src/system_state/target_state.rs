@@ -8,6 +8,7 @@
 //! The actual Target objects are shared objects stored separately from SystemState.
 //! This design prevents SystemState from becoming a contention bottleneck.
 
+use crate::tensor::SomaTensor;
 use serde::{Deserialize, Serialize};
 
 /// Lightweight coordination state for target generation.
@@ -22,12 +23,12 @@ use serde::{Deserialize, Serialize};
 ///
 /// The hit_rate_ema_bps provides a smoothed view of hit rate across epochs
 /// for more stable difficulty adjustments.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TargetState {
-    /// Current distance threshold for new targets (fixed-point, scale DISTANCE_SCALE).
+    /// Current distance threshold for new targets (cosine distance as scalar SomaTensor).
     /// Lower distance = closer to target center = better.
     /// This threshold is dynamically adjusted based on hit_rate_ema_bps.
-    pub distance_threshold: i64,
+    pub distance_threshold: SomaTensor,
 
     /// Number of targets generated this epoch (initial + spawn-on-fill replacements).
     /// Reset to 0 at epoch boundary after difficulty adjustment.
@@ -52,7 +53,7 @@ pub struct TargetState {
 impl Default for TargetState {
     fn default() -> Self {
         Self {
-            distance_threshold: 0,
+            distance_threshold: SomaTensor::scalar(0.0),
             targets_generated_this_epoch: 0,
             hits_this_epoch: 0,
             hit_rate_ema_bps: 0,
@@ -67,7 +68,7 @@ impl TargetState {
     /// Epoch counters start at 0 and are reset at each epoch boundary.
     /// `hit_rate_ema_bps` starts at 0 (bootstrap mode).
     /// `reward_per_target` is calculated separately after construction.
-    pub fn new(initial_distance_threshold: i64) -> Self {
+    pub fn new(initial_distance_threshold: SomaTensor) -> Self {
         Self {
             distance_threshold: initial_distance_threshold,
             targets_generated_this_epoch: 0,
@@ -137,7 +138,7 @@ mod tests {
     #[test]
     fn test_target_state_default() {
         let state = TargetState::default();
-        assert_eq!(state.distance_threshold, 0);
+        assert_eq!(state.distance_threshold.as_scalar(), 0.0);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
         assert_eq!(state.hit_rate_ema_bps, 0);
@@ -146,8 +147,8 @@ mod tests {
 
     #[test]
     fn test_target_state_new() {
-        let state = TargetState::new(1_000_000);
-        assert_eq!(state.distance_threshold, 1_000_000);
+        let state = TargetState::new(SomaTensor::scalar(0.5));
+        assert_eq!(state.distance_threshold.as_scalar(), 0.5);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
         assert_eq!(state.hit_rate_ema_bps, 0);
@@ -156,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_target_state_counters() {
-        let mut state = TargetState::new(1_000_000);
+        let mut state = TargetState::new(SomaTensor::scalar(0.5));
 
         // Record some targets and hits
         state.record_target_generated();
@@ -181,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_bootstrap() {
-        let mut state = TargetState::new(1_000_000);
+        let mut state = TargetState::new(SomaTensor::scalar(0.5));
 
         // Record 8/10 = 80% hit rate
         for _ in 0..10 {
@@ -200,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_update() {
-        let mut state = TargetState::new(1_000_000);
+        let mut state = TargetState::new(SomaTensor::scalar(0.5));
         state.hit_rate_ema_bps = 8000; // 80%
 
         // Epoch with 60% hit rate
@@ -219,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_hit_rate_ema_no_targets() {
-        let mut state = TargetState::new(1_000_000);
+        let mut state = TargetState::new(SomaTensor::scalar(0.5));
         state.hit_rate_ema_bps = 8000; // 80%
 
         // No targets generated this epoch

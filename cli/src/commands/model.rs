@@ -22,6 +22,7 @@ use types::{
     model::{ArchitectureVersion, Model, ModelId, ModelWeightsManifest},
     object::ObjectID,
     system_state::SystemState,
+    tensor::SomaTensor,
     transaction::{
         CommitModelArgs, CommitModelUpdateArgs, RevealModelArgs, RevealModelUpdateArgs,
         TransactionKind,
@@ -86,6 +87,9 @@ pub enum ModelCommand {
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
+        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+        #[clap(long)]
+        embedding: String,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
@@ -124,6 +128,9 @@ pub enum ModelCommand {
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
+        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+        #[clap(long)]
+        embedding: String,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
@@ -225,6 +232,7 @@ impl ModelCommand {
                 weights_checksum,
                 weights_size,
                 decryption_key,
+                embedding,
                 tx_args,
             } => {
                 let manifest = build_weights_manifest(
@@ -233,10 +241,12 @@ impl ModelCommand {
                     weights_size,
                     &decryption_key,
                 )?;
+                let embedding_tensor = parse_embedding(&embedding)?;
 
                 let kind = TransactionKind::RevealModel(RevealModelArgs {
                     model_id,
                     weights_manifest: manifest,
+                    embedding: embedding_tensor,
                 });
 
                 execute_tx(context, sender, kind, tx_args).await
@@ -267,6 +277,7 @@ impl ModelCommand {
                 weights_checksum,
                 weights_size,
                 decryption_key,
+                embedding,
                 tx_args,
             } => {
                 let manifest = build_weights_manifest(
@@ -275,10 +286,12 @@ impl ModelCommand {
                     weights_size,
                     &decryption_key,
                 )?;
+                let embedding_tensor = parse_embedding(&embedding)?;
 
                 let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                     model_id,
                     weights_manifest: manifest,
+                    embedding: embedding_tensor,
                 });
 
                 execute_tx(context, sender, kind, tx_args).await
@@ -412,6 +425,24 @@ fn build_weights_manifest(
     let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
 
     Ok(ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new(key_bytes) })
+}
+
+fn parse_embedding(embedding_str: &str) -> Result<SomaTensor> {
+    let values: Vec<f32> = embedding_str
+        .split(',')
+        .map(|s| {
+            s.trim()
+                .parse::<f32>()
+                .map_err(|e| anyhow!("Invalid float in embedding: {}", e))
+        })
+        .collect::<Result<Vec<f32>>>()?;
+
+    if values.is_empty() {
+        bail!("Embedding cannot be empty");
+    }
+
+    let dim = values.len();
+    Ok(SomaTensor::new(values, vec![dim]))
 }
 
 /// Execute a model transaction, delegating to the shared client_commands helper.

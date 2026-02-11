@@ -8,7 +8,6 @@
 //! 5. test_claim_expired_unfilled_target - Cleanup of expired unfilled targets
 //! 6. test_submit_data_validation_errors - Validates submission rejection scenarios
 
-use ndarray::Array1;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
@@ -24,7 +23,7 @@ use types::{
     object::ObjectID,
     submission::SubmissionManifest,
     system_state::SystemStateTrait,
-    target::Embedding,
+    tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
 };
 use url::Url;
@@ -115,7 +114,7 @@ async fn test_genesis_target_bootstrap() {
 
     // Verify target_state was initialized
     assert!(
-        system_state.target_state.distance_threshold > 0,
+        system_state.target_state.distance_threshold.as_scalar() > 0.0,
         "Distance threshold should be initialized"
     );
     assert!(
@@ -182,7 +181,7 @@ async fn test_submit_data_fills_target() {
     });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold;
+    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
 
     // List open targets using SDK
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -211,8 +210,8 @@ async fn test_submit_data_fills_target() {
     // Prepare submission data
     let data_commitment = DataCommitment::random();
     let data_manifest = make_submission_manifest(1024);
-    let embedding: Embedding = Array1::zeros(embedding_dim);
-    let distance_score = distance_threshold - 100;
+    let embedding = SomaTensor::zeros(vec![embedding_dim]);
+    let distance_score = SomaTensor::scalar(distance_threshold - 0.1);
 
     // Get gas object
     let gas_object = test_cluster
@@ -297,7 +296,7 @@ async fn test_claim_rewards_after_challenge_window() {
     });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold;
+    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -326,8 +325,8 @@ async fn test_claim_rewards_after_challenge_window() {
             data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
-            embedding: Array1::zeros(embedding_dim),
-            distance_score: distance_threshold - 100,
+            embedding: SomaTensor::zeros(vec![embedding_dim]),
+            distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
         miner,
@@ -562,7 +561,7 @@ async fn test_submit_data_validation_errors() {
     });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold;
+    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -592,8 +591,8 @@ async fn test_submit_data_validation_errors() {
                 data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id,
-                embedding: Array1::zeros(embedding_dim),
-                distance_score: distance_threshold + 1, // Exceeds threshold
+                embedding: SomaTensor::zeros(vec![embedding_dim]),
+                distance_score: SomaTensor::scalar(distance_threshold + 0.1), // Exceeds threshold
                 bond_coin: gas_object,
             }),
             miner,
@@ -625,8 +624,8 @@ async fn test_submit_data_validation_errors() {
                 data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id,
-                embedding: Array1::zeros(wrong_dim), // Wrong dimension
-                distance_score: distance_threshold - 1,
+                embedding: SomaTensor::zeros(vec![wrong_dim]), // Wrong dimension
+                distance_score: SomaTensor::scalar(distance_threshold - 0.1),
                 bond_coin: gas_object,
             }),
             miner,
@@ -658,8 +657,8 @@ async fn test_submit_data_validation_errors() {
                 data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id: wrong_model_id, // Wrong model
-                embedding: Array1::zeros(embedding_dim),
-                distance_score: distance_threshold - 1,
+                embedding: SomaTensor::zeros(vec![embedding_dim]),
+                distance_score: SomaTensor::scalar(distance_threshold - 0.1),
                 bond_coin: gas_object,
             }),
             miner,

@@ -402,6 +402,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             TK::RevealModel(args) => TransactionKind::RevealModel(RevealModelArgs {
                 model_id: args.model_id.into(),
                 weights_manifest: args.weights_manifest.into(),
+                embedding: args.embedding.to_vec(),
             }),
 
             TK::CommitModelUpdate(args) => {
@@ -416,6 +417,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                     model_id: args.model_id.into(),
                     weights_manifest: args.weights_manifest.into(),
+                    embedding: args.embedding.to_vec(),
                 })
             }
 
@@ -450,7 +452,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 data_manifest: SubmissionManifest { manifest: args.data_manifest.manifest.into() },
                 model_id: args.model_id.into(),
                 embedding: args.embedding.to_vec(),
-                distance_score: args.distance_score,
+                distance_score: args.distance_score.as_scalar(),
                 bond_coin: args.bond_coin.into(),
             }),
 
@@ -613,9 +615,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
 
             TransactionKind::RevealModel(args) => {
+                let dim = args.embedding.len();
                 TK::RevealModel(types::transaction::RevealModelArgs {
                     model_id: args.model_id.into(),
                     weights_manifest: args.weights_manifest.try_into()?,
+                    embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
                 })
             }
 
@@ -636,9 +640,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
 
             TransactionKind::RevealModelUpdate(args) => {
+                let dim = args.embedding.len();
                 TK::RevealModelUpdate(types::transaction::RevealModelUpdateArgs {
                     model_id: args.model_id.into(),
                     weights_manifest: args.weights_manifest.try_into()?,
+                    embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
                 })
             }
 
@@ -671,7 +677,9 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 let data_manifest = types::submission::SubmissionManifest::new(
                     args.data_manifest.manifest.try_into()?,
                 );
-                let embedding = ndarray::Array1::from_vec(args.embedding);
+                // Convert f32 embedding to SomaTensor
+                let embedding = types::tensor::SomaTensor::new(args.embedding.clone(), vec![args.embedding.len()]);
+                let distance_score = types::tensor::SomaTensor::scalar(args.distance_score);
 
                 TK::SubmitData(types::transaction::SubmitDataArgs {
                     target_id: args.target_id.into(),
@@ -680,7 +688,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     data_manifest,
                     model_id: args.model_id.into(),
                     embedding,
-                    distance_score: args.distance_score,
+                    distance_score,
                     bond_coin: args.bond_coin.into(),
                 })
             }
@@ -1313,7 +1321,10 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
             types::effects::ExecutionFailureStatus::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold { score, threshold }
+                Self::DistanceExceedsThreshold {
+                    score: score.as_scalar(),
+                    threshold: threshold.as_scalar(),
+                }
             }
             types::effects::ExecutionFailureStatus::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
@@ -1441,7 +1452,10 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
             ExecutionError::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold { score, threshold }
+                Self::DistanceExceedsThreshold {
+                    score: types::tensor::SomaTensor::scalar(score),
+                    threshold: types::tensor::SomaTensor::scalar(threshold),
+                }
             }
             ExecutionError::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }

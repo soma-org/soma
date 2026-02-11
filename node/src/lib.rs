@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
 use authority::{
-    audit_service::{AuditService, MockEvaluationService},
+    audit_service::{AuditService, MockCompetitionAPI},
     authority::{AuthorityState, ExecutionEnv},
     authority_aggregator::AuthorityAggregator,
     authority_client::NetworkAuthorityClient,
@@ -1531,12 +1531,9 @@ impl SomaNode {
         consensus_adapter: Arc<ConsensusAdapter>,
         challenge_rx: tokio::sync::mpsc::Receiver<Challenge>,
     ) -> Option<Arc<AuditService>> {
-        // Create evaluation service (currently a mock - handles all downloading internally)
-        let evaluation_service: Arc<dyn authority::audit_service::EvaluationService> =
-            Arc::new(MockEvaluationService);
-
-        let protocol_config = epoch_store.protocol_config();
-        let distance_epsilon = protocol_config.challenge_distance_epsilon();
+        // Create competition API (currently a mock - handles all downloading internally)
+        // TODO: Replace MockCompetitionAPI with real CompetitionAPI from runtime crate (Phase 6)
+        let competition_api: Arc<dyn runtime::CompetitionAPI> = Arc::new(MockCompetitionAPI);
 
         // Get validator's account address and keypair from config
         let validator_address = config.soma_address();
@@ -1547,9 +1544,8 @@ impl SomaNode {
             validator_address,
             account_keypair,
             state.clone(),
-            evaluation_service,
+            competition_api,
             epoch_store.epoch(),
-            distance_epsilon,
             consensus_adapter,
             epoch_store.clone(),
         );

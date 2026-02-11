@@ -32,7 +32,8 @@ use crate::{
     object::ObjectID,
     submission::SubmissionManifest,
     system_state::validator::ValidatorSet,
-    target::{Embedding, TargetId},
+    target::TargetId,
+    tensor::SomaTensor,
 };
 
 /// Unique identifier for a challenge (same as ObjectID).
@@ -77,10 +78,10 @@ pub struct Challenge {
     pub model_ids: Vec<ModelId>,
 
     /// Target's embedding - used to compute distance from miner's embedding
-    pub target_embedding: Embedding,
+    pub target_embedding: SomaTensor,
 
     /// Target's distance threshold - submissions must be within this threshold
-    pub distance_threshold: i64,
+    pub distance_threshold: SomaTensor,
 
     /// The model ID the miner claimed to use
     pub winning_model_id: ModelId,
@@ -92,10 +93,10 @@ pub struct Challenge {
     pub winning_data_commitment: DataCommitment,
 
     /// The embedding the miner claimed to produce
-    pub winning_embedding: Embedding,
+    pub winning_embedding: SomaTensor,
 
     /// The distance score the miner claimed
-    pub winning_distance_score: i64,
+    pub winning_distance_score: SomaTensor,
 
     // =========================================================================
     // Tally-based challenge report fields
@@ -118,13 +119,13 @@ impl Challenge {
         challenge_epoch: EpochId,
         // Audit data from target
         model_ids: Vec<ModelId>,
-        target_embedding: Embedding,
-        distance_threshold: i64,
+        target_embedding: SomaTensor,
+        distance_threshold: SomaTensor,
         winning_model_id: ModelId,
         winning_data_manifest: SubmissionManifest,
         winning_data_commitment: DataCommitment,
-        winning_embedding: Embedding,
-        winning_distance_score: i64,
+        winning_embedding: SomaTensor,
+        winning_distance_score: SomaTensor,
     ) -> Self {
         Self {
             id,
@@ -231,7 +232,6 @@ mod tests {
         checksum::Checksum,
         metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
     };
-    use ndarray::Array1;
 
     /// Helper to create a test challenge with dummy audit data.
     fn make_test_challenge(
@@ -242,7 +242,7 @@ mod tests {
         challenge_epoch: EpochId,
     ) -> Challenge {
         let model_id = ObjectID::random();
-        let dummy_embedding = Array1::zeros(10);
+        let dummy_embedding = SomaTensor::zeros(vec![10]);
         let dummy_checksum = Checksum::default();
         let dummy_url = url::Url::parse("https://example.com/data").unwrap();
         let dummy_metadata = Metadata::V1(MetadataV1::new(dummy_checksum, 1000));
@@ -258,12 +258,12 @@ mod tests {
             challenge_epoch,
             vec![model_id],
             dummy_embedding.clone(),
-            1000,
+            SomaTensor::scalar(0.5), // distance threshold
             model_id,
             dummy_submission_manifest,
             dummy_commitment,
             dummy_embedding,
-            500,
+            SomaTensor::scalar(0.25), // winning distance score
         )
     }
 

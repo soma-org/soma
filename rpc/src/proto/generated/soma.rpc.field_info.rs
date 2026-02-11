@@ -4018,12 +4018,6 @@ mod _field_impls {
             number: 28i32,
             message_fields: None,
         };
-        pub const CHALLENGE_DISTANCE_EPSILON_FIELD: &'static MessageField = &MessageField {
-            name: "challenge_distance_epsilon",
-            json_name: "challengeDistanceEpsilon",
-            number: 29i32,
-            message_fields: None,
-        };
         pub const MAX_SUBMISSION_DATA_SIZE_FIELD: &'static MessageField = &MessageField {
             name: "max_submission_data_size",
             json_name: "maxSubmissionDataSize",
@@ -4061,7 +4055,6 @@ mod _field_impls {
             Self::TARGET_CLAIMER_INCENTIVE_BPS_FIELD,
             Self::SUBMISSION_BOND_PER_BYTE_FIELD,
             Self::CHALLENGER_BOND_PER_BYTE_FIELD,
-            Self::CHALLENGE_DISTANCE_EPSILON_FIELD,
             Self::MAX_SUBMISSION_DATA_SIZE_FIELD,
         ];
     }
@@ -4200,10 +4193,6 @@ mod _field_impls {
         }
         pub fn challenger_bond_per_byte(mut self) -> String {
             self.path.push(SystemParameters::CHALLENGER_BOND_PER_BYTE_FIELD.name);
-            self.finish()
-        }
-        pub fn challenge_distance_epsilon(mut self) -> String {
-            self.path.push(SystemParameters::CHALLENGE_DISTANCE_EPSILON_FIELD.name);
             self.finish()
         }
         pub fn max_submission_data_size(mut self) -> String {
@@ -4834,28 +4823,34 @@ mod _field_impls {
             number: 6i32,
             message_fields: Some(ModelWeightsManifest::FIELDS),
         };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 7i32,
+            message_fields: None,
+        };
         pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool",
             json_name: "stakingPool",
-            number: 7i32,
+            number: 8i32,
             message_fields: Some(StakingPool::FIELDS),
         };
         pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "commission_rate",
             json_name: "commissionRate",
-            number: 8i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_commission_rate",
             json_name: "nextEpochCommissionRate",
-            number: 9i32,
+            number: 10i32,
             message_fields: None,
         };
         pub const PENDING_UPDATE_FIELD: &'static MessageField = &MessageField {
             name: "pending_update",
             json_name: "pendingUpdate",
-            number: 10i32,
+            number: 11i32,
             message_fields: Some(PendingModelUpdate::FIELDS),
         };
     }
@@ -4867,6 +4862,7 @@ mod _field_impls {
             Self::WEIGHTS_COMMITMENT_FIELD,
             Self::COMMIT_EPOCH_FIELD,
             Self::WEIGHTS_MANIFEST_FIELD,
+            Self::EMBEDDING_FIELD,
             Self::STAKING_POOL_FIELD,
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_COMMISSION_RATE_FIELD,
@@ -4916,6 +4912,10 @@ mod _field_impls {
         pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
             self.path.push(Model::WEIGHTS_MANIFEST_FIELD.name);
             ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(Model::EMBEDDING_FIELD.name);
+            self.finish()
         }
         pub fn staking_pool(mut self) -> StakingPoolFieldPathBuilder {
             self.path.push(Model::STAKING_POOL_FIELD.name);
@@ -6993,11 +6993,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: Some(ModelWeightsManifest::FIELDS),
         };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for RevealModel {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::MODEL_ID_FIELD,
             Self::WEIGHTS_MANIFEST_FIELD,
+            Self::EMBEDDING_FIELD,
         ];
     }
     impl RevealModel {
@@ -7027,6 +7034,10 @@ mod _field_impls {
         pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
             self.path.push(RevealModel::WEIGHTS_MANIFEST_FIELD.name);
             ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(RevealModel::EMBEDDING_FIELD.name);
+            self.finish()
         }
     }
     impl CommitModelUpdate {
@@ -7102,11 +7113,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: Some(ModelWeightsManifest::FIELDS),
         };
+        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
+            name: "embedding",
+            json_name: "embedding",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for RevealModelUpdate {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::MODEL_ID_FIELD,
             Self::WEIGHTS_MANIFEST_FIELD,
+            Self::EMBEDDING_FIELD,
         ];
     }
     impl RevealModelUpdate {
@@ -7136,6 +7154,10 @@ mod _field_impls {
         pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
             self.path.push(RevealModelUpdate::WEIGHTS_MANIFEST_FIELD.name);
             ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn embedding(mut self) -> String {
+            self.path.push(RevealModelUpdate::EMBEDDING_FIELD.name);
+            self.finish()
         }
     }
     impl AddStakeToModel {

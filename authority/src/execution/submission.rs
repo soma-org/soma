@@ -162,8 +162,8 @@ impl SubmissionExecutor {
         }
 
         // 4. Validate embedding dimension
-        let expected_dim = target.embedding.len() as u64;
-        let actual_dim = args.embedding.len() as u64;
+        let expected_dim = target.embedding.dim() as u64;
+        let actual_dim = args.embedding.dim() as u64;
         if actual_dim != expected_dim {
             return Err(ExecutionFailureStatus::EmbeddingDimensionMismatch {
                 expected: expected_dim,
@@ -171,11 +171,13 @@ impl SubmissionExecutor {
             });
         }
 
-        // 5. Validate distance score
-        if args.distance_score > target.distance_threshold {
+        // 5. Validate distance score (extract scalar f32 values from SomaTensor for comparison)
+        let claimed_distance = args.distance_score.as_scalar();
+        let threshold = target.distance_threshold.as_scalar();
+        if claimed_distance > threshold {
             return Err(ExecutionFailureStatus::DistanceExceedsThreshold {
-                score: args.distance_score,
-                threshold: target.distance_threshold,
+                score: args.distance_score.clone(),
+                threshold: target.distance_threshold.clone(),
             });
         }
 
@@ -246,7 +248,7 @@ impl SubmissionExecutor {
         target.winning_data_manifest = Some(args.data_manifest.clone());
         target.winning_data_commitment = Some(args.data_commitment);
         target.winning_embedding = Some(args.embedding.clone());
-        target.winning_distance_score = Some(args.distance_score);
+        target.winning_distance_score = Some(args.distance_score.clone());
 
         // 12. Create submission object (moves args.data_manifest and args.embedding)
         let submission = Submission::new(
@@ -312,7 +314,7 @@ impl SubmissionExecutor {
                 "SubmitData: creating replacement target with id={:?}, creation_num={}, embedding[0..3]={:?}",
                 new_target_id,
                 target_creation_num,
-                &new_target.embedding.as_slice().unwrap()[0..3]
+                &new_target.embedding.to_vec()[0..3]
             );
             let new_target_object = Object::new_target_object(new_target_id, new_target, tx_digest);
             store.create_object(new_target_object);

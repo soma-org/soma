@@ -13,7 +13,7 @@ use fastcrypto::{
     traits::ToFromBytes,
 };
 use model_registry::ModelRegistry;
-use protocol_config::{ProtocolConfig, SystemParameters};
+use protocol_config::{ProtocolConfig, SomaTensor, SystemParameters};
 use serde::{Deserialize, Serialize};
 use staking::{StakedSoma, StakingPool};
 use target_state::TargetState;
@@ -126,7 +126,7 @@ pub trait SystemStateTrait {
     fn protocol_version(&self) -> u64;
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct SystemState {
     /// The current epoch number
     pub epoch: u64,
@@ -177,7 +177,7 @@ impl SystemState {
 
         // Initialize target state with initial thresholds from parameters
         let target_state = TargetState::new(
-            parameters.target_initial_distance_threshold,
+            parameters.target_initial_distance_threshold.clone(),
         );
 
         Self {
@@ -338,6 +338,7 @@ impl SystemState {
             weights_commitment,
             commit_epoch: 0,
             weights_manifest: Some(weights_manifest),
+            embedding: None, // Genesis models start without embeddings; can be set via update
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
@@ -560,6 +561,7 @@ impl SystemState {
             weights_commitment,
             commit_epoch: self.epoch,
             weights_manifest: None,
+            embedding: None, // Set during reveal via request_reveal_model
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
@@ -573,12 +575,13 @@ impl SystemState {
     }
 
     /// Reveal a pending model (Phase 2 of commit-reveal).
-    /// Moves model from pending to active.
+    /// Moves model from pending to active, setting its embedding for KNN selection.
     pub fn request_reveal_model(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
         weights_manifest: ModelWeightsManifest,
+        embedding: SomaTensor,
     ) -> ExecutionResult {
         let model = self
             .model_registry
@@ -608,6 +611,7 @@ impl SystemState {
         // Move from pending to active
         let mut model = self.model_registry.pending_models.remove(model_id).unwrap();
         model.weights_manifest = Some(weights_manifest);
+        model.embedding = Some(embedding);
         model.staking_pool.activation_epoch = Some(self.epoch);
 
         // Set initial exchange rate at activation
@@ -654,11 +658,13 @@ impl SystemState {
     }
 
     /// Reveal a pending model update.
+    /// Also updates the model's embedding for KNN selection.
     pub fn request_reveal_model_update(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
         weights_manifest: ModelWeightsManifest,
+        embedding: SomaTensor,
     ) -> ExecutionResult {
         let model = self
             .model_registry
@@ -694,6 +700,7 @@ impl SystemState {
         model.weights_url_commitment = pending.weights_url_commitment;
         model.weights_commitment = pending.weights_commitment;
         model.weights_manifest = Some(weights_manifest);
+        model.embedding = Some(embedding);
 
         Ok(())
     }
@@ -1101,28 +1108,30 @@ impl SystemState {
         }
 
         let adjustment_rate = self.parameters.target_difficulty_adjustment_rate_bps;
-        let min_distance = self.parameters.target_min_distance_threshold;
-        let max_distance = self.parameters.target_max_distance_threshold;
+        let min_distance = self.parameters.target_min_distance_threshold.as_scalar();
+        let max_distance = self.parameters.target_max_distance_threshold.as_scalar();
 
         // Calculate adjustment factor based on EMA
         // If ema > target_rate, we're too easy → decrease thresholds (harder)
         // If ema < target_rate, we're too hard → increase thresholds (easier)
-        let adjustment_factor = if ema_bps > target_hit_rate_bps {
+        let adjustment_factor: f32 = if ema_bps > target_hit_rate_bps {
             // Too easy - make harder (decrease thresholds)
             // factor < 1.0
-            let decrease_pct = (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as i64;
-            decrease_pct
+            let decrease_factor = (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
+                / BPS_DENOMINATOR as f32;
+            decrease_factor
         } else {
             // Too hard - make easier (increase thresholds)
             // factor > 1.0
-            let increase_pct = (BPS_DENOMINATOR + adjustment_rate) as i64;
-            increase_pct
+            let increase_factor =
+                (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32;
+            increase_factor
         };
 
         // Apply adjustment to distance threshold
-        let new_distance =
-            (self.target_state.distance_threshold * adjustment_factor) / BPS_DENOMINATOR as i64;
-        self.target_state.distance_threshold = new_distance.clamp(min_distance, max_distance);
+        let current_distance = self.target_state.distance_threshold.as_scalar();
+        let new_distance = (current_distance * adjustment_factor).clamp(min_distance, max_distance);
+        self.target_state.distance_threshold = SomaTensor::scalar(new_distance);
 
         info!(
             "Difficulty adjusted: distance={} (ema={}bps, target={}bps, hits={}, targets={})",

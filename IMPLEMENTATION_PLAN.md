@@ -13,19 +13,114 @@
 | Phase 3: Model Registry | ✅ Complete | Commit-reveal flow, staking, CLI, RPC |
 | Phase 4: Target Generation | ✅ Complete | Continuous targets, difficulty adjustment |
 | Phase 5: Data Submission | ✅ Complete | SubmitData, ClaimRewards, bond mechanics |
-| Phase 6: Inference Engine | ⏳ Pending | Replace MockEvaluationService with real inference |
+| Phase 6: Inference Engine | 🔄 In Progress | CompetitionAPI trait defined, mocks implemented |
 | Phase 7: Challenge System | ✅ Complete | Tally-based voting, AuditService, 14 E2E tests |
 | Phase 8: Reward Distribution | ⏳ Pending | Epoch-end reward distribution |
 | Phase 9: Error Handling | ⏳ Pending | ExecutionFailureStatus variants |
 | Phase 10: RPC & SDK Updates | ⏳ Pending | Index tables, SDK methods |
 | Phase 11: Polish & Testnet | ⏳ Pending | Final testing, documentation |
 
+### E2E Test Summary
+
+| Test Suite | Tests | Status |
+|------------|-------|--------|
+| target_tests | 6 | ✅ Passing |
+| challenge_tests | 14 | ✅ Passing |
+| model_tests | 2 | ✅ Passing |
+| **Total** | **22** | **✅ All Passing** |
+
 ### Next Steps
 
-1. **Phase 6: Real EvaluationService** — Replace `MockEvaluationService` with actual inference using `probes/` crate
+1. **Phase 6: Real CompetitionAPI** — Replace `MockCompetitionAPI` with actual inference using `probes/` crate
 2. **CLI UX improvements** — Better error messages, progress indicators, output formatting
 3. **Additional chain-side tests** — More edge cases for targets, submissions, epoch boundary logic
 4. **Phase 2: Emissions** — Step-decay schedule (can be done in parallel)
+
+---
+
+## Key Technical Concepts
+
+### BCS-Compatible Float Types
+
+BCS (Binary Canonical Serialization) does not support f32 directly. We use wrapper types that serialize floats as raw bytes (little-endian IEEE 754).
+
+| Type | Location | Purpose |
+|------|----------|---------|
+| `BcsF32` | `protocol-config/src/tensor.rs` | Single f32 values in ProtocolConfig |
+| `SomaTensor` | `protocol-config/src/tensor.rs` | Multi-dimensional f32 arrays (embeddings, distances) |
+
+**BcsF32**: Wraps a single f32 value for use in protocol config fields (e.g., distance thresholds).
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default, JsonSchema)]
+pub struct BcsF32(pub f32);
+
+impl Serialize for BcsF32 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.to_le_bytes().serialize(serializer)  // 4 bytes, little-endian
+    }
+}
+```
+
+**SomaTensor**: Wraps Burn's `TensorData` with Hash implementation for transaction serialization.
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct SomaTensor(pub TensorData);
+
+impl Hash for SomaTensor {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.shape.hash(state);
+        self.0.as_bytes().hash(state);  // Deterministic for identical f32 values
+    }
+}
+```
+
+**Re-export**: `types/src/tensor.rs` re-exports `SomaTensor` from protocol-config to avoid circular dependencies.
+
+### Tolerance Checking
+
+For off-chain fraud detection, validators use Burn's `Tolerance::permissive()`:
+- **Relative tolerance**: 1% (0.01)
+- **Absolute tolerance**: 0.01
+- **Formula**: `|x - y| < max(0.01 * (|x + y|), 0.01)`
+
+This is more lenient than `Tensor::all_close()` defaults (1e-5/1e-8), appropriate for GPU variance across different hardware.
+
+```rust
+fn is_within_tolerance(computed: &TensorData, claimed: &TensorData) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        computed.assert_approx_eq::<f32>(claimed, Tolerance::permissive());
+    })).is_ok()
+}
+```
+
+### CompetitionAPI
+
+The inference interface for validators, defined in `runtime/src/lib.rs`:
+
+```rust
+#[async_trait]
+pub trait CompetitionAPI: Send + Sync + 'static {
+    async fn run(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput>;
+}
+
+pub struct CompetitionInput {
+    data: Manifest,
+    models: Vec<(ModelId, Manifest)>,
+    target: TensorData,
+}
+
+pub struct CompetitionOutput {
+    winner: ModelId,
+    embedding: TensorData,
+    distance: TensorData,
+}
+```
+
+**Mock implementations** (in `authority/src/audit_service.rs`):
+- `MockCompetitionAPI`: Returns matching results (no fraud detected)
+- `MockFraudCompetitionAPI`: Returns error simulating data unavailability (fraud detected)
 
 ---
 
@@ -46,7 +141,7 @@
 Unlike the previous 3-epoch wave pipeline, the new system operates continuously:
 
 - **Targets**: Generated on-demand when previous targets are filled
-- **Submissions**: Hash-commit-reveal with ~30 second reveal window
+- **Submissions**: Single-transaction with bond (commit-reveal deferred)
 - **Challenges**: Extended window (epoch N hits challengeable through epoch N+1)
 - **Models**: Simple commit-reveal (commit in N, reveal in N+1)
 
@@ -65,16 +160,16 @@ Unlike the previous 3-epoch wave pipeline, the new system operates continuously:
 
 3. **Mining & Submission (continuous):**
    - Miners find data that embeds within target radius using the assigned model
-   - Submit hash commitment + bond
-   - First valid commit wins provisionally
-   - ~30 second reveal window to prove validity
+   - Submit data + embedding + distance_score + bond
+   - First valid submission wins, target marked Filled
+   - Replacement target spawned automatically
 
 4. **Challenge (epoch N through N+1):**
    - Anyone can challenge with bond (1/3 of miner bond)
-   - Challenge types: ScoreFraud (lied about distance), DataFraud (data mismatch)
-   - Validators audit, vote on outcome
-   - Successful challenge → miner slashed, target reopens
-   - At epoch N+1 end: confirmed hits receive rewards
+   - Validators audit via CompetitionAPI, submit individual report transactions
+   - 2f+1 stake-weighted quorum resolves challenge
+   - Successful challenge → miner slashed, rewards redistributed
+   - ClaimRewards/ClaimChallengeBond distributes funds after challenge window
 
 ---
 
@@ -82,82 +177,9 @@ Unlike the previous 3-epoch wave pipeline, the new system operates continuously:
 
 **Goal:** Codebase compiles without encoder infrastructure.
 
-### 1.1 Remove Crates from Workspace
+Removed: encoder crates, VDF, shard types, encoder transactions, encoder executors, encoder CLI commands.
 
-Edit `Cargo.toml` workspace members, remove:
-- `encoder/`, `encoder-validator-api/`, `test-encoder-cluster/`, `intelligence/`
-- `vdf/`, `arrgen/`
-
-Note: Keep `soma-http/`, `soma-tls/`, `objects/` as they may be used by RPC layer and object storage for checkpoints.
-
-### 1.2 Delete Transaction Types
-
-In `types/src/transaction.rs`, remove from `TransactionKind`:
-```rust
-AddEncoder, RemoveEncoder, ReportEncoder, UndoReportEncoder,
-UpdateEncoderMetadata, SetEncoderCommissionRate, SetEncoderBytePrice,
-AddStakeToEncoder, EmbedData, ClaimEscrow, ReportWinner
-```
-
-Also delete: `AddEncoderArgs`, `RemoveEncoderArgs`, `UpdateEncoderMetadataArgs`
-
-### 1.3 Clean SystemState
-
-In `types/src/system_state/mod.rs`, remove:
-- `encoders: EncoderSet` field
-- `encoder_report_records` field
-- `reference_byte_price` field
-- All encoder-related methods (`request_add_encoder`, `report_encoder`, etc.)
-- `get_current_epoch_encoder_committee()` from trait and impl
-
-Delete files:
-- `types/src/system_state/encoder.rs`
-- `types/src/system_state/shard.rs`
-
-### 1.4 Delete Type Files
-
-In `types/src/`:
-- `encoder_committee.rs`, `encoder_info.rs`, `encoder_validator/`
-- `shard.rs`, `report.rs`, `submission.rs` (current versions)
-- `shard_networking/`, `shard_crypto/`, `shard_verifier.rs`
-- `entropy.rs`, `evaluation.rs`
-- `config/encoder_config.rs`
-
-Note: `finality.rs` is already generic (proves checkpoint inclusion for any transaction) - no changes needed.
-
-### 1.5 Clean Authority Crate
-
-Delete:
-- `authority/src/execution/encoder.rs`
-- `authority/src/execution/shard.rs`
-- `authority/src/encoder_client.rs`
-
-Update `authority/src/execution/mod.rs`: remove encoder/shard executor dispatch
-
-### 1.6 Clean Node
-
-In `node/src/lib.rs`, remove:
-- `EncoderClientService` initialization
-- `EncoderValidatorService` setup
-- Encoder committee updates in `monitor_reconfiguration()`
-
-### 1.7 Clean CLI
-
-- Delete `cli/src/commands/encoder.rs`
-- Update `cli/src/commands/mod.rs`
-- Remove `soma encoder *`, `soma embed`, `soma shards *` commands
-
-### 1.8 Delete Test Files
-
-- `types/src/system_state/unit_tests/encoder_staking.rs`
-- `e2e-tests/tests/encoder_committee_tests.rs`
-
-### 1.9 Update Protos
-
-- `rpc/src/proto/soma.proto`: remove encoder-related messages/services
-- `rpc/src/proto/authority.proto`: remove encoder-related messages
-
-**Gate:** `cargo build --workspace && cargo test -p types -p authority -p node`
+**Gate:** ✓ `cargo build --workspace && cargo test -p types -p authority -p node`
 
 ---
 
@@ -165,42 +187,21 @@ In `node/src/lib.rs`, remove:
 
 **Goal:** Replace linear emissions with logarithmic decay.
 
-### 2.1 Update EmissionPool
+**Status:** Pending
 
-In `types/src/system_state/emission.rs`, add fields:
-```rust
-pub struct EmissionPool {
-    pub balance: u64,
-    pub distribution_counter: u64,
-    pub current_distribution_amount: u64,
-    pub subsidy_period_length: u64,      // e.g., 365 epochs
-    pub subsidy_decrease_rate_bps: u16,  // e.g., 1000 = 10%
-}
-```
+### Changes Required
 
-Update `advance_epoch()`: decay `current_distribution_amount` by `decrease_rate_bps` every `period_length` epochs.
+1. **EmissionPool** (`types/src/system_state/emission.rs`):
+   - Add `subsidy_period_length`, `subsidy_decrease_rate_bps`
+   - Update `advance_epoch()` with decay logic
 
-### 2.2 Update Emission Allocation
+2. **Emission Allocation**:
+   - 20% to validators (proportional to stake)
+   - 80% to target winner pool (50% miner / 30% model)
 
-Split each epoch's emissions:
-- 20% to validators (proportional to stake, same as current logic)
-- 80% to target winner pool (distributed per-hit as 50% miner / 30% model)
-
-### 2.3 Add Protocol Config Parameters
-
-In `protocol-config/src/lib.rs`:
-```rust
-initial_emission_per_epoch: Option<u64>,
-emission_period_length: Option<u64>,
-emission_decrease_rate_bps: Option<u16>,
-validator_reward_share_bps: Option<u64>,  // 2000 = 20%
-miner_reward_share_bps: Option<u64>,      // 5000 = 50%
-model_reward_share_bps: Option<u64>,      // 3000 = 30%
-```
-
-### 2.4 Update Genesis Config
-
-In `types/src/config/genesis_config.rs`: set initial emission parameters.
+3. **Protocol Config Parameters**:
+   - `initial_emission_per_epoch`, `emission_period_length`, `emission_decrease_rate_bps`
+   - `validator_reward_share_bps`, `miner_reward_share_bps`, `model_reward_share_bps`
 
 **Gate:** Unit tests for step-decay schedule, allocation split
 
@@ -210,7 +211,13 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 
 **Goal:** Anyone can register models with staking, using simple commit-reveal flow.
 
-**Status:** Fully implemented and tested. All types, executor, CLI, RPC, genesis bootstrap, unit tests (18), and E2E tests (2) are passing.
+**Status:** Fully implemented. 18 unit tests, 2 E2E tests passing.
+
+**Key Files:**
+- `types/src/model.rs` — Model, ModelId, PendingModelUpdate
+- `types/src/system_state/model_registry.rs` — ModelRegistry
+- `authority/src/execution/model.rs` — 9 transaction executors
+- `cli/src/commands/model.rs` — Full CLI support
 
 ---
 
@@ -218,23 +225,19 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 
 **Goal:** Continuous target generation with model selection at genesis and epoch boundaries.
 
-**Status:** Fully implemented and tested. Target types, genesis bootstrap, epoch boundary target issuance, difficulty adjustment via hit-rate EMA, and 6 E2E tests are passing.
+**Status:** Fully implemented. 17 unit tests, 6 E2E tests passing.
 
-### 4.1 Implemented
+### Key Design Decisions
 
-- **Target type** (`types/src/target.rs`): `Target`, `TargetId`, `TargetStatus`, `Embedding = Array1<i64>`, `generate_target()`, `select_models_uniform()`, `deterministic_embedding()`, `make_target_seed()`
-- **TargetState** (`types/src/system_state/target_state.rs`): 5 fields - `distance_threshold`, `targets_generated_this_epoch`, `hits_this_epoch`, `hit_rate_ema_bps`, `reward_per_target`
-- **Object infrastructure**: `ObjectType::Target`, `Object::new_target_object()`, `Object::as_target()`
-- **Genesis bootstrap**: Seed targets created as shared objects when active models exist
-- **Epoch boundary**: `advance_epoch_targets()` issues new targets, adjusts difficulty via hit-rate EMA
-- **Protocol config**: All target parameters in `SystemParameters`
-- **Unit tests**: 17 tests in `types/src/system_state/unit_tests/target_tests.rs`
+- **Hit-rate EMA for difficulty adjustment**: Uses `hits_this_epoch / targets_generated_this_epoch` with EMA across epochs
+- **Uniform random model selection**: Stake-weighting deferred to future phase
+- **Deterministic embedding via arrgen**: Uses `arrgen::normal_array` with checkpoint-derived seed
+- **f32 distance thresholds**: Stored as `SomaTensor::scalar()` for BCS compatibility
 
-### 4.2 Key Design Decisions
-
-- **Hit-rate EMA for difficulty adjustment** (not time-based): Uses `hits_this_epoch / targets_generated_this_epoch` with EMA across epochs. Avoids `commit_timestamp_ms` which caused effects digest mismatches during checkpoint replay.
-- **Uniform random model selection** (stake-weighting deferred): Models selected uniformly at random from active models.
-- **Deterministic embedding via arrgen**: Uses `arrgen::normal_array` with seed derived from `tx_digest + creation_num`.
+**Key Files:**
+- `types/src/target.rs` — Target, TargetId, TargetStatus, generate_target()
+- `types/src/system_state/target_state.rs` — TargetState with SomaTensor distance_threshold
+- `protocol-config/src/lib.rs` — Distance threshold parameters as `Option<BcsF32>`
 
 **Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test target_tests` — 6 tests passing
 
@@ -244,278 +247,53 @@ In `types/src/config/genesis_config.rs`: set initial emission parameters.
 
 **Goal:** Single-transaction submission flow with bond, rewards, and permissionless claiming.
 
-**Status:** Fully implemented and tested. Submission types, SubmitData and ClaimRewards transactions, full executor implementation, reward distribution, and 6 E2E tests are passing.
+**Status:** Fully implemented. 14 unit tests, included in target E2E tests.
 
-### 5.1 Implemented
-
-- **Submission type** (`types/src/submission.rs`): `Submission`, `SubmissionId`, `SubmissionManifest`
-- **DataCommitment** (`types/src/digests.rs`): Newtype around `Digest` for data hash
-- **Transactions**: `SubmitData(SubmitDataArgs)`, `ClaimRewards(ClaimRewardsArgs)`
-- **SubmissionExecutor** (`authority/src/execution/submission.rs`): Full implementation
-  - `execute_submit_data()`: Validates submission, fills target, records hit, spawns replacement
-  - `execute_claim_rewards()`: Validates challenge window, distributes rewards, returns bond
-- **Target fields for rewards**: `miner`, `winning_model_id`, `winning_model_owner`, `bond_amount`
-- **Reward parameters**: `target_miner_reward_share_bps` (50%), `target_model_reward_share_bps` (30%), `target_claimer_incentive_bps` (1%)
-- **CLI**: `soma submit data`, `soma claim`, `soma target list|info|difficulty`
-- **RPC**: GetTarget handler, ListTargets handler (stub index)
-- **Unit tests**: 14 tests in `types/src/system_state/unit_tests/submission_tests.rs`
-- **E2E tests**: 6 tests in `e2e-tests/tests/target_tests.rs`
-
-### 5.2 Key Design Decisions
+### Key Design Decisions
 
 - **Single-transaction submission** (no commit-reveal): Simplifies flow, front-running protection deferred
-- **Permissionless claiming**: Anyone can claim rewards after challenge window, claimer earns incentive fee
-- **100% reward distribution**: Miner (50%) + Model owner (30%) + Claimer (1%) + remainder to miner
+- **f32 distance scores**: Stored as `SomaTensor::scalar()` for consistency with CompetitionAPI
+- **Permissionless claiming**: Anyone can claim rewards after challenge window
 - **Bond scales with data size**: `bond = submission_bond_per_byte * data_size`
-- **Epoch-scoped targets with spawn-on-fill**: Targets expire at epoch boundary, filling spawns 1 replacement
+
+**Key Files:**
+- `types/src/submission.rs` — Submission with SomaTensor embedding and distance_score
+- `authority/src/execution/submission.rs` — SubmitData, ClaimRewards executors
+- `cli/src/commands/submit.rs`, `cli/src/commands/claim.rs` — CLI support
 
 **Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test target_tests` — 6 tests passing
 
-### 3.1 Create Model Type
-
-New file `types/src/model.rs`:
-```rust
-pub struct Model {
-    pub id: ModelId,
-    pub owner: SomaAddress,
-    pub architecture_version: u64,
-
-    // Commit state
-    pub weights_url_commitment: Digest<String>,   // hash(encrypted_weights_url)
-    pub weight_commitment: Digest<ModelWeights>,  // hash(decrypted weights)
-    pub commit_epoch: EpochId,
-
-    // Revealed state (None if pending)
-    pub encrypted_weights_url: Option<String>,
-    pub decryption_key: Option<[u8; 32]>,
-
-    // Staking
-    pub staking_pool: StakingPool,
-
-    // Pending update (if any)
-    pub pending_update: Option<PendingModelUpdate>,
-
-    // Audit state (resets each epoch)
-    pub tally_count: u64,
-
-    // Lifetime earnings for reward tracking
-    pub total_rewards_earned: u64,
-}
-
-pub struct PendingModelUpdate {
-    pub weights_url_commitment: Digest<String>,
-    pub weight_commitment: Digest<ModelWeights>,
-    pub commit_epoch: EpochId,
-}
-
-pub type ModelId = ObjectID;
-```
-
-Note: Model is pending if `encrypted_weights_url.is_none()`, active otherwise.
-
-### 3.2 Create ModelRegistry in SystemState
-
-Add to `types/src/system_state/mod.rs`:
-```rust
-pub struct ModelRegistry {
-    /// All model IDs that have been revealed
-    pub active_model_ids: BTreeSet<ModelId>,
-
-    /// Models pending reveal (committed, awaiting reveal)
-    pub pending_model_ids: BTreeSet<ModelId>,
-
-    /// Maps staking pool IDs to model IDs
-    pub staking_pool_mappings: BTreeMap<ObjectID, ModelId>,
-
-    /// Total stake across all active models (for weighted selection)
-    pub total_model_stake: u64,
-}
-```
-
-### 3.3 Add Model Transactions
-
-In `types/src/transaction.rs`:
-```rust
-/// Commit a new model (epoch N)
-CommitModel {
-    weights_url_commitment: Vec<u8>,      // hash(encrypted_weights_url)
-    weight_commitment: Vec<u8>,           // hash(decrypted weights)
-    architecture_version: u64,
-    stake_coin: ObjectRef,                // Initial stake
-},
-
-/// Reveal model weights (epoch N+1)
-RevealModel {
-    model_id: ObjectID,
-    encrypted_weights_url: String,
-    decryption_key: [u8; 32],
-},
-
-/// Add stake to a model
-AddStakeToModel {
-    model_address: SomaAddress,           // Model owner address
-    coin_ref: ObjectRef,
-    amount: Option<u64>,
-},
-
-/// Commit model weight update
-CommitModelUpdate {
-    model_id: ObjectID,
-    weights_url_commitment: Vec<u8>,
-    weight_commitment: Vec<u8>,
-},
-
-/// Reveal model weight update
-RevealModelUpdate {
-    model_id: ObjectID,
-    encrypted_weights_url: String,
-    decryption_key: [u8; 32],
-},
-
-/// Report a model as unavailable (triggers validator audit)
-ReportModelUnavailable {
-    model_id: ObjectID,
-    challenger_bond_coin: ObjectRef,
-},
-```
-
-### 3.4 Implement Model Executor
-
-New file `authority/src/execution/model.rs`:
-
-**CommitModel:**
-- Validate stake >= `model_min_stake`
-- Validate architecture_version == current `model_architecture_version`
-- Create Model object with reveal fields = None
-- Initialize staking pool with provided stake
-- Add to `pending_model_ids`
-
-**RevealModel:**
-- Validate model exists in `pending_model_ids`
-- Validate `current_epoch <= commit_epoch + 1`
-- Validate `hash(encrypted_weights_url) == weights_url_commitment`
-- Set reveal fields on model
-- Move from `pending_model_ids` to `active_model_ids`
-- Update `total_model_stake`
-
-**Model Reveal Timeout (in ChangeEpoch):**
-- For each model in `pending_model_ids` where `commit_epoch < current_epoch`:
-  - Slash stake by `model_reveal_slash_rate_bps`
-  - Return slashed amount to emission pool
-  - Move staking pool to inactive
-  - Remove from `pending_model_ids`
-
-**Model Tally Processing (in ChangeEpoch):**
-- For each active model where `tally_count >= model_tally_threshold`:
-  - Slash stake by `model_tally_slash_rate_bps`
-  - Move to inactive
-  - Remove from `active_model_ids`
-- Reset `tally_count` to 0 for all remaining models
-
-### 3.5 Add Protocol Config
-
-```rust
-model_min_stake: Option<u64>,
-model_architecture_version: Option<u64>,
-model_max_weight_size: Option<u64>,
-model_reveal_slash_rate_bps: Option<u64>,   // e.g., 5000 = 50%
-model_tally_threshold: Option<u64>,          // e.g., 3 tallies
-model_tally_slash_rate_bps: Option<u64>,     // e.g., 9500 = 95%
-embedding_dim: Option<u64>,
-```
-
-### 3.6 Add CLI Commands
-
-New file `cli/src/commands/model.rs`:
-- `soma model commit --weights <FILE> --stake <AMOUNT>`
-  - Encrypts weights, computes commitments, submits tx
-- `soma model reveal --model <ID> --weights <FILE>`
-  - Reveals encrypted URL and decryption key
-- `soma model list [--owner <ADDR>] [--pending]`
-- `soma model info <ID>`
-- `soma model download --model <ID> --output <DIR>`
-  - Downloads encrypted weights, decrypts using on-chain key
-- `soma model stake --model <ID> --amount <AMOUNT>`
-- `soma model update-commit --model <ID> --weights <FILE>`
-- `soma model update-reveal --model <ID> --weights <FILE>`
-
-### 3.7 Genesis Bootstrap Requirements
-
-Genesis must include at least one seed model for target generation to work:
-
-```rust
-// In genesis config:
-pub struct GenesisModelConfig {
-    pub owner: SomaAddress,
-    pub encrypted_weights_url: String,     // Pre-published weights
-    pub decryption_key: [u8; 32],          // Decryption key (public at genesis)
-    pub weight_commitment: Digest<ModelWeights>,
-    pub initial_stake: u64,
-    pub architecture_version: u64,
-}
-```
-
-**Genesis Model Handling:**
-- Genesis models are created directly in active state (skip commit-reveal)
-- `encrypted_weights_url` and `decryption_key` set directly
-- Required: At least 1 model in genesis for target generation
-
-**Gate:** ✓ E2E tests passing: `test_genesis_model_bootstrap` and `test_model_commit_reveal_round_trip` in `e2e-tests/tests/model_tests.rs`. Run with `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test model_tests`.
-
 ---
 
----
-
-## Phase 6: Inference Engine
+## Phase 6: Inference Engine — IN PROGRESS
 
 **Goal:** Shared inference engine for miners, challengers, and validators.
 
-**Status:** Pending. Currently using `MockEvaluationService` in AuditService. Real implementation needs to wrap the `probes/` crate.
+**Status:** CompetitionAPI trait defined in `runtime/`. Mock implementations in AuditService. Real inference pending.
 
-### 6.1 Implement EvaluationService
+### Completed
 
-The `EvaluationService` trait is defined in `authority/src/audit_service.rs`:
-```rust
-pub trait EvaluationService: Send + Sync {
-    async fn evaluate(
-        &self,
-        model_manifests: &[(ModelId, Manifest)],
-        data_manifest: &Manifest,
-        data_commitment: &[u8; 32],
-        target_embedding: &Embedding,
-    ) -> Result<EvaluationResult, EvaluationError>;
-}
-```
+- **CompetitionAPI trait** (`runtime/src/lib.rs`): Defines input/output for inference
+- **CompetitionInput/Output**: Uses Burn's TensorData for embeddings and distances
+- **MockCompetitionAPI**: Returns matching results for "no fraud" path
+- **MockFraudCompetitionAPI**: Returns DataNotAvailable error for "fraud detected" path
+- **AuditService integration**: Uses CompetitionAPI for fraud verification
 
-Replace `MockEvaluationService` with real implementation that:
-1. Downloads model weights from manifests (cached)
-2. Downloads input data from data_manifest
-3. Verifies data hash matches commitment
-4. Runs inference with each model to compute embeddings
-5. Determines winning model (best distance to target)
-6. Returns winning model, final embedding, and distance
+### Remaining Work
 
-### 6.2 Wrap Probes Crate
+1. **Real CompetitionV1 implementation**:
+   - Download model weights from manifests (cached)
+   - Download input data from data_manifest
+   - Verify data hash matches commitment
+   - Run inference with each model using `probes/` crate
+   - Determine winning model (best distance to target)
 
-Keep `probes/` as the model architecture crate (transformer implementation).
+2. **Determinism requirements**:
+   - Consistent f32 inference across validators
+   - Use same backend (CPU/GPU) configuration
 
-The real EvaluationService should:
-- Use `probes` crate for transformer inference
-- Handle model loading/caching
-- Ensure deterministic f32 inference
-- Convert to fixed-point for distance comparisons
-
-### 6.3 Determinism Requirements
-
-- All computations must be deterministic across nodes
-- Inference in f32, immediately convert to fixed-point for comparisons
-- Use consistent backend across all validators
-
-### 6.4 Add Verification CLI
-
-Update `cli/src/commands/` with verification:
-- `soma verify --data <FILE> --target <ID> --model <MODEL_ID>`
-  - Outputs: embedding, distance to target, whether it's within radius
+3. **Verification CLI**:
+   - `soma verify --data <FILE> --target <ID> --model <MODEL_ID>`
 
 **Gate:** E2E test for inference determinism across nodes
 
@@ -525,43 +303,40 @@ Update `cli/src/commands/` with verification:
 
 **Goal:** Challengers can dispute winners, validators audit and vote.
 
-**Status:** Fully implemented and tested. Challenge types, tally-based reporting, AuditService, ClaimRewards/ClaimChallengeBond resolution, and 14 E2E tests are passing.
+**Status:** Fully implemented. 14 E2E tests passing.
 
-### 7.1 Implemented
+### Key Design Decisions
 
-- **Challenge type** (`types/src/challenge.rs`): `Challenge`, `ChallengeId`, `ChallengeStatus` (Pending/Resolved)
-- **Tally-based voting**: Submission reports via `BTreeMap<SomaAddress, Option<SomaAddress>>` on Target
-- **Challenge reports**: `BTreeSet<SomaAddress>` on Challenge object
-- **Transactions**:
-  - `InitiateChallenge(InitiateChallengeArgs)` - Creates Challenge, locks bond
-  - `ReportSubmission { target_id, challenger }` - Validator reports miner fraud
-  - `UndoReportSubmission { target_id }` - Validator retracts report
-  - `ReportChallenge { challenge_id }` - Validator reports challenger wrong
-  - `UndoReportChallenge { challenge_id }` - Validator retracts report
-  - `ClaimRewards(ClaimRewardsArgs)` - Distributes rewards, handles fraud quorum
-  - `ClaimChallengeBond { challenge_id }` - Distributes challenger's bond
-- **ChallengeExecutor** (`authority/src/execution/challenge.rs`): Full implementation
-- **AuditService** (`authority/src/audit_service.rs`):
-  - Receives Challenge objects via channel from CheckpointExecutor
-  - Calls EvaluationService (currently mocked)
-  - Detects fraud via distance mismatch beyond epsilon
-  - Submits ReportSubmission or ReportChallenge via consensus
-  - Signs transactions with validator's account keypair
-- **Proxy infrastructure**:
-  - `FullnodeProxy` for data/model serving
-  - `ProxyServer` on validators for direct access
-- **CLI**: `soma challenge initiate|list|info`, `soma claim-challenge-bond`
-- **RPC**: GetChallenge, ListChallenges handlers
-- **Unit tests**: Edge cases in `submission_tests.rs`
-- **E2E tests**: 14 tests in `e2e-tests/tests/challenge_tests.rs`
+- **Tally-based voting**: Validators submit individual ReportSubmission/ReportChallenge transactions
+- **Fraud-only challenges**: Availability issues handled via ReportSubmission without InitiateChallenge
+- **2f+1 stake-weighted quorum**: `QUORUM_THRESHOLD = 6667` (66.67% of voting power)
+- **Tolerance::permissive()**: 1% relative, 0.01 absolute tolerance for distance comparisons
 
-### 7.2 Key Design Decisions
+### Key Files
 
-- **Tally-based voting** (not off-chain aggregation): Validators submit individual report transactions that accumulate on-chain. Quorum checked when claiming.
-- **Fraud-only challenges**: All challenges are fraud challenges. Availability issues handled via ReportSubmission without InitiateChallenge.
-- **Simplified ChallengeStatus**: `Pending` or `Resolved { challenger_lost: bool }`. No complex win reasons.
-- **2f+1 stake-weighted quorum**: Uses `QUORUM_THRESHOLD = 6667` (66.67% of voting power).
-- **Challenge window**: Fill epoch + 1 (e.g., filled in epoch 0 → challengeable through epoch 1).
+- `types/src/challenge.rs` — Challenge, ChallengeId, ChallengeStatus
+- `authority/src/execution/challenge.rs` — Challenge transaction executors
+- `authority/src/audit_service.rs` — AuditService with CompetitionAPI integration
+- `e2e-tests/tests/challenge_tests.rs` — 14 comprehensive tests
+
+### AuditService Flow
+
+```
+Challenge Created → AuditService receives via channel
+    ↓
+CompetitionAPI.run(input) → Download data, run inference
+    ↓
+Compare results:
+  - DataNotAvailable → FRAUD (miner responsible for availability)
+  - DataHashMismatch → FRAUD (miner submitted wrong data)
+  - Wrong model → FRAUD (miner didn't use winning model)
+  - Distance outside tolerance → FRAUD
+  - Otherwise → NO FRAUD
+    ↓
+Submit Report:
+  - FRAUD → ReportSubmission (with challenger attribution)
+  - NO FRAUD → ReportChallenge (challenger was wrong)
+```
 
 **Gate:** ✓ `RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test challenge_tests` — 14 tests passing
 
@@ -571,350 +346,103 @@ Update `cli/src/commands/` with verification:
 
 **Goal:** Winners receive rewards at epoch end, difficulty adjusts based on hit rate.
 
-### 8.1 Implement Reward Distribution in ChangeEpoch
+**Status:** Pending
 
-In `authority/src/execution/change_epoch.rs`, at end of epoch N+1:
+### Implementation in ChangeEpoch
 
-```rust
-// 1. Close challenge window for epoch N
-let confirmed_hits: Vec<_> = hits[N].iter()
-    .filter(|s| !slashed_submissions.contains(s))
-    .collect();
-let num_confirmed_hits = confirmed_hits.len();
-
-// 2. Calculate per-hit reward from epoch N's emissions
-// Note: Epoch N emissions were calculated during epoch N's ChangeEpoch
-let epoch_n_target_emissions = get_stored_target_emissions(N);  // 80% of epoch N emissions
-let per_hit_reward = if num_confirmed_hits > 0 {
-    epoch_n_target_emissions / num_confirmed_hits as u64
-} else {
-    0  // No hits = emissions returned to pool
-};
-
-// 3. Distribute rewards for each confirmed hit
-for submission_id in confirmed_hits {
-    let submission = get_submission(&submission_id);
-    let target = get_target(&submission.target_id);
-    let model = get_model(&submission.model_id);
-
-    let miner_share = per_hit_reward * miner_reward_share_bps / 10000;  // 50%
-    let model_share = per_hit_reward * model_reward_share_bps / 10000;  // 30%
-    // Remaining 20% already distributed to validators in epoch N
-
-    create_coin(submission.miner, miner_share);
-    create_coin(model.owner, model_share);
-    model.total_rewards_earned += model_share;
-
-    // Confirm embedding addition to model index
-    model_index.add_embedding(submission.embedding.clone(), submission.model_id);
-
-    // Track hit time for difficulty adjustment
-    let hit_time = submission.reveal_timestamp_ms.unwrap() - target.generation_timestamp_ms;
-    difficulty_stats.total_hit_time_ms += hit_time;
-    difficulty_stats.confirmed_hit_count += 1;
-}
-
-// 4. If no confirmed hits, return target emissions to pool
-if num_confirmed_hits == 0 {
-    emission_pool.balance += epoch_n_target_emissions;
-}
-
-// 5. Clean up expired challenges (return challenger bonds)
-for (submission_id, challenge_id) in pending_challenges.iter() {
-    let submission = get_submission(submission_id);
-    if submission.reveal_epoch == Some(N) {
-        let challenge = get_challenge(challenge_id);
-        // Challenge window expired without resolution - return challenger bond
-        create_coin(challenge.challenger, challenge.challenger_bond);
-        pending_challenges.remove(submission_id);
-    }
-}
-
-// 6. Clean up old hit tracking
-hits.remove(&N);
-```
-
-### 8.2 Implement Difficulty Adjustment
-
-In `authority/src/execution/change_epoch.rs`:
-
-```rust
-// Use accumulated difficulty stats from reward distribution
-if difficulty_stats.confirmed_hit_count > 0 {
-    let avg_hit_time_ms = difficulty_stats.total_hit_time_ms / difficulty_stats.confirmed_hit_count;
-
-    // Adjust radius
-    if avg_hit_time_ms < target_hit_time_ms {
-        target_state.current_radius *= (1.0 - radius_adjustment_rate);  // Harder
-    } else if avg_hit_time_ms > target_hit_time_ms {
-        target_state.current_radius *= (1.0 + radius_adjustment_rate);  // Easier
-    }
-    target_state.current_radius = target_state.current_radius.clamp(min_radius, max_radius);
-}
-
-// Reset stats for next epoch
-difficulty_stats = DifficultyStats::default();
-```
-
-**Gate:** E2E test for reward distribution, difficulty adjustment
+1. Close challenge window for epoch N
+2. Calculate per-hit reward from epoch N's emissions
+3. Distribute rewards (50% miner, 30% model owner)
+4. Clean up expired challenges (return bonds)
+5. Adjust difficulty based on hit-rate EMA
 
 ---
 
 ## Phase 9: Error Handling
 
-### 9.1 Add ExecutionFailureStatus Variants
+**Goal:** Comprehensive ExecutionFailureStatus variants.
 
-In `types/src/effects.rs`:
-```rust
-pub enum ExecutionFailureStatus {
-    // Model errors
-    InsufficientRegistrationFee { required: u64, provided: u64 },
-    ModelWeightsTooLarge { size: u64, max: u64 },
-    ModelArchitectureMismatch { expected: u64, actual: u64 },
-    ModelNotActive { model_id: ModelId },
-    InvalidThresholdShares { reason: String },
-    InvalidCapabilityEmbedding { reason: String },
-
-    // Target errors
-    TargetNotOpen { target_id: ObjectID },
-
-    // Submission errors
-    ModelNotInTarget { model_id: ModelId, target_id: ObjectID },
-    DistanceExceedsRadius { distance: f32, radius: f32 },
-    DistanceMismatch { claimed: f32, actual: f32 },
-    RevealWindowExpired { commit_block: u64, current_block: u64 },
-    CommitmentMismatch,
-    InsufficientBond { required: u64, provided: u64 },
-
-    // Challenge errors
-    SubmissionNotInChallengeWindow { reveal_epoch: EpochId, current_epoch: EpochId },
-    ChallengeAlreadyExists { challenge_id: ObjectID },
-    InsufficientChallengerBond { required: u64, provided: u64 },
-
-    // Bond errors
-    BondLocked { reveal_epoch: EpochId, current_epoch: EpochId },
-    BondAlreadySlashed { submission_id: ObjectID },
-
-    // Audit errors
-    InvalidChallengeQuorum { required: u64, provided: u64 },
-}
-```
+**Status:** Pending. Add variants for model, target, submission, challenge, and bond errors.
 
 ---
 
 ## Phase 10: RPC & SDK Updates
 
-### 10.1 Add RPC Index Tables
+**Goal:** Index tables for efficient queries, SDK client methods.
 
-In `authority/src/rpc_index.rs`:
-```rust
-struct IndexStoreTables {
-    // Models
-    model_by_owner: DBMap<ModelOwnerKey, ModelId>,
-
-    // Targets
-    target_by_status: DBMap<TargetStatusKey, ObjectID>,
-
-    // Submissions
-    submission_by_target: DBMap<SubmissionTargetKey, ObjectID>,
-    submission_by_miner: DBMap<SubmissionMinerKey, ObjectID>,
-
-    // Challenges
-    challenge_by_submission: DBMap<ChallengeSubmissionKey, ObjectID>,
-    challenge_by_challenger: DBMap<ChallengeChallengerKey, ObjectID>,
-}
-```
-
-### 10.2 Update RPC Protos
-
-In `rpc/src/proto/soma.proto`:
-```protobuf
-// Model queries
-rpc GetModel(GetModelRequest) returns (GetModelResponse);
-rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
-
-// Target queries
-rpc GetTarget(GetTargetRequest) returns (GetTargetResponse);
-rpc ListOpenTargets(ListOpenTargetsRequest) returns (ListOpenTargetsResponse);
-
-// Submission queries
-rpc GetSubmission(GetSubmissionRequest) returns (GetSubmissionResponse);
-rpc ListSubmissionsByTarget(ListSubmissionsByTargetRequest) returns (ListSubmissionsByTargetResponse);
-rpc ListSubmissionsByMiner(ListSubmissionsByMinerRequest) returns (ListSubmissionsByMinerResponse);
-
-// Challenge queries
-rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
-rpc ListChallenges(ListChallengesRequest) returns (ListChallengesResponse);
-```
-
-### 10.3 Update SDK
-
-In `sdk/src/lib.rs`:
-```rust
-// Model operations
-pub async fn commit_model(&self, ...) -> Result<ModelId>;
-pub async fn get_model(&self, model_id: &ModelId) -> Result<Model>;
-pub async fn list_models(&self, filter: ModelFilter) -> Result<Vec<Model>>;
-
-// Target operations
-pub async fn get_target(&self, target_id: &ObjectID) -> Result<Target>;
-pub async fn list_open_targets(&self) -> Result<Vec<Target>>;
-
-// Submission operations
-pub async fn commit_submission(&self, ...) -> Result<ObjectID>;
-pub async fn reveal_submission(&self, ...) -> Result<()>;
-pub async fn claim_bond(&self, submission_id: &ObjectID) -> Result<()>;
-
-// Challenge operations
-pub async fn initiate_challenge(&self, ...) -> Result<ObjectID>;
-```
-
-**Gate:** SDK integration tests
+**Status:** Pending. Basic RPC handlers exist, need index tables for scalable queries.
 
 ---
 
 ## Phase 11: Polish & Testnet
 
-### 11.1 Comprehensive Testing
+**Goal:** Final testing, documentation, testnet deployment.
 
-| Test File | Coverage |
-|-----------|----------|
-| `threshold_reveal.rs` | Share generation, encryption, EOP broadcast, combination |
-| `model_lifecycle.rs` | Commit, epoch reveal, index addition |
-| `target_generation.rs` | Seed determinism, kNN selection, replacement on fill |
-| `submission_flow.rs` | Commit, reveal, timeout, hit recording |
-| `challenge_flow.rs` | Both challenge types, audit voting, resolution |
-| `reward_distribution.rs` | Miner/model/validator split, slashed handling |
-| `difficulty_adjustment.rs` | Radius changes based on hit rate |
-| `bond_mechanics.rs` | Lock, slash, claim |
-| `emission_schedule.rs` | Step-decay, allocation split |
-
-### 11.2 Documentation
-
-- Update CLAUDE.md with new architecture
-- CLI help text for all new commands
-- SDK examples for full flow
-
-### 11.3 Testnet Deployment
-
-- Genesis with initial models
-- Monitoring for challenge throughput
-- Validator audit performance testing
+**Status:** Pending.
 
 ---
 
-## Quick Reference: Files to Delete
+## Quick Reference: Files Created
 
-| Location | Files |
-|----------|-------|
-| Workspace | `encoder/`, `encoder-validator-api/`, `test-encoder-cluster/`, `intelligence/`, `vdf/`, `arrgen/` |
-| `types/src/` | `encoder_committee.rs`, `encoder_info.rs`, `encoder_validator/`, `shard.rs`, `report.rs`, `submission.rs`, `shard_networking/`, `shard_crypto/`, `shard_verifier.rs`, `entropy.rs`, `evaluation.rs` |
-| `types/src/config/` | `encoder_config.rs` |
-| `types/src/system_state/` | `encoder.rs`, `shard.rs` |
-| `authority/src/` | `encoder_client.rs` |
-| `authority/src/execution/` | `encoder.rs`, `shard.rs` |
-| `cli/src/commands/` | `encoder.rs` |
-| Tests | `types/src/system_state/unit_tests/encoder_staking.rs`, `e2e-tests/tests/encoder_committee_tests.rs` |
-
-## Quick Reference: Files to Create
-
-| Crate | File | Contents | Status |
-|-------|------|----------|--------|
-| types | `model.rs` | Model, ModelId, ModelRegistry | ✓ Created |
-| types | `system_state/model_registry.rs` | ModelRegistry | ✓ Created |
-| types | `system_state/unit_tests/model_tests.rs` | 18 model unit tests | ✓ Created |
-| authority | `execution/model.rs` | Model tx executor | ✓ Created |
-| cli | `commands/model.rs` | Model CLI | ✓ Created |
-| e2e-tests | `tests/model_tests.rs` | 2 E2E model tests | ✓ Created |
-| types | `target.rs` | Target, TargetStatus, generate_target() | ✓ Created |
-| types | `system_state/target_state.rs` | TargetState (6 fields) | ✓ Created |
-| types | `system_state/unit_tests/target_tests.rs` | 17 target unit tests | ✓ Created |
-| types | `submission.rs` | Submission, SubmissionManifest | ✓ Created |
-| types | `system_state/unit_tests/submission_tests.rs` | 14 submission unit tests | ✓ Created |
-| authority | `execution/submission.rs` | Submission tx executor | ✓ Created |
-| cli | `commands/submit.rs` | `soma submit data` CLI | ✓ Created |
-| cli | `commands/claim.rs` | `soma claim` CLI | ✓ Created |
-| cli | `commands/target.rs` | `soma target list|info|difficulty` CLI | ✓ Created |
-| rpc | `api/grpc/state_service/get_target.rs` | GetTarget RPC handler | ✓ Created |
-| rpc | `api/grpc/state_service/list_targets.rs` | ListTargets RPC handler (stub) | ✓ Created |
-| rpc | `proto/soma/target.rs` | Target proto Merge impl | ✓ Created |
-| e2e-tests | `tests/target_tests.rs` | 6 E2E target tests | ✓ Created |
-| types | `challenge.rs` | Challenge, ChallengeId, ChallengeStatus | ✓ Created |
-| authority | `execution/challenge.rs` | Challenge tx executor | ✓ Created |
-| authority | `audit_service.rs` | Validator audit service + EvaluationService trait | ✓ Created |
-| authority | `fullnode_proxy.rs` | Fullnode proxy for data/model serving | ✓ Created |
-| authority | `proxy_server.rs` | Validator proxy server | ✓ Created |
-| cli | `commands/challenge.rs` | Challenge CLI | ✓ Created |
-| rpc | `api/grpc/state_service/get_challenge.rs` | GetChallenge RPC handler | ✓ Created |
-| rpc | `api/grpc/state_service/list_challenges.rs` | ListChallenges RPC handler | ✓ Created |
-| e2e-tests | `tests/challenge_tests.rs` | 14 E2E challenge tests | ✓ Created |
-| inference-engine | `lib.rs` | Crate root | Pending (Phase 6) |
-| inference-engine | `engine.rs` | InferenceEngineAPI trait | Pending (Phase 6) |
-| inference-engine | `service.rs` | InferenceService | Pending (Phase 6) |
-| cli | `commands/verify.rs` | Verification CLI | Pending (Phase 6) |
-
-## Quick Reference: Files to Modify
-
-| Crate | File | Changes |
-|-------|------|---------|
-| types | `transaction.rs` | Remove encoder txs, add Model/Submission/Challenge txs, extend ChangeEpoch args |
-| types | `consensus/mod.rs` | Extend EndOfPublish to carry decrypted shares |
-| types | `system_state/mod.rs` | Add ModelRegistry, TargetState, HitTracking, DifficultyStats, remove encoder fields |
-| types | `system_state/emission.rs` | Step-decay fields, allocation split |
-| types | `effects.rs` | New ExecutionFailureStatus variants |
-| types | `finality.rs` | No changes needed (already generic) |
-| types | `lib.rs` | Export new modules |
-| authority | `execution/mod.rs` | Add model/target/submission/challenge executors |
-| authority | `execution/change_epoch.rs` | Threshold reveals, reward distribution, difficulty adjustment, challenge timeout |
-| authority | `checkpoints/checkpoint_executor/mod.rs` | Collect shares from EOP, pass to ChangeEpoch |
-| node | `lib.rs` | Challenge audit wiring |
-| protocol-config | `lib.rs` | All new parameters |
-| rpc | `proto/soma.proto` | New query methods |
-| cli | `commands/mod.rs` | Register new command modules |
-| sdk | `lib.rs` | New client methods |
-| workspace | `Cargo.toml` | Remove encoder crates, add inference-engine, add hnswlib-rs |
+| Crate | File | Status |
+|-------|------|--------|
+| protocol-config | `tensor.rs` | ✓ BcsF32 + SomaTensor |
+| types | `model.rs` | ✓ Model, ModelId |
+| types | `target.rs` | ✓ Target, TargetStatus |
+| types | `submission.rs` | ✓ Submission with SomaTensor |
+| types | `challenge.rs` | ✓ Challenge, ChallengeStatus |
+| types | `tensor.rs` | ✓ Re-exports SomaTensor |
+| types | `system_state/model_registry.rs` | ✓ ModelRegistry |
+| types | `system_state/target_state.rs` | ✓ TargetState with SomaTensor |
+| authority | `execution/model.rs` | ✓ Model executor |
+| authority | `execution/submission.rs` | ✓ Submission executor |
+| authority | `execution/challenge.rs` | ✓ Challenge executor |
+| authority | `audit_service.rs` | ✓ AuditService + CompetitionAPI mocks |
+| runtime | `lib.rs` | ✓ CompetitionAPI trait |
+| runtime | `competition/` | ✓ Competition module |
+| cli | `commands/model.rs` | ✓ Model CLI |
+| cli | `commands/submit.rs` | ✓ Submit CLI |
+| cli | `commands/claim.rs` | ✓ Claim CLI |
+| cli | `commands/target.rs` | ✓ Target CLI |
+| cli | `commands/challenge.rs` | ✓ Challenge CLI |
+| e2e-tests | `tests/model_tests.rs` | ✓ 2 tests |
+| e2e-tests | `tests/target_tests.rs` | ✓ 6 tests |
+| e2e-tests | `tests/challenge_tests.rs` | ✓ 14 tests |
+| inference-engine | `lib.rs` | ⏳ Pending |
 
 ## Quick Reference: Protocol Config Parameters
 
 ```rust
-// Emission
-initial_emission_per_epoch: Option<u64>,
-emission_period_length: Option<u64>,
-emission_decrease_rate_bps: Option<u16>,
-validator_reward_share_bps: Option<u64>,  // 2000 = 20%
-miner_reward_share_bps: Option<u64>,      // 5000 = 50%
-model_reward_share_bps: Option<u64>,      // 3000 = 30%
+// Distance thresholds (BcsF32 for BCS compatibility)
+target_initial_distance_threshold: Option<BcsF32>,  // Default: 0.5
+target_max_distance_threshold: Option<BcsF32>,      // Default: 1.0
+target_min_distance_threshold: Option<BcsF32>,      // Default: 0.1
 
-// Model
-model_registration_fee: Option<u64>,
-model_architecture_version: Option<u64>,
-model_max_weight_size: Option<u64>,
-embedding_dim: Option<u64>,
-
-// Target
+// Target generation
 k_models_per_target: Option<u64>,
 target_generation_budget_per_epoch: Option<u64>,
-initial_radius: Option<f32>,
-min_radius: Option<f32>,
-max_radius: Option<f32>,
-target_hit_time_ms: Option<u64>,
-radius_adjustment_rate: Option<f32>,
+target_hit_rate_target_bps: Option<u64>,
+target_difficulty_adjustment_rate_bps: Option<u64>,
 
 // Submission
-submission_min_bond: Option<u64>,
-reveal_window_ms: Option<u64>,
-distance_epsilon: Option<f32>,
+submission_bond_per_byte: Option<u64>,
 
 // Challenge
 challenge_bond_ratio_bps: Option<u64>,
-challenge_audit_timeout_ms: Option<u64>,
+
+// Rewards
+target_miner_reward_share_bps: Option<u64>,   // 5000 = 50%
+target_model_reward_share_bps: Option<u64>,   // 3000 = 30%
+target_claimer_incentive_bps: Option<u64>,    // 100 = 1%
 ```
 
-## Quick Reference: New Dependencies
+## Quick Reference: Dependencies
 
 | Crate | Dependency | Purpose |
 |-------|------------|---------|
-| types | `hnswlib-rs` | kNN index for model selection (supports incremental insert/delete) |
-| types | `fastcrypto` | Threshold BLS operations |
-| inference-engine | `burn` | Neural network inference |
-| inference-engine | `probes` | Transformer model architecture |
+| protocol-config | `burn` | TensorData for SomaTensor |
+| protocol-config | `bcs` | Binary serialization |
+| types | `protocol-config` | Re-exports SomaTensor |
+| authority | `burn` | Tolerance checking |
+| authority | `runtime` | CompetitionAPI trait |
+| runtime | `burn` | TensorData, inference |

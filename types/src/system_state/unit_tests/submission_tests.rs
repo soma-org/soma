@@ -16,10 +16,9 @@ use crate::{
     model::ModelId,
     object::ObjectID,
     submission::{Submission, SubmissionManifest},
-    target::Embedding,
+    tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionKind},
 };
-use ndarray::Array1;
 use url::Url;
 
 /// Helper to create a test SubmissionManifest
@@ -61,7 +60,7 @@ fn test_submission_new() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
     let model_id = ModelId::random();
-    let embedding: Embedding = Array1::from_vec(vec![100, 200, 300, 400, 500]);
+    let embedding = SomaTensor::new(vec![100.0, 200.0, 300.0, 400.0, 500.0], vec![5]);
 
     let submission = Submission::new(
         miner,
@@ -69,15 +68,15 @@ fn test_submission_new() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        500,   // distance_score
-        10240, // bond_amount
-        5,     // submit_epoch
+        SomaTensor::scalar(500.0), // distance_score
+        10240,                     // bond_amount
+        5,                         // submit_epoch
     );
 
     assert_eq!(submission.miner, miner);
     assert_eq!(submission.data_commitment, data_commitment);
     assert_eq!(submission.model_id, model_id);
-    assert_eq!(submission.distance_score, 500);
+    assert_eq!(submission.distance_score.as_scalar(), 500.0);
     assert_eq!(submission.bond_amount, 10240);
     assert_eq!(submission.submit_epoch, 5);
     assert_eq!(submission.embedding, embedding);
@@ -92,7 +91,8 @@ fn test_submission_embedding() {
     let model_id = ModelId::random();
 
     // Create a 768-dim embedding (typical for transformer models)
-    let embedding: Embedding = Array1::from_vec((0..768).map(|i| i as i64 * 1000).collect());
+    let values: Vec<f32> = (0..768).map(|i| i as f32 * 1000.0).collect();
+    let embedding = SomaTensor::new(values, vec![768]);
 
     let submission = Submission::new(
         miner,
@@ -100,14 +100,15 @@ fn test_submission_embedding() {
         data_manifest,
         model_id,
         embedding.clone(),
-        1000, // distance_score
-        5120, // bond_amount
-        1,    // submit_epoch
+        SomaTensor::scalar(1000.0), // distance_score
+        5120,                       // bond_amount
+        1,                          // submit_epoch
     );
 
-    assert_eq!(submission.embedding.len(), 768);
-    assert_eq!(submission.embedding[0], 0);
-    assert_eq!(submission.embedding[767], 767 * 1000);
+    let emb_values = submission.embedding.to_vec();
+    assert_eq!(submission.embedding.dim(), 768);
+    assert_eq!(emb_values[0], 0.0);
+    assert_eq!(emb_values[767], 767.0 * 1000.0);
 }
 
 /// Test DataCommitment creation and comparison
@@ -141,7 +142,7 @@ fn test_submit_data_transaction_kind() {
     let model_id = ModelId::random();
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
-    let embedding: Embedding = Array1::zeros(768);
+    let embedding = SomaTensor::zeros(vec![768]);
     let bond_coin =
         (ObjectID::random(), crate::object::Version::new(), crate::digests::ObjectDigest::random());
 
@@ -151,7 +152,7 @@ fn test_submit_data_transaction_kind() {
         data_manifest,
         model_id,
         embedding,
-        distance_score: 1000,
+        distance_score: SomaTensor::scalar(1000.0),
         bond_coin,
     };
 
@@ -228,20 +229,7 @@ fn test_submission_scores() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(512);
     let model_id = ModelId::random();
-    let embedding: Embedding = Array1::zeros(10);
-
-    // Test with various distance scores (can be negative)
-    let submission_negative = Submission::new(
-        miner,
-        data_commitment,
-        data_manifest.clone(),
-        model_id,
-        embedding.clone(),
-        -500, // negative distance score
-        5000, // bond_amount
-        1,    // submit_epoch
-    );
-    assert_eq!(submission_negative.distance_score, -500);
+    let embedding = SomaTensor::zeros(vec![10]);
 
     // Test with zero distance score
     let submission_zero = Submission::new(
@@ -250,11 +238,24 @@ fn test_submission_scores() {
         data_manifest.clone(),
         model_id,
         embedding.clone(),
-        0,    // distance_score
-        5000, // bond_amount
-        1,    // submit_epoch
+        SomaTensor::scalar(0.0), // distance_score
+        5000,                    // bond_amount
+        1,                       // submit_epoch
     );
-    assert_eq!(submission_zero.distance_score, 0);
+    assert_eq!(submission_zero.distance_score.as_scalar(), 0.0);
+
+    // Test with small distance score
+    let submission_small = Submission::new(
+        miner,
+        data_commitment,
+        data_manifest.clone(),
+        model_id,
+        embedding.clone(),
+        SomaTensor::scalar(0.05), // small distance score
+        5000,                     // bond_amount
+        1,                        // submit_epoch
+    );
+    assert_eq!(submission_small.distance_score.as_scalar(), 0.05);
 
     // Test with large distance score
     let submission_large = Submission::new(
@@ -263,11 +264,11 @@ fn test_submission_scores() {
         data_manifest,
         model_id,
         embedding,
-        i64::MAX / 2, // distance_score
-        5000,         // bond_amount
-        1,            // submit_epoch
+        SomaTensor::scalar(1000000.0), // large distance_score
+        5000,                          // bond_amount
+        1,                             // submit_epoch
     );
-    assert_eq!(submission_large.distance_score, i64::MAX / 2);
+    assert_eq!(submission_large.distance_score.as_scalar(), 1000000.0);
 }
 
 /// Test submission serialization round-trip
@@ -277,7 +278,7 @@ fn test_submission_serialization() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
     let model_id = ModelId::random();
-    let embedding: Embedding = Array1::from_vec(vec![100, -200, 300, -400, 500]);
+    let embedding = SomaTensor::new(vec![100.0, -200.0, 300.0, -400.0, 500.0], vec![5]);
 
     let submission = Submission::new(
         miner,
@@ -285,9 +286,9 @@ fn test_submission_serialization() {
         data_manifest,
         model_id,
         embedding,
-        1000,  // distance_score
-        10240, // bond_amount
-        5,     // submit_epoch
+        SomaTensor::scalar(1000.0), // distance_score
+        10240,                      // bond_amount
+        5,                          // submit_epoch
     );
 
     // Serialize and deserialize
@@ -325,9 +326,9 @@ fn create_test_system_state_with_voting_power(
 /// Helper to create a test filled target
 fn create_test_target() -> Target {
     Target {
-        embedding: Array1::zeros(10),
+        embedding: SomaTensor::zeros(vec![10]),
         model_ids: vec![],
-        distance_threshold: 1000,
+        distance_threshold: SomaTensor::scalar(1000.0),
         reward_pool: 1000,
         generation_epoch: 0,
         status: TargetStatus::Filled { fill_epoch: 1 },
@@ -338,7 +339,7 @@ fn create_test_target() -> Target {
         winning_data_manifest: None,
         winning_data_commitment: None,
         winning_embedding: None,
-        winning_distance_score: Some(500),
+        winning_distance_score: Some(SomaTensor::scalar(500.0)),
         // New tally-based fields
         challenger: None,
         challenge_id: None,
@@ -543,7 +544,7 @@ fn test_submission_with_zero_size_data() {
     let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(0); // Zero-size data
     let model_id = ModelId::random();
-    let embedding: Embedding = Array1::zeros(10);
+    let embedding = SomaTensor::zeros(vec![10]);
 
     let submission = Submission::new(
         miner,
@@ -551,9 +552,9 @@ fn test_submission_with_zero_size_data() {
         data_manifest.clone(),
         model_id,
         embedding,
-        0, // distance_score
-        0, // bond_amount (zero because zero data size)
-        1, // submit_epoch
+        SomaTensor::scalar(0.0), // distance_score
+        0,                       // bond_amount (zero because zero data size)
+        1,                       // submit_epoch
     );
 
     assert_eq!(submission.bond_amount, 0);

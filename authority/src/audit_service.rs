@@ -1,8 +1,8 @@
 //! Validator audit service for challenge resolution.
 //!
 //! When a Challenge object is created, validators:
-//! 1. Call EvaluationService to download data, verify hash, and run inference
-//! 2. Compare results against miner's claims
+//! 1. Call CompetitionAPI to download data, verify hash, and run inference
+//! 2. Compare results against miner's claims using Burn's tolerance checks
 //! 3. Submit ReportSubmission and/or ReportChallenge transactions via consensus
 //!
 //! # Tally-Based Design
@@ -16,21 +16,24 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use burn::tensor::{TensorData, Tolerance};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+use runtime::{CompetitionAPI, CompetitionInput, CompetitionOutput};
 use types::{
     base::{AuthorityName, SomaAddress},
     challenge::{Challenge, ChallengeId},
     committee::EpochId,
     consensus::ConsensusTransaction,
     crypto::{SomaKeyPair, Signature},
+    error::RuntimeResult,
     intent::{Intent, IntentMessage},
     metadata::Manifest,
     model::ModelId,
     object::ObjectID,
-    target::{Embedding, TargetId},
+    target::TargetId,
+    tensor::SomaTensor,
 };
 
 use crate::{
@@ -40,119 +43,69 @@ use crate::{
 };
 
 // ===========================================================================
-// Evaluation Service Trait
+// Mock CompetitionAPI for Testing
 // ===========================================================================
 
-/// Result of evaluating models against data and a target embedding.
-#[derive(Debug, Clone)]
-pub struct EvaluationResult {
-    /// The winning model (produces the best/lowest distance)
-    pub winning_model_id: ModelId,
-    /// The embedding used to calculate the distance.
-    /// May be from the winning model directly, or a performance-weighted average.
-    pub embedding: Embedding,
-    /// The distance from the embedding to the target
-    pub distance: i64,
-}
-
-/// Interface to the evaluation service for running ML inference.
-///
-/// This trait defines the contract for running inference during challenge audits.
-/// The actual implementation will wrap the probes/intelligence crates.
-///
-/// **Self-Contained Interface**: The EvaluationService handles all downloading
-/// (data + model weights) internally. Callers just provide manifests.
-#[async_trait]
-pub trait EvaluationService: Send + Sync {
-    /// Evaluate all models against the given data and target embedding.
-    ///
-    /// The service handles all downloading and verification internally:
-    /// 1. Downloads model weights from manifests (or uses cached versions)
-    /// 2. Downloads input data from the data_manifest
-    /// 3. Verifies data hash matches manifest checksum
-    /// 4. Runs inference with each model to compute embeddings
-    /// 5. Determines the winning model (best distance to target)
-    /// 6. Returns the winning model, final embedding, and distance
-    ///
-    /// # Arguments
-    /// * `model_manifests` - Model IDs with manifests for downloading weights
-    /// * `data_manifest` - Manifest with URL to download input data from
-    /// * `data_commitment` - Expected hash of the data (for verification)
-    /// * `target_embedding` - The target embedding to compute distances against
-    ///
-    /// # Returns
-    /// The evaluation result containing winning model, embedding, and distance.
-    async fn evaluate(
-        &self,
-        model_manifests: &[(ModelId, Manifest)],
-        data_manifest: &Manifest,
-        data_commitment: &[u8; 32],
-        target_embedding: &Embedding,
-    ) -> Result<EvaluationResult, EvaluationError>;
-}
-
-/// Errors that can occur during evaluation.
-#[derive(Debug, Clone)]
-pub enum EvaluationError {
-    /// Model weights could not be loaded (unavailable, network error, etc.)
-    ModelNotAvailable(ObjectID),
-    /// Data could not be loaded (unavailable, network error, etc.)
-    DataNotAvailable(String),
-    /// Data hash doesn't match commitment
-    DataHashMismatch,
-    /// Inference or distance computation failed
-    ComputationFailed(String),
-}
-
-/// Mock evaluation service for testing - returns matching results (no fraud).
+/// Mock competition API for testing - returns matching results (no fraud).
 ///
 /// This service returns a result that matches the miner's claimed values,
 /// so no fraud will be detected. Use for testing the "challenger loses" path.
-pub struct MockEvaluationService;
+pub struct MockCompetitionAPI;
 
-#[async_trait]
-impl EvaluationService for MockEvaluationService {
-    async fn evaluate(
-        &self,
-        model_manifests: &[(ModelId, Manifest)],
-        _data_manifest: &Manifest,
-        _data_commitment: &[u8; 32],
-        _target_embedding: &Embedding,
-    ) -> Result<EvaluationResult, EvaluationError> {
+#[async_trait::async_trait]
+impl CompetitionAPI for MockCompetitionAPI {
+    async fn run(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
         // Return first model as winner with zero embedding and distance.
-        // This matches the miner's claimed values in tests (distance=0 or within epsilon).
-        let winning_model_id = model_manifests
+        // This matches the miner's claimed values in tests (distance=0 or within tolerance).
+        let winner = input
+            .models()
             .first()
             .map(|(id, _)| *id)
             .unwrap_or_else(ObjectID::random);
 
-        Ok(EvaluationResult {
-            winning_model_id,
-            embedding: Embedding::zeros(768),
-            distance: 0,
-        })
+        Ok(CompetitionOutput::new(
+            winner,
+            TensorData::zeros::<f32, _>([768]),
+            TensorData::from([0.0f32]),
+        ))
     }
 }
 
-/// Mock evaluation service that always returns data unavailable error (fraud).
+/// Mock competition API that always returns an error (fraud detection).
 ///
 /// Use this to test the "miner loses" path where data cannot be downloaded.
-pub struct MockFraudEvaluationService;
+pub struct MockFraudCompetitionAPI;
 
-#[async_trait]
-impl EvaluationService for MockFraudEvaluationService {
-    async fn evaluate(
-        &self,
-        _model_manifests: &[(ModelId, Manifest)],
-        _data_manifest: &Manifest,
-        _data_commitment: &[u8; 32],
-        _target_embedding: &Embedding,
-    ) -> Result<EvaluationResult, EvaluationError> {
+#[async_trait::async_trait]
+impl CompetitionAPI for MockFraudCompetitionAPI {
+    async fn run(&self, _input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
         // Simulate data unavailable - miner is responsible for data availability
-        Err(EvaluationError::DataNotAvailable(
+        Err(types::error::RuntimeError::DataNotAvailable(
             "Mock: data unavailable for testing fraud detection".to_string(),
         ))
     }
+}
+
+// ===========================================================================
+// Tolerance Checking
+// ===========================================================================
+
+/// Check if two TensorData values are approximately equal using Burn's permissive tolerance.
+///
+/// Tolerance::permissive() uses:
+/// - relative tolerance: 1% (0.01)
+/// - absolute tolerance: 0.01
+///
+/// This is appropriate for comparing results from different GPUs which may have
+/// small numerical differences due to floating point variance.
+///
+/// Returns true if values are within tolerance, false otherwise.
+fn is_within_tolerance(computed: &TensorData, claimed: &TensorData) -> bool {
+    // assert_approx_eq panics on mismatch, so we catch the panic
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        computed.assert_approx_eq::<f32>(claimed, Tolerance::permissive());
+    }))
+    .is_ok()
 }
 
 // ===========================================================================
@@ -163,7 +116,7 @@ impl EvaluationService for MockFraudEvaluationService {
 ///
 /// This service runs on validators and:
 /// - Listens for new Challenge objects (via channel from CheckpointExecutor)
-/// - Calls EvaluationService to download data, verify hash, and run inference
+/// - Calls CompetitionAPI to download data, verify hash, and run inference
 /// - Submits ReportSubmission and ReportChallenge transactions via consensus
 ///
 /// **Tally-Based Approach:**
@@ -190,12 +143,8 @@ pub struct AuditService {
     /// Authority state for reading objects.
     state: Arc<AuthorityState>,
 
-    /// Evaluation service for running inference (handles all downloading).
-    evaluation_service: Arc<dyn EvaluationService>,
-
-    /// Epsilon for distance comparison (fixed-point scale).
-    /// If |actual_distance - claimed_distance| > epsilon, it's fraud.
-    distance_epsilon: i64,
+    /// Competition API for running inference (handles all downloading).
+    competition_api: Arc<dyn CompetitionAPI>,
 
     /// Current epoch.
     epoch: EpochId,
@@ -215,9 +164,8 @@ impl AuditService {
         validator_address: SomaAddress,
         account_keypair: Arc<SomaKeyPair>,
         state: Arc<AuthorityState>,
-        evaluation_service: Arc<dyn EvaluationService>,
+        competition_api: Arc<dyn CompetitionAPI>,
         epoch: EpochId,
-        distance_epsilon: i64,
         consensus_adapter: Arc<ConsensusAdapter>,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) -> Arc<Self> {
@@ -226,8 +174,7 @@ impl AuditService {
             validator_address,
             account_keypair,
             state,
-            evaluation_service,
-            distance_epsilon,
+            competition_api,
             epoch,
             consensus_adapter,
             epoch_store,
@@ -237,10 +184,7 @@ impl AuditService {
     /// Spawn the audit service task.
     ///
     /// - `challenge_rx`: Receives new Challenge objects from CheckpointExecutor
-    pub async fn spawn(
-        self: Arc<Self>,
-        mut challenge_rx: mpsc::Receiver<Challenge>,
-    ) {
+    pub async fn spawn(self: Arc<Self>, mut challenge_rx: mpsc::Receiver<Challenge>) {
         // Spawn task to handle new challenges
         tokio::spawn(async move {
             while let Some(challenge) = challenge_rx.recv().await {
@@ -254,7 +198,7 @@ impl AuditService {
 
     /// Handle a newly created challenge.
     ///
-    /// All challenges are fraud challenges - call EvaluationService, compare results.
+    /// All challenges are fraud challenges - call CompetitionAPI, compare results.
     /// Based on the result, submit appropriate report transactions.
     ///
     /// **Report semantics:**
@@ -272,10 +216,8 @@ impl AuditService {
         if fraud_found {
             // Fraud confirmed: report submission with challenger attribution
             // Don't report challenge (challenger was right)
-            self.submit_report_submission(
-                challenge.target_id,
-                Some(challenge.challenger),
-            ).await;
+            self.submit_report_submission(challenge.target_id, Some(challenge.challenger))
+                .await;
         } else {
             // No fraud: report challenge (challenger was wrong)
             self.submit_report_challenge(challenge.id).await;
@@ -329,10 +271,8 @@ impl AuditService {
         let tx = types::transaction::Transaction::from_data(tx_data, vec![sig]);
 
         // Wrap in ConsensusTransaction
-        let consensus_tx = ConsensusTransaction::new_user_transaction_message(
-            &self.authority_name,
-            tx,
-        );
+        let consensus_tx =
+            ConsensusTransaction::new_user_transaction_message(&self.authority_name, tx);
 
         // Submit to consensus
         match self.consensus_adapter.submit(
@@ -359,35 +299,30 @@ impl AuditService {
         let state: types::system_state::SystemState =
             bcs::from_bytes(state_object.as_inner().data.contents()).map_err(|_| ())?;
 
-        let model = state
-            .model_registry
-            .active_models
-            .get(model_id)
-            .ok_or(())?;
+        let model = state.model_registry.active_models.get(model_id).ok_or(())?;
 
         let weights_manifest = model.weights_manifest.as_ref().ok_or(())?;
 
         Ok(weights_manifest.manifest.clone())
     }
 
-    /// Verify fraud by calling EvaluationService and checking results against claims.
+    /// Verify fraud by calling CompetitionAPI and checking results against claims.
     ///
     /// Returns true if fraud was found (challenger wins), false otherwise.
     ///
     /// # Fraud Detection Logic
     ///
-    /// The evaluation service is trusted to determine the correct winning model and distance.
+    /// The CompetitionAPI is trusted to determine the correct winning model and distance.
     /// We simply compare the service's results against the miner's claims:
     ///
     /// 1. **Data unavailable**: Miner is responsible for data availability → FRAUD
     /// 2. **Data hash mismatch**: Miner submitted wrong data → FRAUD
     /// 3. **Wrong model**: Miner didn't use the winning model → FRAUD
-    /// 4. **Distance mismatch**: Distance differs beyond epsilon → FRAUD
+    /// 4. **Distance mismatch**: Distance differs beyond tolerance → FRAUD
     /// 5. **Model unavailable**: System issue, not miner's fault → NO FRAUD
     /// 6. **Computation failed**: Validator issue, not miner's fault → NO FRAUD
     async fn audit_fraud(&self, challenge: &Challenge) -> bool {
         let data_manifest = &challenge.winning_data_manifest.manifest;
-        let data_commitment = challenge.winning_data_commitment.inner();
 
         // Collect model manifests from the registry
         let mut model_manifests: Vec<(ModelId, Manifest)> = Vec::new();
@@ -410,65 +345,79 @@ impl AuditService {
             // No models could be loaded from registry.
             // This is a system issue (models should be available for active targets).
             // Cannot determine fraud without models → default to no fraud.
-            warn!("No models available for challenge {:?}, cannot determine fraud", challenge.id);
+            warn!(
+                "No models available for challenge {:?}, cannot determine fraud",
+                challenge.id
+            );
             return false;
         }
 
-        // Call EvaluationService (handles download, verification, inference)
-        let eval_result = match self
-            .evaluation_service
-            .evaluate(
-                &model_manifests,
-                data_manifest,
-                data_commitment,
-                &challenge.target_embedding,
-            )
-            .await
-        {
+        // Build CompetitionInput
+        let input = CompetitionInput::new(
+            data_manifest.clone(),
+            model_manifests,
+            challenge.target_embedding.clone().into_tensor_data(),
+        );
+
+        // Call CompetitionAPI (handles download, verification, inference)
+        let output = match self.competition_api.run(input).await {
             Ok(result) => result,
-            Err(EvaluationError::DataNotAvailable(msg)) => {
+            Err(types::error::RuntimeError::DataNotAvailable(msg)) => {
                 // Miner is responsible for keeping data available during challenge window
-                info!("FRAUD: data unavailable for challenge {:?}: {}", challenge.id, msg);
+                info!(
+                    "FRAUD: data unavailable for challenge {:?}: {}",
+                    challenge.id, msg
+                );
                 return true;
             }
-            Err(EvaluationError::DataHashMismatch) => {
+            Err(types::error::RuntimeError::DataHashMismatch) => {
                 // Miner submitted data that doesn't match their commitment
                 info!("FRAUD: data hash mismatch for challenge {:?}", challenge.id);
                 return true;
             }
-            Err(EvaluationError::ModelNotAvailable(model_id)) => {
+            Err(types::error::RuntimeError::ModelNotAvailable(model_id)) => {
                 // Model weights couldn't be downloaded. This is a system/model-owner issue,
                 // not the miner's fault. Cannot determine fraud.
-                warn!("Model {:?} unavailable during evaluation, cannot determine fraud", model_id);
+                warn!(
+                    "Model {:?} unavailable during evaluation, cannot determine fraud",
+                    model_id
+                );
                 return false;
             }
-            Err(EvaluationError::ComputationFailed(msg)) => {
-                // Inference failed. This is a validator-side issue (OOM, bug, etc).
+            Err(e) => {
+                // Other errors (computation failed, etc). This is a validator-side issue.
                 // Cannot determine fraud.
-                warn!("Computation failed for challenge {:?}: {}", challenge.id, msg);
+                warn!(
+                    "Computation failed for challenge {:?}: {:?}",
+                    challenge.id, e
+                );
                 return false;
             }
         };
 
-        // Trust the evaluation service's results and compare against miner's claims
+        // Trust the CompetitionAPI's results and compare against miner's claims
         let claimed_model_id = challenge.winning_model_id;
-        let claimed_distance = challenge.winning_distance_score;
+        let claimed_distance = &challenge.winning_distance_score;
 
         // Check 1: Did the miner use the correct winning model?
-        if eval_result.winning_model_id != claimed_model_id {
+        if output.winner() != claimed_model_id {
             info!(
                 "FRAUD: wrong model for challenge {:?}. Claimed: {:?}, Actual winner: {:?}",
-                challenge.id, claimed_model_id, eval_result.winning_model_id
+                challenge.id,
+                claimed_model_id,
+                output.winner()
             );
             return true;
         }
 
-        // Check 2: Is the claimed distance within epsilon of the actual distance?
-        let distance_diff = (eval_result.distance - claimed_distance).abs();
-        if distance_diff > self.distance_epsilon {
+        // Check 2: Is the claimed distance within tolerance of the actual distance?
+        // Using Burn's Tolerance::permissive() (1% relative, 0.01 absolute)
+        if !is_within_tolerance(output.distance(), claimed_distance.as_tensor_data()) {
             info!(
-                "FRAUD: distance mismatch for challenge {:?}. Claimed: {}, Actual: {}, Diff: {}",
-                challenge.id, claimed_distance, eval_result.distance, distance_diff
+                "FRAUD: distance mismatch for challenge {:?}. Claimed: {:?}, Actual: {:?}",
+                challenge.id,
+                claimed_distance.to_vec(),
+                output.distance().to_vec::<f32>()
             );
             return true;
         }
@@ -488,59 +437,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_evaluation_service() {
-        let service = MockEvaluationService;
-        let _: Arc<dyn EvaluationService> = Arc::new(service);
+    fn test_mock_competition_api() {
+        let api = MockCompetitionAPI;
+        let _: Arc<dyn CompetitionAPI> = Arc::new(api);
     }
 
     #[test]
-    fn test_distance_epsilon_boundary_within_tolerance() {
-        let distance_epsilon: i64 = 1000;
-        let claimed_distance: i64 = 5000;
+    fn test_tolerance_within_bounds() {
+        // Create two TensorData values that are very close (within 1% tolerance)
+        let computed = TensorData::from([0.5f32]);
+        let claimed = TensorData::from([0.5f32]);
 
-        // Actual distance within epsilon - should NOT be fraud
-        let actual_distance = claimed_distance + distance_epsilon - 1;
-        let distance_diff = (actual_distance - claimed_distance).abs();
-        assert!(distance_diff <= distance_epsilon, "Should be within tolerance");
+        assert!(
+            is_within_tolerance(&computed, &claimed),
+            "Identical values should be within tolerance"
+        );
     }
 
     #[test]
-    fn test_distance_epsilon_boundary_outside_tolerance() {
-        let distance_epsilon: i64 = 1000;
-        let claimed_distance: i64 = 5000;
+    fn test_tolerance_slightly_different() {
+        // Values that differ by less than 1% should be within tolerance
+        let computed = TensorData::from([0.5f32]);
+        let claimed = TensorData::from([0.504f32]); // 0.8% difference
 
-        // Actual distance outside epsilon - IS fraud
-        let actual_distance = claimed_distance + distance_epsilon + 1;
-        let distance_diff = (actual_distance - claimed_distance).abs();
-        assert!(distance_diff > distance_epsilon, "Should be outside tolerance");
+        assert!(
+            is_within_tolerance(&computed, &claimed),
+            "Values within 1% should be within tolerance"
+        );
+    }
+
+    #[test]
+    fn test_tolerance_outside_bounds() {
+        // Values that differ by more than 1% and more than 0.01 absolute
+        let computed = TensorData::from([0.5f32]);
+        let claimed = TensorData::from([0.52f32]); // 4% difference
+
+        assert!(
+            !is_within_tolerance(&computed, &claimed),
+            "Values outside 1% should NOT be within tolerance"
+        );
+    }
+
+    #[test]
+    fn test_tolerance_small_absolute_difference() {
+        // Even small values should pass absolute tolerance of 0.01
+        let computed = TensorData::from([0.001f32]);
+        let claimed = TensorData::from([0.008f32]);
+
+        // Difference is 0.007 which is less than 0.01 absolute
+        assert!(
+            is_within_tolerance(&computed, &claimed),
+            "Small absolute differences should be within tolerance"
+        );
     }
 
     #[test]
     fn test_wrong_model_is_always_fraud() {
-        // When the evaluation service returns a different winning model,
+        // When the CompetitionAPI returns a different winning model,
         // it's always fraud - the miner should have used the correct model
         let claimed_model = ObjectID::random();
         let actual_winner = ObjectID::random();
 
         // Different models = fraud, regardless of distance
-        assert_ne!(claimed_model, actual_winner, "Different models should trigger fraud");
-    }
-
-    #[test]
-    fn test_distance_diff_symmetry() {
-        let distance_epsilon: i64 = 1000;
-
-        // Fraud detection should work whether actual is higher or lower than claimed
-        let claimed: i64 = 5000;
-
-        // Actual is higher (miner claimed better than reality)
-        let actual_higher: i64 = 6500;
-        let diff_higher = (actual_higher - claimed).abs();
-        assert!(diff_higher > distance_epsilon, "Higher actual should be fraud");
-
-        // Actual is lower (miner claimed worse than reality - also suspicious)
-        let actual_lower: i64 = 3500;
-        let diff_lower = (actual_lower - claimed).abs();
-        assert!(diff_lower > distance_epsilon, "Lower actual should also be fraud");
+        assert_ne!(
+            claimed_model, actual_winner,
+            "Different models should trigger fraud"
+        );
     }
 }

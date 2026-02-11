@@ -19,7 +19,7 @@ use crate::{
     metadata::{Manifest, ManifestAPI, MetadataAPI},
     model::ModelId,
     object::ObjectID,
-    target::Embedding,
+    tensor::SomaTensor,
 };
 
 /// Type alias: submissions are identified by their ObjectID.
@@ -68,13 +68,14 @@ pub struct Submission {
     /// Which model the miner chose from the target's model_ids
     pub model_id: ModelId,
 
-    /// Embedding vector as provided by the submitter (fixed-point i64).
+    /// Embedding vector as provided by the submitter.
     /// Verified only during challenge audit.
-    pub embedding: Embedding,
+    pub embedding: SomaTensor,
 
-    /// Distance score reported by submitter (fixed-point, scale DISTANCE_SCALE).
+    /// Distance score reported by submitter (cosine distance).
+    /// Stored as scalar SomaTensor for consistency with CompetitionAPI.
     /// Must be <= target.distance_threshold (lower is better). Verified during challenge audit.
-    pub distance_score: i64,
+    pub distance_score: SomaTensor,
 
     /// Bond amount locked by the miner (calculated as submission_bond_per_byte * data_size)
     pub bond_amount: u64,
@@ -91,8 +92,8 @@ impl Submission {
         data_commitment: DataCommitment,
         data_manifest: SubmissionManifest,
         model_id: ModelId,
-        embedding: Embedding,
-        distance_score: i64,
+        embedding: SomaTensor,
+        distance_score: SomaTensor,
         bond_amount: u64,
         submit_epoch: EpochId,
     ) -> Self {
@@ -115,7 +116,7 @@ mod tests {
     use crate::checksum::Checksum;
     use crate::crypto::DIGEST_LENGTH;
     use crate::metadata::{ManifestV1, Metadata, MetadataV1};
-    use ndarray::Array1;
+    use crate::tensor::SomaTensor;
     use url::Url;
 
     fn test_manifest() -> SubmissionManifest {
@@ -138,7 +139,8 @@ mod tests {
         let data_commitment = DataCommitment::random();
         let data_manifest = test_manifest();
         let model_id = ObjectID::random();
-        let embedding = Array1::zeros(10);
+        let embedding = SomaTensor::zeros(vec![10]);
+        let distance_score = SomaTensor::scalar(0.5);
 
         let submission = Submission::new(
             miner,
@@ -146,14 +148,14 @@ mod tests {
             data_manifest,
             model_id,
             embedding.clone(),
-            1000,  // distance_score
+            distance_score.clone(),
             10240, // bond_amount
             0,     // submit_epoch
         );
 
         assert_eq!(submission.miner, miner);
         assert_eq!(submission.model_id, model_id);
-        assert_eq!(submission.distance_score, 1000);
+        assert_eq!(submission.distance_score, distance_score);
         assert_eq!(submission.bond_amount, 10240);
         assert_eq!(submission.embedding, embedding);
     }

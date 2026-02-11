@@ -284,14 +284,14 @@ type PointCacheItem<T> = Option<T>;
 
 // PointCacheItem can only be used for insert-only collections, so a Some entry
 // is always newer than a None entry.
-impl<T: Eq + std::fmt::Debug> IsNewer for PointCacheItem<T> {
+impl<T: PartialEq + std::fmt::Debug> IsNewer for PointCacheItem<T> {
     fn is_newer_than(&self, other: &PointCacheItem<T>) -> bool {
         match (self, other) {
             (Some(_), None) => true,
 
             (Some(a), Some(b)) => {
                 // conflicting inserts should never happen
-                debug_assert_eq!(a, b);
+                debug_assert!(a == b, "Conflicting cache inserts: {:?} vs {:?}", a, b);
                 false
             }
 

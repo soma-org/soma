@@ -233,6 +233,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     manifest: Some(args.weights_manifest.manifest.clone().into()),
                     decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
                 }),
+                embedding: args.embedding.to_vec(),
             }),
             CommitModelUpdate(args) => Kind::CommitModelUpdate(super::CommitModelUpdate {
                 model_id: Some(args.model_id.to_string()),
@@ -245,6 +246,7 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     manifest: Some(args.weights_manifest.manifest.clone().into()),
                     decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
                 }),
+                embedding: args.embedding.to_vec(),
             }),
             AddStakeToModel { model_id, coin_ref, amount } => {
                 Kind::AddStakeToModel(super::AddStakeToModel {
@@ -476,6 +478,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                             .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
                             .to_vec(),
                     },
+                    embedding: args.embedding.clone(),
                 })
             }
             Kind::CommitModelUpdate(args) => {
@@ -522,6 +525,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                             .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
                             .to_vec(),
                     },
+                    embedding: args.embedding.clone(),
                 })
             }
             Kind::AddStakeToModel(args) => Self::AddStakeToModel {

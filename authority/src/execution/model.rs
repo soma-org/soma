@@ -127,7 +127,12 @@ impl ModelExecutor {
 
         let (state_object, mut state) = Self::load_system_state(store)?;
 
-        state.request_reveal_model(signer, &args.model_id, args.weights_manifest)?;
+        state.request_reveal_model(
+            signer,
+            &args.model_id,
+            args.weights_manifest,
+            args.embedding,
+        )?;
 
         Self::save_system_state(store, state_object, &state)
     }
@@ -168,7 +173,12 @@ impl ModelExecutor {
 
         let (state_object, mut state) = Self::load_system_state(store)?;
 
-        state.request_reveal_model_update(signer, &args.model_id, args.weights_manifest)?;
+        state.request_reveal_model_update(
+            signer,
+            &args.model_id,
+            args.weights_manifest,
+            args.embedding,
+        )?;
 
         Self::save_system_state(store, state_object, &state)
     }

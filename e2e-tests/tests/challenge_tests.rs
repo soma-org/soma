@@ -15,7 +15,6 @@
 //! 10. test_report_challenge_transaction - Validators can report challenge verdict
 //! 11. test_duplicate_challenge_rejected - Second InitiateChallenge on same target fails
 
-use ndarray::Array1;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
@@ -31,7 +30,7 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
     submission::SubmissionManifest,
-    target::Embedding,
+    tensor::SomaTensor,
     transaction::{
         ClaimRewardsArgs, InitiateChallengeArgs, SubmitDataArgs, Transaction, TransactionData,
         TransactionKind,
@@ -168,14 +167,14 @@ async fn fill_target(
 /// # Arguments
 /// * `test_cluster` - The test cluster
 /// * `model_id` - The model ID to use
-/// * `distance_score` - Optional custom distance score. If None, uses threshold - 100.
+/// * `distance_score` - Optional custom distance score. If None, uses threshold - 0.1.
 ///
 /// # Returns
 /// The target_id and miner address.
 async fn fill_target_with_distance(
     test_cluster: &test_cluster::TestCluster,
     model_id: ModelId,
-    distance_score: Option<i64>,
+    distance_score: Option<f32>,
 ) -> (ObjectID, SomaAddress) {
     let miner = test_cluster.get_addresses()[0];
 
@@ -190,7 +189,7 @@ async fn fill_target_with_distance(
         });
 
     let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold;
+    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -211,9 +210,9 @@ async fn fill_target_with_distance(
     // Prepare submission data
     let data_commitment = DataCommitment::random();
     let data_manifest = make_submission_manifest(1024);
-    let embedding: Embedding = Array1::zeros(embedding_dim);
-    // Use custom distance score if provided, otherwise default to threshold - 100
-    let distance_score = distance_score.unwrap_or(distance_threshold - 100);
+    let embedding = SomaTensor::zeros(vec![embedding_dim]);
+    // Use custom distance score if provided, otherwise default to threshold - 0.1
+    let distance_score = SomaTensor::scalar(distance_score.unwrap_or(distance_threshold - 0.1));
 
     // Get gas object
     let gas_object = test_cluster
@@ -1422,18 +1421,18 @@ async fn test_report_challenge_validator_only() {
 // Test 13: Audit service fraud flow - miner lies, challenger wins
 //
 // This test verifies the full E2E fraud detection flow:
-// 1. Fill a target with claimed distance = threshold - 100 (a large value)
+// 1. Fill a target with claimed distance = threshold - 0.1 (a large value)
 // 2. InitiateChallenge creates a Challenge object
 // 3. AuditService picks up the challenge via channel from CheckpointExecutor
-// 4. MockEvaluationService returns distance=0 (mismatch with claimed ~999,900)
-// 5. AuditService detects fraud (mismatch > epsilon) and submits ReportSubmission
+// 4. MockCompetitionAPI returns distance=0.0 (mismatch with claimed)
+// 5. AuditService detects fraud (mismatch > tolerance) and submits ReportSubmission
 // 6. Advance epochs to close challenge window
 // 7. ClaimRewards → challenger receives miner's bond, miner gets nothing
 //
 // **Fraud Detection Logic:**
-// - Miner claims distance_threshold - 100 (e.g., 999,900)
-// - MockEvaluationService returns distance = 0
-// - Mismatch = |0 - 999,900| = 999,900 > epsilon (1000)
+// - Miner claims distance_threshold - 0.1
+// - MockCompetitionAPI returns distance = 0.0
+// - Mismatch detected via Tolerance::permissive() (1% relative, 0.01 absolute)
 // - All 4 validators detect fraud → quorum reached
 // ===================================================================
 
@@ -1453,8 +1452,8 @@ async fn test_audit_service_fraud_flow_miner_lies() {
         .build()
         .await;
 
-    // Fill a target with default distance (threshold - 100, a large value)
-    // MockEvaluationService returns 0, so this will be detected as fraud
+    // Fill a target with default distance (threshold - 0.1, a large value)
+    // MockCompetitionAPI returns 0.0, so this will be detected as fraud
     let (target_id, miner) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled by DISHONEST miner {} with high claimed distance", target_id, miner);
 
@@ -1600,19 +1599,19 @@ async fn test_audit_service_fraud_flow_miner_lies() {
 // Test 14: Audit service success flow - miner is honest, challenger loses
 //
 // This test verifies the E2E flow when miner is honest:
-// 1. Fill a target with claimed distance = 0 (matches MockEvaluationService)
+// 1. Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
 // 2. InitiateChallenge creates a Challenge object
 // 3. AuditService picks up the challenge via channel from CheckpointExecutor
-// 4. MockEvaluationService returns distance=0 (matches claimed)
+// 4. MockCompetitionAPI returns distance=0.0 (matches claimed)
 // 5. AuditService detects NO fraud and submits ReportChallenge (challenger wrong)
 // 6. Advance epochs to close challenge window
 // 7. ClaimChallengeBond → challenger's bond goes to validators
 // 8. ClaimRewards → miner gets rewards + bond back
 //
 // **Fraud Detection Logic:**
-// - Miner claims distance = 0
-// - MockEvaluationService returns distance = 0
-// - Mismatch = |0 - 0| = 0 <= epsilon (1000)
+// - Miner claims distance = 0.0
+// - MockCompetitionAPI returns distance = 0.0
+// - Values match within Tolerance::permissive() (1% relative, 0.01 absolute)
 // - All 4 validators detect NO fraud → report challenger instead
 // ===================================================================
 
@@ -1632,9 +1631,9 @@ async fn test_audit_service_success_flow_miner_honest() {
         .build()
         .await;
 
-    // Fill a target with claimed distance = 0 (matches MockEvaluationService)
+    // Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
     // This will NOT be detected as fraud
-    let (target_id, miner) = fill_target_with_distance(&test_cluster, model_id, Some(0)).await;
+    let (target_id, miner) = fill_target_with_distance(&test_cluster, model_id, Some(0.0)).await;
     info!("Target {} filled by HONEST miner {} with claimed distance=0", target_id, miner);
 
     // Challenger initiates challenge (incorrectly - miner is honest)

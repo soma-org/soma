@@ -129,7 +129,7 @@ pub struct CheckpointData {
     pub transactions: Vec<CheckpointTransaction>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct CheckpointTransaction {
     /// The input Transaction
     #[serde(with = "::serde_with::As::<crate::types::_serde::SignedTransactionWithIntentMessage>")]

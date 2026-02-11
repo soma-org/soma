@@ -590,7 +590,7 @@ impl TransactionInfo {
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize, Eq, PartialEq, Debug)]
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Debug)]
 pub struct EpochInfo {
     pub epoch: u64,
     pub protocol_version: Option<u64>,

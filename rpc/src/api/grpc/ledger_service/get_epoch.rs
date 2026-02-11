@@ -185,7 +185,7 @@ pub fn protocol_config_to_proto(config: protocol_config::ProtocolConfig) -> Prot
                     ProtocolConfigValue::u32(y) => y.to_string(),
                     ProtocolConfigValue::u64(z) => z.to_string(),
                     ProtocolConfigValue::usize(u) => u.to_string(),
-                    ProtocolConfigValue::i64(i) => i.to_string(),
+                    ProtocolConfigValue::BcsF32(f) => f.to_string(),
                     // TODO: ProtocolConfigValue::bool(b) => b.to_string(),
                 };
                 (k, v)

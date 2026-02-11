@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Address;
 
-#[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
 pub enum ExecutionStatus {
     /// The Transaction successfully executed.
     Success,
@@ -18,7 +18,7 @@ pub enum ExecutionStatus {
     },
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
 #[non_exhaustive]
 pub enum ExecutionError {
     // General transaction errors
@@ -60,7 +60,7 @@ pub enum ExecutionError {
     // Submission errors
     ModelNotInTarget { model_id: Address, target_id: Address },
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
-    DistanceExceedsThreshold { score: i64, threshold: i64 },
+    DistanceExceedsThreshold { score: f32, threshold: f32 },
     InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 

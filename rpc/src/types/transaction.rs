@@ -20,14 +20,14 @@ use url::Url;
 ///
 /// transaction-v1 = transaction-kind address gas-payment transaction-expiration
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Transaction {
     pub kind: TransactionKind,
     pub sender: Address,
     pub gas_payment: Vec<ObjectReference>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct SignedTransaction {
     pub transaction: Transaction,
     pub signatures: Vec<UserSignature>,
@@ -60,7 +60,7 @@ pub enum Manifest {
 /// # BCS
 ///
 /// The BCS serialized form for this type is defined by the following ABNF:
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 #[non_exhaustive]
 pub enum TransactionKind {
     /// Transaction used to initialize the chain state.
@@ -223,10 +223,12 @@ pub struct CommitModelArgs {
     pub staking_pool_id: Address,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RevealModelArgs {
     pub model_id: Address,
     pub weights_manifest: ModelWeightsManifest,
+    /// Model embedding for stake-weighted KNN target selection (f32 values)
+    pub embedding: Vec<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -236,10 +238,12 @@ pub struct CommitModelUpdateArgs {
     pub weights_commitment: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RevealModelUpdateArgs {
     pub model_id: Address,
     pub weights_manifest: ModelWeightsManifest,
+    /// Updated model embedding for stake-weighted KNN target selection (f32 values)
+    pub embedding: Vec<f32>,
 }
 
 // Supporting types for submission transactions
@@ -250,14 +254,14 @@ pub struct SubmissionManifest {
     pub manifest: Manifest,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct SubmitDataArgs {
     pub target_id: Address,
     pub data_commitment: Vec<u8>,
     pub data_manifest: SubmissionManifest,
     pub model_id: Address,
-    pub embedding: Vec<i64>,
-    pub distance_score: i64,
+    pub embedding: Vec<f32>,
+    pub distance_score: f32,
     pub bond_coin: ObjectReference,
 }
 

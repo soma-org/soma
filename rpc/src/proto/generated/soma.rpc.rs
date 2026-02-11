@@ -3414,8 +3414,8 @@ pub struct SystemParameters {
     pub target_models_per_target: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "15")]
     pub target_embedding_dim: ::core::option::Option<u64>,
-    #[prost(int64, optional, tag = "16")]
-    pub target_initial_distance_threshold: ::core::option::Option<i64>,
+    #[prost(float, optional, tag = "16")]
+    pub target_initial_distance_threshold: ::core::option::Option<f32>,
     #[prost(uint64, optional, tag = "17")]
     pub target_reward_allocation_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "18")]
@@ -3424,10 +3424,10 @@ pub struct SystemParameters {
     pub target_hit_rate_ema_decay_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "20")]
     pub target_difficulty_adjustment_rate_bps: ::core::option::Option<u64>,
-    #[prost(int64, optional, tag = "21")]
-    pub target_max_distance_threshold: ::core::option::Option<i64>,
-    #[prost(int64, optional, tag = "22")]
-    pub target_min_distance_threshold: ::core::option::Option<i64>,
+    #[prost(float, optional, tag = "21")]
+    pub target_max_distance_threshold: ::core::option::Option<f32>,
+    #[prost(float, optional, tag = "22")]
+    pub target_min_distance_threshold: ::core::option::Option<f32>,
     #[prost(uint64, optional, tag = "23")]
     pub target_initial_targets_per_epoch: ::core::option::Option<u64>,
     /// Reward distribution parameters
@@ -3441,10 +3441,10 @@ pub struct SystemParameters {
     #[prost(uint64, optional, tag = "27")]
     pub submission_bond_per_byte: ::core::option::Option<u64>,
     /// Challenge parameters
+    ///
+    /// challenge_distance_epsilon removed - using Burn's Tolerance::permissive() instead
     #[prost(uint64, optional, tag = "28")]
     pub challenger_bond_per_byte: ::core::option::Option<u64>,
-    #[prost(int64, optional, tag = "29")]
-    pub challenge_distance_epsilon: ::core::option::Option<i64>,
     /// Data size limit
     #[prost(uint64, optional, tag = "30")]
     pub max_submission_data_size: ::core::option::Option<u64>,
@@ -3595,14 +3595,17 @@ pub struct Model {
     /// absent while committed
     #[prost(message, optional, tag = "6")]
     pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
-    #[prost(message, optional, tag = "7")]
+    /// Model embedding for KNN selection (f32 values)
+    #[prost(float, repeated, tag = "7")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
+    #[prost(message, optional, tag = "8")]
     pub staking_pool: ::core::option::Option<StakingPool>,
-    #[prost(uint64, optional, tag = "8")]
-    pub commission_rate: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "9")]
+    pub commission_rate: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "10")]
     pub next_epoch_commission_rate: ::core::option::Option<u64>,
     /// absent if no update in flight
-    #[prost(message, optional, tag = "10")]
+    #[prost(message, optional, tag = "11")]
     pub pending_update: ::core::option::Option<PendingModelUpdate>,
 }
 /// Registry of all models in the mining system.
@@ -3647,9 +3650,9 @@ pub struct ModelRegistry {
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TargetState {
-    /// Current distance threshold for new targets (fixed-point i64)
-    #[prost(int64, optional, tag = "1")]
-    pub distance_threshold: ::core::option::Option<i64>,
+    /// Current distance threshold for new targets (f32 cosine distance)
+    #[prost(float, optional, tag = "1")]
+    pub distance_threshold: ::core::option::Option<f32>,
     /// Count of targets generated this epoch
     #[prost(uint64, optional, tag = "2")]
     pub targets_generated_this_epoch: ::core::option::Option<u64>,
@@ -3672,15 +3675,15 @@ pub struct Target {
     /// Target ID (ObjectID hex)
     #[prost(string, optional, tag = "1")]
     pub id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Center embedding point (fixed-point i64 values)
-    #[prost(int64, repeated, tag = "2")]
-    pub embedding: ::prost::alloc::vec::Vec<i64>,
+    /// Center embedding point (f32 values)
+    #[prost(float, repeated, tag = "2")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
     /// Models assigned to this target (ModelId hex strings)
     #[prost(string, repeated, tag = "3")]
     pub model_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    /// Distance threshold (fixed-point i64)
-    #[prost(int64, optional, tag = "4")]
-    pub distance_threshold: ::core::option::Option<i64>,
+    /// Distance threshold (f32 cosine distance)
+    #[prost(float, optional, tag = "4")]
+    pub distance_threshold: ::core::option::Option<f32>,
     /// Pre-allocated reward amount (in shannons)
     #[prost(uint64, optional, tag = "5")]
     pub reward_pool: ::core::option::Option<u64>,
@@ -3722,12 +3725,12 @@ pub struct Submission {
     /// Model ID used for this submission
     #[prost(string, optional, tag = "4")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Embedding vector (fixed-point i64 values)
-    #[prost(int64, repeated, tag = "5")]
-    pub embedding: ::prost::alloc::vec::Vec<i64>,
-    /// Distance score reported by submitter (fixed-point i64)
-    #[prost(int64, optional, tag = "6")]
-    pub distance_score: ::core::option::Option<i64>,
+    /// Embedding vector (f32 values)
+    #[prost(float, repeated, tag = "5")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
+    /// Distance score reported by submitter (f32 cosine distance)
+    #[prost(float, optional, tag = "6")]
+    pub distance_score: ::core::option::Option<f32>,
     /// Bond amount locked (in shannons)
     #[prost(uint64, optional, tag = "7")]
     pub bond_amount: ::core::option::Option<u64>,
@@ -3764,12 +3767,12 @@ pub struct Challenge {
     /// Win reason is no longer used in simplified design (field kept for backwards compatibility)
     #[prost(string, optional, tag = "8")]
     pub win_reason: ::core::option::Option<::prost::alloc::string::String>,
-    /// Distance threshold of target (fixed-point i64)
-    #[prost(int64, optional, tag = "9")]
-    pub distance_threshold: ::core::option::Option<i64>,
-    /// Claimed distance score by miner (fixed-point i64)
-    #[prost(int64, optional, tag = "10")]
-    pub winning_distance_score: ::core::option::Option<i64>,
+    /// Distance threshold of target (f32 cosine distance)
+    #[prost(float, optional, tag = "9")]
+    pub distance_threshold: ::core::option::Option<f32>,
+    /// Claimed distance score by miner (f32 cosine distance)
+    #[prost(float, optional, tag = "10")]
+    pub winning_distance_score: ::core::option::Option<f32>,
     /// Winning model ID used by miner
     #[prost(string, optional, tag = "11")]
     pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
@@ -4078,6 +4081,9 @@ pub struct RevealModel {
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag = "2")]
     pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
+    /// Model embedding for stake-weighted KNN target selection (f32 values)
+    #[prost(float, repeated, tag = "3")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4096,6 +4102,9 @@ pub struct RevealModelUpdate {
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag = "2")]
     pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
+    /// Updated model embedding for stake-weighted KNN target selection (f32 values)
+    #[prost(float, repeated, tag = "3")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4219,12 +4228,12 @@ pub struct SubmitData {
     /// Model ID used for submission (must be in target's model_ids)
     #[prost(string, optional, tag = "4")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Pre-computed embedding (fixed-point i64 values)
-    #[prost(int64, repeated, tag = "5")]
-    pub embedding: ::prost::alloc::vec::Vec<i64>,
-    /// Distance score (fixed-point i64, lower is better)
-    #[prost(int64, optional, tag = "6")]
-    pub distance_score: ::core::option::Option<i64>,
+    /// Pre-computed embedding (f32 values)
+    #[prost(float, repeated, tag = "5")]
+    pub embedding: ::prost::alloc::vec::Vec<f32>,
+    /// Distance score (f32 cosine distance, lower is better)
+    #[prost(float, optional, tag = "6")]
+    pub distance_score: ::core::option::Option<f32>,
     /// Bond coin reference
     #[prost(message, optional, tag = "7")]
     pub bond_coin: ::core::option::Option<ObjectReference>,

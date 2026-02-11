@@ -76,7 +76,7 @@ impl TargetCommand {
                             generation_epoch: t.generation_epoch.unwrap_or(0),
                             model_count: t.model_ids.len(),
                             reward_pool: t.reward_pool.unwrap_or(0),
-                            distance_threshold: t.distance_threshold.unwrap_or(0),
+                            distance_threshold: t.distance_threshold.unwrap_or(0.0),
                         })
                     })
                     .collect();
@@ -128,7 +128,7 @@ pub struct TargetSummary {
     pub generation_epoch: u64,
     pub model_count: usize,
     pub reward_pool: u64,
-    pub distance_threshold: i64,
+    pub distance_threshold: f32,
 }
 
 #[derive(Debug, Serialize)]

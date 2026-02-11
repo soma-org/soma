@@ -20,6 +20,7 @@ use crate::{
         staking::{PoolTokenExchangeRate, StakedSoma, StakingPool},
         validator::{Validator, ValidatorSet},
     },
+    tensor::SomaTensor,
 };
 use fastcrypto::{
     bls12381,
@@ -547,11 +548,48 @@ pub fn commit_model_with_commission(
 
 /// Reveal a previously committed model (moves pending -> active).
 /// Must be called in `commit_epoch + 1`.
+/// Uses a default 10-dimensional embedding.
 pub fn reveal_model(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
+    reveal_model_with_dim(system_state, owner, model_id, 10);
+}
+
+/// Reveal a previously committed model with a specific embedding dimension.
+/// Must be called in `commit_epoch + 1`.
+pub fn reveal_model_with_dim(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: &ModelId,
+    embedding_dim: usize,
+) {
     let url_str = format!("https://example.com/models/{}", model_id);
     let manifest = make_weights_manifest(&url_str);
+    // Create a deterministic test embedding based on model_id
+    let embedding = make_test_embedding(model_id, embedding_dim);
 
-    system_state.request_reveal_model(owner, model_id, manifest).expect("Failed to reveal model");
+    system_state
+        .request_reveal_model(owner, model_id, manifest, embedding)
+        .expect("Failed to reveal model");
+}
+
+/// Create a deterministic test embedding based on model_id
+fn make_test_embedding(model_id: &ModelId, dim: usize) -> SomaTensor {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+
+    let mut hasher = DefaultHasher::new();
+    model_id.hash(&mut hasher);
+    let seed = hasher.finish();
+
+    // Generate deterministic values based on the model_id
+    let values: Vec<f32> = (0..dim)
+        .map(|i| {
+            // Use a simple deterministic function based on seed and index
+            let x = ((seed.wrapping_add(i as u64)).wrapping_mul(2654435761) % 1000) as f32;
+            (x / 1000.0) - 0.5 // Normalize to [-0.5, 0.5]
+        })
+        .collect();
+
+    SomaTensor::new(values, vec![dim])
 }
 
 /// Commit a model update for an active model.
@@ -567,12 +605,29 @@ pub fn commit_model_update(system_state: &mut SystemState, owner: SomaAddress, m
 }
 
 /// Reveal a pending model update.
+/// Uses a default 10-dimensional embedding.
 pub fn reveal_model_update(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
+    reveal_model_update_with_dim(system_state, owner, model_id, 10);
+}
+
+/// Reveal a pending model update with a specific embedding dimension.
+pub fn reveal_model_update_with_dim(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: &ModelId,
+    embedding_dim: usize,
+) {
     let url_str = format!("https://example.com/models/{}/update", model_id);
     let manifest = make_weights_manifest(&url_str);
+    // Create a slightly different deterministic embedding for the update
+    let mut embedding = make_test_embedding(model_id, embedding_dim);
+    // Modify embedding slightly for the update version
+    let values = embedding.to_vec();
+    let updated_values: Vec<f32> = values.iter().map(|v| v + 0.1).collect();
+    let embedding = SomaTensor::new(updated_values, vec![embedding_dim]);
 
     system_state
-        .request_reveal_model_update(owner, model_id, manifest)
+        .request_reveal_model_update(owner, model_id, manifest, embedding)
         .expect("Failed to reveal model update");
 }
 

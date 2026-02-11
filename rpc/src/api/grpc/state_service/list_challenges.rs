@@ -232,10 +232,10 @@ fn challenge_to_proto_with_id(
     }
     // win_reason is no longer applicable in simplified design
     if mask.contains("distance_threshold") {
-        proto.distance_threshold = Some(challenge.distance_threshold);
+        proto.distance_threshold = Some(challenge.distance_threshold.as_scalar());
     }
     if mask.contains("winning_distance_score") {
-        proto.winning_distance_score = Some(challenge.winning_distance_score);
+        proto.winning_distance_score = Some(challenge.winning_distance_score.as_scalar());
     }
     if mask.contains("winning_model_id") {
         proto.winning_model_id = Some(challenge.winning_model_id.to_string());

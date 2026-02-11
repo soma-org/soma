@@ -51,6 +51,7 @@ store.workspace = true
 object_store.workspace = true
 uuid.workspace = true
 ndarray.workspace = true
+burn.workspace = true
 arrgen.workspace = true
 clap.workspace = true
 soma-http.workspace = true

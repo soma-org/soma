@@ -834,7 +834,7 @@ impl ExecutionDigests {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
 pub struct ExecutionData {
     pub transaction: Transaction,
     pub effects: TransactionEffects,
@@ -851,7 +851,7 @@ impl ExecutionData {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct VerifiedExecutionData {
     pub transaction: VerifiedTransaction,
     pub effects: TransactionEffects,
