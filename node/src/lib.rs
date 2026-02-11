@@ -259,7 +259,7 @@ impl SomaNode {
             pruner_db =
                 Some(Arc::new(AuthorityPrunerTables::open(&config.db_path().join("store"))));
         }
-        let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
+        let compaction_filter = pruner_db.clone().map(ObjectsCompactionFilter::new);
 
         // By default, only enable write stall on validators for perpetual db.
         // TODO: let enable_write_stall = config.enable_db_write_stall.unwrap_or(is_validator);
@@ -591,6 +591,7 @@ impl SomaNode {
         Ok(P2pComponents { channel_manager_tx, discovery_handle, state_sync_handle })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn construct_validator_components(
         config: NodeConfig,
         state: Arc<AuthorityState>,
@@ -664,6 +665,7 @@ impl SomaNode {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn start_epoch_specific_validator_components(
         config: &NodeConfig,
         state: Arc<AuthorityState>,
@@ -1093,10 +1095,10 @@ impl SomaNode {
                 .get_system_state_object()
                 .expect("Read Soma System State object cannot fail");
 
-            if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
-                if self.state.is_fullnode(&cur_epoch_store) {
-                    warn!("Failed to send end of epoch notification to subscriber: {:?}", err);
-                }
+            if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone())
+                && self.state.is_fullnode(&cur_epoch_store)
+            {
+                warn!("Failed to send end of epoch notification to subscriber: {:?}", err);
             }
 
             let new_epoch_start_state = latest_system_state.into_epoch_start_state();
@@ -1379,16 +1381,15 @@ impl SomaNode {
 
         if let Some((checkpoint_seq, checkpoint_digest)) =
             checkpoint_store.get_checkpoint_fork_detected()?
+            && recovery.checkpoint_overrides.contains_key(&checkpoint_seq)
         {
-            if recovery.checkpoint_overrides.contains_key(&checkpoint_seq) {
-                info!(
-                    "Fork recovery enabled: clearing checkpoint fork at seq {} with digest {:?}",
-                    checkpoint_seq, checkpoint_digest
-                );
-                checkpoint_store
-                    .clear_checkpoint_fork_detected()
-                    .expect("Failed to clear checkpoint fork detected marker");
-            }
+            info!(
+                "Fork recovery enabled: clearing checkpoint fork at seq {} with digest {:?}",
+                checkpoint_seq, checkpoint_digest
+            );
+            checkpoint_store
+                .clear_checkpoint_fork_detected()
+                .expect("Failed to clear checkpoint fork detected marker");
         }
         Ok(())
     }
@@ -1407,13 +1408,13 @@ impl SomaNode {
             return Ok(());
         }
 
-        if let Some((tx_digest, _, _)) = checkpoint_store.get_transaction_fork_detected()? {
-            if recovery.transaction_overrides.contains_key(&tx_digest.to_string()) {
-                info!("Fork recovery enabled: clearing transaction fork for tx {:?}", tx_digest);
-                checkpoint_store
-                    .clear_transaction_fork_detected()
-                    .expect("Failed to clear transaction fork detected marker");
-            }
+        if let Some((tx_digest, _, _)) = checkpoint_store.get_transaction_fork_detected()?
+            && recovery.transaction_overrides.contains_key(&tx_digest.to_string())
+        {
+            info!("Fork recovery enabled: clearing transaction fork for tx {:?}", tx_digest);
+            checkpoint_store
+                .clear_transaction_fork_detected()
+                .expect("Failed to clear transaction fork detected marker");
         }
         Ok(())
     }

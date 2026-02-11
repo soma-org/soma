@@ -13,18 +13,24 @@ pub struct VerifiedDigestCache<D> {
     inner: RwLock<LruCache<D, ()>>,
 }
 
-impl<D: Hash + Eq + Copy> VerifiedDigestCache<D> {
-    pub fn new() -> Self {
+impl<D: Hash + Eq + Copy> Default for VerifiedDigestCache<D> {
+    fn default() -> Self {
         Self {
             inner: RwLock::new(LruCache::new(
                 std::num::NonZeroUsize::new(VERIFIED_CERTIFICATE_CACHE_SIZE).unwrap(),
             )),
         }
     }
+}
+
+impl<D: Hash + Eq + Copy> VerifiedDigestCache<D> {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn is_cached(&self, digest: &D) -> bool {
         let inner = self.inner.read();
-        if inner.contains(digest) { true } else { false }
+        inner.contains(digest)
     }
 
     pub fn cache_digest(&self, digest: D) {

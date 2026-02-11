@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod rewards_distribution_tests {
     use crate::{
         base::{SomaAddress, dbg_addr},
@@ -596,10 +597,7 @@ mod rewards_distribution_tests {
     // Helper function to create test validators
     fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Validator {
         // Use helper from our test_utils
-        let mut validator =
-            test_utils::create_validator_for_testing(addr, init_stake_amount * SHANNONS_PER_SOMA);
-
-        validator
+        test_utils::create_validator_for_testing(addr, init_stake_amount * SHANNONS_PER_SOMA)
     }
 
     // Helper function to create a system state with standard validators

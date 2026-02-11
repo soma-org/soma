@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use arrgen::{constant_array, normal_array, uniform_array};
 use burn::backend::NdArray;
 use burn::nn::{Embedding, EmbeddingConfig};
@@ -42,7 +44,7 @@ fn test_embedding() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "embedding.weight".to_string(),
-        ArrayWrapper(normal_array(seed, &vec![num_embeddings, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed,&[num_embeddings, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

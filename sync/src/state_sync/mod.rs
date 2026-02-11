@@ -263,7 +263,6 @@ impl PeerBalancer {
         Self {
             peers: peers
                 .into_iter()
-                .map(|(peer, info)| (peer, info))
                 // .map(|(_, peer, info)| (peer, info))
                 .collect(),
             requested_checkpoint: None,
@@ -781,14 +780,12 @@ async fn query_peer_for_latest_info(
         Ok(GetCheckpointAvailabilityResponse {
             highest_synced_checkpoint,
             lowest_available_checkpoint,
-        }) => {
-            return Some((highest_synced_checkpoint, Some(lowest_available_checkpoint)));
-        }
+        }) => Some((highest_synced_checkpoint, Some(lowest_available_checkpoint))),
         Err(status) => {
             trace!("get_checkpoint_availability request failed: {status:?}");
-            return None;
+            None
         }
-    };
+    }
 }
 
 #[instrument(level = "debug", skip_all)]
@@ -912,19 +909,17 @@ where
                         let checkpoint_digest = checkpoint.digest();
                         if let Ok(pinned_digest_index) = pinned_checkpoints.binary_search_by_key(
                             checkpoint.sequence_number(),
-                            |(seq_num, _digest)| *seq_num
+                            |(seq_num, _digest)| *seq_num,
                         )
-                            {
-                                if  pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest {
-                                     tracing::debug!(
-                                    "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
-                                    pinned_checkpoints[pinned_digest_index].1,
-                                    checkpoint_digest
-                                );
-                                continue;
-                                }
-                               
-                            }
+                            && pinned_checkpoints[pinned_digest_index].1 != *checkpoint_digest
+                        {
+                            tracing::debug!(
+                                "peer returned checkpoint with digest that does not match pinned digest: expected {:?}, got {:?}",
+                                pinned_checkpoints[pinned_digest_index].1,
+                                checkpoint_digest
+                            );
+                            continue;
+                        }
 
                         // Insert in our store in the event that things fail and we need to retry
                         peer_heights
@@ -1079,6 +1074,7 @@ async fn sync_checkpoint_contents_from_archive_iteration<S>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn sync_checkpoint_contents<S>(
     active_peers: ActivePeers,
     store: S,
@@ -1275,14 +1271,13 @@ where
             .ok()
             .map(Response::into_inner)
             .tap_none(|| trace!("peer unable to help sync"))
+            && contents.verify_digests(digest).is_ok()
         {
-            if contents.verify_digests(digest).is_ok() {
-                let verified_contents = VerifiedCheckpointContents::new_unchecked(contents.clone());
-                store
-                    .insert_checkpoint_contents(checkpoint, verified_contents)
-                    .expect("store operation should not fail");
-                return Some(contents);
-            }
+            let verified_contents = VerifiedCheckpointContents::new_unchecked(contents.clone());
+            store
+                .insert_checkpoint_contents(checkpoint, verified_contents)
+                .expect("store operation should not fail");
+            return Some(contents);
         }
     }
     debug!("no peers had checkpoint contents");

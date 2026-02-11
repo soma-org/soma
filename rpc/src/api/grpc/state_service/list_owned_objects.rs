@@ -48,13 +48,13 @@ pub fn list_owned_objects(
         .map(|s| (s as usize).clamp(1, MAX_PAGE_SIZE))
         .unwrap_or(DEFAULT_PAGE_SIZE);
     let page_token = request.page_token.map(|token| decode_page_token(&token)).transpose()?;
-    if let Some(token) = &page_token {
-        if token.owner != owner || token.object_type != object_type {
-            return Err(FieldViolation::new("page_token")
-                .with_description("invalid page_token")
-                .with_reason(ErrorReason::FieldInvalid)
-                .into());
-        }
+    if let Some(token) = &page_token
+        && (token.owner != owner || token.object_type != object_type)
+    {
+        return Err(FieldViolation::new("page_token")
+            .with_description("invalid page_token")
+            .with_reason(ErrorReason::FieldInvalid)
+            .into());
     }
     let read_mask = {
         let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
@@ -117,9 +117,11 @@ pub fn list_owned_objects(
         .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
         .map(|cursor| encode_page_token(PageToken { owner, object_type, inner: cursor }));
 
-    let mut message = ListOwnedObjectsResponse::default();
-    message.objects = objects;
-    message.next_page_token = next_page_token;
+    let message = ListOwnedObjectsResponse {
+        objects,
+        next_page_token,
+        ..Default::default()
+    };
     Ok(message)
 }
 

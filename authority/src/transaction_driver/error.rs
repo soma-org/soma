@@ -284,9 +284,7 @@ impl std::fmt::Display for AggregatedRequestErrors {
 // Match special handling of UserInputError in sui-json-rpc/src/error.rs NonRecoverableTransactionError
 fn format_transaction_request_error(error: &TransactionRequestError) -> String {
     match error {
-        TransactionRequestError::RejectedAtValidator(soma_error) => match soma_error {
-            _ => soma_error.to_string(),
-        },
+        TransactionRequestError::RejectedAtValidator(soma_error) => soma_error.to_string(),
         _ => error.to_string(),
     }
 }

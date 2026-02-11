@@ -191,7 +191,6 @@ impl Bitmap {
     ///
     /// assert_eq!(bitmap1, bitmap2);
     /// ```
-
     pub fn deserialize_from<R: std::io::Read>(reader: R) -> std::io::Result<Self> {
         let rb = roaring::RoaringBitmap::deserialize_from(reader)?;
 
@@ -219,7 +218,6 @@ impl Bitmap {
     ///
     /// assert_eq!(bitmap1, bitmap2);
     /// ```
-
     pub fn serialize_into<W: std::io::Write>(&self, writer: W) -> std::io::Result<()> {
         self.0.serialize_into(writer)
     }

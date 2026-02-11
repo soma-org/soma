@@ -27,7 +27,7 @@ impl MetadataV1 {
 
 impl MetadataAPI for MetadataV1 {
     fn checksum(&self) -> Checksum {
-        self.checksum.clone()
+        self.checksum
     }
     fn size(&self) -> SizeInBytes {
         self.size

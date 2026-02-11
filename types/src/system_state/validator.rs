@@ -94,6 +94,7 @@ pub struct Validator {
 }
 
 impl Validator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         soma_address: SomaAddress,
         protocol_pubkey: PublicKey,
@@ -245,6 +246,7 @@ impl Validator {
         self.commission_rate = self.next_epoch_commission_rate;
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn stage_next_epoch_metadata(
         &mut self,
         args: &UpdateValidatorMetadataArgs,
@@ -253,7 +255,7 @@ impl Validator {
         if let Some(ref addr_bytes) = args.next_epoch_network_address {
             let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
                 ExecutionFailureStatus::InvalidArguments {
-                    reason: format!("Failed to BCS deserialize network address string"),
+                    reason: "Failed to BCS deserialize network address string".to_string(),
                 }
             })?;
             let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
@@ -269,7 +271,7 @@ impl Validator {
         if let Some(ref addr_bytes) = args.next_epoch_p2p_address {
             let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
                 ExecutionFailureStatus::InvalidArguments {
-                    reason: format!("Failed to BCS deserialize p2p address string"),
+                    reason: "Failed to BCS deserialize p2p address string".to_string(),
                 }
             })?;
             let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
@@ -284,7 +286,7 @@ impl Validator {
         if let Some(ref addr_bytes) = args.next_epoch_primary_address {
             let addr_str: String = bcs::from_bytes(addr_bytes).map_err(|_| {
                 ExecutionFailureStatus::InvalidArguments {
-                    reason: format!("Failed to BCS deserialize primary address string"),
+                    reason: "Failed to BCS deserialize primary address string".to_string(),
                 }
             })?;
             let multiaddr = Multiaddr::from_str(&addr_str).map_err(|e| {
@@ -468,6 +470,7 @@ impl ValidatorSet {
     }
 
     /// Request to add a validator (either new or previously removed)
+    #[allow(clippy::result_large_err)]
     pub fn request_add_validator(
         &mut self,
         validator: Validator,
@@ -494,12 +497,13 @@ impl ValidatorSet {
         Ok(())
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn request_remove_validator(&mut self, address: SomaAddress) -> ExecutionResult {
         // Check consensus validators first
         if let Some((i, _)) =
             self.validators.iter().find_position(|v| address == v.metadata.soma_address)
         {
-            if self.pending_removals.iter().any(|idx| *idx == i) {
+            if self.pending_removals.contains(&i) {
                 return Err(ExecutionFailureStatus::ValidatorAlreadyRemoved);
             }
             self.pending_removals.push(i);
@@ -563,7 +567,7 @@ impl ValidatorSet {
         // Finally readjust voting power after all validator changes
         self.set_voting_power();
 
-        return validator_rewards;
+        validator_rewards
     }
 
     /// Effectuate pending next epoch metadata changes for all active validators.
@@ -624,43 +628,32 @@ impl ValidatorSet {
         validator_address: SomaAddress,
     ) -> Option<&mut Validator> {
         // First check validators
-        for validator in &mut self.validators {
-            if validator.metadata.soma_address == validator_address {
-                return Some(validator);
-            }
+        if let Some(validator) = self
+            .validators
+            .iter_mut()
+            .find(|validator| validator.metadata.soma_address == validator_address)
+        {
+            return Some(validator);
         }
 
         // Then check pending validators
-        for validator in &mut self.pending_validators {
-            if validator.metadata.soma_address == validator_address {
-                return Some(validator);
-            }
-        }
-
-        None
+        self.pending_validators
+            .iter_mut()
+            .find(|validator| validator.metadata.soma_address == validator_address)
     }
 
     /// Find a validator by address
     pub fn find_validator_mut(&mut self, validator_address: SomaAddress) -> Option<&mut Validator> {
-        for validator in &mut self.validators {
-            if validator.metadata.soma_address == validator_address {
-                return Some(validator);
-            }
-        }
-
-        None
+        self.validators
+            .iter_mut()
+            .find(|validator| validator.metadata.soma_address == validator_address)
     }
 
     /// Find a validator by address (immutable version)
     pub fn find_validator(&self, validator_address: SomaAddress) -> Option<&Validator> {
-        // Check  validators
-        for validator in &self.validators {
-            if validator.metadata.soma_address == validator_address {
-                return Some(validator);
-            }
-        }
-
-        None
+        self.validators
+            .iter()
+            .find(|validator| validator.metadata.soma_address == validator_address)
     }
 
     /// Check if an address is an active validator
@@ -876,7 +869,7 @@ impl ValidatorSet {
 
         // Deduct distributed rewards from total
         *total_rewards = total_rewards.saturating_sub(distributed_total);
-        return rewards;
+        rewards
     }
 
     /// Calculate total stake across all validators
@@ -918,13 +911,12 @@ impl ValidatorSet {
         // Ensure threshold is at least high enough to distribute all power
         let validator_count = all_validators.len();
         let min_threshold = if validator_count > 0 {
-            (TOTAL_VOTING_POWER + validator_count as u64 - 1) / validator_count as u64
-        // divide_and_round_up
+            TOTAL_VOTING_POWER.div_ceil(validator_count as u64)
         } else {
             TOTAL_VOTING_POWER
         };
         let threshold =
-            std::cmp::min(TOTAL_VOTING_POWER, std::cmp::max(MAX_VOTING_POWER, min_threshold));
+            min_threshold.clamp(MAX_VOTING_POWER, TOTAL_VOTING_POWER);
 
         // Sort validators by stake in descending order for consistent processing
         all_validators.sort_by(|a, b| {
@@ -1196,21 +1188,21 @@ impl ValidatorSet {
     }
 }
 
-fn sort_removal_list(withdraw_list: &mut Vec<usize>) {
+fn sort_removal_list(withdraw_list: &mut [usize]) {
     let length = withdraw_list.len();
     let mut i = 1;
     while i < length {
         let cur = withdraw_list[i];
         let mut j = i;
         while j > 0 {
-            j = j - 1;
+            j -= 1;
             if withdraw_list[j] > cur {
                 withdraw_list.swap(j, j + 1);
             } else {
                 break;
             }
         }
-        i = i + 1;
+        i += 1;
     }
 }
 

@@ -28,9 +28,10 @@ impl TryFrom<u8> for IntentVersion {
 /// (i.e., Soma, Consensus, Encoder etc) should never collide, so that even when a signing
 /// key is reused, nobody can take a signature designated for app_1 and present it as a
 /// valid signature for an (any) intent in app_2.
-#[derive(Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Default, Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[repr(u8)]
 pub enum AppId {
+    #[default]
     Consensus = 0,
     Soma = 1,
 }
@@ -39,12 +40,6 @@ impl TryFrom<u8> for AppId {
     type Error = eyre::Report;
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         bcs::from_bytes(&[value]).map_err(|_| eyre!("Invalid AppId"))
-    }
-}
-
-impl Default for AppId {
-    fn default() -> Self {
-        Self::Consensus
     }
 }
 

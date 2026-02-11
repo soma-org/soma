@@ -187,16 +187,13 @@ where
         if !executed_locally {
             executed_locally =
                 if matches!(request_type, ExecuteTransactionRequestType::WaitForLocalExecution) {
-                    let executed_locally =
-                        Self::wait_for_finalized_tx_executed_locally_with_timeout(
-                            &self.validator_state,
-                            tx_digest,
-                            tx_type,
-                        )
-                        .await
-                        .is_ok();
-
-                    executed_locally
+                    Self::wait_for_finalized_tx_executed_locally_with_timeout(
+                        &self.validator_state,
+                        tx_digest,
+                        tx_type,
+                    )
+                    .await
+                    .is_ok()
                 } else {
                     false
                 };

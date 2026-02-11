@@ -1259,14 +1259,14 @@ impl AuthorityState {
         request: ObjectInfoRequest,
     ) -> SomaResult<ObjectInfoResponse> {
         let (_, requested_object_seq, _) =
-            self.get_object_or_tombstone(request.object_id).await.ok_or_else(|| {
+            self.get_object_or_tombstone(request.object_id).await.ok_or(
                 SomaError::ObjectNotFound { object_id: request.object_id, version: None }
-            })?;
+            )?;
 
         let object = self
             .get_object_store()
             .get_object_by_key(&request.object_id, requested_object_seq)
-            .ok_or_else(|| SomaError::ObjectNotFound {
+            .ok_or(SomaError::ObjectNotFound {
                 object_id: request.object_id,
                 version: Some(requested_object_seq),
             })?;

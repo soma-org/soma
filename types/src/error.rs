@@ -432,10 +432,7 @@ impl SomaError {
     }
 
     pub fn is_object_not_found(&self) -> bool {
-        match self {
-            SomaError::ObjectNotFound { .. } => true,
-            _ => false,
-        }
+        matches!(self, SomaError::ObjectNotFound { .. })
     }
 
     // pub fn is_overload(&self) -> bool {

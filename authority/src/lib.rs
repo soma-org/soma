@@ -1,3 +1,11 @@
+#![allow(clippy::result_large_err)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::useless_conversion)]
+#![allow(clippy::needless_bool)]
+#![allow(clippy::nonminimal_bool)]
+#![allow(clippy::unnecessary_unwrap)]
+
 pub mod audit_service;
 pub mod authority;
 pub mod fullnode_proxy;

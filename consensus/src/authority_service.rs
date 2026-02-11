@@ -54,6 +54,7 @@ pub(crate) struct AuthorityService<C: CoreThreadDispatcher> {
 }
 
 impl<C: CoreThreadDispatcher> AuthorityService<C> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         context: Arc<Context>,
         block_verifier: Arc<dyn BlockVerifier>,

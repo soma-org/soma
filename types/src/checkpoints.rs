@@ -153,8 +153,7 @@ impl CheckpointArtifacts {
         {
             return Err(SomaError::GenericAuthorityError {
                 error: format!("Artifact {} already exists", artifact.artifact_type()),
-            }
-            .into());
+            });
         }
         self.artifacts.insert(artifact);
         Ok(())
@@ -174,12 +173,9 @@ impl CheckpointArtifacts {
             .map(|artifact| match artifact {
                 CheckpointArtifact::ObjectStates(states) => states,
             })
-            .ok_or(
-                SomaError::GenericAuthorityError {
-                    error: "Object states not found in checkpoint artifacts".to_string(),
-                }
-                .into(),
-            )
+            .ok_or(SomaError::GenericAuthorityError {
+                error: "Object states not found in checkpoint artifacts".to_string(),
+            })
     }
 
     pub fn digest(&self) -> SomaResult<CheckpointArtifactsDigest> {
@@ -301,6 +297,7 @@ impl Message for CheckpointSummary {
 }
 
 impl CheckpointSummary {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         epoch: EpochId,
         sequence_number: CheckpointSequenceNumber,
@@ -328,7 +325,7 @@ impl CheckpointSummary {
     }
 
     pub fn verify_epoch(&self, epoch: EpochId) -> SomaResult {
-        if !(self.epoch == epoch) {
+        if self.epoch != epoch {
             return Err(SomaError::WrongEpoch { expected_epoch: epoch, actual_epoch: self.epoch });
         }
 
@@ -358,13 +355,10 @@ impl CheckpointSummary {
                 CheckpointCommitment::CheckpointArtifactsDigest(digest) => Some(digest),
                 _ => None,
             })
-            .ok_or(
-                SomaError::GenericAuthorityError {
-                    error: "Checkpoint artifacts digest not found in checkpoint commitments"
-                        .to_string(),
-                }
-                .into(),
-            )
+            .ok_or(SomaError::GenericAuthorityError {
+                error: "Checkpoint artifacts digest not found in checkpoint commitments"
+                    .to_string(),
+            })
     }
 }
 
@@ -421,7 +415,7 @@ impl CertifiedCheckpointSummary {
 
         if let Some(contents) = contents {
             let content_digest = *contents.digest();
-            if !(content_digest == self.data().content_digest) {
+            if content_digest != self.data().content_digest {
                 return Err(SomaError::GenericAuthorityError {
                     error: format!(
                         "Checkpoint contents digest mismatch: summary={:?}, received content digest {:?}, received {} transactions",
@@ -685,7 +679,7 @@ impl CheckpointContents {
             error: format!("Failed to generate Merkle proof: {:?}", e),
         })?;
 
-        Ok(CheckpointInclusionProof { leaf: leaves[leaf_index].clone(), leaf_index, proof })
+        Ok(CheckpointInclusionProof { leaf: leaves[leaf_index], leaf_index, proof })
     }
 }
 
@@ -735,14 +729,14 @@ impl FullCheckpointContents {
     /// Transaction and TransactionEffects digests are consistent.
     pub fn verify_digests(&self, digest: CheckpointContentsDigest) -> Result<()> {
         let self_digest = *self.checkpoint_contents().digest();
-        if !(digest == self_digest) {
+        if digest != self_digest {
             return Err(anyhow::anyhow!(
                 "checkpoint contents digest {self_digest} does not match expected digest {digest}"
             ));
         }
         for tx in self.iter() {
             let transaction_digest = tx.transaction.digest();
-            if !(tx.effects.transaction_digest() == transaction_digest) {
+            if tx.effects.transaction_digest() != transaction_digest {
                 return Err(anyhow::anyhow!(
                     "transaction digest {transaction_digest} does not match expected digest {}",
                     tx.effects.transaction_digest()

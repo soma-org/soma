@@ -60,6 +60,7 @@ pub(crate) fn build_dag(
 }
 
 // TODO: Add layer_round as input parameter so ancestors can be from any round.
+#[allow(clippy::unwrap_used)]
 pub(crate) fn build_dag_layer(
     // A list of (authority, parents) pairs. For each authority, we add a block
     // linking to the specified parents.

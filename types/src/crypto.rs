@@ -421,7 +421,7 @@ impl AuthoritySignInfoTrait for AuthoritySignInfo {
             });
         }
         let weight = committee.weight(&self.authority);
-        if weight <= 0 {
+        if weight == 0 {
             return Err(SomaError::UnknownSigner {
                 signer: Some(self.authority.concise().to_string()),
                 index: None,
@@ -558,7 +558,7 @@ impl<const STRONG_THRESHOLD: bool> AuthoritySignInfoTrait
             // Update weight.
             let voting_rights = committee.weight(authority);
 
-            if voting_rights <= 0 {
+            if voting_rights == 0 {
                 return Err(SomaError::UnknownSigner {
                     signer: Some(authority.concise().to_string()),
                     index: Some(authority_index),
@@ -613,7 +613,7 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         // Calculate total stake and verify it meets the quorum threshold
         let total_stake: VotingPower =
             auth_sign_infos.iter().map(|a| committee.weight(&a.authority)).sum();
-        if !(total_stake >= Self::quorum_threshold(committee)) {
+        if total_stake < Self::quorum_threshold(committee) {
             return Err(SomaError::InvalidSignature {
                 error: "Signatures don't have enough stake to form a quorum".to_string(),
             });
@@ -861,15 +861,13 @@ impl GenericSignature {
 
                     _ => Err(SomaError::UnsupportedFeatureError {
                         error: "Unsupported signature scheme".to_string(),
-                    }
-                    .into()),
+                    }),
                 }
             }
 
             _ => Err(SomaError::UnsupportedFeatureError {
                 error: "Unsupported signature scheme".to_string(),
-            }
-            .into()),
+            }),
         }
     }
 
@@ -889,15 +887,13 @@ impl GenericSignature {
 
                     _ => Err(SomaError::UnsupportedFeatureError {
                         error: "Unsupported signature scheme in MultiSig".to_string(),
-                    }
-                    .into()),
+                    }),
                 }
             }
 
             _ => Err(SomaError::UnsupportedFeatureError {
                 error: "Unsupported signature scheme".to_string(),
-            }
-            .into()),
+            }),
         }
     }
 }
@@ -1326,7 +1322,7 @@ impl Signature {
         // itself that computes the BCS hash of the Rust type prefix and `struct TransactionData`.
         // (See `fn digest` in `impl Message for SenderSignedData`).
         let mut hasher = DefaultHash::default();
-        hasher.update(&bcs::to_bytes(&value).expect("Message serialization should not fail"));
+        hasher.update(bcs::to_bytes(&value).expect("Message serialization should not fail"));
 
         Signer::sign(secret, &hasher.finalize().digest)
     }
@@ -1508,7 +1504,7 @@ impl<S: SomaSignatureInner + Sized> SomaSignature for S {
         T: Serialize,
     {
         let mut hasher = DefaultHash::default();
-        hasher.update(&bcs::to_bytes(&value).expect("Message serialization should not fail"));
+        hasher.update(bcs::to_bytes(&value).expect("Message serialization should not fail"));
         let digest = hasher.finalize().digest;
 
         let (sig, pk) = &self.get_verification_inputs()?;

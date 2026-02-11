@@ -72,6 +72,7 @@ pub(crate) fn parse_dag(dag_string: &str) -> IResult<&str, DagBuilder> {
     Ok((input, dag_builder))
 }
 
+#[allow(clippy::type_complexity)]
 fn parse_round<'a>(
     input: &'a str,
     dag_builder: &DagBuilder,
@@ -248,9 +249,11 @@ fn parse_slot(input: &str) -> IResult<&str, Slot> {
 fn str_to_authority_index(input: &str) -> Option<AuthorityIndex> {
     if input.starts_with('[') && input.ends_with(']') && input.len() > 2 {
         input[1..input.len() - 1].parse::<u32>().ok().map(AuthorityIndex::new_for_test)
-    } else if input.len() == 1 && input.chars().next()?.is_ascii_uppercase() {
-        // Handle single uppercase ASCII alphabetic character
-        let alpha_char = input.chars().next().unwrap();
+    } else if input.len() == 1 {
+        let alpha_char = input.chars().next()?;
+        if !alpha_char.is_ascii_uppercase() {
+            return None;
+        }
         let index = alpha_char as u32 - 'A' as u32;
         Some(AuthorityIndex::new_for_test(index))
     } else {

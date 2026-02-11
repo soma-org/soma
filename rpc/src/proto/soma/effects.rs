@@ -39,7 +39,7 @@ impl Merge<&TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::FEE_FIELD.name) {
-            self.fee = fee.clone();
+            self.fee = *fee;
         }
 
         if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
@@ -47,7 +47,7 @@ impl Merge<&TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
-            self.gas_object_index = gas_object_index.clone();
+            self.gas_object_index = *gas_object_index;
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {
@@ -146,7 +146,7 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
         }
 
         if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
-            self.gas_object_index = gas_object_index.clone();
+            self.gas_object_index = *gas_object_index;
         }
 
         if mask.contains(Self::DEPENDENCIES_FIELD.name) {

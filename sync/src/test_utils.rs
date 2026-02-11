@@ -1,3 +1,5 @@
+#![allow(unused_imports, clippy::unwrap_used, clippy::expect_used)]
+
 use rand::{SeedableRng as _, rngs::StdRng};
 use tokio::sync::{broadcast, mpsc};
 use types::{

@@ -1,4 +1,4 @@
-#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::all)]
 
 // Include the generated proto definitions
 include!("../generated/soma.rpc.rs");

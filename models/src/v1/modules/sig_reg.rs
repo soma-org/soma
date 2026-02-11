@@ -43,7 +43,7 @@ impl<B: Backend> SIGReg<B> {
     pub fn forward(&self, input: Tensor<B, 3>, noise: Tensor<B, 2>) -> Tensor<B, 1> {
         let a = noise.clone() / l2_norm(noise, 0);
         let x = input.matmul(a.unsqueeze());
-        let n = x.shape().last().unwrap().clone() as f32;
+        let n = *x.shape().last().unwrap() as f32;
         let x_t: Tensor<B, 4> = x.unsqueeze_dim(3);
         let x_t = x_t * self.t.clone().unsqueeze();
 
@@ -56,6 +56,6 @@ impl<B: Backend> SIGReg<B> {
         let integrated = err * self.weights.clone().unsqueeze();
         let integrated = integrated.sum_dim(2) * n;
 
-        return integrated.mean();
+        integrated.mean()
     }
 }

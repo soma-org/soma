@@ -160,7 +160,7 @@ where
         let own_address = to_socket_addr(&self.own_address)?;
 
         let tls_server_config = create_rustls_server_config(
-            AllowAll::default(),
+            AllowAll,
             certificate_server_name(),
             self.network_keypair.clone(),
         );
@@ -427,24 +427,17 @@ where
     let io = hyper_util::rt::TokioIo::new(tls_stream);
     let connection = http.serve_connection(io, hyper_service);
 
-    tokio::pin!(connection);
-
-    loop {
-        tokio::select! {
-            result = &mut connection => {
-                active_peers.remove(&peer_id, DisconnectReason::ConnectionLost);
-                match result {
-                    Ok(()) => {
-                        trace!("Connection closed for {}", peer_addr);
-                        break;
-                    }
-                    Err(e) => {
-                        return Err(SomaError::NetworkServerConnection(
-                            format!("Connection error for {}: {}", peer_addr, e)
-                        ));
-                    }
-                }
-            }
+    let result = connection.await;
+    active_peers.remove(&peer_id, DisconnectReason::ConnectionLost);
+    match result {
+        Ok(()) => {
+            trace!("Connection closed for {}", peer_addr);
+        }
+        Err(e) => {
+            return Err(SomaError::NetworkServerConnection(format!(
+                "Connection error for {}: {}",
+                peer_addr, e
+            )));
         }
     }
 

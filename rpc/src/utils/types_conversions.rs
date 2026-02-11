@@ -1617,7 +1617,7 @@ impl From<types::metadata::Metadata> for Metadata {
     fn from(value: types::metadata::Metadata) -> Self {
         match value {
             types::metadata::Metadata::V1(v1) => Metadata::V1(MetadataV1 {
-                checksum: v1.checksum().as_bytes().try_into().expect("checksum should be 32 bytes"),
+                checksum: v1.checksum().as_bytes().to_vec(),
                 size: v1.size() as u64,
             }),
         }

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use arrgen::{normal_array, uniform_array};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tolerance, set_print_options};
@@ -19,13 +21,13 @@ fn test_v1_sig_reg_normal() {
     let sig_reg_config = SIGRegConfig::new();
     let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
     let input: Tensor<TestBackend, 3> = Tensor::from_data(
-        normal_array(seed + 1, &vec![batch_size, seq_len, embedding_dim], 0.0, 1.0)
+        normal_array(seed + 1, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
             .to_tensor_data()
             .unwrap(),
         &device,
     );
     let noise: Tensor<TestBackend, 2> = Tensor::from_data(
-        normal_array(seed + 2, &vec![embedding_dim, sig_reg_config.slices], 0.0, 1.0)
+        normal_array(seed + 2, &[embedding_dim, sig_reg_config.slices], 0.0, 1.0)
             .to_tensor_data()
             .unwrap(),
         &device,
@@ -54,13 +56,13 @@ fn test_v1_sig_reg_uniform() {
     let sig_reg_config = SIGRegConfig::new();
     let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
     let input: Tensor<TestBackend, 3> = Tensor::from_data(
-        uniform_array(seed + 1, &vec![batch_size, seq_len, embedding_dim], 0.0, 1.0)
+        uniform_array(seed + 1, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
             .to_tensor_data()
             .unwrap(),
         &device,
     );
     let noise: Tensor<TestBackend, 2> = Tensor::from_data(
-        normal_array(seed + 2, &vec![embedding_dim, sig_reg_config.slices], 0.0, 1.0)
+        normal_array(seed + 2, &[embedding_dim, sig_reg_config.slices], 0.0, 1.0)
             .to_tensor_data()
             .unwrap(),
         &device,

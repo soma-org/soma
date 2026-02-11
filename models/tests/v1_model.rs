@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use arrgen::normal_array;
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
@@ -53,88 +55,88 @@ fn test_v1_probe() {
         let lseed = seed + l as u64;
         tensors.insert(
             format!("encoder.layers.{}.norm_1.gamma", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 1, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 1,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.norm_1.beta", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 2, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 2,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.query.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 3, &vec![embedding_dim, embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 3,&[embedding_dim, embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.query.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 4, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 4,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.key.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 5, &vec![embedding_dim, embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 5,&[embedding_dim, embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.key.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 6, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 6,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.value.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 7, &vec![embedding_dim, embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 7,&[embedding_dim, embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.value.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 8, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 8,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.output.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 9, &vec![embedding_dim, embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 9,&[embedding_dim, embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.attention.output.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 10, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 10,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.norm_2.gamma", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 11, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 11,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.norm_2.beta", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 12, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 12,&[embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.pwff.linear_inner.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 13, &vec![embedding_dim, hidden_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 13,&[embedding_dim, hidden_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.pwff.linear_inner.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 14, &vec![hidden_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 14,&[hidden_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.pwff.linear_outer.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 15, &vec![hidden_dim, embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 15,&[hidden_dim, embedding_dim], 0.0, 1.0)),
         );
         tensors.insert(
             format!("encoder.layers.{}.pwff.linear_outer.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 16, &vec![embedding_dim], 0.0, 1.0)),
+            ArrayWrapper(normal_array(lseed + 16,&[embedding_dim], 0.0, 1.0)),
         );
     }
     tensors.insert(
         "final_norm.gamma".to_string(),
-        ArrayWrapper(normal_array(seed + 100, &vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 100,&[embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "final_norm.beta".to_string(),
-        ArrayWrapper(normal_array(seed + 200, &vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 200,&[embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "embedding.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 250, &vec![vocab_size, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 250,&[vocab_size, embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "predictor.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 300, &vec![embedding_dim, vocab_size], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 300,&[embedding_dim, vocab_size], 0.0, 1.0)),
     );
     tensors.insert(
         "predictor.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 400, &vec![vocab_size], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 400,&[vocab_size], 0.0, 1.0)),
     );
 
     let st = serialize(tensors, &None).unwrap();

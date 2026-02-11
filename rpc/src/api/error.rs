@@ -293,11 +293,11 @@ impl ErrorDetails {
                     error_details.bad_request = Some(bad_request);
                     has_any = true;
                 }
-            } else if any.type_url == RetryInfo::type_url() {
-                if let Ok(retry_info) = any.to_msg() {
-                    error_details.retry_info = Some(retry_info);
-                    has_any = true;
-                }
+            } else if any.type_url == RetryInfo::type_url()
+                && let Ok(retry_info) = any.to_msg()
+            {
+                error_details.retry_info = Some(retry_info);
+                has_any = true;
             }
         }
 

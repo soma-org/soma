@@ -1,7 +1,6 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -42,6 +41,7 @@ use tonic::Status;
 pub struct Client(rpc_client::Client);
 
 impl Client {
+    #[allow(clippy::result_large_err)]
     pub fn new<T>(uri: T) -> Result<Self>
     where
         T: TryInto<http::Uri>,
@@ -429,8 +429,7 @@ fn certified_checkpoint_summary_try_from_proto(
         .ok_or_else(|| TryFromProtoError::missing("signature"))?
         .try_into()?;
 
-    let signature = types::crypto::AuthorityStrongQuorumSignInfo::try_from(sdk_signature)
-        .map_err(|e| TryFromProtoError::invalid("signature", e))?;
+    let signature: types::crypto::AuthorityStrongQuorumSignInfo = sdk_signature.into();
 
     Ok(CertifiedCheckpointSummary::new_from_data_and_sig(summary, signature))
 }
@@ -499,6 +498,7 @@ pub struct SimulationResult {
     pub objects: types::full_checkpoint_content::ObjectSet,
 }
 
+#[allow(clippy::result_large_err)]
 fn simulation_result_try_from_proto(
     response: &proto::SimulateTransactionResponse,
 ) -> Result<SimulationResult, TryFromProtoError> {
@@ -539,6 +539,7 @@ pub struct TransactionQueryResult {
     pub balance_changes: Vec<types::balance_change::BalanceChange>,
 }
 
+#[allow(clippy::result_large_err)]
 fn transaction_query_result_try_from_proto(
     executed_tx: &proto::ExecutedTransaction,
 ) -> Result<TransactionQueryResult, TryFromProtoError> {

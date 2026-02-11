@@ -290,7 +290,7 @@ impl ChallengeExecutor {
                 "Target missing winning_data_manifest for challenge",
             ))
         })?;
-        let winning_data_commitment = target.winning_data_commitment.clone().ok_or_else(|| {
+        let winning_data_commitment = target.winning_data_commitment.ok_or_else(|| {
             ExecutionFailureStatus::SomaError(SomaError::from(
                 "Target missing winning_data_commitment for challenge",
             ))

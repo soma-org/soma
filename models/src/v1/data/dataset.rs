@@ -26,7 +26,7 @@ impl Dataset<ByteSequenceItem> for ByteSequenceDataset {
         if self.buffer.is_empty() {
             return 0;
         }
-        (self.buffer.len() + self.seq_len - 1) / self.seq_len
+        self.buffer.len().div_ceil(self.seq_len)
     }
 
     fn get(&self, index: usize) -> Option<ByteSequenceItem> {

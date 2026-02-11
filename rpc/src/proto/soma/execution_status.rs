@@ -17,12 +17,8 @@ impl From<crate::types::ExecutionError> for ExecutionError {
         use crate::types::ExecutionError as E;
         use execution_error::{ErrorDetails, ExecutionErrorKind};
 
-        let mut message = Self::default();
+        let description = Some(format!("{:?}", value));
 
-        // Set human-readable description
-        message.description = Some(format!("{:?}", value));
-
-        // Map to protobuf error kind and details
         let (kind, error_details) = match value {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
 
@@ -121,9 +117,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             }
         };
 
-        message.kind = Some(kind.into());
-        message.error_details = error_details;
-        message
+        Self {
+            description,
+            kind: Some(kind.into()),
+            error_details,
+        }
     }
 }
 

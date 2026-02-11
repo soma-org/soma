@@ -872,7 +872,7 @@ impl ObjectID {
 
 impl From<SomaAddress> for ObjectID {
     fn from(address: SomaAddress) -> ObjectID {
-        address.into()
+        ObjectID(address)
     }
 }
 

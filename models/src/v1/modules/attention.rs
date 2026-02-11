@@ -20,7 +20,7 @@ pub fn apply_rope<B: Backend>(
     if scale_factor < 1.0 {
         panic!("scale_factor must be >= 1.0, got {}", scale_factor);
     }
-    if head_dim % 2 != 0 {
+    if !head_dim.is_multiple_of(2) {
         panic!("head_dim must be even, got {}", head_dim);
     }
 
@@ -53,8 +53,7 @@ pub fn apply_rope<B: Backend>(
     let first_part = first_half.clone() * cos.clone() - second_half.clone() * sin.clone();
     let second_part = second_half * cos + first_half * sin;
 
-    let out = Tensor::cat(vec![first_part, second_part], 3);
-    out
+    Tensor::cat(vec![first_part, second_part], 3)
 }
 
 /// Configuration to create a [Multi Head Attention](MultiHeadAttention) layer using the [init function](MultiHeadAttentionConfig::init).
@@ -184,9 +183,7 @@ impl<B: Backend> MultiHeadAttention<B> {
         let weights = self.attn_weights(attn_scores, input.mask_pad, input.mask_attn);
         let context = weights.clone().matmul(value);
         let context = context.swap_dims(1, 2).reshape([batch_size, seq_length, d_model]);
-        let context = self.output.forward(context);
-
-        context
+        self.output.forward(context)
     }
 
     fn attn_scores(&self, query: Tensor<B, 4>, key: Tensor<B, 4>) -> Tensor<B, 4> {

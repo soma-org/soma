@@ -96,10 +96,10 @@ async fn get_validator_gas_object(
     // Find the created coin for the validator
     let created = response.effects.created();
     for (obj_ref, owner) in created {
-        if let types::object::Owner::AddressOwner(addr) = owner {
-            if addr == validator_address {
-                return obj_ref;
-            }
+        if let types::object::Owner::AddressOwner(addr) = owner
+            && addr == validator_address
+        {
+            return obj_ref;
         }
     }
 

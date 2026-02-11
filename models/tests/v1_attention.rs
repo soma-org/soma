@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::useless_vec)]
+
 use std::collections::HashMap;
 
 use arrgen::{constant_array, normal_array, uniform_array};
@@ -82,53 +84,53 @@ fn test_v1_attention() {
         "mha.query.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 1,
-            &vec![head_dim * num_heads, head_dim * num_heads],
+           &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.query.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &vec![head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 2,&[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.key.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 3,
-            &vec![head_dim * num_heads, head_dim * num_heads],
+           &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.key.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4, &vec![head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 4,&[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.value.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 5,
-            &vec![head_dim * num_heads, head_dim * num_heads],
+           &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.value.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 6, &vec![head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 6,&[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.output.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 7,
-            &vec![head_dim * num_heads, head_dim * num_heads],
+           &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.output.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 8, &vec![head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 8,&[head_dim * num_heads], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -138,7 +140,7 @@ fn test_v1_attention() {
     model.load_from(&mut store).unwrap();
 
     let input_data =
-        normal_array(seed + 9, &vec![batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
+        normal_array(seed + 9,&[batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
             .to_tensor_data()
             .unwrap();
     let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);

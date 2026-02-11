@@ -616,16 +616,14 @@ impl TryFrom<RawSubmitTxResult> for SubmitTxResult {
                     crate::error::SomaError::GrpcMessageDeserializeError {
                         type_info: "RawSubmitTxResult.inner.Error".to_string(),
                         error: "RawSubmitTxResult.inner.Error is None".to_string(),
-                    }
-                    .into(),
+                    },
                 );
                 Ok(SubmitTxResult::Rejected { error })
             }
             None => Err(crate::error::SomaError::GrpcMessageDeserializeError {
                 type_info: "RawSubmitTxResult.inner".to_string(),
                 error: "RawSubmitTxResult.inner is None".to_string(),
-            }
-            .into()),
+            }),
         }
     }
 }
@@ -639,8 +637,7 @@ impl TryFrom<RawSubmitTxResponse> for SubmitTxResponse {
             return Err(crate::error::SomaError::GrpcMessageDeserializeError {
                 type_info: "RawSubmitTxResponse.results".to_string(),
                 error: format!("Expected exactly 1 result, got {}", value.results.len()),
-            }
-            .into());
+            });
         }
 
         let results = value
@@ -805,8 +802,7 @@ impl TryFrom<RawWaitForEffectsResponse> for WaitForEffectsResponse {
             None => Err(crate::error::SomaError::GrpcMessageDeserializeError {
                 type_info: "RawWaitForEffectsResponse.inner".to_string(),
                 error: "RawWaitForEffectsResponse.inner is None".to_string(),
-            }
-            .into()),
+            }),
         }
     }
 }

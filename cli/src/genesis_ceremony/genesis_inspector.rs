@@ -74,15 +74,13 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
 fn examine_validators(validator_options: &[&str], validator_map: &BTreeMap<String, &Validator>) {
     if validator_map.is_empty() {
         println!("No validators found.");
-        print_divider(&format!("Validators"));
+        print_divider("Validators");
         return;
     }
 
     loop {
         let ans = Select::new(
-            &format!(
-                "Select one validator to examine ('All' to display all, 'Exit' to return to Main):"
-            ),
+            "Select one validator to examine ('All' to display all, 'Exit' to return to Main):",
             validator_options.to_vec(),
         )
         .prompt();
@@ -105,7 +103,7 @@ fn examine_validators(validator_options: &[&str], validator_map: &BTreeMap<Strin
             }
         }
     }
-    print_divider(&format!("Validators"));
+    print_divider("Validators");
 }
 
 fn examine_objects(genesis: &UnsignedGenesis) {
@@ -166,7 +164,7 @@ fn examine_soma_distribution(soma_distribution: &BTreeMap<String, BTreeMap<Strin
 
     for (owner, coins) in soma_distribution {
         let mut amount_sum: u64 = 0;
-        for (_name, (_type, value)) in coins {
+        for (_type, value) in coins.values() {
             amount_sum += value;
         }
         total_soma += amount_sum;

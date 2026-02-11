@@ -653,13 +653,10 @@ impl ObjectsCompactionFilter {
         let object: StoreObject = bcs::from_bytes(value)?;
         if matches!(object, StoreObject::Value(_)) {
             if let Some(db) = self.db.upgrade() {
-                match db.object_tombstones.get(&object_id)? {
-                    Some(gc_version) => {
-                        if version <= gc_version {
-                            return Ok(Decision::Remove);
-                        }
+                if let Some(gc_version) = db.object_tombstones.get(&object_id)? {
+                    if version <= gc_version {
+                        return Ok(Decision::Remove);
                     }
-                    None => {}
                 }
             }
         }

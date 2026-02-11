@@ -80,7 +80,7 @@
 )]
 
 use prost_types::FileDescriptorProto;
-use std::io::{BufWriter, Error, ErrorKind, Result, Write};
+use std::io::{BufWriter, Result, Write};
 use std::path::PathBuf;
 
 use crate::build_utils::pbjson_build::descriptor::{Descriptor, Package};
@@ -204,7 +204,7 @@ impl Builder {
         let mut output: PathBuf = self.out_dir.clone().map(Ok).unwrap_or_else(|| {
             std::env::var_os("OUT_DIR")
                 .ok_or_else(|| {
-                    Error::new(ErrorKind::Other, "OUT_DIR environment variable is not set")
+                    std::io::Error::other("OUT_DIR environment variable is not set")
                 })
                 .map(Into::into)
         })?;

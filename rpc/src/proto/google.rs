@@ -14,6 +14,7 @@ pub mod protobuf {
     }
 }
 
+#[allow(clippy::all)]
 pub mod rpc {
     include!("generated/google.rpc.rs");
 

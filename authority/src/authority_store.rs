@@ -636,8 +636,6 @@ impl AuthorityStore {
                 });
             };
 
-            let live_marker = live_marker.map(|l| l);
-
             if let Some(LockDetails { epoch: previous_epoch, .. }) = &live_marker {
                 // this must be from a prior epoch, because we no longer write LockDetails to
                 // owned_object_transaction_locks
@@ -713,7 +711,7 @@ impl AuthorityStore {
             .next()
             .transpose()?
             .and_then(|value| if value.0.0 == object_id { Some(value) } else { None })
-            .ok_or_else(|| SomaError::ObjectNotFound { object_id, version: None })?
+            .ok_or(SomaError::ObjectNotFound { object_id, version: None })?
             .0)
     }
 

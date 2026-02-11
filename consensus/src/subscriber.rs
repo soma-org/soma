@@ -26,6 +26,7 @@ pub(crate) struct Subscriber<C: NetworkClient, S: NetworkService> {
     network_client: Arc<C>,
     authority_service: Arc<S>,
     dag_state: Arc<RwLock<DagState>>,
+    #[allow(clippy::type_complexity)]
     subscriptions: Arc<Mutex<Box<[Option<JoinHandle<()>>]>>>,
 }
 

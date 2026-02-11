@@ -139,7 +139,7 @@ impl TransactionEffectsAPI for TransactionEffects {
     }
 
     fn transaction_digest_owned(&self) -> TransactionDigest {
-        self.transaction_digest.clone()
+        self.transaction_digest
     }
 
     fn old_object_metadata(&self) -> Vec<(ObjectRef, Owner)> {
@@ -215,23 +215,20 @@ impl TransactionEffectsAPI for TransactionEffects {
                 }
                 _ => None,
             })
-            .chain(self.unchanged_shared_objects.iter().filter_map(|(id, change_kind)| {
+            .chain(self.unchanged_shared_objects.iter().map(|(id, change_kind)| {
                 match change_kind {
                     UnchangedSharedKind::ReadOnlyRoot((version, digest)) => {
-                        Some(InputSharedObject::ReadOnly((*id, *version, *digest)))
+                        InputSharedObject::ReadOnly((*id, *version, *digest))
                     }
                     UnchangedSharedKind::MutateDeleted(seqno) => {
-                        Some(InputSharedObject::MutateDeleted(*id, *seqno))
+                        InputSharedObject::MutateDeleted(*id, *seqno)
                     }
                     UnchangedSharedKind::ReadDeleted(seqno) => {
-                        Some(InputSharedObject::ReadDeleted(*id, *seqno))
+                        InputSharedObject::ReadDeleted(*id, *seqno)
                     }
                     UnchangedSharedKind::Cancelled(seqno) => {
-                        Some(InputSharedObject::Cancelled(*id, *seqno))
-                    } // We can not expose the per epoch config object as input shared object,
-                      // since it does not require sequencing, and hence shall not be considered
-                      // as a normal input shared object.
-                      // UnchangedSharedKind::PerEpochConfig => None,
+                        InputSharedObject::Cancelled(*id, *seqno)
+                    }
                 }
             }))
             .collect()
@@ -303,7 +300,7 @@ impl TransactionEffectsAPI for TransactionEffects {
     fn object_changes(&self) -> Vec<ObjectChange> {
         self.changed_objects
             .iter()
-            .filter_map(|(id, change)| {
+            .map(|(id, change)| {
                 let input_version_digest = match &change.input_state {
                     ObjectIn::NotExist => None,
                     ObjectIn::Exist((vd, _)) => Some(*vd),
@@ -314,7 +311,7 @@ impl TransactionEffectsAPI for TransactionEffects {
                     ObjectOut::ObjectWrite((d, _)) => Some((self.version, *d)),
                 };
 
-                Some(ObjectChange {
+                ObjectChange {
                     id: *id,
 
                     input_version: input_version_digest.map(|k| k.0),
@@ -324,13 +321,14 @@ impl TransactionEffectsAPI for TransactionEffects {
                     output_digest: output_version_digest.map(|k| k.1),
 
                     id_operation: change.id_operation,
-                })
+                }
             })
             .collect()
     }
 }
 
 impl TransactionEffects {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         status: ExecutionStatus,
         executed_epoch: EpochId,
@@ -614,7 +612,7 @@ impl ExecutionStatus {
     }
 
     pub fn is_ok(&self) -> bool {
-        matches!(self, ExecutionStatus::Success { .. })
+        matches!(self, ExecutionStatus::Success)
     }
 
     pub fn is_err(&self) -> bool {
@@ -632,7 +630,7 @@ impl ExecutionStatus {
 
     pub fn unwrap_err(self) -> ExecutionFailureStatus {
         match self {
-            ExecutionStatus::Success { .. } => {
+            ExecutionStatus::Success => {
                 panic!("Unable to unwrap() on {:?}", self);
             }
             ExecutionStatus::Failure { error } => error,

@@ -69,7 +69,7 @@ impl Merge<crate::types::Object> for Object {
         }
 
         if mask.contains(Self::OWNER_FIELD.name) {
-            self.owner = Some(source.owner().clone().into());
+            self.owner = Some((*source.owner()).into());
         }
 
         if mask.contains(Self::PREVIOUS_TRANSACTION_FIELD.name) {

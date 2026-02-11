@@ -358,6 +358,7 @@ impl TemporaryStore {
             .collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn into_effects(
         mut self,
         shared_object_refs: Vec<SharedInput>,
@@ -601,7 +602,7 @@ impl TemporaryStore {
     /// This is required because the shared object version manager always advances
     /// the next version for shared objects based on Lamport timestamps.
     fn ensure_mutable_shared_objects_written(&mut self) {
-        for (id, _) in &self.mutable_input_refs {
+        for id in self.mutable_input_refs.keys() {
             if let Some(obj) = self.input_objects.get(id) {
                 // Only handle shared objects - owned objects don't have this issue
                 if matches!(obj.owner, Owner::Shared { .. }) {

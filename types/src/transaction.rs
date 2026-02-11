@@ -169,7 +169,7 @@ pub enum TransactionKind {
     /// Distributes the challenger's bond based on report quorum:
     /// - 2f+1 reports: challenger bond → reporting validators (challenger loses)
     /// - No quorum: challenger bond → challenger (benefit of doubt)
-    /// Note: The miner's bond is handled separately by ClaimRewards based on submission reports.
+    ///   Note: The miner's bond is handled separately by ClaimRewards based on submission reports.
     ClaimChallengeBond {
         challenge_id: ChallengeId,
     },
@@ -227,7 +227,7 @@ pub struct RemoveValidatorArgs {
     pub pubkey_bytes: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct UpdateValidatorMetadataArgs {
     /// Optional new network address (serialized Multiaddr)
     pub next_epoch_network_address: Option<Vec<u8>>,
@@ -244,20 +244,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     /// Optional new network public key (Ed25519)
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
-}
-
-impl Default for UpdateValidatorMetadataArgs {
-    fn default() -> Self {
-        Self {
-            next_epoch_network_address: None,
-            next_epoch_p2p_address: None,
-            next_epoch_primary_address: None,
-            next_epoch_proxy_address: None,
-            next_epoch_protocol_pubkey: None,
-            next_epoch_worker_pubkey: None,
-            next_epoch_network_pubkey: None,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -963,11 +949,7 @@ impl TransactionData {
     }
 
     pub fn is_consensus_commit_prologue(&self) -> bool {
-        match &self.kind {
-            TransactionKind::ConsensusCommitPrologue(_) => true,
-
-            _ => false,
-        }
+        matches!(&self.kind, TransactionKind::ConsensusCommitPrologue(_))
     }
 
     pub fn execution_parts(&self) -> (TransactionKind, SomaAddress, Vec<ObjectRef>) {
@@ -1109,7 +1091,7 @@ impl SenderSignedData {
 
     pub fn serialized_size(&self) -> SomaResult<usize> {
         bcs::serialized_size(self)
-            .map_err(|e| SomaError::TransactionSerializationError { error: e.to_string() }.into())
+            .map_err(|e| SomaError::TransactionSerializationError { error: e.to_string() })
     }
 }
 
@@ -1126,13 +1108,11 @@ impl Message for SenderSignedData {
 impl<S> Envelope<SenderSignedData, S> {
     // Returns the primary key for this transaction.
     pub fn key(&self) -> TransactionKey {
-        match &self.data().intent_message().value.kind {
-            _ => TransactionKey::Digest(*self.digest()),
-        }
+        TransactionKey::Digest(*self.digest())
     }
 
     pub fn contains_shared_object(&self) -> bool {
-        self.data().inner().intent_message.value.shared_input_objects().iter().next().is_some()
+        !self.data().inner().intent_message.value.shared_input_objects().is_empty()
     }
 
     pub fn shared_input_objects(&self) -> impl Iterator<Item = SharedInputObject> + '_ {

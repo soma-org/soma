@@ -347,13 +347,13 @@ fn check_address(
     print_unsigned_transaction_only: bool,
 ) -> Result<SomaAddress, anyhow::Error> {
     if !print_unsigned_transaction_only {
-        if let Some(validator_address) = validator_address {
-            if validator_address != active_address {
-                bail!(
-                    "`--validator-address` must be the same as the current active address: {}",
-                    active_address
-                );
-            }
+        if let Some(validator_address) = validator_address
+            && validator_address != active_address
+        {
+            bail!(
+                "`--validator-address` must be the same as the current active address: {}",
+                active_address
+            );
         }
         Ok(active_address)
     } else {
@@ -378,7 +378,6 @@ async fn execute_or_serialize(
         })
     } else {
         let tx = builder.build_transaction(sender, kind, options.gas).await?;
-        drop(builder); // Release the borrow before execute_transaction
         let response = execute_transaction(context, tx).await?;
         Ok(ValidatorCommandResponse::Transaction(response))
     }

@@ -78,17 +78,12 @@ impl std::ops::Add<u64> for ProtocolVersion {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Copy, PartialOrd, Ord, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Copy, PartialOrd, Ord, Eq)]
 pub enum Chain {
     Mainnet,
     Testnet,
+    #[default]
     Unknown,
-}
-
-impl Default for Chain {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl Chain {
@@ -397,21 +392,8 @@ impl ProtocolConfig {
                                                                 // When adding a new constant, set it to None in the earliest version, like this:
                                                                 // new_constant: None,
         };
-        for cur in 2..=version.0 {
-            match cur {
-                1 => unreachable!(),
-                // Use this template when making changes:
-                //
-                //     // modify an existing constant.
-                //     move_binary_format_version: Some(7),
-                //
-                //     // Add a new constant (which is set to None in prior versions).
-                //     new_constant: Some(new_value),
-                //
-                //     // Remove a constant (ensure that it is never accessed during this version).
-                //     max_move_object_size: None,
-                _ => panic!("unsupported version {:?}", version),
-            }
+        if version.0 >= 2 {
+            panic!("unsupported version {:?}", version);
         }
 
         // Simtest specific overrides.
@@ -467,9 +449,7 @@ impl ProtocolConfig {
         // Currently there is only one parameter driving this value. If there are multiple
         // things computed from prior consensus commits, this function must return the max
         // of all of them.
-        let window_size = self.get_consensus_commit_rate_estimation_window_size();
-
-        window_size
+        self.get_consensus_commit_rate_estimation_window_size()
     }
 
     /// Build SystemParameters from protocol config.

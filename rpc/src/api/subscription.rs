@@ -85,7 +85,7 @@ impl SubscriptionService {
         // Check that we recieved checkpoints in-order
         {
             let last_sequence_number = self.last_sequence_number;
-            let sequence_number = *checkpoint.summary.sequence_number() as u64;
+            let sequence_number = *checkpoint.summary.sequence_number();
 
             if last_sequence_number != 0 && (last_sequence_number + 1) != sequence_number {
                 panic!(

@@ -12,9 +12,10 @@ impl From<crate::types::Metadata> for Metadata {
         let mut message = Self::default();
         match value {
             crate::types::Metadata::V1(v1) => {
-                let mut proto_v1 = MetadataV1::default();
-                proto_v1.checksum = Some(v1.checksum.into());
-                proto_v1.size = Some(v1.size);
+                let proto_v1 = MetadataV1 {
+                    checksum: Some(v1.checksum.into()),
+                    size: Some(v1.size),
+                };
                 message.version = Some(Version::V1(proto_v1));
             }
         }
@@ -38,11 +39,7 @@ impl TryFrom<&Metadata> for crate::types::Metadata {
                     .checksum
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("checksum"))?
-                    .as_ref()
-                    .try_into()
-                    .map_err(|_| {
-                        TryFromProtoError::invalid("checksum", "invalid checksum length")
-                    })?;
+                    .to_vec();
 
                 let size = v1.size.ok_or_else(|| TryFromProtoError::missing("size"))?;
 
@@ -59,9 +56,10 @@ impl From<crate::types::Manifest> for Manifest {
         let mut message = Self::default();
         match value {
             crate::types::Manifest::V1(v1) => {
-                let mut proto_v1 = ManifestV1::default();
-                proto_v1.url = Some(v1.url.into());
-                proto_v1.metadata = Some(v1.metadata.into());
+                let proto_v1 = ManifestV1 {
+                    url: Some(v1.url.into()),
+                    metadata: Some(v1.metadata.into()),
+                };
                 message.version = Some(Version::V1(proto_v1));
             }
         }
@@ -870,7 +868,7 @@ impl From<crate::types::GenesisTransaction> for GenesisTransaction {
             objects: value
                 .objects
                 .into_iter()
-                .map(|obj| Object::from(obj)) // Explicitly use proto::Object
+                .map(Object::from)
                 .collect(),
         }
     }
@@ -883,7 +881,7 @@ impl TryFrom<&GenesisTransaction> for crate::types::GenesisTransaction {
         let objects = value
             .objects
             .iter()
-            .map(|obj| crate::types::Object::try_from(obj)) // Explicitly convert
+            .map(crate::types::Object::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self { objects })

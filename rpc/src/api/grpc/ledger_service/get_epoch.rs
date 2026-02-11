@@ -193,9 +193,10 @@ pub fn protocol_config_to_proto(config: protocol_config::ProtocolConfig) -> Prot
         })
         .collect();
     let feature_flags = config.feature_map().into_iter().collect();
-    let mut message = ProtocolConfig::default();
-    message.protocol_version = Some(protocol_version);
-    message.feature_flags = feature_flags;
-    message.attributes = attributes;
-    message
+    ProtocolConfig {
+        protocol_version: Some(protocol_version),
+        feature_flags,
+        attributes,
+        ..Default::default()
+    }
 }

@@ -7,21 +7,19 @@ use rand::{SeedableRng, distributions::Uniform, rngs::StdRng};
 pub fn uniform_array(seed: u64, shape: &[usize], min: f32, max: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
     let dist = Uniform::new(min, max);
-    let array_shape = IxDyn(&shape);
-    let array = ArrayD::random_using(array_shape, dist, &mut rng);
-    array
+    let array_shape = IxDyn(shape);
+    ArrayD::random_using(array_shape, dist, &mut rng)
 }
 
 pub fn normal_array(seed: u64, shape: &[usize], mean: f32, std_dev: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
     let dist = Normal::new(mean, std_dev).unwrap();
-    let array_shape = IxDyn(&shape);
-    let array = ArrayD::random_using(array_shape, dist, &mut rng);
-    array
+    let array_shape = IxDyn(shape);
+    ArrayD::random_using(array_shape, dist, &mut rng)
 }
 
 pub fn constant_array(shape: &[usize], value: f32) -> ArrayD<f32> {
-    let array_shape = IxDyn(&shape);
+    let array_shape = IxDyn(shape);
     ArrayD::from_elem(array_shape, value)
 }
 

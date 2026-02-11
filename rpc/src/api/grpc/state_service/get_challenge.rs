@@ -78,8 +78,10 @@ pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Resu
     let object_id: ObjectID = challenge_id.into();
     let challenge_proto = challenge_to_proto_with_id(&object_id, &challenge, &read_mask);
 
-    let mut response = GetChallengeResponse::default();
-    response.challenge = Some(challenge_proto);
+    let response = GetChallengeResponse {
+        challenge: Some(challenge_proto),
+        ..Default::default()
+    };
     Ok(response)
 }
 
@@ -110,14 +112,14 @@ fn challenge_to_proto_with_id(
         proto.status = Some(format_status(&challenge.status));
     }
     // Simplified design: verdict is now part of status (challenger_lost: bool)
-    if mask.contains("verdict") {
-        if let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status {
-            proto.verdict = Some(if *challenger_lost {
-                "challenger_lost".to_string()
-            } else {
-                "challenger_won".to_string()
-            });
-        }
+    if mask.contains("verdict")
+        && let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status
+    {
+        proto.verdict = Some(if *challenger_lost {
+            "challenger_lost".to_string()
+        } else {
+            "challenger_won".to_string()
+        });
     }
     // win_reason is no longer applicable in simplified design
     if mask.contains("distance_threshold") {

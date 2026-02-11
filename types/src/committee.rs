@@ -348,7 +348,7 @@ impl Committee {
     }
 
     pub fn is_valid_index(&self, index: AuthorityIndex) -> bool {
-        (index.value() as usize) < self.voting_rights.len()
+        index.value() < self.voting_rights.len()
     }
 
     pub fn size(&self) -> usize {
@@ -360,7 +360,7 @@ impl Committee {
     }
 
     pub fn authority_by_authority_index(&self, index: AuthorityIndex) -> Option<&Authority> {
-        self.voting_rights.get(index.value()).map(|(name, _)| self.authorities.get(name)).flatten()
+        self.voting_rights.get(index.value()).and_then(|(name, _)| self.authorities.get(name))
     }
 
     pub fn to_authority_index(&self, index: usize) -> Option<AuthorityIndex> {
@@ -393,11 +393,11 @@ impl CommitteeTrait<AuthorityName> for Committee {
 
         let mut result: Vec<AuthorityName> =
             Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
-                .map(|name| name.clone())
+                .copied()
                 .collect();
 
         let rest_sampled =
-            Self::choose_multiple_weighted(&rest, rest.len(), rng).map(|name| name.clone());
+            Self::choose_multiple_weighted(&rest, rest.len(), rng).copied();
 
         result.extend(rest_sampled);
         result

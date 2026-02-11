@@ -63,12 +63,15 @@ mod model_tests;
 mod rewards_distribution_tests;
 #[cfg(test)]
 #[path = "unit_tests/submission_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod submission_tests;
 #[cfg(test)]
 #[path = "unit_tests/target_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod target_tests;
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod test_utils;
 
 /// Fee parameters for transaction execution
@@ -193,6 +196,8 @@ impl SystemState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::result_large_err)]
     pub fn request_add_validator(
         &mut self,
         signer: SomaAddress,
@@ -224,9 +229,10 @@ impl SystemState {
         );
 
         // Request to add validator to the validator set
-        self.validators.request_add_validator(validator).map_err(|e| e) // Pass through error
+        self.validators.request_add_validator(validator)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn request_remove_validator(
         &mut self,
         signer: SomaAddress,
@@ -235,6 +241,7 @@ impl SystemState {
         self.validators.request_remove_validator(signer)
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn request_update_validator_metadata(
         &mut self,
         signer: SomaAddress,
@@ -251,6 +258,7 @@ impl SystemState {
     }
 
     /// Request to add stake to a validator
+    #[allow(clippy::result_large_err)]
     pub fn request_add_stake(
         &mut self,
         signer: SomaAddress,
@@ -278,6 +286,7 @@ impl SystemState {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn request_add_stake_at_genesis(
         &mut self,
         signer: SomaAddress,
@@ -311,6 +320,7 @@ impl SystemState {
     /// The staking pool starts empty — initial stake is added via
     /// `request_add_stake_to_model_at_genesis` through token allocations
     /// (same pattern as validator staking at genesis).
+    #[allow(clippy::too_many_arguments)]
     pub fn add_model_at_genesis(
         &mut self,
         model_id: ModelId,
@@ -351,6 +361,7 @@ impl SystemState {
 
     /// Add stake to a genesis model. Mirrors `request_add_stake_at_genesis` for validators.
     /// Immediately processes pending stake (no epoch delay).
+    #[allow(clippy::result_large_err)]
     pub fn request_add_stake_to_model_at_genesis(
         &mut self,
         model_id: &ModelId,
@@ -379,6 +390,7 @@ impl SystemState {
 
     /// Request to withdraw stake from a validator or model staking pool.
     /// Uses `StakedSoma.pool_id` to route to the correct pool via staking_pool_mappings.
+    #[allow(clippy::result_large_err)]
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;
 
@@ -432,6 +444,7 @@ impl SystemState {
     }
 
     /// Report a validator for misbehavior
+    #[allow(clippy::result_large_err)]
     pub fn report_validator(
         &mut self,
         reporter: SomaAddress,
@@ -455,13 +468,14 @@ impl SystemState {
         // Add report to records
         self.validator_report_records
             .entry(reportee)
-            .or_insert_with(BTreeSet::new)
+            .or_default()
             .insert(reporter);
 
         Ok(())
     }
 
     /// Undo a validator report
+    #[allow(clippy::result_large_err)]
     pub fn undo_report_validator(
         &mut self,
         reporter: SomaAddress,
@@ -492,6 +506,7 @@ impl SystemState {
     }
 
     /// Set validator commission rate
+    #[allow(clippy::result_large_err)]
     pub fn request_set_commission_rate(
         &mut self,
         signer: SomaAddress,
@@ -533,6 +548,8 @@ impl SystemState {
 
     /// Commit a new model (Phase 1 of commit-reveal).
     /// Creates a pending model with a new StakingPool. Returns the StakedSoma receipt.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::result_large_err)]
     pub fn request_commit_model(
         &mut self,
         owner: SomaAddress,
@@ -576,6 +593,7 @@ impl SystemState {
 
     /// Reveal a pending model (Phase 2 of commit-reveal).
     /// Moves model from pending to active, setting its embedding for KNN selection.
+    #[allow(clippy::result_large_err)]
     pub fn request_reveal_model(
         &mut self,
         signer: SomaAddress,
@@ -630,6 +648,7 @@ impl SystemState {
     }
 
     /// Commit an update to an active model's weights.
+    #[allow(clippy::result_large_err)]
     pub fn request_commit_model_update(
         &mut self,
         signer: SomaAddress,
@@ -659,6 +678,7 @@ impl SystemState {
 
     /// Reveal a pending model update.
     /// Also updates the model's embedding for KNN selection.
+    #[allow(clippy::result_large_err)]
     pub fn request_reveal_model_update(
         &mut self,
         signer: SomaAddress,
@@ -706,6 +726,7 @@ impl SystemState {
     }
 
     /// Add stake to a model (any sender).
+    #[allow(clippy::result_large_err)]
     pub fn request_add_stake_to_model(
         &mut self,
         model_id: &ModelId,
@@ -755,6 +776,7 @@ impl SystemState {
     }
 
     /// Set model commission rate (staged for next epoch).
+    #[allow(clippy::result_large_err)]
     pub fn request_set_model_commission_rate(
         &mut self,
         signer: SomaAddress,
@@ -780,6 +802,7 @@ impl SystemState {
     }
 
     /// Deactivate a model (owner voluntary withdrawal).
+    #[allow(clippy::result_large_err)]
     pub fn request_deactivate_model(
         &mut self,
         signer: SomaAddress,
@@ -810,6 +833,7 @@ impl SystemState {
     }
 
     /// Report a model for unavailability (sender must be active validator).
+    #[allow(clippy::result_large_err)]
     pub fn report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
         if !self.validators.is_active_validator(reporter) {
             return Err(ExecutionFailureStatus::NotAValidator);
@@ -822,13 +846,14 @@ impl SystemState {
         self.model_registry
             .model_report_records
             .entry(*model_id)
-            .or_insert_with(BTreeSet::new)
+            .or_default()
             .insert(reporter);
 
         Ok(())
     }
 
     /// Undo a model report (sender must be an active validator and in the report set).
+    #[allow(clippy::result_large_err)]
     pub fn undo_report_model(
         &mut self,
         reporter: SomaAddress,
@@ -926,7 +951,7 @@ impl SystemState {
             // The reveal must happen during (commit_epoch + 1). We are now transitioning
             // to new_epoch, so the previous epoch (prev_epoch) just ended. If the model
             // was committed in an epoch <= prev_epoch - 1, the reveal window has passed.
-            if model.commit_epoch + 1 <= prev_epoch {
+            if model.commit_epoch < prev_epoch {
                 unrevealed_ids.push(*model_id);
             }
         }
@@ -954,14 +979,14 @@ impl SystemState {
         // Updates committed in epoch N must be revealed by the end of epoch N+1.
         // Cancel any expired pending updates (no slash).
         for model in self.model_registry.active_models.values_mut() {
-            if let Some(pending) = &model.pending_update {
-                if pending.commit_epoch + 1 <= prev_epoch {
-                    info!(
-                        "Model pending update cancelled (unrevealed, committed epoch {})",
-                        pending.commit_epoch
-                    );
-                    model.pending_update = None;
-                }
+            if let Some(pending) = &model.pending_update
+                && pending.commit_epoch < prev_epoch
+            {
+                info!(
+                    "Model pending update cancelled (unrevealed, committed epoch {})",
+                    pending.commit_epoch
+                );
+                model.pending_update = None;
             }
         }
 
@@ -986,6 +1011,7 @@ impl SystemState {
             self.model_registry.active_models.values().map(|m| m.staking_pool.soma_balance).sum();
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn advance_epoch(
         &mut self,
         new_epoch: u64,
@@ -1117,15 +1143,12 @@ impl SystemState {
         let adjustment_factor: f32 = if ema_bps > target_hit_rate_bps {
             // Too easy - make harder (decrease thresholds)
             // factor < 1.0
-            let decrease_factor = (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
-                / BPS_DENOMINATOR as f32;
-            decrease_factor
+            (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
+                / BPS_DENOMINATOR as f32
         } else {
             // Too hard - make easier (increase thresholds)
             // factor > 1.0
-            let increase_factor =
-                (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32;
-            increase_factor
+            (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32
         };
 
         // Apply adjustment to distance threshold

@@ -48,7 +48,7 @@ pub struct BlobDownloader {
 
 impl BlobDownloader {
     pub fn new(semaphore: Arc<Semaphore>, chunk_size: u64, ns_per_byte: u16) -> BlobResult<Self> {
-        if chunk_size < MIN_PART_SIZE || chunk_size > MAX_PART_SIZE {
+        if !(MIN_PART_SIZE..=MAX_PART_SIZE).contains(&chunk_size) {
             return Err(BlobError::InvalidChunkSize {
                 size: chunk_size,
                 min: MIN_PART_SIZE,
@@ -69,7 +69,7 @@ impl BlobDownloader {
         }
         let total = total_size as usize;
         let chunk = chunk_size as usize;
-        let num_chunks = (total + chunk - 1) / chunk;
+        let num_chunks = total.div_ceil(chunk);
         let mut ranges = Vec::with_capacity(num_chunks);
 
         for i in 0..num_chunks {

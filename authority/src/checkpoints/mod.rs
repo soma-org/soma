@@ -1802,15 +1802,7 @@ impl CheckpointBuilder {
         let ccps = root_txs
             .iter()
             .filter_map(|tx| {
-                if let Some(tx) = tx {
-                    if tx.transaction_data().is_consensus_commit_prologue() {
-                        Some(tx)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+                tx.as_ref().filter(|tx| tx.transaction_data().is_consensus_commit_prologue())
             })
             .collect::<Vec<_>>();
 
@@ -1819,16 +1811,14 @@ impl CheckpointBuilder {
 
         // Get all the transactions in the checkpoint.
         let txs = self.state.get_transaction_cache_reader().multi_get_transaction_blocks(
-            &sorted.iter().map(|tx| tx.transaction_digest().clone()).collect::<Vec<_>>(),
+            &sorted.iter().map(|tx| *tx.transaction_digest()).collect::<Vec<_>>(),
         );
 
-        if ccps.len() == 0 {
+        if ccps.is_empty() {
             // If there is no consensus commit prologue transaction in the roots, then there should be no
             // consensus commit prologue transaction in the checkpoint.
-            for tx in txs.iter() {
-                if let Some(tx) = tx {
-                    assert!(!tx.transaction_data().is_consensus_commit_prologue());
-                }
+            for tx in txs.iter().flatten() {
+                assert!(!tx.transaction_data().is_consensus_commit_prologue());
             }
         } else {
             // If there is one consensus commit prologue, it must be the first one in the checkpoint.
@@ -1836,10 +1826,8 @@ impl CheckpointBuilder {
 
             assert_eq!(ccps[0].digest(), txs[0].as_ref().unwrap().digest());
 
-            for tx in txs.iter().skip(1) {
-                if let Some(tx) = tx {
-                    assert!(!tx.transaction_data().is_consensus_commit_prologue());
-                }
+            for tx in txs.iter().skip(1).flatten() {
+                assert!(!tx.transaction_data().is_consensus_commit_prologue());
             }
         }
     }
@@ -1988,14 +1976,9 @@ impl CheckpointSignatureAggregator {
             SignedCheckpointSummary::new_from_data_and_sig(self.summary.clone(), signature);
         match self.signatures_by_digest.insert(their_digest, envelope) {
             // ignore repeated signatures
-            InsertResult::Failed { error }
-                if matches!(
-                    error,
-                    SomaError::StakeAggregatorRepeatedSigner { conflicting_sig: false, .. },
-                ) =>
-            {
-                Err(())
-            }
+            InsertResult::Failed {
+                error: SomaError::StakeAggregatorRepeatedSigner { conflicting_sig: false, .. },
+            } => Err(()),
             InsertResult::Failed { error } => {
                 warn!(
                     checkpoint_seq = self.summary.sequence_number,

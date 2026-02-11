@@ -225,6 +225,7 @@ pub(crate) struct Synchronizer<C: NetworkClient, V: BlockVerifier, D: CoreThread
 }
 
 impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C, V, D> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
         network_client: Arc<C>,
         context: Arc<Context>,
@@ -395,13 +396,11 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     // we want to start a new task only if the previous one has already finished.
                     // TODO: consider starting backup fetches in parallel, when a fetch takes too long?
                     if self.fetch_blocks_scheduler_task.is_empty()
-                         {
-                            if let Err(err) = self.start_fetch_missing_blocks_task().await {
-                                 debug!("Core is shutting down, synchronizer is shutting down: {err:?}");
-                            return;
-                            }
-
-                        };
+                        && let Err(err) = self.start_fetch_missing_blocks_task().await
+                    {
+                        debug!("Core is shutting down, synchronizer is shutting down: {err:?}");
+                        return;
+                    }
 
                     scheduler_timeout
                         .as_mut()
@@ -411,6 +410,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn fetch_blocks_from_authority(
         peer_index: AuthorityIndex,
         network_client: Arc<C>,
@@ -475,6 +475,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
     /// Processes the requested raw fetched blocks from peer `peer_index`. If no error is returned then
     /// the verified blocks are immediately sent to Core for processing.
+    #[allow(clippy::too_many_arguments)]
     async fn process_fetched_blocks(
         mut serialized_blocks: Vec<Bytes>,
         peer_index: AuthorityIndex,

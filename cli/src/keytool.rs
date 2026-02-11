@@ -284,6 +284,7 @@ pub struct SignData {
 
 #[derive(Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum CommandOutput {
     Alias(AliasUpdate),
     DecodeMultiSig(DecodedMultiSigOutput),
@@ -344,8 +345,8 @@ impl KeyToolCommand {
                     })
                 }
 
-                if tx_bytes.is_some() {
-                    let tx_bytes = Base64::decode(&tx_bytes.unwrap())
+                if let Some(tx_bytes_val) = tx_bytes {
+                    let tx_bytes = Base64::decode(&tx_bytes_val)
                         .map_err(|e| anyhow!("Invalid base64 tx bytes: {:?}", e))?;
                     let tx_data: TransactionData = bcs::from_bytes(&tx_bytes)?;
                     let s = GenericSignature::MultiSig(multisig);

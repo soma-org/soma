@@ -98,6 +98,7 @@ impl TransactionConsumer {
     // and `max_num_transactions_in_block` parameters specified via protocol config.
     // This returns one or more transactions to be included in the block and a callback to acknowledge the inclusion of those transactions.
     // Also returns a `LimitReached` enum to indicate which limit type has been reached.
+    #[allow(clippy::type_complexity)]
     pub fn next(&mut self) -> (Vec<Transaction>, Box<dyn FnOnce(BlockRef)>, LimitReached) {
         let mut transactions = Vec::new();
         let mut acks = Vec::new();
@@ -142,13 +143,13 @@ impl TransactionConsumer {
             None
         };
 
-        if let Some(t) = self.pending_transactions.take() {
-            if let Some(pending_transactions) = handle_txs(t) {
-                debug!(
-                    "Previously pending transaction(s) should fit into an empty block! Dropping: {:?}",
-                    pending_transactions.transactions
-                );
-            }
+        if let Some(t) = self.pending_transactions.take()
+            && let Some(pending_transactions) = handle_txs(t)
+        {
+            debug!(
+                "Previously pending transaction(s) should fit into an empty block! Dropping: {:?}",
+                pending_transactions.transactions
+            );
         }
 
         // Until we have reached the limit for the pull.

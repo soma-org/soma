@@ -1,4 +1,3 @@
-use serde;
 use serde::de::Deserializer;
 use serde::de::Error;
 use serde::ser::Error as SerError;

@@ -76,7 +76,7 @@ impl ValidatorRewards {
         for (addr, staked_soma) in rewards {
             self.commission_rewards
                 .entry(addr)
-                .or_insert_with(BTreeMap::new)
+                .or_default()
                 .insert(epoch, staked_soma);
         }
     }
@@ -415,6 +415,7 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 /// Advance epoch with rewards.
 /// `reward_amount` is in shannons and represents the total transaction fees for the epoch.
 /// Tests set validator_reward_allocation_bps=10000 so 100% of fees go to validators.
+#[allow(clippy::result_large_err)]
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
@@ -455,6 +456,7 @@ pub fn add_validator(system_state: &mut SystemState, address: SomaAddress) -> Va
 }
 
 /// Request to remove a validator
+#[allow(clippy::result_large_err)]
 pub fn remove_validator(
     system_state: &mut SystemState,
     validator_address: SomaAddress,

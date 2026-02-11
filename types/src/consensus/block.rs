@@ -196,6 +196,7 @@ pub struct BlockV1 {
 }
 
 impl BlockV1 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         epoch: Epoch,
         round: Round,
@@ -359,10 +360,10 @@ impl SignedBlock {
         if let Some(authority) = committee.authority_by_authority_index(block.author()) {
             verify_block_signature(block, self.signature(), &authority.protocol_key)
         } else {
-            return Err(ConsensusError::InvalidAuthorityIndex {
+            Err(ConsensusError::InvalidAuthorityIndex {
                 index: block.author(),
                 max: committee.size() - 1,
-            });
+            })
         }
     }
 

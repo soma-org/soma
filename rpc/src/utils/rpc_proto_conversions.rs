@@ -26,34 +26,34 @@ impl From<types::tx_fee::TransactionFee> for TransactionFee {
             total_fee,
         }: types::tx_fee::TransactionFee,
     ) -> Self {
-        let mut message = Self::default();
-        message.base_fee = Some(base_fee);
-        message.operation_fee = Some(operation_fee);
-        message.value_fee = Some(value_fee);
-        message.total_fee = Some(total_fee);
-        message
+        Self {
+            base_fee: Some(base_fee),
+            operation_fee: Some(operation_fee),
+            value_fee: Some(value_fee),
+            total_fee: Some(total_fee),
+        }
     }
 }
 
 impl From<types::effects::ExecutionStatus> for ExecutionStatus {
     fn from(value: types::effects::ExecutionStatus) -> Self {
-        let mut message = Self::default();
         match value {
-            types::effects::ExecutionStatus::Success => {
-                message.success = Some(true);
-            }
+            types::effects::ExecutionStatus::Success => Self {
+                success: Some(true),
+                ..Default::default()
+            },
             types::effects::ExecutionStatus::Failure { error } => {
                 let description = format!("{error:?}");
                 let mut error_message = ExecutionError::from(error);
-
                 error_message.description = Some(description);
 
-                message.success = Some(false);
-                message.error = Some(error_message);
+                Self {
+                    success: Some(false),
+                    error: Some(error_message),
+                    ..Default::default()
+                }
             }
         }
-
-        message
     }
 }
 
@@ -149,11 +149,12 @@ impl<const T: bool> From<types::crypto::AuthorityQuorumSignInfo<T>>
     for ValidatorAggregatedSignature
 {
     fn from(value: types::crypto::AuthorityQuorumSignInfo<T>) -> Self {
-        let mut message = Self::default();
-        message.epoch = Some(value.epoch);
-        message.signature = Some(value.signature.as_ref().to_vec().into());
-        message.bitmap = value.signers_map.iter().collect();
-        message
+        Self {
+            epoch: Some(value.epoch),
+            signature: Some(value.signature.as_ref().to_vec().into()),
+            bitmap: value.signers_map.iter().collect(),
+            ..Default::default()
+        }
     }
 }
 
@@ -163,12 +164,9 @@ impl<const T: bool> From<types::crypto::AuthorityQuorumSignInfo<T>>
 
 impl From<types::committee::Committee> for ValidatorCommittee {
     fn from(value: types::committee::Committee) -> Self {
-        let mut message = Self::default();
-        message.epoch = Some(value.epoch);
-
         let authorities: Vec<_> = value.authorities().collect();
 
-        message.members = authorities
+        let members = authorities
             .into_iter()
             .map(|(i, authority)| {
                 let network_key = authority.network_key.clone();
@@ -176,20 +174,25 @@ impl From<types::committee::Committee> for ValidatorCommittee {
                 let protocol_key_bytes = authority.protocol_key.to_bytes().to_vec();
                 let network_key_bytes = network_key.into_inner().as_bytes().to_vec();
 
-                let mut member = ValidatorCommitteeMember::default();
-                member.authority_key = Some(authority_key_bytes.into());
-                member.weight = Some(authority.stake);
-
-                member.network_metadata = Some(ValidatorNetworkMetadata {
-                    consensus_address: Some(authority.address.to_string()),
-                    hostname: Some(authority.hostname.clone()),
-                    protocol_key: Some(protocol_key_bytes.into()),
-                    network_key: Some(network_key_bytes.into()),
-                });
-                member
+                ValidatorCommitteeMember {
+                    authority_key: Some(authority_key_bytes.into()),
+                    weight: Some(authority.stake),
+                    network_metadata: Some(ValidatorNetworkMetadata {
+                        consensus_address: Some(authority.address.to_string()),
+                        hostname: Some(authority.hostname.clone()),
+                        protocol_key: Some(protocol_key_bytes.into()),
+                        network_key: Some(network_key_bytes.into()),
+                    }),
+                    ..Default::default()
+                }
             })
             .collect();
-        message
+
+        Self {
+            epoch: Some(value.epoch),
+            members,
+            ..Default::default()
+        }
     }
 }
 
@@ -219,11 +222,12 @@ impl From<types::crypto::Signature> for SimpleSignature {
         let signature = value.signature_bytes();
         let public_key = value.public_key_bytes();
 
-        let mut message = Self::default();
-        message.scheme = Some(scheme.into());
-        message.signature = Some(signature.to_vec().into());
-        message.public_key = Some(public_key.to_vec().into());
-        message
+        Self {
+            scheme: Some(scheme.into()),
+            signature: Some(signature.to_vec().into()),
+            public_key: Some(public_key.to_vec().into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -252,19 +256,21 @@ impl From<&types::crypto::PublicKey> for MultisigMemberPublicKey {
 
 impl From<&types::multisig::MultiSigPublicKey> for MultisigCommittee {
     fn from(value: &types::multisig::MultiSigPublicKey) -> Self {
-        let mut message = Self::default();
-        message.members = value
+        let members = value
             .pubkeys()
             .iter()
-            .map(|(pk, weight)| {
-                let mut member = MultisigMember::default();
-                member.public_key = Some(pk.into());
-                member.weight = Some((*weight).into());
-                member
+            .map(|(pk, weight)| MultisigMember {
+                public_key: Some(pk.into()),
+                weight: Some((*weight).into()),
+                ..Default::default()
             })
             .collect();
-        message.threshold = Some((*value.threshold()).into());
-        message
+
+        Self {
+            members,
+            threshold: Some((*value.threshold()).into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -294,11 +300,12 @@ impl From<&types::crypto::CompressedSignature> for MultisigMemberSignature {
 
 impl From<&types::multisig::MultiSig> for MultisigAggregatedSignature {
     fn from(value: &types::multisig::MultiSig) -> Self {
-        let mut message = Self::default();
-        message.signatures = value.get_sigs().iter().map(Into::into).collect();
-        message.bitmap = Some(value.get_bitmap().into());
-        message.committee = Some(value.get_pk().into());
-        message
+        Self {
+            signatures: value.get_sigs().iter().map(Into::into).collect(),
+            bitmap: Some(value.get_bitmap().into()),
+            committee: Some(value.get_pk().into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -344,10 +351,11 @@ impl Merge<&types::crypto::GenericSignature> for UserSignature {
 
 impl From<types::balance_change::BalanceChange> for BalanceChange {
     fn from(value: types::balance_change::BalanceChange) -> Self {
-        let mut message = Self::default();
-        message.address = Some(value.address.to_string());
-        message.amount = Some(value.amount.to_string());
-        message
+        Self {
+            address: Some(value.address.to_string()),
+            amount: Some(value.amount.to_string()),
+            ..Default::default()
+        }
     }
 }
 
@@ -417,11 +425,12 @@ impl Merge<&types::object::Object> for Object {
 
 fn object_ref_to_proto(value: types::object::ObjectRef) -> ObjectReference {
     let (object_id, version, digest) = value;
-    let mut message = ObjectReference::default();
-    message.object_id = Some(object_id.to_hex());
-    message.version = Some(version.value());
-    message.digest = Some(digest.to_string());
-    message
+    ObjectReference {
+        object_id: Some(object_id.to_hex()),
+        version: Some(version.value()),
+        digest: Some(digest.to_string()),
+        ..Default::default()
+    }
 }
 
 //
@@ -478,7 +487,7 @@ impl Merge<&types::transaction::TransactionData> for Transaction {
 
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment =
-                source.gas_payment.clone().into_iter().map(|g| object_ref_to_proto(g)).collect();
+                source.gas_payment.clone().into_iter().map(object_ref_to_proto).collect();
         }
     }
 }
@@ -517,12 +526,12 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 recipient: Some(recipient.to_string()),
             }),
             K::PayCoins { coins, amounts, recipients } => Kind::PayCoins(PayCoins {
-                coins: coins.into_iter().map(|c| object_ref_to_proto(c)).collect(),
+                coins: coins.into_iter().map(object_ref_to_proto).collect(),
                 amounts: amounts.unwrap_or_default(),
                 recipients: recipients.into_iter().map(|r| r.to_string()).collect(),
             }),
             K::TransferObjects { objects, recipient } => Kind::TransferObjects(TransferObjects {
-                objects: objects.into_iter().map(|o| object_ref_to_proto(o)).collect(),
+                objects: objects.into_iter().map(object_ref_to_proto).collect(),
                 recipient: Some(recipient.to_string()),
             }),
             K::AddStake { address, coin_ref, amount } => Kind::AddStake(AddStake {
@@ -628,9 +637,10 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
         };
 
-        let mut message = Self::default();
-        message.kind = Some(kind);
-        message
+        Self {
+            kind: Some(kind),
+            ..Default::default()
+        }
     }
 }
 
@@ -675,12 +685,12 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
 
 impl From<types::consensus::ConsensusCommitPrologue> for ConsensusCommitPrologue {
     fn from(value: types::consensus::ConsensusCommitPrologue) -> Self {
-        let mut message = Self::default();
-        message.epoch = Some(value.epoch);
-        message.round = Some(value.round);
-        message.commit_timestamp =
-            Some(crate::proto::timestamp_ms_to_proto(value.commit_timestamp_ms));
-        message
+        Self {
+            epoch: Some(value.epoch),
+            round: Some(value.round),
+            commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(value.commit_timestamp_ms)),
+            ..Default::default()
+        }
     }
 }
 
@@ -690,9 +700,9 @@ impl From<types::consensus::ConsensusCommitPrologue> for ConsensusCommitPrologue
 
 impl From<types::transaction::GenesisTransaction> for GenesisTransaction {
     fn from(value: types::transaction::GenesisTransaction) -> Self {
-        let mut message = Self::default();
-        message.objects = value.objects.into_iter().map(Into::into).collect();
-        message
+        Self {
+            objects: value.objects.into_iter().map(Into::into).collect(),
+        }
     }
 }
 
@@ -1946,9 +1956,10 @@ impl From<types::metadata::Metadata> for Metadata {
         let mut message = Self::default();
         match value {
             types::metadata::Metadata::V1(v1) => {
-                let mut proto_v1 = MetadataV1::default();
-                proto_v1.checksum = Some(v1.checksum().as_bytes().to_vec().into());
-                proto_v1.size = Some(v1.size() as u64);
+                let proto_v1 = MetadataV1 {
+                    checksum: Some(v1.checksum().as_bytes().to_vec().into()),
+                    size: Some(v1.size() as u64),
+                };
                 message.version = Some(crate::proto::soma::metadata::Version::V1(proto_v1));
             }
         }
@@ -2006,9 +2017,10 @@ impl From<types::metadata::Manifest> for Manifest {
         let mut message = Self::default();
         match value {
             types::metadata::Manifest::V1(v1) => {
-                let mut proto_v1 = ManifestV1::default();
-                proto_v1.url = Some(v1.url().to_string());
-                proto_v1.metadata = Some(v1.metadata().clone().into());
+                let proto_v1 = ManifestV1 {
+                    url: Some(v1.url().to_string()),
+                    metadata: Some(v1.metadata().clone().into()),
+                };
                 message.version = Some(crate::proto::soma::manifest::Version::V1(proto_v1));
             }
         }
@@ -2148,8 +2160,7 @@ impl TryFrom<&Checkpoint> for types::full_checkpoint_content::Checkpoint {
             // Get signature and combine into CertifiedCheckpointSummary
             let crate_sig: crate::types::ValidatorAggregatedSignature =
                 checkpoint.signature().try_into()?;
-            let signature = types::crypto::AuthorityStrongQuorumSignInfo::try_from(crate_sig)
-                .map_err(|e| TryFromProtoError::invalid("signature", e))?;
+            let signature: types::crypto::AuthorityStrongQuorumSignInfo = crate_sig.into();
 
             types::checkpoints::CertifiedCheckpointSummary::new_from_data_and_sig(
                 domain_summary,
@@ -2317,12 +2328,11 @@ impl Merge<types::checkpoints::CheckpointContents> for CheckpointContents {
         if mask.contains(Self::TRANSACTIONS_FIELD) {
             self.transactions = source
                 .into_iter_with_signatures()
-                .map(|(digests, sigs)| {
-                    let mut info = CheckpointedTransactionInfo::default();
-                    info.transaction = Some(digests.transaction.to_string());
-                    info.effects = Some(digests.effects.to_string());
-                    info.signatures = sigs.into_iter().map(Into::into).collect();
-                    info
+                .map(|(digests, sigs)| CheckpointedTransactionInfo {
+                    transaction: Some(digests.transaction.to_string()),
+                    effects: Some(digests.effects.to_string()),
+                    signatures: sigs.into_iter().map(Into::into).collect(),
+                    ..Default::default()
                 })
                 .collect();
         }

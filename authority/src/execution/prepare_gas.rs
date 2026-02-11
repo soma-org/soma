@@ -71,7 +71,7 @@ pub fn prepare_gas(
             let partial_fee = TransactionFee::new(gas_balance, 0, 0);
 
             // This should always succeed since we're taking at most the available balance
-            if let Ok(_) = deduct_gas_fee(temporary_store, &partial_fee) {
+            if deduct_gas_fee(temporary_store, &partial_fee).is_ok() {
                 return Err((ExecutionFailureStatus::InsufficientGas, partial_fee));
             }
         }

@@ -266,9 +266,9 @@ struct IndexStoreTables {
     ///
     /// A few uses for this singleton:
     /// - determining if the DB has been initialized (as some tables will still be empty post
-    ///     initialization)
+    ///   initialization)
     /// - version of the DB. Everytime a new table or schema is changed the version number needs to
-    ///     be incremented.
+    ///   be incremented.
     meta: DBMap<(), MetadataInfo>,
 
     /// Table used to track watermark for the highest indexed checkpoint
@@ -581,7 +581,7 @@ impl IndexStoreTables {
                     Owner::AddressOwner(owner) => {
                         Self::track_coin_balance_change(
                             removed_object,
-                            &owner,
+                            owner,
                             true,
                             &mut balance_changes,
                         )?;
@@ -669,7 +669,7 @@ impl IndexStoreTables {
                         Owner::AddressOwner(owner) => {
                             Self::track_coin_balance_change(
                                 old_object,
-                                &owner,
+                                owner,
                                 true,
                                 &mut balance_changes,
                             )?;
@@ -686,7 +686,7 @@ impl IndexStoreTables {
                     Owner::AddressOwner(owner) => {
                         Self::track_coin_balance_change(
                             object,
-                            &owner,
+                            owner,
                             false,
                             &mut balance_changes,
                         )?;
@@ -765,7 +765,7 @@ impl IndexStoreTables {
         impl Iterator<Item = Result<(BalanceKey, BalanceIndexInfo), TypedStoreError>> + '_,
         TypedStoreError,
     > {
-        let lower_bound = cursor.unwrap_or_else(|| BalanceKey { owner });
+        let lower_bound = cursor.unwrap_or(BalanceKey { owner });
 
         Ok(self.balance.safe_iter_with_bounds(Some(lower_bound), None).scan((), move |_, item| {
             match item {
@@ -1653,7 +1653,7 @@ fn live_object_set_index_task<T: LiveObjectIndexer>(
         .filter_map(LiveObject::to_normal)
     {
         object_scanned += 1;
-        if object_scanned % 2_000_000 == 0 {
+        if object_scanned.is_multiple_of(2_000_000) {
             info!("[Index] Task {}: object scanned: {}", task_id, object_scanned);
         }
 

@@ -52,8 +52,6 @@ impl<B: Backend> Layer<B> {
         let residual_path = self.norm_2.forward(x.clone());
         let residual_path = self.pwff.forward(residual_path);
         let residual_path = self.dropout.forward(residual_path);
-        let x = x + residual_path;
-
-        x
+        x + residual_path
     }
 }

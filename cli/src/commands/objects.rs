@@ -95,10 +95,10 @@ pub async fn execute(
             let client = context.get_client().await?;
             let mut coins = Vec::new();
             for obj_ref in gas_objects {
-                if let Ok(obj) = client.get_object(obj_ref.0).await {
-                    if let Some(balance) = obj.as_coin() {
-                        coins.push((obj_ref, balance));
-                    }
+                if let Ok(obj) = client.get_object(obj_ref.0).await
+                    && let Some(balance) = obj.as_coin()
+                {
+                    coins.push((obj_ref, balance));
                 }
             }
 

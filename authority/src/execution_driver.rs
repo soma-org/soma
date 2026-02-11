@@ -85,7 +85,7 @@ pub async fn execution_process(
         // Certificate execution can take significant time, so run it in a separate task.
         let epoch_store_clone = epoch_store.clone();
         tokio::spawn(async move {
-            let result = epoch_store_clone.within_alive_epoch(async {
+            epoch_store_clone.within_alive_epoch(async {
                 let _guard = permit;
                 if authority.is_tx_already_executed(&digest) {
                     return;
@@ -109,8 +109,7 @@ pub async fn execution_process(
                         // Transaction will be retried later and auto-rescheduled, so we ignore it here
                     }
                 }
-            }).await;
-            result
+            }).await
         }.instrument(error_span!("execution_driver", tx_digest = ?digest)));
     }
 }

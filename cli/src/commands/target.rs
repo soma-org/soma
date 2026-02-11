@@ -109,6 +109,7 @@ impl TargetCommand {
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum TargetCommandResponse {
     List(TargetListOutput),
     Info(TargetInfoOutput),

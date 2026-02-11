@@ -37,6 +37,7 @@ const SHANNONS_PER_SOMA: u128 = 1_000_000_000;
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum ValidatorCommandResponse {
     Started,
     MakeValidatorInfo,

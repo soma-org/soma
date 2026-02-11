@@ -61,6 +61,7 @@ const INTERVAL_PERIOD_MS: u64 = 5_000;
 const PEER_QUERY_TIMEOUT_SECS: u64 = 10;
 
 impl DiscoveryEventLoop {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: P2pConfig,
         discovery_config: DiscoveryConfig,
@@ -162,6 +163,7 @@ impl DiscoveryEventLoop {
         }
     }
 
+    #[allow(clippy::expect_used)]
     fn construct_our_info(&mut self) {
         if self.state.read().our_info.is_some() {
             return;
@@ -242,10 +244,10 @@ impl DiscoveryEventLoop {
 
         // Clean out the pending_dials
         self.pending_dials.retain(|_k, v| !v.is_finished());
-        if let Some(abort_handle) = &self.dial_seed_peers_task {
-            if abort_handle.is_finished() {
-                self.dial_seed_peers_task = None;
-            }
+        if let Some(abort_handle) = &self.dial_seed_peers_task
+            && abort_handle.is_finished()
+        {
+            self.dial_seed_peers_task = None;
         }
 
         // Find eligible peers to connect to
@@ -298,6 +300,7 @@ impl DiscoveryEventLoop {
     }
 }
 
+#[allow(clippy::unwrap_used)]
 pub fn now_unix() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
@@ -326,7 +329,7 @@ async fn try_to_connect_to_peer(
     }
 
     match rx.await {
-        Ok(Ok(_)) => return,
+        Ok(Ok(_)) => {},
         Ok(Err(e)) => {
             debug!(
                 "error connecting to {} at address '{}': {e}",
@@ -448,13 +451,7 @@ fn update_known_peers(
         }
 
         // Verify peer signature
-        let public_key = match Ed25519PublicKey::try_from(peer_info.peer_id) {
-            Ok(pk) => pk,
-            Err(_) => {
-                debug!("Failed to convert PeerId to Ed25519PublicKey");
-                continue;
-            }
-        };
+        let public_key: Ed25519PublicKey = peer_info.peer_id.into();
 
         let msg = bcs::to_bytes(peer_info.data()).expect("BCS serialization should not fail");
 

@@ -207,6 +207,7 @@ async fn execute_tx(
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum ChallengeCommandResponse {
     Initiated(ChallengeInitiatedOutput),
     Info(ChallengeInfoOutput),

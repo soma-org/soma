@@ -177,33 +177,35 @@ pub async fn execute_transaction(
             effects
         });
 
-        let mut message = ExecutedTransaction::default();
-        message.digest = read_mask
-            .contains(ExecutedTransaction::DIGEST_FIELD.name)
-            .then(|| transaction.digest().to_string());
-        message.transaction = read_mask
-            .subtree(ExecutedTransaction::TRANSACTION_FIELD.name)
-            .map(|mask| Transaction::merge_from(transaction, &mask));
-        message.signatures = read_mask
-            .subtree(ExecutedTransaction::SIGNATURES_FIELD.name)
-            .map(|mask| {
-                signatures.into_iter().map(|s| UserSignature::merge_from(s, &mask)).collect()
-            })
-            .unwrap_or_default();
-        message.effects = effects;
-        message.balance_changes = balance_changes;
-        message.objects = read_mask
-            .subtree(ExecutedTransaction::path_builder().objects().objects().finish())
-            .map(|mask| {
-                let set: std::collections::BTreeMap<_, _> = input_objects
-                    .into_iter()
-                    .chain(output_objects.into_iter())
-                    .map(|object| ((object.object_id(), object.version()), object))
-                    .collect();
-                ObjectSet::default()
-                    .with_objects(set.into_values().map(|o| Object::merge_from(o, &mask)).collect())
-            });
-        message
+        ExecutedTransaction {
+            digest: read_mask
+                .contains(ExecutedTransaction::DIGEST_FIELD.name)
+                .then(|| transaction.digest().to_string()),
+            transaction: read_mask
+                .subtree(ExecutedTransaction::TRANSACTION_FIELD.name)
+                .map(|mask| Transaction::merge_from(transaction, &mask)),
+            signatures: read_mask
+                .subtree(ExecutedTransaction::SIGNATURES_FIELD.name)
+                .map(|mask| {
+                    signatures.into_iter().map(|s| UserSignature::merge_from(s, &mask)).collect()
+                })
+                .unwrap_or_default(),
+            effects,
+            balance_changes,
+            objects: read_mask
+                .subtree(ExecutedTransaction::path_builder().objects().objects().finish())
+                .map(|mask| {
+                    let set: std::collections::BTreeMap<_, _> = input_objects
+                        .into_iter()
+                        .chain(output_objects.into_iter())
+                        .map(|object| ((object.object_id(), object.version()), object))
+                        .collect();
+                    ObjectSet::default().with_objects(
+                        set.into_values().map(|o| Object::merge_from(o, &mask)).collect(),
+                    )
+                }),
+            ..Default::default()
+        }
     };
 
     Ok(ExecuteTransactionResponse::default().with_transaction(executed_transaction))

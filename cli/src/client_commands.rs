@@ -162,7 +162,6 @@ pub async fn execute_or_serialize(
     // Build transaction data
     let builder = TransactionBuilder::new(context);
     let tx_data = builder.build_transaction_data(sender, kind, gas).await?;
-    drop(builder); // Release the borrow before execute_transaction
 
     // Handle tx-digest-only mode
     if processing.tx_digest {

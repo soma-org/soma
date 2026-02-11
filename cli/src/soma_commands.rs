@@ -59,6 +59,7 @@ use crate::commands;
 const DEFAULT_EPOCH_DURATION_MS: u64 = 60_000;
 
 #[derive(Parser)]
+#[derive(Default)]
 #[clap(rename_all = "kebab-case")]
 pub struct SomaEnvConfig {
     /// Sets the file storing the state of our user accounts (an empty one will be created if missing)
@@ -78,11 +79,6 @@ impl SomaEnvConfig {
     }
 }
 
-impl Default for SomaEnvConfig {
-    fn default() -> Self {
-        Self { config: None, env: None, accept_defaults: false }
-    }
-}
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Parser)]
@@ -504,10 +500,10 @@ impl SomaCommand {
             SomaCommand::Validator { config, cmd, json } => {
                 let mut context = get_wallet_context(&config).await?;
                 if let Some(cmd) = cmd {
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
+                    if let Ok(client) = context.get_client().await
+                        && let Err(e) = client.check_api_version().await
+                    {
+                        eprintln!("{}", format!("[warning] {e}").yellow().bold());
                     }
                     cmd.execute(&mut context).await?.print(!json);
                 } else {
@@ -561,10 +557,10 @@ impl SomaCommand {
                 if let Some(cmd) = cmd {
                     let mut context = get_wallet_context(&config).await?;
 
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
+                    if let Ok(client) = context.get_client().await
+                        && let Err(e) = client.check_api_version().await
+                    {
+                        eprintln!("{}", format!("[warning] {e}").yellow().bold());
                     }
                     cmd.execute(&mut context).await?.print(!json);
                 } else {

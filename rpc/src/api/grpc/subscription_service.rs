@@ -60,9 +60,11 @@ impl SubscriptionService for RpcService {
                     }
                 }
 
-                let mut response = SubscribeCheckpointsResponse::default();
-                response.cursor = Some(cursor);
-                response.checkpoint = Some(checkpoint_message);
+                let response = SubscribeCheckpointsResponse {
+                    cursor: Some(cursor),
+                    checkpoint: Some(checkpoint_message),
+                    ..Default::default()
+                };
 
                 yield Ok(response);
             }

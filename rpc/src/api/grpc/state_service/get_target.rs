@@ -71,7 +71,9 @@ pub fn get_target(service: &RpcService, request: GetTargetRequest) -> Result<Get
     let object_id: ObjectID = target_id.into();
     let target_proto = target_to_proto_with_id(&object_id, &target, &read_mask);
 
-    let mut response = GetTargetResponse::default();
-    response.target = Some(target_proto);
+    let response = GetTargetResponse {
+        target: Some(target_proto),
+        ..Default::default()
+    };
     Ok(response)
 }

@@ -21,6 +21,7 @@ pub const DERVIATION_PATH_PURPOSE_ED25519: u32 = 44;
 /// Secp256k1 follows BIP-32/44 using path where the first 3 levels are hardened: m/54'/784'/0'/0/{index}
 /// Secp256r1 follows BIP-32/44 using path where the first 3 levels are hardened: m/74'/784'/0'/0/{index}
 /// Note that the purpose node is used to distinguish signature schemes.
+#[allow(clippy::result_large_err)]
 pub fn derive_key_pair_from_path(
     seed: &[u8],
     derivation_path: Option<DerivationPath>,
@@ -40,12 +41,12 @@ pub fn derive_key_pair_from_path(
         SignatureScheme::BLS12381 | SignatureScheme::MultiSig => {
             Err(SomaError::UnsupportedFeatureError {
                 error: format!("key derivation not supported {:?}", key_scheme),
-            }
-            .into())
+            })
         }
     }
 }
 
+#[allow(clippy::result_large_err)]
 pub fn validate_path(
     key_scheme: &SignatureScheme,
     path: Option<DerivationPath>,
@@ -66,10 +67,10 @@ pub fn validate_path(
                         {
                             Ok(p)
                         } else {
-                            Err(SomaError::SignatureKeyGenError("Invalid path".to_string()).into())
+                            Err(SomaError::SignatureKeyGenError("Invalid path".to_string()))
                         }
                     } else {
-                        Err(SomaError::SignatureKeyGenError("Invalid path".to_string()).into())
+                        Err(SomaError::SignatureKeyGenError("Invalid path".to_string()))
                     }
                 }
                 None => Ok(format!(
@@ -83,8 +84,7 @@ pub fn validate_path(
         SignatureScheme::BLS12381 | SignatureScheme::MultiSig => {
             Err(SomaError::UnsupportedFeatureError {
                 error: format!("key derivation not supported {:?}", key_scheme),
-            }
-            .into())
+            })
         }
     }
 }

@@ -398,7 +398,7 @@ impl GenesisBuilder {
         for validator in &self.validators {
             let validator_bytes = serde_yaml::to_string(validator)?;
             fs::write(
-                committee_dir.join(&validator.info.account_address.to_string()),
+                committee_dir.join(validator.info.account_address.to_string()),
                 validator_bytes,
             )?;
         }

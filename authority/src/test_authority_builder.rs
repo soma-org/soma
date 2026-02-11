@@ -184,7 +184,7 @@ impl<'a> TestAuthorityBuilder<'a> {
         if config.authority_store_pruning_config.enable_compaction_filter {
             pruner_db = Some(Arc::new(AuthorityPrunerTables::open(&path.join("store"))));
         }
-        let compaction_filter = pruner_db.clone().map(|db| ObjectsCompactionFilter::new(db));
+        let compaction_filter = pruner_db.clone().map(ObjectsCompactionFilter::new);
 
         let authority_store = match self.store {
             Some(store) => store,

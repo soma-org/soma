@@ -122,7 +122,7 @@ impl Swarm {
     /// Returns an iterator over all currently active validators.
     pub fn active_validators(&self) -> impl Iterator<Item = &Node> {
         self.validator_nodes().filter(|node| {
-            node.get_node_handle().map_or(false, |handle| {
+            node.get_node_handle().is_some_and(|handle| {
                 let state = handle.state();
                 state.is_validator(&state.epoch_store_for_testing())
             })
@@ -158,8 +158,8 @@ pub struct SwarmBuilder<R = OsRng> {
     data_ingestion_dir: Option<PathBuf>,
 }
 
-impl SwarmBuilder {
-    pub fn new() -> Self {
+impl Default for SwarmBuilder {
+    fn default() -> Self {
         Self {
             rng: OsRng,
             dir: None,
@@ -173,6 +173,12 @@ impl SwarmBuilder {
             supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             data_ingestion_dir: None,
         }
+    }
+}
+
+impl SwarmBuilder {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

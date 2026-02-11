@@ -32,7 +32,6 @@ macro_rules! exit_main {
     version = VERSION,
     propagate_version = true,
 )]
-
 struct Args {
     #[clap(subcommand)]
     command: SomaCommand,
@@ -44,14 +43,10 @@ async fn main() {
     colored::control::set_virtual_terminal(true).unwrap();
 
     let args = Args::parse();
-    let _guard = match args.command {
-        _ => {
-            tracing_subscriber::fmt()
-                .with_max_level(Level::ERROR)
-                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-                .init();
-        }
-    };
+    tracing_subscriber::fmt()
+        .with_max_level(Level::ERROR)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     debug!("Soma CLI version: {VERSION}");
     exit_main!(args.command.execute().await);
 }

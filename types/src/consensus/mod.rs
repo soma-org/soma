@@ -47,12 +47,9 @@ pub struct ConsensusPosition {
 impl ConsensusPosition {
     pub fn into_raw(self) -> Result<Bytes, SomaError> {
         bcs::to_bytes(&self)
-            .map_err(|e| {
-                SomaError::GrpcMessageSerializeError {
-                    type_info: "ConsensusPosition".to_string(),
-                    error: e.to_string(),
-                }
-                .into()
+            .map_err(|e| SomaError::GrpcMessageSerializeError {
+                type_info: "ConsensusPosition".to_string(),
+                error: e.to_string(),
             })
             .map(Bytes::from)
     }
@@ -68,12 +65,9 @@ impl TryFrom<&[u8]> for ConsensusPosition {
     type Error = SomaError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        bcs::from_bytes(bytes).map_err(|e| {
-            SomaError::GrpcMessageDeserializeError {
-                type_info: "ConsensusPosition".to_string(),
-                error: e.to_string(),
-            }
-            .into()
+        bcs::from_bytes(bytes).map_err(|e| SomaError::GrpcMessageDeserializeError {
+            type_info: "ConsensusPosition".to_string(),
+            error: e.to_string(),
         })
     }
 }
@@ -351,6 +345,7 @@ pub trait EndOfEpochAPI: Send + Sync + 'static {
     fn get_next_epoch_state(&self) -> Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>;
 }
 
+#[derive(Default)]
 pub struct TestEpochStore {
     /// The next epoch state, if one has been computed
     pub next_epoch_state: Option<(ValidatorSet, ECMHLiveObjectSetDigest, u64)>,

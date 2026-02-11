@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use arrgen::{constant_array, normal_array, uniform_array};
 use burn::backend::NdArray;
 use burn::module::Param;
@@ -56,7 +58,7 @@ fn test_1d_param() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        ArrayWrapper(normal_array(seed, &vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed,&[embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -79,7 +81,7 @@ fn test_3d_param() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        ArrayWrapper(normal_array(seed, &vec![1, 1, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed,&[1, 1, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

@@ -41,6 +41,7 @@ pub enum ConsensusAuthority {
 }
 
 impl ConsensusAuthority {
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(
         network_type: NetworkType,
         epoch_start_timestamp_ms: u64,
@@ -127,6 +128,7 @@ impl<N> AuthorityNode<N>
 where
     N: NetworkManager<AuthorityService<ChannelCoreThreadDispatcher>>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn start(
         epoch_start_timestamp_ms: u64,
         own_index: AuthorityIndex,

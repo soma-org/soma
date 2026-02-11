@@ -50,15 +50,13 @@ pub fn simulate_transaction(
 
     let protocol_config = {
         let system_state = service.reader.get_system_state()?;
-        let protocol_config = ProtocolConfig::get_for_version_if_supported(
+        ProtocolConfig::get_for_version_if_supported(
             system_state.protocol_version.into(),
             service.reader.inner().get_chain_identifier()?.chain(),
         )
         .ok_or_else(|| {
             RpcError::new(tonic::Code::Internal, "unable to get current protocol config")
-        })?;
-
-        protocol_config
+        })?
     };
 
     // Try to parse out a fully-formed transaction. If one wasn't provided then we will attempt to
@@ -74,25 +72,23 @@ pub fn simulate_transaction(
         }
     };
 
-    if checks.enabled() {
-        if transaction.gas().is_empty() {
-            let input_objects = transaction
-                .input_objects()
-                .map_err(anyhow::Error::from)?
-                .iter()
-                .flat_map(|obj| match obj {
-                    types::transaction::InputObjectKind::ImmOrOwnedObject((id, _, _)) => Some(*id),
-                    _ => None,
-                })
-                .collect_vec();
-            let gas_coins = select_gas(
-                &service.reader,
-                transaction.sender(),
-                100, // TODO: protocol_config.max_gas_payment_objects(),
-                &input_objects,
-            )?;
-            *transaction.gas_mut() = gas_coins;
-        }
+    if checks.enabled() && transaction.gas().is_empty() {
+        let input_objects = transaction
+            .input_objects()
+            .map_err(anyhow::Error::from)?
+            .iter()
+            .flat_map(|obj| match obj {
+                types::transaction::InputObjectKind::ImmOrOwnedObject((id, _, _)) => Some(*id),
+                _ => None,
+            })
+            .collect_vec();
+        let gas_coins = select_gas(
+            &service.reader,
+            transaction.sender(),
+            100, // TODO: protocol_config.max_gas_payment_objects(),
+            &input_objects,
+        )?;
+        *transaction.gas_mut() = gas_coins;
     }
 
     let SimulateTransactionResult { effects, objects, execution_result, mock_gas_id: _ } =
@@ -161,8 +157,10 @@ pub fn simulate_transaction(
         None
     };
 
-    let mut response = SimulateTransactionResponse::default();
-    response.transaction = transaction;
+    let response = SimulateTransactionResponse {
+        transaction,
+        ..Default::default()
+    };
     Ok(response)
 }
 

@@ -1,4 +1,3 @@
-use crate::types::Manifest;
 use crate::types::TransactionFee;
 use crate::types::ValidatorNetworkMetadata;
 

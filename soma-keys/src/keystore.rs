@@ -40,8 +40,10 @@ pub struct LocalGenerate {
     pub word_length: Option<String>,
 }
 
+#[derive(Default)]
 pub enum GenerateOptions {
     /// Default options for key generation of any keystore type.
+    #[default]
     Default,
     /// File or InMem keystore
     Local(LocalGenerate),
@@ -49,11 +51,6 @@ pub enum GenerateOptions {
     ExternalSigner(String),
 }
 
-impl Default for GenerateOptions {
-    fn default() -> Self {
-        Self::Default
-    }
-}
 
 pub struct GeneratedKey {
     pub address: SomaAddress,

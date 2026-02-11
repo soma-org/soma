@@ -1308,10 +1308,7 @@ impl ValidatorService {
                                 );
                                 return None;
                             };
-                            Self::parse_ip(client_ip).or_else(|| {
-                                
-                                None
-                            })
+                            Self::parse_ip(client_ip)
                         }
                         Err(e) => {
                             // TODO: once we have confirmed that no legitimate traffic

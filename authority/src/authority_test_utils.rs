@@ -98,7 +98,7 @@ pub async fn execute_certificate_with_execution_error(
             let assigned_versions =
                 authority.epoch_store_for_testing().assign_shared_object_versions_for_tests(
                     authority.get_object_cache_reader().as_ref(),
-                    &vec![VerifiedExecutableTransaction::new_from_certificate(certificate.clone())],
+                    &[VerifiedExecutableTransaction::new_from_certificate(certificate.clone())],
                 )?;
             assigned_versions.into_map().get(&certificate.key()).cloned().unwrap()
         }
@@ -374,7 +374,7 @@ pub async fn send_consensus(
         .epoch_store_for_testing()
         .assign_shared_object_versions_for_tests(
             authority.get_object_cache_reader().as_ref(),
-            &vec![VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
+            &[VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
         )
         .unwrap();
 
@@ -406,7 +406,7 @@ pub async fn send_consensus_no_execution(
         .epoch_store_for_testing()
         .assign_shared_object_versions_for_tests(
             authority.get_object_cache_reader().as_ref(),
-            &vec![VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
+            &[VerifiedExecutableTransaction::new_from_certificate(cert.clone())],
         )
         .unwrap();
 

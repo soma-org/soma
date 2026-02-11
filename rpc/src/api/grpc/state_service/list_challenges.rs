@@ -66,16 +66,15 @@ pub fn list_challenges(
         .transpose()?;
 
     // Validate page token parameters match request
-    if let Some(ref token) = page_token {
-        if token.status_filter != status_filter
+    if let Some(ref token) = page_token
+        && (token.status_filter != status_filter
             || token.epoch_filter != epoch_filter
-            || token.target_filter != target_filter
-        {
-            return Err(FieldViolation::new("page_token")
-                .with_description("page_token parameters do not match request filters")
-                .with_reason(ErrorReason::FieldInvalid)
-                .into());
-        }
+            || token.target_filter != target_filter)
+    {
+        return Err(FieldViolation::new("page_token")
+            .with_description("page_token parameters do not match request filters")
+            .with_reason(ErrorReason::FieldInvalid)
+            .into());
     }
 
     // Validate and build field mask
@@ -166,9 +165,11 @@ pub fn list_challenges(
             })
         });
 
-    let mut response = ListChallengesResponse::default();
-    response.challenges = challenges;
-    response.next_page_token = next_page_token;
+    let response = ListChallengesResponse {
+        challenges,
+        next_page_token,
+        ..Default::default()
+    };
     Ok(response)
 }
 
@@ -221,14 +222,14 @@ fn challenge_to_proto_with_id(
         proto.status = Some(format_status(&challenge.status));
     }
     // Simplified design: verdict is now part of status (challenger_lost: bool)
-    if mask.contains("verdict") {
-        if let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status {
-            proto.verdict = Some(if *challenger_lost {
-                "challenger_lost".to_string()
-            } else {
-                "challenger_won".to_string()
-            });
-        }
+    if mask.contains("verdict")
+        && let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status
+    {
+        proto.verdict = Some(if *challenger_lost {
+            "challenger_lost".to_string()
+        } else {
+            "challenger_won".to_string()
+        });
     }
     // win_reason is no longer applicable in simplified design
     if mask.contains("distance_threshold") {

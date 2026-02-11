@@ -240,10 +240,10 @@ impl CheckpointReader {
         for entry in fs::read_dir(&self.path)? {
             let entry = entry?;
             let file_name = entry.file_name();
-            if let Some(checkpoint_seq) = Self::parse_checkpoint_seq(&file_name) {
-                if checkpoint_seq < watermark {
-                    fs::remove_file(entry.path())?;
-                }
+            if let Some(checkpoint_seq) = Self::parse_checkpoint_seq(&file_name)
+                && checkpoint_seq < watermark
+            {
+                fs::remove_file(entry.path())?;
             }
         }
         Ok(())

@@ -45,10 +45,10 @@ impl Merge<&DomainTarget> for Target {
             });
         }
 
-        if mask.contains(Self::FILL_EPOCH_FIELD.name) {
-            if let TargetStatus::Filled { fill_epoch } = &source.status {
-                self.fill_epoch = Some(*fill_epoch);
-            }
+        if mask.contains(Self::FILL_EPOCH_FIELD.name)
+            && let TargetStatus::Filled { fill_epoch } = &source.status
+        {
+            self.fill_epoch = Some(*fill_epoch);
         }
 
         if mask.contains(Self::MINER_FIELD.name) {

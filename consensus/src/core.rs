@@ -113,6 +113,7 @@ pub(crate) struct Core {
 }
 
 impl Core {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         context: Arc<Context>,
         leader_schedule: Arc<LeaderSchedule>,
@@ -372,13 +373,13 @@ impl Core {
             .collect::<Vec<_>>();
 
         // Make sure that the first commit we find is the next one in line and there is no gap.
-        if let Some(commit) = commits.first() {
-            if commit.index() != last_commit_index + 1 {
-                return Err(ConsensusError::UnexpectedCertifiedCommitIndex {
-                    expected_commit_index: last_commit_index + 1,
-                    commit_index: commit.index(),
-                });
-            }
+        if let Some(commit) = commits.first()
+            && commit.index() != last_commit_index + 1
+        {
+            return Err(ConsensusError::UnexpectedCertifiedCommitIndex {
+                expected_commit_index: last_commit_index + 1,
+                commit_index: commit.index(),
+            });
         }
 
         Ok(commits)
@@ -836,12 +837,10 @@ impl Core {
                         }
                         if let Some(last_block_ref) =
                             self.last_included_ancestors[ancestor.author()]
-                            {
-                                if  last_block_ref.round >= ancestor.round() {
-                                         return None;
-                                }
-                           
-                            }
+                            && last_block_ref.round >= ancestor.round()
+                        {
+                            return None;
+                        }
 
                         // We will never include equivocating ancestors so add them immediately
                         excluded_and_equivocating_ancestors.extend(equivocating_ancestors);

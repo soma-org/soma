@@ -427,7 +427,7 @@ where
             let epoch_id = checkpoint.epoch;
             checkpoint.verify_with_contents(&*self.get_committee(&epoch_id)?, contents.as_ref())
         } else {
-            return Ok(());
+            Ok(())
         }
     }
 

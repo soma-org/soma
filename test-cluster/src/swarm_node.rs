@@ -61,7 +61,7 @@ impl Node {
 
     /// If this Node is currently running
     pub fn is_running(&self) -> bool {
-        self.container.lock().unwrap().as_ref().map_or(false, |c| c.is_alive())
+        self.container.lock().unwrap().as_ref().is_some_and(|c| c.is_alive())
     }
 
     pub fn get_node_handle(&self) -> Option<SomaNodeHandle> {

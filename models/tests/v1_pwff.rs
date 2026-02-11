@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use arrgen::{constant_array, normal_array};
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
@@ -26,19 +28,19 @@ fn test_v1_pwff_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &vec![embedding_dim, hidden_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &vec![hidden_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 2, &[hidden_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 3, &vec![hidden_dim, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4, &vec![embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 4, &[embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -49,7 +51,7 @@ fn test_v1_pwff_ones() {
         .with_hidden_dim(hidden_dim)
         .init(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&vec![embedding_dim], 1.0).to_tensor_data().unwrap();
+    let input_data = constant_array(&[embedding_dim], 1.0).to_tensor_data().unwrap();
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
 

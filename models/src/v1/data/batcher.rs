@@ -7,7 +7,7 @@ use burn::{
 
 use crate::v1::data::dataset::ByteSequenceItem;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ByteSequenceBatcher {}
 
 impl ByteSequenceBatcher {

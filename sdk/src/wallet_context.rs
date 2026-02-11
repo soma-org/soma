@@ -166,8 +166,7 @@ impl WalletContext {
         force_recache: bool,
     ) -> Result<String, anyhow::Error> {
         let env = self.get_active_env()?;
-        if !force_recache && env.chain_id.is_some() {
-            let chain_id = env.chain_id.as_ref().unwrap();
+        if !force_recache && let Some(chain_id) = &env.chain_id {
             info!("Found cached chain ID for env {}: {}", env.alias, chain_id);
             return Ok(chain_id.clone());
         }
@@ -250,10 +249,8 @@ impl WalletContext {
             object_refs.push(object.compute_object_reference());
 
             // Stop if we've reached the limit
-            if let Some(limit) = limit {
-                if object_refs.len() >= limit {
-                    break;
-                }
+            if let Some(limit) = limit && object_refs.len() >= limit {
+                break;
             }
         }
 
@@ -264,7 +261,7 @@ impl WalletContext {
         let client = self.get_client().await?;
 
         let object = client
-            .get_object(id.clone())
+            .get_object(*id)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get object: {}", e))?;
 
@@ -342,10 +339,8 @@ impl WalletContext {
             return Ok(&self.config.keystore);
         }
 
-        if let Some(external_keys) = self.config.external_keys.as_ref() {
-            if external_keys.get_by_identity(key_identity).is_ok() {
-                return Ok(external_keys);
-            }
+        if let Some(external_keys) = self.config.external_keys.as_ref() && external_keys.get_by_identity(key_identity).is_ok() {
+            return Ok(external_keys);
         }
 
         Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))
@@ -360,10 +355,8 @@ impl WalletContext {
             return Ok(&mut self.config.keystore);
         }
 
-        if let Some(external_keys) = self.config.external_keys.as_mut() {
-            if external_keys.get_by_identity(key_identity).is_ok() {
-                return Ok(external_keys);
-            }
+        if let Some(external_keys) = self.config.external_keys.as_mut() && external_keys.get_by_identity(key_identity).is_ok() {
+            return Ok(external_keys);
         }
 
         Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))
@@ -412,7 +405,7 @@ impl WalletContext {
         &self,
         tx: Transaction,
     ) -> anyhow::Result<TransactionExecutionResponseWithCheckpoint> {
-        Ok(self.execute_transaction_and_wait_for_indexing(tx).await?)
+        self.execute_transaction_and_wait_for_indexing(tx).await
     }
 
     /// Execute a transaction and wait for it to be indexed (checkpointed)

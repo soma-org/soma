@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod delegation_tests {
     use crate::{
         base::{SomaAddress, dbg_addr},
@@ -162,7 +163,7 @@ mod delegation_tests {
         }
 
         // Request to remove validator 1
-        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
+        system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -215,7 +216,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Request to remove validator 1
-        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
+        system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Add rewards after the validator requests to leave
         // Since the validator is still active this epoch, it should get rewards.
@@ -262,7 +263,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Request to remove validator 1
-        let _ = system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
+        system_state.request_remove_validator(validator_addr_1(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -360,7 +361,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 90 * SHANNONS_PER_SOMA).unwrap();
 
         // Remove validator
-        let _ = system_state.request_remove_validator(new_validator_addr(), vec![]).unwrap();
+        system_state.request_remove_validator(new_validator_addr(), vec![]).unwrap();
 
         // Advance epoch to process validator removal
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();

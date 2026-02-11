@@ -6,7 +6,7 @@ use crate::{multiaddr::Multiaddr, peer_id::PeerId};
 
 use super::state_sync_config::StateSyncConfig;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct P2pConfig {
     // /// The address that the p2p network will bind on.
     // pub listen_address: Option<Multiaddr>,
@@ -24,18 +24,6 @@ pub struct P2pConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discovery: Option<DiscoveryConfig>,
-}
-
-impl Default for P2pConfig {
-    fn default() -> Self {
-        Self {
-            // listen_address: Default::default(),
-            external_address: Default::default(),
-            seed_peers: Default::default(),
-            discovery: None,
-            state_sync: None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

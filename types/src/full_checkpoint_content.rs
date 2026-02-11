@@ -129,9 +129,7 @@ impl CheckpointTransaction {
     }
 
     pub fn removed_object_refs_post_version(&self) -> impl Iterator<Item = ObjectRef> {
-        let deleted = self.effects.deleted().into_iter();
-
-        deleted
+        self.effects.deleted().into_iter()
     }
 
     pub fn changed_objects(&self) -> impl Iterator<Item = (&Object, Option<&Object>)> {

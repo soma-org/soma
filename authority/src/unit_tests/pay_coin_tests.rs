@@ -186,7 +186,7 @@ async fn test_pay_all_coins_success_multiple_input_coins() -> anyhow::Result<()>
     let obj_ref = &effects.created()[0].0;
     let deleted = &effects.deleted();
     // inputs should be deleted
-    for input in vec![object_id1, object_id2, object_id3] {
+    for input in [object_id1, object_id2, object_id3] {
         assert!(deleted.iter().map(|(id, _, _)| *id).collect::<Vec<ObjectID>>().contains(&input));
     }
     assert_eq!(effects.created()[0].1.get_address_owner_address().unwrap(), recipient);

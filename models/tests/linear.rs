@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::useless_vec)]
+
 use arrgen::{constant_array, normal_array, uniform_array};
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
@@ -45,11 +47,11 @@ fn test_linear_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &vec![input_dim, output_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 1, &[input_dim, output_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed, &vec![output_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &[output_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -76,11 +78,11 @@ fn test_linear_uniform() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &vec![input_dim, output_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 1, &[input_dim, output_dim], 0.0, 1.0)),
     );
     tensors.insert(
         "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed, &vec![output_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &[output_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -88,7 +90,7 @@ fn test_linear_uniform() {
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2, &vec![input_dim], 0.0, 1.0).to_tensor_data().unwrap();
+    let input_data = uniform_array(seed + 2, &[input_dim], 0.0, 1.0).to_tensor_data().unwrap();
     let input_tensor = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
 

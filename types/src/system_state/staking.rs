@@ -127,11 +127,7 @@ impl StakingPool {
         // Rewards are the difference between total value and principal
         // If total value is less than principal (which shouldn't happen in normal operation),
         // return 0 rewards to avoid underflow
-        let reward_amount = if total_withdraw_value > principal_amount {
-            total_withdraw_value - principal_amount
-        } else {
-            0
-        };
+        let reward_amount = total_withdraw_value.saturating_sub(principal_amount);
 
         // Cap rewards at available reward pool balance
         let reward_amount = std::cmp::min(reward_amount, self.rewards_pool);

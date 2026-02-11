@@ -91,7 +91,7 @@ impl<T: SubmitToConsensus + ReconfigurationInitiator> CheckpointOutput
 
             let message = CheckpointSignatureMessage { summary };
             let transaction = ConsensusTransaction::new_checkpoint_signature_message(message);
-            self.sender.submit_to_consensus(&vec![transaction], epoch_store)?;
+            self.sender.submit_to_consensus(&[transaction], epoch_store)?;
         } else {
             debug!(
                 "Checkpoint at sequence {checkpoint_seq} is already certified, skipping signature submission to consensus",

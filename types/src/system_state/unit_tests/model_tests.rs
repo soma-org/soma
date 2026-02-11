@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod model_tests {
     use crate::{
         base::{SomaAddress, dbg_addr},

@@ -47,8 +47,8 @@ impl Clone for ValidatorGenesisConfig {
             p2p_address: self.p2p_address.clone(),
             rpc_address: self.rpc_address.clone(),
             proxy_address: self.proxy_address.clone(),
-            stake: self.stake.clone(),
-            commission_rate: self.commission_rate.clone(),
+            stake: self.stake,
+            commission_rate: self.commission_rate,
         }
     }
 }
@@ -270,7 +270,7 @@ impl ValidatorGenesisConfigBuilder {
         ValidatorGenesisConfig {
             key_pair: protocol_key_pair,
             worker_key_pair,
-            account_key_pair: account_key_pair.into(),
+            account_key_pair,
             network_key_pair,
             network_address,
             consensus_address,

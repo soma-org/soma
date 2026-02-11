@@ -243,6 +243,7 @@ impl Target {
 ///
 /// # Errors
 /// Returns `ExecutionFailureStatus::NoActiveModels` if no active models exist.
+#[allow(clippy::result_large_err)]
 pub fn generate_target(
     seed: u64,
     model_registry: &ModelRegistry,
@@ -298,6 +299,7 @@ pub fn generate_target(
 ///
 /// # Errors
 /// Returns `ExecutionFailureStatus::NoActiveModels` if no active models exist.
+#[allow(clippy::result_large_err)]
 pub fn select_models_weighted_knn(
     seed: u64,
     model_registry: &ModelRegistry,
@@ -348,6 +350,7 @@ pub fn select_models_weighted_knn(
 ///
 /// # Errors
 /// Returns `ExecutionFailureStatus::NoActiveModels` if no active models exist.
+#[allow(clippy::result_large_err)]
 pub fn select_models_uniform(
     seed: u64,
     model_registry: &ModelRegistry,
@@ -398,7 +401,7 @@ pub fn make_target_seed(tx_digest: &TransactionDigest, creation_num: u64) -> u64
     // Explicitly convert to [u8; 32] to avoid ambiguity between AsRef<[u8]> and AsRef<[u8; 32]>
     let digest_bytes: &[u8; 32] = tx_digest.as_ref();
     hasher.update(digest_bytes);
-    hasher.update(&creation_num.to_le_bytes());
+    hasher.update(creation_num.to_le_bytes());
     let hash = hasher.finalize();
     // Use first 8 bytes as u64 seed
     u64::from_le_bytes(hash.as_ref()[..8].try_into().expect("hash is at least 8 bytes"))

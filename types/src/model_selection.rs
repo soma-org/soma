@@ -180,7 +180,7 @@ pub fn select_models<B: Backend>(
 
     // Extract top-k indices and gather values
     let topk_indices: Vec<i64> = sorted_indices
-        .slice([0..k])
+        .slice(0..k)
         .into_data()
         .to_vec::<i64>()
         .expect("indices should be i64");

@@ -501,7 +501,7 @@ impl AuthorityEpochTables {
         let mut batch = self.object_locked_transactions.batch();
         batch.insert_batch(
             &self.object_locked_transactions,
-            locks_to_write.map(|(obj_ref, lock)| (obj_ref, lock)),
+            locks_to_write,
         )?;
         if let Some(signed_transaction) = signed_transaction {
             batch.insert_batch(
@@ -1069,7 +1069,7 @@ impl AuthorityPerEpochStore {
             Ok(tables) => tables,
             // After Epoch ends, it is no longer necessary to remove pending transactions
             // because the table will not be used anymore and be deleted eventually.
-            Err(e) if matches!(e, SomaError::EpochEnded(_)) => return Ok(()),
+            Err(SomaError::EpochEnded(_)) => return Ok(()),
             Err(e) => return Err(e),
         };
         let mut batch = tables.signed_effects_digests.batch();
@@ -1592,9 +1592,9 @@ impl AuthorityPerEpochStore {
         certificates: impl Iterator<Item = &'a Schedulable>,
     ) {
         let sigs: Vec<_> = certificates
-            .filter_map(|s| match s {
+            .map(|s| match s {
                 Schedulable::Transaction(certificate) => {
-                    Some((*certificate.digest(), certificate.tx_signatures().to_vec()))
+                    (*certificate.digest(), certificate.tx_signatures().to_vec())
                 }
             })
             .collect();

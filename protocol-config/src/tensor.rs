@@ -253,6 +253,7 @@ impl std::fmt::Display for SomaTensor {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -324,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_soma_tensor_scalar_serialization() {
-        let tensor = SomaTensor::scalar(3.14159);
+        let tensor = SomaTensor::scalar(std::f32::consts::PI);
         let serialized = bcs::to_bytes(&tensor).unwrap();
         let deserialized: SomaTensor = bcs::from_bytes(&serialized).unwrap();
         assert_eq!(tensor.as_scalar(), deserialized.as_scalar());

@@ -205,10 +205,10 @@ impl ChannelCoreThreadDispatcher {
         };
 
         let join_handle = tokio::spawn(async move {
-            if let Err(err) = core_thread.run().await {
-                if !matches!(err, ConsensusError::Shutdown) {
-                    panic!("Fatal error occurred: {err}");
-                }
+            if let Err(err) = core_thread.run().await
+                && !matches!(err, ConsensusError::Shutdown)
+            {
+                panic!("Fatal error occurred: {err}");
             }
         });
 
@@ -226,10 +226,10 @@ impl ChannelCoreThreadDispatcher {
     }
 
     async fn send(&self, command: CoreThreadCommand) {
-        if let Some(sender) = self.sender.upgrade() {
-            if let Err(err) = sender.send(command).await {
-                warn!("Couldn't send command to core thread, probably is shutting down: {}", err);
-            }
+        if let Some(sender) = self.sender.upgrade()
+            && let Err(err) = sender.send(command).await
+        {
+            warn!("Couldn't send command to core thread, probably is shutting down: {}", err);
         }
     }
 }

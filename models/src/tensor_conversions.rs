@@ -24,7 +24,7 @@ impl safetensors::View for ArrayWrapper {
     }
 
     fn shape(&self) -> &[usize] {
-        &self.0.shape()
+        self.0.shape()
     }
 
     fn data(&self) -> borrow::Cow<'_, [u8]> {

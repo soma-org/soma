@@ -376,8 +376,7 @@ impl ConsensusAdapter {
             .in_current_span();
         // Number of these tasks is weakly limited based on `num_inflight_transactions`.
         // (Limit is not applied atomically, and only to user transactions.)
-        let join_handle = tokio::spawn(async_stage);
-        join_handle
+        tokio::spawn(async_stage)
     }
 
     async fn submit_and_wait(

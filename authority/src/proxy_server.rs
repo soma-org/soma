@@ -224,7 +224,7 @@ impl ProxyServer {
             .state
             .get_object(&target_id)
             .await
-            .ok_or_else(|| ProxyError::TargetNotFound(target_id))?;
+            .ok_or(ProxyError::TargetNotFound(target_id))?;
 
         // Deserialize target
         let target: types::target::Target = bcs::from_bytes(target.as_inner().data.contents())
@@ -234,7 +234,7 @@ impl ProxyServer {
         let manifest = target
             .winning_data_manifest
             .as_ref()
-            .ok_or_else(|| ProxyError::TargetNotFound(target_id))?;
+            .ok_or(ProxyError::TargetNotFound(target_id))?;
 
         // Fetch with singleflight
         let key = format!("data:{}", target_id);
@@ -305,13 +305,13 @@ impl ProxyServer {
             .model_registry
             .active_models
             .get(model_id)
-            .ok_or_else(|| ProxyError::ModelNotFound(*model_id))?;
+            .ok_or(ProxyError::ModelNotFound(*model_id))?;
 
         // Get weights manifest (only available if model is revealed/active)
         let weights_manifest = model
             .weights_manifest
             .as_ref()
-            .ok_or_else(|| ProxyError::ModelNotFound(*model_id))?;
+            .ok_or(ProxyError::ModelNotFound(*model_id))?;
 
         Ok(weights_manifest.manifest.clone())
     }

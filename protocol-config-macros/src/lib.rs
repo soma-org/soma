@@ -1,4 +1,4 @@
-extern crate proc_macro;
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use proc_macro::TokenStream;
 use quote::quote;
