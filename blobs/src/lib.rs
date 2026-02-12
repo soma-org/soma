@@ -3,11 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use types::{checksum::Checksum, committee::Epoch};
 
+pub(crate) mod engine;
 pub mod downloader;
-pub mod readers;
+pub mod loader;
+pub mod transfer;
 
 /// Cloud providers typically require a minimum multipart part size except for the last part
-pub(crate) const MIN_PART_SIZE: u64 = 5 * 1024 * 1024;
+pub const MIN_PART_SIZE: u64 = 5 * 1024 * 1024;
 /// Cloud providers typically have a max multipart part size
 pub(crate) const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 

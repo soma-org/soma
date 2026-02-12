@@ -10,9 +10,6 @@ models.workspace = true
 types.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
-object_store.workspace = true
-memmap2.workspace = true
-
 [dev-dependencies]
 tokio.workspace = true
 

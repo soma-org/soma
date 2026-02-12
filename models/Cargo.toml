@@ -10,6 +10,7 @@ burn.workspace = true
 safetensors.workspace = true
 types.workspace = true
 arrgen.workspace = true
+blobs.workspace = true
 
 [lints]
 workspace = true

@@ -1,3 +1,4 @@
+use blobs::BlobPath;
 use burn::{Tensor, prelude::Backend};
 use types::error::ModelResult;
 
@@ -12,5 +13,6 @@ pub struct ModelOutput<B: Backend> {
 pub trait ModelAPI: Send + 'static {
     type Data: Send + 'static;
     type Backend: Backend;
-    fn call(&self, data: Self::Data) -> ModelResult<ModelOutput<Self::Backend>>;
+    fn call(&self, data: Self::Data, weights: &BlobPath)
+    -> ModelResult<ModelOutput<Self::Backend>>;
 }

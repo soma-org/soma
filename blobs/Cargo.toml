@@ -12,6 +12,7 @@ tokio.workspace = true
 url.workspace = true
 reqwest.workspace = true
 fastcrypto.workspace = true
+memmap2.workspace = true
 object_store.workspace = true
 reqwest-retry.workspace = true
 reqwest-middleware.workspace = true

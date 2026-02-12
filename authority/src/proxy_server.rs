@@ -25,8 +25,11 @@ use dashmap::DashMap;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{info, warn};
 
-use blobs::readers::{BlobReader as _, url::BlobClient};
+use blobs::BlobPath;
+use blobs::downloader::{BlobDownloader, HttpBlobDownloader};
+use object_store::ObjectStore;
 use types::{
+    SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     consensus::ConsensusTransaction,
     crypto::{Signature, SomaKeyPair},
@@ -37,7 +40,6 @@ use types::{
     parameters::HttpParameters,
     target::TargetId,
     transaction::{Transaction, TransactionData, TransactionKind},
-    SYSTEM_STATE_OBJECT_ID,
 };
 
 use crate::authority::AuthorityState;
@@ -122,10 +124,7 @@ pub struct ProxyConfig {
 
 impl Default for ProxyConfig {
     fn default() -> Self {
-        Self {
-            base_download_timeout: Duration::from_secs(30),
-            nanoseconds_per_byte: 50,
-        }
+        Self { base_download_timeout: Duration::from_secs(30), nanoseconds_per_byte: 50 }
     }
 }
 
@@ -172,8 +171,10 @@ type InflightMap = DashMap<String, broadcast::Sender<Result<Bytes, ProxyError>>>
 pub struct ProxyServer {
     /// Authority state for looking up targets and models
     state: Arc<AuthorityState>,
-    /// HTTP client for fetching from source URLs
-    blob_client: BlobClient,
+    /// Blob downloader for downloading from source URLs into the local store
+    downloader: HttpBlobDownloader,
+    /// Local object store used as download destination / cache
+    store: Arc<dyn ObjectStore>,
     /// Channel to send reports when fetch fails
     report_tx: ReportSender,
     /// In-flight request deduplication (singleflight pattern)
@@ -187,19 +188,21 @@ impl ProxyServer {
     pub fn new(
         state: Arc<AuthorityState>,
         report_tx: ReportSender,
+        store: Arc<dyn ObjectStore>,
         config: ProxyConfig,
     ) -> Result<Self, ProxyError> {
-        let http_params = Arc::new(HttpParameters::default());
-        let blob_client = BlobClient::new(http_params)
-            .map_err(|e| ProxyError::Internal(e.to_string()))?;
+        let http_params = HttpParameters::default();
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(16));
+        let downloader = HttpBlobDownloader::new(
+            &http_params,
+            store.clone(),
+            semaphore,
+            blobs::MIN_PART_SIZE,
+            50, // ns_per_byte
+        )
+        .map_err(|e| ProxyError::Internal(e.to_string()))?;
 
-        Ok(Self {
-            state,
-            blob_client,
-            report_tx,
-            inflight: DashMap::new(),
-            config,
-        })
+        Ok(Self { state, downloader, store, report_tx, inflight: DashMap::new(), config })
     }
 
     /// Build an axum router for the proxy server.
@@ -231,27 +234,22 @@ impl ProxyServer {
             .map_err(|e| ProxyError::Internal(format!("Failed to deserialize target: {}", e)))?;
 
         // Get the winning data manifest (only available if target is filled)
-        let manifest = target
-            .winning_data_manifest
-            .as_ref()
-            .ok_or(ProxyError::TargetNotFound(target_id))?;
+        let manifest =
+            target.winning_data_manifest.as_ref().ok_or(ProxyError::TargetNotFound(target_id))?;
 
         // Fetch with singleflight
+        let checksum = manifest.manifest.metadata().checksum();
+        let epoch = server.state.load_epoch_store_one_call_per_task().epoch();
+        let blob_path = BlobPath::Data(epoch, checksum);
         let key = format!("data:{}", target_id);
-        match server
-            .fetch_with_singleflight(&key, &manifest.manifest)
-            .await
-        {
+        match server.fetch_with_singleflight(&key, &manifest.manifest, blob_path).await {
             Ok(data) => {
                 info!("Served {} bytes for target {}", data.len(), target_id);
                 Ok((StatusCode::OK, data))
             }
             Err(e) => {
                 // Report unavailable
-                let _ = server
-                    .report_tx
-                    .send(AvailabilityReport::Submission(target_id))
-                    .await;
+                let _ = server.report_tx.send(AvailabilityReport::Submission(target_id)).await;
                 Err(e)
             }
         }
@@ -270,18 +268,18 @@ impl ProxyServer {
         let manifest = server.get_model_manifest(&model_id).await?;
 
         // Fetch with singleflight
+        let checksum = manifest.metadata().checksum();
+        let epoch = server.state.load_epoch_store_one_call_per_task().epoch();
+        let blob_path = BlobPath::Weights(epoch, checksum);
         let key = format!("model:{}", model_id);
-        match server.fetch_with_singleflight(&key, &manifest).await {
+        match server.fetch_with_singleflight(&key, &manifest, blob_path).await {
             Ok(data) => {
                 info!("Served {} bytes for model {}", data.len(), model_id);
                 Ok((StatusCode::OK, data))
             }
             Err(e) => {
                 // Report unavailable
-                let _ = server
-                    .report_tx
-                    .send(AvailabilityReport::Model(model_id))
-                    .await;
+                let _ = server.report_tx.send(AvailabilityReport::Model(model_id)).await;
                 Err(e)
             }
         }
@@ -297,8 +295,9 @@ impl ProxyServer {
             .ok_or_else(|| ProxyError::Internal("SystemState not found".into()))?;
 
         let system_state: types::system_state::SystemState =
-            bcs::from_bytes(state_object.as_inner().data.contents())
-                .map_err(|e| ProxyError::Internal(format!("Failed to deserialize SystemState: {}", e)))?;
+            bcs::from_bytes(state_object.as_inner().data.contents()).map_err(|e| {
+                ProxyError::Internal(format!("Failed to deserialize SystemState: {}", e))
+            })?;
 
         // Look up model in registry
         let model = system_state
@@ -308,10 +307,8 @@ impl ProxyServer {
             .ok_or(ProxyError::ModelNotFound(*model_id))?;
 
         // Get weights manifest (only available if model is revealed/active)
-        let weights_manifest = model
-            .weights_manifest
-            .as_ref()
-            .ok_or(ProxyError::ModelNotFound(*model_id))?;
+        let weights_manifest =
+            model.weights_manifest.as_ref().ok_or(ProxyError::ModelNotFound(*model_id))?;
 
         Ok(weights_manifest.manifest.clone())
     }
@@ -325,6 +322,7 @@ impl ProxyServer {
         &self,
         key: &str,
         manifest: &Manifest,
+        blob_path: BlobPath,
     ) -> Result<Bytes, ProxyError> {
         // Check if request is already in flight
         if let Some(sender) = self.inflight.get(key) {
@@ -338,8 +336,8 @@ impl ProxyServer {
         let (tx, _) = broadcast::channel(1);
         self.inflight.insert(key.to_string(), tx.clone());
 
-        // Download with size-based timeout
-        let result = self.download_from_manifest(manifest).await;
+        // Fetch into local store, then read back
+        let result = self.fetch_and_read(manifest, blob_path).await;
 
         // Broadcast result to all waiters (ignore send errors - no subscribers is fine)
         let _ = tx.send(result.clone());
@@ -350,22 +348,27 @@ impl ProxyServer {
         result
     }
 
-    /// Download data from a manifest URL with size-based timeout.
-    async fn download_from_manifest(&self, manifest: &Manifest) -> Result<Bytes, ProxyError> {
-        let reader = self
-            .blob_client
-            .get_reader(manifest)
+    /// Download blob into the local object store via the blob downloader, then read it back.
+    async fn fetch_and_read(
+        &self,
+        manifest: &Manifest,
+        blob_path: BlobPath,
+    ) -> Result<Bytes, ProxyError> {
+        self.downloader
+            .download(manifest, blob_path.clone())
             .await
             .map_err(|e| ProxyError::DownloadFailed(e.to_string()))?;
 
-        // Calculate timeout based on data size
-        let data_size = manifest.metadata().size() as u64;
-        let timeout = self.config.download_timeout_for_size(data_size);
-
-        reader
-            .get_full(timeout)
+        let result = self
+            .store
+            .get(&blob_path.path())
             .await
-            .map_err(|e| ProxyError::DownloadFailed(e.to_string()))
+            .map_err(|e| ProxyError::Internal(format!("Failed to read from store: {}", e)))?;
+
+        result
+            .bytes()
+            .await
+            .map_err(|e| ProxyError::Internal(format!("Failed to read bytes from store: {}", e)))
     }
 }
 
@@ -421,17 +424,14 @@ pub async fn spawn_report_handler(
         let tx = Transaction::from_data(tx_data, vec![sig]);
 
         // Wrap in ConsensusTransaction and submit
-        let consensus_tx = ConsensusTransaction::new_user_transaction_message(
-            &state.name,
-            tx,
-        );
+        let consensus_tx = ConsensusTransaction::new_user_transaction_message(&state.name, tx);
 
         match consensus_adapter.submit(
             consensus_tx,
-            None,           // No reconfig lock
+            None, // No reconfig lock
             &epoch_store,
-            None,           // No position tracking
-            None,           // No client address
+            None, // No position tracking
+            None, // No client address
         ) {
             Ok(_) => {
                 info!("Validator transaction submitted successfully: {:?}", tx_kind);
@@ -503,7 +503,10 @@ mod tests {
         assert!(parse_object_id("0123456789abcdef").is_none());
 
         // Invalid characters
-        assert!(parse_object_id("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg").is_none());
+        assert!(
+            parse_object_id("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg")
+                .is_none()
+        );
     }
 
     #[test]
