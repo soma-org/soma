@@ -970,6 +970,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "fastcrypto",
+ "memmap2",
  "object_store",
  "rand 0.8.5",
  "reqwest",
@@ -5437,6 +5438,7 @@ name = "models"
 version = "1.0.0"
 dependencies = [
  "arrgen",
+ "blobs",
  "burn",
  "ndarray",
  "num-traits",
@@ -5691,6 +5693,7 @@ dependencies = [
  "futures",
  "http",
  "msim",
+ "object_store",
  "parking_lot 0.12.5",
  "protocol-config",
  "rpc",
@@ -7647,9 +7650,7 @@ dependencies = [
  "async-trait",
  "blobs",
  "burn",
- "memmap2",
  "models",
- "object_store",
  "tokio",
  "tonic-build 0.14.3",
  "tonic-prost-build",

@@ -768,7 +768,9 @@ impl SomaNode {
             });
 
             // Create and start the proxy server
-            match ProxyServer::new(state.clone(), report_tx, ProxyConfig::default()) {
+            let proxy_store: Arc<dyn object_store::ObjectStore> =
+                Arc::new(object_store::memory::InMemory::new());
+            match ProxyServer::new(state.clone(), report_tx, proxy_store, ProxyConfig::default()) {
                 Ok(proxy_server) => {
                     let proxy_server = Arc::new(proxy_server);
                     let router = proxy_server.router();

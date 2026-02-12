@@ -25,6 +25,7 @@ store.workspace = true
 soma-tls.workspace = true
 protocol-config.workspace = true
 utils.workspace = true
+object_store.workspace = true
 
 [lints]
 workspace = true

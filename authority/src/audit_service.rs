@@ -61,6 +61,7 @@ impl CompetitionAPI for MockCompetitionAPI {
         Ok(CompetitionOutput::new(
             winner,
             TensorData::zeros::<f32, _>([768]),
+            TensorData::zeros::<f32, _>([768]),
             TensorData::from([0.0f32]),
         ))
     }

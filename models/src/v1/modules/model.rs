@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use blobs::BlobPath;
 use burn::{
     config::Config,
     data::dataloader::DataLoader,
@@ -119,7 +120,11 @@ impl<B: Backend> Model<B> {
 impl<B: Backend> ModelAPI for Model<B> {
     type Data = Arc<dyn DataLoader<B, ByteSequenceBatch<B>> + Send + Sync + 'static>;
     type Backend = B;
-    fn call(&self, data: Self::Data) -> ModelResult<ModelOutput<Self::Backend>> {
+    fn call(
+        &self,
+        data: Self::Data,
+        weights: &BlobPath,
+    ) -> ModelResult<ModelOutput<Self::Backend>> {
         let embedding_dim = self.embedding.weight.val().dims()[1];
         let loss_config =
             CrossEntropyLossConfig::new().with_pad_tokens(Some(vec![PAD_TOKEN_ID as usize]));

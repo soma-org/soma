@@ -37,19 +37,30 @@ impl CompetitionInput {
 /// Output from running a competition evaluation.
 pub struct CompetitionOutput {
     winner: ModelId,
+    loss_score: TensorData,
     embedding: TensorData,
     distance: TensorData,
 }
 
 impl CompetitionOutput {
     /// Create a new CompetitionOutput.
-    pub fn new(winner: ModelId, embedding: TensorData, distance: TensorData) -> Self {
-        Self { winner, embedding, distance }
+    pub fn new(
+        winner: ModelId,
+        loss_score: TensorData,
+        embedding: TensorData,
+        distance: TensorData,
+    ) -> Self {
+        Self { winner, loss_score, embedding, distance }
     }
 
     /// Get the winning model ID.
     pub fn winner(&self) -> ModelId {
         self.winner
+    }
+
+    /// Get the loss score.
+    pub fn loss_score(&self) -> &TensorData {
+        &self.loss_score
     }
 
     /// Get the computed embedding.
