@@ -561,7 +561,9 @@ impl GenesisBuilder {
             let emission_per_epoch = system_state.emission_pool.emission_per_epoch;
             let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
             let bps_denominator: u64 = 10000;
-            let target_allocation = (emission_per_epoch * target_allocation_bps) / bps_denominator;
+            // Use u128 intermediate to avoid overflow when emission_per_epoch is large
+            let target_allocation = (emission_per_epoch as u128 * target_allocation_bps as u128
+                / bps_denominator as u128) as u64;
 
             // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
             let initial_target_count = system_state.parameters.target_initial_targets_per_epoch;

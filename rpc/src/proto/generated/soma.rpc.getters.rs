@@ -2313,6 +2313,9 @@ mod _getter_impls {
                 target_state: None,
                 model_registry: None,
                 submission_report_records: std::collections::BTreeMap::new(),
+                safe_mode: None,
+                safe_mode_accumulated_fees: None,
+                safe_mode_accumulated_emissions: None,
             }
         }
         #[doc(hidden)]
@@ -2425,6 +2428,18 @@ mod _getter_impls {
         }
         pub fn with_model_registry(mut self, field: ModelRegistry) -> Self {
             self.model_registry = Some(field.into());
+            self
+        }
+        pub fn with_safe_mode(mut self, field: bool) -> Self {
+            self.safe_mode = Some(field.into());
+            self
+        }
+        pub fn with_safe_mode_accumulated_fees(mut self, field: u64) -> Self {
+            self.safe_mode_accumulated_fees = Some(field.into());
+            self
+        }
+        pub fn with_safe_mode_accumulated_emissions(mut self, field: u64) -> Self {
+            self.safe_mode_accumulated_emissions = Some(field.into());
             self
         }
     }

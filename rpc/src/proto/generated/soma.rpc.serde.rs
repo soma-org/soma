@@ -14840,6 +14840,15 @@ impl serde::Serialize for SystemState {
         if !self.submission_report_records.is_empty() {
             len += 1;
         }
+        if self.safe_mode.is_some() {
+            len += 1;
+        }
+        if self.safe_mode_accumulated_fees.is_some() {
+            len += 1;
+        }
+        if self.safe_mode_accumulated_emissions.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemState", len)?;
         if let Some(v) = self.epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14877,6 +14886,19 @@ impl serde::Serialize for SystemState {
         if !self.submission_report_records.is_empty() {
             struct_ser.serialize_field("submissionReportRecords", &self.submission_report_records)?;
         }
+        if let Some(v) = self.safe_mode.as_ref() {
+            struct_ser.serialize_field("safeMode", v)?;
+        }
+        if let Some(v) = self.safe_mode_accumulated_fees.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("safeModeAccumulatedFees", ToString::to_string(&v).as_str())?;
+        }
+        if let Some(v) = self.safe_mode_accumulated_emissions.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("safeModeAccumulatedEmissions", ToString::to_string(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -14904,6 +14926,12 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             "modelRegistry",
             "submission_report_records",
             "submissionReportRecords",
+            "safe_mode",
+            "safeMode",
+            "safe_mode_accumulated_fees",
+            "safeModeAccumulatedFees",
+            "safe_mode_accumulated_emissions",
+            "safeModeAccumulatedEmissions",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -14918,6 +14946,9 @@ impl<'de> serde::Deserialize<'de> for SystemState {
             TargetState,
             ModelRegistry,
             SubmissionReportRecords,
+            SafeMode,
+            SafeModeAccumulatedFees,
+            SafeModeAccumulatedEmissions,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -14950,6 +14981,9 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                             "targetState" | "target_state" => Ok(GeneratedField::TargetState),
                             "modelRegistry" | "model_registry" => Ok(GeneratedField::ModelRegistry),
                             "submissionReportRecords" | "submission_report_records" => Ok(GeneratedField::SubmissionReportRecords),
+                            "safeMode" | "safe_mode" => Ok(GeneratedField::SafeMode),
+                            "safeModeAccumulatedFees" | "safe_mode_accumulated_fees" => Ok(GeneratedField::SafeModeAccumulatedFees),
+                            "safeModeAccumulatedEmissions" | "safe_mode_accumulated_emissions" => Ok(GeneratedField::SafeModeAccumulatedEmissions),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -14981,6 +15015,9 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                 let mut target_state__ = None;
                 let mut model_registry__ = None;
                 let mut submission_report_records__ = None;
+                let mut safe_mode__ = None;
+                let mut safe_mode_accumulated_fees__ = None;
+                let mut safe_mode_accumulated_emissions__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Epoch => {
@@ -15053,6 +15090,28 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                                 map_.next_value::<std::collections::BTreeMap<_, _>>()?
                             );
                         }
+                        GeneratedField::SafeMode => {
+                            if safe_mode__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("safeMode"));
+                            }
+                            safe_mode__ = map_.next_value()?;
+                        }
+                        GeneratedField::SafeModeAccumulatedFees => {
+                            if safe_mode_accumulated_fees__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("safeModeAccumulatedFees"));
+                            }
+                            safe_mode_accumulated_fees__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::SafeModeAccumulatedEmissions => {
+                            if safe_mode_accumulated_emissions__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("safeModeAccumulatedEmissions"));
+                            }
+                            safe_mode_accumulated_emissions__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -15069,6 +15128,9 @@ impl<'de> serde::Deserialize<'de> for SystemState {
                     target_state: target_state__,
                     model_registry: model_registry__,
                     submission_report_records: submission_report_records__.unwrap_or_default(),
+                    safe_mode: safe_mode__,
+                    safe_mode_accumulated_fees: safe_mode_accumulated_fees__,
+                    safe_mode_accumulated_emissions: safe_mode_accumulated_emissions__,
                 })
             }
         }

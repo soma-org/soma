@@ -154,6 +154,16 @@ pub struct SystemState {
 
     /// Lightweight coordination state for target generation and difficulty
     pub target_state: TargetState,
+
+    /// Whether the system is in safe mode due to a failed epoch transition.
+    /// Set to true when advance_epoch() fails; reset to false on next successful advance.
+    pub safe_mode: bool,
+
+    /// Transaction fees accumulated during safe mode epochs, waiting to be distributed.
+    pub safe_mode_accumulated_fees: u64,
+
+    /// Emission rewards accumulated during safe mode epochs, waiting to be distributed.
+    pub safe_mode_accumulated_emissions: u64,
 }
 
 impl SystemState {
@@ -193,6 +203,9 @@ impl SystemState {
             model_registry: ModelRegistry::new(),
             emission_pool,
             target_state,
+            safe_mode: false,
+            safe_mode_accumulated_fees: 0,
+            safe_mode_accumulated_emissions: 0,
         }
     }
 
@@ -917,17 +930,20 @@ impl SystemState {
 
         for model_id in &slashed_model_ids {
             if let Some(mut model) = self.model_registry.active_models.remove(model_id) {
+                // Save original balance before slashing (for accurate total_model_stake deduction)
+                let original_balance = model.staking_pool.soma_balance;
+
                 // Slash stake: reduce soma_balance by tally_slash_rate_bps
-                let slash_amount = (model.staking_pool.soma_balance as u128
-                    * tally_slash_rate as u128
+                let slash_amount = (original_balance as u128 * tally_slash_rate as u128
                     / BPS_DENOMINATOR as u128) as u64;
                 model.staking_pool.soma_balance =
-                    model.staking_pool.soma_balance.saturating_sub(slash_amount);
+                    original_balance.saturating_sub(slash_amount);
 
+                // Remove the model's full original stake from the total
                 self.model_registry.total_model_stake = self
                     .model_registry
                     .total_model_stake
-                    .saturating_sub(model.staking_pool.soma_balance + slash_amount);
+                    .saturating_sub(original_balance);
 
                 model.staking_pool.deactivation_epoch = Some(new_epoch);
                 self.model_registry.inactive_models.insert(*model_id, model);
@@ -1025,6 +1041,21 @@ impl SystemState {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
         }
 
+        // Drain safe mode accumulators if recovering from safe mode
+        let mut safe_mode_extra_rewards = 0u64;
+        if self.safe_mode {
+            info!(
+                "Recovering from safe mode — draining accumulated rewards: fees={}, emissions={}",
+                self.safe_mode_accumulated_fees, self.safe_mode_accumulated_emissions
+            );
+            safe_mode_extra_rewards = self
+                .safe_mode_accumulated_fees
+                .saturating_add(self.safe_mode_accumulated_emissions);
+            self.safe_mode_accumulated_fees = 0;
+            self.safe_mode_accumulated_emissions = 0;
+            self.safe_mode = false;
+        }
+
         let prev_epoch = self.epoch;
         let prev_epoch_start_timestamp = self.epoch_start_timestamp_ms;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
@@ -1044,12 +1075,12 @@ impl SystemState {
         // Get reward_slashing_rate from protocol config
         let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
-        // 2. Calculate total rewards (emissions + fees)
-        let mut total_rewards = epoch_total_transaction_fees;
+        // 2. Calculate total rewards (emissions + fees + safe mode accumulators)
+        let mut total_rewards = epoch_total_transaction_fees.saturating_add(safe_mode_extra_rewards);
         if epoch_start_timestamp_ms
             >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
         {
-            total_rewards += self.emission_pool.advance_epoch();
+            total_rewards = total_rewards.saturating_add(self.emission_pool.advance_epoch());
         }
         // Adjust fees for next epoch BEFORE processing rewards
         self.adjust_value_fee(epoch_total_transaction_fees);
@@ -1061,7 +1092,10 @@ impl SystemState {
         // Note: Target rewards are pre-allocated at target creation time from emission pool,
         // so we only allocate validator rewards here.
         let validator_allocation_bps = self.parameters.validator_reward_allocation_bps;
-        let validator_allocation = (total_rewards * validator_allocation_bps) / BPS_DENOMINATOR;
+        // Use u128 intermediate to avoid overflow
+        let validator_allocation =
+            (total_rewards as u128 * validator_allocation_bps as u128 / BPS_DENOMINATOR as u128)
+                as u64;
         let _remainder = total_rewards - validator_allocation;
         // The remainder could be added back to emission_pool if desired, but for now
         // target rewards are funded directly from emission_pool at target creation time.
@@ -1086,10 +1120,58 @@ impl SystemState {
 
         // 12. Return remainder to emission pool
         if validator_reward_pool > 0 {
-            self.emission_pool.balance += validator_reward_pool;
+            self.emission_pool.balance =
+                self.emission_pool.balance.saturating_add(validator_reward_pool);
         }
 
         Ok(validator_rewards)
+    }
+
+    /// Minimal epoch transition when normal advance_epoch fails.
+    /// This is the safe mode fallback — it cannot fail because it performs
+    /// no complex math, no loops, and no external calls.
+    ///
+    /// It only:
+    /// - Sets `safe_mode = true`
+    /// - Increments epoch + timestamp
+    /// - Accumulates fees and emissions into holding fields
+    ///
+    /// Everything else (validator rewards, model processing, target generation,
+    /// difficulty adjustment) is skipped. The committee, parameters, and all
+    /// registries remain frozen until a successful `advance_epoch()` recovers.
+    pub fn advance_epoch_safe_mode(
+        &mut self,
+        new_epoch: u64,
+        epoch_total_transaction_fees: u64,
+        epoch_start_timestamp_ms: u64,
+    ) {
+        self.safe_mode = true;
+        self.epoch = new_epoch;
+        self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
+
+        // Accumulate fees — will be distributed on recovery
+        self.safe_mode_accumulated_fees = self
+            .safe_mode_accumulated_fees
+            .saturating_add(epoch_total_transaction_fees);
+
+        // Accumulate emissions if the emission pool has balance
+        let emission = std::cmp::min(
+            self.emission_pool.emission_per_epoch,
+            self.emission_pool.balance,
+        );
+        self.emission_pool.balance = self.emission_pool.balance.saturating_sub(emission);
+        self.safe_mode_accumulated_emissions = self
+            .safe_mode_accumulated_emissions
+            .saturating_add(emission);
+
+        // No validator rewards, no model processing, no target generation,
+        // no difficulty adjustment, no staking pool processing.
+        // The committee, parameters, and all registries remain frozen.
+
+        info!(
+            "Safe mode activated for epoch {}. Accumulated fees: {}, accumulated emissions: {}",
+            new_epoch, self.safe_mode_accumulated_fees, self.safe_mode_accumulated_emissions
+        );
     }
 
     /// Return funds to the emissions pool (used when targets expire unfilled)
@@ -1104,7 +1186,10 @@ impl SystemState {
     pub fn calculate_reward_per_target(&self) -> u64 {
         let epoch_emissions = self.emission_pool.emission_per_epoch;
         let target_allocation_bps = self.parameters.target_reward_allocation_bps;
-        let target_emissions = (epoch_emissions * target_allocation_bps) / BPS_DENOMINATOR;
+        // Use u128 intermediate to avoid overflow when epoch_emissions is large
+        let target_emissions =
+            (epoch_emissions as u128 * target_allocation_bps as u128 / BPS_DENOMINATOR as u128)
+                as u64;
 
         // Use initial targets per epoch as the estimate
         let estimated_targets = self.parameters.target_initial_targets_per_epoch.max(1);

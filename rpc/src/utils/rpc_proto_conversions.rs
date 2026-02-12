@@ -934,6 +934,12 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             model_registry,
 
             target_state,
+
+            safe_mode: proto_state.safe_mode.unwrap_or(false),
+            safe_mode_accumulated_fees: proto_state.safe_mode_accumulated_fees.unwrap_or(0),
+            safe_mode_accumulated_emissions: proto_state
+                .safe_mode_accumulated_emissions
+                .unwrap_or(0),
         };
 
         Ok(system_state)
@@ -1368,6 +1374,9 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             target_state: Some(domain_state.target_state.into()),
             model_registry: Some(domain_state.model_registry.try_into()?),
             submission_report_records: std::collections::BTreeMap::new(), // Empty for backward compat
+            safe_mode: Some(domain_state.safe_mode),
+            safe_mode_accumulated_fees: Some(domain_state.safe_mode_accumulated_fees),
+            safe_mode_accumulated_emissions: Some(domain_state.safe_mode_accumulated_emissions),
         })
     }
 }

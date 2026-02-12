@@ -3371,6 +3371,13 @@ pub struct SystemState {
         ::prost::alloc::string::String,
         ReporterSet,
     >,
+    /// Safe mode fields
+    #[prost(bool, optional, tag = "14")]
+    pub safe_mode: ::core::option::Option<bool>,
+    #[prost(uint64, optional, tag = "15")]
+    pub safe_mode_accumulated_fees: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "16")]
+    pub safe_mode_accumulated_emissions: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

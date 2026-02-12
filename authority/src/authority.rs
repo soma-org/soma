@@ -2282,8 +2282,23 @@ impl AuthorityState {
         //     effects.summary_for_debug()
         // );
 
-        // The change epoch transaction cannot fail to execute.
-        assert!(effects.status().is_ok());
+        // Allow tests to detect unexpected safe mode entry (e.g. from race conditions).
+        // The test_advance_epoch_tx_race test registers a panic on this failpoint to verify
+        // that the is_tx_already_executed guard prevents double-execution.
+        if system_obj.safe_mode {
+            utils::fail_point!("checkpoint_builder_advance_epoch_is_safe_mode");
+        }
+
+        // With safe mode, the change epoch transaction should always succeed.
+        // If it somehow fails even with safe mode, log an error rather than
+        // crashing all validators simultaneously.
+        if !effects.status().is_ok() {
+            tracing::error!(
+                "ChangeEpoch transaction failed with status: {:?}. \
+                 This should not happen — safe mode should have caught this.",
+                effects.status()
+            );
+        }
         Ok((system_obj, effects))
     }
 

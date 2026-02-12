@@ -3737,6 +3737,24 @@ mod _field_impls {
             number: 13i32,
             message_fields: None,
         };
+        pub const SAFE_MODE_FIELD: &'static MessageField = &MessageField {
+            name: "safe_mode",
+            json_name: "safeMode",
+            number: 14i32,
+            message_fields: None,
+        };
+        pub const SAFE_MODE_ACCUMULATED_FEES_FIELD: &'static MessageField = &MessageField {
+            name: "safe_mode_accumulated_fees",
+            json_name: "safeModeAccumulatedFees",
+            number: 15i32,
+            message_fields: None,
+        };
+        pub const SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD: &'static MessageField = &MessageField {
+            name: "safe_mode_accumulated_emissions",
+            json_name: "safeModeAccumulatedEmissions",
+            number: 16i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for SystemState {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3750,6 +3768,9 @@ mod _field_impls {
             Self::TARGET_STATE_FIELD,
             Self::MODEL_REGISTRY_FIELD,
             Self::SUBMISSION_REPORT_RECORDS_FIELD,
+            Self::SAFE_MODE_FIELD,
+            Self::SAFE_MODE_ACCUMULATED_FEES_FIELD,
+            Self::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD,
         ];
     }
     impl SystemState {
@@ -3810,6 +3831,18 @@ mod _field_impls {
         }
         pub fn submission_report_records(mut self) -> String {
             self.path.push(SystemState::SUBMISSION_REPORT_RECORDS_FIELD.name);
+            self.finish()
+        }
+        pub fn safe_mode(mut self) -> String {
+            self.path.push(SystemState::SAFE_MODE_FIELD.name);
+            self.finish()
+        }
+        pub fn safe_mode_accumulated_fees(mut self) -> String {
+            self.path.push(SystemState::SAFE_MODE_ACCUMULATED_FEES_FIELD.name);
+            self.finish()
+        }
+        pub fn safe_mode_accumulated_emissions(mut self) -> String {
+            self.path.push(SystemState::SAFE_MODE_ACCUMULATED_EMISSIONS_FIELD.name);
             self.finish()
         }
     }

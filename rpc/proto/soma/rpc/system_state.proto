@@ -32,6 +32,11 @@ message SystemState {
 
   // Submission report records (target_id hex -> reporter addresses)
   map<string, ReporterSet> submission_report_records = 13;
+
+  // Safe mode fields
+  optional bool safe_mode = 14;
+  optional uint64 safe_mode_accumulated_fees = 15;
+  optional uint64 safe_mode_accumulated_emissions = 16;
 }
 
 message ReporterSet {
