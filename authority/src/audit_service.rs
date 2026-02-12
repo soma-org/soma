@@ -20,7 +20,8 @@ use burn::tensor::{TensorData, Tolerance};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-use runtime::{CompetitionAPI, CompetitionInput, CompetitionOutput};
+use blobs::BlobPath;
+use runtime::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use types::{
     base::{AuthorityName, SomaAddress},
     challenge::{Challenge, ChallengeId},
@@ -49,17 +50,27 @@ use crate::{
 ///
 /// This service returns a result that matches the miner's claimed values,
 /// so no fraud will be detected. Use for testing the "challenger loses" path.
-pub struct MockCompetitionAPI;
+pub struct MockRuntimeAPI;
 
 #[async_trait::async_trait]
-impl CompetitionAPI for MockCompetitionAPI {
-    async fn run(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
-        // Return first model as winner with zero embedding and distance.
-        // This matches the miner's claimed values in tests (distance=0 or within tolerance).
-        let winner = input.models().first().map(|(id, _)| *id).unwrap_or_else(ObjectID::random);
-
+impl RuntimeAPI for MockRuntimeAPI {
+    async fn competition(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
         Ok(CompetitionOutput::new(
-            winner,
+            0,
+            TensorData::zeros::<f32, _>([768]),
+            TensorData::zeros::<f32, _>([768]),
+            TensorData::from([0.0f32]),
+        ))
+    }
+    async fn download_manifest(&self, manifest: &Manifest, path: &BlobPath) -> RuntimeResult<()> {
+        Ok(())
+    }
+    async fn manifest_competition(
+        &self,
+        input: ManifestCompetitionInput,
+    ) -> RuntimeResult<CompetitionOutput> {
+        Ok(CompetitionOutput::new(
+            0,
             TensorData::zeros::<f32, _>([768]),
             TensorData::zeros::<f32, _>([768]),
             TensorData::from([0.0f32]),
@@ -73,8 +84,19 @@ impl CompetitionAPI for MockCompetitionAPI {
 pub struct MockFraudCompetitionAPI;
 
 #[async_trait::async_trait]
-impl CompetitionAPI for MockFraudCompetitionAPI {
-    async fn run(&self, _input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
+impl RuntimeAPI for MockFraudCompetitionAPI {
+    async fn competition(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
+        Err(types::error::RuntimeError::DataNotAvailable(
+            "Mock: data unavailable for testing fraud detection".to_string(),
+        ))
+    }
+    async fn download_manifest(&self, manifest: &Manifest, path: &BlobPath) -> RuntimeResult<()> {
+        Ok(())
+    }
+    async fn manifest_competition(
+        &self,
+        input: ManifestCompetitionInput,
+    ) -> RuntimeResult<CompetitionOutput> {
         // Simulate data unavailable - miner is responsible for data availability
         Err(types::error::RuntimeError::DataNotAvailable(
             "Mock: data unavailable for testing fraud detection".to_string(),
@@ -139,8 +161,8 @@ pub struct AuditService {
     /// Authority state for reading objects.
     state: Arc<AuthorityState>,
 
-    /// Competition API for running inference (handles all downloading).
-    competition_api: Arc<dyn CompetitionAPI>,
+    /// Runtime API for running inference (handles all downloading).
+    runtime_api: Arc<dyn RuntimeAPI>,
 
     /// Current epoch.
     epoch: EpochId,
@@ -160,7 +182,7 @@ impl AuditService {
         validator_address: SomaAddress,
         account_keypair: Arc<SomaKeyPair>,
         state: Arc<AuthorityState>,
-        competition_api: Arc<dyn CompetitionAPI>,
+        runtime_api: Arc<dyn RuntimeAPI>,
         epoch: EpochId,
         consensus_adapter: Arc<ConsensusAdapter>,
         epoch_store: Arc<AuthorityPerEpochStore>,
@@ -170,7 +192,7 @@ impl AuditService {
             validator_address,
             account_keypair,
             state,
-            competition_api,
+            runtime_api,
             epoch,
             consensus_adapter,
             epoch_store,
@@ -307,11 +329,11 @@ impl AuditService {
         let data_manifest = &challenge.winning_data_manifest.manifest;
 
         // Collect model manifests from the registry
-        let mut model_manifests: Vec<(ModelId, Manifest)> = Vec::new();
+        let mut model_manifests: Vec<Manifest> = Vec::new();
         for &model_id in &challenge.model_ids {
             match self.load_model_manifest(&model_id).await {
                 Ok(manifest) => {
-                    model_manifests.push((model_id, manifest));
+                    model_manifests.push(manifest);
                 }
                 Err(_) => {
                     // Model not in registry - skip it
@@ -332,14 +354,14 @@ impl AuditService {
         }
 
         // Build CompetitionInput
-        let input = CompetitionInput::new(
+        let input = ManifestCompetitionInput::new(
             data_manifest.clone(),
             model_manifests,
             challenge.target_embedding.clone().into_tensor_data(),
         );
 
         // Call CompetitionAPI (handles download, verification, inference)
-        let output = match self.competition_api.run(input).await {
+        let output = match self.runtime_api.manifest_competition(input).await {
             Ok(result) => result,
             Err(types::error::RuntimeError::DataNotAvailable(msg)) => {
                 // Miner is responsible for keeping data available during challenge window
@@ -369,13 +391,12 @@ impl AuditService {
         let claimed_model_id = challenge.winning_model_id;
         let claimed_distance = &challenge.winning_distance_score;
 
+        let winner = challenge.model_ids[output.winner()];
         // Check 1: Did the miner use the correct winning model?
-        if output.winner() != claimed_model_id {
+        if winner != claimed_model_id {
             info!(
                 "FRAUD: wrong model for challenge {:?}. Claimed: {:?}, Actual winner: {:?}",
-                challenge.id,
-                claimed_model_id,
-                output.winner()
+                challenge.id, claimed_model_id, winner
             );
             return true;
         }
@@ -408,8 +429,8 @@ mod tests {
 
     #[test]
     fn test_mock_competition_api() {
-        let api = MockCompetitionAPI;
-        let _: Arc<dyn CompetitionAPI> = Arc::new(api);
+        let api = MockRuntimeAPI;
+        let _: Arc<dyn RuntimeAPI> = Arc::new(api);
     }
 
     #[test]

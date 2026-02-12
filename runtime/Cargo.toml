@@ -7,15 +7,19 @@ edition = "2024"
 blobs.workspace = true
 burn.workspace = true
 models.workspace = true
+object_store.workspace = true
 types.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
-[dev-dependencies]
-tokio.workspace = true
+
 
 [build-dependencies]
 tonic-build.workspace = true
 tonic-prost-build.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+url.workspace = true
 
 [lints]
 workspace = true

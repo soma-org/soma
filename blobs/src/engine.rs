@@ -91,10 +91,10 @@ impl BlobEngine {
         Ok(ranges)
     }
 
-    pub(crate) async fn download(
+    pub(crate) async fn download<S: ObjectStore>(
         &self,
         reader: Arc<dyn BlobReader>,
-        dest: Arc<dyn ObjectStore>,
+        dest: Arc<S>,
         blob_path: BlobPath,
         metadata: Metadata,
     ) -> BlobResult<()> {
@@ -345,7 +345,7 @@ mod tests {
         let metadata = Metadata::V1(MetadataV1::new(checksum, real_data.len()));
         let blob_path = BlobPath::Data(5, checksum);
 
-        let dest: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let dest = Arc::new(InMemory::new());
         let reader: Arc<dyn BlobReader> = Arc::new(ShortReader { data: short_data });
         let engine = BlobEngine::new(Arc::new(Semaphore::new(2)), MIN_PART_SIZE, 40).unwrap();
 

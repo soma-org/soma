@@ -1,20 +1,47 @@
 use async_trait::async_trait;
+use burn::tensor::TensorData;
+use types::{error::RuntimeResult, metadata::Manifest};
+pub mod v1;
 use blobs::BlobPath;
-use burn::{Tensor, data::dataloader::DataLoader, prelude::Backend, tensor::TensorData};
-use std::sync::Arc;
-use types::{error::RuntimeResult, metadata::Manifest, model::ModelId};
-pub mod competition;
 
 /// Input for running a competition evaluation.
 pub struct CompetitionInput {
-    data: Manifest,
-    models: Vec<(ModelId, Manifest)>,
+    data: BlobPath,
+    models: Vec<BlobPath>,
     target: TensorData,
 }
 
 impl CompetitionInput {
     /// Create a new CompetitionInput.
-    pub fn new(data: Manifest, models: Vec<(ModelId, Manifest)>, target: TensorData) -> Self {
+    pub fn new(data: BlobPath, models: Vec<BlobPath>, target: TensorData) -> Self {
+        Self { data, models, target }
+    }
+
+    /// Get the data manifest.
+    pub fn data(&self) -> &BlobPath {
+        &self.data
+    }
+
+    /// Get the model entries (id + manifest).
+    pub fn models(&self) -> &[BlobPath] {
+        &self.models
+    }
+
+    /// Get the target embedding.
+    pub fn target(&self) -> &TensorData {
+        &self.target
+    }
+}
+
+pub struct ManifestCompetitionInput {
+    data: Manifest,
+    models: Vec<Manifest>,
+    target: TensorData,
+}
+
+impl ManifestCompetitionInput {
+    /// Create a new CompetitionInput.
+    pub fn new(data: Manifest, models: Vec<Manifest>, target: TensorData) -> Self {
         Self { data, models, target }
     }
 
@@ -23,8 +50,8 @@ impl CompetitionInput {
         &self.data
     }
 
-    /// Get the model manifests.
-    pub fn models(&self) -> &[(ModelId, Manifest)] {
+    /// Get the model entries (id + manifest).
+    pub fn models(&self) -> &[Manifest] {
         &self.models
     }
 
@@ -35,8 +62,9 @@ impl CompetitionInput {
 }
 
 /// Output from running a competition evaluation.
+#[derive(Debug)]
 pub struct CompetitionOutput {
-    winner: ModelId,
+    winner: usize,
     loss_score: TensorData,
     embedding: TensorData,
     distance: TensorData,
@@ -45,7 +73,7 @@ pub struct CompetitionOutput {
 impl CompetitionOutput {
     /// Create a new CompetitionOutput.
     pub fn new(
-        winner: ModelId,
+        winner: usize,
         loss_score: TensorData,
         embedding: TensorData,
         distance: TensorData,
@@ -53,8 +81,8 @@ impl CompetitionOutput {
         Self { winner, loss_score, embedding, distance }
     }
 
-    /// Get the winning model ID.
-    pub fn winner(&self) -> ModelId {
+    /// Get the winning model index.
+    pub fn winner(&self) -> usize {
         self.winner
     }
 
@@ -75,6 +103,11 @@ impl CompetitionOutput {
 }
 
 #[async_trait]
-pub trait CompetitionAPI: Send + Sync + 'static {
-    async fn run(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput>;
+pub trait RuntimeAPI: Send + Sync + 'static {
+    async fn competition(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput>;
+    async fn download_manifest(&self, manifest: &Manifest, path: &BlobPath) -> RuntimeResult<()>;
+    async fn manifest_competition(
+        &self,
+        input: ManifestCompetitionInput,
+    ) -> RuntimeResult<CompetitionOutput>;
 }
