@@ -437,6 +437,7 @@ pub struct TestClusterBuilder {
     network_config: Option<NetworkConfig>,
     validators: Option<Vec<ValidatorGenesisConfig>>,
     validator_supported_protocol_versions_config: ProtocolVersionsConfig,
+    fullnode_run_with_range: Option<RunWithRange>,
 }
 
 impl TestClusterBuilder {
@@ -447,6 +448,7 @@ impl TestClusterBuilder {
             network_config: None,
             validators: None,
             validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
+            fullnode_run_with_range: None,
         }
     }
 
@@ -499,6 +501,11 @@ impl TestClusterBuilder {
     ) -> Self {
         self.validator_supported_protocol_versions_config =
             ProtocolVersionsConfig::PerValidator(func);
+        self
+    }
+
+    pub fn with_fullnode_run_with_range(mut self, run_with_range: RunWithRange) -> Self {
+        self.fullnode_run_with_range = Some(run_with_range);
         self
     }
 
@@ -558,11 +565,15 @@ impl TestClusterBuilder {
             builder = builder.with_network_config(network_config);
         }
 
-        let mut swarm = builder
-            .with_supported_protocol_versions_config(
-                self.validator_supported_protocol_versions_config.clone(),
-            )
-            .build();
+        let mut builder = builder.with_supported_protocol_versions_config(
+            self.validator_supported_protocol_versions_config.clone(),
+        );
+
+        if let Some(run_with_range) = self.fullnode_run_with_range {
+            builder = builder.with_fullnode_run_with_range(run_with_range);
+        }
+
+        let mut swarm = builder.build();
         swarm.launch().await?;
 
         let dir = swarm.dir();

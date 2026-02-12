@@ -1,6 +1,5 @@
 use std::{collections::HashSet, time::Duration};
 
-use futures::future::join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
 use test_cluster::{TestCluster, TestClusterBuilder};
@@ -16,6 +15,7 @@ use types::{
         AccountConfig, DEFAULT_GAS_AMOUNT, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
     },
     crypto::{KeypairTraits, SomaKeyPair},
+    effects::TransactionEffectsAPI,
     system_state::SystemStateTrait,
     transaction::{
         AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
@@ -595,9 +595,573 @@ async fn execute_add_stake_transaction(
     let _response = test_cluster.execute_transaction(tx).await;
 }
 
-// TODO: async fn test_inactive_validator_pool_read()
-// TODO: async fn test_validator_candidate_pool_read()
-// TODO: async fn test_reconfig_with_failing_validator(
-// TODO: async fn test_create_advance_epoch_tx_race()
-// TODO: async fn test_expired_locks()
-// TODO: async fn do_test_passive_reconfig()
+/// After a validator is removed and reconfiguration occurs, it should appear
+/// in the `inactive_validators` map with its `deactivation_epoch` set.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_inactive_validator_pool_read() {
+    init_tracing();
+
+    let initial_num_validators = 5;
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(initial_num_validators)
+        .build()
+        .await;
+
+    // Pick the first validator to remove.
+    let first_validator_handle = test_cluster.all_validator_handles().into_iter().next().unwrap();
+    let validator_address =
+        first_validator_handle.with(|node| node.get_config().soma_address());
+    let validator_pool_id = test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
+        let validator = system_state
+            .validators
+            .validators
+            .iter()
+            .find(|v| v.metadata.soma_address == validator_address)
+            .expect("Validator should be in active set");
+        validator.staking_pool.id
+    });
+
+    // The validator should NOT be in inactive_validators before removal.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .unwrap();
+        assert!(
+            !system_state.validators.inactive_validators.contains_key(&validator_pool_id),
+            "Validator should not be inactive before removal"
+        );
+    });
+
+    // Remove the validator.
+    execute_remove_validator_tx(&test_cluster, &first_validator_handle).await;
+    test_cluster.trigger_reconfiguration().await;
+
+    // Verify the committee shrunk.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        assert_eq!(
+            node.state().epoch_store_for_testing().committee().num_members(),
+            initial_num_validators - 1
+        );
+    });
+
+    // Verify the removed validator is in inactive_validators with deactivation_epoch set.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
+        let inactive = system_state
+            .validators
+            .inactive_validators
+            .get(&validator_pool_id)
+            .expect("Removed validator should be in inactive_validators");
+        assert!(
+            inactive.staking_pool.deactivation_epoch.is_some(),
+            "Inactive validator should have deactivation_epoch set"
+        );
+        assert_eq!(
+            inactive.staking_pool.deactivation_epoch.unwrap(),
+            1,
+            "Deactivation epoch should be 1 (the epoch after removal)"
+        );
+        assert_eq!(
+            inactive.metadata.soma_address, validator_address,
+            "Inactive validator address should match the removed validator"
+        );
+    });
+
+    // Verify the removed validator is no longer in the committee.
+    first_validator_handle.with(|node| {
+        assert!(
+            node.state().is_fullnode(&node.state().epoch_store_for_testing()),
+            "Removed validator should now report as fullnode"
+        );
+    });
+}
+
+/// After submitting an AddValidator transaction, the new validator should appear
+/// in `pending_validators` before reconfiguration.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_validator_candidate_pool_read() {
+    init_tracing();
+
+    let initial_num_validators = 4;
+    let new_validator = ValidatorGenesisConfigBuilder::new().build(&mut OsRng);
+    let new_address: SomaAddress = (&new_validator.account_key_pair.public()).into();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(initial_num_validators)
+        .with_validator_candidates([new_address])
+        .build()
+        .await;
+
+    // Before AddValidator: no pending validators.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
+        assert!(
+            system_state.validators.pending_validators.is_empty(),
+            "No pending validators should exist initially"
+        );
+    });
+
+    // Submit AddValidator transaction.
+    execute_add_validator_transactions(&test_cluster, &new_validator, None).await;
+
+    // After AddValidator, before reconfig: the new validator should be in pending_validators.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
+
+        assert_eq!(
+            system_state.validators.pending_validators.len(),
+            1,
+            "One validator should be pending"
+        );
+        let pending = &system_state.validators.pending_validators[0];
+        assert_eq!(
+            pending.metadata.soma_address, new_address,
+            "Pending validator address should match"
+        );
+        // The pending validator's staking pool should be preactive (no activation_epoch yet).
+        assert!(
+            pending.staking_pool.activation_epoch.is_none(),
+            "Pending validator pool should not yet be activated"
+        );
+        assert!(
+            pending.staking_pool.deactivation_epoch.is_none(),
+            "Pending validator pool should not be deactivated"
+        );
+        assert!(
+            pending.staking_pool.soma_balance > 0,
+            "Pending validator should have stake"
+        );
+    });
+
+    // Verify the committee hasn't changed yet.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        assert_eq!(
+            node.state().epoch_store_for_testing().committee().num_members(),
+            initial_num_validators,
+            "Committee should not change before reconfiguration"
+        );
+    });
+
+    // Now trigger reconfiguration and verify the candidate is promoted.
+    test_cluster.trigger_reconfiguration().await;
+
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let system_state = node
+            .state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState");
+
+        // Pending should be empty now (promoted to active).
+        assert!(
+            system_state.validators.pending_validators.is_empty(),
+            "Pending validators should be empty after reconfig"
+        );
+
+        // Committee should have grown.
+        assert_eq!(
+            node.state().epoch_store_for_testing().committee().num_members(),
+            initial_num_validators + 1,
+            "Committee should grow by one after reconfig"
+        );
+
+        // The new validator should be in the active set.
+        let active = system_state
+            .validators
+            .validators
+            .iter()
+            .find(|v| v.metadata.soma_address == new_address);
+        assert!(
+            active.is_some(),
+            "New validator should be in the active set after reconfig"
+        );
+        let active = active.unwrap();
+        assert!(
+            active.staking_pool.activation_epoch.is_some(),
+            "Activated validator should have activation_epoch set"
+        );
+    });
+}
+
+/// The network should survive random validator restarts and still reach the
+/// target epoch. Tests consensus resilience under node failures.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_reconfig_with_failing_validator() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(7)
+        .with_epoch_duration_ms(5000)
+        .build()
+        .await;
+
+    let target_epoch: u64 =
+        std::env::var("RECONFIG_TARGET_EPOCH").ok().map(|v| v.parse().unwrap()).unwrap_or(4);
+
+    // Spawn a background task that randomly kills and restarts one validator.
+    let validator_pubkeys = test_cluster.get_validator_pubkeys();
+    let swarm_handle = &test_cluster.swarm;
+
+    // We'll do controlled restarts: stop one validator at a time, wait, restart.
+    // We iterate through validators to ensure each one gets tested.
+    let restart_task = {
+        let pubkeys = validator_pubkeys.clone();
+        async move {
+            let mut idx = 0;
+            loop {
+                let key = &pubkeys[idx % pubkeys.len()];
+                let node = swarm_handle.node(key).unwrap();
+                if node.is_running() {
+                    info!("Stopping validator {} (idx={})", key, idx);
+                    node.stop();
+                    sleep(Duration::from_secs(2)).await;
+                    info!("Restarting validator {} (idx={})", key, idx);
+                    node.start().await.unwrap();
+                }
+                idx += 1;
+                sleep(Duration::from_secs(3)).await;
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = restart_task => {
+            unreachable!("Restart task should run forever");
+        }
+        system_state = test_cluster.wait_for_epoch_with_timeout(
+            Some(target_epoch),
+            Duration::from_secs(120),
+        ) => {
+            info!("Reached target epoch {} successfully despite validator failures", system_state.epoch());
+            assert!(system_state.epoch() >= target_epoch);
+        }
+    }
+}
+
+/// Test that submitting staking transactions during epoch transitions doesn't
+/// cause issues. Transactions submitted right at the epoch boundary should
+/// either succeed in the current epoch or be processed in the next epoch.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_create_advance_epoch_tx_race() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(4)
+        .with_epoch_duration_ms(2000)
+        .build()
+        .await;
+
+    let sender = test_cluster.get_addresses()[0];
+    let target_epoch = 3u64;
+
+    // Get a validator address to stake with.
+    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .unwrap()
+            .validators
+            .validators[0]
+            .metadata
+            .soma_address
+    });
+
+    let mut submitted = 0u64;
+    let mut succeeded = 0u64;
+    let mut failed = 0u64;
+
+    loop {
+        let current_epoch = test_cluster.fullnode_handle.soma_node.with(|node| {
+            node.state().epoch_store_for_testing().epoch()
+        });
+        if current_epoch >= target_epoch {
+            break;
+        }
+
+        // Get a gas object and submit a stake transaction.
+        let gas_object = test_cluster
+            .wallet
+            .get_one_gas_object_owned_by_address(sender)
+            .await
+            .unwrap();
+
+        if let Some(gas_object) = gas_object {
+            let tx_data = TransactionData::new(
+                TransactionKind::AddStake {
+                    address: validator_address,
+                    coin_ref: gas_object,
+                    amount: Some(1_000_000),
+                },
+                sender,
+                vec![gas_object],
+            );
+
+            let tx = test_cluster.wallet.sign_transaction(&tx_data).await;
+            submitted += 1;
+
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                test_cluster.execute_transaction(tx),
+            )
+            .await
+            {
+                Ok(response) => {
+                    if response.effects.status().is_ok() {
+                        succeeded += 1;
+                    } else {
+                        failed += 1;
+                    }
+                }
+                Err(_timeout) => {
+                    failed += 1;
+                }
+            }
+        }
+
+        sleep(Duration::from_millis(200)).await;
+    }
+
+    info!(
+        "Epoch race test complete: submitted={}, succeeded={}, failed={}",
+        submitted, succeeded, failed
+    );
+
+    assert!(submitted > 0, "Should have submitted at least some transactions");
+    assert!(succeeded > 0, "At least some transactions should succeed");
+
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("SystemState should be readable")
+    });
+    assert!(system_state.epoch() >= target_epoch, "Should have reached target epoch");
+    assert_eq!(system_state.validators.validators.len(), 4, "Committee should remain unchanged");
+}
+
+/// Test that object locks from the current epoch are correctly handled across
+/// epoch boundaries. A gas object consumed in epoch N should not be usable
+/// with the stale ObjectRef in epoch N+1.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_expired_locks() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(4)
+        .build()
+        .await;
+
+    let sender = test_cluster.get_addresses()[0];
+
+    // Get a validator address to stake with.
+    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .unwrap()
+            .validators
+            .validators[0]
+            .metadata
+            .soma_address
+    });
+
+    // Get a gas object in epoch 0.
+    let gas_object_epoch0 = test_cluster
+        .wallet
+        .get_one_gas_object_owned_by_address(sender)
+        .await
+        .unwrap()
+        .expect("Should have a gas object");
+
+    // Execute a stake transaction in epoch 0, consuming the gas object version.
+    let tx_data = TransactionData::new(
+        TransactionKind::AddStake {
+            address: validator_address,
+            coin_ref: gas_object_epoch0,
+            amount: Some(1_000_000),
+        },
+        sender,
+        vec![gas_object_epoch0],
+    );
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(response.effects.status().is_ok(), "First stake should succeed");
+
+    // Trigger reconfiguration to epoch 1.
+    test_cluster.trigger_reconfiguration().await;
+
+    let current_epoch = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().epoch_store_for_testing().epoch()
+    });
+    assert_eq!(current_epoch, 1, "Should be in epoch 1");
+
+    // Now try to use the stale object ref from epoch 0 (pre-mutation version).
+    // This should fail because the object version has been consumed.
+    let stale_tx_data = TransactionData::new(
+        TransactionKind::AddStake {
+            address: validator_address,
+            coin_ref: gas_object_epoch0,
+            amount: Some(500_000),
+        },
+        sender,
+        vec![gas_object_epoch0],
+    );
+    let stale_tx = test_cluster.wallet.sign_transaction(&stale_tx_data).await;
+
+    // The stale transaction should fail (the object version was already consumed).
+    let result = tokio::time::timeout(
+        Duration::from_secs(15),
+        test_cluster.wallet.execute_transaction_may_fail(stale_tx),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(response)) => {
+            assert!(
+                !response.effects.status().is_ok(),
+                "Stale object ref transaction should fail"
+            );
+        }
+        Ok(Err(_)) => {
+            info!("Stale ref correctly rejected at submission level");
+        }
+        Err(_) => {
+            info!("Stale ref transaction timed out (expected)");
+        }
+    }
+
+    // Verify we can still use the latest version of the object in the new epoch.
+    let fresh_gas = test_cluster
+        .wallet
+        .get_one_gas_object_owned_by_address(sender)
+        .await
+        .unwrap()
+        .expect("Should still have a gas object in epoch 1");
+
+    let fresh_tx_data = TransactionData::new(
+        TransactionKind::AddStake {
+            address: validator_address,
+            coin_ref: fresh_gas,
+            amount: Some(500_000),
+        },
+        sender,
+        vec![fresh_gas],
+    );
+    let fresh_response = test_cluster.sign_and_execute_transaction(&fresh_tx_data).await;
+    assert!(
+        fresh_response.effects.status().is_ok(),
+        "Fresh object ref transaction should succeed in new epoch"
+    );
+}
+
+/// Test passive reconfiguration under active transaction load.
+/// Verifies that the network can reconfigure through multiple epochs while
+/// continuously processing staking transactions.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_passive_reconfig_with_tx_load() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(4)
+        .with_epoch_duration_ms(3000)
+        .build()
+        .await;
+
+    let target_epoch: u64 =
+        std::env::var("RECONFIG_TARGET_EPOCH").ok().map(|v| v.parse().unwrap()).unwrap_or(4);
+
+    let sender = test_cluster.get_addresses()[0];
+
+    // Get a validator address to stake with.
+    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .unwrap()
+            .validators
+            .validators[0]
+            .metadata
+            .soma_address
+    });
+
+    let mut total_txs = 0u64;
+    let mut epochs_seen: HashSet<u64> = HashSet::new();
+
+    loop {
+        let current_epoch = test_cluster.fullnode_handle.soma_node.with(|node| {
+            node.state().epoch_store_for_testing().epoch()
+        });
+        epochs_seen.insert(current_epoch);
+
+        if current_epoch >= target_epoch {
+            break;
+        }
+
+        let gas_object = test_cluster
+            .wallet
+            .get_one_gas_object_owned_by_address(sender)
+            .await
+            .unwrap();
+
+        if let Some(gas_object) = gas_object {
+            let tx_data = TransactionData::new(
+                TransactionKind::AddStake {
+                    address: validator_address,
+                    coin_ref: gas_object,
+                    amount: Some(1_000_000),
+                },
+                sender,
+                vec![gas_object],
+            );
+
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                test_cluster.sign_and_execute_transaction(&tx_data),
+            )
+            .await
+            {
+                Ok(response) => {
+                    if response.effects.status().is_ok() {
+                        total_txs += 1;
+                    }
+                }
+                Err(_) => {
+                    info!("Transaction timed out near epoch boundary");
+                }
+            }
+        }
+
+        sleep(Duration::from_millis(200)).await;
+    }
+
+    info!(
+        "Passive reconfig with load complete: {} txs across {} epochs",
+        total_txs,
+        epochs_seen.len()
+    );
+
+    assert!(total_txs > 0, "Should have executed some transactions");
+    assert!(epochs_seen.len() >= 2, "Should have seen transactions in at least 2 epochs");
+
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("SystemState should be readable")
+    });
+    assert!(system_state.epoch() >= target_epoch);
+    assert_eq!(system_state.validators.validators.len(), 4);
+}

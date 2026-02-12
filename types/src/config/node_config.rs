@@ -711,6 +711,7 @@ pub struct FullnodeConfigBuilder {
     rpc_addr: Option<SocketAddr>,
     rpc_config: Option<RpcConfig>,
     supported_protocol_versions: Option<SupportedProtocolVersions>,
+    run_with_range: Option<RunWithRange>,
 }
 
 impl FullnodeConfigBuilder {
@@ -745,6 +746,11 @@ impl FullnodeConfigBuilder {
         supported_protocol_versions: SupportedProtocolVersions,
     ) -> Self {
         self.supported_protocol_versions = Some(supported_protocol_versions);
+        self
+    }
+
+    pub fn with_run_with_range(mut self, run_with_range: RunWithRange) -> Self {
+        self.run_with_range = Some(run_with_range);
         self
     }
 
@@ -819,7 +825,7 @@ impl FullnodeConfigBuilder {
             state_debug_dump_config: Default::default(),
             validator_client_monitor_config: None,
             chain_override_for_testing: None,
-            run_with_range: None,
+            run_with_range: self.run_with_range,
             supported_protocol_versions: self.supported_protocol_versions,
             expensive_safety_check_config: ExpensiveSafetyCheckConfig::default(),
             execution_cache: ExecutionCacheConfig::default(),

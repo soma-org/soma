@@ -864,6 +864,8 @@ impl WritebackCache {
         // cache before removing from the dirty set.
         db_batch.write().expect("db error");
 
+        utils::fail_point!("crash-after-db-write");
+
         for outputs in all_outputs.iter() {
             let tx_digest = outputs.transaction.digest();
             assert!(self.dirty.pending_transaction_writes.remove(tx_digest).is_some());

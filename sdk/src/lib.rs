@@ -112,6 +112,23 @@ impl SomaClient {
         client.subscribe_checkpoints(request).await
     }
 
+    /// Get the latest checkpoint summary
+    pub async fn get_latest_checkpoint(
+        &self,
+    ) -> Result<types::checkpoints::CertifiedCheckpointSummary, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_latest_checkpoint().await
+    }
+
+    /// Get a checkpoint summary by sequence number
+    pub async fn get_checkpoint_summary(
+        &self,
+        sequence_number: u64,
+    ) -> Result<types::checkpoints::CertifiedCheckpointSummary, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_checkpoint_summary(sequence_number).await
+    }
+
     /// Get an object by ID
     pub async fn get_object(&self, object_id: ObjectID) -> Result<Object, tonic::Status> {
         let mut client = self.inner.write().await;
@@ -136,6 +153,15 @@ impl SomaClient {
         request: impl tonic::IntoRequest<ListOwnedObjectsRequest>,
     ) -> Pin<Box<dyn Stream<Item = Result<Object, tonic::Status>> + Send + 'static>> {
         self.inner.read().await.clone().list_owned_objects(request)
+    }
+
+    /// Get the balance for an address
+    pub async fn get_balance(
+        &self,
+        owner: &types::base::SomaAddress,
+    ) -> Result<u64, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_balance(owner).await
     }
 
     /// Get the chain identifier from the network

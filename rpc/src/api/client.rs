@@ -293,6 +293,17 @@ impl Client {
             .map(|r| r.into_inner())
     }
 
+    pub async fn get_balance(
+        &mut self,
+        owner: &types::base::SomaAddress,
+    ) -> Result<u64> {
+        let request = proto::GetBalanceRequest { owner: Some(owner.to_string()) };
+        let response = self.0.state_client().get_balance(request).await?.into_inner();
+        response
+            .balance
+            .ok_or_else(|| tonic::Status::not_found("balance not found in response"))
+    }
+
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self.0.ledger_client().get_service_info(request).await?.into_inner();

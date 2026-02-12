@@ -1116,6 +1116,8 @@ impl SomaNode {
                 "Finished executing all checkpoints in epoch. About to reconfigure the system."
             );
 
+            utils::fail_point_async!("reconfig_delay");
+
             // TODO: let _ = send_trusted_peer_change(
             //     &self.config,
             //     &self.trusted_peer_change_tx,
@@ -1510,6 +1512,13 @@ impl SomaNode {
         &self,
     ) -> Option<Arc<AuthorityAggregator<NetworkAuthorityClient>>> {
         self.transaction_orchestrator.as_ref().map(|to| to.clone_authority_aggregator())
+    }
+
+    /// Get the transaction orchestrator (only available on fullnodes).
+    pub fn transaction_orchestrator(
+        &self,
+    ) -> Option<Arc<TransactionOrchestrator<NetworkAuthorityClient>>> {
+        self.transaction_orchestrator.clone()
     }
 
     pub fn get_config(&self) -> &NodeConfig {

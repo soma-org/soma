@@ -572,6 +572,8 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             .push_consensus_output(state.output, &self.epoch_store)
             .expect("push_consensus_output should not fail");
 
+        utils::fail_point!("crash-after-consensus-commit");
+
         // Only after batch is written, notify checkpoint service to start building any new
         // pending checkpoints.
         debug!(

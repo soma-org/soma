@@ -78,6 +78,7 @@ impl BackpressureManager {
         self.watermarks_sender.send_if_modified(|watermarks| {
             if seq > watermarks.executed {
                 debug_assert_eq!(seq, watermarks.executed + 1);
+                utils::fail_point!("highest-executed-checkpoint");
                 watermarks.executed = seq;
                 debug!(?watermarks, "updating highest executed checkpoint");
                 true

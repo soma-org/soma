@@ -357,6 +357,8 @@ impl CheckpointExecutor {
                 .accumulate_epoch(self.epoch_store.clone(), seq)
                 .expect("Accumulating epoch cannot fail");
 
+            ::utils::fail_point!("crash-after-accumulate-epoch");
+
             self.checkpoint_store
                 .prune_local_summaries()
                 .tap_err(|e| debug!("Failed to prune local summaries: {}", e))

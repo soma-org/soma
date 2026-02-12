@@ -728,7 +728,9 @@ impl IndexStoreTables {
         // TODO can we figure out how to pass a raw byte array as a cursor?
         let lower_bound = cursor.unwrap_or_else(|| OwnerIndexKey {
             owner,
-            object_type: object_type.clone().unwrap(),
+            // When no object_type filter is given, start at the smallest key variant
+            // (SystemState) to iterate over ALL object types for this owner.
+            object_type: object_type.clone().unwrap_or(ObjectType::SystemState),
             inverted_balance: None,
             object_id: ObjectID::ZERO,
         });

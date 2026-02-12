@@ -262,14 +262,11 @@ fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> Execution
     // Deduct fee from gas object
     let new_balance = current_balance - fee.total_fee;
 
-    // Delete object if balance is zero, otherwise update it
-    if new_balance == 0 {
-        store.delete_input_object(&gas_id);
-    } else {
-        let mut updated_gas = gas_obj.clone();
-        updated_gas.update_coin_balance(new_balance);
-        store.mutate_input_object(updated_gas);
-    }
+    // Always mutate rather than delete — the gas object must remain readable
+    // throughout execution (e.g., when it's also the coin being transferred).
+    let mut updated_gas = gas_obj.clone();
+    updated_gas.update_coin_balance(new_balance);
+    store.mutate_input_object(updated_gas);
 
     Ok(fee.total_fee)
 }

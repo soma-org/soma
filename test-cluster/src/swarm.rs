@@ -156,6 +156,7 @@ pub struct SwarmBuilder<R = OsRng> {
     fullnode_rpc_config: Option<types::config::rpc_config::RpcConfig>,
     supported_protocol_versions_config: ProtocolVersionsConfig,
     data_ingestion_dir: Option<PathBuf>,
+    fullnode_run_with_range: Option<types::config::node_config::RunWithRange>,
 }
 
 impl Default for SwarmBuilder {
@@ -172,6 +173,7 @@ impl Default for SwarmBuilder {
             fullnode_rpc_config: None,
             supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             data_ingestion_dir: None,
+            fullnode_run_with_range: None,
         }
     }
 }
@@ -196,6 +198,7 @@ impl<R> SwarmBuilder<R> {
             fullnode_rpc_config: self.fullnode_rpc_config,
             supported_protocol_versions_config: self.supported_protocol_versions_config,
             data_ingestion_dir: self.data_ingestion_dir,
+            fullnode_run_with_range: self.fullnode_run_with_range,
         }
     }
 
@@ -304,6 +307,14 @@ impl<R> SwarmBuilder<R> {
         self.data_ingestion_dir = Some(path);
         self
     }
+
+    pub fn with_fullnode_run_with_range(
+        mut self,
+        run_with_range: types::config::node_config::RunWithRange,
+    ) -> Self {
+        self.fullnode_run_with_range = Some(run_with_range);
+        self
+    }
 }
 
 // TODO: modify this build to make use of fullnode configs and data ingestion urls
@@ -373,6 +384,10 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
 
                 if let Some(ref rpc_config) = self.fullnode_rpc_config {
                     builder = builder.with_rpc_config(rpc_config.clone());
+                }
+
+                if let Some(run_with_range) = self.fullnode_run_with_range {
+                    builder = builder.with_run_with_range(run_with_range);
                 }
 
                 let fullnode_config = builder.build(genesis.clone(), seed_peers.clone());

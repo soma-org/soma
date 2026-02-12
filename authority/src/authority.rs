@@ -795,6 +795,7 @@ impl AuthorityState {
         if scheduling_source == SchedulingSource::MysticetiFastPath {
             self.get_cache_writer().write_fastpath_transaction_outputs(transaction_outputs);
         } else {
+            utils::fail_point!("crash-before-commit-certificate");
             let commit_result =
                 self.commit_certificate(certificate, transaction_outputs, epoch_store);
             if let Err(err) = commit_result {
@@ -2227,6 +2228,8 @@ impl AuthorityState {
 
         info!(?next_epoch, ?tx_digest, "Creating advance epoch transaction");
 
+        utils::fail_point_async!("change_epoch_tx_delay");
+
         let tx_lock = epoch_store.acquire_tx_lock(tx_digest);
 
         // The tx could have been executed by state sync already - if so simply return an error.
@@ -2295,6 +2298,8 @@ impl AuthorityState {
         let new_epoch = new_committee.epoch;
         info!(new_epoch = ?new_epoch, "re-opening AuthorityEpochTables for new epoch");
         assert_eq!(epoch_start_configuration.epoch_start_state().epoch(), new_committee.epoch);
+
+        utils::fail_point!("before-open-new-epoch-store");
 
         let new_epoch_store = cur_epoch_store.new_at_next_epoch(
             self.name,

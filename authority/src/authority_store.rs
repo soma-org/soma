@@ -518,6 +518,8 @@ impl AuthorityStore {
             tx_outputs.iter().map(|tx| tx.transaction.digest()).collect::<Vec<_>>()
         );
 
+        utils::fail_point!("crash-after-build-batch");
+
         Ok(write_batch)
     }
 

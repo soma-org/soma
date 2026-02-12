@@ -297,16 +297,17 @@ impl ProtocolConfig {
     }
 
     fn get_for_version_impl(version: ProtocolVersion, chain: Chain) -> Self {
-        // TODO: tweak this for msim runs after adding more protocol versions
-        // #[cfg(msim)]
-        // {
-        //     // populate the fake simulator version # with a different base tx cost.
-        //     if version == ProtocolVersion::MAX_ALLOWED {
-        //         let mut config = Self::get_for_version_impl(version - 1, Chain::Unknown);
-        //         config.base_tx_cost_fixed = Some(config.base_tx_cost_fixed() + 1000);
-        //         return config;
-        //     }
-        // }
+        #[cfg(msim)]
+        {
+            // Populate the fake simulator version with a slightly different config
+            // so protocol version upgrade tests can verify the version actually changed.
+            if version == ProtocolVersion::MAX_ALLOWED {
+                let mut config =
+                    Self::get_for_version_impl(ProtocolVersion::new(version.as_u64() - 1), chain);
+                config.base_fee = Some(config.base_fee.unwrap_or(1000) + 1000);
+                return config;
+            }
+        }
 
         // IMPORTANT: Never modify the value of any constant for a pre-existing protocol version.
         // To change the values here you must create a new protocol version with the new values!
@@ -402,6 +403,11 @@ impl ProtocolConfig {
             cfg.consensus_gc_depth = Some(5);
 
             cfg.epoch_duration_ms = Some(1000 * 60);
+
+            // Set buffer stake to 0 so that protocol upgrades require only a 2/3 quorum
+            // (the standard BFT threshold), not 2/3 + 50% buffer. This makes 3/4 validators
+            // sufficient for upgrades in tests.
+            cfg.buffer_stake_for_protocol_upgrade_bps = Some(0);
         }
 
         cfg

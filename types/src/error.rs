@@ -469,6 +469,11 @@ impl SomaError {
 
             SomaError::ObjectLockConflict { .. } => ErrorCategory::LockConflict,
 
+            // Using a stale object version is a permanent error — retrying won't help.
+            SomaError::ObjectVersionUnavailableForConsumption { .. } => {
+                ErrorCategory::InvalidTransaction
+            }
+
             SomaError::Unknown { .. }
             | SomaError::GrpcMessageSerializeError { .. }
             | SomaError::GrpcMessageDeserializeError { .. }
