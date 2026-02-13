@@ -17,6 +17,7 @@ object_store.workspace = true
 reqwest-retry.workspace = true
 reqwest-middleware.workspace = true
 types.workspace = true
+burn.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

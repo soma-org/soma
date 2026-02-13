@@ -11,6 +11,7 @@ safetensors.workspace = true
 types.workspace = true
 arrgen.workspace = true
 blobs.workspace = true
+async-trait.workspace = true
 
 [lints]
 workspace = true

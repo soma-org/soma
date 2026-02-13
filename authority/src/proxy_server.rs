@@ -168,13 +168,13 @@ type InflightMap = DashMap<String, broadcast::Sender<Result<Bytes, ProxyError>>>
 ///       ├─ Success: Return bytes, broadcast to waiters
 ///       └─ Failure: Send AvailabilityReport, return error
 /// ```
-pub struct ProxyServer {
+pub struct ProxyServer<S: ObjectStore> {
     /// Authority state for looking up targets and models
     state: Arc<AuthorityState>,
     /// Blob downloader for downloading from source URLs into the local store
-    downloader: HttpBlobDownloader,
+    downloader: HttpBlobDownloader<S>,
     /// Local object store used as download destination / cache
-    store: Arc<dyn ObjectStore>,
+    store: Arc<S>,
     /// Channel to send reports when fetch fails
     report_tx: ReportSender,
     /// In-flight request deduplication (singleflight pattern)
@@ -183,12 +183,12 @@ pub struct ProxyServer {
     config: ProxyConfig,
 }
 
-impl ProxyServer {
+impl<S: ObjectStore> ProxyServer<S> {
     /// Create a new proxy server.
     pub fn new(
         state: Arc<AuthorityState>,
         report_tx: ReportSender,
-        store: Arc<dyn ObjectStore>,
+        store: Arc<S>,
         config: ProxyConfig,
     ) -> Result<Self, ProxyError> {
         let http_params = HttpParameters::default();
@@ -215,7 +215,7 @@ impl ProxyServer {
 
     /// Serve submission data for a filled target.
     async fn serve_data(
-        State(server): State<Arc<ProxyServer>>,
+        State(server): State<Arc<ProxyServer<S>>>,
         Path(target_id_str): Path<String>,
     ) -> Result<impl IntoResponse, ProxyError> {
         // Parse target ID
@@ -257,7 +257,7 @@ impl ProxyServer {
 
     /// Serve model weights for an active model.
     async fn serve_model(
-        State(server): State<Arc<ProxyServer>>,
+        State(server): State<Arc<ProxyServer<S>>>,
         Path(model_id_str): Path<String>,
     ) -> Result<impl IntoResponse, ProxyError> {
         // Parse model ID

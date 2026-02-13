@@ -13,3 +13,5 @@ const V1_VOCAB_SIZE: usize = 256 + 8;
 const V1_SIG_REG_T_MAX: f64 = 3.0;
 const V1_SIG_REG_SLICES: usize = 1024;
 const V1_SIG_REG_POINTS: usize = 17;
+
+pub const V1_BATCH_SIZE: usize = 32;

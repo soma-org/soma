@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
 use authority::{
-    audit_service::{AuditService, MockCompetitionAPI},
+    audit_service::{AuditService, MockRuntimeAPI},
     authority::{AuthorityState, ExecutionEnv},
     authority_aggregator::AuthorityAggregator,
     authority_client::NetworkAuthorityClient,
@@ -768,8 +768,7 @@ impl SomaNode {
             });
 
             // Create and start the proxy server
-            let proxy_store: Arc<dyn object_store::ObjectStore> =
-                Arc::new(object_store::memory::InMemory::new());
+            let proxy_store = Arc::new(object_store::memory::InMemory::new());
             match ProxyServer::new(state.clone(), report_tx, proxy_store, ProxyConfig::default()) {
                 Ok(proxy_server) => {
                     let proxy_server = Arc::new(proxy_server);
@@ -1545,7 +1544,7 @@ impl SomaNode {
     ) -> Option<Arc<AuditService>> {
         // Create competition API (currently a mock - handles all downloading internally)
         // TODO: Replace MockCompetitionAPI with real CompetitionAPI from runtime crate (Phase 6)
-        let competition_api: Arc<dyn runtime::CompetitionAPI> = Arc::new(MockCompetitionAPI);
+        let competition_api: Arc<dyn runtime::RuntimeAPI> = Arc::new(MockRuntimeAPI);
 
         // Get validator's account address and keypair from config
         let validator_address = config.soma_address();

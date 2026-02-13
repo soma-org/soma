@@ -968,6 +968,7 @@ name = "blobs"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "burn",
  "bytes",
  "fastcrypto",
  "memmap2",
@@ -5438,6 +5439,7 @@ name = "models"
 version = "1.0.0"
 dependencies = [
  "arrgen",
+ "async-trait",
  "blobs",
  "burn",
  "ndarray",
@@ -7651,10 +7653,12 @@ dependencies = [
  "blobs",
  "burn",
  "models",
+ "object_store",
  "tokio",
  "tonic-build 0.14.3",
  "tonic-prost-build",
  "types",
+ "url",
 ]
 
 [[package]]
