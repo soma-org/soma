@@ -9,12 +9,13 @@ pub struct CompetitionInput {
     data: BlobPath,
     models: Vec<BlobPath>,
     target: TensorData,
+    seed: u64,
 }
 
 impl CompetitionInput {
     /// Create a new CompetitionInput.
-    pub fn new(data: BlobPath, models: Vec<BlobPath>, target: TensorData) -> Self {
-        Self { data, models, target }
+    pub fn new(data: BlobPath, models: Vec<BlobPath>, target: TensorData, seed: u64) -> Self {
+        Self { data, models, target, seed }
     }
 
     /// Get the data manifest.
@@ -31,18 +32,23 @@ impl CompetitionInput {
     pub fn target(&self) -> &TensorData {
         &self.target
     }
+
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
 }
 
 pub struct ManifestCompetitionInput {
     data: Manifest,
     models: Vec<Manifest>,
     target: TensorData,
+    seed: u64,
 }
 
 impl ManifestCompetitionInput {
     /// Create a new CompetitionInput.
-    pub fn new(data: Manifest, models: Vec<Manifest>, target: TensorData) -> Self {
-        Self { data, models, target }
+    pub fn new(data: Manifest, models: Vec<Manifest>, target: TensorData, seed: u64) -> Self {
+        Self { data, models, target, seed }
     }
 
     /// Get the data manifest.
@@ -58,6 +64,9 @@ impl ManifestCompetitionInput {
     /// Get the target embedding.
     pub fn target(&self) -> &TensorData {
         &self.target
+    }
+    pub fn seed(&self) -> u64 {
+        self.seed
     }
 }
 

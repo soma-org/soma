@@ -5,7 +5,7 @@ use burn::{
     tensor::{Int, TensorData},
 };
 
-use crate::v1::data::dataset::ByteSequenceItem;
+use crate::v1::data::dataset::{ByteSequenceItem, PAD_TOKEN_ID};
 
 #[derive(Clone, Default)]
 pub struct ByteSequenceBatcher {}
@@ -20,6 +20,7 @@ impl ByteSequenceBatcher {
 pub struct ByteSequenceBatch<B: Backend> {
     pub token_ids: Tensor<B, 2, Int>,
     pub pos_ids: Tensor<B, 2, Int>,
+    pub targets: Tensor<B, 2, Int>,
 }
 
 impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequenceBatcher {
@@ -40,10 +41,25 @@ impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequ
             })
             .collect::<Vec<_>>();
 
+        let target_tensors = items
+            .iter()
+            .map(|item| {
+                let mut target_ids = item.token_ids[1..].to_vec();
+                target_ids.push(PAD_TOKEN_ID);
+                Tensor::<B, 1, Int>::from_data(TensorData::from(target_ids.as_slice()), device)
+                    .unsqueeze()
+            })
+            .collect::<Vec<_>>();
+
         let token_ids = Tensor::cat(token_tensors, 0).to_device(device);
         let pos_ids = Tensor::cat(pos_tensors, 0).to_device(device);
+        let targets = Tensor::cat(target_tensors, 0).to_device(device);
 
-        ByteSequenceBatch { token_ids, pos_ids }
+        ByteSequenceBatch {
+            token_ids,
+            pos_ids,
+            targets,
+        }
     }
 }
 
@@ -97,6 +113,7 @@ mod tests {
 
         let token_data: Vec<i64> = batch.token_ids.to_data().to_vec::<i64>().unwrap();
         let pos_data: Vec<i64> = batch.pos_ids.to_data().to_vec::<i64>().unwrap();
+        let target_data: Vec<i64> = batch.targets.to_data().to_vec::<i64>().unwrap();
 
         // token_ids should be [[0,1,2,3,4], [5,6,7,8,9]]
         assert_eq!(
@@ -110,6 +127,18 @@ mod tests {
             pos_data,
             vec![0i64, 1, 2, 3, 4, 5, 6, 7, 8, 9],
             "pos_ids values don't match expected positions"
+        );
+
+        // targets should be token_ids shifted left by 1, with PAD_TOKEN_ID (256) as last element
+        assert_eq!(
+            batch.targets.dims(),
+            expected_shape,
+            "targets shape should be [batch=2, seq_len=5]"
+        );
+        assert_eq!(
+            target_data,
+            vec![1i64, 2, 3, 4, 256, 6, 7, 8, 9, 256],
+            "targets values don't match expected shifted sequence"
         );
     }
 }

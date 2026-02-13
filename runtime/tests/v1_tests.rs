@@ -40,14 +40,15 @@ impl ModelAPI for MockModel {
     type Data = Arc<[u8]>;
     type Backend = B;
 
-    async fn build_data(&self, buffer: Arc<[u8]>) -> Self::Data {
+    async fn dataloader(&self, buffer: Arc<[u8]>) -> Self::Data {
         buffer
     }
 
-    async fn call(
+    async fn eval(
         &self,
         _data: Self::Data,
         _weights: SafetensorsStore,
+        _seed: u64,
     ) -> ModelResult<ModelOutput<Self::Backend>> {
         let mut outputs = self.outputs.lock().unwrap();
         assert!(!outputs.is_empty(), "MockModel: more calls than expected outputs");
@@ -66,14 +67,15 @@ impl ModelAPI for FailingModel {
     type Data = Arc<[u8]>;
     type Backend = B;
 
-    async fn build_data(&self, buffer: Arc<[u8]>) -> Self::Data {
+    async fn dataloader(&self, buffer: Arc<[u8]>) -> Self::Data {
         buffer
     }
 
-    async fn call(
+    async fn eval(
         &self,
         _data: Self::Data,
         _weights: SafetensorsStore,
+        _seed: u64,
     ) -> ModelResult<ModelOutput<Self::Backend>> {
         Err(types::error::ModelError::SafeTensorsFailure("mock failure".into()))
     }
@@ -194,7 +196,7 @@ async fn runtime_single_model_returns_winner_zero() {
     let target_data = TensorData::from([1.0f32, 0.0, 0.0, 0.0]);
 
     let runtime = RuntimeV1::new(store, downloader, 1, device, model);
-    let input = CompetitionInput::new(data_path, vec![model_path], target_data);
+    let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
     assert_eq!(output.winner(), 0);
@@ -227,7 +229,7 @@ async fn runtime_selects_model_with_lowest_loss() {
     let target_data = TensorData::from([0.0f32, 1.0]);
 
     let runtime = RuntimeV1::new(store, downloader, 1, device, model);
-    let input = CompetitionInput::new(data_path, model_paths, target_data);
+    let input = CompetitionInput::new(data_path, model_paths, target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
     assert_eq!(output.winner(), 1);
@@ -249,7 +251,7 @@ async fn runtime_computes_cosine_distance_to_target() {
     let target_data = TensorData::from([0.0f32, 1.0]);
 
     let runtime = RuntimeV1::new(store, downloader, 1, device, model);
-    let input = CompetitionInput::new(data_path, vec![model_path], target_data);
+    let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
     let dist: Vec<f32> = output.distance().to_vec().unwrap();
@@ -277,7 +279,7 @@ async fn runtime_returns_loss_and_embedding_from_winner() {
     let target_data = TensorData::from([1.0f32, 0.0]);
 
     let runtime = RuntimeV1::new(store, downloader, 1, device, model);
-    let input = CompetitionInput::new(data_path, vec![model_path], target_data);
+    let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
     let loss_vec: Vec<f32> = output.loss_score().to_vec().unwrap();
@@ -302,7 +304,7 @@ async fn runtime_model_call_failure_propagates() {
     let target_data = TensorData::from([1.0f32, 0.0]);
 
     let runtime = RuntimeV1::new(store, downloader, 1, device, model);
-    let input = CompetitionInput::new(data_path, vec![model_path], target_data);
+    let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let err = runtime.competition(input).await.unwrap_err();
 
     assert!(
@@ -399,6 +401,7 @@ async fn manifest_runtime_downloads_then_runs() {
         data_manifest,
         vec![model_manifest_a, model_manifest_b],
         target_data,
+        0,
     );
 
     let output = runtime.manifest_competition(input).await.unwrap();
@@ -433,6 +436,7 @@ async fn manifest_runtime_uses_correct_blob_paths() {
         make_manifest(data_checksum, data_content.len()),
         vec![make_manifest(model_checksum, safetensor_bytes.len())],
         TensorData::from([1.0f32]),
+        0,
     );
 
     runtime.manifest_competition(input).await.unwrap();
@@ -458,6 +462,7 @@ async fn manifest_runtime_download_failure_propagates() {
         make_manifest(make_checksum(40), 100),
         vec![make_manifest(make_checksum(41), 100)],
         TensorData::from([1.0f32]),
+        0,
     );
 
     let err = runtime.manifest_competition(input).await.unwrap_err();
@@ -488,6 +493,7 @@ async fn manifest_runtime_model_failure_after_download_propagates() {
         make_manifest(data_checksum, 4),
         vec![make_manifest(model_checksum, empty_safetensors().len())],
         TensorData::from([1.0f32]),
+        0,
     );
 
     let err = runtime.manifest_competition(input).await.unwrap_err();

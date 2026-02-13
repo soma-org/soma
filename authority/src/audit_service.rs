@@ -358,6 +358,7 @@ impl AuditService {
             data_manifest.clone(),
             model_manifests,
             challenge.target_embedding.clone().into_tensor_data(),
+            0, // TODO: use a real seed if needed for stochastic models
         );
 
         // Call CompetitionAPI (handles download, verification, inference)

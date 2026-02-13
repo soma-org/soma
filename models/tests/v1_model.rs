@@ -34,7 +34,7 @@ fn test_v1_probe() {
     let hidden_dim = embedding_dim * 2;
 
     let device = Default::default();
-    let mut model = ModelConfig::new(1)
+    let mut model = ModelConfig::new()
         .with_embedding_dim(embedding_dim)
         .with_pwff_hidden_dim(hidden_dim)
         .with_num_layers(num_layers)
@@ -147,7 +147,7 @@ fn test_v1_probe() {
     let tokens: Tensor<TestBackend, 2, Int> = Tensor::from_ints([[0, 1, 2, 3]], &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
-    let output = model.forward(tokens, positions);
+    let output = model.encode(tokens, positions);
     set_print_options(PrintOptions {
         threshold: 1000,    // Default or custom threshold for summarization.
         edge_items: 3,      // Default or custom edge items to display.

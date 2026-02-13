@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use async_trait::async_trait;
 use blobs::{BlobPath, downloader::BlobDownloader, loader::BlobLoader};
-use burn::{Tensor, prelude::Backend};
+use burn::{Tensor, data::dataloader, prelude::Backend};
 use models::{
     ModelAPI, ModelOutput, consine_distance::cosine_distance, select_best::select_best_model,
 };
@@ -60,7 +60,7 @@ where
             self.store.get_buffer(input.data()).await.map_err(RuntimeError::BlobError)?;
         let buffer = Arc::from(data_buffer.as_ref());
 
-        let data_loader = self.model.build_data(buffer).await;
+        let dataloader = self.model.dataloader(buffer).await;
 
         let mut outputs = Vec::with_capacity(input.models.len());
         for model_path in &input.models {
@@ -68,7 +68,7 @@ where
                 self.store.safetensor_store(model_path).await.map_err(RuntimeError::BlobError)?;
             let output: ModelOutput<B> = self
                 .model
-                .call(data_loader.clone(), safetensor_store)
+                .eval(dataloader.clone(), safetensor_store, input.seed())
                 .await
                 .map_err(|e| RuntimeError::ModelError(e.to_string()))?;
             outputs.push(output);
@@ -127,7 +127,7 @@ where
         }
 
         let competition_input =
-            CompetitionInput::new(data_path, model_paths, input.target().clone());
+            CompetitionInput::new(data_path, model_paths, input.target().clone(), input.seed());
         self.competition(competition_input).await
     }
 }
