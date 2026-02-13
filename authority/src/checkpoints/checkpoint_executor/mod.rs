@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 //! CheckpointExecutor is a Node component that executes all checkpoints for the
 //! given epoch. It acts as a Consumer to StateSync
 //! for newly synced checkpoints, taking these checkpoints and

@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{collections::HashSet, path::Path, sync::Arc};
 
 use crate::{
@@ -37,6 +42,9 @@ use writeback_cache::WritebackCache;
 pub(crate) mod cache_types;
 pub(crate) mod object_locks;
 pub(crate) mod writeback_cache;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone)]
 pub struct ExecutionCacheTraitPointers {

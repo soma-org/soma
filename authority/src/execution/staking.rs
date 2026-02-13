@@ -68,8 +68,9 @@ impl StakingExecutor {
             Some(stake_amount) => {
                 // If this is a gas coin, we need to ensure there's enough left for fees
                 if is_gas_coin {
-                    // For write fee, we'll create one new StakedSoma object and update the source
-                    let write_fee = self.calculate_operation_fee(store, 2);
+                    // Write fee accounts for all written objects the pipeline will see:
+                    // StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3
+                    let write_fee = self.calculate_operation_fee(store, 3);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -136,8 +137,8 @@ impl StakingExecutor {
 
                 if is_gas_coin {
                     // For gas coin, we need to account for fees
-                    // For write fee, we'll create one new StakedSoma object
-                    let write_fee = self.calculate_operation_fee(store, 1);
+                    // Write fee: StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3
+                    let write_fee = self.calculate_operation_fee(store, 3);
 
                     // Total fee needed
                     let total_fee = value_fee + write_fee;
@@ -162,8 +163,12 @@ impl StakingExecutor {
                     );
                     store.create_object(staked_soma_object);
 
-                    // Delete the coin since we're staking all of it (minus fees)
-                    store.delete_input_object(&coin_id);
+                    // Keep the coin with remaining fee amount — pipeline will deduct fees
+                    // from the gas object via calculate_and_deduct_remaining_fees.
+                    // Do NOT delete: the gas coin must remain readable for fee deduction.
+                    let mut updated_source = source_object.clone();
+                    updated_source.update_coin_balance(total_fee);
+                    store.mutate_input_object(updated_source);
                 } else {
                     // Not a gas coin, stake entire amount
                     stake_amount = source_balance;

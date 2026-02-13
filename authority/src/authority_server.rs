@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{
     authority::{AuthorityState, ExecutionEnv}, authority_per_epoch_store::AuthorityPerEpochStore, checkpoints::CheckpointStore, consensus_adapter::ConsensusAdapter, consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult}, execution_scheduler::SchedulingSource, mysticeti_adapter::LazyMysticetiClient, server::TLS_SERVER_NAME, shared_obj_version_manager::Schedulable, tonic_gen::validator_server::{Validator, ValidatorServer}
 };

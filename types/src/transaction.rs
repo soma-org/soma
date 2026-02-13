@@ -1232,11 +1232,19 @@ impl CertifiedTransaction {
 
     pub fn verify_signatures_authenticated(&self, committee: &Committee) -> SomaResult {
         verify_sender_signed_data_message_signatures(self.data())?;
-        self.auth_sig().verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_sig().verify_secure(
+            self.data(),
+            Intent::soma_app(IntentScope::SenderSignedTransaction),
+            committee,
+        )
     }
 
     pub fn verify_committee_sigs_only(&self, committee: &Committee) -> SomaResult {
-        self.auth_sig().verify_secure(self.data(), Intent::soma_transaction(), committee)
+        self.auth_sig().verify_secure(
+            self.data(),
+            Intent::soma_app(IntentScope::SenderSignedTransaction),
+            committee,
+        )
     }
 
     pub fn try_into_verified_for_testing(

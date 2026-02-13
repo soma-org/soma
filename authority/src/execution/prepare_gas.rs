@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use tracing::info;
 use types::{
     base::SomaAddress,
@@ -262,11 +267,15 @@ fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> Execution
     // Deduct fee from gas object
     let new_balance = current_balance - fee.total_fee;
 
-    // Always mutate rather than delete — the gas object must remain readable
-    // throughout execution (e.g., when it's also the coin being transferred).
-    let mut updated_gas = gas_obj.clone();
-    updated_gas.update_coin_balance(new_balance);
-    store.mutate_input_object(updated_gas);
+    if new_balance == 0 {
+        // Gas coin fully consumed (e.g. pay-all) — delete it so it appears in
+        // effects.deleted() rather than leaving a 0-balance coin on chain.
+        store.delete_input_object(&gas_id);
+    } else {
+        let mut updated_gas = gas_obj.clone();
+        updated_gas.update_coin_balance(new_balance);
+        store.mutate_input_object(updated_gas);
+    }
 
     Ok(fee.total_fee)
 }

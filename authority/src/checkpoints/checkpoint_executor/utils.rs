@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::cache::TransactionCacheRead;
 use crate::checkpoints::CheckpointStore;
 use futures::{Stream, future::Either};

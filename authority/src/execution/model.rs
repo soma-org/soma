@@ -90,6 +90,34 @@ impl ModelExecutor {
             return Err(ExecutionFailureStatus::ModelCommissionRateTooHigh);
         }
 
+        // Deduct stake_amount from the gas coin (implicit funding source).
+        // CommitModel doesn't take a separate coin_ref, so the gas coin is used.
+        let gas_id = store
+            .gas_object_id
+            .ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(SomaError::from(
+                    "No gas object set for CommitModel",
+                ))
+            })?;
+
+        let gas_object = store
+            .read_object(&gas_id)
+            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: gas_id })?
+            .clone();
+
+        let gas_balance = gas_object.as_coin().ok_or_else(|| {
+            ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
+        })?;
+
+        // Estimate remaining fees the pipeline will deduct after execution:
+        // StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3 written objects
+        let write_fee = self.calculate_operation_fee(store, 3);
+        let total_fee = value_fee + write_fee;
+
+        if gas_balance < args.stake_amount + total_fee {
+            return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
+        }
+
         // Commit the model in system state (creates pending model + staking pool)
         let staked_soma = state.request_commit_model(
             signer,
@@ -110,6 +138,12 @@ impl ModelExecutor {
             tx_digest,
         );
         store.create_object(staked_soma_object);
+
+        // Deduct stake_amount from gas coin balance
+        let remaining_balance = gas_balance - args.stake_amount;
+        let mut updated_gas = gas_object;
+        updated_gas.update_coin_balance(remaining_balance);
+        store.mutate_input_object(updated_gas);
 
         Self::save_system_state(store, state_object, &state)
     }

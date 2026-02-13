@@ -8,9 +8,9 @@ use rand::Rng as _;
 /// The API is inspired by tokio-retry::strategy::ExponentialBackoff for ease of use.
 /// But bugs in the original implementation have been fixed.
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use std::time::Duration;
-/// use mysten_common::backoff::ExponentialBackoff;
+/// use authority::transaction_driver::backoff::ExponentialBackoff;
 ///
 /// // Basic example:
 /// let mut backoff = ExponentialBackoff::new(Duration::from_secs(10));

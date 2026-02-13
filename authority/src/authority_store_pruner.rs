@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
 use crate::checkpoints::{CheckpointStore, CheckpointWatermark};
 use crate::rpc_index::RpcIndexStore;

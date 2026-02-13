@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::global_state_hasher::GlobalStateHasher;
 use core::default::Default;
 use fastcrypto::hash::MultisetHash;
@@ -417,53 +422,53 @@ pub async fn send_consensus_no_execution(
         .unwrap_or_else(|| AssignedVersions::new(vec![]))
 }
 
-// #[cfg(test)]
-// pub async fn send_batch_consensus_no_execution<C>(
-//     authority: &AuthorityState,
-//     certificates: &[VerifiedCertificate],
-//     consensus_handler: &mut crate::consensus_handler::ConsensusHandler<C>,
-//     captured_transactions: &crate::consensus_test_utils::CapturedTransactions,
-// ) -> (Vec<Schedulable>, AssignedTxAndVersions)
-// where
-//     C: crate::checkpoints::CheckpointServiceNotify + Send + Sync + 'static,
-// {
-//     use crate::consensus_test_utils::TestConsensusCommit;
-//     use types::{
-//         consensus::ConsensusTransaction, system_state::epoch_start::EpochStartSystemStateTrait,
-//     };
+#[cfg(test)]
+pub async fn send_batch_consensus_no_execution<C>(
+    authority: &AuthorityState,
+    certificates: &[VerifiedCertificate],
+    consensus_handler: &mut crate::consensus_handler::ConsensusHandler<C>,
+    captured_transactions: &crate::consensus_test_utils::CapturedTransactions,
+) -> (Vec<Schedulable>, AssignedTxAndVersions)
+where
+    C: crate::checkpoints::CheckpointServiceNotify + Send + Sync + 'static,
+{
+    use crate::consensus_test_utils::TestConsensusCommit;
+    use types::{
+        consensus::ConsensusTransaction, system_state::epoch_start::EpochStartSystemStateTrait,
+    };
 
-//     let consensus_transactions: Vec<ConsensusTransaction> = certificates
-//         .iter()
-//         .map(|cert| {
-//             ConsensusTransaction::new_certificate_message(&authority.name, cert.clone().into())
-//         })
-//         .collect();
+    let consensus_transactions: Vec<ConsensusTransaction> = certificates
+        .iter()
+        .map(|cert| {
+            ConsensusTransaction::new_certificate_message(&authority.name, cert.clone().into())
+        })
+        .collect();
 
-//     // Determine appropriate round and timestamp
-//     let epoch_store = authority.epoch_store_for_testing();
-//     let round = epoch_store.get_highest_pending_checkpoint_height() + 1;
-//     let timestamp_ms = epoch_store.epoch_start_state().epoch_start_timestamp_ms();
-//     let sub_dag_index = 0;
+    // Determine appropriate round and timestamp
+    let epoch_store = authority.epoch_store_for_testing();
+    let round = epoch_store.get_highest_pending_checkpoint_height() + 1;
+    let timestamp_ms = epoch_store.epoch_start_state().epoch_start_timestamp_ms();
+    let sub_dag_index = 0;
 
-//     let commit =
-//         TestConsensusCommit::new(consensus_transactions, round, timestamp_ms, sub_dag_index);
+    let commit =
+        TestConsensusCommit::new(consensus_transactions, round, timestamp_ms, sub_dag_index);
 
-//     consensus_handler
-//         .handle_consensus_commit_for_test(commit)
-//         .await;
+    consensus_handler
+        .handle_consensus_commit_for_test(commit)
+        .await;
 
-//     // Wait for captured transactions to be available
-//     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Wait for captured transactions to be available
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-//     let (scheduled_txns, assigned_tx_and_versions) = {
-//         let mut captured = captured_transactions.lock();
-//         assert!(
-//             !captured.is_empty(),
-//             "Expected transactions to be scheduled"
-//         );
-//         let (scheduled_txns, assigned_tx_and_versions, _) = captured.remove(0);
-//         (scheduled_txns, assigned_tx_and_versions)
-//     };
+    let (scheduled_txns, assigned_tx_and_versions) = {
+        let mut captured = captured_transactions.lock();
+        assert!(
+            !captured.is_empty(),
+            "Expected transactions to be scheduled"
+        );
+        let (scheduled_txns, assigned_tx_and_versions, _) = captured.remove(0);
+        (scheduled_txns, assigned_tx_and_versions)
+    };
 
-//     (scheduled_txns, assigned_tx_and_versions)
-// }
+    (scheduled_txns, assigned_tx_and_versions)
+}

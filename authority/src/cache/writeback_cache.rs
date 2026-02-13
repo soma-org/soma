@@ -1,3 +1,8 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 //! MemoryCache is a cache for the transaction execution which delays writes to the database until
 //! transaction results are certified (i.e. they appear in a certified checkpoint, or an effects cert
 //! is observed by a fullnode). The cache also stores committed data in memory in order to serve
