@@ -1,0 +1,54 @@
+import torch
+import torch.nn as nn
+from dataclasses import dataclass
+from soma_models.config import (
+    V1_EMBEDDING_DIM, V1_NUM_LAYERS, V1_PWFF_HIDDEN_DIM,
+    V1_NUM_HEADS, V1_VOCAB_SIZE, V1_MAX_WAVELENGTH, V1_SCALE_FACTOR,
+)
+from soma_models.torch.v1.modules.encoder import Encoder, EncoderConfig
+
+
+@dataclass
+class ProbeConfig:
+    dropout_rate: float
+    embedding_dim: int = V1_EMBEDDING_DIM
+    pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
+    num_layers: int = V1_NUM_LAYERS
+    num_heads: int = V1_NUM_HEADS
+    vocab_size: int = V1_VOCAB_SIZE
+    max_wavelength: float = V1_MAX_WAVELENGTH
+    scale_factor: float = V1_SCALE_FACTOR
+
+
+class Probe(nn.Module):
+    def __init__(self, config: ProbeConfig):
+        super().__init__()
+        self.config = config
+        self.embed = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.encoder = Encoder(
+            EncoderConfig(
+                dropout_rate=config.dropout_rate,
+                embedding_dim=config.embedding_dim,
+                pwff_hidden_dim=config.pwff_hidden_dim,
+                num_layers=config.num_layers,
+                num_heads=config.num_heads,
+                max_wavelength=config.max_wavelength,
+                scale_factor=config.scale_factor,
+            )
+        )
+        self.final_norm = nn.LayerNorm(config.embedding_dim, eps=1e-5)
+        self.predictor = nn.Linear(config.embedding_dim, config.vocab_size)
+
+    def forward(
+        self,
+        input: torch.Tensor,
+        positions: torch.Tensor,
+        attn_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        x = self.embed(input)
+        x = self.encoder(input, positions, attn_mask)
+        x = self.final_norm(x)
+        return x
+
+    def predict(self, embeddings: torch.Tensor) -> torch.Tensor:
+        return self.predictor(embeddings)
