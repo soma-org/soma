@@ -3,7 +3,7 @@ name: Publish soma-models to PyPI
 on:
   push:
     tags:
-      - python-models-v*
+      - soma-models-v*
 
 jobs:
   publish:
