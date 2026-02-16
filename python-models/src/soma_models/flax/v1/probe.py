@@ -1,5 +1,3 @@
-import os
-from typing import Union
 from jax import Array
 from flax import nnx
 from dataclasses import dataclass
@@ -15,7 +13,7 @@ from soma_models.config import (
 )
 
 from soma_models.flax.v1.modules.encoder import Encoder, EncoderConfig
-from soma_models.flax.serde import Serde
+from soma_models.flax.serde import Serializable
 
 
 @dataclass
@@ -30,7 +28,7 @@ class ProbeConfig:
     scale_factor: float = V1_SCALE_FACTOR
 
 
-class Probe(nnx.Module):
+class Probe(Serializable, nnx.Module):
     def __init__(self, config: ProbeConfig, rngs: nnx.Rngs) -> None:
         self.config = config
         self.embed = nnx.Embed(config.vocab_size, config.embedding_dim, rngs=rngs)
@@ -62,20 +60,8 @@ class Probe(nnx.Module):
         x = self.final_norm(x)
         return x
 
-    def predictor(
+    def predict(
         self,
         embeddings: Array,
     ) -> Array:
         return self.predictor(embeddings)
-
-    def serialize(self) -> bytes:
-        return Serde(self).serialize()
-
-    def serialize_to_file(self, filename: Union[str, os.PathLike]) -> None:
-        return Serde(self).serialize_to_file(filename)
-
-    def deserialize(self, data: bytes):
-        self = Serde(self).deserialize(data)
-
-    def deserialize_from_file(self, filename: Union[str, os.PathLike]):
-        self = Serde(self).deserialize_from_file(filename)

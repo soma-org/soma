@@ -10,6 +10,16 @@ from flax import nnx
 M = TypeVar("M", bound=nnx.Module)
 
 
+def _add_mapping(
+    map_to_flax: Dict[str, str],
+    map_to_safetensor: Dict[str, str],
+    safetensor_key: str,
+    flax_key: str,
+):
+    map_to_flax[safetensor_key] = flax_key
+    map_to_safetensor[flax_key] = safetensor_key
+
+
 class Serde(Generic[M]):
     def __init__(self, module: M):
         self.module = module
@@ -20,50 +30,49 @@ class Serde(Generic[M]):
         for path, submodule in module.iter_modules():
             flat_path = ".".join(str(item) for item in path)
             match submodule:
-                case nnx.Linear() as module:
-                    self.map_to_flax[f"{flat_path}.weight"] = f"{flat_path}.kernel"
-                    self.map_to_safetensor[f"{flat_path}.kernel"] = (
-                        f"{flat_path}.weight"
+                case nnx.Linear():
+                    _add_mapping(
+                        self.map_to_flax,
+                        self.map_to_safetensor,
+                        f"{flat_path}.weight",
+                        f"{flat_path}.kernel",
                     )
-                case nnx.LayerNorm() as module:
-                    self.map_to_flax[f"{flat_path}.gamma"] = f"{flat_path}.scale"
-                    self.map_to_flax[f"{flat_path}.beta"] = f"{flat_path}.bias"
-                    self.map_to_safetensor[f"{flat_path}.scale"] = f"{flat_path}.gamma"
-                    self.map_to_safetensor[f"{flat_path}.bias"] = f"{flat_path}.beta"
-                case MultiHeadAttentionV1() as module:
+                case nnx.LayerNorm():
+                    _add_mapping(
+                        self.map_to_flax,
+                        self.map_to_safetensor,
+                        f"{flat_path}.gamma",
+                        f"{flat_path}.scale",
+                    )
+                    _add_mapping(
+                        self.map_to_flax,
+                        self.map_to_safetensor,
+                        f"{flat_path}.beta",
+                        f"{flat_path}.bias",
+                    )
+                case MultiHeadAttentionV1() as mha:
                     self.attention_shapes[flat_path] = (
-                        module.num_heads,
-                        module.head_dim,
+                        mha.num_heads,
+                        mha.head_dim,
                     )
-                    self.map_to_flax[f"{flat_path}.query.weight"] = (
-                        f"{flat_path}.query.kernel"
+                    for component in ["query", "key", "value"]:
+                        _add_mapping(
+                            self.map_to_flax,
+                            self.map_to_safetensor,
+                            f"{flat_path}.{component}.weight",
+                            f"{flat_path}.{component}.kernel",
+                        )
+                    _add_mapping(
+                        self.map_to_flax,
+                        self.map_to_safetensor,
+                        f"{flat_path}.output.weight",
+                        f"{flat_path}.out.kernel",
                     )
-                    self.map_to_safetensor[f"{flat_path}.query.kernel"] = (
-                        f"{flat_path}.query.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.key.weight"] = (
-                        f"{flat_path}.key.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.key.kernel"] = (
-                        f"{flat_path}.key.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.value.weight"] = (
-                        f"{flat_path}.value.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.value.kernel"] = (
-                        f"{flat_path}.value.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.output.weight"] = (
-                        f"{flat_path}.out.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.out.kernel"] = (
-                        f"{flat_path}.output.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.output.bias"] = (
-                        f"{flat_path}.out.bias"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.out.bias"] = (
-                        f"{flat_path}.output.bias"
+                    _add_mapping(
+                        self.map_to_flax,
+                        self.map_to_safetensor,
+                        f"{flat_path}.output.bias",
+                        f"{flat_path}.out.bias",
                     )
                 case nnx.Dropout():
                     self.remove.append(f"{flat_path}.rngs.count")
@@ -162,3 +171,25 @@ class Serde(Generic[M]):
     def deserialize_from_file(self, filename: Union[str, os.PathLike]) -> M:
         safetensor_dict = load_file(filename)
         return self._deserialize_common(safetensor_dict)
+
+
+class Serializable:
+    """Mixin for nnx.Module subclasses that adds safetensors serialization."""
+
+    def save(self, filename: Union[str, os.PathLike]) -> None:
+        Serde(self).serialize_to_file(filename)
+
+    def save_bytes(self) -> bytes:
+        return Serde(self).serialize()
+
+    @classmethod
+    def load(cls, filename: Union[str, os.PathLike], *args, **kwargs):
+        module = cls(*args, **kwargs)
+        Serde(module).deserialize_from_file(filename)
+        return module
+
+    @classmethod
+    def load_bytes(cls, data: bytes, *args, **kwargs):
+        module = cls(*args, **kwargs)
+        Serde(module).deserialize(data)
+        return module
