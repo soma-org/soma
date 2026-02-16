@@ -19,9 +19,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
 
       - name: Build
-        run: uv build
-        working-directory: python-models
+        run: uv build --package soma-models --no-sources
 
       - name: Publish
-        run: uv publish
-        working-directory: python-models
+        run: uv publish dist/soma_models-*
