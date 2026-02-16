@@ -1,0 +1,27 @@
+name: Publish soma-models to PyPI
+
+on:
+  push:
+    tags:
+      - python-models-v*
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Build
+        run: uv build
+        working-directory: python-models
+
+      - name: Publish
+        run: uv publish
+        working-directory: python-models

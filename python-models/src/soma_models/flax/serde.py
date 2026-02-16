@@ -34,8 +34,6 @@ class Serde(Generic[M]):
             prefix = ".".join(str(item) for item in path)
 
             if isinstance(submodule, nnx.Dropout):
-                self.remove.append(f"{prefix}.rngs.count")
-                self.remove.append(f"{prefix}.rngs.key")
                 continue
 
             from soma_models.flax.v1.modules.attention import MultiHeadAttention
@@ -100,6 +98,10 @@ class Serde(Generic[M]):
         state = nnx.state(self.module)
         state_dict = nnx.to_pure_dict(state)
         flat_state_dict = flatten_dict(state_dict)
+        # Remove all RNG stream state (rngs.count / rngs.key) from any module
+        rng_keys = [k for k in flat_state_dict if k.endswith(".rngs.count") or k.endswith(".rngs.key")]
+        for k in rng_keys:
+            del flat_state_dict[k]
         for name, (num_heads, head_dim) in self.attention_shapes.items():
             self._reshape_attention(
                 flat_state_dict, name, num_heads, head_dim, to_flax=False
