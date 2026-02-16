@@ -13,5 +13,9 @@ arrgen.workspace = true
 blobs.workspace = true
 async-trait.workspace = true
 
+[dev-dependencies]
+tokio.workspace = true
+safetensors.workspace = true
+
 [lints]
 workspace = true

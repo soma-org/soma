@@ -44,4 +44,24 @@ mod tests {
         let val = dist.into_data().to_vec::<f32>().unwrap()[0];
         assert!((val - 1.0).abs() < 1e-5, "orthogonal vectors should have distance ~1, got {val}");
     }
+
+    #[test]
+    fn cosine_distance_zero_vector_returns_nan() {
+        let device = Default::default();
+        let a: Tensor<B, 1> = Tensor::from_floats([0.0, 0.0, 0.0], &device);
+        let b: Tensor<B, 1> = Tensor::from_floats([1.0, 2.0, 3.0], &device);
+        let dist = cosine_distance(a, b);
+        let val = dist.into_data().to_vec::<f32>().unwrap()[0];
+        assert!(val.is_nan(), "zero vector should produce NaN distance, got {val}");
+    }
+
+    #[test]
+    fn cosine_distance_both_zero_vectors_returns_nan() {
+        let device = Default::default();
+        let a: Tensor<B, 1> = Tensor::from_floats([0.0, 0.0], &device);
+        let b: Tensor<B, 1> = Tensor::from_floats([0.0, 0.0], &device);
+        let dist = cosine_distance(a, b);
+        let val = dist.into_data().to_vec::<f32>().unwrap()[0];
+        assert!(val.is_nan(), "both zero vectors should produce NaN distance, got {val}");
+    }
 }

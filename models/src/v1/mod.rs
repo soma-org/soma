@@ -59,6 +59,16 @@ impl<B: Backend> ModelRunner<B> {
             sig_reg_coefficient: V1_SIG_REG_COEFFICIENT,
         }
     }
+
+    pub fn with_max_seq_len(mut self, max_seq_len: usize) -> Self {
+        self.max_seq_len = max_seq_len;
+        self
+    }
+
+    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
+        self.batch_size = batch_size;
+        self
+    }
 }
 
 #[async_trait::async_trait]
@@ -97,7 +107,7 @@ impl<B: Backend> ModelAPI for ModelRunner<B> {
             let representations = model.encode(batch.token_ids.clone(), batch.pos_ids.clone());
             let logits = model.predict(representations.clone());
 
-            let noise_data = normal_array(seed, &[V1_EMBEDDING_DIM, sig_reg.slices], 0.0, 1.0)
+            let noise_data = normal_array(seed, &[self.config.embedding_dim, sig_reg.slices], 0.0, 1.0)
                 .to_tensor_data()
                 .map_err(|e| ModelError::EmptyData(e.to_string()))?;
             let noise: Tensor<B, 2> = Tensor::from_data(noise_data, &self.device);
