@@ -46,7 +46,6 @@ fn test_v1_pwff_ones() {
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = PositionWiseFeedForwardConfig::new()
-        .with_dropout_rate(0.0)
         .with_embedding_dim(embedding_dim)
         .with_hidden_dim(hidden_dim)
         .init(&device);

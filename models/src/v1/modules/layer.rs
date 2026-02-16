@@ -5,7 +5,7 @@ use super::{
 use crate::v1::modules::attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig};
 use burn::{
     module::Module,
-    nn::{Dropout, DropoutConfig, LayerNorm, LayerNormConfig},
+    nn::{LayerNorm, LayerNormConfig},
     tensor::{Int, Tensor, backend::Backend},
 };
 
@@ -15,7 +15,6 @@ pub struct Layer<B: Backend> {
     attention: MultiHeadAttention<B>,
     norm_2: LayerNorm<B>,
     pwff: PositionWiseFeedForward<B>,
-    dropout: Dropout,
 }
 
 impl<B: Backend> Layer<B> {
@@ -25,17 +24,14 @@ impl<B: Backend> Layer<B> {
             attention: MultiHeadAttentionConfig::new()
                 .with_num_features(config.embedding_dim)
                 .with_num_heads(config.num_heads)
-                .with_dropout_rate(config.dropout_rate)
                 .with_initializer(config.initializer.clone())
                 .init(device),
             norm_2: LayerNormConfig::new(config.embedding_dim).init(device),
             pwff: PositionWiseFeedForwardConfig::new()
                 .with_embedding_dim(config.embedding_dim)
                 .with_hidden_dim(config.pwff_hidden_dim)
-                .with_dropout_rate(config.dropout_rate)
                 .with_initializer(config.initializer.clone())
                 .init(device),
-            dropout: DropoutConfig::new(config.dropout_rate).init(),
         }
     }
     pub(crate) fn forward(
@@ -47,11 +43,9 @@ impl<B: Backend> Layer<B> {
         let residual_path = self.norm_1.forward(x.clone());
         let input_mha = MhaInput::new(residual_path, positions);
         let residual_path = self.attention.forward(input_mha);
-        let residual_path = self.dropout.forward(residual_path);
         let x = x + residual_path;
         let residual_path = self.norm_2.forward(x.clone());
         let residual_path = self.pwff.forward(residual_path);
-        let residual_path = self.dropout.forward(residual_path);
         x + residual_path
     }
 }

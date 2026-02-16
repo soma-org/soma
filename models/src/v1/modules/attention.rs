@@ -3,8 +3,8 @@ use burn::{
     config::Config,
     module::Module,
     nn::{
-        Dropout, DropoutConfig, Initializer, Linear, LinearConfig,
-        attention::{generate_autoregressive_mask, generate_padding_mask},
+        Initializer, Linear, LinearConfig,
+        attention::generate_autoregressive_mask,
     },
     prelude::Backend,
     tensor::{Bool, Int, Tensor, activation::softmax},
@@ -65,9 +65,6 @@ pub struct MultiHeadAttentionConfig {
     /// The number of heads.
     #[config(default = "V1_NUM_HEADS")]
     pub num_heads: usize,
-    /// The probability that dropout occurs
-    #[config(default = 0.0)]
-    pub dropout_rate: f64,
     /// The minimum value a float can take. Default: -1.0e4
     /// This is used to mask attention scores before calculating attention weights.
     /// A value too low might result in NaN.
@@ -96,8 +93,6 @@ pub struct MultiHeadAttention<B: Backend> {
     pub value: Linear<B>,
     /// Linear layer to transform the output features back to the original space.
     pub output: Linear<B>,
-    /// Dropout layer.
-    pub dropout: Dropout,
     /// The size of each linear layer.
     pub num_features: usize,
     /// The number of heads.
@@ -123,7 +118,6 @@ impl MultiHeadAttentionConfig {
             key: linear(self),
             value: linear(self),
             output: linear(self),
-            dropout: DropoutConfig::new(self.dropout_rate).init(),
             num_features: self.num_features,
             num_heads: self.num_heads,
             head_dim: self.num_features / self.num_heads,
@@ -187,9 +181,7 @@ impl<B: Backend> MultiHeadAttention<B> {
     }
 
     fn attn_scores(&self, query: Tensor<B, 4>, key: Tensor<B, 4>) -> Tensor<B, 4> {
-        let attn_scores = query.matmul(key.transpose()).div_scalar((self.head_dim as f32).sqrt());
-
-        self.dropout.forward(attn_scores)
+        query.matmul(key.transpose()).div_scalar((self.head_dim as f32).sqrt())
     }
 
     fn attn_weights(

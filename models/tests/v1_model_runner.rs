@@ -34,7 +34,6 @@ fn tiny_model_config() -> ModelConfig {
         .with_pwff_hidden_dim(HIDDEN_DIM)
         .with_num_layers(NUM_LAYERS)
         .with_num_heads(NUM_HEADS)
-        .with_dropout_rate(0.0)
         .with_vocab_size(VOCAB_SIZE)
 }
 

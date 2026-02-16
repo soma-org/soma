@@ -39,7 +39,6 @@ fn test_v1_probe() {
         .with_pwff_hidden_dim(hidden_dim)
         .with_num_layers(num_layers)
         .with_num_heads(num_heads)
-        .with_dropout_rate(0.0)
         .with_vocab_size(vocab_size)
         .init(&device);
 

@@ -61,7 +61,6 @@ impl<B: Backend> MhaModule<B> {
             mha: MultiHeadAttentionConfig::new()
                 .with_num_features(head_dim * num_heads)
                 .with_num_heads(num_heads)
-                .with_dropout_rate(0.0)
                 .init(device),
         }
     }
