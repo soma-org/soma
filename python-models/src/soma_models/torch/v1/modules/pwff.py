@@ -1,14 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from dataclasses import dataclass
-from soma_models.config import V1_EMBEDDING_DIM, V1_PWFF_HIDDEN_DIM
 
-
-@dataclass
-class PositionWiseFeedForwardConfig:
-    dropout_rate: float
-    embedding_dim: int = V1_EMBEDDING_DIM
-    pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
+from soma_models.v1.configs import PositionWiseFeedForwardConfig
 
 
 class PositionWiseFeedForward(nn.Module):

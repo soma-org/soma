@@ -1,14 +1,7 @@
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
-from soma_models.config import V1_SIG_REG_T_MAX, V1_SIG_REG_POINTS, V1_SIG_REG_SLICES
 
-
-@dataclass
-class SIGRegConfig:
-    t_max: float = V1_SIG_REG_T_MAX
-    points: int = V1_SIG_REG_POINTS
-    slices: int = V1_SIG_REG_SLICES
+from soma_models.v1.configs import SIGRegConfig
 
 
 class SIGReg(nn.Module):

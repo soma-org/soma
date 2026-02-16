@@ -1,8 +1,5 @@
 import os
 from typing import Dict, Union, List, TypeVar, Generic, Tuple
-from soma_models.flax.v1.modules.attention import (
-    MultiHeadAttention as MultiHeadAttentionV1,
-)
 from soma_models.utils import remap, flatten_dict, unflatten_dict
 from safetensors.flax import save_file, load_file, save, load, Array
 from flax import nnx
@@ -41,7 +38,8 @@ class Serde(Generic[M]):
                 self.remove.append(f"{prefix}.rngs.key")
                 continue
 
-            if isinstance(submodule, MultiHeadAttentionV1):
+            from soma_models.flax.v1.modules.attention import MultiHeadAttention
+            if isinstance(submodule, MultiHeadAttention):
                 self.attention_shapes[prefix] = (
                     submodule.num_heads,
                     submodule.head_dim,
@@ -107,7 +105,7 @@ class Serde(Generic[M]):
                 flat_state_dict, name, num_heads, head_dim, to_flax=False
             )
         remap(flat_state_dict, self.map_to_safetensor, self.remove)
-        return flat_state_dict
+        return dict(sorted(flat_state_dict.items()))
 
     def serialize(self) -> bytes:
         return save(self._serialize_common())
