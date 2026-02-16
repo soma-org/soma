@@ -79,3 +79,61 @@ fn test_v1_sig_reg_uniform() {
 
     output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
+
+#[test]
+fn test_v1_sig_reg_small_dim() {
+    let seed = 99;
+    let batch_size = 2;
+    let seq_len = 3;
+    let embedding_dim = 8;
+    let slices = 4;
+    let points = 5;
+
+    let device = Default::default();
+    let sig_reg_config = SIGRegConfig::new().with_slices(slices).with_points(points);
+    let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
+    let input: Tensor<TestBackend, 3> = Tensor::from_data(
+        normal_array(seed + 1, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
+        &device,
+    );
+    let noise: Tensor<TestBackend, 2> = Tensor::from_data(
+        normal_array(seed + 2, &[embedding_dim, slices], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
+        &device,
+    );
+
+    let output = sig_reg.forward(input, noise);
+    let expected_output = Tensor::<TestBackend, 1>::from_floats([0.88936800], &device);
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+}
+
+#[test]
+fn test_v1_sig_reg_single_batch() {
+    let seed = 110;
+    let batch_size = 1;
+    let seq_len = 1;
+    let embedding_dim = 16;
+
+    let device = Default::default();
+    let sig_reg_config = SIGRegConfig::new();
+    let sig_reg: SIGReg<TestBackend> = sig_reg_config.init(&device);
+    let input: Tensor<TestBackend, 3> = Tensor::from_data(
+        normal_array(seed + 1, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
+        &device,
+    );
+    let noise: Tensor<TestBackend, 2> = Tensor::from_data(
+        normal_array(seed + 2, &[embedding_dim, sig_reg_config.slices], 0.0, 1.0)
+            .to_tensor_data()
+            .unwrap(),
+        &device,
+    );
+
+    let output = sig_reg.forward(input, noise);
+    let expected_output = Tensor::<TestBackend, 1>::from_floats([17.77822685], &device);
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+}

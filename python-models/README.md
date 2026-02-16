@@ -1,6 +1,6 @@
-# Python Probes
+# Python Models
 
-The python probes perfectly replicate the mathematical operations of the burn probe. This means that it is possible to train a probe end-to-end with the encoder model to optimize performance.
+The python models perfectly replicate the mathematical operations of the burn model. This means that it is possible to train a model end-to-end with the encoder to optimize performance.
 
 
-Once the model and probe have finished training, the weights can be extracted from the probe model and imported into the rust runtime. Probe weights from python frameworks will produce identical outputs in rust.
+Once the model has finished training, the weights can be extracted and imported into the rust runtime. Model weights from python frameworks will produce identical outputs in rust.

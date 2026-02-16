@@ -9,7 +9,7 @@ from soma_models.torch.v1.modules.encoder import Encoder, EncoderConfig
 
 
 @dataclass
-class ProbeConfig:
+class ModelConfig:
     dropout_rate: float
     embedding_dim: int = V1_EMBEDDING_DIM
     pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
@@ -20,11 +20,11 @@ class ProbeConfig:
     scale_factor: float = V1_SCALE_FACTOR
 
 
-class Probe(nn.Module):
-    def __init__(self, config: ProbeConfig):
+class Model(nn.Module):
+    def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
-        self.embed = nn.Embedding(config.vocab_size, config.embedding_dim)
+        self.embedding = nn.Embedding(config.vocab_size, config.embedding_dim)
         self.encoder = Encoder(
             EncoderConfig(
                 dropout_rate=config.dropout_rate,
@@ -45,8 +45,8 @@ class Probe(nn.Module):
         positions: torch.Tensor,
         attn_mask: torch.Tensor,
     ) -> torch.Tensor:
-        x = self.embed(input)
-        x = self.encoder(input, positions, attn_mask)
+        x = self.embedding(input)
+        x = self.encoder(x, positions, attn_mask)
         x = self.final_norm(x)
         return x
 

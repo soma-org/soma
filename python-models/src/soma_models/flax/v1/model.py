@@ -17,7 +17,7 @@ from soma_models.flax.serde import Serializable
 
 
 @dataclass
-class ProbeConfig:
+class ModelConfig:
     dropout_rate: float
     embedding_dim: int = V1_EMBEDDING_DIM
     pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
@@ -28,10 +28,10 @@ class ProbeConfig:
     scale_factor: float = V1_SCALE_FACTOR
 
 
-class Probe(Serializable, nnx.Module):
-    def __init__(self, config: ProbeConfig, rngs: nnx.Rngs) -> None:
+class Model(Serializable, nnx.Module):
+    def __init__(self, config: ModelConfig, rngs: nnx.Rngs) -> None:
         self.config = config
-        self.embed = nnx.Embed(config.vocab_size, config.embedding_dim, rngs=rngs)
+        self.embedding = nnx.Embed(config.vocab_size, config.embedding_dim, rngs=rngs)
         self.encoder = Encoder(
             EncoderConfig(
                 dropout_rate=config.dropout_rate,
@@ -51,12 +51,12 @@ class Probe(Serializable, nnx.Module):
 
     def __call__(
         self,
-        input: Array,  # [batch, seq_len, embedding_dim]
+        input: Array,
         positions: Array,
         attn_mask: Array,
     ) -> Array:
-        x = self.embed(input)  # [batch, seq_len, embedding_dim]
-        x = self.encoder(input, positions, attn_mask)
+        x = self.embedding(input)
+        x = self.encoder(x, positions, attn_mask)
         x = self.final_norm(x)
         return x
 
