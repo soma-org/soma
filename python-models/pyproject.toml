@@ -11,9 +11,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = [
-    "safetensors>=0.6.2",
-]
+dependencies = ["soma-arrgen==0.1.0", "safetensors>=0.6.2"]
 
 [project.optional-dependencies]
 torch = ["torch>=2.10.0"]
@@ -29,11 +27,7 @@ requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = [
-    "arrgen",
-    "pytest>=8.3.5",
-    "soma-models[all]",
-]
+dev = ["pytest>=8.3.5", "soma-models[all]"]
 
 [tool.uv.sources]
-arrgen = { workspace = true }
+soma-arrgen = { workspace = true }

@@ -1,9 +1,9 @@
-name: Publish soma-models to PyPI
+name: Publish models
 
 on:
   push:
     tags:
-      - soma-models-v*
+      - models-v*
 
 jobs:
   publish:

@@ -1,21 +1,52 @@
-# Array Generation (arrgen)
-Generates deterministic and identical arrays in both rust and python environments.
+# soma-arrgen
 
-Used to test probes implementations. The typical flow is to generate model weights and inputs deterministically using this library and then expect a specific output.
+Deterministic array generation for the Soma network. Produces identical arrays in both Rust and Python, ensuring numerical reproducibility across the on-chain runtime and Python training environments.
 
-## Reinstall
-Run this at the workspace root after making changes to the 'arrgen' library
+Used to generate deterministic model weights, inputs, and noise (e.g., SIGReg) so that the same seed always produces the same output regardless of language or platform.
 
+## Install
+
+```bash
+uv add soma-arrgen
 ```
-uv sync --reinstall-package arrgen
+
+Or with pip:
+
+```bash
+pip install soma-arrgen
 ```
 
-## Testing in Python
+## Usage
 
+```python
+from arrgen import normal_array, uniform_array, constant_array
+
+# Deterministic normal distribution
+arr = normal_array(seed=42, shape=[2048, 256], mean=0.0, std_dev=1.0)
+
+# Deterministic uniform distribution
+arr = uniform_array(seed=42, shape=[32, 8192], min=0.0, max=1.0)
+
+# Constant-filled array
+arr = constant_array(shape=[64, 64], value=0.5)
 ```
+
+## Development
+
+Reinstall after making changes (run from the workspace root):
+
+```bash
+uv sync --reinstall-package soma-arrgen
+```
+
+Run Python tests:
+
+```bash
 uv run pytest arrgen
 ```
 
-## Testing in Rust
-```
+Run Rust tests:
+
+```bash
+cargo test -p arrgen
 ```

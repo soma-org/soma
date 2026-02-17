@@ -2,4 +2,4 @@
 members = ["python-models", "python-sdk", "arrgen"]
 
 [tool.uv.sources]
-arrgen = { workspace = true }
+soma-arrgen = { workspace = true }
