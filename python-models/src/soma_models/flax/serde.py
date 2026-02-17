@@ -1,153 +1,125 @@
 import os
-from typing import Dict, Union, List, TypeVar, Generic
-from soma_models.flax.v1.modules.attention import (
-    MultiHeadAttention as MultiHeadAttentionV1,
-)
+from typing import Dict, Union, List, TypeVar, Generic, Tuple
 from soma_models.utils import remap, flatten_dict, unflatten_dict
 from safetensors.flax import save_file, load_file, save, load, Array
 from flax import nnx
 
 M = TypeVar("M", bound=nnx.Module)
 
+# (safetensor_suffix, flax_suffix) pairs per module type
+_LAYER_MAPPINGS: Dict[type, List[Tuple[str, str]]] = {
+    nnx.Embed: [("weight", "embedding")],
+    nnx.Linear: [("weight", "kernel")],
+    nnx.LayerNorm: [("gamma", "scale"), ("beta", "bias")],
+}
+
+_MHA_MAPPINGS: List[Tuple[str, str]] = [
+    ("query.weight", "query.kernel"),
+    ("key.weight", "key.kernel"),
+    ("value.weight", "value.kernel"),
+    ("output.weight", "out.kernel"),
+    ("output.bias", "out.bias"),
+]
+
 
 class Serde(Generic[M]):
     def __init__(self, module: M):
         self.module = module
-        self.attention_shapes: Dict[str, tuple] = {}
+        self.attention_shapes: Dict[str, Tuple[int, int]] = {}
         self.map_to_flax: Dict[str, str] = {}
         self.map_to_safetensor: Dict[str, str] = {}
         self.remove: List[str] = []
-        for path, submodule in module.iter_modules():
-            flat_path = ".".join(str(item) for item in path)
-            match submodule:
-                case nnx.Linear() as module:
-                    self.map_to_flax[f"{flat_path}.weight"] = f"{flat_path}.kernel"
-                    self.map_to_safetensor[f"{flat_path}.kernel"] = (
-                        f"{flat_path}.weight"
-                    )
-                case nnx.LayerNorm() as module:
-                    self.map_to_flax[f"{flat_path}.gamma"] = f"{flat_path}.scale"
-                    self.map_to_flax[f"{flat_path}.beta"] = f"{flat_path}.bias"
-                    self.map_to_safetensor[f"{flat_path}.scale"] = f"{flat_path}.gamma"
-                    self.map_to_safetensor[f"{flat_path}.bias"] = f"{flat_path}.beta"
-                case MultiHeadAttentionV1() as module:
-                    self.attention_shapes[flat_path] = (
-                        module.num_heads,
-                        module.head_dim,
-                    )
-                    self.map_to_flax[f"{flat_path}.query.weight"] = (
-                        f"{flat_path}.query.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.query.kernel"] = (
-                        f"{flat_path}.query.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.key.weight"] = (
-                        f"{flat_path}.key.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.key.kernel"] = (
-                        f"{flat_path}.key.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.value.weight"] = (
-                        f"{flat_path}.value.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.value.kernel"] = (
-                        f"{flat_path}.value.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.output.weight"] = (
-                        f"{flat_path}.out.kernel"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.out.kernel"] = (
-                        f"{flat_path}.output.weight"
-                    )
-                    self.map_to_flax[f"{flat_path}.output.bias"] = (
-                        f"{flat_path}.out.bias"
-                    )
-                    self.map_to_safetensor[f"{flat_path}.out.bias"] = (
-                        f"{flat_path}.output.bias"
-                    )
-                case nnx.Dropout():
-                    self.remove.append(f"{flat_path}.rngs.count")
-                    self.remove.append(f"{flat_path}.rngs.key")
-                    continue
 
-    def _reshape_to_flax_attention(
-        self, params: Dict[str, Array], name: str, num_heads: int, head_dim: int
-    ):
-        """Reshape target attention parameters to Flax MHA layout."""
-        num_features = num_heads * head_dim
-        # Reshape query, key, value weights: (num_features, num_features) -> (num_features, num_heads, head_dim)
-        for component in ["query", "key", "value"]:
-            weight_key = f"{name}.{component}.weight"
-            if weight_key in params:
-                params[weight_key] = params[weight_key].reshape(
-                    num_features, num_heads, head_dim
-                )
-            bias_key = f"{name}.{component}.bias"
-            if bias_key in params:
-                params[bias_key] = params[bias_key].reshape(num_heads, head_dim)
-        # Reshape output weight: (num_features, num_features) -> (num_heads, head_dim, num_features)
-        out_weight_key = f"{name}.output.weight"
-        if out_weight_key in params:
-            params[out_weight_key] = params[out_weight_key].reshape(
-                num_heads, head_dim, num_features
-            )
-        # Output bias is already (num_features,), no change needed
-        out_bias_key = f"{name}.output.bias"
-        if out_bias_key in params:
-            assert params[out_bias_key].shape == (num_features,), (
-                f"Expected shape ({num_features},) for {out_bias_key}"
-            )
+        for path, submodule in nnx.iter_modules(module):
+            prefix = ".".join(str(item) for item in path)
 
-    def _reshape_from_flax_attention(
-        self, params: Dict[str, Array], name: str, num_heads: int, head_dim: int
-    ):
-        """Reshape Flax MHA parameters to target linear layout."""
-        num_features = num_heads * head_dim
-        # Reshape query, key, value kernels: (num_features, num_heads, head_dim) -> (num_features, num_features)
-        for component in ["query", "key", "value"]:
-            kernel_key = f"{name}.{component}.kernel"
-            if kernel_key in params:
-                params[kernel_key] = params[kernel_key].reshape(
-                    num_features, num_features
+            if isinstance(submodule, nnx.Dropout):
+                continue
+
+            from soma_models.flax.v1.modules.attention import MultiHeadAttention
+            if isinstance(submodule, MultiHeadAttention):
+                self.attention_shapes[prefix] = (
+                    submodule.num_heads,
+                    submodule.head_dim,
                 )
-            bias_key = f"{name}.{component}.bias"
-            if bias_key in params:
-                params[bias_key] = params[bias_key].reshape(num_features)
-        # Reshape output kernel: (num_heads, head_dim, num_features) -> (num_features, num_features)
-        out_kernel_key = f"{name}.out.kernel"
-        if out_kernel_key in params:
-            params[out_kernel_key] = params[out_kernel_key].reshape(
-                num_features, num_features
-            )
-        # Output bias is already (num_features,), no change needed
-        out_bias_key = f"{name}.out.bias"
-        if out_bias_key in params:
-            assert params[out_bias_key].shape == (num_features,), (
-                f"Expected shape ({num_features},) for {out_bias_key}"
+                for st_suffix, flax_suffix in _MHA_MAPPINGS:
+                    self._add(f"{prefix}.{st_suffix}", f"{prefix}.{flax_suffix}")
+                continue
+
+            mappings = _LAYER_MAPPINGS.get(type(submodule))
+            if mappings:
+                for st_suffix, flax_suffix in mappings:
+                    self._add(f"{prefix}.{st_suffix}", f"{prefix}.{flax_suffix}")
+
+    def _add(self, safetensor_key: str, flax_key: str):
+        self.map_to_flax[safetensor_key] = flax_key
+        self.map_to_safetensor[flax_key] = safetensor_key
+
+    def _reshape_attention(
+        self,
+        params: Dict[str, Array],
+        name: str,
+        num_heads: int,
+        head_dim: int,
+        *,
+        to_flax: bool,
+    ):
+        """Reshape attention parameters between flat (safetensor) and split-head (flax) layouts."""
+        num_features = num_heads * head_dim
+        flat = (num_features, num_features)
+        # Key names differ by direction: safetensor uses "weight"/"output", flax uses "kernel"/"out"
+        if to_flax:
+            qkv_key = "weight"
+            out_w_key = f"{name}.output.weight"
+            out_b_key = f"{name}.output.bias"
+        else:
+            qkv_key = "kernel"
+            out_w_key = f"{name}.out.kernel"
+            out_b_key = f"{name}.out.bias"
+
+        for component in ["query", "key", "value"]:
+            w = f"{name}.{component}.{qkv_key}"
+            if w in params:
+                params[w] = params[w].reshape(
+                    (num_features, num_heads, head_dim) if to_flax else flat
+                )
+            b = f"{name}.{component}.bias"
+            if b in params:
+                params[b] = params[b].reshape(
+                    (num_heads, head_dim) if to_flax else (num_features,)
+                )
+
+        if out_w_key in params:
+            params[out_w_key] = params[out_w_key].reshape(
+                (num_heads, head_dim, num_features) if to_flax else flat
             )
 
     def _serialize_common(self) -> Dict:
         state = nnx.state(self.module)
         state_dict = nnx.to_pure_dict(state)
         flat_state_dict = flatten_dict(state_dict)
+        # Remove all RNG stream state (rngs.count / rngs.key) from any module
+        rng_keys = [k for k in flat_state_dict if k.endswith(".rngs.count") or k.endswith(".rngs.key")]
+        for k in rng_keys:
+            del flat_state_dict[k]
         for name, (num_heads, head_dim) in self.attention_shapes.items():
-            self._reshape_from_flax_attention(
-                flat_state_dict, name, num_heads, head_dim
+            self._reshape_attention(
+                flat_state_dict, name, num_heads, head_dim, to_flax=False
             )
         remap(flat_state_dict, self.map_to_safetensor, self.remove)
-        return flat_state_dict
+        return dict(sorted(flat_state_dict.items()))
 
     def serialize(self) -> bytes:
-        state_dict = self._serialize_common()
-        return save(state_dict)
+        return save(self._serialize_common())
 
     def serialize_to_file(self, filename: Union[str, os.PathLike]) -> None:
-        state_dict = self._serialize_common()
-        return save_file(state_dict, filename)
+        return save_file(self._serialize_common(), filename)
 
     def _deserialize_common(self, safetensor_dict: Dict[str, Array]) -> M:
         for name, (num_heads, head_dim) in self.attention_shapes.items():
-            self._reshape_to_flax_attention(safetensor_dict, name, num_heads, head_dim)
+            self._reshape_attention(
+                safetensor_dict, name, num_heads, head_dim, to_flax=True
+            )
         remap(safetensor_dict, self.map_to_flax, [])
         nested_dict = unflatten_dict(safetensor_dict)
         state = nnx.state(self.module)
@@ -156,9 +128,29 @@ class Serde(Generic[M]):
         return self.module
 
     def deserialize(self, data: bytes) -> M:
-        safetensor_dict = load(data)
-        return self._deserialize_common(safetensor_dict)
+        return self._deserialize_common(load(data))
 
     def deserialize_from_file(self, filename: Union[str, os.PathLike]) -> M:
-        safetensor_dict = load_file(filename)
-        return self._deserialize_common(safetensor_dict)
+        return self._deserialize_common(load_file(filename))
+
+
+class Serializable:
+    """Mixin for nnx.Module subclasses that adds safetensors serialization."""
+
+    def save(self, filename: Union[str, os.PathLike]) -> None:
+        Serde(self).serialize_to_file(filename)
+
+    def save_bytes(self) -> bytes:
+        return Serde(self).serialize()
+
+    @classmethod
+    def load(cls, filename: Union[str, os.PathLike], *args, **kwargs):
+        module = cls(*args, **kwargs)
+        Serde(module).deserialize_from_file(filename)
+        return module
+
+    @classmethod
+    def load_bytes(cls, data: bytes, *args, **kwargs):
+        module = cls(*args, **kwargs)
+        Serde(module).deserialize(data)
+        return module

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use burn::store::SafetensorsStoreError;
 use fastcrypto::error;
 use fastcrypto::{error::FastCryptoError, hash::Digest};
 use object_store::ObjectStore;
@@ -891,7 +892,7 @@ pub enum RuntimeError {
     ModelNotAvailable(String),
 }
 
-#[derive(Clone, Debug, Error, IntoStaticStr)]
+#[derive(Debug, Error, IntoStaticStr)]
 pub enum ModelError {
     #[error("Network config error: {0:?}")]
     NetworkConfig(String),
@@ -909,6 +910,12 @@ pub enum ModelError {
     SafeTensorsFailure(String),
     #[error("Failed type verification: {0}")]
     FailedTypeVerification(String),
+    #[error("SafeTensor store error: {0}")]
+    SafeTensorStoreError(SafetensorsStoreError),
+    #[error("Apply error")]
+    ApplyError,
+    #[error("Empty data: {0}")]
+    EmptyData(String),
 }
 
 pub type ModelResult<T> = Result<T, ModelError>;

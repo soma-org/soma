@@ -34,12 +34,11 @@ fn test_v1_probe() {
     let hidden_dim = embedding_dim * 2;
 
     let device = Default::default();
-    let mut model = ModelConfig::new(1)
+    let mut model = ModelConfig::new()
         .with_embedding_dim(embedding_dim)
         .with_pwff_hidden_dim(hidden_dim)
         .with_num_layers(num_layers)
         .with_num_heads(num_heads)
-        .with_dropout_rate(0.0)
         .with_vocab_size(vocab_size)
         .init(&device);
 
@@ -147,7 +146,7 @@ fn test_v1_probe() {
     let tokens: Tensor<TestBackend, 2, Int> = Tensor::from_ints([[0, 1, 2, 3]], &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
-    let output = model.forward(tokens, positions);
+    let output = model.encode(tokens, positions);
     set_print_options(PrintOptions {
         threshold: 1000,    // Default or custom threshold for summarization.
         edge_items: 3,      // Default or custom edge items to display.
@@ -165,5 +164,140 @@ fn test_v1_probe() {
         &device,
     );
 
+    output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
+}
+
+#[test]
+fn test_v1_predict() {
+    let seed = 42u64;
+
+    let batch_size = 1usize;
+    let vocab_size = 4usize;
+    let seq_len = 4usize;
+    let num_heads = 2usize;
+    let head_dim = 2usize;
+    let num_layers = 2;
+    let embedding_dim = head_dim * num_heads;
+    let hidden_dim = embedding_dim * 2;
+
+    let device = Default::default();
+    let mut model = ModelConfig::new()
+        .with_embedding_dim(embedding_dim)
+        .with_pwff_hidden_dim(hidden_dim)
+        .with_num_layers(num_layers)
+        .with_num_heads(num_heads)
+        .with_vocab_size(vocab_size)
+        .init(&device);
+
+    let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
+
+    for l in 0..num_layers {
+        let lseed = seed + l as u64;
+        tensors.insert(
+            format!("encoder.layers.{}.norm_1.gamma", l),
+            ArrayWrapper(normal_array(lseed + 1, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.norm_1.beta", l),
+            ArrayWrapper(normal_array(lseed + 2, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.query.weight", l),
+            ArrayWrapper(normal_array(lseed + 3, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.query.bias", l),
+            ArrayWrapper(normal_array(lseed + 4, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.key.weight", l),
+            ArrayWrapper(normal_array(lseed + 5, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.key.bias", l),
+            ArrayWrapper(normal_array(lseed + 6, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.value.weight", l),
+            ArrayWrapper(normal_array(lseed + 7, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.value.bias", l),
+            ArrayWrapper(normal_array(lseed + 8, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.output.weight", l),
+            ArrayWrapper(normal_array(lseed + 9, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.attention.output.bias", l),
+            ArrayWrapper(normal_array(lseed + 10, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.norm_2.gamma", l),
+            ArrayWrapper(normal_array(lseed + 11, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.norm_2.beta", l),
+            ArrayWrapper(normal_array(lseed + 12, &[embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.pwff.linear_inner.weight", l),
+            ArrayWrapper(normal_array(lseed + 13, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.pwff.linear_inner.bias", l),
+            ArrayWrapper(normal_array(lseed + 14, &[hidden_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.pwff.linear_outer.weight", l),
+            ArrayWrapper(normal_array(lseed + 15, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+        );
+        tensors.insert(
+            format!("encoder.layers.{}.pwff.linear_outer.bias", l),
+            ArrayWrapper(normal_array(lseed + 16, &[embedding_dim], 0.0, 1.0)),
+        );
+    }
+    tensors.insert(
+        "final_norm.gamma".to_string(),
+        ArrayWrapper(normal_array(seed + 100, &[embedding_dim], 0.0, 1.0)),
+    );
+    tensors.insert(
+        "final_norm.beta".to_string(),
+        ArrayWrapper(normal_array(seed + 200, &[embedding_dim], 0.0, 1.0)),
+    );
+    tensors.insert(
+        "embedding.weight".to_string(),
+        ArrayWrapper(normal_array(seed + 250, &[vocab_size, embedding_dim], 0.0, 1.0)),
+    );
+    tensors.insert(
+        "predictor.weight".to_string(),
+        ArrayWrapper(normal_array(seed + 300, &[embedding_dim, vocab_size], 0.0, 1.0)),
+    );
+    tensors.insert(
+        "predictor.bias".to_string(),
+        ArrayWrapper(normal_array(seed + 400, &[vocab_size], 0.0, 1.0)),
+    );
+
+    let st = serialize(tensors, &None).unwrap();
+    let device = Default::default();
+    let mut store = SafetensorsStore::from_bytes(Some(st));
+    model.load_from(&mut store).unwrap();
+
+    let tokens: Tensor<TestBackend, 2, Int> = Tensor::from_ints([[0, 1, 2, 3]], &device);
+    let positions: Tensor<TestBackend, 2, Int> =
+        Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
+    let encoded = model.encode(tokens, positions);
+    let output = model.predict(encoded);
+
+    let expected_output = Tensor::<TestBackend, 3>::from_floats(
+        [[
+            [1.89312398, -3.37666154, -5.06565857, -9.11204624],
+            [1.40491748, -3.30115676, -5.32568741, -8.60974312],
+            [1.71110404, -2.86263919, -4.95488262, -8.56918144],
+            [1.63806129, -3.27318168, -5.17767763, -8.81518459],
+        ]],
+        &device,
+    );
     output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }

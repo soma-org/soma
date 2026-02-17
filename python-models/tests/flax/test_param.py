@@ -45,7 +45,7 @@ def test_1d_param():
 def test_3d_param():
     seed = 42
     embedding_dim = 4
-    serde = Serde(ParamModule1D(rngs=nnx.Rngs(0)))
+    serde = Serde(ParamModule3D(rngs=nnx.Rngs(0)))
     generated_tensors = {
         "param": normal_array(seed, [1, 1, embedding_dim], mean=0.0, std_dev=1.0),
     }

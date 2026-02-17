@@ -5448,6 +5448,7 @@ dependencies = [
  "ndarray",
  "num-traits",
  "safetensors 0.5.3",
+ "tokio",
  "types",
 ]
 

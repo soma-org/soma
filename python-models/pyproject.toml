@@ -1,13 +1,28 @@
 [project]
 name = "soma-models"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python model implementations for the Soma network, matching the Rust runtime exactly"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Soma Contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
-    "flax>=0.7.2",
     "safetensors>=0.6.2",
 ]
+
+[project.optional-dependencies]
+torch = ["torch>=2.10.0"]
+flax = ["flax>=0.12.3"]
+all = ["soma-models[torch,flax]"]
+
+[project.urls]
+Homepage = "https://github.com/soma-org/soma"
+Repository = "https://github.com/soma-org/soma"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
@@ -17,7 +32,7 @@ build-backend = "uv_build"
 dev = [
     "arrgen",
     "pytest>=8.3.5",
-    "safetensors>=0.6.2",
+    "soma-models[all]",
 ]
 
 [tool.uv.sources]

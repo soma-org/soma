@@ -6,13 +6,8 @@ use burn::nn::{Embedding, EmbeddingConfig};
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{Int, Tensor, Tolerance};
-use burn::{
-    module::Module,
-    nn::{LayerNorm, LayerNormConfig},
-    prelude::Backend,
-};
-use core::num;
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::{module::Module, prelude::Backend};
+use models::tensor_conversions::ArrayWrapper;
 use safetensors::serialize;
 use std::collections::HashMap;
 
@@ -44,7 +39,7 @@ fn test_embedding() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "embedding.weight".to_string(),
-        ArrayWrapper(normal_array(seed,&[num_embeddings, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &[num_embeddings, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

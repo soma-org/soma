@@ -24,9 +24,6 @@ pub struct EncoderConfig {
     /// The number of transformer heads.
     #[config(default = "V1_NUM_HEADS")]
     pub num_heads: usize,
-    /// The probability that dropout occurs
-    #[config(default = 0.0)]
-    pub dropout_rate: f64,
     /// The type of function used to initialize neural network parameters
     #[config(
         default = "Initializer::KaimingUniform{gain:1.0/num_traits::Float::sqrt(3.0), fan_out_only:false}"

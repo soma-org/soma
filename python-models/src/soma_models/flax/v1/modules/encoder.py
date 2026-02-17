@@ -1,26 +1,8 @@
 from jax import Array
 from flax import nnx
-from soma_models.config import (
-    V1_NUM_LAYERS,
-    V1_EMBEDDING_DIM,
-    V1_PWFF_HIDDEN_DIM,
-    V1_NUM_HEADS,
-    V1_MAX_WAVELENGTH,
-    V1_SCALE_FACTOR,
-)
-from soma_models.flax.v1.modules.layer import Layer, LayerConfig
-from dataclasses import dataclass
 
-
-@dataclass
-class EncoderConfig:
-    dropout_rate: float
-    embedding_dim: int = V1_EMBEDDING_DIM
-    pwff_hidden_dim: int = V1_PWFF_HIDDEN_DIM
-    num_layers: int = V1_NUM_LAYERS
-    num_heads: int = V1_NUM_HEADS
-    max_wavelength: float = V1_MAX_WAVELENGTH
-    scale_factor: float = V1_SCALE_FACTOR
+from soma_models.v1.configs import EncoderConfig, LayerConfig
+from soma_models.flax.v1.modules.layer import Layer
 
 
 class Encoder(nnx.Module):
