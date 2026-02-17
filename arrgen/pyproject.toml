@@ -3,13 +3,22 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "arrgen"
+name = "soma-arrgen"
+description = "Deterministic array generation for the Soma network"
+readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Soma Contributors" }]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/soma-org/soma"
+Repository = "https://github.com/soma-org/soma"
+
 [tool.maturin]
 features = ["pyo3/extension-module"]

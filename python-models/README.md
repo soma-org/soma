@@ -104,7 +104,7 @@ The model with the **lowest loss** wins. Both components are:
 
 1. **Cross-entropy loss**: Standard next-token prediction loss over the vocabulary. PAD tokens (256) are masked out and do not contribute to the loss.
 
-2. **SIGReg loss**: A Gaussian uniformity regularizer ([SIGReg](https://arxiv.org/abs/2410.01462)) that penalizes embedding collapse. It measures how far the embedding distribution deviates from a standard Gaussian by comparing the characteristic function of projected representations against the Gaussian characteristic function.
+2. **SIGReg loss**: A Gaussian uniformity regularizer ([LeJEPA](https://arxiv.org/pdf/2511.08544)) that penalizes embedding collapse. It measures how far the embedding distribution deviates from a standard Gaussian by comparing the characteristic function of projected representations against the Gaussian characteristic function.
 
 | SIGReg Parameter | Value |
 |------------------|-------|
@@ -113,7 +113,7 @@ The model with the **lowest loss** wins. Both components are:
 | `SIG_REG_POINTS` | 17 |
 | `SIG_REG_COEFFICIENT` | 1.0 |
 
-SIGReg noise is generated deterministically using [arrgen](../arrgen/) with the evaluation seed. This means the same weights + data + seed always produce the same score.
+SIGReg noise is generated deterministically using [arrgen](https://github.com/soma-org/soma/tree/main/arrgen) with the evaluation seed. This means the same weights + data + seed always produce the same score.
 
 ### Usage
 
