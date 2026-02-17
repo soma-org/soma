@@ -278,7 +278,9 @@ fn simtest_committee_and_keys(
 
     let mut authorities = BTreeMap::new();
     let mut voting_weights = BTreeMap::new();
-    let mut key_pairs = vec![];
+    // Store keypairs by AuthorityName so they stay aligned after BTreeMap sorting.
+    let mut key_pairs_by_name: BTreeMap<AuthorityName, (NetworkKeyPair, ProtocolKeyPair)> =
+        BTreeMap::new();
     let mut rng = StdRng::from_seed([0; 32]);
 
     for i in 0..num_authorities {
@@ -309,11 +311,24 @@ fn simtest_committee_and_keys(
             },
         );
         voting_weights.insert(name, 1 as Stake);
-        key_pairs.push((network_keypair, protocol_keypair));
+        key_pairs_by_name.insert(name, (network_keypair, protocol_keypair));
     }
 
     let committee =
         Committee::new_for_testing_with_normalized_voting_power(0, voting_weights, authorities);
+
+    // Build key_pairs Vec in committee authority-index order so that
+    // keypairs[authority_index] is always the correct keypair.
+    let key_pairs: Vec<_> = committee
+        .authorities()
+        .map(|(_index, authority)| {
+            let name = AuthorityName::from(&authority.authority_key);
+            key_pairs_by_name
+                .remove(&name)
+                .expect("keypair must exist for every authority")
+        })
+        .collect();
+
     (committee, key_pairs)
 }
 
@@ -324,7 +339,6 @@ fn simtest_committee_and_keys(
 /// Test: Start a 10-node committee, submit transactions, wait for commits,
 /// then start a late-joining node and verify it catches up.
 #[msim::sim_test]
-#[ignore = "Blocked on msim network compatibility with soma_http (std::net vs simulated TCP). Deferred to pre-testnet."]
 async fn test_committee_start_simple() {
     utils::logging::init_tracing();
 
@@ -406,7 +420,6 @@ async fn test_committee_start_simple() {
 /// Test: Start a 4-node committee, submit transactions, verify all committed,
 /// then stop and restart an authority to verify recovery.
 #[msim::sim_test]
-#[ignore = "Blocked on msim network compatibility with soma_http (std::net vs simulated TCP). Deferred to pre-testnet."]
 async fn test_authority_committee_simtest() {
     utils::logging::init_tracing();
 
@@ -507,7 +520,6 @@ async fn test_authority_committee_simtest() {
 /// Test: Amnesia recovery — wipe a node's DB, restart, and verify it recovers
 /// by syncing from peers.
 #[msim::sim_test]
-#[ignore = "Blocked on msim network compatibility with soma_http (std::net vs simulated TCP). Deferred to pre-testnet."]
 async fn test_amnesia_recovery_simtest() {
     utils::logging::init_tracing();
 
