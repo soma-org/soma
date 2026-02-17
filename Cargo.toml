@@ -189,7 +189,7 @@ runtime = { path = "runtime" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 blobs = { path = "blobs" }
-arrgen = { path = "arrgen" }
+arrgen = { path = "arrgen", default-features = false }
 models = { path = "models" }
 
 
@@ -203,6 +203,7 @@ aes = "0.8.4"
 ctr = "0.9.2"
 crypto-common = "0.1.7"
 pyo3 = "0.28"
+pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 pyo3-build-config = "0.28"
 numpy = "0.28"
 ndarray = { version = "0.16", features = ["serde"] }

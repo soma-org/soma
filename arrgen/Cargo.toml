@@ -7,12 +7,16 @@ edition = "2024"
 name = "arrgen"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["python"]
+python = ["dep:pyo3", "dep:numpy"]
+
 [dependencies]
-pyo3.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 ndarray.workspace = true
 ndarray-rand.workspace = true
-numpy.workspace = true
+numpy = { workspace = true, optional = true }
 
 [lints]
 workspace = true

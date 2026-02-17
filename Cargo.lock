@@ -1866,7 +1866,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6802,6 +6802,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyo3-async-runtimes"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e7364a95bf00e8377bbf9b0f09d7ff9715a29d8fcf93b47d1a967363b973178"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "once_cell",
+ "pin-project-lite",
+ "pyo3",
+ "tokio",
+]
+
+[[package]]
 name = "pyo3-build-config"
 version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7737,7 +7751,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8516,7 +8530,20 @@ dependencies = [
 name = "soma-sdk"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bcs",
+ "futures",
+ "hex",
  "pyo3",
+ "pyo3-async-runtimes",
+ "rpc",
+ "sdk",
+ "serde",
+ "serde_json",
+ "soma-keys",
+ "tokio",
+ "types",
+ "url",
 ]
 
 [[package]]
