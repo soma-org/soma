@@ -1087,7 +1087,7 @@ source = { editable = "arrgen" }
 
 [[package]]
 name = "soma-models"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "python-models" }
 dependencies = [
     { name = "safetensors" },

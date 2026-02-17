@@ -1,17 +1,23 @@
 from dataclasses import dataclass
 
-from soma_models.config import (
-    V1_EMBEDDING_DIM,
-    V1_NUM_LAYERS,
-    V1_PWFF_HIDDEN_DIM,
-    V1_NUM_HEADS,
-    V1_VOCAB_SIZE,
-    V1_MAX_WAVELENGTH,
-    V1_SCALE_FACTOR,
-    V1_SIG_REG_T_MAX,
-    V1_SIG_REG_POINTS,
-    V1_SIG_REG_SLICES,
-)
+V1_PAD_TOKEN_ID = 256
+V1_EOS_TOKEN_ID = 257
+
+V1_EMBEDDING_DIM = 2048
+V1_NUM_HEADS = 8
+V1_NUM_LAYERS = 32
+V1_MAX_SEQ_LEN = 8192
+V1_PWFF_HIDDEN_DIM = V1_EMBEDDING_DIM * 4
+V1_MAX_WAVELENGTH = 10_000.0
+V1_SCALE_FACTOR = 1.0
+V1_VOCAB_SIZE = 256 + 8
+
+V1_SIG_REG_T_MAX = 3.0
+V1_SIG_REG_SLICES = 1024
+V1_SIG_REG_POINTS = 17
+V1_SIG_REG_COEFFICIENT = 0.02
+
+V1_BATCH_SIZE = 32
 
 
 @dataclass
@@ -59,3 +65,4 @@ class SIGRegConfig:
     t_max: float = V1_SIG_REG_T_MAX
     points: int = V1_SIG_REG_POINTS
     slices: int = V1_SIG_REG_SLICES
+    coefficient: float = V1_SIG_REG_COEFFICIENT

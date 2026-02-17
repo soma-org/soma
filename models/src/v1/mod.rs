@@ -34,7 +34,7 @@ const V1_VOCAB_SIZE: usize = 256 + 8;
 const V1_SIG_REG_T_MAX: f64 = 3.0;
 const V1_SIG_REG_SLICES: usize = 1024;
 const V1_SIG_REG_POINTS: usize = 17;
-const V1_SIG_REG_COEFFICIENT: f64 = 1.0;
+const V1_SIG_REG_COEFFICIENT: f64 = 0.02;
 const V1_BATCH_SIZE: usize = 32;
 
 pub struct ModelRunner<B: Backend> {
@@ -103,13 +103,18 @@ impl<B: Backend> ModelAPI for ModelRunner<B> {
         let mut embeddings = RunningMean::new();
         let mut losses = RunningMean::new();
 
-        for batch in data.iter() {
+        for (idx, batch) in data.iter().enumerate() {
             let representations = model.encode(batch.token_ids.clone(), batch.pos_ids.clone());
             let logits = model.predict(representations.clone());
 
-            let noise_data = normal_array(seed, &[self.config.embedding_dim, sig_reg.slices], 0.0, 1.0)
-                .to_tensor_data()
-                .map_err(|e| ModelError::EmptyData(e.to_string()))?;
+            let noise_data = normal_array(
+                seed + idx as u64,
+                &[self.config.embedding_dim, sig_reg.slices],
+                0.0,
+                1.0,
+            )
+            .to_tensor_data()
+            .map_err(|e| ModelError::EmptyData(e.to_string()))?;
             let noise: Tensor<B, 2> = Tensor::from_data(noise_data, &self.device);
             let sig_reg_loss = sig_reg.forward(representations.clone(), noise);
 

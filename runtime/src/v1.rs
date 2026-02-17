@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use async_trait::async_trait;
 use blobs::{BlobPath, downloader::BlobDownloader, loader::BlobLoader};
-use burn::{Tensor, data::dataloader, prelude::Backend};
+use burn::{Tensor, prelude::Backend};
 use models::{
     ModelAPI, ModelOutput, consine_distance::cosine_distance, select_best::select_best_model,
 };

@@ -97,7 +97,7 @@ You are free to prepare your training data however you want — different sequen
 Models are scored on-chain by the following loss:
 
 ```
-loss = cross_entropy + SIG_REG_COEFFICIENT * sig_reg_loss
+loss = cross_entropy + sig_reg_loss
 ```
 
 The model with the **lowest loss** wins. Both components are:
@@ -111,9 +111,9 @@ The model with the **lowest loss** wins. Both components are:
 | `SIG_REG_T_MAX` | 3.0 |
 | `SIG_REG_SLICES` | 1024 |
 | `SIG_REG_POINTS` | 17 |
-| `SIG_REG_COEFFICIENT` | 1.0 |
+| `SIG_REG_COEFFICIENT` | 0.02 |
 
-SIGReg noise is generated deterministically using [arrgen](https://github.com/soma-org/soma/tree/main/arrgen) with the evaluation seed. This means the same weights + data + seed always produce the same score.
+SIGReg noise is generated using each framework's native RNG (`jax.random` via `nnx.Rngs` for Flax, `torch.randn` for PyTorch).
 
 ### Usage
 
@@ -123,23 +123,20 @@ Both frameworks expose the same API: a `Model`, a `SIGReg` regularizer, and a `c
 
 ```python
 import torch
-from soma_models.torch.v1.model import Model, ModelConfig
-from soma_models.torch.v1.sig_reg import SIGReg, SIGRegConfig
-from soma_models.torch.v1.loss import compute_loss
+from soma_models.v1.configs import ModelConfig, SIGRegConfig
+from soma_models.v1.torch.modules.model import Model
+from soma_models.v1.torch.modules.sig_reg import SIGReg
+from soma_models.v1.torch.loss import compute_loss
 
 # Initialize
 model = Model(ModelConfig(dropout_rate=0.1))
-sig_reg_config = SIGRegConfig()
-sig_reg = SIGReg(sig_reg_config)
+sig_reg = SIGReg(SIGRegConfig())
 
 # Forward + loss (differentiable)
 loss, embedding = compute_loss(
-    model, sig_reg, sig_reg_config,
+    model, sig_reg,
     token_ids=token_ids,         # [batch, seq] int tensor
-    positions=positions,         # [batch, seq] int tensor
-    attn_mask=attn_mask,         # [batch, 1, seq, seq] bool tensor (causal)
     targets=targets,             # [batch, seq] int tensor (input shifted left by 1)
-    seed=42,
 )
 loss.backward()
 
@@ -153,24 +150,21 @@ model = Model.load("weights.safetensors", ModelConfig(dropout_rate=0.0))
 ```python
 import jax.numpy as jnp
 from flax import nnx
-from soma_models.flax.v1.model import Model, ModelConfig
-from soma_models.flax.v1.sig_reg import SIGReg, SIGRegConfig
-from soma_models.flax.v1.loss import compute_loss
+from soma_models.v1.configs import ModelConfig, SIGRegConfig
+from soma_models.v1.flax.modules.model import Model
+from soma_models.v1.flax.modules.sig_reg import SIGReg
+from soma_models.v1.flax.loss import compute_loss
 
 # Initialize
 rngs = nnx.Rngs(0)
 model = Model(ModelConfig(dropout_rate=0.1), rngs=rngs)
-sig_reg_config = SIGRegConfig()
-sig_reg = SIGReg(sig_reg_config, rngs=rngs)
+sig_reg = SIGReg(SIGRegConfig(), rngs=rngs)
 
 # Forward + loss (differentiable via jax.grad)
 loss, embedding = compute_loss(
-    model, sig_reg, sig_reg_config,
+    model, sig_reg,
     token_ids=token_ids,         # [batch, seq] jnp array
-    positions=positions,         # [batch, seq] jnp array
-    attn_mask=attn_mask,         # [batch, 1, seq, seq] bool array (causal)
     targets=targets,             # [batch, seq] jnp array (input shifted left by 1)
-    seed=42,
 )
 
 # Save / load weights
@@ -189,7 +183,8 @@ Weights are stored in safetensors format with a canonical key layout. The serde 
 #### PyTorch
 
 ```python
-from soma_models.torch.v1.model import Model, ModelConfig
+from soma_models.v1.configs import ModelConfig
+from soma_models.v1.torch.modules.model import Model
 
 # Save
 model.save("weights.safetensors")
@@ -201,7 +196,8 @@ model = Model.load("weights.safetensors", ModelConfig(dropout_rate=0.0))
 #### Flax
 
 ```python
-from soma_models.flax.v1.model import Model, ModelConfig
+from soma_models.v1.configs import ModelConfig
+from soma_models.v1.flax.modules.model import Model
 from flax import nnx
 
 # Save
