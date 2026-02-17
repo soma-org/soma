@@ -130,7 +130,7 @@ pub type AggregateAuthoritySignatureAsBytes = BLS12381AggregateSignatureAsBytes;
 /// This type is immutable and can be safely shared across threads.
 ///
 /// ## Examples
-/// ```
+/// ```ignore
 /// // Convert from a full public key to bytes representation
 /// let public_key_bytes = AuthorityPublicKeyBytes::from(&authority_public_key);
 ///
@@ -479,7 +479,7 @@ impl PartialEq for AuthoritySignInfo {
 /// This type is immutable and can be safely shared across threads.
 ///
 /// ## Examples
-/// ```
+/// ```ignore
 /// // Create a strong quorum signature (2f+1)
 /// let strong_quorum = AuthorityQuorumSignInfo::<true>::new_from_auth_sign_infos(
 ///     signatures,

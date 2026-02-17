@@ -1,6 +1,3 @@
-// Copyright (c) Soma Foundation
-// SPDX-License-Identifier: Apache-2.0
-
 //! Top-level claim command for claiming rewards from filled targets.
 
 use anyhow::{Result, bail};

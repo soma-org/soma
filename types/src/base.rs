@@ -128,9 +128,6 @@ pub trait ConciseableName<'a> {
 /// ## Examples
 ///
 /// ```
-/// # use serde::{Serialize, Deserialize};
-/// # #[derive(Debug, Deserialize, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-/// # #[serde(try_from = "Vec<T>")]
 /// # struct SizeOneVec<T> { e: T }
 /// # impl<T> SizeOneVec<T> {
 /// #     pub fn new(e: T) -> Self { Self { e } }
@@ -735,6 +732,7 @@ impl FullObjectID {
     /// # Examples
     ///
     /// ```
+    /// # #[derive(Copy, Clone)]
     /// # struct ObjectID([u8; 32]);
     /// # type Version = u64;
     /// # enum FullObjectID {

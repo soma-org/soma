@@ -1,6 +1,3 @@
-// Copyright (c) Soma Foundation
-// SPDX-License-Identifier: Apache-2.0
-
 //! ListTargets RPC handler - lists targets with optional filtering by status and epoch.
 //!
 //! This implementation uses an index-based approach for efficient target listing.
