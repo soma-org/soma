@@ -115,6 +115,28 @@ The model with the **lowest loss** wins. Both components are:
 
 SIGReg noise is generated using each framework's native RNG (`jax.random` via `nnx.Rngs` for Flax, `torch.randn` for PyTorch).
 
+### Tokenizer
+
+The tokenizer implements the on-chain data contract as a framework-agnostic Python module. It converts raw bytes into `token_ids`, `targets`, and `pos_ids` that can be wrapped with any framework's tensor constructor (`torch.tensor()`, `jnp.array()`, `tf.constant()`, etc.).
+
+```python
+from soma_models.v1.tokenizer import tokenize
+
+batches = tokenize(raw_bytes)
+for batch in batches:
+    batch.token_ids   # [batch, seq_len] nested list of ints
+    batch.targets     # [batch, seq_len] nested list of ints
+    batch.pos_ids     # [batch, seq_len] nested list of ints
+```
+
+The default `max_seq_len` and `batch_size` match the on-chain evaluation parameters. You can override them for training:
+
+```python
+batches = tokenize(raw_bytes, max_seq_len=2048, batch_size=8)
+```
+
+The final batch may contain fewer than `batch_size` sequences (matching the Rust DataLoader behaviour).
+
 ### Usage
 
 Both frameworks expose the same API: a `Model`, a `SIGReg` regularizer, and a `compute_loss` function.
@@ -124,6 +146,7 @@ Both frameworks expose the same API: a `Model`, a `SIGReg` regularizer, and a `c
 ```python
 import torch
 from soma_models.v1.configs import ModelConfig, SIGRegConfig
+from soma_models.v1.tokenizer import tokenize
 from soma_models.v1.torch.modules.model import Model
 from soma_models.v1.torch.modules.sig_reg import SIGReg
 from soma_models.v1.torch.loss import compute_loss
@@ -132,13 +155,17 @@ from soma_models.v1.torch.loss import compute_loss
 model = Model(ModelConfig(dropout_rate=0.1))
 sig_reg = SIGReg(SIGRegConfig())
 
+# Tokenize raw bytes
+batches = tokenize(raw_bytes)
+
 # Forward + loss (differentiable)
-loss, embedding = compute_loss(
-    model, sig_reg,
-    token_ids=token_ids,         # [batch, seq] int tensor
-    targets=targets,             # [batch, seq] int tensor (input shifted left by 1)
-)
-loss.backward()
+for batch in batches:
+    loss, embedding = compute_loss(
+        model, sig_reg,
+        token_ids=torch.tensor(batch.token_ids),
+        targets=torch.tensor(batch.targets),
+    )
+    loss.backward()
 
 # Save / load weights
 model.save("weights.safetensors")
@@ -151,6 +178,7 @@ model = Model.load("weights.safetensors", ModelConfig(dropout_rate=0.0))
 import jax.numpy as jnp
 from flax import nnx
 from soma_models.v1.configs import ModelConfig, SIGRegConfig
+from soma_models.v1.tokenizer import tokenize
 from soma_models.v1.flax.modules.model import Model
 from soma_models.v1.flax.modules.sig_reg import SIGReg
 from soma_models.v1.flax.loss import compute_loss
@@ -160,12 +188,16 @@ rngs = nnx.Rngs(0)
 model = Model(ModelConfig(dropout_rate=0.1), rngs=rngs)
 sig_reg = SIGReg(SIGRegConfig(), rngs=rngs)
 
+# Tokenize raw bytes
+batches = tokenize(raw_bytes)
+
 # Forward + loss (differentiable via jax.grad)
-loss, embedding = compute_loss(
-    model, sig_reg,
-    token_ids=token_ids,         # [batch, seq] jnp array
-    targets=targets,             # [batch, seq] jnp array (input shifted left by 1)
-)
+for batch in batches:
+    loss, embedding = compute_loss(
+        model, sig_reg,
+        token_ids=jnp.array(batch.token_ids),
+        targets=jnp.array(batch.targets),
+    )
 
 # Save / load weights
 model.save("weights.safetensors")
