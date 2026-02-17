@@ -57,6 +57,9 @@ pub mod validator_client_monitor;
 pub mod validator_tx_finalizer;
 
 #[cfg(test)]
+pub mod test_authority_clients;
+
+#[cfg(test)]
 #[path = "unit_tests/pay_coin_tests.rs"]
 mod pay_coin_tests;
 

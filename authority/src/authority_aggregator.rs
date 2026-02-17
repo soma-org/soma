@@ -62,9 +62,9 @@ use tokio::time::timeout;
 
 pub const DEFAULT_RETRIES: usize = 4;
 
-// #[cfg(test)]
-// #[path = "unit_tests/authority_aggregator_tests.rs"]
-// pub mod authority_aggregator_tests;
+#[cfg(test)]
+#[path = "unit_tests/authority_aggregator_tests.rs"]
+mod authority_aggregator_tests;
 
 #[derive(Clone)]
 pub struct TimeoutConfig {

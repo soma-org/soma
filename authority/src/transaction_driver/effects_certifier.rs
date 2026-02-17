@@ -43,9 +43,9 @@ use crate::{
     validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
 };
 
-// #[cfg(test)]
-// #[path = "unit_tests/effects_certifier_tests.rs"]
-// mod effects_certifier_tests;
+#[cfg(test)]
+#[path = "unit_tests/effects_certifier_tests.rs"]
+mod effects_certifier_tests;
 
 const WAIT_FOR_EFFECTS_TIMEOUT: Duration = Duration::from_secs(10);
 

@@ -32,9 +32,9 @@ use crate::{
     validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
 };
 
-// #[cfg(test)]
-// #[path = "unit_tests/transaction_submitter_tests.rs"]
-// mod transaction_submitter_tests;
+#[cfg(test)]
+#[path = "unit_tests/transaction_submitter_tests.rs"]
+mod transaction_submitter_tests;
 
 // Using a long timeout for transaction submission is ok, because good performing validators
 // are chosen first.
