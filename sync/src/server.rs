@@ -1,3 +1,10 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-network/src/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Modified for the Soma project.
+
 use parking_lot::RwLock;
 use rand::seq::IteratorRandom;
 use std::sync::Arc;

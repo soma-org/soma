@@ -1,3 +1,10 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-network/src/state_sync/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Modified for the Soma project.
+
 //! Peer-to-peer data synchronization of checkpoints.
 //!
 //! This StateSync module is responsible for the synchronization and dissemination of checkpoints
@@ -87,8 +94,8 @@ use crate::{
     discovery::now_unix, state_sync::worker::StateSyncWorker, tonic_gen::p2p_client::P2pClient,
 };
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 mod worker;
 
 pub struct PeerHeights {
@@ -103,14 +110,14 @@ pub struct PeerHeights {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PeerStateSyncInfo {
     /// The digest of the Peer's genesis checkpoint.
-    genesis_checkpoint_digest: CheckpointDigest,
+    pub(crate) genesis_checkpoint_digest: CheckpointDigest,
     /// Indicates if this Peer is on the same chain as us.
-    on_same_chain_as_us: bool,
+    pub(crate) on_same_chain_as_us: bool,
     /// Highest checkpoint sequence number we know of for this Peer.
-    height: CheckpointSequenceNumber,
+    pub(crate) height: CheckpointSequenceNumber,
     /// lowest available checkpoint watermark for this Peer.
     /// This defaults to 0 for now.
-    lowest: CheckpointSequenceNumber,
+    pub(crate) lowest: CheckpointSequenceNumber,
 }
 
 impl PeerHeights {
@@ -228,14 +235,14 @@ impl PeerHeights {
 
 // PeerBalancer is an Iterator that selects peers based on RTT with some added randomness.
 #[derive(Clone)]
-struct PeerBalancer {
+pub(crate) struct PeerBalancer {
     peers: VecDeque<(PeerState, PeerStateSyncInfo)>,
     requested_checkpoint: Option<CheckpointSequenceNumber>,
     request_type: PeerCheckpointRequestType,
 }
 
 #[derive(Clone)]
-enum PeerCheckpointRequestType {
+pub(crate) enum PeerCheckpointRequestType {
     Summary,
     Content,
 }
@@ -462,7 +469,7 @@ where
 
     // Handle a checkpoint that we received from consensus
     #[instrument(level = "debug", skip_all)]
-    fn handle_checkpoint_from_consensus(&mut self, checkpoint: Box<VerifiedCheckpoint>) {
+    pub(crate) fn handle_checkpoint_from_consensus(&mut self, checkpoint: Box<VerifiedCheckpoint>) {
         // Always check previous_digest matches in case there is a gap between
         // state sync and consensus.
         let prev_digest = *self.store.get_checkpoint_by_sequence_number(checkpoint.sequence_number() - 1)

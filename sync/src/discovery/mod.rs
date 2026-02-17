@@ -1,3 +1,10 @@
+// Portions of this file are derived from Sui (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-network/src/discovery/
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Modified for the Soma project.
+
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -27,8 +34,8 @@ use types::{
 
 use crate::tonic_gen::p2p_client::P2pClient;
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 /// The internal discovery state shared between the main event loop and the request handler
 pub struct DiscoveryState {
