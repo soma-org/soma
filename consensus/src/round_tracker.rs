@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/round_tracker.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 //! RoundTracker computes quorum rounds for the latest received and accepted rounds.
 //! This round data is gathered from peers via RoundProber or via new Blocks received. Also
 //! local accepted rounds are updated from new blocks proposed from this authority.

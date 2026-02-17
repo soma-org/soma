@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/commit_finalizer.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
@@ -677,5 +682,251 @@ impl BlockState {
         // there will be at most 8 origin descendants.
         let origin_descendants = Vec::with_capacity(8);
         Self { block, children: BTreeSet::new(), reject_votes, origin_descendants }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use parking_lot::RwLock;
+    use tokio::sync::mpsc::unbounded_channel;
+    use types::consensus::{
+        block::{BlockAPI, TransactionIndex},
+        context::Context,
+    };
+    use types::storage::consensus::mem_store::MemStore;
+
+    use crate::{
+        block_verifier::NoopBlockVerifier,
+        dag_state::DagState,
+        test_dag_builder::DagBuilder,
+        transaction_certifier::TransactionCertifier,
+    };
+
+    use super::CommitFinalizer;
+
+    /// Build a fully connected DAG, commit through the pipeline, and verify all
+    /// blocks are directly finalized with no rejected transactions.
+    #[tokio::test]
+    async fn test_direct_finalize_no_reject_votes() {
+        let num_authorities = 4;
+        let (context, _keys) = Context::new_for_test(num_authorities);
+        let context = Arc::new(context);
+
+        let mem_store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            mem_store.clone(),
+        )));
+
+        let (blocks_sender, _blocks_receiver) = unbounded_channel();
+        let transaction_certifier = TransactionCertifier::new(
+            context.clone(),
+            Arc::new(NoopBlockVerifier {}),
+            dag_state.clone(),
+            blocks_sender,
+        );
+
+        let (commit_sender, _commit_receiver) = unbounded_channel();
+        let mut commit_finalizer = CommitFinalizer::new(
+            context.clone(),
+            dag_state.clone(),
+            transaction_certifier.clone(),
+            commit_sender,
+        );
+
+        // Build a fully connected DAG with transactions, but no reject votes.
+        let num_rounds: u32 = 10;
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder
+            .layers(1..=num_rounds)
+            .num_transactions(4)
+            .build()
+            .persist_layers(dag_state.clone());
+
+        // Feed all blocks to the transaction certifier with no own-reject-votes.
+        // This ensures get_reject_votes() will return Some for each block.
+        transaction_certifier.add_voted_blocks(
+            dag_builder
+                .all_blocks()
+                .iter()
+                .map(|b| (b.clone(), vec![]))
+                .collect(),
+        );
+
+        // Get committed sub-dags from the DAG builder.
+        let committed = dag_builder.get_sub_dag_and_commits(1..=num_rounds);
+        assert!(
+            !committed.is_empty(),
+            "Expected at least one committed sub-dag"
+        );
+
+        // Process each committed sub-dag through the finalizer.
+        let mut all_finalized = vec![];
+        for (sub_dag, _commit) in committed {
+            let finalized = commit_finalizer.process_commit(sub_dag).await;
+            all_finalized.extend(finalized);
+        }
+
+        // Verify that commits were finalized.
+        assert!(
+            !all_finalized.is_empty(),
+            "Expected at least one finalized commit"
+        );
+
+        // Verify that no transactions were rejected in any finalized commit.
+        for commit in &all_finalized {
+            assert!(
+                commit.rejected_transactions_by_block.is_empty(),
+                "Expected no rejected transactions in commit at leader {:?}, but found: {:?}",
+                commit.leader,
+                commit.rejected_transactions_by_block,
+            );
+        }
+
+        // Verify that each finalized commit has blocks with transactions.
+        for commit in &all_finalized {
+            assert!(
+                !commit.blocks.is_empty(),
+                "Expected blocks in finalized commit at leader {:?}",
+                commit.leader,
+            );
+            for block in &commit.blocks {
+                // Each block from round > 0 should have 4 transactions.
+                if block.round() > 0 {
+                    assert_eq!(
+                        block.transactions().len(),
+                        4,
+                        "Expected 4 transactions in block {:?}",
+                        block.reference(),
+                    );
+                }
+            }
+        }
+
+        // After processing all commits, the finalizer should be empty
+        // (no pending commits remaining).
+        assert!(
+            commit_finalizer.is_empty(),
+            "Expected commit finalizer to be empty after processing all commits"
+        );
+    }
+
+    /// Build blocks with reject votes and verify that transactions with a quorum
+    /// of reject votes are marked as rejected after finalization.
+    #[tokio::test]
+    async fn test_direct_finalize_with_reject_votes() {
+        let num_authorities = 4;
+        let (context, _keys) = Context::new_for_test(num_authorities);
+        let context = Arc::new(context);
+
+        let mem_store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(
+            context.clone(),
+            mem_store.clone(),
+        )));
+
+        let (blocks_sender, _blocks_receiver) = unbounded_channel();
+        let transaction_certifier = TransactionCertifier::new(
+            context.clone(),
+            Arc::new(NoopBlockVerifier {}),
+            dag_state.clone(),
+            blocks_sender,
+        );
+
+        let (commit_sender, _commit_receiver) = unbounded_channel();
+        let mut commit_finalizer = CommitFinalizer::new(
+            context.clone(),
+            dag_state.clone(),
+            transaction_certifier.clone(),
+            commit_sender,
+        );
+
+        // Build a DAG with transactions AND reject votes.
+        // Using 100% rejection rate means every block votes to reject all
+        // transactions of its ancestors. With 4 authorities, each block in
+        // round R gets reject votes from all 4 blocks in round R+1, which
+        // exceeds the 2f+1=3 quorum threshold.
+        let num_rounds: u32 = 10;
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder
+            .layers(1..=num_rounds)
+            .num_transactions(4)
+            .rejected_transactions_pct(100, Some(42))
+            .build()
+            .persist_layers(dag_state.clone());
+
+        // Feed all blocks with no own-reject-votes (the reject votes are encoded
+        // in the blocks' transaction_votes fields via the DagBuilder).
+        transaction_certifier.add_voted_blocks(
+            dag_builder
+                .all_blocks()
+                .iter()
+                .map(|b| (b.clone(), vec![]))
+                .collect(),
+        );
+
+        // Get committed sub-dags.
+        let committed = dag_builder.get_sub_dag_and_commits(1..=num_rounds);
+        assert!(
+            !committed.is_empty(),
+            "Expected at least one committed sub-dag"
+        );
+
+        // Process each committed sub-dag through the finalizer.
+        let mut all_finalized = vec![];
+        for (sub_dag, _commit) in committed {
+            let finalized = commit_finalizer.process_commit(sub_dag).await;
+            all_finalized.extend(finalized);
+        }
+
+        assert!(
+            !all_finalized.is_empty(),
+            "Expected at least one finalized commit"
+        );
+
+        // Verify that some transactions were rejected. With 100% rejection rate
+        // and 4 authorities (quorum = 3 stake), blocks that have a subsequent
+        // round of blocks voting on them should have all transactions rejected.
+        // However, blocks in the last committed round may not have subsequent
+        // rounds voting on them yet, so they might not have reached quorum.
+        let mut total_rejected_transactions = 0usize;
+        for commit in &all_finalized {
+            for (_block_ref, rejected_indices) in &commit.rejected_transactions_by_block {
+                total_rejected_transactions += rejected_indices.len();
+            }
+        }
+
+        // With 100% reject votes and enough rounds, we expect at least some
+        // transactions to be rejected (those in early rounds that have a full
+        // subsequent round of reject votes).
+        assert!(
+            total_rejected_transactions > 0,
+            "Expected some rejected transactions with 100% reject vote rate, but found none"
+        );
+
+        // Verify that rejected transaction indices are valid (within bounds).
+        for commit in &all_finalized {
+            for (block_ref, rejected_indices) in &commit.rejected_transactions_by_block {
+                // Find the block in the commit's blocks.
+                let block = commit
+                    .blocks
+                    .iter()
+                    .find(|b| b.reference() == *block_ref);
+                if let Some(block) = block {
+                    let num_txns = block.transactions().len() as TransactionIndex;
+                    for &idx in rejected_indices {
+                        assert!(
+                            idx < num_txns,
+                            "Rejected transaction index {} is out of bounds for block {:?} with {} transactions",
+                            idx,
+                            block_ref,
+                            num_txns,
+                        );
+                    }
+                }
+            }
+        }
     }
 }

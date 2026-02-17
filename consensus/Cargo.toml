@@ -32,6 +32,12 @@ nom = "7.1.3"
 
 tower-http.workspace = true
 cfg-if.workspace = true
+msim = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+rstest.workspace = true
+msim.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

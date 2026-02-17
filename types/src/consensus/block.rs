@@ -618,7 +618,6 @@ impl TestBlock {
         self
     }
 
-    #[cfg(test)]
     pub fn set_commit_votes(mut self, commit_votes: Vec<CommitVote>) -> Self {
         self.block.commit_votes = commit_votes;
         self

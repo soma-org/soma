@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/test_dag_parser.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{collections::HashSet, sync::Arc};
 
 use crate::test_dag_builder::DagBuilder;
@@ -258,5 +263,258 @@ fn str_to_authority_index(input: &str) -> Option<AuthorityIndex> {
         Some(AuthorityIndex::new_for_test(index))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use types::consensus::block::BlockAPI;
+
+    #[tokio::test]
+    async fn test_dag_parsing() {
+        let dag_str = "DAG {
+            Round 0 : { 4 },
+            Round 1 : { * },
+            Round 2 : { * },
+            Round 3 : { * },
+            Round 4 : {
+                A -> [-D3],
+                B -> [*],
+                C -> [*],
+                D -> [*],
+            },
+            Round 5 : {
+                A -> [*],
+                B -> [*],
+                C -> [A4],
+                D -> [A4],
+            },
+            Round 6 : { * },
+        }";
+
+        let (_, dag_builder) = parse_dag(dag_str).expect("Invalid dag");
+
+        // Verify genesis has 4 authorities
+        let genesis_refs = dag_builder.genesis_block_refs();
+        assert_eq!(genesis_refs.len(), 4, "Expected 4 genesis blocks");
+
+        // Verify blocks were created for rounds 1 through 6
+        let all_blocks = dag_builder.blocks(1..=6);
+        assert!(!all_blocks.is_empty(), "Expected blocks to be created");
+
+        // Verify round 4 block A excludes D3: should have 3 ancestors (A3, B3, C3)
+        let slot_a4 = Slot::new(4, AuthorityIndex::new_for_test(0));
+        let a4_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_a4);
+        assert_eq!(a4_blocks.len(), 1, "Expected exactly one block at A4");
+        let a4_block = &a4_blocks[0];
+        assert_eq!(a4_block.ancestors().len(), 3, "A4 should have 3 ancestors (excluded D3)");
+
+        // Verify D3 is NOT among A4's ancestors
+        let slot_d3 = Slot::new(3, AuthorityIndex::new_for_test(3));
+        let d3_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_d3);
+        assert_eq!(d3_blocks.len(), 1);
+        let d3_ref = d3_blocks[0].reference();
+        assert!(
+            !a4_block.ancestors().contains(&d3_ref),
+            "A4 should not contain D3 as ancestor"
+        );
+
+        // Verify round 5 block C only has A4 as ancestor
+        let slot_c5 = Slot::new(5, AuthorityIndex::new_for_test(2));
+        let c5_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_c5);
+        assert_eq!(c5_blocks.len(), 1, "Expected exactly one block at C5");
+        let c5_block = &c5_blocks[0];
+        assert_eq!(c5_block.ancestors().len(), 1, "C5 should have exactly 1 ancestor (A4)");
+
+        let a4_ref = a4_blocks[0].reference();
+        assert!(
+            c5_block.ancestors().contains(&a4_ref),
+            "C5's ancestor should be A4"
+        );
+
+        // Verify round 5 block D also only has A4 as ancestor
+        let slot_d5 = Slot::new(5, AuthorityIndex::new_for_test(3));
+        let d5_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_d5);
+        assert_eq!(d5_blocks.len(), 1, "Expected exactly one block at D5");
+        assert_eq!(d5_blocks[0].ancestors().len(), 1, "D5 should have exactly 1 ancestor (A4)");
+        assert!(
+            d5_blocks[0].ancestors().contains(&a4_ref),
+            "D5's ancestor should be A4"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_genesis_round_parsing() {
+        let genesis_str = "Round 0 : { 4 }";
+        let (_, num_authorities) = parse_genesis(genesis_str).expect("Failed to parse genesis");
+        assert_eq!(num_authorities, 4, "Expected 4 authorities from genesis");
+    }
+
+    #[tokio::test]
+    async fn test_slot_parsing() {
+        let slot_str = "A0";
+        let (_, slot) = parse_slot(slot_str).expect("Failed to parse slot");
+        let expected = Slot::new(0, AuthorityIndex::new_for_test(0));
+        assert_eq!(slot, expected, "Expected slot A0");
+
+        let slot_str = "D3";
+        let (_, slot) = parse_slot(slot_str).expect("Failed to parse slot");
+        let expected = Slot::new(3, AuthorityIndex::new_for_test(3));
+        assert_eq!(slot, expected, "Expected slot D3");
+
+        let slot_str = "B12";
+        let (_, slot) = parse_slot(slot_str).expect("Failed to parse slot");
+        let expected = Slot::new(12, AuthorityIndex::new_for_test(1));
+        assert_eq!(slot, expected, "Expected slot B12");
+    }
+
+    #[tokio::test]
+    async fn test_all_round_parsing() {
+        // Build a minimal DAG so we can parse a wildcard round
+        let dag_str = "DAG {
+            Round 0 : { 4 },
+            Round 1 : { * },
+        }";
+
+        let (_, dag_builder) = parse_dag(dag_str).expect("Invalid dag");
+
+        // All 4 authorities should have blocks at round 1
+        for i in 0..4u32 {
+            let slot = Slot::new(1, AuthorityIndex::new_for_test(i));
+            let blocks = dag_builder.get_uncommitted_blocks_at_slot(slot);
+            assert_eq!(
+                blocks.len(),
+                1,
+                "Expected 1 block at round 1 for authority {}",
+                i
+            );
+            // Each block at round 1 should have 4 ancestors (all genesis blocks)
+            assert_eq!(
+                blocks[0].ancestors().len(),
+                4,
+                "Block at round 1 for authority {} should have 4 ancestors",
+                i
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_specific_round_parsing() {
+        let dag_str = "DAG {
+            Round 0 : { 4 },
+            Round 1 : { * },
+            Round 2 : {
+                A -> [A1, B1],
+                B -> [-C1],
+                C -> [*],
+                D -> [A1],
+            },
+        }";
+
+        let (_, dag_builder) = parse_dag(dag_str).expect("Invalid dag");
+
+        // A2 should have exactly 2 ancestors: A1 and B1
+        let slot_a2 = Slot::new(2, AuthorityIndex::new_for_test(0));
+        let a2_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_a2);
+        assert_eq!(a2_blocks.len(), 1);
+        assert_eq!(a2_blocks[0].ancestors().len(), 2, "A2 should have 2 ancestors (A1, B1)");
+
+        // B2 should have 3 ancestors (all of round 1 except C1)
+        let slot_b2 = Slot::new(2, AuthorityIndex::new_for_test(1));
+        let b2_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_b2);
+        assert_eq!(b2_blocks.len(), 1);
+        assert_eq!(b2_blocks[0].ancestors().len(), 3, "B2 should have 3 ancestors (excluded C1)");
+
+        // Verify C1 is not among B2's ancestors
+        let slot_c1 = Slot::new(1, AuthorityIndex::new_for_test(2));
+        let c1_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_c1);
+        assert_eq!(c1_blocks.len(), 1);
+        let c1_ref = c1_blocks[0].reference();
+        assert!(
+            !b2_blocks[0].ancestors().contains(&c1_ref),
+            "B2 should not contain C1 as ancestor"
+        );
+
+        // C2 should have 4 ancestors (wildcard = all of round 1)
+        let slot_c2 = Slot::new(2, AuthorityIndex::new_for_test(2));
+        let c2_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_c2);
+        assert_eq!(c2_blocks.len(), 1);
+        assert_eq!(c2_blocks[0].ancestors().len(), 4, "C2 should have 4 ancestors (wildcard)");
+
+        // D2 should have exactly 1 ancestor: A1
+        let slot_d2 = Slot::new(2, AuthorityIndex::new_for_test(3));
+        let d2_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_d2);
+        assert_eq!(d2_blocks.len(), 1);
+        assert_eq!(d2_blocks[0].ancestors().len(), 1, "D2 should have 1 ancestor (A1)");
+    }
+
+    #[tokio::test]
+    async fn test_parse_author_and_connections() {
+        // Test wildcard connection
+        let input = "A -> [*],\n";
+        let (_, (author, connections)) =
+            parse_author_and_connections(input).expect("Failed to parse wildcard connection");
+        assert_eq!(author, AuthorityIndex::new_for_test(0));
+        assert_eq!(connections, vec!["*"]);
+
+        // Test specific connections
+        let input = "B -> [A1, C2],\n";
+        let (_, (author, connections)) =
+            parse_author_and_connections(input).expect("Failed to parse specific connections");
+        assert_eq!(author, AuthorityIndex::new_for_test(1));
+        assert_eq!(connections, vec!["A1", "C2"]);
+
+        // Test excluded connection
+        let input = "C -> [-D3],\n";
+        let (_, (author, connections)) =
+            parse_author_and_connections(input).expect("Failed to parse excluded connection");
+        assert_eq!(author, AuthorityIndex::new_for_test(2));
+        assert_eq!(connections, vec!["-D3"]);
+
+        // Test mixed wildcard and specific
+        let input = "D -> [*, A1],\n";
+        let (_, (author, connections)) =
+            parse_author_and_connections(input).expect("Failed to parse mixed connections");
+        assert_eq!(author, AuthorityIndex::new_for_test(3));
+        assert_eq!(connections, vec!["*", "A1"]);
+    }
+
+    #[tokio::test]
+    async fn test_str_to_authority_index() {
+        // Single uppercase letters: A=0, B=1, ..., Z=25
+        assert_eq!(
+            str_to_authority_index("A"),
+            Some(AuthorityIndex::new_for_test(0))
+        );
+        assert_eq!(
+            str_to_authority_index("B"),
+            Some(AuthorityIndex::new_for_test(1))
+        );
+        assert_eq!(
+            str_to_authority_index("Z"),
+            Some(AuthorityIndex::new_for_test(25))
+        );
+
+        // Bracketed numeric index for values > 25
+        assert_eq!(
+            str_to_authority_index("[26]"),
+            Some(AuthorityIndex::new_for_test(26))
+        );
+        assert_eq!(
+            str_to_authority_index("[100]"),
+            Some(AuthorityIndex::new_for_test(100))
+        );
+        assert_eq!(
+            str_to_authority_index("[0]"),
+            Some(AuthorityIndex::new_for_test(0))
+        );
+
+        // Invalid inputs
+        assert_eq!(str_to_authority_index("a"), None); // lowercase
+        assert_eq!(str_to_authority_index("AB"), None); // multi-char non-bracketed
+        assert_eq!(str_to_authority_index("[]"), None); // empty brackets
+        assert_eq!(str_to_authority_index("[abc]"), None); // non-numeric in brackets
+        assert_eq!(str_to_authority_index(""), None); // empty string
     }
 }

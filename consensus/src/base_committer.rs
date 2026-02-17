@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/base_committer.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use types::committee::{AuthorityIndex, Stake};
@@ -12,13 +17,13 @@ use types::consensus::{
     stake_aggregator::{QuorumThreshold, StakeAggregator},
 };
 
-// #[cfg(test)]
-// #[path = "tests/base_committer_tests.rs"]
-// mod base_committer_tests;
+#[cfg(test)]
+#[path = "tests/base_committer_tests.rs"]
+mod base_committer_tests;
 
-// #[cfg(test)]
-// #[path = "tests/base_committer_declarative_tests.rs"]
-// mod base_committer_declarative_tests;
+#[cfg(test)]
+#[path = "tests/base_committer_declarative_tests.rs"]
+mod base_committer_declarative_tests;
 
 pub(crate) struct BaseCommitterOptions {
     /// TODO: Re-evaluate if we want this to be configurable after running experiments.
@@ -417,9 +422,9 @@ mod base_committer_builder {
 
         pub(crate) fn build(self) -> BaseCommitter {
             let options = BaseCommitterOptions {
-                wave_length: DEFAULT_WAVE_LENGTH,
-                leader_offset: 0,
-                round_offset: 0,
+                wave_length: self.wave_length,
+                leader_offset: self.leader_offset,
+                round_offset: self.round_offset,
             };
             BaseCommitter::new(
                 self.context.clone(),

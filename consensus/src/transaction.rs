@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/transaction.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use parking_lot::Mutex;
 use std::{collections::BTreeMap, sync::Arc};
 use tap::TapFallible;
@@ -406,5 +411,512 @@ impl TransactionVerifier for NoopTransactionVerifier {
         _batch: &[&[u8]],
     ) -> Result<Vec<TransactionIndex>, ValidationError> {
         Ok(vec![])
+    }
+}
+
+// Portions of these tests are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/transaction.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use futures::{StreamExt, stream::FuturesUnordered};
+    use tokio::time::timeout;
+    use types::committee::AuthorityIndex;
+    use types::consensus::{
+        block::{
+            BlockDigest, BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX,
+            TransactionIndex,
+        },
+        context::Context,
+    };
+
+    use super::{BlockStatus, LimitReached, TransactionClient, TransactionConsumer};
+    use crate::block_verifier::SignedBlockVerifier;
+    use crate::transaction::NoopTransactionVerifier;
+
+    /// Helper to create a context with custom protocol config values for transaction tests.
+    fn context_with_tx_limits(
+        max_tx_size: u64,
+        max_block_bytes: u64,
+        max_num_tx: Option<u64>,
+        gc_depth: Option<u32>,
+    ) -> Arc<Context> {
+        let (mut context, _keys) = Context::new_for_test(4);
+        context
+            .protocol_config
+            .set_consensus_max_transaction_size_bytes_for_testing(max_tx_size);
+        context
+            .protocol_config
+            .set_consensus_max_transactions_in_block_bytes_for_testing(max_block_bytes);
+        if let Some(n) = max_num_tx {
+            context
+                .protocol_config
+                .set_consensus_max_num_transactions_in_block_for_testing(n);
+        }
+        if let Some(d) = gc_depth {
+            context
+                .protocol_config
+                .set_consensus_gc_depth_for_testing(d);
+        }
+        Arc::new(context)
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn basic_submit_and_consume() {
+        let context = context_with_tx_limits(2_000, 2_000, None, None);
+        let (client, tx_receiver) = TransactionClient::new(context.clone());
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+
+        // submit asynchronously the transactions and keep the waiters
+        let mut included_in_block_waiters = FuturesUnordered::new();
+        for i in 0..3 {
+            let transaction =
+                bcs::to_bytes(&format!("transaction {i}")).expect("Serialization should not fail.");
+            let w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Shouldn't submit successfully transaction");
+            included_in_block_waiters.push(w);
+        }
+
+        // now pull the transactions from the consumer
+        let (transactions, ack_transactions, _limit_reached) = consumer.next();
+        assert_eq!(transactions.len(), 3);
+
+        for (i, t) in transactions.iter().enumerate() {
+            let t: String = bcs::from_bytes(t.data()).unwrap();
+            assert_eq!(format!("transaction {i}").to_string(), t);
+        }
+
+        assert!(
+            timeout(Duration::from_secs(1), included_in_block_waiters.next())
+                .await
+                .is_err(),
+            "We should expect to timeout as none of the transactions have been acknowledged yet"
+        );
+
+        // Now acknowledge the inclusion of transactions
+        ack_transactions(BlockRef::MIN);
+
+        // Now make sure that all the waiters have returned
+        while let Some(result) = included_in_block_waiters.next().await {
+            assert!(result.is_ok());
+        }
+
+        // try to pull again transactions, result should be empty
+        assert!(consumer.is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn block_status_update() {
+        let context = context_with_tx_limits(2_000, 2_000, None, Some(10));
+        let (client, tx_receiver) = TransactionClient::new(context.clone());
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+
+        // submit the transactions and include 2 of each on a new block
+        let mut included_in_block_waiters = FuturesUnordered::new();
+        for i in 1..=10 {
+            let transaction =
+                bcs::to_bytes(&format!("transaction {i}")).expect("Serialization should not fail.");
+            let w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Shouldn't submit successfully transaction");
+            included_in_block_waiters.push(w);
+
+            // Every 2 transactions simulate the creation of a new block and acknowledge the inclusion of the transactions
+            if i % 2 == 0 {
+                let (transactions, ack_transactions, _limit_reached) = consumer.next();
+                assert_eq!(transactions.len(), 2);
+                ack_transactions(BlockRef::new(
+                    i,
+                    AuthorityIndex::new_for_test(0),
+                    BlockDigest::MIN,
+                ));
+            }
+        }
+
+        let mut transaction_count = 0;
+        // Now iterate over all the waiters. Everyone should have been acknowledged.
+        let mut block_status_waiters = Vec::new();
+        while let Some(result) = included_in_block_waiters.next().await {
+            let (block_ref, tx_indices, block_status_waiter) =
+                result.expect("Block inclusion waiter shouldn't fail");
+            // tx is submitted one at a time so tx acks should only return one tx index
+            assert_eq!(tx_indices.len(), 1);
+            // The first transaction in the block should have index 0, the second one 1, etc.
+            // because we submit 2 transactions per block, the index should be 0 then 1 and then
+            // reset back to 0 for the next block.
+            assert_eq!(tx_indices[0], transaction_count % 2);
+            transaction_count += 1;
+
+            block_status_waiters.push((block_ref, block_status_waiter));
+        }
+
+        // Now acknowledge the commit of the blocks 6, 8, 10 and set gc_round = 5, which should trigger the garbage collection of blocks 1..=5
+        let gc_round = 5;
+        consumer.notify_own_blocks_status(
+            vec![
+                BlockRef::new(6, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+                BlockRef::new(8, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+                BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+            ],
+            gc_round,
+        );
+
+        // Now iterate over all the block status waiters. Everyone should have been notified.
+        for (block_ref, waiter) in block_status_waiters {
+            let block_status = waiter.await.expect("Block status waiter shouldn't fail");
+
+            if block_ref.round <= gc_round {
+                assert!(matches!(block_status, BlockStatus::GarbageCollected(_)))
+            } else {
+                assert!(matches!(block_status, BlockStatus::Sequenced(_)));
+            }
+        }
+
+        // Ensure internal structure is clear
+        assert!(consumer.block_status_subscribers.lock().is_empty());
+    }
+
+    #[tokio::test]
+    async fn submit_over_max_fetch_size_and_consume() {
+        let context = context_with_tx_limits(100, 100, None, None);
+        let (client, tx_receiver) = TransactionClient::new(context.clone());
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+
+        // submit some transactions
+        for i in 0..10 {
+            let transaction =
+                bcs::to_bytes(&format!("transaction {i}")).expect("Serialization should not fail.");
+            let _w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Shouldn't submit successfully transaction");
+        }
+
+        // now pull the transactions from the consumer
+        let mut all_transactions = Vec::new();
+        let (transactions, _ack_transactions, _limit_reached) = consumer.next();
+        assert_eq!(transactions.len(), 7);
+
+        // ensure their total size is less than `max_bytes_to_fetch`
+        let total_size: u64 = transactions.iter().map(|t| t.data().len() as u64).sum();
+        assert!(
+            total_size <= context.protocol_config.max_transactions_in_block_bytes(),
+            "Should have fetched transactions up to {}",
+            context.protocol_config.max_transactions_in_block_bytes()
+        );
+        all_transactions.extend(transactions);
+
+        // try to pull again transactions, next should be provided
+        let (transactions, _ack_transactions, _limit_reached) = consumer.next();
+        assert_eq!(transactions.len(), 3);
+
+        // ensure their total size is less than `max_bytes_to_fetch`
+        let total_size: u64 = transactions.iter().map(|t| t.data().len() as u64).sum();
+        assert!(
+            total_size <= context.protocol_config.max_transactions_in_block_bytes(),
+            "Should have fetched transactions up to {}",
+            context.protocol_config.max_transactions_in_block_bytes()
+        );
+        all_transactions.extend(transactions);
+
+        // try to pull again transactions, result should be empty
+        assert!(consumer.is_empty());
+
+        for (i, t) in all_transactions.iter().enumerate() {
+            let t: String = bcs::from_bytes(t.data()).unwrap();
+            assert_eq!(format!("transaction {i}").to_string(), t);
+        }
+    }
+
+    #[tokio::test]
+    async fn submit_large_batch_and_ack() {
+        let context = context_with_tx_limits(15, 200, None, None);
+        let (client, tx_receiver) = TransactionClient::new(context.clone());
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+        let mut all_receivers = Vec::new();
+        // submit a few transactions individually.
+        for i in 0..10 {
+            let transaction =
+                bcs::to_bytes(&format!("transaction {i}")).expect("Serialization should not fail.");
+            let w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Should submit successfully transaction");
+            all_receivers.push(w);
+        }
+
+        // construct an acceptable batch and submit, it should be accepted
+        {
+            let transactions: Vec<_> = (10..15)
+                .map(|i| {
+                    bcs::to_bytes(&format!("transaction {i}"))
+                        .expect("Serialization should not fail.")
+                })
+                .collect();
+            let w = client
+                .submit_no_wait(transactions)
+                .await
+                .expect("Should submit successfully transaction");
+            all_receivers.push(w);
+        }
+
+        // submit another individual transaction.
+        {
+            let i = 15;
+            let transaction =
+                bcs::to_bytes(&format!("transaction {i}")).expect("Serialization should not fail.");
+            let w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Shouldn't submit successfully transaction");
+            all_receivers.push(w);
+        }
+
+        // construct an over-size-limit batch and submit, it should not be accepted
+        {
+            let transactions: Vec<_> = (16..32)
+                .map(|i| {
+                    bcs::to_bytes(&format!("transaction {i}"))
+                        .expect("Serialization should not fail.")
+                })
+                .collect();
+            let result = client.submit_no_wait(transactions).await.unwrap_err();
+            assert_eq!(
+                result.to_string(),
+                "Transaction bundle size (210B) is over limit (200B)"
+            );
+        }
+
+        // now pull the transactions from the consumer.
+        // we expect all transactions are fetched in order, not missing any, and not exceeding the size limit.
+        let mut all_acks: Vec<Box<dyn FnOnce(BlockRef)>> = Vec::new();
+        let mut batch_index = 0;
+        while !consumer.is_empty() {
+            let (transactions, ack_transactions, _limit_reached) = consumer.next();
+
+            assert!(
+                transactions.len() as u64
+                    <= context.protocol_config.max_num_transactions_in_block(),
+                "Should have fetched transactions up to {}",
+                context.protocol_config.max_num_transactions_in_block()
+            );
+
+            let total_size: u64 = transactions.iter().map(|t| t.data().len() as u64).sum();
+            assert!(
+                total_size <= context.protocol_config.max_transactions_in_block_bytes(),
+                "Should have fetched transactions up to {}",
+                context.protocol_config.max_transactions_in_block_bytes()
+            );
+
+            // first batch should contain all transactions from 0..10. The softbundle is too big to fit as well, so it's parked.
+            if batch_index == 0 {
+                assert_eq!(transactions.len(), 10);
+                for (i, transaction) in transactions.iter().enumerate() {
+                    let t: String = bcs::from_bytes(transaction.data()).unwrap();
+                    assert_eq!(format!("transaction {}", i).to_string(), t);
+                }
+            // second batch will contain the soft bundle and the additional last transaction.
+            } else if batch_index == 1 {
+                assert_eq!(transactions.len(), 6);
+                for (i, transaction) in transactions.iter().enumerate() {
+                    let t: String = bcs::from_bytes(transaction.data()).unwrap();
+                    assert_eq!(format!("transaction {}", i + 10).to_string(), t);
+                }
+            } else {
+                panic!("Unexpected batch index");
+            }
+
+            batch_index += 1;
+
+            all_acks.push(ack_transactions);
+        }
+
+        // now acknowledge the inclusion of all transactions.
+        for ack in all_acks {
+            ack(BlockRef::MIN);
+        }
+
+        // expect all receivers to be resolved.
+        for w in all_receivers {
+            let r = w.await;
+            assert!(r.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_submit_over_max_block_size_and_validate_block_size() {
+        // submit transactions individually so we make sure that we have reached the block size limit of 10
+        {
+            let context = context_with_tx_limits(100, 300, Some(10), None);
+            let (client, tx_receiver) = TransactionClient::new(context.clone());
+            let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+            let mut all_receivers = Vec::new();
+
+            // create enough transactions
+            let max_num_transactions_in_block =
+                context.protocol_config.max_num_transactions_in_block();
+            for i in 0..2 * max_num_transactions_in_block {
+                let transaction = bcs::to_bytes(&format!("transaction {i}"))
+                    .expect("Serialization should not fail.");
+                let w = client
+                    .submit_no_wait(vec![transaction])
+                    .await
+                    .expect("Should submit successfully transaction");
+                all_receivers.push(w);
+            }
+
+            // Fetch the next transactions to be included in a block
+            let (transactions, _ack_transactions, limit) = consumer.next();
+            assert_eq!(limit, LimitReached::MaxNumOfTransactions);
+            assert_eq!(transactions.len() as u64, max_num_transactions_in_block);
+
+            // Now create a block and verify that transactions are within the size limits
+            let block_verifier =
+                SignedBlockVerifier::new(context.clone(), Arc::new(NoopTransactionVerifier {}));
+
+            let batch: Vec<_> = transactions.iter().map(|t| t.data()).collect();
+            assert!(
+                block_verifier.check_transactions(&batch).is_ok(),
+                "Number of transactions limit verification failed"
+            );
+        }
+
+        // submit transactions individually so we make sure that we have reached the block size bytes 300
+        {
+            let context = context_with_tx_limits(100, 300, Some(1_000), None);
+            let (client, tx_receiver) = TransactionClient::new(context.clone());
+            let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+            let mut all_receivers = Vec::new();
+
+            let max_transactions_in_block_bytes =
+                context.protocol_config.max_transactions_in_block_bytes();
+            let mut total_size = 0;
+            loop {
+                let transaction = bcs::to_bytes(&"transaction".to_string())
+                    .expect("Serialization should not fail.");
+                total_size += transaction.len() as u64;
+                let w = client
+                    .submit_no_wait(vec![transaction])
+                    .await
+                    .expect("Should submit successfully transaction");
+                all_receivers.push(w);
+
+                // create enough transactions to reach the block size limit
+                if total_size >= 2 * max_transactions_in_block_bytes {
+                    break;
+                }
+            }
+
+            // Fetch the next transactions to be included in a block
+            let (transactions, _ack_transactions, limit) = consumer.next();
+            let batch: Vec<_> = transactions.iter().map(|t| t.data()).collect();
+            let size = batch.iter().map(|t| t.len() as u64).sum::<u64>();
+
+            assert_eq!(limit, LimitReached::MaxBytes);
+            assert!(
+                batch.len()
+                    < context
+                        .protocol_config
+                        .consensus_max_num_transactions_in_block() as usize,
+                "Should have submitted less than the max number of transactions in a block"
+            );
+            assert!(size <= max_transactions_in_block_bytes);
+
+            // Now create a block and verify that transactions are within the size limits
+            let block_verifier =
+                SignedBlockVerifier::new(context.clone(), Arc::new(NoopTransactionVerifier {}));
+
+            assert!(
+                block_verifier.check_transactions(&batch).is_ok(),
+                "Total size of transactions limit verification failed"
+            );
+        }
+    }
+
+    // This is the case where the client submits a "ping" signal to the consensus to get information about the next block and simulate a transaction inclusion to the next block.
+    #[tokio::test]
+    async fn submit_with_no_transactions() {
+        let context = context_with_tx_limits(15, 200, None, None);
+        let (client, tx_receiver) = TransactionClient::new(context.clone());
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+
+        let w_no_transactions = client
+            .submit_no_wait(vec![])
+            .await
+            .expect("Should submit successfully empty array of transactions");
+
+        let transaction =
+            bcs::to_bytes(&"transaction".to_string()).expect("Serialization should not fail.");
+        let w_with_transactions = client
+            .submit_no_wait(vec![transaction])
+            .await
+            .expect("Should submit successfully transaction");
+
+        let (transactions, ack_transactions, _limit_reached) = consumer.next();
+        assert_eq!(transactions.len(), 1);
+
+        // Acknowledge the inclusion of the transactions
+        ack_transactions(BlockRef::MIN);
+
+        {
+            let r = w_no_transactions.await;
+            let (block_ref, indices, _status) = r.unwrap();
+            assert_eq!(block_ref, BlockRef::MIN);
+            assert_eq!(indices, vec![PING_TRANSACTION_INDEX]);
+        }
+
+        {
+            let r = w_with_transactions.await;
+            let (block_ref, indices, _status) = r.unwrap();
+            assert_eq!(block_ref, BlockRef::MIN);
+            assert_eq!(indices, vec![0]);
+        }
+    }
+
+    #[tokio::test]
+    async fn ping_transaction_index_never_reached() {
+        // Set the max number of transactions in a block to the max value of u16.
+        static MAX_NUM_TRANSACTIONS_IN_BLOCK: u64 =
+            (TransactionIndex::MAX - NUM_RESERVED_TRANSACTION_INDICES) as u64;
+
+        // Ensure that enough space is allocated in the channel for the pending transactions, so we don't end up consuming the transactions in chunks.
+        static MAX_PENDING_TRANSACTIONS: usize = 2 * MAX_NUM_TRANSACTIONS_IN_BLOCK as usize;
+
+        let context = context_with_tx_limits(200_000, 1_000_000, Some(MAX_NUM_TRANSACTIONS_IN_BLOCK), None);
+        let (client, tx_receiver) = TransactionClient::new_with_max_pending_transactions(
+            context.clone(),
+            MAX_PENDING_TRANSACTIONS,
+        );
+        let mut consumer = TransactionConsumer::new(tx_receiver, context.clone());
+
+        // Add 10 more transactions than the max number of transactions in a block.
+        for i in 0..MAX_NUM_TRANSACTIONS_IN_BLOCK + 10 {
+            println!("Submitting transaction {i}");
+            let transaction =
+                bcs::to_bytes(&format!("t {i}")).expect("Serialization should not fail.");
+            let _w = client
+                .submit_no_wait(vec![transaction])
+                .await
+                .expect("Shouldn't submit successfully transaction");
+        }
+
+        // now pull the transactions from the consumer
+        let (transactions, _ack_transactions, _limit_reached) = consumer.next();
+        assert_eq!(transactions.len() as u64, MAX_NUM_TRANSACTIONS_IN_BLOCK);
+
+        let t: String = bcs::from_bytes(transactions.last().unwrap().data()).unwrap();
+        assert_eq!(
+            t,
+            format!(
+                "t {}",
+                PING_TRANSACTION_INDEX - NUM_RESERVED_TRANSACTION_INDICES - 1
+            )
+        );
     }
 }

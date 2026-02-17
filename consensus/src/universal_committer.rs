@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/universal_committer.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{base_committer::BaseCommitter, dag_state::DagState};
@@ -9,13 +14,13 @@ use types::consensus::{
     context::Context,
 };
 
-// #[cfg(test)]
-// #[path = "tests/universal_committer_tests.rs"]
-// mod universal_committer_tests;
+#[cfg(test)]
+#[path = "tests/universal_committer_tests.rs"]
+mod universal_committer_tests;
 
-// #[cfg(test)]
-// #[path = "tests/pipelined_committer_tests.rs"]
-// mod pipelined_committer_tests;
+#[cfg(test)]
+#[path = "tests/pipelined_committer_tests.rs"]
+mod pipelined_committer_tests;
 
 /// A universal committer uses a collection of committers to commit a sequence of leaders.
 /// It can be configured to use a combination of different commit strategies, including

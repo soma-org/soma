@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/ancestor.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::sync::Arc;
 
 use crate::{dag_state::DagState, round_tracker::QuorumRound};
@@ -277,5 +282,159 @@ impl AncestorStateManager {
         }
 
         network_high_quorum_round
+    }
+}
+
+// Portions of the tests below are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/ancestor.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_dag_builder::DagBuilder;
+    use types::consensus::{context::Context, leader_scoring::ReputationScores};
+    use types::storage::consensus::mem_store::MemStore;
+
+    #[tokio::test]
+    async fn test_calculate_network_high_accepted_quorum_round() {
+        let (context, _key_pairs) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+
+        let scores = ReputationScores::new((1..=300).into(), vec![1, 2, 4, 3]);
+        let mut ancestor_state_manager =
+            AncestorStateManager::new(context.clone(), dag_state.clone());
+        ancestor_state_manager.set_propagation_scores(scores);
+
+        // Quorum rounds are not set yet, so we should calculate a network
+        // quorum round of 0 to start.
+        let network_high_quorum_round =
+            ancestor_state_manager.calculate_network_high_quorum_round(&[]);
+        assert_eq!(network_high_quorum_round, 0);
+
+        // With 4 authorities each with normalized stake 2500 and quorum threshold 6667,
+        // accumulating 3 authorities' stake (7500) reaches quorum at round 229.
+        let accepted_quorum_rounds = vec![(50, 229), (175, 229), (179, 229), (179, 300)];
+        let network_high_quorum_round =
+            ancestor_state_manager.calculate_network_high_quorum_round(&accepted_quorum_rounds);
+        assert_eq!(network_high_quorum_round, 229);
+    }
+
+    // Test all state transitions with accepted quorum rounds:
+    // Default all INCLUDE -> EXCLUDE
+    // EXCLUDE -> INCLUDE (Blocked due to lock)
+    // EXCLUDE -> INCLUDE (Pass due to lock expired)
+    // INCLUDE -> EXCLUDE (Blocked due to lock)
+    // INCLUDE -> EXCLUDE (Pass due to lock expired)
+    #[tokio::test]
+    async fn test_update_all_ancestor_state_using_accepted_rounds() {
+        let (mut context, _key_pairs) = Context::new_for_test(5);
+        context
+            .protocol_config
+            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+        let mut dag_builder = DagBuilder::new(context.clone());
+
+        let scores = ReputationScores::new((1..=300).into(), vec![1, 2, 4, 3, 4]);
+        let mut ancestor_state_manager = AncestorStateManager::new(context, dag_state.clone());
+        ancestor_state_manager.set_propagation_scores(scores);
+
+        let accepted_quorum_rounds =
+            vec![(225, 229), (225, 229), (229, 300), (229, 300), (229, 300)];
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        // Score threshold for exclude is (4 * 20) / 100 = 0
+        // No ancestors should be excluded with this threshold
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for state in state_map.iter() {
+            assert_eq!(*state, AncestorState::Include);
+        }
+
+        let scores = ReputationScores::new((1..=300).into(), vec![10, 9, 100, 100, 100]);
+        ancestor_state_manager.set_propagation_scores(scores);
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        // Score threshold for exclude is (100 * 20) / 100 = 20
+        // Authority 1 with the lowest score (9) will move to EXCLUDE state.
+        // Authority 0 with next lowest score (10) is eligible but would exceed the
+        // total excluded stake threshold (2000 + 2000 = 4000 > 3300) so it
+        // remains in INCLUDE state.
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for (authority, state) in state_map.iter().enumerate() {
+            if authority == 1 {
+                assert_eq!(*state, AncestorState::Exclude(9));
+            } else {
+                assert_eq!(*state, AncestorState::Include);
+            }
+        }
+
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        // 1 authority should still be excluded with these scores and no new
+        // clock round updates have happened to expire the locks.
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for (authority, state) in state_map.iter().enumerate() {
+            if authority == 1 {
+                assert_eq!(*state, AncestorState::Exclude(9));
+            } else {
+                assert_eq!(*state, AncestorState::Include);
+            }
+        }
+
+        // Updating the clock round will expire the lock as we only need 5
+        // clock round updates for tests.
+        dag_builder.layers(1..=6).build();
+        let blocks = dag_builder.blocks.values().cloned().collect::<Vec<_>>();
+        dag_state.write().accept_blocks(blocks);
+
+        // Authority 1 high quorum round is 300, network high quorum round is 300
+        // (with these updated quorum rounds), so authority 1 transitions back to Include.
+        // Authority 0 with score 10 <= 20 now gets excluded.
+        let accepted_quorum_rounds =
+            vec![(225, 229), (229, 300), (229, 300), (229, 300), (229, 300)];
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for (authority, state) in state_map.iter().enumerate() {
+            if authority == 0 {
+                assert_eq!(*state, AncestorState::Exclude(10));
+            } else {
+                assert_eq!(*state, AncestorState::Include);
+            }
+        }
+
+        let accepted_quorum_rounds =
+            vec![(229, 300), (229, 300), (229, 300), (229, 300), (229, 300)];
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        // Ancestor 0 is still locked in EXCLUDE state until more clock round updates.
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for (authority, state) in state_map.iter().enumerate() {
+            if authority == 0 {
+                assert_eq!(*state, AncestorState::Exclude(10));
+            } else {
+                assert_eq!(*state, AncestorState::Include);
+            }
+        }
+
+        // Updating the clock round will expire the lock.
+        dag_builder.layers(7..=12).build();
+        let blocks = dag_builder.blocks.values().cloned().collect::<Vec<_>>();
+        dag_state.write().accept_blocks(blocks);
+
+        let scores = ReputationScores::new((1..=300).into(), vec![10, 100, 100, 100, 100]);
+        ancestor_state_manager.set_propagation_scores(scores);
+        ancestor_state_manager.update_all_ancestors_state(&accepted_quorum_rounds);
+
+        // Ancestor 0 can transition to INCLUDE state now that the lock expired
+        // and its quorum round is above the threshold.
+        let state_map = ancestor_state_manager.get_ancestor_states();
+        for state in state_map.iter() {
+            assert_eq!(*state, AncestorState::Include);
+        }
     }
 }

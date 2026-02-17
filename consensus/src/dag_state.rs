@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/dag_state.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 use std::{
     cmp::max,
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -1079,5 +1084,1343 @@ struct BlockInfo {
 impl BlockInfo {
     fn new(block: VerifiedBlock) -> Self {
         Self { block, committed: false, included: false }
+    }
+}
+
+// Portions of the tests below are derived from Mysticeti consensus (MystenLabs/sui).
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::Arc;
+    use std::vec;
+
+    use parking_lot::RwLock;
+    use types::committee::AuthorityIndex;
+    use types::consensus::block::{
+        BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, Round, Slot, TestBlock, VerifiedBlock,
+        GENESIS_ROUND, genesis_blocks,
+    };
+    use types::consensus::commit::{
+        CommitAPI, CommitDigest, CommitIndex, CommitRef, TrustedCommit, GENESIS_COMMIT_INDEX,
+    };
+    use types::consensus::context::Context;
+    use types::storage::consensus::mem_store::MemStore;
+    use types::storage::consensus::{Store, WriteBatch};
+
+    use super::*;
+    use crate::test_dag_builder::DagBuilder;
+    use crate::test_dag_parser::parse_dag;
+
+    #[tokio::test]
+    async fn test_get_blocks() {
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+        let own_index = AuthorityIndex::new_for_test(0);
+
+        // Populate test blocks for round 1 ~ 10, authorities 0 ~ 2.
+        let num_rounds: u32 = 10;
+        let non_existent_round: u32 = 100;
+        let num_authorities: u32 = 3;
+        let num_blocks_per_slot: usize = 3;
+        let mut blocks = BTreeMap::new();
+        for round in 1..=num_rounds {
+            for author in 0..num_authorities {
+                // Create 3 blocks per slot, with different timestamps and digests.
+                let base_ts = round as BlockTimestampMs * 1000;
+                for timestamp in base_ts..base_ts + num_blocks_per_slot as u64 {
+                    let block = VerifiedBlock::new_for_test(
+                        TestBlock::new(round, author)
+                            .set_timestamp_ms(timestamp)
+                            .build(),
+                    );
+                    dag_state.accept_block(block.clone());
+                    blocks.insert(block.reference(), block);
+
+                    // Only write one block per slot for own index
+                    if AuthorityIndex::new_for_test(author) == own_index {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Check uncommitted blocks that exist.
+        for (r, block) in &blocks {
+            assert_eq!(&dag_state.get_block(r).unwrap(), block);
+        }
+
+        // Check uncommitted blocks that do not exist.
+        let last_ref = blocks.keys().last().unwrap();
+        assert!(
+            dag_state
+                .get_block(&BlockRef::new(last_ref.round, last_ref.author, BlockDigest::MIN))
+                .is_none()
+        );
+
+        // Check slots with uncommitted blocks.
+        for round in 1..=num_rounds {
+            for author in 0..num_authorities {
+                let slot = Slot::new(
+                    round,
+                    context.committee.to_authority_index(author as usize).unwrap(),
+                );
+                let blocks = dag_state.get_uncommitted_blocks_at_slot(slot);
+
+                // We only write one block per slot for own index
+                if AuthorityIndex::new_for_test(author) == own_index {
+                    assert_eq!(blocks.len(), 1);
+                } else {
+                    assert_eq!(blocks.len(), num_blocks_per_slot);
+                }
+
+                for b in blocks {
+                    assert_eq!(b.round(), round);
+                    assert_eq!(
+                        b.author(),
+                        context.committee.to_authority_index(author as usize).unwrap()
+                    );
+                }
+            }
+        }
+
+        // Check slots without uncommitted blocks.
+        let slot = Slot::new(non_existent_round, AuthorityIndex::ZERO);
+        assert!(dag_state.get_uncommitted_blocks_at_slot(slot).is_empty());
+
+        // Check rounds with uncommitted blocks.
+        for round in 1..=num_rounds {
+            let blocks = dag_state.get_uncommitted_blocks_at_round(round);
+            // Expect 3 blocks per authority except for own authority which should
+            // have 1 block.
+            assert_eq!(
+                blocks.len(),
+                (num_authorities - 1) as usize * num_blocks_per_slot + 1
+            );
+            for b in blocks {
+                assert_eq!(b.round(), round);
+            }
+        }
+
+        // Check rounds without uncommitted blocks.
+        assert!(dag_state.get_uncommitted_blocks_at_round(non_existent_round).is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_ancestors_at_uncommitted_round() {
+        // Initialize DagState.
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Populate DagState.
+
+        // Round 10 refs will not have their blocks in DagState.
+        let round_10_refs: Vec<_> = (0..4)
+            .map(|a| {
+                VerifiedBlock::new_for_test(
+                    TestBlock::new(10, a).set_timestamp_ms(1000).build(),
+                )
+                .reference()
+            })
+            .collect();
+
+        // Round 11 blocks.
+        let round_11 = [
+            // This will connect to round 12.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 0)
+                    .set_timestamp_ms(1100)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+            // Slot(11, 1) has 3 blocks.
+            // This will connect to round 12.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 1)
+                    .set_timestamp_ms(1110)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+            // This will connect to round 13.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 1)
+                    .set_timestamp_ms(1111)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+            // This will not connect to any block.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 1)
+                    .set_timestamp_ms(1112)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+            // This will not connect to any block.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 2)
+                    .set_timestamp_ms(1120)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+            // This will connect to round 12.
+            VerifiedBlock::new_for_test(
+                TestBlock::new(11, 3)
+                    .set_timestamp_ms(1130)
+                    .set_ancestors(round_10_refs.clone())
+                    .build(),
+            ),
+        ];
+
+        // Round 12 blocks.
+        let ancestors_for_round_12 = vec![
+            round_11[0].reference(),
+            round_11[1].reference(),
+            round_11[5].reference(),
+        ];
+        let round_12 = [
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 0)
+                    .set_timestamp_ms(1200)
+                    .set_ancestors(ancestors_for_round_12.clone())
+                    .build(),
+            ),
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 2)
+                    .set_timestamp_ms(1220)
+                    .set_ancestors(ancestors_for_round_12.clone())
+                    .build(),
+            ),
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 3)
+                    .set_timestamp_ms(1230)
+                    .set_ancestors(ancestors_for_round_12.clone())
+                    .build(),
+            ),
+        ];
+
+        // Round 13 blocks.
+        let ancestors_for_round_13 = vec![
+            round_12[0].reference(),
+            round_12[1].reference(),
+            round_12[2].reference(),
+            round_11[2].reference(),
+        ];
+        let round_13 = [
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 1)
+                    .set_timestamp_ms(1300)
+                    .set_ancestors(ancestors_for_round_13.clone())
+                    .build(),
+            ),
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 2)
+                    .set_timestamp_ms(1320)
+                    .set_ancestors(ancestors_for_round_13.clone())
+                    .build(),
+            ),
+            VerifiedBlock::new_for_test(
+                TestBlock::new(12, 3)
+                    .set_timestamp_ms(1330)
+                    .set_ancestors(ancestors_for_round_13.clone())
+                    .build(),
+            ),
+        ];
+
+        // Round 14 anchor block.
+        let ancestors_for_round_14 = round_13.iter().map(|b| b.reference()).collect();
+        let anchor = VerifiedBlock::new_for_test(
+            TestBlock::new(14, 1)
+                .set_timestamp_ms(1410)
+                .set_ancestors(ancestors_for_round_14)
+                .build(),
+        );
+
+        // Add all blocks (at and above round 11) to DagState.
+        for b in round_11
+            .iter()
+            .chain(round_12.iter())
+            .chain(round_13.iter())
+            .chain([anchor.clone()].iter())
+        {
+            dag_state.accept_block(b.clone());
+        }
+
+        // Check ancestors connected to anchor.
+        let ancestors = dag_state.ancestors_at_round(&anchor, 11);
+        let mut ancestors_refs: Vec<BlockRef> = ancestors.iter().map(|b| b.reference()).collect();
+        ancestors_refs.sort();
+        let mut expected_refs = vec![
+            round_11[0].reference(),
+            round_11[1].reference(),
+            round_11[2].reference(),
+            round_11[5].reference(),
+        ];
+        expected_refs.sort();
+        assert_eq!(
+            ancestors_refs, expected_refs,
+            "Expected round 11 ancestors: {:?}. Got: {:?}",
+            expected_refs, ancestors_refs
+        );
+    }
+
+    #[tokio::test]
+    async fn test_link_causal_history() {
+        let (mut context, _) = Context::new_for_test(4);
+        context.parameters.dag_state_cached_rounds = 10;
+        context
+            .protocol_config
+            .set_consensus_gc_depth_for_testing(3);
+        let context = Arc::new(context);
+
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create for rounds 1..=6. Skip creating blocks for authority 0 for rounds 4 - 6.
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder.layers(1..=3).build();
+        dag_builder
+            .layers(4..=6)
+            .authorities(vec![AuthorityIndex::new_for_test(0)])
+            .skip_block()
+            .build();
+
+        // Accept all blocks
+        let all_blocks = dag_builder.all_blocks();
+        dag_state.accept_blocks(all_blocks.clone());
+
+        // No block is linked yet.
+        for block in &all_blocks {
+            assert!(!dag_state.has_been_included(&block.reference()));
+        }
+
+        // Link causal history from a round 1 block.
+        let round_1_block = &all_blocks[1];
+        assert_eq!(round_1_block.round(), 1);
+        let linked_blocks = dag_state.link_causal_history(round_1_block.reference());
+
+        // Check that the block is linked.
+        assert_eq!(linked_blocks.len(), 1);
+        assert_eq!(linked_blocks[0], round_1_block.reference());
+        for block_ref in linked_blocks {
+            assert!(dag_state.has_been_included(&block_ref));
+        }
+
+        // Link causal history from a round 2 block.
+        let round_2_block = &all_blocks[4];
+        assert_eq!(round_2_block.round(), 2);
+        let linked_blocks = dag_state.link_causal_history(round_2_block.reference());
+
+        // Check the linked blocks.
+        assert_eq!(linked_blocks.len(), 4);
+        for block_ref in linked_blocks {
+            assert!(block_ref == round_2_block.reference() || block_ref.round == 1);
+        }
+
+        // Check linked status in dag state.
+        for block in &all_blocks {
+            if block.round() == 1 || block.reference() == round_2_block.reference() {
+                assert!(dag_state.has_been_included(&block.reference()));
+            } else {
+                assert!(!dag_state.has_been_included(&block.reference()));
+            }
+        }
+
+        // Select round 6 block.
+        let round_6_block = all_blocks.last().unwrap();
+        assert_eq!(round_6_block.round(), 6);
+
+        // Get GC round to 3.
+        let last_commit = TrustedCommit::new_for_test(
+            6,
+            CommitDigest::MIN,
+            context.clock.timestamp_utc_ms(),
+            round_6_block.reference(),
+            vec![],
+        );
+        dag_state.set_last_commit(last_commit);
+        assert_eq!(dag_state.gc_round(), 3, "GC round should have moved to round 3");
+
+        // Link causal history from a round 6 block.
+        let linked_blocks = dag_state.link_causal_history(round_6_block.reference());
+
+        // Check the linked blocks. They should not include GC'ed blocks.
+        assert_eq!(linked_blocks.len(), 7, "Linked blocks: {:?}", linked_blocks);
+        for block_ref in linked_blocks {
+            assert!(
+                block_ref.round == 4
+                    || block_ref.round == 5
+                    || block_ref == round_6_block.reference()
+            );
+        }
+
+        // Check linked status in dag state.
+        for block in &all_blocks {
+            let block_ref = block.reference();
+            if block.round() == 1
+                || block_ref == round_2_block.reference()
+                || block_ref.round == 4
+                || block_ref.round == 5
+                || block_ref == round_6_block.reference()
+            {
+                assert!(dag_state.has_been_included(&block.reference()));
+            } else {
+                assert!(!dag_state.has_been_included(&block.reference()));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_contains_blocks_in_cache_or_store() {
+        /// Only keep elements up to 2 rounds before the last committed round
+        const CACHED_ROUNDS: Round = 2;
+
+        let (mut context, _) = Context::new_for_test(4);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create test blocks for round 1 ~ 10
+        let num_rounds: u32 = 10;
+        let num_authorities: u32 = 4;
+        let mut blocks = Vec::new();
+
+        for round in 1..=num_rounds {
+            for author in 0..num_authorities {
+                let block = VerifiedBlock::new_for_test(TestBlock::new(round, author).build());
+                blocks.push(block);
+            }
+        }
+
+        // Now write in store the blocks from first 4 rounds and the rest to the dag state
+        blocks.clone().into_iter().for_each(|block| {
+            if block.round() <= 4 {
+                store
+                    .write(WriteBatch::new(vec![block], vec![], vec![], vec![]))
+                    .unwrap();
+            } else {
+                dag_state.accept_blocks(vec![block]);
+            }
+        });
+
+        // Now when trying to query whether we have all the blocks, we should successfully retrieve a
+        // positive answer where the blocks of first 4 rounds should be found in store and the rest in
+        // DagState cache.
+        let mut block_refs = blocks.iter().map(|block| block.reference()).collect::<Vec<_>>();
+        let result = dag_state.contains_blocks(block_refs.clone());
+
+        // Ensure everything is found
+        let mut expected = vec![true; (num_rounds * num_authorities) as usize];
+        assert_eq!(result, expected);
+
+        // Now try to ask also for one block ref that is neither in cache nor in store
+        block_refs.insert(
+            3,
+            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+        );
+        let result = dag_state.contains_blocks(block_refs.clone());
+
+        // Then all should be found apart from the inserted one
+        expected.insert(3, false);
+        assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_contains_cached_block_at_slot() {
+        /// Only keep elements up to 2 rounds before the last committed round
+        const CACHED_ROUNDS: Round = 2;
+
+        let num_authorities: u32 = 4;
+        let (mut context, _) = Context::new_for_test(num_authorities as usize);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create test blocks for round 1 ~ 10
+        let num_rounds: u32 = 10;
+        let mut blocks = Vec::new();
+
+        for round in 1..=num_rounds {
+            for author in 0..num_authorities {
+                let block = VerifiedBlock::new_for_test(TestBlock::new(round, author).build());
+                blocks.push(block.clone());
+                dag_state.accept_block(block);
+            }
+        }
+
+        // Query for genesis round 0, genesis blocks should be returned
+        for (author, _) in context.committee.authorities() {
+            assert!(
+                dag_state.contains_cached_block_at_slot(Slot::new(GENESIS_ROUND, author)),
+                "Genesis should always be found"
+            );
+        }
+
+        // Now when trying to query whether we have all the blocks, we should successfully find them.
+        let mut block_refs = blocks.iter().map(|block| block.reference()).collect::<Vec<_>>();
+
+        for block_ref in block_refs.clone() {
+            let slot = block_ref.into();
+            let found = dag_state.contains_cached_block_at_slot(slot);
+            assert!(found, "A block should be found at slot {}", slot);
+        }
+
+        // Now try to ask also for one block ref that is not in cache.
+        block_refs.insert(
+            3,
+            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+        );
+        let mut expected = vec![true; (num_rounds * num_authorities) as usize];
+        expected.insert(3, false);
+
+        // Attempt to check the same via the contains slot method
+        for block_ref in block_refs {
+            let slot = block_ref.into();
+            let found = dag_state.contains_cached_block_at_slot(slot);
+
+            assert_eq!(expected.remove(0), found);
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Attempted to check for slot B3 that is <= the last evicted round 3"
+    )]
+    async fn test_contains_cached_block_at_slot_panics_when_ask_out_of_range() {
+        /// Keep blocks within gc_depth rounds of the last committed leader round.
+        const GC_DEPTH: u32 = 2;
+        /// Keep at least 3 rounds in cache for each authority.
+        const CACHED_ROUNDS: Round = 3;
+
+        let (mut context, _) = Context::new_for_test(4);
+        context
+            .protocol_config
+            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create for rounds 1..=6. Skip creating blocks for authority 0 for rounds 4 - 6.
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder.layers(1..=3).build();
+        dag_builder
+            .layers(4..=6)
+            .authorities(vec![AuthorityIndex::new_for_test(0)])
+            .skip_block()
+            .build();
+
+        // Accept all blocks
+        dag_builder
+            .all_blocks()
+            .into_iter()
+            .for_each(|block| dag_state.accept_block(block));
+
+        // Now add a commit for leader round 5 to trigger an eviction
+        dag_state.add_commit(TrustedCommit::new_for_test(
+            1 as CommitIndex,
+            CommitDigest::MIN,
+            0,
+            dag_builder.leader_block(5).unwrap().reference(),
+            vec![],
+        ));
+        // Flush the DAG state to storage.
+        dag_state.flush();
+
+        // Ensure that gc round has been updated
+        assert_eq!(dag_state.gc_round(), 3, "GC round should be 3");
+
+        // Nodes 1 - 3 should have in cache blocks from gc_round (3) and onwards.
+        // Node 0 should have in cache blocks from its latest round, 3, down to round 1
+        // (cached_rounds worth).
+        for authority_index in 1..=3u32 {
+            for round in 4..=6 {
+                assert!(dag_state.contains_cached_block_at_slot(Slot::new(
+                    round,
+                    AuthorityIndex::new_for_test(authority_index)
+                )));
+            }
+        }
+
+        for round in 1..=3 {
+            assert!(dag_state.contains_cached_block_at_slot(Slot::new(
+                round,
+                AuthorityIndex::new_for_test(0)
+            )));
+        }
+
+        // When trying to request for authority 1 at block slot 3 it should panic, as anything
+        // that is <= 3 should be evicted
+        let _ =
+            dag_state.contains_cached_block_at_slot(Slot::new(3, AuthorityIndex::new_for_test(1)));
+    }
+
+    #[tokio::test]
+    async fn test_get_blocks_in_cache_or_store() {
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create test blocks for round 1 ~ 10
+        let num_rounds: u32 = 10;
+        let num_authorities: u32 = 4;
+        let mut blocks = Vec::new();
+
+        for round in 1..=num_rounds {
+            for author in 0..num_authorities {
+                let block = VerifiedBlock::new_for_test(TestBlock::new(round, author).build());
+                blocks.push(block);
+            }
+        }
+
+        // Now write in store the blocks from first 4 rounds and the rest to the dag state
+        blocks.clone().into_iter().for_each(|block| {
+            if block.round() <= 4 {
+                store
+                    .write(WriteBatch::new(vec![block], vec![], vec![], vec![]))
+                    .unwrap();
+            } else {
+                dag_state.accept_blocks(vec![block]);
+            }
+        });
+
+        // Now when trying to query we should successfully retrieve all blocks.
+        let mut block_refs = blocks.iter().map(|block| block.reference()).collect::<Vec<_>>();
+        let result = dag_state.get_blocks(&block_refs);
+
+        let mut expected = blocks
+            .into_iter()
+            .map(Some)
+            .collect::<Vec<Option<VerifiedBlock>>>();
+
+        // Ensure everything is found
+        assert_eq!(result, expected);
+
+        // Now try to ask also for one block ref that is neither in cache nor in store
+        block_refs.insert(
+            3,
+            BlockRef::new(11, AuthorityIndex::new_for_test(3), BlockDigest::default()),
+        );
+        let result = dag_state.get_blocks(&block_refs);
+
+        // Then all should be found apart from the inserted one
+        expected.insert(3, None);
+        assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_flush_and_recovery() {
+        const GC_DEPTH: u32 = 3;
+        const CACHED_ROUNDS: u32 = 4;
+
+        let num_authorities: u32 = 4;
+        let (mut context, _) = Context::new_for_test(num_authorities as usize);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+        context
+            .protocol_config
+            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+
+        let context = Arc::new(context);
+
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        const NUM_ROUNDS: Round = 20;
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder.layers(1..=5).build();
+        dag_builder
+            .layers(6..=8)
+            .authorities(vec![AuthorityIndex::new_for_test(0)])
+            .skip_block()
+            .build();
+        dag_builder.layers(9..=NUM_ROUNDS).build();
+
+        // Get all commits from the DAG builder.
+        const LAST_COMMIT_ROUND: Round = 16;
+        const LAST_COMMIT_INDEX: CommitIndex = 15;
+        let commits = dag_builder
+            .get_sub_dag_and_commits(1..=NUM_ROUNDS)
+            .into_iter()
+            .map(|(_subdag, commit)| commit)
+            .take(LAST_COMMIT_INDEX as usize)
+            .collect::<Vec<_>>();
+        assert_eq!(commits.len(), LAST_COMMIT_INDEX as usize);
+        assert_eq!(commits.last().unwrap().round(), LAST_COMMIT_ROUND);
+
+        // Add the blocks from first 12 rounds and first 8 commits to the dag state.
+        const PERSISTED_BLOCK_ROUNDS: u32 = 12;
+        const NUM_PERSISTED_COMMITS: usize = 8;
+        const LAST_PERSISTED_COMMIT_ROUND: Round = 9;
+        const LAST_PERSISTED_COMMIT_INDEX: CommitIndex = 8;
+        dag_state.accept_blocks(dag_builder.blocks(1..=PERSISTED_BLOCK_ROUNDS));
+        let mut finalized_commits = vec![];
+        for commit in commits.iter().take(NUM_PERSISTED_COMMITS).cloned() {
+            finalized_commits.push(commit.clone());
+            dag_state.add_commit(commit);
+        }
+        let last_finalized_commit = finalized_commits.last().unwrap();
+        assert_eq!(last_finalized_commit.round(), LAST_PERSISTED_COMMIT_ROUND);
+        assert_eq!(last_finalized_commit.index(), LAST_PERSISTED_COMMIT_INDEX);
+
+        // Collect finalized blocks.
+        let finalized_blocks = finalized_commits
+            .iter()
+            .flat_map(|commit| commit.blocks())
+            .collect::<BTreeSet<_>>();
+
+        // Flush commits from the dag state
+        dag_state.flush();
+
+        // Verify the store has blocks up to round 12, and commits up to index 8.
+        let store_blocks = store
+            .scan_blocks_by_author(AuthorityIndex::new_for_test(1), 1)
+            .unwrap();
+        assert_eq!(store_blocks.last().unwrap().round(), PERSISTED_BLOCK_ROUNDS);
+        let store_commits = store.scan_commits((0..=CommitIndex::MAX).into()).unwrap();
+        assert_eq!(store_commits.len(), NUM_PERSISTED_COMMITS);
+        assert_eq!(
+            store_commits.last().unwrap().index(),
+            LAST_PERSISTED_COMMIT_INDEX
+        );
+        assert_eq!(
+            store_commits.last().unwrap().round(),
+            LAST_PERSISTED_COMMIT_ROUND
+        );
+
+        // Add the rest of the blocks and commits to the dag state
+        dag_state.accept_blocks(dag_builder.blocks(PERSISTED_BLOCK_ROUNDS + 1..=NUM_ROUNDS));
+        for commit in commits.iter().skip(NUM_PERSISTED_COMMITS).cloned() {
+            dag_state.add_commit(commit);
+        }
+
+        // All blocks should be found in DagState.
+        let all_blocks = dag_builder.blocks(1..=NUM_ROUNDS);
+        let block_refs = all_blocks.iter().map(|block| block.reference()).collect::<Vec<_>>();
+        let result = dag_state
+            .get_blocks(&block_refs)
+            .into_iter()
+            .map(|b| b.unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(result, all_blocks);
+
+        // Last commit index from DagState should now be 15
+        assert_eq!(dag_state.last_commit_index(), LAST_COMMIT_INDEX);
+
+        // Destroy the dag state without flushing additional data.
+        drop(dag_state);
+
+        // Recover the state from the store
+        let dag_state = DagState::new(context.clone(), store.clone());
+
+        // Persisted blocks rounds should be found in DagState.
+        let all_blocks = dag_builder.blocks(1..=PERSISTED_BLOCK_ROUNDS);
+        let block_refs = all_blocks.iter().map(|block| block.reference()).collect::<Vec<_>>();
+        let result = dag_state
+            .get_blocks(&block_refs)
+            .into_iter()
+            .map(|b| b.unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(result, all_blocks);
+
+        // Unpersisted blocks should not be in DagState, because they are not flushed.
+        let missing_blocks = dag_builder.blocks(PERSISTED_BLOCK_ROUNDS + 1..=NUM_ROUNDS);
+        let block_refs = missing_blocks
+            .iter()
+            .map(|block| block.reference())
+            .collect::<Vec<_>>();
+        let retrieved_blocks = dag_state
+            .get_blocks(&block_refs)
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        assert!(retrieved_blocks.is_empty());
+
+        // Recovered last commit index and round should be 8 and 9.
+        assert_eq!(dag_state.last_commit_index(), LAST_PERSISTED_COMMIT_INDEX);
+        assert_eq!(dag_state.last_commit_round(), LAST_PERSISTED_COMMIT_ROUND);
+
+        // The last_committed_rounds of the finalized commits should have been recovered.
+        let expected_last_committed_rounds = vec![5, 9, 8, 8];
+        assert_eq!(dag_state.last_committed_rounds(), expected_last_committed_rounds);
+
+        // Unscored subdags will be recovered based on the flushed commits and no commit info.
+        assert_eq!(dag_state.scoring_subdags_count(), NUM_PERSISTED_COMMITS);
+
+        // Ensure that cached blocks exist only for specific rounds per authority
+        for (authority_index, _) in context.committee.authorities() {
+            let blocks = dag_state.get_cached_blocks(authority_index, 1);
+
+            // Ensure that eviction rounds have been properly recovered.
+            // gc_round = last_commit_round - gc_depth = 9 - 3 = 6
+            // All authorities have persisted blocks up to round 12.
+            // Authority 0 has blocks at rounds 1-5 and 9-12 (skipped 6-8).
+            // Authorities 1-3 have blocks at all rounds 1-12.
+            // eviction_round = min(gc_round, last_round - cached_rounds)
+            // For all authorities: last_round = 12, so min(6, 12-4) = min(6, 8) = 6
+            // So all authorities have eviction_round = 6, cached blocks from round 7..=12
+            if authority_index == AuthorityIndex::new_for_test(0) {
+                // Authority 0 has blocks at rounds 9-12 (skipped 6-8, rounds 1-5 below eviction).
+                // Cached blocks from round 7..=12 but rounds 7,8 have no blocks for auth 0.
+                // So auth 0 has blocks at rounds 9, 10, 11, 12 = 4 cached blocks.
+                assert_eq!(blocks.len(), 4, "Authority 0 should have 4 cached blocks, got {:?}", blocks.iter().map(|b| b.round()).collect::<Vec<_>>());
+                assert_eq!(dag_state.evicted_rounds[authority_index.value()], 6);
+            } else {
+                assert_eq!(blocks.len(), 6, "Authority {} should have 6 cached blocks, got {:?}", authority_index, blocks.iter().map(|b| b.round()).collect::<Vec<_>>());
+                assert_eq!(dag_state.evicted_rounds[authority_index.value()], 6);
+                assert!(blocks.into_iter().all(|block| block.round() >= 7 && block.round() <= 12));
+            }
+        }
+
+        // Ensure that committed blocks from > gc_round have been correctly recovered as committed
+        // according to committed sub dags.
+        let gc_round = dag_state.gc_round();
+        assert_eq!(gc_round, 6);
+        dag_state.recent_blocks.iter().for_each(|(block_ref, block_info)| {
+            if block_ref.round > gc_round && finalized_blocks.contains(block_ref) {
+                assert!(
+                    block_info.committed,
+                    "Block {:?} should be set as committed",
+                    block_ref
+                );
+            }
+        });
+
+        // Ensure the hard linked status of blocks are recovered.
+        dag_state.recent_blocks.iter().for_each(|(block_ref, block_info)| {
+            if block_ref.round < PERSISTED_BLOCK_ROUNDS || block_ref.author.value() == 0 {
+                assert!(block_info.included);
+            } else {
+                assert!(!block_info.included);
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn test_block_info_as_committed() {
+        let num_authorities: u32 = 4;
+        let (context, _) = Context::new_for_test(num_authorities as usize);
+        let context = Arc::new(context);
+
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Accept a block
+        let block = VerifiedBlock::new_for_test(
+            TestBlock::new(1, 0)
+                .set_timestamp_ms(1000)
+                .set_ancestors(vec![])
+                .build(),
+        );
+
+        dag_state.accept_block(block.clone());
+
+        // Query is committed
+        assert!(!dag_state.is_committed(&block.reference()));
+
+        // Set block as committed for first time should return true
+        assert!(
+            dag_state.set_committed(&block.reference()),
+            "Block should be successfully set as committed for first time"
+        );
+
+        // Now it should appear as committed
+        assert!(dag_state.is_committed(&block.reference()));
+
+        // Trying to set the block as committed again, it should return false.
+        assert!(
+            !dag_state.set_committed(&block.reference()),
+            "Block should not be successfully set as committed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_cached_blocks() {
+        let (mut context, _) = Context::new_for_test(4);
+        context.parameters.dag_state_cached_rounds = 5;
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create no blocks for authority 0
+        // Create one block (round 10) for authority 1
+        // Create two blocks (rounds 10,11) for authority 2
+        // Create three blocks (rounds 10,11,12) for authority 3
+        let mut all_blocks = Vec::new();
+        for author in 1..=3u32 {
+            for round in 10..(10 + author) {
+                let block =
+                    VerifiedBlock::new_for_test(TestBlock::new(round, author).build());
+                all_blocks.push(block.clone());
+                dag_state.accept_block(block);
+            }
+        }
+
+        // Test get_cached_blocks()
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(0).unwrap(), 0);
+        assert!(cached_blocks.is_empty());
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(1).unwrap(), 10);
+        assert_eq!(cached_blocks.len(), 1);
+        assert_eq!(cached_blocks[0].round(), 10);
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(2).unwrap(), 10);
+        assert_eq!(cached_blocks.len(), 2);
+        assert_eq!(cached_blocks[0].round(), 10);
+        assert_eq!(cached_blocks[1].round(), 11);
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(2).unwrap(), 11);
+        assert_eq!(cached_blocks.len(), 1);
+        assert_eq!(cached_blocks[0].round(), 11);
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(3).unwrap(), 10);
+        assert_eq!(cached_blocks.len(), 3);
+        assert_eq!(cached_blocks[0].round(), 10);
+        assert_eq!(cached_blocks[1].round(), 11);
+        assert_eq!(cached_blocks[2].round(), 12);
+
+        let cached_blocks =
+            dag_state.get_cached_blocks(context.committee.to_authority_index(3).unwrap(), 12);
+        assert_eq!(cached_blocks.len(), 1);
+        assert_eq!(cached_blocks[0].round(), 12);
+
+        // Test get_cached_blocks_in_range()
+
+        // Start == end
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(3).unwrap(),
+            10,
+            10,
+            1,
+        );
+        assert!(cached_blocks.is_empty());
+
+        // Start > end
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(3).unwrap(),
+            11,
+            10,
+            1,
+        );
+        assert!(cached_blocks.is_empty());
+
+        // Empty result.
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(0).unwrap(),
+            9,
+            10,
+            1,
+        );
+        assert!(cached_blocks.is_empty());
+
+        // Single block, one round before the end.
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(1).unwrap(),
+            9,
+            11,
+            1,
+        );
+        assert_eq!(cached_blocks.len(), 1);
+        assert_eq!(cached_blocks[0].round(), 10);
+
+        // Respect end round.
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(2).unwrap(),
+            9,
+            12,
+            5,
+        );
+        assert_eq!(cached_blocks.len(), 2);
+        assert_eq!(cached_blocks[0].round(), 10);
+        assert_eq!(cached_blocks[1].round(), 11);
+
+        // Respect start round.
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(3).unwrap(),
+            11,
+            20,
+            5,
+        );
+        assert_eq!(cached_blocks.len(), 2);
+        assert_eq!(cached_blocks[0].round(), 11);
+        assert_eq!(cached_blocks[1].round(), 12);
+
+        // Respect limit
+        let cached_blocks = dag_state.get_cached_blocks_in_range(
+            context.committee.to_authority_index(3).unwrap(),
+            10,
+            20,
+            1,
+        );
+        assert_eq!(cached_blocks.len(), 1);
+        assert_eq!(cached_blocks[0].round(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_get_last_cached_block() {
+        // GIVEN
+        const CACHED_ROUNDS: Round = 2;
+        const GC_DEPTH: u32 = 1;
+        let (mut context, _) = Context::new_for_test(4);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+        context
+            .protocol_config
+            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create no blocks for authority 0
+        // Create one block (round 1) for authority 1
+        // Create two blocks (rounds 1,2) for authority 2
+        // Create three blocks (rounds 1,2,3) for authority 3
+        let dag_str = "DAG {
+            Round 0 : { 4 },
+            Round 1 : {
+                B -> [*],
+                C -> [*],
+                D -> [*],
+            },
+            Round 2 : {
+                C -> [*],
+                D -> [*],
+            },
+            Round 3 : {
+                D -> [*],
+            },
+        }";
+
+        let (_, dag_builder) = parse_dag(dag_str).expect("Invalid dag");
+
+        // Add equivocating block for round 2 authority 3 (index 2, letter C)
+        let block = VerifiedBlock::new_for_test(TestBlock::new(2, 2).build());
+
+        // Accept all blocks
+        for block in dag_builder
+            .all_blocks()
+            .into_iter()
+            .chain(std::iter::once(block))
+        {
+            dag_state.accept_block(block);
+        }
+
+        dag_state.add_commit(TrustedCommit::new_for_test(
+            1 as CommitIndex,
+            CommitDigest::MIN,
+            context.clock.timestamp_utc_ms(),
+            dag_builder.leader_block(3).unwrap().reference(),
+            vec![],
+        ));
+
+        // WHEN search for the latest blocks
+        let end_round = 4;
+        let expected_rounds = vec![0, 1, 2, 3];
+        let expected_excluded_and_equivocating_blocks = vec![0, 0, 1, 0];
+        // THEN
+        let last_blocks = dag_state.get_last_cached_block_per_authority(end_round);
+        assert_eq!(
+            last_blocks.iter().map(|b| b.0.round()).collect::<Vec<_>>(),
+            expected_rounds
+        );
+        assert_eq!(
+            last_blocks.iter().map(|b| b.1.len()).collect::<Vec<_>>(),
+            expected_excluded_and_equivocating_blocks
+        );
+
+        // THEN
+        for (i, expected_round) in expected_rounds.iter().enumerate() {
+            let round = dag_state
+                .get_last_cached_block_in_range(
+                    context.committee.to_authority_index(i).unwrap(),
+                    0,
+                    end_round,
+                )
+                .map(|b| b.round())
+                .unwrap_or_default();
+            assert_eq!(round, *expected_round, "Authority {i}");
+        }
+
+        // WHEN starting from round 2
+        let start_round = 2;
+        let expected_rounds = [0, 0, 2, 3];
+
+        // THEN
+        for (i, expected_round) in expected_rounds.iter().enumerate() {
+            let round = dag_state
+                .get_last_cached_block_in_range(
+                    context.committee.to_authority_index(i).unwrap(),
+                    start_round,
+                    end_round,
+                )
+                .map(|b| b.round())
+                .unwrap_or_default();
+            assert_eq!(round, *expected_round, "Authority {i}");
+        }
+
+        // WHEN we flush the DagState - after adding a commit with all the blocks, we expect this
+        // to trigger a clean up in the internal cache.
+        // When GC is enabled then we'll keep all the blocks that are > gc_round (2) and for those
+        // who don't have blocks > gc_round, we'll keep their highest round blocks for CACHED_ROUNDS.
+        dag_state.flush();
+
+        // AND we request before round 3
+        let end_round = 3;
+        let expected_rounds = vec![0, 1, 2, 2];
+
+        // THEN
+        let last_blocks = dag_state.get_last_cached_block_per_authority(end_round);
+        assert_eq!(
+            last_blocks.iter().map(|b| b.0.round()).collect::<Vec<_>>(),
+            expected_rounds
+        );
+
+        // THEN
+        for (i, expected_round) in expected_rounds.iter().enumerate() {
+            let round = dag_state
+                .get_last_cached_block_in_range(
+                    context.committee.to_authority_index(i).unwrap(),
+                    0,
+                    end_round,
+                )
+                .map(|b| b.round())
+                .unwrap_or_default();
+            assert_eq!(round, *expected_round, "Authority {i}");
+        }
+    }
+
+    #[tokio::test]
+    #[should_panic(
+        expected = "Attempted to request for blocks of rounds < 2, when the last evicted round is 1 for authority C"
+    )]
+    async fn test_get_cached_last_block_per_authority_requesting_out_of_round_range() {
+        // GIVEN
+        const CACHED_ROUNDS: Round = 1;
+        const GC_DEPTH: u32 = 1;
+        let (mut context, _) = Context::new_for_test(4);
+        context.parameters.dag_state_cached_rounds = CACHED_ROUNDS;
+        context
+            .protocol_config
+            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Create no blocks for authority 0
+        // Create one block (round 1) for authority 1
+        // Create two blocks (rounds 1,2) for authority 2
+        // Create three blocks (rounds 1,2,3) for authority 3
+        let mut dag_builder = DagBuilder::new(context.clone());
+        dag_builder
+            .layers(1..=1)
+            .authorities(vec![AuthorityIndex::new_for_test(0)])
+            .skip_block()
+            .build();
+        dag_builder
+            .layers(2..=2)
+            .authorities(vec![
+                AuthorityIndex::new_for_test(0),
+                AuthorityIndex::new_for_test(1),
+            ])
+            .skip_block()
+            .build();
+        dag_builder
+            .layers(3..=3)
+            .authorities(vec![
+                AuthorityIndex::new_for_test(0),
+                AuthorityIndex::new_for_test(1),
+                AuthorityIndex::new_for_test(2),
+            ])
+            .skip_block()
+            .build();
+
+        // Accept all blocks
+        for block in dag_builder.all_blocks() {
+            dag_state.accept_block(block);
+        }
+
+        dag_state.add_commit(TrustedCommit::new_for_test(
+            1 as CommitIndex,
+            CommitDigest::MIN,
+            0,
+            dag_builder.leader_block(3).unwrap().reference(),
+            vec![],
+        ));
+
+        // Flush the store so we update the evict rounds
+        dag_state.flush();
+
+        // THEN the method should panic, as some authorities have already evicted rounds <= round 2
+        dag_state.get_last_cached_block_per_authority(2);
+    }
+
+    #[tokio::test]
+    async fn test_last_quorum() {
+        // GIVEN
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+
+        // WHEN no blocks exist then genesis should be returned
+        {
+            let genesis = genesis_blocks(context.as_ref());
+            assert_eq!(dag_state.read().last_quorum(), genesis);
+        }
+
+        // WHEN a fully connected DAG up to round 4 is created, then round 4 blocks should be
+        // returned as quorum
+        {
+            let mut dag_builder = DagBuilder::new(context.clone());
+            dag_builder
+                .layers(1..=4)
+                .build()
+                .persist_layers(dag_state.clone());
+            let round_4_blocks: Vec<_> = dag_builder
+                .blocks(4..=4)
+                .into_iter()
+                .map(|block| block.reference())
+                .collect();
+
+            let last_quorum = dag_state.read().last_quorum();
+
+            assert_eq!(
+                last_quorum
+                    .into_iter()
+                    .map(|block| block.reference())
+                    .collect::<Vec<_>>(),
+                round_4_blocks
+            );
+        }
+
+        // WHEN adding one more block at round 5, still round 4 should be returned as quorum
+        {
+            let block = VerifiedBlock::new_for_test(TestBlock::new(5, 0).build());
+            dag_state.write().accept_block(block);
+
+            let round_4_blocks = dag_state.read().get_uncommitted_blocks_at_round(4);
+
+            let last_quorum = dag_state.read().last_quorum();
+
+            assert_eq!(last_quorum, round_4_blocks);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_last_block_for_authority() {
+        // GIVEN
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
+
+        // WHEN no blocks exist then genesis should be returned
+        {
+            let genesis = genesis_blocks(context.as_ref());
+            let my_genesis = genesis
+                .into_iter()
+                .find(|block| block.author() == context.own_index)
+                .unwrap();
+
+            assert_eq!(dag_state.read().get_last_proposed_block(), my_genesis);
+        }
+
+        // WHEN adding some blocks for authorities, only the last ones should be returned
+        {
+            // add blocks up to round 4
+            let mut dag_builder = DagBuilder::new(context.clone());
+            dag_builder
+                .layers(1..=4)
+                .build()
+                .persist_layers(dag_state.clone());
+
+            // add block 5 for authority 0
+            let block = VerifiedBlock::new_for_test(TestBlock::new(5, 0).build());
+            dag_state.write().accept_block(block);
+
+            let block = dag_state
+                .read()
+                .get_last_block_for_authority(AuthorityIndex::new_for_test(0));
+            assert_eq!(block.round(), 5);
+
+            for (authority_index, _) in context.committee.authorities() {
+                let block = dag_state.read().get_last_block_for_authority(authority_index);
+
+                if authority_index.value() == 0 {
+                    assert_eq!(block.round(), 5);
+                } else {
+                    assert_eq!(block.round(), 4);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_accept_block_not_panics_when_timestamp_is_ahead_and_median_timestamp() {
+        // GIVEN
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // Set a timestamp for the block that is ahead of the current time
+        let block_timestamp = context.clock.timestamp_utc_ms() + 5_000;
+
+        let block = VerifiedBlock::new_for_test(
+            TestBlock::new(10, 0)
+                .set_timestamp_ms(block_timestamp)
+                .build(),
+        );
+
+        // Try to accept the block - it should not panic
+        dag_state.accept_block(block);
+    }
+
+    #[tokio::test]
+    async fn test_last_finalized_commit() {
+        // GIVEN
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+        let store = Arc::new(MemStore::new());
+        let mut dag_state = DagState::new(context.clone(), store.clone());
+
+        // WHEN adding a finalized commit
+        let commit_ref = CommitRef::new(1, CommitDigest::MIN);
+        let rejected_transactions = BTreeMap::new();
+        dag_state.add_finalized_commit(commit_ref, rejected_transactions.clone());
+
+        // THEN the commit should be added to the buffer
+        assert_eq!(dag_state.finalized_commits_to_write.len(), 1);
+        assert_eq!(
+            dag_state.finalized_commits_to_write[0],
+            (commit_ref, rejected_transactions.clone())
+        );
+
+        // WHEN flushing the DAG state
+        dag_state.flush();
+
+        // THEN the commit and rejected transactions should be written to storage
+        let last_finalized_commit = store.read_last_finalized_commit().unwrap();
+        assert_eq!(last_finalized_commit, Some(commit_ref));
+        let stored_rejected_transactions = store
+            .read_rejected_transactions(commit_ref)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored_rejected_transactions, rejected_transactions);
     }
 }

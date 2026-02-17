@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/lib.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 /// Consensus modules.
 mod ancestor;
 mod authority_node;
@@ -33,6 +38,11 @@ mod test_dag;
 mod test_dag_builder;
 #[cfg(test)]
 mod test_dag_parser;
+#[cfg(test)]
+pub(crate) mod commit_test_fixture;
+#[cfg(test)]
+#[path = "tests/randomized_tests.rs"]
+mod randomized_tests;
 
 pub use authority_node::{ConsensusAuthority, NetworkType};
 pub use commit_consumer::{CommitConsumerArgs, CommitConsumerMonitor};
@@ -41,7 +51,12 @@ pub use transaction::{
 };
 
 // Exported API for simtests.
-#[cfg(msim)]
+#[cfg(any(test, msim))]
 pub use network::tonic_network::to_socket_addr;
-#[cfg(msim)]
+#[cfg(any(test, msim))]
 pub use transaction::NoopTransactionVerifier;
+
+/// Simtests: integration tests using the msim deterministic simulator.
+#[cfg(all(test, msim))]
+#[path = "simtests/consensus_tests.rs"]
+mod simtests;

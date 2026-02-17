@@ -178,7 +178,7 @@ impl Committee {
     pub fn new_for_testing_with_normalized_voting_power(
         epoch: EpochId,
         mut voting_weights: BTreeMap<AuthorityName, VotingPower>,
-        authorities: BTreeMap<AuthorityName, Authority>,
+        mut authorities: BTreeMap<AuthorityName, Authority>,
     ) -> Self {
         let num_nodes = voting_weights.len();
         let total_votes: VotingPower = voting_weights.values().cloned().sum();
@@ -192,6 +192,14 @@ impl Committee {
                 total_sum += *weight;
             } else {
                 *weight = TOTAL_VOTING_POWER - total_sum;
+            }
+        }
+
+        // Also update the Authority.stake field to match the normalized weights,
+        // so that code using authority.stake is consistent with committee.quorum_threshold().
+        for (name, weight) in &voting_weights {
+            if let Some(authority) = authorities.get_mut(name) {
+                authority.stake = *weight;
             }
         }
 
@@ -345,6 +353,31 @@ impl Committee {
 
     pub fn reached_validity(&self, stake: VotingPower) -> bool {
         stake >= self.validity_threshold()
+    }
+
+    /// Returns the minimum number of authorities whose combined stake reaches quorum.
+    /// Assumes authorities are sorted in the order returned by `authorities()`.
+    pub fn quorum_n(&self) -> usize {
+        let mut cumulative = 0u64;
+        for (i, (_, stake)) in self.voting_rights.iter().enumerate() {
+            cumulative += stake;
+            if cumulative >= self.quorum_threshold() {
+                return i + 1;
+            }
+        }
+        self.voting_rights.len()
+    }
+
+    /// Returns the minimum number of authorities whose combined stake reaches validity.
+    pub fn validity_n(&self) -> usize {
+        let mut cumulative = 0u64;
+        for (i, (_, stake)) in self.voting_rights.iter().enumerate() {
+            cumulative += stake;
+            if cumulative >= self.validity_threshold() {
+                return i + 1;
+            }
+        }
+        self.voting_rights.len()
     }
 
     pub fn is_valid_index(&self, index: AuthorityIndex) -> bool {
@@ -713,6 +746,7 @@ pub fn local_committee_and_keys_with_test_options(
         key_pairs.push((network_keypair, protocol_keypair));
     }
 
-    let committee = Committee::new(epoch, voting_weights, authorities);
+    let committee =
+        Committee::new_for_testing_with_normalized_voting_power(epoch, voting_weights, authorities);
     (committee, key_pairs)
 }

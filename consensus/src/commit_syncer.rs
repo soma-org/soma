@@ -1,3 +1,8 @@
+// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
+// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/commit_syncer.rs
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 //! CommitSyncer implements efficient synchronization of committed data.
 //!
 //! During the operation of a committee of authorities for consensus, one or more authorities
@@ -669,5 +674,202 @@ impl<C: NetworkClient> Inner<C> {
             .map(|((_d, c), s)| TrustedCommit::new_trusted(c, s))
             .collect();
         Ok((trusted_commits, vote_blocks))
+    }
+}
+
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+// Adapted for Soma.
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use async_trait::async_trait;
+    use bytes::Bytes;
+    use parking_lot::RwLock;
+    use types::committee::AuthorityIndex;
+    use types::consensus::{
+        block::{BlockRef, Round, TestBlock, VerifiedBlock},
+        commit::{CommitDigest, CommitRange, CommitRef},
+        context::Context,
+    };
+    use types::error::ConsensusResult;
+    use types::parameters::Parameters;
+    use types::storage::consensus::mem_store::MemStore;
+
+    use crate::{
+        CommitConsumerMonitor,
+        block_verifier::NoopBlockVerifier,
+        commit_syncer::CommitSyncer,
+        commit_vote_monitor::CommitVoteMonitor,
+        core_thread::MockCoreThreadDispatcher,
+        dag_state::DagState,
+        network::{BlockStream, NetworkClient},
+        transaction_certifier::TransactionCertifier,
+    };
+
+    #[derive(Default)]
+    struct FakeNetworkClient {}
+
+    #[async_trait]
+    impl NetworkClient for FakeNetworkClient {
+        #[cfg(test)]
+        async fn send_block(
+            &self,
+            _peer: AuthorityIndex,
+            _serialized_block: &VerifiedBlock,
+            _timeout: Duration,
+        ) -> ConsensusResult<()> {
+            unimplemented!("Unimplemented")
+        }
+
+        async fn subscribe_blocks(
+            &self,
+            _peer: AuthorityIndex,
+            _last_received: Round,
+            _timeout: Duration,
+        ) -> ConsensusResult<BlockStream> {
+            unimplemented!("Unimplemented")
+        }
+
+        async fn fetch_blocks(
+            &self,
+            _peer: AuthorityIndex,
+            _block_refs: Vec<BlockRef>,
+            _highest_accepted_rounds: Vec<Round>,
+            _breadth_first: bool,
+            _timeout: Duration,
+        ) -> ConsensusResult<Vec<Bytes>> {
+            unimplemented!("Unimplemented")
+        }
+
+        async fn fetch_commits(
+            &self,
+            _peer: AuthorityIndex,
+            _commit_range: CommitRange,
+            _timeout: Duration,
+        ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
+            unimplemented!("Unimplemented")
+        }
+
+        async fn fetch_latest_blocks(
+            &self,
+            _peer: AuthorityIndex,
+            _authorities: Vec<AuthorityIndex>,
+            _timeout: Duration,
+        ) -> ConsensusResult<Vec<Bytes>> {
+            unimplemented!("Unimplemented")
+        }
+
+        async fn get_latest_rounds(
+            &self,
+            _peer: AuthorityIndex,
+            _timeout: Duration,
+        ) -> ConsensusResult<(Vec<Round>, Vec<Round>)> {
+            unimplemented!("Unimplemented")
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn commit_syncer_start_and_pause_scheduling() {
+        // SETUP
+        let (context, _) = Context::new_for_test(4);
+        // Use smaller batches and fetch limits for testing.
+        let context = Context {
+            own_index: AuthorityIndex::new_for_test(3),
+            parameters: Parameters {
+                commit_sync_batch_size: 5,
+                commit_sync_batches_ahead: 5,
+                commit_sync_parallel_fetches: 5,
+                max_blocks_per_fetch: 5,
+                ..context.parameters
+            },
+            ..context
+        };
+        let context = Arc::new(context);
+        let block_verifier = Arc::new(NoopBlockVerifier {});
+        let core_thread_dispatcher = Arc::new(MockCoreThreadDispatcher::default());
+        let network_client = Arc::new(FakeNetworkClient::default());
+        let store = Arc::new(MemStore::new());
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
+        let (blocks_sender, _blocks_receiver) =
+            tokio::sync::mpsc::unbounded_channel();
+        let transaction_certifier = TransactionCertifier::new(
+            context.clone(),
+            block_verifier.clone(),
+            dag_state.clone(),
+            blocks_sender,
+        );
+        let commit_vote_monitor = Arc::new(CommitVoteMonitor::new(context.clone()));
+        let commit_consumer_monitor = Arc::new(CommitConsumerMonitor::new(0, 0));
+        let mut commit_syncer = CommitSyncer::new(
+            context,
+            core_thread_dispatcher,
+            commit_vote_monitor.clone(),
+            commit_consumer_monitor.clone(),
+            block_verifier,
+            transaction_certifier,
+            network_client,
+            dag_state,
+        );
+
+        // Check initial state.
+        assert!(commit_syncer.pending_fetches().is_empty());
+        assert!(commit_syncer.fetched_ranges().is_empty());
+        assert!(commit_syncer.highest_scheduled_index().is_none());
+        assert_eq!(commit_syncer.highest_fetched_commit_index(), 0);
+        assert_eq!(commit_syncer.synced_commit_index(), 0);
+
+        // Observe round 15 blocks voting for commit 10 from authorities 0 to 2 in CommitVoteMonitor
+        for i in 0..3 {
+            let test_block = TestBlock::new(15, i)
+                .set_commit_votes(vec![CommitRef::new(10, CommitDigest::MIN)])
+                .build();
+            let block = VerifiedBlock::new_for_test(test_block);
+            commit_vote_monitor.observe_block(&block);
+        }
+
+        // Fetches should be scheduled after seeing progress of other validators.
+        commit_syncer.try_schedule_once();
+
+        // Verify state.
+        assert_eq!(commit_syncer.pending_fetches().len(), 2);
+        assert!(commit_syncer.fetched_ranges().is_empty());
+        assert_eq!(commit_syncer.highest_scheduled_index(), Some(10));
+        assert_eq!(commit_syncer.highest_fetched_commit_index(), 0);
+        assert_eq!(commit_syncer.synced_commit_index(), 0);
+
+        // Observe round 40 blocks voting for commit 35 from authorities 0 to 2 in CommitVoteMonitor
+        for i in 0..3 {
+            let test_block = TestBlock::new(40, i)
+                .set_commit_votes(vec![CommitRef::new(35, CommitDigest::MIN)])
+                .build();
+            let block = VerifiedBlock::new_for_test(test_block);
+            commit_vote_monitor.observe_block(&block);
+        }
+
+        // Fetches should be scheduled until the unhandled commits threshold.
+        commit_syncer.try_schedule_once();
+
+        // Verify commit syncer is paused after scheduling 15 commits to index 25.
+        assert_eq!(commit_syncer.unhandled_commits_threshold(), 25);
+        assert_eq!(commit_syncer.highest_scheduled_index(), Some(25));
+        let pending_fetches = commit_syncer.pending_fetches();
+        assert_eq!(pending_fetches.len(), 5);
+
+        // Indicate commit index 25 is consumed, and try to schedule again.
+        commit_consumer_monitor.set_highest_handled_commit(25);
+        commit_syncer.try_schedule_once();
+
+        // Verify commit syncer schedules fetches up to index 35.
+        assert_eq!(commit_syncer.highest_scheduled_index(), Some(35));
+        let pending_fetches = commit_syncer.pending_fetches();
+        assert_eq!(pending_fetches.len(), 7);
+
+        // Verify contiguous ranges are scheduled.
+        for (range, start) in pending_fetches.iter().zip((1..35).step_by(5)) {
+            assert_eq!(range.start(), start);
+            assert_eq!(range.end(), start + 4);
+        }
     }
 }
