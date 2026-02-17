@@ -596,3 +596,116 @@ pub struct SystemParameters {
     /// This also affects audit timeouts which are calculated based on data size.
     pub max_submission_data_size: u64,
 }
+
+// =============================================================================
+// Snapshot tests — prevent accidental protocol config changes that cause forks
+// =============================================================================
+//
+// These tests use `insta` to capture YAML snapshots of every ProtocolConfig for
+// every (Chain, ProtocolVersion) pair.  If any field value changes, the test
+// fails until the developer explicitly runs `cargo insta review` to accept the
+// new snapshot.
+//
+// IMPORTANT: Never update snapshots for existing protocol versions.
+//            Only add new snapshots for new protocol versions.
+//
+// Excluded from msim builds because the simulator intentionally mutates config
+// values (gc_depth, epoch_duration_ms, buffer_stake_for_protocol_upgrade_bps)
+// and adds a fake protocol version, which would cause snapshot mismatches.
+#[cfg(all(test, not(msim)))]
+mod snapshot_tests {
+    use insta::assert_yaml_snapshot;
+
+    use super::*;
+
+    #[test]
+    fn protocol_config_version_snapshots() {
+        println!("\n============================================================================");
+        println!("!                                                                          !");
+        println!("! IMPORTANT: never update snapshots from this test. only add new versions! !");
+        println!("!                                                                          !");
+        println!("============================================================================\n");
+        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+            // Chain::Unknown uses empty prefix for backward compat with pre-chain snapshots.
+            let chain_str = match chain {
+                Chain::Unknown => String::new(),
+                _ => format!("{:?}_", chain),
+            };
+            for v in MIN_PROTOCOL_VERSION..=MAX_PROTOCOL_VERSION {
+                let version = ProtocolVersion::new(v);
+                assert_yaml_snapshot!(
+                    format!("{}version_{}", chain_str, version.as_u64()),
+                    ProtocolConfig::get_for_version(version, *chain)
+                );
+            }
+        }
+    }
+
+    /// Verify that every field in ProtocolConfig is set (not None) for the latest version.
+    /// A None field in the latest version likely means a new field was added but not initialized.
+    #[test]
+    fn all_fields_set_in_latest_version() {
+        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+            let config = ProtocolConfig::get_for_version(ProtocolVersion::MAX, *chain);
+            let attr_map = config.attr_map();
+            for (name, value) in &attr_map {
+                assert!(
+                    value.is_some(),
+                    "Field '{}' is None in latest protocol version {} for chain {:?}. \
+                     All fields must be initialized in the latest version.",
+                    name,
+                    MAX_PROTOCOL_VERSION,
+                    chain,
+                );
+            }
+        }
+    }
+
+    /// Verify version field is set correctly.
+    #[test]
+    fn version_field_matches() {
+        for v in MIN_PROTOCOL_VERSION..=MAX_PROTOCOL_VERSION {
+            let version = ProtocolVersion::new(v);
+            let config = ProtocolConfig::get_for_version(version, Chain::Unknown);
+            assert_eq!(config.version, version);
+        }
+    }
+
+    /// Verify that feature_map returns a consistent set of flags for each version.
+    #[test]
+    fn feature_flags_snapshot() {
+        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+            let chain_str = match chain {
+                Chain::Unknown => String::new(),
+                _ => format!("{:?}_", chain),
+            };
+            for v in MIN_PROTOCOL_VERSION..=MAX_PROTOCOL_VERSION {
+                let version = ProtocolVersion::new(v);
+                let config = ProtocolConfig::get_for_version(version, *chain);
+                assert_yaml_snapshot!(
+                    format!("{}feature_flags_version_{}", chain_str, version.as_u64()),
+                    config.feature_map()
+                );
+            }
+        }
+    }
+
+    /// Verify that attr_map returns a consistent set of attributes for each version.
+    #[test]
+    fn attr_map_snapshot() {
+        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+            let chain_str = match chain {
+                Chain::Unknown => String::new(),
+                _ => format!("{:?}_", chain),
+            };
+            for v in MIN_PROTOCOL_VERSION..=MAX_PROTOCOL_VERSION {
+                let version = ProtocolVersion::new(v);
+                let config = ProtocolConfig::get_for_version(version, *chain);
+                assert_yaml_snapshot!(
+                    format!("{}attr_map_version_{}", chain_str, version.as_u64()),
+                    config.attr_map()
+                );
+            }
+        }
+    }
+}

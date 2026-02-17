@@ -14,5 +14,8 @@ fastcrypto = { workspace = true }
 burn = { workspace = true }
 bcs.workspace = true
 
+[dev-dependencies]
+insta.workspace = true
+
 [lints]
 workspace = true

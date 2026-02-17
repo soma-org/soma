@@ -40,9 +40,14 @@ impl Serialize for BcsF32 {
     where
         S: Serializer,
     {
-        // Serialize as raw bytes (4 bytes, little-endian)
-        let bytes = self.0.to_le_bytes();
-        bytes.serialize(serializer)
+        if serializer.is_human_readable() {
+            // Human-readable formats (YAML, JSON): serialize as f32
+            self.0.serialize(serializer)
+        } else {
+            // Binary formats (BCS): serialize as raw bytes (4 bytes, little-endian)
+            let bytes = self.0.to_le_bytes();
+            bytes.serialize(serializer)
+        }
     }
 }
 
@@ -51,8 +56,15 @@ impl<'de> Deserialize<'de> for BcsF32 {
     where
         D: Deserializer<'de>,
     {
-        let bytes: [u8; 4] = <[u8; 4]>::deserialize(deserializer)?;
-        Ok(Self(f32::from_le_bytes(bytes)))
+        if deserializer.is_human_readable() {
+            // Human-readable formats (YAML, JSON): deserialize as f32
+            let value = f32::deserialize(deserializer)?;
+            Ok(Self(value))
+        } else {
+            // Binary formats (BCS): deserialize from raw bytes
+            let bytes: [u8; 4] = <[u8; 4]>::deserialize(deserializer)?;
+            Ok(Self(f32::from_le_bytes(bytes)))
+        }
     }
 }
 
