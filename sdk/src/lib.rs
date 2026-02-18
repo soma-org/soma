@@ -18,6 +18,7 @@ use crate::error::SomaRpcResult;
 
 pub mod client_config;
 pub mod error;
+#[cfg(feature = "tls")]
 pub mod proxy_client;
 pub mod transaction_builder;
 pub mod wallet_context;

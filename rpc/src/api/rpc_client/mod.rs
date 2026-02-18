@@ -1,6 +1,7 @@
 use std::time::Duration;
 use tap::Pipe;
 use tonic::codec::CompressionEncoding;
+#[cfg(feature = "tls")]
 use tonic::transport::channel::ClientTlsConfig;
 
 mod response_ext;
@@ -62,10 +63,19 @@ impl Client {
         let uri = uri.try_into().map_err(Into::into).map_err(tonic::Status::from_error)?;
         let mut endpoint = tonic::transport::Endpoint::from(uri.clone());
         if uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
-            endpoint = endpoint
-                .tls_config(ClientTlsConfig::new().with_enabled_roots())
-                .map_err(Into::into)
-                .map_err(tonic::Status::from_error)?;
+            #[cfg(feature = "tls")]
+            {
+                endpoint = endpoint
+                    .tls_config(ClientTlsConfig::new().with_enabled_roots())
+                    .map_err(Into::into)
+                    .map_err(tonic::Status::from_error)?;
+            }
+            #[cfg(not(feature = "tls"))]
+            {
+                return Err(tonic::Status::failed_precondition(
+                    "TLS support not compiled in; use http:// or enable the 'tls' feature",
+                ));
+            }
         }
         let channel = endpoint
             .connect_timeout(Duration::from_secs(5))

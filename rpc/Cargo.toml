@@ -14,18 +14,15 @@ tonic = { version = "0.13", default-features = false, features = [
     "channel",
     "codegen",
     "prost",
-    "tls-ring",
-    "tls-webpki-roots",
     "zstd",
 ] }
 prost = "0.13.5"
 prost-types = "0.13.5"
-types.workspace = true
+types = { path = "../types", default-features = false }
 tokio.workspace = true
 tokio-stream.workspace = true
 async-stream = "0.3.6"
 url.workspace = true
-axum = { workspace = true, features = ["matched-path"] }
 tower.workspace = true
 tracing.workspace = true
 tap.workspace = true
@@ -36,7 +33,6 @@ base64.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 bs58.workspace = true
-tonic-web = "0.13.1"
 serde_derive = { version = "1.0.228" }
 serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 rand_core = "0.6.4"
@@ -45,6 +41,18 @@ roaring = { version = "0.10.12", default-features = false }
 blake2 = "0.10.6"
 fastcrypto.workspace = true
 thiserror.workspace = true
+
+# Optional server deps
+axum = { workspace = true, features = ["matched-path"], optional = true }
+tonic-web = { version = "0.13.1", optional = true }
+
+[features]
+default = ["server", "tls"]
+server = [
+    "dep:axum", "dep:tonic-web",
+    "types/storage", "types/ml", "types/cloud-storage", "types/server", "types/tls",
+]
+tls = ["tonic/tls-ring", "tonic/tls-webpki-roots", "types/tls"]
 
 [build-dependencies]
 tonic-build = "0.13"

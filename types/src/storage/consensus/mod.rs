@@ -1,4 +1,5 @@
 pub mod mem_store;
+#[cfg(feature = "storage")]
 pub mod rocksdb_store;
 
 use std::collections::BTreeMap;

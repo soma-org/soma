@@ -11,10 +11,10 @@ crate-type = ["cdylib"]
 pyo3.workspace = true
 pyo3-async-runtimes = { workspace = true, features = ["tokio-runtime"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-sdk.workspace = true
-types.workspace = true
+sdk = { path = "../sdk", default-features = false }
+types = { path = "../types", default-features = false }
 soma-keys.workspace = true
-rpc.workspace = true
+rpc = { path = "../rpc", default-features = false }
 serde_json.workspace = true
 serde.workspace = true
 anyhow.workspace = true

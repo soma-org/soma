@@ -21,12 +21,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use storage_error::Error as StorageError;
 use tracing::debug;
 
+#[cfg(feature = "storage")]
 pub mod committee_store;
 pub mod consensus;
 pub mod object_store;
 pub mod read_store;
 pub mod shared_in_memory_store;
 pub mod storage_error;
+#[cfg(feature = "storage")]
 pub mod write_path_pending_tx_log;
 pub mod write_store;
 

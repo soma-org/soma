@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+#[cfg(feature = "ml")]
 use burn::store::SafetensorsStoreError;
 use fastcrypto::error;
 use fastcrypto::{error::FastCryptoError, hash::Digest};
-use object_store::ObjectStore;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "storage")]
 use store::TypedStoreError;
 use strum::IntoStaticStr;
 use thiserror::Error;
@@ -541,12 +542,14 @@ impl From<ConsensusError> for SomaError {
     }
 }
 
+#[cfg(feature = "storage")]
 impl From<TypedStoreError> for SomaError {
     fn from(e: TypedStoreError) -> Self {
         Self::Storage(e.to_string())
     }
 }
 
+#[cfg(feature = "storage")]
 impl From<TypedStoreError> for crate::storage::storage_error::Error {
     fn from(error: TypedStoreError) -> Self {
         crate::storage::storage_error::Error::custom(error)
@@ -755,6 +758,7 @@ pub enum ConsensusError {
     )]
     UnexpectedCertifiedCommitIndex { expected_commit_index: CommitIndex, commit_index: CommitIndex },
 
+    #[cfg(feature = "storage")]
     #[error("RocksDB failure: {0}")]
     RocksDBFailure(#[from] TypedStoreError),
 
@@ -841,6 +845,7 @@ pub enum BlobError {
     FileTooLarge,
     #[error("HTTP {status} from {url}")]
     HttpStatus { status: u16, url: String },
+    #[cfg(feature = "cloud-storage")]
     #[error("object store error: {0}")]
     ObjectStoreError(object_store::Error),
     #[error("Storage failed: {0}")]
@@ -876,8 +881,10 @@ pub enum RuntimeError {
     CoreProcessorError(String),
     #[error("storage failure: {0:?}")]
     StorageFailure(String),
+    #[cfg(feature = "cloud-storage")]
     #[error("Object store error: {0}")]
     ObjectStoreError(object_store::Error),
+    #[cfg(feature = "tls")]
     #[error("Reqwest error: {0}")]
     ReqwestError(reqwest::Error),
     #[error("Blob error: {0}")]
@@ -910,6 +917,7 @@ pub enum ModelError {
     SafeTensorsFailure(String),
     #[error("Failed type verification: {0}")]
     FailedTypeVerification(String),
+    #[cfg(feature = "ml")]
     #[error("SafeTensor store error: {0}")]
     SafeTensorStoreError(SafetensorsStoreError),
     #[error("Apply error")]

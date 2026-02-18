@@ -3,6 +3,7 @@ pub mod base;
 pub mod challenge;
 pub mod checkpoints;
 pub mod checksum;
+#[cfg(feature = "tls")]
 pub mod client;
 pub mod committee;
 pub mod config;
@@ -16,12 +17,14 @@ pub mod execution;
 pub mod finality;
 pub mod full_checkpoint_content;
 pub mod genesis;
+#[cfg(feature = "ml")]
 pub mod genesis_builder;
 pub mod grpc_timeout;
 pub mod intent;
 pub mod messages_grpc;
 pub mod metadata;
 pub mod model;
+#[cfg(feature = "ml")]
 pub mod model_selection;
 pub mod multiaddr;
 pub mod multisig;
@@ -40,6 +43,7 @@ pub mod system_state;
 pub mod target;
 pub mod tensor;
 pub mod temporary_store;
+#[cfg(feature = "tls")]
 pub mod tls;
 pub mod traffic_control;
 pub mod transaction;

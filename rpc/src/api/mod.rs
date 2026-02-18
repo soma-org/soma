@@ -1,17 +1,24 @@
+#[cfg(feature = "server")]
 use std::sync::Arc;
 
+#[cfg(feature = "server")]
 use types::{
     config::rpc_config::RpcConfig, storage::read_store::RpcStateReader,
     transaction_executor::TransactionExecutor,
 };
 
+#[cfg(feature = "server")]
 use crate::api::{reader::StateReader, subscription::SubscriptionServiceHandle};
 pub mod client;
 pub mod error;
+#[cfg(feature = "server")]
 mod grpc;
+#[cfg(feature = "server")]
 mod reader;
+#[cfg(feature = "server")]
 mod response;
-mod rpc_client;
+pub(crate) mod rpc_client;
+#[cfg(feature = "server")]
 pub mod subscription;
 
 #[derive(Clone)]
@@ -34,6 +41,7 @@ impl std::fmt::Display for ServerVersion {
     }
 }
 
+#[cfg(feature = "server")]
 #[derive(Clone)]
 pub struct RpcService {
     reader: StateReader,
@@ -45,6 +53,7 @@ pub struct RpcService {
     executor: Option<Arc<dyn TransactionExecutor>>,
 }
 
+#[cfg(feature = "server")]
 impl RpcService {
     pub fn new(reader: Arc<dyn RpcStateReader>) -> Self {
         let chain_id = reader.get_chain_identifier().unwrap();
@@ -95,20 +104,6 @@ impl RpcService {
                 crate::proto::soma::state_service_server::StateServiceServer::new(self.clone())
                     .send_compressed(tonic::codec::CompressionEncoding::Zstd);
 
-            // let reflection_v1alpha = tonic_reflection::server::Builder::configure()
-            //     .register_encoded_file_descriptor_set(
-            //         crate::proto::google::protobuf::FILE_DESCRIPTOR_SET,
-            //     )
-            //     .register_encoded_file_descriptor_set(
-            //         crate::proto::google::rpc::FILE_DESCRIPTOR_SET,
-            //     )
-            //     .register_encoded_file_descriptor_set(
-            //         sui_rpc::proto::sui::rpc::v2beta2::FILE_DESCRIPTOR_SET,
-            //     )
-            //     .register_encoded_file_descriptor_set(tonic_health::pb::FILE_DESCRIPTOR_SET)
-            //     .build_v1alpha()
-            //     .unwrap();
-
             fn service_name<S: tonic::server::NamedService>(_service: &S) -> &'static str {
                 S::NAME
             }
@@ -117,7 +112,6 @@ impl RpcService {
                 .add_service(ledger_service)
                 .add_service(transaction_execution_service)
                 .add_service(state_service);
-            // .add_service(reflection_v1alpha)
 
             if self.subscription_service_handle.is_some() {
                 let subscription_service =

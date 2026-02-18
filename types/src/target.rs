@@ -24,7 +24,6 @@ use crate::{
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     model::ModelId,
-    model_selection::{ModelSelectionData, select_models},
     object::ObjectID,
     submission::SubmissionManifest,
     system_state::model_registry::ModelRegistry,
@@ -32,6 +31,9 @@ use crate::{
     system_state::validator::ValidatorSet,
     tensor::SomaTensor,
 };
+#[cfg(feature = "ml")]
+use crate::model_selection::{ModelSelectionData, select_models};
+#[cfg(feature = "ml")]
 use burn::backend::NdArray;
 use fastcrypto::hash::HashFunction as _;
 
@@ -227,6 +229,7 @@ impl Target {
     }
 }
 
+#[cfg(feature = "ml")]
 /// Generate a new target with the given parameters.
 ///
 /// Uses stake-weighted KNN model selection: models with embeddings closer to the
@@ -283,6 +286,7 @@ pub fn generate_target(
     })
 }
 
+#[cfg(feature = "ml")]
 /// Select models using stake-weighted KNN based on target embedding.
 ///
 /// Models are scored by: `weighted_score = distance² / voting_power`

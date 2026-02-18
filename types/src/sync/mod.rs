@@ -18,7 +18,9 @@ use crate::{
 
 // pub mod connection_manager;
 // pub mod network;
+#[cfg(feature = "tls")]
 pub mod active_peers;
+#[cfg(feature = "server")]
 pub mod channel_manager;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

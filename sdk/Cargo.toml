@@ -4,13 +4,13 @@ edition = "2024"
 version.workspace = true
 
 [dependencies]
-types.workspace = true
+types = { path = "../types", default-features = false }
 soma-keys.workspace = true
 serde.workspace = true
 anyhow.workspace = true
 serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 thiserror.workspace = true
-rpc.workspace = true
+rpc = { path = "../rpc", default-features = false }
 bcs.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -22,13 +22,17 @@ tonic = { version = "0.13", default-features = false, features = [
     "channel",
     "codegen",
     "prost",
-    "tls-ring",
-    "tls-webpki-roots",
     "zstd",
 ] }
 bytes.workspace = true
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 rand.workspace = true
+
+# Optional TLS deps
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"], optional = true }
+
+[features]
+default = ["tls"]
+tls = ["rpc/tls", "dep:reqwest"]
 
 [lints]
 workspace = true

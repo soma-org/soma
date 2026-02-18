@@ -454,7 +454,7 @@ impl RpcIndexes for RestReadStore {
         owner: SomaAddress,
         object_type: Option<ObjectType>,
         cursor: Option<OwnedObjectInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, TypedStoreError>> + '_>> {
+    ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, types::storage::storage_error::Error>> + '_>> {
         let cursor = cursor.map(|cursor| OwnerIndexKey {
             owner: cursor.owner,
             object_type: cursor.object_type,
@@ -476,7 +476,7 @@ impl RpcIndexes for RestReadStore {
                         version,
                     }
                 },
-            )
+            ).map_err(Into::into)
         });
 
         Ok(Box::new(iter) as _)
@@ -500,8 +500,8 @@ impl RpcIndexes for RestReadStore {
         status_filter: Option<String>,
         epoch_filter: Option<u64>,
         cursor: Option<TargetInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, TypedStoreError>> + '_>> {
-        let iter = self.index()?.targets_iter(status_filter, epoch_filter, cursor)?;
+    ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, types::storage::storage_error::Error>> + '_>> {
+        let iter = self.index()?.targets_iter(status_filter, epoch_filter, cursor)?.map(|r| r.map_err(Into::into));
         Ok(Box::new(iter))
     }
 
@@ -511,8 +511,8 @@ impl RpcIndexes for RestReadStore {
         epoch_filter: Option<u64>,
         target_filter: Option<ObjectID>,
         cursor: Option<ChallengeInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<ChallengeInfo, TypedStoreError>> + '_>> {
-        let iter = self.index()?.challenges_iter(status_filter, epoch_filter, target_filter, cursor)?;
+    ) -> Result<Box<dyn Iterator<Item = Result<ChallengeInfo, types::storage::storage_error::Error>> + '_>> {
+        let iter = self.index()?.challenges_iter(status_filter, epoch_filter, target_filter, cursor)?.map(|r| r.map_err(Into::into));
         Ok(Box::new(iter))
     }
 }

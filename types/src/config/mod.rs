@@ -13,8 +13,11 @@ use crate::multiaddr::Multiaddr;
 pub mod certificate_deny_config;
 pub mod genesis_config;
 pub mod local_ip_utils;
+#[cfg(all(feature = "cloud-storage", feature = "ml"))]
 pub mod network_config;
+#[cfg(feature = "cloud-storage")]
 pub mod node_config;
+#[cfg(feature = "cloud-storage")]
 pub mod object_store_config;
 pub mod p2p_config;
 pub mod rpc_config;
