@@ -288,6 +288,4 @@ docs/_build/
 
 # AI context / planning docs
 CLAUDE.md
-REDESIGN.md
-*_TESTING_PLAN.md
-TESTING_PLAN.md
+.claude/

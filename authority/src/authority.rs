@@ -1601,7 +1601,136 @@ impl AuthorityState {
         // check for root state hash consistency with live object set
         if expensive_safety_check_config.enable_state_consistency_check() {
             info!("Performing state consistency check for epoch {}", cur_epoch_store.epoch());
-            self.expensive_check_is_consistent_state(state_hasher, cur_epoch_store);
+            self.expensive_check_is_consistent_state(state_hasher.clone(), cur_epoch_store);
+        }
+
+        // Supply conservation check: verify total SOMA across all objects equals genesis total.
+        // Gated behind enable_state_consistency_check (enabled in debug/test builds via
+        // cfg!(debug_assertions)).
+        if expensive_safety_check_config.enable_state_consistency_check() {
+            info!(
+                "Performing supply conservation check for epoch {}",
+                cur_epoch_store.epoch()
+            );
+            self.check_soma_conservation(state_hasher, cur_epoch_store);
+        }
+    }
+
+    /// Verify that the total SOMA supply is conserved across all live objects.
+    ///
+    /// Iterates every live object, sums value by category, and compares against
+    /// `TOTAL_SUPPLY_SHANNONS`. Any mismatch indicates a bug in emission,
+    /// staking reward, or fee accounting logic.
+    fn check_soma_conservation(
+        &self,
+        _state_hasher: Arc<GlobalStateHasher>,
+        cur_epoch_store: &AuthorityPerEpochStore,
+    ) {
+        use types::config::genesis_config::TOTAL_SUPPLY_SHANNONS;
+        use types::object::ObjectType;
+
+        // Get system state from the object store for accurate balance accounting
+        let system_state = self
+            .get_system_state_object_for_testing()
+            .expect("SystemState must exist for conservation check");
+
+        let mut system_state_balance: u128 = 0;
+
+        // Emission pool
+        system_state_balance += system_state.emission_pool.balance as u128;
+        // Safe mode accumulators
+        system_state_balance += system_state.safe_mode_accumulated_fees as u128;
+        system_state_balance += system_state.safe_mode_accumulated_emissions as u128;
+
+        // Validator staking pools (active, pending, inactive)
+        for v in &system_state.validators.validators {
+            system_state_balance += v.staking_pool.soma_balance as u128;
+            system_state_balance += v.staking_pool.pending_stake as u128;
+        }
+        for v in &system_state.validators.pending_validators {
+            system_state_balance += v.staking_pool.soma_balance as u128;
+            system_state_balance += v.staking_pool.pending_stake as u128;
+        }
+        for v in system_state.validators.inactive_validators.values() {
+            system_state_balance += v.staking_pool.soma_balance as u128;
+            system_state_balance += v.staking_pool.pending_stake as u128;
+        }
+
+        // Model staking pools (active, pending, inactive)
+        for m in system_state.model_registry.active_models.values() {
+            system_state_balance += m.staking_pool.soma_balance as u128;
+            system_state_balance += m.staking_pool.pending_stake as u128;
+        }
+        for m in system_state.model_registry.pending_models.values() {
+            system_state_balance += m.staking_pool.soma_balance as u128;
+            system_state_balance += m.staking_pool.pending_stake as u128;
+        }
+        for m in system_state.model_registry.inactive_models.values() {
+            system_state_balance += m.staking_pool.soma_balance as u128;
+            system_state_balance += m.staking_pool.pending_stake as u128;
+        }
+
+        // Iterate all live objects to sum coin, target, and challenge balances
+        let mut coin_balance: u128 = 0;
+        let mut target_balance: u128 = 0;
+        let mut challenge_balance: u128 = 0;
+        let mut object_count: u64 = 0;
+
+        for live_obj in self.get_global_state_hash_store().iter_live_object_set() {
+            let obj = match live_obj {
+                types::object::LiveObject::Normal(obj) => obj,
+            };
+            object_count += 1;
+
+            match obj.type_() {
+                ObjectType::Coin => {
+                    if let Some(balance) = obj.as_coin() {
+                        coin_balance += balance as u128;
+                    }
+                }
+                ObjectType::Target => {
+                    if let Some(target) = obj.as_target() {
+                        target_balance += target.reward_pool as u128;
+                        target_balance += target.bond_amount as u128;
+                    }
+                }
+                ObjectType::Challenge => {
+                    if let Some(challenge) = obj.as_challenge() {
+                        challenge_balance += challenge.challenger_bond as u128;
+                    }
+                }
+                // SystemState: accounted above via get_system_state_object_for_testing
+                // StakedSoma, Submission: no SOMA value (receipts only)
+                _ => {}
+            }
+        }
+
+        let total_accounted =
+            coin_balance + system_state_balance + target_balance + challenge_balance;
+        let expected = TOTAL_SUPPLY_SHANNONS as u128;
+
+        if total_accounted != expected {
+            let msg = format!(
+                "SUPPLY CONSERVATION VIOLATION at epoch {}! \
+                 Expected {expected}, got {total_accounted} \
+                 (coins={coin_balance}, system_state={system_state_balance}, \
+                 targets={target_balance}, challenges={challenge_balance}, \
+                 objects_scanned={object_count})",
+                cur_epoch_store.epoch(),
+            );
+            if cfg!(msim) {
+                panic!("{msg}");
+            } else {
+                error!("{msg}");
+            }
+        } else {
+            info!(
+                "Supply conservation check passed for epoch {} \
+                 (total={expected}, coins={coin_balance}, \
+                 system_state={system_state_balance}, targets={target_balance}, \
+                 challenges={challenge_balance}, objects={object_count})",
+                cur_epoch_store.epoch(),
+            );
         }
     }
 
@@ -1623,10 +1752,20 @@ impl AuthorityState {
 
         let is_inconsistent = root_state_hash != live_object_set_hash;
         if is_inconsistent {
-            debug!(
-                "Inconsistent state detected: root state hash: {:?}, live object set hash: {:?}",
-                root_state_hash, live_object_set_hash
-            );
+            if cfg!(msim) {
+                panic!(
+                    "Inconsistent state detected at epoch {}: root state hash: {:?}, \
+                     live object set hash: {:?}",
+                    cur_epoch_store.epoch(),
+                    root_state_hash,
+                    live_object_set_hash
+                );
+            } else {
+                error!(
+                    "Inconsistent state detected: root state hash: {:?}, live object set hash: {:?}",
+                    root_state_hash, live_object_set_hash
+                );
+            }
         } else {
             info!("State consistency check passed");
         }

@@ -390,19 +390,18 @@ impl KeyPairWithPath {
 /// Wrapper struct for AuthorityKeyPair that can be deserialized from a file path.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AuthorityKeyPairWithPath {
-    // #[serde(flatten)]
-    // location: AuthorityKeyPairLocation,
+    #[serde(flatten)]
+    location: AuthorityKeyPairLocation,
     #[serde(skip)]
     keypair: OnceLock<Arc<AuthorityKeyPair>>,
 }
 
-// #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq)]
-// #[serde_as]
-// #[serde(untagged)]
-// enum AuthorityKeyPairLocation {
-//     InPlace { value: Arc<AuthorityKeyPair> },
-//     File { path: PathBuf },
-// }
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq)]
+#[serde(untagged)]
+enum AuthorityKeyPairLocation {
+    InPlace { value: Arc<AuthorityKeyPair> },
+    File { path: PathBuf },
+}
 
 impl AuthorityKeyPairWithPath {
     pub fn new(kp: AuthorityKeyPair) -> Self {
@@ -410,11 +409,25 @@ impl AuthorityKeyPairWithPath {
         let arc_kp = Arc::new(kp);
         // OK to unwrap panic because authority should not start without all keypairs loaded.
         cell.set(arc_kp.clone()).expect("Failed to set authority keypair");
-        Self { keypair: cell }
+        Self {
+            location: AuthorityKeyPairLocation::InPlace { value: arc_kp },
+            keypair: cell,
+        }
     }
 
     pub fn authority_keypair(&self) -> &AuthorityKeyPair {
-        self.keypair.get().unwrap().as_ref()
+        self.keypair
+            .get_or_init(|| match &self.location {
+                AuthorityKeyPairLocation::InPlace { value } => value.clone(),
+                AuthorityKeyPairLocation::File { path } => {
+                    Arc::new(
+                        read_authority_keypair_from_file(path).unwrap_or_else(|e| {
+                            panic!("Invalid authority keypair file at path {:?}: {e}", path)
+                        }),
+                    )
+                }
+            })
+            .as_ref()
     }
 }
 

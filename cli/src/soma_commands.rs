@@ -690,7 +690,7 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let genesis_config = GenesisConfig::custom_genesis(1, 100);
+        let genesis_config = GenesisConfig::for_local_testing();
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);

@@ -1096,9 +1096,11 @@ impl SystemState {
         let validator_allocation =
             (total_rewards as u128 * validator_allocation_bps as u128 / BPS_DENOMINATOR as u128)
                 as u64;
-        let _remainder = total_rewards - validator_allocation;
-        // The remainder could be added back to emission_pool if desired, but for now
-        // target rewards are funded directly from emission_pool at target creation time.
+        let remainder = total_rewards - validator_allocation;
+        // Target rewards are pre-allocated from the emission pool at target creation time,
+        // so the non-validator portion of epoch rewards is returned to the emission pool
+        // to maintain supply conservation.
+        self.emission_pool.balance = self.emission_pool.balance.saturating_add(remainder);
 
         // 5. Advance target state for new epoch (difficulty adjustment + reward calculation)
         self.advance_epoch_targets();

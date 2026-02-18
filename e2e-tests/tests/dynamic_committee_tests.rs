@@ -15,6 +15,7 @@ use types::{
     digests::ObjectDigest,
     effects::{TransactionEffects, TransactionEffectsAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
+    storage::object_store::ObjectStore,
     system_state::{SystemState, validator::Validator},
     transaction::{Transaction, TransactionData, TransactionKind},
 };
@@ -36,7 +37,6 @@ trait StatePredicate {
         runner: &mut StressTestRunner,
         effects: &TransactionEffects,
     );
-    #[allow(unused)]
     async fn post_epoch_post_condition(
         &mut self,
         runner: &StressTestRunner,
@@ -251,15 +251,48 @@ mod add_stake {
                 object.id(),
                 (self.sender.clone(), object.id(), object.digest(), object.version()),
             );
-            // TODO: runner.display_effects(effects);
         }
 
         async fn post_epoch_post_condition(
             &mut self,
-            _runner: &StressTestRunner,
+            runner: &StressTestRunner,
             _effects: &TransactionEffects,
         ) {
-            todo!()
+            // After the epoch transition, pending stakes should have been processed
+            // into the validator's staking pool. Verify:
+            // 1. The validator's staking pool soma_balance includes our stake contribution.
+            // 2. The staking pool's pending_stake has been cleared (processed).
+            let system_state = runner.system_state();
+            let validator = system_state
+                .validators
+                .validators
+                .iter()
+                .find(|v| v.metadata.soma_address == self.staked_with)
+                .expect("Validator must still be in the active set");
+
+            // After epoch boundary, all pending stakes should have been processed.
+            assert_eq!(
+                validator.staking_pool.pending_stake, 0,
+                "Pending stake should be 0 after epoch transition for validator {}",
+                self.staked_with
+            );
+
+            // The validator's soma_balance must be at least as large as our stake amount.
+            // (It will be larger due to initial genesis stake + other delegations + rewards.)
+            assert!(
+                validator.staking_pool.soma_balance >= self.stake_amount,
+                "Validator {}'s soma_balance ({}) should be >= staked amount ({})",
+                self.staked_with,
+                validator.staking_pool.soma_balance,
+                self.stake_amount
+            );
+
+            info!(
+                "post_epoch AddStake verified: validator {} soma_balance={}, pending_stake={}",
+                self.staked_with,
+                validator.staking_pool.soma_balance,
+                validator.staking_pool.pending_stake
+            );
         }
     }
 }
@@ -308,16 +341,53 @@ mod remove_stake {
             _effects: &TransactionEffects,
         ) {
             // keeping the body empty, nothing will really change on that
-            // operation except consuming the StakedWal object; actual withdrawal
+            // operation except consuming the StakedSoma object; actual withdrawal
             // will happen in the next epoch.
         }
 
         async fn post_epoch_post_condition(
             &mut self,
-            _runner: &StressTestRunner,
+            runner: &StressTestRunner,
             _effects: &TransactionEffects,
         ) {
-            todo!()
+            // After the epoch transition, pending withdrawals should have been processed.
+            // Verify:
+            // 1. The StakedSoma object has been consumed (no longer in the object store).
+            // 2. All validator staking pools have cleared pending withdrawals.
+            let db = runner
+                .test_cluster
+                .fullnode_handle
+                .soma_node
+                .state()
+                .get_object_store()
+                .clone();
+            let staked_soma_obj = db.get_object(&self.object_id);
+            assert!(
+                staked_soma_obj.is_none(),
+                "StakedSoma object {} should have been consumed by WithdrawStake",
+                self.object_id
+            );
+
+            // Verify all validator pools have processed their pending withdrawals.
+            let system_state = runner.system_state();
+            for v in &system_state.validators.validators {
+                assert_eq!(
+                    v.staking_pool.pending_total_soma_withdraw, 0,
+                    "Validator {}'s pending_total_soma_withdraw should be 0 after epoch",
+                    v.metadata.soma_address
+                );
+                assert_eq!(
+                    v.staking_pool.pending_pool_token_withdraw, 0,
+                    "Validator {}'s pending_pool_token_withdraw should be 0 after epoch",
+                    v.metadata.soma_address
+                );
+            }
+
+            info!(
+                "post_epoch WithdrawStake verified: StakedSoma {} consumed, \
+                 all pending withdrawals processed",
+                self.object_id
+            );
         }
     }
 }
@@ -334,11 +404,15 @@ async fn fuzz_dynamic_committee() {
     let mut runner = StressTestRunner::new(committee_size).await;
     let actions = [Box::new(add_stake::RequestAddStakeGen)];
 
+    // Collect tasks and their effects for post-epoch verification.
+    let mut add_stake_tasks: Vec<(add_stake::RequestAddStake, TransactionEffects)> = vec![];
+
     for _ in 0..num_operations {
         let index = runner.rng.r#gen_range(0..actions.len());
         let mut task = actions[index].create(&mut runner);
         let effects = task.run(&mut runner).await.unwrap();
         task.pre_epoch_post_condition(&mut runner, &effects).await;
+        add_stake_tasks.push((task, effects));
     }
 
     let mut initial_committee = runner
@@ -354,6 +428,11 @@ async fn fuzz_dynamic_committee() {
 
     // Advance epoch to see the resulting state.
     runner.change_epoch().await;
+
+    // Run post-epoch verification for all AddStake operations.
+    for (task, effects) in &mut add_stake_tasks {
+        task.post_epoch_post_condition(&runner, effects).await;
+    }
 
     // Collect information about total stake of validators, and then check if each validator's
     // voting power is the right % of the total stake.
@@ -377,14 +456,22 @@ async fn fuzz_dynamic_committee() {
     });
 
     // Unstake all randomly assigned stakes.
+    let mut withdraw_tasks: Vec<(remove_stake::RequestWithdrawStake, TransactionEffects)> = vec![];
+
     for _ in 0..num_operations {
         let mut task = remove_stake::RequestWithdrawStakeGen.create(&mut runner);
         let effects = task.run(&mut runner).await.unwrap();
         task.pre_epoch_post_condition(&mut runner, &effects).await;
+        withdraw_tasks.push((task, effects));
     }
 
     // Advance epoch, so requests are processed.
     runner.change_epoch().await;
+
+    // Run post-epoch verification for all WithdrawStake operations.
+    for (task, effects) in &mut withdraw_tasks {
+        task.post_epoch_post_condition(&runner, effects).await;
+    }
 
     // Expect the active set to return to initial state.
     let mut post_epoch_committee = runner
