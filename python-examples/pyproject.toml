@@ -1,0 +1,19 @@
+[project]
+name = "soma-examples"
+version = "0.1.0"
+description = "Runnable examples demonstrating the Soma Python SDK"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Soma Contributors" }]
+dependencies = ["soma-sdk"]
+
+[project.urls]
+Homepage = "https://github.com/soma-org/soma"
+Repository = "https://github.com/soma-org/soma"
+
+[project.scripts]
+soma-example-client = "soma_examples.client:main"
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"

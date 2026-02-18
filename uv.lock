@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "soma-arrgen",
+    "soma-examples",
     "soma-models",
     "soma-sdk",
 ]
@@ -1084,6 +1085,17 @@ wheels = [
 [[package]]
 name = "soma-arrgen"
 source = { editable = "arrgen" }
+
+[[package]]
+name = "soma-examples"
+version = "0.1.0"
+source = { editable = "python-examples" }
+dependencies = [
+    { name = "soma-sdk" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "soma-sdk", editable = "python-sdk" }]
 
 [[package]]
 name = "soma-models"

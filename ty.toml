@@ -1,0 +1,15 @@
+[environment]
+extra-paths = ["python-models"]
+
+# torch lacks complete type stubs; these are false positives
+[[overrides]]
+include = ["python-models/src/soma_models/v1/torch/"]
+[overrides.rules]
+unsupported-operator = "ignore"
+unresolved-attribute = "ignore"
+
+# ty cannot infer keys from dict() literals used with ** unpacking
+[[overrides]]
+include = ["python-models/tests/"]
+[overrides.rules]
+missing-argument = "ignore"

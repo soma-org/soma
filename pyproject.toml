@@ -1,5 +1,6 @@
 [tool.uv.workspace]
-members = ["python-models", "python-sdk", "arrgen"]
+members = ["python-models", "python-sdk", "python-examples", "arrgen"]
 
 [tool.uv.sources]
 soma-arrgen = { workspace = true }
+soma-sdk = { workspace = true }
