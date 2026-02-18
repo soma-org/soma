@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow, bail, ensure};
 use clap::*;
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto::traits::ToFromBytes;
+use soma_keys::key_identity::KeyIdentity;
 use types::effects::{ExecutionStatus, TransactionEffectsAPI as _};
 
 use sdk::{transaction_builder::TransactionBuilder, wallet_context::WalletContext};
@@ -75,6 +76,17 @@ pub enum SomaClientCommands {
         #[clap(long)]
         signed_tx_bytes: String,
     },
+
+    /// Request gas coins from faucet. By default uses the active address and local network.
+    #[clap(name = "faucet")]
+    Faucet {
+        /// Address to receive tokens (defaults to active address)
+        #[clap(long)]
+        address: Option<KeyIdentity>,
+        /// The URL of the faucet server
+        #[clap(long)]
+        url: Option<String>,
+    },
 }
 
 impl SomaClientCommands {
@@ -140,6 +152,11 @@ impl SomaClientCommands {
                 Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(
                     &response,
                 )))
+            }
+
+            SomaClientCommands::Faucet { address, url } => {
+                crate::commands::faucet::execute(context, address, url).await?;
+                Ok(ClientCommandResponse::NoOutput)
             }
         }
     }

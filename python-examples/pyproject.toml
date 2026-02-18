@@ -13,6 +13,7 @@ Repository = "https://github.com/soma-org/soma"
 
 [project.scripts]
 soma-example-client = "soma_examples.client:main"
+soma-example-faucet = "soma_examples.faucet:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]

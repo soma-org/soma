@@ -359,6 +359,17 @@ pub enum SomaCommand {
         /// Log level for CLI output (trace, debug, info, warn, error).
         #[clap(long, default_value = "info")]
         log_level: String,
+
+        /// Start a faucet server alongside the local network.
+        /// Optionally specify host:port (default: 0.0.0.0:9123).
+        #[clap(
+            long,
+            default_missing_value = "0.0.0.0:9123",
+            num_args = 0..=1,
+            require_equals = true,
+            value_name = "FAUCET_HOST_PORT",
+        )]
+        with_faucet: Option<String>,
     },
 
     #[clap(name = "network")]
@@ -617,6 +628,7 @@ impl SomaCommand {
                 epoch_duration_ms,
                 committee_size,
                 log_level: _,
+                with_faucet,
             } => {
                 start(
                     config_dir.clone(),
@@ -626,6 +638,7 @@ impl SomaCommand {
                     data_ingestion_dir,
                     no_full_node,
                     committee_size,
+                    with_faucet,
                 )
                 .await?;
                 Ok(())
@@ -679,6 +692,7 @@ async fn start(
     mut data_ingestion_dir: Option<PathBuf>,
     no_full_node: bool,
     committee_size: Option<usize>,
+    with_faucet: Option<String>,
 ) -> Result<(), anyhow::Error> {
     if force_regenesis {
         ensure!(
@@ -704,7 +718,12 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let genesis_config = GenesisConfig::for_local_testing();
+        let genesis_config = if with_faucet.is_some() {
+            info!("Adding faucet account to genesis config...");
+            GenesisConfig::for_local_testing().add_faucet_account()
+        } else {
+            GenesisConfig::for_local_testing()
+        };
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
@@ -821,6 +840,89 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
+    // Faucet startup logic derived from MystenLabs/sui (Apache-2.0)
+    // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/sui_commands.rs
+    if let Some(input) = with_faucet {
+        let (host, port) = parse_faucet_host_port(&input)?;
+
+        // Extract the last account key as the faucet key (added by add_faucet_account)
+        let faucet_key = if force_regenesis {
+            let keys = &swarm.config().account_keys;
+            if keys.is_empty() {
+                bail!("No account keys found in swarm config for faucet");
+            }
+            Some(keys.last().expect("account_keys is not empty").copy())
+        } else {
+            None
+        };
+
+        // Set up a wallet context for the faucet
+        let keystore_path = tempfile::tempdir()?.keep().join(SOMA_KEYSTORE_FILENAME);
+        let mut faucet_keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
+
+        if let Some(key) = faucet_key {
+            faucet_keystore.import(None, key).await?;
+        } else {
+            // For persisted runs, import all keys from the network config
+            for key in &swarm.config().account_keys {
+                faucet_keystore.import(None, key.copy()).await?;
+            }
+        }
+
+        let active_address = faucet_keystore.addresses().pop();
+
+        let mut client_config =
+            SomaClientConfig::new(Keystore::from(faucet_keystore));
+        client_config.active_address = active_address;
+        client_config.add_env(SomaEnv {
+            alias: "localnet".to_string(),
+            rpc: fullnode_rpc_url.clone(),
+            basic_auth: None,
+            chain_id: None,
+        });
+        client_config.active_env = Some("localnet".to_string());
+
+        let faucet_config_path = keystore_path
+            .parent()
+            .expect("keystore path has a parent")
+            .join(SOMA_CLIENT_CONFIG);
+        client_config.save(&faucet_config_path)?;
+
+        let wallet_context = create_wallet_context(
+            60,
+            faucet_config_path
+                .parent()
+                .expect("config path has a parent")
+                .to_path_buf(),
+        )?;
+
+        let faucet_config = faucet::faucet_config::FaucetConfig {
+            port,
+            host_ip: host,
+            ..Default::default()
+        };
+
+        let faucet_instance = faucet::local_faucet::LocalFaucet::new(
+            wallet_context,
+            faucet_config.clone(),
+        )
+        .await
+        .map_err(|e| anyhow!("Failed to initialize faucet: {e}"))?;
+
+        let app_state = std::sync::Arc::new(faucet::app_state::AppState {
+            faucet: std::sync::Arc::new(faucet_instance),
+            config: faucet_config,
+        });
+
+        tokio::spawn(async move {
+            if let Err(e) = faucet::server::start_faucet(app_state).await {
+                tracing::error!("Faucet server error: {}", e);
+            }
+        });
+
+        info!("Faucet server started on {input}");
+    }
+
     let mut interval = interval(Duration::from_secs(3));
 
     loop {
@@ -911,6 +1013,11 @@ async fn genesis(
             }
         }
     };
+
+    if with_faucet {
+        info!("Adding faucet account to genesis config...");
+        genesis_conf = genesis_conf.add_faucet_account();
+    }
 
     if let Some(path) = write_config {
         let persisted = genesis_conf.persisted(&path);
@@ -1122,4 +1229,25 @@ fn update_wallet_config_rpc(
     wallet_context.config.save()?;
 
     Ok(wallet_context)
+}
+
+/// Parse a faucet host:port string like "0.0.0.0:9123" or just a port number.
+fn parse_faucet_host_port(input: &str) -> Result<(String, u16), anyhow::Error> {
+    if let Ok(port) = input.parse::<u16>() {
+        return Ok(("0.0.0.0".to_string(), port));
+    }
+
+    if let Ok(addr) = input.parse::<SocketAddr>() {
+        return Ok((addr.ip().to_string(), addr.port()));
+    }
+
+    // Try host:port format
+    if let Some((host, port_str)) = input.rsplit_once(':') {
+        let port: u16 = port_str
+            .parse()
+            .map_err(|_| anyhow!("Invalid port in faucet address: {input}"))?;
+        return Ok((host.to_string(), port));
+    }
+
+    bail!("Invalid faucet address format: {input}. Expected host:port or just a port number.")
 }

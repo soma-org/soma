@@ -423,10 +423,14 @@ pub enum ClientCommandResponse {
     SerializedSignedTransaction(String),
     Simulation(SimulationResponse),
     TransactionQuery(TransactionQueryResponse),
+    NoOutput,
 }
 
 impl ClientCommandResponse {
     pub fn print(&self, json: bool) {
+        if matches!(self, ClientCommandResponse::NoOutput) {
+            return;
+        }
         if json {
             match serde_json::to_string_pretty(self) {
                 Ok(s) => println!("{}", s),
@@ -490,6 +494,7 @@ impl Display for ClientCommandResponse {
             }
             ClientCommandResponse::Simulation(output) => write!(f, "{}", output),
             ClientCommandResponse::TransactionQuery(output) => write!(f, "{}", output),
+            ClientCommandResponse::NoOutput => Ok(()),
         }
     }
 }

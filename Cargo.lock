@@ -1803,6 +1803,7 @@ dependencies = [
  "colored 2.2.0",
  "csv",
  "fastcrypto",
+ "faucet",
  "futures",
  "hex",
  "inquire",
@@ -3490,6 +3491,28 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "faucet"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "clap",
+ "futures",
+ "reqwest",
+ "sdk",
+ "serde",
+ "serde_json",
+ "soma-keys",
+ "test-cluster",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "types",
+ "uuid",
+]
 
 [[package]]
 name = "fax"
@@ -7865,6 +7888,7 @@ dependencies = [
  "reqwest",
  "rpc",
  "serde",
+ "serde_json",
  "serde_with",
  "soma-keys",
  "thiserror 1.0.69",
@@ -8405,6 +8429,7 @@ dependencies = [
  "hex",
  "pyo3",
  "pyo3-async-runtimes",
+ "reqwest",
  "rpc",
  "sdk",
  "serde",

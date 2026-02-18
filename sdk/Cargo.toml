@@ -7,6 +7,7 @@ version.workspace = true
 types = { path = "../types", default-features = false }
 soma-keys.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 thiserror.workspace = true
@@ -28,7 +29,7 @@ bytes.workspace = true
 rand.workspace = true
 
 # Optional TLS deps
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "json"], optional = true }
 
 [features]
 default = ["tls"]

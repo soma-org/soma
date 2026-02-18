@@ -154,6 +154,19 @@ impl GenesisConfig {
         Self { accounts, ..Default::default() }
     }
 
+    /// Add a dedicated faucet account to the genesis config.
+    /// The faucet account gets extra-funded coins for dispensing tokens.
+    pub fn add_faucet_account(mut self) -> Self {
+        self.accounts.push(AccountConfig {
+            address: None,
+            gas_amounts: vec![
+                DEFAULT_GAS_AMOUNT * 10;
+                DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT
+            ],
+        });
+        self
+    }
+
     pub fn generate_accounts<R: rand::RngCore + rand::CryptoRng>(
         &self,
         mut rng: R,
