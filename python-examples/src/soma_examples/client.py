@@ -20,10 +20,10 @@ async def run():
     print(f"Epoch: {state.get('epoch')}")
 
     cp = json.loads(await client.get_latest_checkpoint())
-    print(f"Latest checkpoint: {cp.get('sequence_number')}")
+    print(f"Latest checkpoint: {cp['data']['sequence_number']}")
 
     targets = json.loads(await client.list_targets(status="open", limit=5))
-    print(f"Open targets: {len(targets)}")
+    print(f"Open targets: {len(targets.get('targets', []))}")
 
 
 def main():

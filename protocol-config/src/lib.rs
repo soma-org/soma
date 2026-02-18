@@ -91,7 +91,7 @@ impl Chain {
         match self {
             Chain::Mainnet => "mainnet",
             Chain::Testnet => "testnet",
-            Chain::Unknown => "unknown",
+            Chain::Unknown => "localnet",
         }
     }
 }

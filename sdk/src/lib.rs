@@ -170,6 +170,12 @@ impl SomaClient {
         client.get_chain_identifier().await
     }
 
+    /// Get the human-readable chain name (e.g. "mainnet", "testnet", "localnet")
+    pub async fn get_chain_name(&self) -> Result<String, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_chain_name().await
+    }
+
     /// Get the server version from the network
     pub async fn get_server_version(&self) -> Result<String, tonic::Status> {
         let mut client = self.inner.write().await;

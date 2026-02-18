@@ -355,6 +355,10 @@ pub enum SomaCommand {
         /// Set the number of validators in the network.
         #[clap(long)]
         committee_size: Option<usize>,
+
+        /// Log level for CLI output (trace, debug, info, warn, error).
+        #[clap(long, default_value = "info")]
+        log_level: String,
     },
 
     #[clap(name = "network")]
@@ -400,6 +404,15 @@ pub enum SomaCommand {
 }
 
 impl SomaCommand {
+    pub fn log_level(&self) -> tracing::Level {
+        match self {
+            SomaCommand::Start { log_level, .. } => {
+                log_level.parse().unwrap_or(tracing::Level::INFO)
+            }
+            _ => tracing::Level::ERROR,
+        }
+    }
+
     pub async fn execute(self) -> Result<(), anyhow::Error> {
         match self {
             // =================================================================
@@ -603,6 +616,7 @@ impl SomaCommand {
                 no_full_node,
                 epoch_duration_ms,
                 committee_size,
+                log_level: _,
             } => {
                 start(
                     config_dir.clone(),

@@ -209,7 +209,7 @@ pub struct SomaNode {
 
 impl SomaNode {
     pub async fn start(config: NodeConfig) -> Result<Arc<SomaNode>> {
-        Self::start_async(config, ServerVersion::new("soma-node", "unknown")).await
+        Self::start_async(config, ServerVersion::new("soma-node", env!("CARGO_PKG_VERSION"))).await
     }
 
     pub async fn start_async(

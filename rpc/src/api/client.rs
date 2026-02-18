@@ -313,6 +313,15 @@ impl Client {
             .ok_or_else(|| tonic::Status::not_found("chain_id not found in service info response"))
     }
 
+    pub async fn get_chain_name(&mut self) -> Result<String> {
+        let request = crate::proto::soma::GetServiceInfoRequest::default();
+        let response = self.0.ledger_client().get_service_info(request).await?.into_inner();
+
+        response
+            .chain
+            .ok_or_else(|| tonic::Status::not_found("chain not found in service info response"))
+    }
+
     pub async fn get_server_version(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self.0.ledger_client().get_service_info(request).await?.into_inner();

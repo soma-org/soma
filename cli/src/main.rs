@@ -5,7 +5,7 @@ use clap::*;
 use cli::soma_commands::SomaCommand;
 use colored::Colorize;
 
-use tracing::{Level, debug};
+use tracing::debug;
 
 // Define the `GIT_REVISION` and `VERSION` consts
 bin_version::bin_version!();
@@ -43,8 +43,9 @@ async fn main() {
     colored::control::set_virtual_terminal(true).unwrap();
 
     let args = Args::parse();
+    let log_level = args.command.log_level();
     tracing_subscriber::fmt()
-        .with_max_level(Level::ERROR)
+        .with_max_level(log_level)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     debug!("Soma CLI version: {VERSION}");

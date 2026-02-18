@@ -132,12 +132,12 @@ impl PySomaClient {
         })
     }
 
-    /// Get the chain identifier string.
+    /// Get the human-readable chain name (e.g. "mainnet", "testnet", "localnet").
     fn get_chain_identifier<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let chain_id = client.get_chain_identifier().await.map_err(to_py_err)?;
-            Ok(chain_id)
+            let chain_name = client.get_chain_name().await.map_err(to_py_err)?;
+            Ok(chain_name)
         })
     }
 
