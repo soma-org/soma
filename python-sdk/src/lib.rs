@@ -1391,60 +1391,6 @@ impl PyWalletContext {
 }
 
 // ---------------------------------------------------------------------------
-// Faucet
-// ---------------------------------------------------------------------------
-
-/// Request test tokens from a faucet server.
-///
-/// Args:
-///     address: The recipient address as a hex string.
-///     url: The faucet server URL (default: http://127.0.0.1:9123/v2/gas).
-///
-/// Returns:
-///     JSON string with the faucet response (status, coins_sent).
-#[pyfunction]
-#[pyo3(signature = (address, url=None))]
-fn request_faucet<'py>(
-    py: Python<'py>,
-    address: String,
-    url: Option<String>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let addr = parse_address(&address)?;
-    let faucet_url = url.unwrap_or_else(|| "http://127.0.0.1:9123/v2/gas".to_string());
-    pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        let body = serde_json::json!({
-            "FixedAmountRequest": { "recipient": addr.to_string() }
-        });
-
-        let resp = reqwest::Client::new()
-            .post(&faucet_url)
-            .json(&body)
-            .send()
-            .await
-            .map_err(to_py_err)?;
-
-        let status_code = resp.status().as_u16();
-
-        if status_code == 429 {
-            return Err(to_py_err("Faucet rate limit exceeded (429). Please wait and try again."));
-        }
-        if status_code == 503 {
-            return Err(to_py_err("Faucet service is temporarily unavailable (503)."));
-        }
-
-        let text = resp.text().await.map_err(to_py_err)?;
-
-        if status_code >= 400 {
-            return Err(to_py_err(format!(
-                "Faucet request failed with status {status_code}: {text}"
-            )));
-        }
-
-        Ok(text)
-    })
-}
-
-// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
 
@@ -1453,6 +1399,5 @@ fn request_faucet<'py>(
 fn soma_sdk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySomaClient>()?;
     m.add_class::<PyWalletContext>()?;
-    m.add_function(wrap_pyfunction!(request_faucet, m)?)?;
     Ok(())
 }

@@ -8421,7 +8421,7 @@ dependencies = [
 
 [[package]]
 name = "soma-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bcs",
@@ -8429,7 +8429,6 @@ dependencies = [
  "hex",
  "pyo3",
  "pyo3-async-runtimes",
- "reqwest",
  "rpc",
  "sdk",
  "serde",

@@ -11,14 +11,28 @@ import asyncio
 import json
 import os
 import sys
+import urllib.request
 
-from soma_sdk import SomaClient, WalletContext, request_faucet
+from soma_sdk import SomaClient, WalletContext
 
 RPC_URL = os.environ.get("SOMA_RPC_URL", "http://localhost:9000")
+FAUCET_URL = os.environ.get("SOMA_FAUCET_URL", "http://127.0.0.1:9123/v2/gas")
 WALLET_CONFIG = os.environ.get(
     "SOMA_WALLET_CONFIG",
     os.path.expanduser("~/.soma/client.yaml"),
 )
+
+
+def request_faucet(address: str, url: str = FAUCET_URL) -> dict:
+    """Request tokens from a faucet server (simple HTTP POST)."""
+    body = json.dumps({"FixedAmountRequest": {"recipient": address}}).encode()
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())
 
 
 async def run():
@@ -31,8 +45,8 @@ async def run():
     print(f"Recipient address: {address}")
 
     # Request tokens from the local faucet.
-    print("Requesting tokens from faucet...")
-    resp = json.loads(await request_faucet(address))
+    print(f"Requesting tokens from faucet at {FAUCET_URL}...")
+    resp = request_faucet(address)
     status = resp.get("status")
     if status == "Success":
         coins = resp.get("coins_sent", [])
