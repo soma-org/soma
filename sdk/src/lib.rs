@@ -190,7 +190,12 @@ impl SomaClient {
         let server_version =
             self.get_server_version().await.map_err(|e| crate::error::Error::RpcError(e.into()))?;
         let client_version = env!("CARGO_PKG_VERSION");
-        if server_version != client_version {
+        // Server may report version as "soma-node/1.0.0" — strip the prefix for comparison
+        let server_version_normalized = server_version
+            .rsplit('/')
+            .next()
+            .unwrap_or(&server_version);
+        if server_version_normalized != client_version {
             return Err(crate::error::Error::ServerVersionMismatch {
                 client_version: client_version.to_string(),
                 server_version,

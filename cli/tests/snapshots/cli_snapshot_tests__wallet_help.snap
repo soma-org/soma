@@ -1,0 +1,20 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Manage wallet addresses and keys
+
+Usage: soma wallet [OPTIONS] <COMMAND>
+
+Commands:
+  active  Show the current active address
+  list    List all addresses managed by the wallet
+  new     Generate a new address and keypair
+  remove  Remove an address from the wallet
+  switch  Switch the active address
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --json     
+  -h, --help     Print help
+  -V, --version  Print version

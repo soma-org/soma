@@ -1,0 +1,12 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Show network connection status, version info, and active address
+
+Usage: soma status [OPTIONS]
+
+Options:
+      --json     
+  -h, --help     Print help
+  -V, --version  Print version

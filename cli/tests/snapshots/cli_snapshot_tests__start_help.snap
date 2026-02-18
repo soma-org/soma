@@ -1,0 +1,55 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Start a local Soma network for development and testing
+
+Launches a local validator, fullnode, and optionally a faucet.
+State is persisted in ~/.soma/ by default, or use --force-regenesis
+for an ephemeral network that starts fresh each time.
+
+Usage: soma start [OPTIONS]
+
+Options:
+      --network.config <CONFIG_DIR>
+          Config directory that will be used to store network config, node db, keystore
+
+      --force-regenesis
+          A new genesis is created each time this flag is set, and state is not persisted between runs
+
+      --fullnode-rpc-port <FULLNODE_RPC_PORT>
+          Port to start the Fullnode RPC server on. Default port is 9000
+          
+          [default: 9000]
+
+      --epoch-duration-ms <EPOCH_DURATION_MS>
+          Set the epoch duration. Can only be used when `--force-regenesis` flag is passed
+
+      --data-ingestion-dir <DATA_INGESTION_DIR>
+          Directory for data ingestion
+
+      --no-full-node
+          Start the network without a fullnode
+
+      --committee-size <COMMITTEE_SIZE>
+          Set the number of validators in the network
+
+      --log-level <LOG_LEVEL>
+          Log level for CLI output (trace, debug, info, warn, error)
+          
+          [default: info]
+
+      --with-faucet[=<FAUCET_HOST_PORT>]
+          Start a faucet server alongside the local network. Optionally specify host:port (default: 0.0.0.0:9123)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+EXAMPLES:
+    soma start                           # Persistent local network
+    soma start --force-regenesis         # Fresh ephemeral network
+    soma start --with-faucet             # With faucet at 0.0.0.0:9123
+    soma start --force-regenesis --with-faucet --epoch-duration-ms 10000

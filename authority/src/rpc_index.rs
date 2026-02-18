@@ -3,7 +3,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -891,7 +891,11 @@ impl IndexStoreTables {
     }
 
     /// Index a single executed transaction's object changes immediately after execution.
-    /// This mirrors the checkpoint-based `index_objects` but for a single transaction.
+    ///
+    /// Updates the owner, target, and challenge indexes for real-time queries.
+    /// Balance updates are intentionally omitted here — they are applied only during
+    /// checkpoint-based indexing (`index_objects`) to avoid double-counting via the
+    /// additive RocksDB merge operator.
     fn index_executed_tx_objects(
         &self,
         effects: &TransactionEffects,
@@ -899,7 +903,6 @@ impl IndexStoreTables {
         input_objects: &BTreeMap<ObjectID, Object>,
     ) -> Result<(), StorageError> {
         let mut batch = self.owner.batch();
-        let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
 
         let modified_at_versions: HashMap<ObjectID, Version> =
             effects.modified_at_versions().into_iter().collect();
@@ -908,16 +911,9 @@ impl IndexStoreTables {
         for (id, _, _) in effects.deleted().into_iter() {
             if let Some(old_version) = modified_at_versions.get(&id) {
                 if let Some(old_object) = input_objects.get(&id) {
-                    // Verify version matches what we expect
                     if old_object.version() == *old_version {
                         match old_object.owner() {
-                            Owner::AddressOwner(owner) => {
-                                Self::track_coin_balance_change(
-                                    old_object,
-                                    owner,
-                                    true, // is_removal
-                                    &mut balance_changes,
-                                )?;
+                            Owner::AddressOwner(_) => {
                                 let owner_key = OwnerIndexKey::from_object(old_object);
                                 batch.delete_batch(&self.owner, [owner_key])?;
                             }
@@ -1011,7 +1007,6 @@ impl IndexStoreTables {
                 if let Some(old_version) = modified_at_versions.get(id) {
                     if let Some(old_object) = input_objects.get(id) {
                         if old_object.version() == *old_version {
-                            // Check if owner changed
                             let old_owner_changed = match old_object.owner() {
                                 Owner::AddressOwner(old_addr) => {
                                     !matches!(owner, Owner::AddressOwner(new_addr) if *old_addr == new_addr)
@@ -1020,13 +1015,7 @@ impl IndexStoreTables {
                             };
 
                             if old_owner_changed {
-                                if let Owner::AddressOwner(old_owner) = old_object.owner() {
-                                    Self::track_coin_balance_change(
-                                        old_object,
-                                        old_owner,
-                                        true,
-                                        &mut balance_changes,
-                                    )?;
+                                if let Owner::AddressOwner(_) = old_object.owner() {
                                     let owner_key = OwnerIndexKey::from_object(old_object);
                                     batch.delete_batch(&self.owner, [owner_key])?;
                                 }
@@ -1038,14 +1027,8 @@ impl IndexStoreTables {
 
             // Handle new/updated owner entry
             match owner {
-                Owner::AddressOwner(addr) => {
+                Owner::AddressOwner(_) => {
                     if let Some(new_object) = written.get(id) {
-                        Self::track_coin_balance_change(
-                            new_object,
-                            &addr,
-                            false, // not a removal
-                            &mut balance_changes,
-                        )?;
                         let owner_key = OwnerIndexKey::from_object(new_object);
                         let owner_info = OwnerIndexInfo::new(new_object);
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
@@ -1055,8 +1038,6 @@ impl IndexStoreTables {
             }
         }
 
-        // Apply balance changes via merge operator
-        batch.partial_merge_batch(&self.balance, balance_changes)?;
         batch.write()?;
 
         Ok(())

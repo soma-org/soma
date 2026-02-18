@@ -213,6 +213,15 @@ impl ModelCommand {
                     parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
                 let wt_commitment = parse_hex_digest_32(&weights_commitment, "weights-commitment")?;
 
+                if commission_rate > 5000 {
+                    eprintln!(
+                        "  {} Commission rate {} ({:.1}%) is unusually high.",
+                        "Warning:".yellow().bold(),
+                        commission_rate,
+                        commission_rate as f64 / 100.0,
+                    );
+                }
+
                 let kind = TransactionKind::CommitModel(CommitModelArgs {
                     model_id,
                     weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
@@ -223,7 +232,11 @@ impl ModelCommand {
                     staking_pool_id,
                 });
 
-                execute_tx(context, sender, kind, tx_args).await
+                let result = execute_tx(context, sender, kind, tx_args).await?;
+                Ok(ModelCommandResponse::CommitSuccess {
+                    model_id,
+                    inner: Box::new(result),
+                })
             }
 
             ModelCommand::Reveal {
@@ -249,7 +262,11 @@ impl ModelCommand {
                     embedding: embedding_tensor,
                 });
 
-                execute_tx(context, sender, kind, tx_args).await
+                let result = execute_tx(context, sender, kind, tx_args).await?;
+                Ok(ModelCommandResponse::RevealSuccess {
+                    model_id,
+                    inner: Box::new(result),
+                })
             }
 
             ModelCommand::UpdateCommit {
@@ -569,6 +586,8 @@ fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
 #[serde(untagged)]
 pub enum ModelCommandResponse {
     Transaction(TransactionResponse),
+    CommitSuccess { model_id: ObjectID, inner: Box<ModelCommandResponse> },
+    RevealSuccess { model_id: ObjectID, inner: Box<ModelCommandResponse> },
     SerializedTransaction { serialized_unsigned_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
@@ -601,6 +620,36 @@ impl Display for ModelCommandResponse {
         match self {
             ModelCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
+            }
+            ModelCommandResponse::CommitSuccess { model_id, inner } => {
+                write!(f, "{}", inner)?;
+                writeln!(f)?;
+                writeln!(f, "  {}", "Next step: Reveal your model weights.".cyan().bold())?;
+                writeln!(f)?;
+                writeln!(f, "  In the {} epoch, run:", "next".bold())?;
+                writeln!(
+                    f,
+                    "  {} \\",
+                    "soma model reveal".bold()
+                )?;
+                writeln!(f, "    --model-id {} \\", model_id)?;
+                writeln!(f, "    --weights-url <url> \\")?;
+                writeln!(f, "    --weights-checksum <hex> \\")?;
+                writeln!(f, "    --weights-size <bytes> \\")?;
+                writeln!(f, "    --decryption-key <hex> \\")?;
+                writeln!(f, "    --embedding <f32,f32,...>")?;
+                Ok(())
+            }
+            ModelCommandResponse::RevealSuccess { model_id, inner } => {
+                write!(f, "{}", inner)?;
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "  {}",
+                    "Your model is now registered and accepting stakes.".green().bold()
+                )?;
+                writeln!(f, "  View it: {} --model-id {}", "soma model info".bold(), model_id)?;
+                Ok(())
             }
             ModelCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;

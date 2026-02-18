@@ -1,0 +1,24 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Manage models (commit, reveal, update, deactivate, query)
+
+Usage: soma model [OPTIONS] <COMMAND>
+
+Commands:
+  commit               Commit a new model (phase 1 of commit-reveal)
+  reveal               Reveal model weights (phase 2 of commit-reveal)
+  update-commit        Commit updated weights for an active model
+  update-reveal        Reveal updated weights for an active model
+  deactivate           Deactivate a model (owner only)
+  info                 Display model information
+  list                 List all registered models
+  set-commission-rate  Set commission rate for the next epoch (owner only)
+  download             Download model weights from the validator network
+  help                 Print this message or the help of the given subcommand(s)
+
+Options:
+      --json     
+  -h, --help     Print help
+  -V, --version  Print version

@@ -88,7 +88,11 @@ pub enum SomaCommand {
     // COMMON USER ACTIONS (Top-level for convenience)
     // =========================================================================
     /// Check SOMA balance for an address
-    #[clap(name = "balance")]
+    #[clap(name = "balance", after_help = "\
+EXAMPLES:
+    soma balance
+    soma balance 0x1234...5678
+    soma balance --with-coins")]
     Balance {
         /// Address to check (defaults to active address)
         address: Option<KeyIdentity>,
@@ -100,7 +104,10 @@ pub enum SomaCommand {
     },
 
     /// Send SOMA to a recipient
-    #[clap(name = "send")]
+    #[clap(name = "send", after_help = "\
+EXAMPLES:
+    soma send --to 0x1234...5678 --amount 1000000000
+    soma send --to my-alias --amount 500000000 --coin 0xABCD...")]
     Send {
         /// Recipient address or alias
         #[clap(long)]
@@ -181,6 +188,13 @@ pub enum SomaCommand {
         staked_soma_id: ObjectID,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
+        #[clap(long, global = true)]
+        json: bool,
+    },
+
+    /// Show network connection status, version info, and active address
+    #[clap(name = "status")]
+    Status {
         #[clap(long, global = true)]
         json: bool,
     },
@@ -320,12 +334,17 @@ pub enum SomaCommand {
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a local network in two modes: saving state between re-runs and not saving state
-    /// between re-runs. Please use (--help) to see the full description.
+    /// Start a local Soma network for development and testing
     ///
-    /// This is for development and testing. To run a single validator node
-    /// that connects to an existing network, use `soma validator start`.
-    #[clap(name = "start", verbatim_doc_comment)]
+    /// Launches a local validator, fullnode, and optionally a faucet.
+    /// State is persisted in ~/.soma/ by default, or use --force-regenesis
+    /// for an ephemeral network that starts fresh each time.
+    #[clap(name = "start", verbatim_doc_comment, after_help = "\
+EXAMPLES:
+    soma start                           # Persistent local network
+    soma start --force-regenesis         # Fresh ephemeral network
+    soma start --with-faucet             # With faucet at 0.0.0.0:9123
+    soma start --force-regenesis --with-faucet --epoch-duration-ms 10000")]
     Start {
         /// Config directory that will be used to store network config, node db, keystore.
         #[clap(long = "network.config")]
@@ -432,7 +451,7 @@ impl SomaCommand {
             SomaCommand::Balance { address, with_coins, json } => {
                 let context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::balance::execute(&context, address, with_coins).await?;
-                result.print(!json);
+                result.print(json);
                 Ok(())
             }
 
@@ -440,7 +459,10 @@ impl SomaCommand {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
                     commands::send::execute(&mut context, to, amount, coin, tx_args).await?;
-                result.print(!json);
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
                 Ok(())
             }
 
@@ -448,7 +470,10 @@ impl SomaCommand {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
                     commands::transfer::execute(&mut context, to, object_id, gas, tx_args).await?;
-                result.print(!json);
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
                 Ok(())
             }
 
@@ -457,7 +482,10 @@ impl SomaCommand {
                 let result =
                     commands::pay::execute(&mut context, recipients, amounts, coins, tx_args)
                         .await?;
-                result.print(!json);
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
                 Ok(())
             }
 
@@ -472,7 +500,10 @@ impl SomaCommand {
                     tx_args,
                 )
                 .await?;
-                result.print(!json);
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
                 Ok(())
             }
 
@@ -480,7 +511,93 @@ impl SomaCommand {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
                     commands::stake::execute_unstake(&mut context, staked_soma_id, tx_args).await?;
-                result.print(!json);
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Status { json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let active_address = context.active_address().ok();
+                let active_env = context.config.active_env.clone();
+                let rpc_url = context
+                    .config
+                    .get_active_env()
+                    .map(|e| e.rpc.clone())
+                    .unwrap_or_default();
+
+                let (server_version, chain_id, epoch, balance) =
+                    match context.get_client().await {
+                        Ok(client) => {
+                            let chain_id = client.get_chain_identifier().await.ok();
+                            let server_version = client.get_server_version().await.ok();
+                            let epoch = client
+                                .get_latest_system_state()
+                                .await
+                                .ok()
+                                .map(|s| s.epoch);
+                            let balance = if let Some(addr) = &active_address {
+                                client.get_balance(addr).await.ok()
+                            } else {
+                                None
+                            };
+                            (server_version, chain_id, epoch, balance)
+                        }
+                        Err(_) => (None, None, None, None),
+                    };
+
+                if json {
+                    let output = serde_json::json!({
+                        "network": active_env,
+                        "rpc_url": rpc_url,
+                        "server_version": server_version,
+                        "chain_id": chain_id,
+                        "epoch": epoch,
+                        "active_address": active_address.map(|a| a.to_string()),
+                        "balance": balance,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+                } else {
+                    use tabled::{
+                        builder::Builder as TableBuilder,
+                        settings::{
+                            Panel as TablePanel, Style as TableStyle,
+                            style::HorizontalLine,
+                        },
+                    };
+
+                    let mut builder = TableBuilder::default();
+                    builder.push_record([
+                        "Network",
+                        &active_env.unwrap_or_else(|| "none".to_string()),
+                    ]);
+                    builder.push_record(["RPC URL", &rpc_url]);
+                    if let Some(ref ver) = server_version {
+                        builder.push_record(["Server Version", ver]);
+                    }
+                    if let Some(ref cid) = chain_id {
+                        builder.push_record(["Chain ID", cid]);
+                    }
+                    if let Some(e) = epoch {
+                        builder.push_record(["Current Epoch", &e.to_string()]);
+                    }
+                    if let Some(addr) = active_address {
+                        builder.push_record(["Active Address", &addr.to_string()]);
+                    }
+                    if let Some(bal) = balance {
+                        let soma = crate::response::format_soma_public(bal as u128);
+                        builder.push_record(["Balance", &soma]);
+                    }
+
+                    let mut table = builder.build();
+                    table.with(TableStyle::rounded());
+                    table.with(TablePanel::header("Soma Network Status"));
+                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+                    table.with(tabled::settings::style::BorderSpanCorrection);
+                    println!("{}", table);
+                }
                 Ok(())
             }
 
@@ -490,14 +607,14 @@ impl SomaCommand {
             SomaCommand::Objects { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::objects::execute(&mut context, cmd).await?;
-                result.print(!json);
+                result.print(json);
                 Ok(())
             }
 
             SomaCommand::Tx { digest, json } => {
                 let context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::tx::execute(&context, digest).await?;
-                result.print(!json);
+                result.print(json);
                 Ok(())
             }
 
@@ -507,14 +624,14 @@ impl SomaCommand {
             SomaCommand::Wallet { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::wallet::execute(&mut context, cmd).await?;
-                result.print(!json);
+                result.print(json);
                 Ok(())
             }
 
             SomaCommand::Env { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::env::execute(&mut context, cmd).await?;
-                result.print(!json);
+                result.print(json);
                 Ok(())
             }
 
@@ -529,7 +646,7 @@ impl SomaCommand {
                     {
                         eprintln!("{}", format!("[warning] {e}").yellow().bold());
                     }
-                    cmd.execute(&mut context).await?.print(!json);
+                    cmd.execute(&mut context).await?.print(json);
                 } else {
                     let mut app: Command = SomaCommand::command();
                     app.build();
@@ -540,13 +657,13 @@ impl SomaCommand {
 
             SomaCommand::Model { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(!json);
+                cmd.execute(&mut context).await?.print(json);
                 Ok(())
             }
 
             SomaCommand::Target { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(!json);
+                cmd.execute(&mut context).await?.print(json);
                 Ok(())
             }
 
@@ -558,7 +675,7 @@ impl SomaCommand {
 
             SomaCommand::Submit { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(!json);
+                cmd.execute(&mut context).await?.print(json);
                 Ok(())
             }
 
@@ -586,7 +703,7 @@ impl SomaCommand {
                     {
                         eprintln!("{}", format!("[warning] {e}").yellow().bold());
                     }
-                    cmd.execute(&mut context).await?.print(!json);
+                    cmd.execute(&mut context).await?.print(json);
                 } else {
                     let mut app: Command = SomaCommand::command();
                     app.build();
@@ -672,7 +789,7 @@ impl SomaCommand {
                     keystore_path.unwrap_or(soma_config_dir()?.join(SOMA_KEYSTORE_FILENAME));
                 let mut keystore =
                     Keystore::from(FileBasedKeystore::load_or_create(&keystore_path)?);
-                cmd.execute(&mut keystore).await?.print(!json);
+                cmd.execute(&mut keystore).await?.print(json);
                 Ok(())
             }
         }
@@ -719,7 +836,6 @@ async fn start(
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
         let genesis_config = if with_faucet.is_some() {
-            info!("Adding faucet account to genesis config...");
             GenesisConfig::for_local_testing().add_faucet_account()
         } else {
             GenesisConfig::for_local_testing()
@@ -823,14 +939,29 @@ async fn start(
             .with_fullnode_rpc_config(rpc_config);
     }
 
+    let num_validators = committee_size.unwrap_or(1);
+
+    // -- Build & launch -------------------------------------------------------
+    eprintln!();
+    eprintln!("  {}", "Soma Local Network".bold());
+    eprintln!("  {}", "═".repeat(49));
+    eprintln!();
+    eprint!("  Generating genesis...                          ");
     let mut swarm = swarm_builder.build();
+    eprintln!("{}", "done".green());
+
+    eprint!("  Starting validators ({num_validators})...                    ");
     swarm.launch().await?;
+    eprintln!("{}", "done".green());
+
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-    info!("Cluster started");
 
     let fullnode_rpc_url =
         socket_addr_to_url(fullnode_rpc_address)?.to_string().trim_end_matches("/").to_string();
-    info!("Fullnode RPC URL: {fullnode_rpc_url}");
+
+    if !no_full_node {
+        eprintln!("  Starting fullnode...                           {}", "done".green());
+    }
 
     if config_dir.join(SOMA_CLIENT_CONFIG).exists() {
         let _ = update_wallet_config_rpc(config_dir.clone(), fullnode_rpc_url.clone())?;
@@ -840,9 +971,12 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
+    // -- Faucet ---------------------------------------------------------------
     // Faucet startup logic derived from MystenLabs/sui (Apache-2.0)
     // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/sui_commands.rs
+    let mut faucet_url: Option<String> = None;
     if let Some(input) = with_faucet {
+        eprint!("  Starting faucet...                             ");
         let (host, port) = parse_faucet_host_port(&input)?;
 
         // Extract the last account key as the faucet key (added by add_faucet_account)
@@ -898,7 +1032,7 @@ async fn start(
 
         let faucet_config = faucet::faucet_config::FaucetConfig {
             port,
-            host_ip: host,
+            host_ip: host.clone(),
             ..Default::default()
         };
 
@@ -920,20 +1054,66 @@ async fn start(
             }
         });
 
-        info!("Faucet server started on {input}");
+        let display_host =
+            if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+        faucet_url = Some(format!("http://{display_host}:{port}/gas"));
+        eprintln!("{}", "done".green());
     }
 
+    // -- Network ready banner -------------------------------------------------
+    let epoch_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
+    let state_dir = config_dir.display().to_string();
+    let persistence = if force_regenesis { "ephemeral" } else { "enabled" };
+
+    eprintln!();
+    eprintln!("  {} {}", "Network ready.".green().bold(), "");
+    eprintln!();
+    eprintln!(
+        "  {}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}",
+        "┌─────────────────────────────────────────────────┐".dimmed(),
+        "│".dimmed(), "RPC URL", format!("{:<30} │", fullnode_rpc_url),
+        "│".dimmed(), "Faucet", format!("{:<30} │", faucet_url.as_deref().unwrap_or("disabled")),
+        "│".dimmed(), "Epoch", format!("{:<30} │", format!("{}s", epoch_ms / 1000)),
+        "│".dimmed(), "Persistence", format!("{:<30} │", persistence),
+        "└─────────────────────────────────────────────────┘".dimmed(),
+    );
+    eprintln!();
+    eprintln!("  State dir: {}", state_dir.dimmed());
+    eprintln!();
+    eprintln!("  Press {} to stop the network.", "Ctrl+C".bold());
+
+    // -- Main loop ------------------------------------------------------------
     let mut interval = interval(Duration::from_secs(3));
 
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                info!("Received Ctrl+C, shutting down...");
                 break;
             }
             _ = interval.tick() => {}
         }
     }
+
+    // -- Graceful shutdown ----------------------------------------------------
+    eprintln!();
+    eprintln!("  {}", "Shutting down...".yellow());
+    for node in swarm.validator_nodes() {
+        node.stop();
+    }
+    eprintln!("  Stopping validators...                         {}", "done".green());
+    for node in swarm.fullnodes() {
+        node.stop();
+    }
+    if !no_full_node {
+        eprintln!("  Stopping fullnode...                           {}", "done".green());
+    }
+    if force_regenesis {
+        eprintln!("  Ephemeral state discarded.");
+    } else {
+        eprintln!("  Network state saved to {}", state_dir.dimmed());
+    }
+    eprintln!("  {}", "Done.".green().bold());
+
     Ok(())
 }
 

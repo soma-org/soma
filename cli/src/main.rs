@@ -10,17 +10,54 @@ use tracing::debug;
 // Define the `GIT_REVISION` and `VERSION` consts
 bin_version::bin_version!();
 
-macro_rules! exit_main {
-    ($result:expr) => {
-        match $result {
-            Ok(_) => (),
-            Err(err) => {
-                let err = format!("{:?}", err);
-                println!("{}", err.bold().red());
-                std::process::exit(1);
-            }
-        }
-    };
+/// Format an anyhow error chain for user-friendly display.
+///
+/// - Shows the root cause prominently
+/// - Strips the verbose `Debug` chain in favor of a clean message
+/// - Adds contextual hints for common error patterns
+fn format_error(err: &anyhow::Error) -> String {
+    let root = err.root_cause().to_string();
+    let display = err.to_string();
+
+    // Use the shorter representation when the root cause IS the full chain
+    let message = if display == root { display } else { format!("{display}") };
+
+    let mut output = format!("{} {}", "Error:".red().bold(), message);
+
+    // Append hint for common error patterns
+    if let Some(hint) = error_hint(&message) {
+        output.push_str(&format!("\n\n  {} {}", "Hint:".yellow().bold(), hint));
+    }
+
+    output
+}
+
+/// Return a contextual hint for common error messages.
+fn error_hint(msg: &str) -> Option<&'static str> {
+    let msg_lower = msg.to_lowercase();
+
+    if msg_lower.contains("commission rate cannot exceed") {
+        return Some("Commission rates are in basis points. Use 500 for 5%.");
+    }
+    if msg_lower.contains("no soma config found") || msg_lower.contains("cannot open soma") {
+        return Some("Run `soma start` to launch a local network first.");
+    }
+    if msg_lower.contains("connection refused") || msg_lower.contains("status: unavailable") {
+        return Some("Is the network running? Try `soma start` to launch a local network.");
+    }
+    if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
+        return Some("Use `soma client faucet` to request test tokens.");
+    }
+    if msg_lower.contains("force-regenesis") {
+        return Some("Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.");
+    }
+    if msg_lower.contains("not found in active, pending, or inactive") {
+        return Some("Check the model ID with `soma model list`.");
+    }
+    if msg_lower.contains("must be exactly 32 bytes") {
+        return Some("Hex values should be 64 hex characters (32 bytes). Include the 0x prefix or omit it.");
+    }
+    None
 }
 
 #[derive(Parser)]
@@ -49,5 +86,22 @@ async fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     debug!("Soma CLI version: {VERSION}");
-    exit_main!(args.command.execute().await);
+
+    if let Err(err) = args.command.execute().await {
+        eprintln!("{}", format_error(&err));
+        std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_hints() {
+        assert!(error_hint("Commission rate cannot exceed 10000").is_some());
+        assert!(error_hint("Connection refused (os error 61)").is_some());
+        assert!(error_hint("No soma config found in `/Users/...`").is_some());
+        assert!(error_hint("some random error").is_none());
+    }
 }

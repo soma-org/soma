@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use types::base::SomaAddress;
 
-pub const DEFAULT_FAUCET_URL: &str = "http://127.0.0.1:9123/v2/gas";
+pub const DEFAULT_FAUCET_URL: &str = "http://127.0.0.1:9123/gas";
 
 #[derive(Serialize)]
 enum FaucetRequest {
@@ -72,7 +72,7 @@ mod tests {
     #[tokio::test]
     async fn test_sdk_faucet_bad_url() {
         let address = SomaAddress::ZERO;
-        let result = request_from_faucet(address, "http://127.0.0.1:1/v2/gas").await;
+        let result = request_from_faucet(address, "http://127.0.0.1:1/gas").await;
         assert!(result.is_err(), "Expected connection error for bad URL");
     }
 }

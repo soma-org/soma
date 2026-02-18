@@ -38,6 +38,11 @@ csv = "1.4.0"
 serde_yaml = "0.8.26"
 inquire = "0.6.2"
 
+[dev-dependencies]
+insta.workspace = true
+assert_cmd.workspace = true
+predicates.workspace = true
+
 [lints]
 workspace = true
 

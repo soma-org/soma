@@ -1,0 +1,21 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Check SOMA balance for an address
+
+Usage: soma balance [OPTIONS] [ADDRESS]
+
+Arguments:
+  [ADDRESS]  Address to check (defaults to active address)
+
+Options:
+      --with-coins  Show individual coin details
+      --json        
+  -h, --help        Print help
+  -V, --version     Print version
+
+EXAMPLES:
+    soma balance
+    soma balance 0x1234...5678
+    soma balance --with-coins

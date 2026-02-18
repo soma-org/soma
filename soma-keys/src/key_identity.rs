@@ -17,6 +17,9 @@ impl FromStr for KeyIdentity {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.starts_with("0x") {
             Ok(KeyIdentity::Address(SomaAddress::from_str(s)?))
+        } else if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+            // Accept bare hex addresses without 0x prefix
+            Ok(KeyIdentity::Address(SomaAddress::from_str(&format!("0x{s}"))?))
         } else {
             Ok(KeyIdentity::Alias(s.to_string()))
         }

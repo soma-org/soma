@@ -333,9 +333,11 @@ impl TransactionResponse {
 
             for change in &self.balance_changes {
                 let amount_str = if change.amount >= 0 {
-                    format!("+{} SHANNONS", change.amount).green().to_string()
+                    format!("+{}", format_soma(change.amount as u128)).green().to_string()
                 } else {
-                    format!("{} SHANNONS", change.amount).red().to_string()
+                    format!("-{}", format_soma(change.amount.unsigned_abs() as u128))
+                        .red()
+                        .to_string()
                 };
                 builder.push_record([change.address.to_string(), amount_str]);
             }
@@ -438,6 +440,14 @@ impl ClientCommandResponse {
             }
         } else {
             print!("{}", self);
+        }
+    }
+
+    /// Returns true if this response contains a failed on-chain transaction.
+    pub fn has_failed_transaction(&self) -> bool {
+        match self {
+            ClientCommandResponse::Transaction(tx) => !tx.status.is_success(),
+            _ => false,
         }
     }
 }
@@ -1005,14 +1015,14 @@ impl Display for BalanceOutput {
 }
 
 impl BalanceOutput {
-    pub fn print(&self, pretty: bool) {
-        if pretty {
-            print!("{}", self);
-        } else {
+    pub fn print(&self, json: bool) {
+        if json {
             match serde_json::to_string_pretty(self) {
                 Ok(s) => println!("{}", s),
                 Err(e) => eprintln!("Failed to serialize response: {}", e),
             }
+        } else {
+            print!("{}", self);
         }
     }
 }
@@ -1223,9 +1233,11 @@ impl TransactionQueryResponse {
 
             for change in &self.balance_changes {
                 let amount_str = if change.amount >= 0 {
-                    format!("+{} SHANNONS", change.amount).green().to_string()
+                    format!("+{}", format_soma(change.amount as u128)).green().to_string()
                 } else {
-                    format!("{} SHANNONS", change.amount).red().to_string()
+                    format!("-{}", format_soma(change.amount.unsigned_abs() as u128))
+                        .red()
+                        .to_string()
                 };
                 builder.push_record([change.address.to_string(), amount_str]);
             }
@@ -1326,6 +1338,11 @@ impl Display for ValidatorSummary {
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+
+/// Format a balance in shannons as SOMA with appropriate suffix (public API).
+pub fn format_soma_public(shannons: u128) -> String {
+    format_soma(shannons)
+}
 
 /// Format a balance in shannons as SOMA with appropriate suffix
 fn format_soma(shannons: u128) -> String {

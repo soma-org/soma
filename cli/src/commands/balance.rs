@@ -27,7 +27,15 @@ pub async fn execute(
     request.owner = Some(address.to_string());
     request.object_type = Some(ObjectType::Coin.into());
     request.page_size = Some(1000);
-    request.read_mask = Some(FieldMask::from_paths(["object_id", "version", "digest", "contents"]));
+    request.read_mask = Some(FieldMask::from_paths([
+        "object_id",
+        "version",
+        "digest",
+        "object_type",
+        "owner",
+        "previous_transaction",
+        "contents",
+    ]));
 
     let stream = client.list_owned_objects(request).await;
     tokio::pin!(stream);

@@ -70,6 +70,8 @@ pub async fn execute(
                 "digest",
                 "object_type",
                 "owner",
+                "previous_transaction",
+                "contents",
             ]));
 
             let stream = client.list_owned_objects(request).await;

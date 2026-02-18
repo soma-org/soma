@@ -252,6 +252,8 @@ axum-extra = { version = "0.12.5", features = ["query"] }
 
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 insta = { version = "1.42", features = ["yaml"] }
+assert_cmd = "2.0"
+predicates = "3"
 
 pkcs8 = { version = "0.10.2", features = ["std"] }
 rcgen = "0.13"

@@ -26,8 +26,6 @@ pub async fn start_faucet(app_state: Arc<AppState>) -> Result<(), Box<dyn std::e
     let app = Router::new()
         .route("/", get(health))
         .route("/gas", post(request_gas))
-        .route("/v1/gas", post(request_gas))
-        .route("/v2/gas", post(request_gas))
         .layer(cors)
         .with_state(app_state);
 
@@ -121,8 +119,6 @@ mod tests {
         let app = Router::new()
             .route("/", get(health))
             .route("/gas", post(request_gas))
-            .route("/v1/gas", post(request_gas))
-            .route("/v2/gas", post(request_gas))
             .layer(cors)
             .with_state(app_state.clone());
 
@@ -179,27 +175,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_gas_endpoint_v1_and_v2_aliases() {
-        let (port, _state, _cluster) = setup_faucet_server().await;
-
-        let recipient = types::base::SomaAddress::random();
-        let body = serde_json::json!({
-            "FixedAmountRequest": { "recipient": recipient.to_string() }
-        });
-
-        for path in &["/v1/gas", "/v2/gas"] {
-            let resp = reqwest::Client::new()
-                .post(format!("http://127.0.0.1:{port}{path}"))
-                .json(&body)
-                .send()
-                .await
-                .unwrap_or_else(|_| panic!("Request to {path} failed"));
-
-            assert_eq!(resp.status(), 200, "Failed for path {path}");
-        }
-    }
-
-    #[tokio::test]
     async fn test_gas_endpoint_invalid_json() {
         let (port, _state, _cluster) = setup_faucet_server().await;
 
@@ -244,7 +219,7 @@ mod tests {
         let (port, _state, _cluster) = setup_faucet_server().await;
 
         let address = types::base::SomaAddress::random();
-        let url = format!("http://127.0.0.1:{port}/v2/gas");
+        let url = format!("http://127.0.0.1:{port}/gas");
 
         let response = sdk::faucet_client::request_from_faucet(address, &url)
             .await
@@ -269,7 +244,7 @@ mod tests {
     async fn test_sdk_faucet_bad_url() {
         let address = types::base::SomaAddress::random();
         let result =
-            sdk::faucet_client::request_from_faucet(address, "http://127.0.0.1:1/v2/gas").await;
+            sdk::faucet_client::request_from_faucet(address, "http://127.0.0.1:1/gas").await;
         assert!(result.is_err(), "Expected connection error for bad URL");
     }
 }
