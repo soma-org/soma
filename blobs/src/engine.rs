@@ -69,9 +69,15 @@ impl BlobEngine {
         Ok(Self { semaphore, chunk_size, ns_per_byte })
     }
 
+    /// Minimum timeout for any HTTP request, regardless of file size.
+    /// Prevents sub-millisecond timeouts for small files where the per-byte
+    /// calculation would be shorter than a TCP round-trip.
+    const MIN_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
     pub(crate) fn compute_timeout(num_bytes: u64, ns_per_byte: u16) -> Duration {
         let nanos = num_bytes.saturating_mul(ns_per_byte as u64);
-        Duration::from_nanos(nanos)
+        let computed = Duration::from_nanos(nanos);
+        if computed < Self::MIN_REQUEST_TIMEOUT { Self::MIN_REQUEST_TIMEOUT } else { computed }
     }
 
     fn generate_ranges(total_size: u64, chunk_size: u64) -> BlobResult<Vec<Range<usize>>> {
@@ -301,15 +307,24 @@ mod tests {
     };
 
     #[test]
-    fn compute_timeout_scales_linearly() {
+    fn compute_timeout_has_minimum_floor() {
+        // Small files get the minimum timeout, not a sub-millisecond one.
         let d = BlobEngine::compute_timeout(1_000, 40);
-        assert_eq!(d, Duration::from_nanos(40_000));
+        assert_eq!(d, BlobEngine::MIN_REQUEST_TIMEOUT);
 
         let d = BlobEngine::compute_timeout(0, 40);
-        assert_eq!(d, Duration::ZERO);
+        assert_eq!(d, BlobEngine::MIN_REQUEST_TIMEOUT);
 
         let d = BlobEngine::compute_timeout(1, 1);
-        assert_eq!(d, Duration::from_nanos(1));
+        assert_eq!(d, BlobEngine::MIN_REQUEST_TIMEOUT);
+    }
+
+    #[test]
+    fn compute_timeout_scales_above_minimum() {
+        // Large files exceed the minimum and scale linearly.
+        // 1 billion bytes * 50 ns/byte = 50 seconds > 30s minimum
+        let d = BlobEngine::compute_timeout(1_000_000_000, 50);
+        assert_eq!(d, Duration::from_nanos(50_000_000_000));
     }
 
     #[test]

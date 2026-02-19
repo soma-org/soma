@@ -34,11 +34,19 @@ futures.workspace = true
 chrono.workspace = true
 hex.workspace = true
 faucet.workspace = true
+scoring.workspace = true
+runtime.workspace = true
 clap_complete = "4"
 camino = "1.2.2"
 csv = "1.4.0"
 serde_yaml = "0.8.26"
 inquire = "0.6.2"
+
+[features]
+default = []
+cuda = ["runtime/cuda"]
+rocm = ["runtime/rocm"]
+tch = ["runtime/tch"]
 
 [dev-dependencies]
 insta.workspace = true

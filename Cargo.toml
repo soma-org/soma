@@ -26,6 +26,7 @@ members = [
   "protocol-config",
   "protocol-config-macros",
   "faucet",
+  "scoring",
 ]
 
 
@@ -99,6 +100,7 @@ data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
 faucet = { path = "faucet" }
+scoring = { path = "scoring" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }

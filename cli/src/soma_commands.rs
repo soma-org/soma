@@ -382,6 +382,42 @@ EXAMPLES:
     },
 
     // =========================================================================
+    // SERVICES
+    // =========================================================================
+    /// Start the scoring service for computing embeddings and distances
+    ///
+    /// Runs an HTTP server that accepts scoring requests via POST /score.
+    /// A Python mining program can POST data/model URLs and get back
+    /// embeddings and distance scores for on-chain submission.
+    #[clap(name = "score", after_help = "\
+EXAMPLES:
+    soma score
+    soma score --host 127.0.0.1 --port 8080
+    soma score --device wgpu --small-model
+    soma score --data-dir /tmp/soma-data")]
+    Score {
+        /// Host to bind the scoring service to
+        #[clap(long, default_value = "0.0.0.0")]
+        host: String,
+
+        /// Port to listen on
+        #[clap(long, default_value_t = 9124)]
+        port: u16,
+
+        /// Directory for cached blob storage (data and model weights)
+        #[clap(long)]
+        data_dir: Option<PathBuf>,
+
+        /// Use a small model for testing (embedding_dim=16, num_layers=2)
+        #[clap(long)]
+        small_model: bool,
+
+        /// Compute device: cpu, wgpu, cuda, rocm, libtorch
+        #[clap(long, default_value = "cpu")]
+        device: String,
+    },
+
+    // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
     /// Manage validators (register, set gas price, commission)
@@ -533,6 +569,7 @@ impl SomaCommand {
             SomaCommand::Start { log_level, .. } => {
                 log_level.parse().unwrap_or(tracing::Level::INFO)
             }
+            SomaCommand::Score { .. } => tracing::Level::INFO,
             _ => tracing::Level::ERROR,
         }
     }
@@ -763,6 +800,78 @@ impl SomaCommand {
             SomaCommand::Challenge { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 cmd.execute(&mut context).await?.print(json);
+                Ok(())
+            }
+
+            // =================================================================
+            // SERVICES
+            // =================================================================
+            SomaCommand::Score { host, port, data_dir, small_model, device } => {
+                use types::config::node_config::DeviceConfig;
+
+                let device = match device.to_lowercase().as_str() {
+                    "cpu" => DeviceConfig::Cpu,
+                    "wgpu" | "gpu" => DeviceConfig::Wgpu,
+                    "cuda" => DeviceConfig::Cuda,
+                    "rocm" | "amd" => DeviceConfig::Rocm,
+                    "libtorch" | "torch" => DeviceConfig::LibTorch,
+                    other => anyhow::bail!(
+                        "Unknown device '{other}'. Options: cpu, wgpu, cuda, rocm, libtorch"
+                    ),
+                };
+
+                let data_dir = data_dir.unwrap_or_else(|| {
+                    soma_config_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join("scoring-data")
+                });
+                fs::create_dir_all(&data_dir)?;
+
+                let model_config = if small_model {
+                    scoring::model_config_small()
+                } else {
+                    runtime::ModelConfig::new()
+                };
+
+                let engine = std::sync::Arc::new(
+                    scoring::scoring::ScoringEngine::new(&data_dir, model_config, &device)
+                        .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+                );
+
+                const STATUS_WIDTH: usize = 50;
+                eprintln!();
+                eprintln!("  {}", "Soma Scoring Service".bold());
+                eprintln!("  {}", "═".repeat(STATUS_WIDTH));
+                eprintln!();
+
+                let display_host =
+                    if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+                let device_str = device.to_string();
+                let rows: [(&str, &str); 4] = [
+                    ("URL", &format!("http://{display_host}:{port}")),
+                    ("Score endpoint", &format!("POST http://{display_host}:{port}/score")),
+                    ("Device", &device_str),
+                    ("Data dir", &data_dir.display().to_string()),
+                ];
+                let label_w = 16;
+                let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
+                let inner_w = label_w + value_w + 1;
+                eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
+                for (label, value) in &rows {
+                    eprintln!(
+                        "  {}  {:<lw$}{:<vw$}{}",
+                        "│".dimmed(), label, value, "│".dimmed(),
+                        lw = label_w, vw = value_w + 1,
+                    );
+                }
+                eprintln!("  {}", format!("└{}┘", "─".repeat(inner_w)).dimmed());
+                eprintln!();
+                eprintln!("  Press {} to stop.", "Ctrl+C".bold());
+
+                scoring::server::start_scoring_server(&host, port, engine)
+                    .await
+                    .map_err(|e| anyhow!("Scoring server error: {e}"))?;
+
                 Ok(())
             }
 

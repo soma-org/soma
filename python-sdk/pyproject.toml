@@ -21,3 +21,4 @@ Homepage = "https://github.com/soma-org/soma"
 Repository = "https://github.com/soma-org/soma"
 
 [tool.maturin]
+python-source = "python"

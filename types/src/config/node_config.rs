@@ -44,6 +44,39 @@ use super::{
 /// Default commission rate of 2%
 pub const DEFAULT_COMMISSION_RATE: u64 = 200;
 
+/// Compute backend for ML inference (scoring service and audit service).
+///
+/// CPU and Wgpu are always available. CUDA, ROCm, and LibTorch require
+/// the corresponding cargo feature to be enabled at compile time.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceConfig {
+    /// CPU backend (NdArray). Always available.
+    #[default]
+    Cpu,
+    /// GPU via WebGPU (auto-selects Metal/Vulkan/DX12). Always available.
+    Wgpu,
+    /// NVIDIA GPU via CUDA. Requires `--features cuda`.
+    Cuda,
+    /// AMD GPU via ROCm/HIP. Requires `--features rocm`.
+    Rocm,
+    /// PyTorch LibTorch backend (CPU/CUDA/MPS). Requires `--features tch`.
+    #[serde(alias = "torch")]
+    LibTorch,
+}
+
+impl std::fmt::Display for DeviceConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DeviceConfig::Cpu => write!(f, "cpu"),
+            DeviceConfig::Wgpu => write!(f, "wgpu"),
+            DeviceConfig::Cuda => write!(f, "cuda"),
+            DeviceConfig::Rocm => write!(f, "rocm"),
+            DeviceConfig::LibTorch => write!(f, "libtorch"),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // #[serde(rename_all = "kebab-case")]
@@ -128,6 +161,10 @@ pub struct NodeConfig {
     /// Configuration for the transaction driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_driver_config: Option<TransactionDriverConfig>,
+
+    /// Compute device for ML inference (audit service).
+    #[serde(default)]
+    pub device: DeviceConfig,
 }
 
 impl NodeConfig {
@@ -701,6 +738,7 @@ impl ValidatorConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
+            device: DeviceConfig::default(),
         }
     }
 
@@ -846,6 +884,7 @@ impl FullnodeConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
+            device: DeviceConfig::default(),
         }
     }
 }

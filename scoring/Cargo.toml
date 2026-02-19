@@ -1,0 +1,27 @@
+[package]
+name = "scoring"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+runtime.workspace = true
+types.workspace = true
+burn.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+hex.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+wiremock.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

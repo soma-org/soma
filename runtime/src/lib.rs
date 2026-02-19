@@ -1,8 +1,28 @@
+use std::path::Path;
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use burn::tensor::TensorData;
-use types::{error::RuntimeResult, metadata::Manifest};
-pub mod v1;
 use blobs::BlobPath;
+use blobs::downloader::HttpBlobDownloader;
+use burn::backend::{NdArray, Wgpu};
+#[cfg(feature = "cuda")]
+use burn::backend::Cuda;
+#[cfg(feature = "rocm")]
+use burn::backend::Rocm;
+#[cfg(feature = "tch")]
+use burn::backend::LibTorch;
+use burn::tensor::TensorData;
+use models::v1::ModelRunner;
+use object_store::local::LocalFileSystem;
+use tokio::sync::Semaphore;
+use types::config::node_config::DeviceConfig;
+use types::error::RuntimeResult;
+use types::metadata::Manifest;
+use types::parameters::HttpParameters;
+
+pub mod v1;
+
+pub use models::v1::modules::model::ModelConfig;
 
 /// Input for running a competition evaluation.
 pub struct CompetitionInput {
@@ -119,4 +139,106 @@ pub trait RuntimeAPI: Send + Sync + 'static {
         &self,
         input: ManifestCompetitionInput,
     ) -> RuntimeResult<CompetitionOutput>;
+}
+
+/// Create a `RuntimeV1` with the specified burn backend, returned as `Arc<dyn RuntimeAPI>`.
+///
+/// CPU and Wgpu backends are always available. CUDA, ROCm, and LibTorch require
+/// the corresponding cargo feature (`cuda`, `rocm`, `tch`) to be enabled.
+pub fn build_runtime(
+    device: &DeviceConfig,
+    data_dir: &Path,
+    model_config: ModelConfig,
+) -> anyhow::Result<Arc<dyn RuntimeAPI>> {
+    let store = Arc::new(
+        LocalFileSystem::new_with_prefix(data_dir)
+            .map_err(|e| anyhow::anyhow!("Failed to create local file system store: {e}"))?,
+    );
+
+    let http_params = HttpParameters::default();
+    let semaphore = Arc::new(Semaphore::new(10));
+    let chunk_size = 5 * 1024 * 1024; // 5MB
+    let ns_per_byte = http_params.nanoseconds_per_byte as u16;
+
+    let downloader = Arc::new(
+        HttpBlobDownloader::new(&http_params, store.clone(), semaphore, chunk_size, ns_per_byte)
+            .map_err(|e| anyhow::anyhow!("Failed to create blob downloader: {e}"))?,
+    );
+
+    match device {
+        DeviceConfig::Cpu => {
+            let model =
+                Arc::new(ModelRunner::<NdArray>::new(model_config, Default::default(), 4));
+            Ok(Arc::new(v1::RuntimeV1::new(
+                store,
+                downloader,
+                0,
+                Default::default(),
+                model,
+            )))
+        }
+        DeviceConfig::Wgpu => {
+            let model =
+                Arc::new(ModelRunner::<Wgpu>::new(model_config, Default::default(), 4));
+            Ok(Arc::new(v1::RuntimeV1::new(
+                store,
+                downloader,
+                0,
+                Default::default(),
+                model,
+            )))
+        }
+        DeviceConfig::Cuda => {
+            #[cfg(feature = "cuda")]
+            {
+                let model =
+                    Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
+                Ok(Arc::new(v1::RuntimeV1::new(
+                    store,
+                    downloader,
+                    0,
+                    Default::default(),
+                    model,
+                )))
+            }
+            #[cfg(not(feature = "cuda"))]
+            anyhow::bail!("CUDA support not compiled in. Rebuild with `--features runtime/cuda`.")
+        }
+        DeviceConfig::Rocm => {
+            #[cfg(feature = "rocm")]
+            {
+                let model =
+                    Arc::new(ModelRunner::<Rocm>::new(model_config, Default::default(), 4));
+                Ok(Arc::new(v1::RuntimeV1::new(
+                    store,
+                    downloader,
+                    0,
+                    Default::default(),
+                    model,
+                )))
+            }
+            #[cfg(not(feature = "rocm"))]
+            anyhow::bail!(
+                "ROCm/AMD GPU support not compiled in. Rebuild with `--features runtime/rocm`."
+            )
+        }
+        DeviceConfig::LibTorch => {
+            #[cfg(feature = "tch")]
+            {
+                let model =
+                    Arc::new(ModelRunner::<LibTorch>::new(model_config, Default::default(), 4));
+                Ok(Arc::new(v1::RuntimeV1::new(
+                    store,
+                    downloader,
+                    0,
+                    Default::default(),
+                    model,
+                )))
+            }
+            #[cfg(not(feature = "tch"))]
+            anyhow::bail!(
+                "LibTorch support not compiled in. Rebuild with `--features runtime/tch`."
+            )
+        }
+    }
 }

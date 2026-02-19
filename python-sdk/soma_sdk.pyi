@@ -294,3 +294,31 @@ class WalletContext:
         reportee: str,
         gas: Optional[dict] = None,
     ) -> bytes: ...
+
+# Scoring Service Client (pure Python — soma_sdk.scoring)
+
+class ModelManifest:
+    url: str
+    checksum: str
+    size: int
+    def __init__(self, url: str, checksum: str, size: int) -> None: ...
+
+class ScoreResult:
+    winner: int
+    loss_score: list[float]
+    embedding: list[float]
+    distance: list[float]
+
+class ScoringClient:
+    url: str
+    def __init__(self, url: str = "http://127.0.0.1:9124") -> None: ...
+    def health(self) -> bool: ...
+    def score(
+        self,
+        data_url: str,
+        data_checksum: str,
+        data_size: int,
+        models: list[ModelManifest],
+        target_embedding: list[float],
+        seed: int,
+    ) -> ScoreResult: ...

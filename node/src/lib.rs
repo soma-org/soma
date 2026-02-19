@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
 use authority::{
-    audit_service::{AuditService, MockRuntimeAPI},
+    audit_service::AuditService,
     authority::{AuthorityState, ExecutionEnv},
     authority_aggregator::AuthorityAggregator,
     authority_client::NetworkAuthorityClient,
@@ -1542,9 +1542,24 @@ impl SomaNode {
         consensus_adapter: Arc<ConsensusAdapter>,
         challenge_rx: tokio::sync::mpsc::Receiver<Challenge>,
     ) -> Option<Arc<AuditService>> {
-        // Create competition API (currently a mock - handles all downloading internally)
-        // TODO: Replace MockCompetitionAPI with real CompetitionAPI from runtime crate (Phase 6)
-        let competition_api: Arc<dyn runtime::RuntimeAPI> = Arc::new(MockRuntimeAPI);
+        // Create real RuntimeV1 with the configured device backend
+        let runtime_data_dir = config.db_path().join("runtime-data");
+        if let Err(e) = std::fs::create_dir_all(&runtime_data_dir) {
+            warn!("Failed to create runtime data directory: {e}");
+            return None;
+        }
+
+        let model_config = runtime::ModelConfig::new();
+        let runtime_api: Arc<dyn runtime::RuntimeAPI> =
+            match runtime::build_runtime(&config.device, &runtime_data_dir, model_config) {
+                Ok(rt) => rt,
+                Err(e) => {
+                    warn!("Failed to create runtime for audit service (device: {}): {e}", config.device);
+                    return None;
+                }
+            };
+
+        info!("Audit service runtime initialized with device: {}", config.device);
 
         // Get validator's account address and keypair from config
         let validator_address = config.soma_address();
@@ -1555,7 +1570,7 @@ impl SomaNode {
             validator_address,
             account_keypair,
             state.clone(),
-            competition_api,
+            runtime_api,
             epoch_store.epoch(),
             consensus_adapter,
             epoch_store.clone(),

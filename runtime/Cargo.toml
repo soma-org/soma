@@ -11,7 +11,7 @@ object_store.workspace = true
 types.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
-
+anyhow.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
@@ -20,6 +20,12 @@ tonic-prost-build.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 url.workspace = true
+
+[features]
+default = []
+cuda = ["burn/cuda"]
+rocm = ["burn/rocm"]
+tch = ["burn/tch"]
 
 [lints]
 workspace = true
