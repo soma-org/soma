@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail, ensure};
 use bip32::DerivationPath;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_derive;
 use soma_keys::key_identity::KeyIdentity;
@@ -10,8 +10,35 @@ use types::base::SomaAddress;
 use types::crypto::SignatureScheme;
 
 use crate::response::{
-    AddressesOutput, ClientCommandResponse, NewAddressOutput, RemoveAddressOutput, SwitchOutput,
+    ActiveAddressOutput, AddressesOutput, ClientCommandResponse, NewAddressOutput,
+    RemoveAddressOutput, SwitchOutput,
 };
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum WordLength {
+    #[value(name = "word12")]
+    Word12,
+    #[value(name = "word15")]
+    Word15,
+    #[value(name = "word18")]
+    Word18,
+    #[value(name = "word21")]
+    Word21,
+    #[value(name = "word24")]
+    Word24,
+}
+
+impl WordLength {
+    fn to_string_option(self) -> Option<String> {
+        Some(match self {
+            WordLength::Word12 => "word12",
+            WordLength::Word15 => "word15",
+            WordLength::Word18 => "word18",
+            WordLength::Word21 => "word21",
+            WordLength::Word24 => "word24",
+        }.to_string())
+    }
+}
 
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
@@ -31,13 +58,17 @@ pub enum WalletCommand {
     /// Generate a new address and keypair
     #[clap(name = "new")]
     New {
-        /// Key scheme: ed25519, secp256k1, or secp256r1
-        key_scheme: SignatureScheme,
-        /// Optional alias for the address
+        /// Alias for the new address (e.g., "my-wallet")
+        #[clap(long)]
         alias: Option<String>,
-        /// Word length: word12, word15, word18, word21, word24
-        word_length: Option<String>,
+        /// Key scheme
+        #[clap(long, default_value = "ed25519")]
+        key_scheme: SignatureScheme,
+        /// Word length for recovery phrase
+        #[clap(long, value_enum, default_value = "word12")]
+        word_length: WordLength,
         /// Custom derivation path
+        #[clap(long)]
         derivation_path: Option<DerivationPath>,
     },
 
@@ -64,7 +95,10 @@ pub async fn execute(
     match cmd {
         WalletCommand::Active => {
             let address = context.active_address().ok();
-            Ok(ClientCommandResponse::ActiveAddress(address))
+            Ok(ClientCommandResponse::ActiveAddress(address.map(|addr| {
+                let alias = context.config.keystore.get_alias(&addr).ok();
+                ActiveAddressOutput { address: addr, alias }
+            })))
         }
 
         WalletCommand::List { sort_by_alias } => {
@@ -86,7 +120,7 @@ pub async fn execute(
 
         WalletCommand::New { key_scheme, alias, derivation_path, word_length } => {
             let (address, keypair, scheme, phrase) =
-                key_derive::generate_new_key(key_scheme, derivation_path, word_length)
+                key_derive::generate_new_key(key_scheme, derivation_path, word_length.to_string_option())
                     .map_err(|e| anyhow!("Failed to generate new key: {}", e))?;
 
             context.config.keystore.import(alias.clone(), keypair).await?;

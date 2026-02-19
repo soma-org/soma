@@ -49,7 +49,7 @@ pub async fn execute(
             let object = client
                 .get_object(object_id)
                 .await
-                .map_err(|e| anyhow!("Failed to get object: {}", e))?;
+                .map_err(|e| anyhow!("Failed to get object: {}", e.message()))?;
 
             Ok(ClientCommandResponse::Object(ObjectOutput::from_object(&object, bcs)))
         }

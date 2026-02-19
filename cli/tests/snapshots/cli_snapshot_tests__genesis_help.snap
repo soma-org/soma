@@ -1,0 +1,25 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Bootstrap and initialize a new Soma network
+
+Usage: soma genesis [OPTIONS]
+
+Options:
+      --from-config <FROM_CONFIG>
+          Start genesis with a given config file
+      --write-config <WRITE_CONFIG>
+          Build a genesis config, write it to the specified path, and exit
+      --working-dir <WORKING_DIR>
+          
+  -f, --force
+          Forces overwriting existing configuration
+      --epoch-duration-ms <EPOCH_DURATION_MS>
+          
+      --with-faucet
+          Creates an extra faucet configuration for soma persisted runs.
+      --committee-size <COMMITTEE_SIZE>
+          Set number of validators in the network
+  -h, --help
+          Print help

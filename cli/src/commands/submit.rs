@@ -1,7 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use fastcrypto::encoding::{Encoding, Hex};
 use serde::Serialize;
 use std::fmt::{self, Display, Formatter};
 
@@ -102,13 +101,7 @@ impl SubmitCommand {
 // Helpers
 // =============================================================================
 
-fn parse_hex_digest_32(hex_str: &str, field_name: &str) -> Result<[u8; 32]> {
-    let bytes = Hex::decode(hex_str.strip_prefix("0x").unwrap_or(hex_str))
-        .map_err(|e| anyhow!("Invalid hex for {}: {}", field_name, e))?;
-    let arr: [u8; 32] =
-        bytes.try_into().map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
-    Ok(arr)
-}
+use super::parse_helpers::{parse_hex_digest_32, parse_embedding};
 
 fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<SubmissionManifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;
@@ -118,15 +111,6 @@ fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<Sub
     let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
 
     Ok(SubmissionManifest::new(manifest))
-}
-
-fn parse_embedding(embedding_str: &str) -> Result<Vec<f32>> {
-    embedding_str
-        .split(',')
-        .map(|s| {
-            s.trim().parse::<f32>().map_err(|e| anyhow!("Invalid embedding value '{}': {}", s, e))
-        })
-        .collect()
 }
 
 /// Execute a submit transaction, delegating to the shared client_commands helper.
@@ -145,10 +129,10 @@ async fn execute_tx(
             Ok(SubmitCommandResponse::Transaction(tx))
         }
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
-            Ok(SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
+            Ok(SubmitCommandResponse::SerializedTransaction { serialized_transaction: s })
         }
         crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
-            Ok(SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction: s })
+            Ok(SubmitCommandResponse::SerializedTransaction { serialized_transaction: s })
         }
         crate::response::ClientCommandResponse::TransactionDigest(d) => {
             Ok(SubmitCommandResponse::TransactionDigest(d))
@@ -168,7 +152,7 @@ async fn execute_tx(
 #[serde(untagged)]
 pub enum SubmitCommandResponse {
     Transaction(TransactionResponse),
-    SerializedTransaction { serialized_unsigned_transaction: String },
+    SerializedTransaction { serialized_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
 }
@@ -179,10 +163,10 @@ impl Display for SubmitCommandResponse {
             SubmitCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            SubmitCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
-                writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
+            SubmitCommandResponse::SerializedTransaction { serialized_transaction } => {
+                writeln!(f, "{}", "Serialized Transaction".cyan().bold())?;
                 writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)?;
+                writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
                 writeln!(
                     f,

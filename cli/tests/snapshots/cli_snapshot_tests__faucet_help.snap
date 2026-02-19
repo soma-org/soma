@@ -1,0 +1,18 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Request test tokens from the faucet
+
+Usage: soma faucet [OPTIONS]
+
+Options:
+      --address <ADDRESS>  Address to receive tokens (defaults to active address)
+      --url <URL>          The URL of the faucet server
+      --json               Output as JSON
+  -h, --help               Print help
+
+EXAMPLES:
+    soma faucet
+    soma faucet --address 0x1234...5678
+    soma faucet --url http://127.0.0.1:9123/gas

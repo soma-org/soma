@@ -4,7 +4,7 @@ expression: stdout
 ---
 Claim rewards from a filled target
 
-Claims the reward pool from a target that was successfully filled. The challenge window must have closed (fill_epoch + 1 must have ended).
+Claims the reward pool from a target that was successfully filled. The challenge window (one full epoch after the target was filled) must have closed.
 
 Usage: soma claim [OPTIONS] <TARGET_ID>
 
@@ -26,10 +26,10 @@ Options:
           Serialize the signed transaction data (base64) instead of executing. Use with `soma client execute-combined-signed-tx --signed-tx-bytes <SIGNED_TX_BYTES>`
 
       --json
-          
+          Output as JSON
 
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
+EXAMPLES:
+    soma claim 0xTARGET_ID

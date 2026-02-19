@@ -58,21 +58,12 @@ pub enum ChallengeCommand {
         challenge_id: ObjectID,
     },
 
-    /// List challenges for a target
+    /// List challenges (not yet implemented)
     ///
-    /// Shows all challenges associated with a specific target.
-    #[clap(name = "list")]
-    List {
-        /// Target ID to list challenges for
-        #[clap(long)]
-        target_id: Option<ObjectID>,
-        /// Filter by status: "pending" or "resolved"
-        #[clap(long, short = 's')]
-        status: Option<String>,
-        /// Maximum number of challenges to return (default: 50)
-        #[clap(long, default_value = "50")]
-        limit: u32,
-    },
+    /// Challenge indexing is not yet available. Use `soma challenge info <id>`
+    /// to query a specific challenge by its object ID.
+    #[clap(name = "list", hide = true)]
+    List,
 }
 
 // =============================================================================
@@ -97,7 +88,7 @@ impl ChallengeCommand {
                 let coin_obj = client
                     .get_object(bond_coin)
                     .await
-                    .map_err(|e| anyhow!("Failed to get bond coin: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to get bond coin: {}", e.message()))?;
                 let bond_coin_ref = coin_obj.compute_object_reference();
 
                 // ChallengeId is derived from tx_digest during execution, not client-provided
@@ -116,7 +107,7 @@ impl ChallengeCommand {
                 let object = client
                     .get_object(challenge_id)
                     .await
-                    .map_err(|e| anyhow!("Failed to get challenge object: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to get challenge object: {}", e.message()))?;
 
                 // Deserialize the challenge from object contents
                 let challenge: Challenge = bcs::from_bytes(object.data.contents())
@@ -128,10 +119,7 @@ impl ChallengeCommand {
                 }))
             }
 
-            ChallengeCommand::List { target_id: _, status: _, limit: _ } => {
-                // RPC endpoint exists but challenge indexing is not yet implemented.
-                // The ListChallenges RPC currently returns an empty list.
-                // Users can still query individual challenges with `soma challenge info <id>`.
+            ChallengeCommand::List => {
                 Ok(ChallengeCommandResponse::List(ChallengeListOutput {
                     challenges: vec![],
                     message: Some(
@@ -177,12 +165,12 @@ async fn execute_tx(
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
             // When serializing, we don't know the challenge_id yet (it's derived from tx_digest)
             Ok(ChallengeCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
+                serialized_transaction: s,
             })
         }
         crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
             Ok(ChallengeCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction: s,
+                serialized_transaction: s,
             })
         }
         crate::response::ClientCommandResponse::TransactionDigest(d) => {
@@ -214,7 +202,7 @@ pub enum ChallengeCommandResponse {
     List(ChallengeListOutput),
     /// Serialized transaction (challenge_id not known until execution)
     SerializedTransaction {
-        serialized_unsigned_transaction: String,
+        serialized_transaction: String,
     },
     TransactionDigest {
         challenge_id: ChallengeId,
@@ -263,11 +251,11 @@ impl Display for ChallengeCommandResponse {
             ChallengeCommandResponse::Info(info) => write!(f, "{}", info),
             ChallengeCommandResponse::List(list) => write!(f, "{}", list),
             ChallengeCommandResponse::SerializedTransaction {
-                serialized_unsigned_transaction,
+                serialized_transaction,
             } => {
-                writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
+                writeln!(f, "{}", "Serialized Transaction".cyan().bold())?;
                 writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)?;
+                writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
                 writeln!(
                     f,
@@ -309,7 +297,10 @@ impl Display for ChallengeInfoOutput {
         builder.push_record(["Challenger", &c.challenger.to_string()]);
         builder.push_record(["Status", &format_status(&c.status)]);
         builder.push_record(["Challenge Epoch", &c.challenge_epoch.to_string()]);
-        builder.push_record(["Challenger Bond", &format!("{} SHANNONS", c.challenger_bond)]);
+        builder.push_record(["Challenger Bond", &format!(
+            "{} shannons ({})", c.challenger_bond,
+            crate::response::format_soma(c.challenger_bond as u128),
+        )]);
         builder.push_record(["Distance Threshold", &c.distance_threshold.to_string()]);
         builder.push_record(["Claimed Distance", &c.winning_distance_score.to_string()]);
         builder.push_record(["Winning Model", &c.winning_model_id.to_string()]);
@@ -358,7 +349,7 @@ impl Display for ChallengeListOutput {
                 truncate_id(&c.challenger.to_string()),
                 c.status.clone(),
                 c.challenge_epoch.to_string(),
-                format!("{} SHANNONS", c.challenger_bond),
+                crate::response::format_soma(c.challenger_bond as u128),
             ]);
         }
 
@@ -398,13 +389,7 @@ fn format_status(status: &ChallengeStatus) -> String {
     }
 }
 
-fn truncate_id(s: &str) -> String {
-    if s.len() <= 16 {
-        s.to_string()
-    } else {
-        format!("{}...{}", &s[..10], &s[s.len() - 6..])
-    }
-}
+use crate::response::truncate_id;
 
 impl ChallengeCommandResponse {
     pub fn print(&self, json: bool) {

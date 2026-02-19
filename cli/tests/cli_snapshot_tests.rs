@@ -129,6 +129,187 @@ fn test_env_help() {
     insta::assert_snapshot!("env_help", stdout);
 }
 
+#[test]
+fn test_validator_help() {
+    let output = soma_cmd()
+        .args(["validator", "--help"])
+        .output()
+        .expect("failed to run soma validator --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("validator_help", stdout);
+}
+
+#[test]
+fn test_stake_help() {
+    let output = soma_cmd()
+        .args(["stake", "--help"])
+        .output()
+        .expect("failed to run soma stake --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("stake_help", stdout);
+}
+
+#[test]
+fn test_pay_help() {
+    let output =
+        soma_cmd().args(["pay", "--help"]).output().expect("failed to run soma pay --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("pay_help", stdout);
+}
+
+#[test]
+fn test_transfer_help() {
+    let output = soma_cmd()
+        .args(["transfer", "--help"])
+        .output()
+        .expect("failed to run soma transfer --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("transfer_help", stdout);
+}
+
+#[test]
+fn test_unstake_help() {
+    let output = soma_cmd()
+        .args(["unstake", "--help"])
+        .output()
+        .expect("failed to run soma unstake --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("unstake_help", stdout);
+}
+
+#[test]
+fn test_objects_help() {
+    let output = soma_cmd()
+        .args(["objects", "--help"])
+        .output()
+        .expect("failed to run soma objects --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("objects_help", stdout);
+}
+
+#[test]
+fn test_tx_help() {
+    let output =
+        soma_cmd().args(["tx", "--help"]).output().expect("failed to run soma tx --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("tx_help", stdout);
+}
+
+#[test]
+fn test_data_help() {
+    let output =
+        soma_cmd().args(["data", "--help"]).output().expect("failed to run soma data --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("data_help", stdout);
+}
+
+#[test]
+fn test_submit_help() {
+    let output = soma_cmd()
+        .args(["submit", "--help"])
+        .output()
+        .expect("failed to run soma submit --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("submit_help", stdout);
+}
+
+#[test]
+fn test_challenge_help() {
+    let output = soma_cmd()
+        .args(["challenge", "--help"])
+        .output()
+        .expect("failed to run soma challenge --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("challenge_help", stdout);
+}
+
+#[test]
+fn test_target_help() {
+    let output = soma_cmd()
+        .args(["target", "--help"])
+        .output()
+        .expect("failed to run soma target --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("target_help", stdout);
+}
+
+#[test]
+fn test_client_help() {
+    let output = soma_cmd()
+        .args(["client", "--help"])
+        .output()
+        .expect("failed to run soma client --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("client_help", stdout);
+}
+
+#[test]
+fn test_network_help() {
+    let output = soma_cmd()
+        .args(["network", "--help"])
+        .output()
+        .expect("failed to run soma network --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("network_help", stdout);
+}
+
+#[test]
+fn test_genesis_help() {
+    let output = soma_cmd()
+        .args(["genesis", "--help"])
+        .output()
+        .expect("failed to run soma genesis --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("genesis_help", stdout);
+}
+
+#[test]
+fn test_keytool_help() {
+    let output = soma_cmd()
+        .args(["keytool", "--help"])
+        .output()
+        .expect("failed to run soma keytool --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("keytool_help", stdout);
+}
+
+#[test]
+fn test_faucet_help() {
+    let output = soma_cmd()
+        .args(["faucet", "--help"])
+        .output()
+        .expect("failed to run soma faucet --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("faucet_help", stdout);
+}
+
+#[test]
+fn test_completions_help() {
+    let output = soma_cmd()
+        .args(["completions", "--help"])
+        .output()
+        .expect("failed to run soma completions --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("completions_help", stdout);
+}
+
 // =============================================================================
 // Error output tests (offline)
 // =============================================================================
@@ -153,7 +334,7 @@ fn test_model_commit_missing_args() {
         .args(["model", "commit"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("--model-id"));
+        .stderr(predicate::str::contains("<MODEL_ID>"));
 }
 
 // =============================================================================

@@ -41,11 +41,13 @@ pub async fn execute(
     tokio::pin!(stream);
 
     let mut total_balance: u128 = 0;
+    let mut coin_count: usize = 0;
     let mut coin_details = Vec::new();
 
     while let Some(obj) = stream.try_next().await? {
         if let Some(coin) = obj.as_coin() {
             total_balance += coin as u128;
+            coin_count += 1;
             if with_coins {
                 coin_details.push((obj.id(), coin));
             }
@@ -55,25 +57,7 @@ pub async fn execute(
     Ok(BalanceOutput {
         address,
         total_balance,
-        coin_count: if with_coins {
-            coin_details.len()
-        } else {
-            // Count coins even if not showing details
-            let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-            request.owner = Some(address.to_string());
-            request.object_type = Some(ObjectType::Coin.into());
-            request.page_size = Some(1000);
-            request.read_mask = Some(FieldMask::from_paths(["object_id"]));
-
-            let stream = client.list_owned_objects(request).await;
-            tokio::pin!(stream);
-
-            let mut count = 0;
-            while stream.try_next().await?.is_some() {
-                count += 1;
-            }
-            count
-        },
+        coin_count,
         coins: if with_coins { Some(coin_details) } else { None },
     })
 }

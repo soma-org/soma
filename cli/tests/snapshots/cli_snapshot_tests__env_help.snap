@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Manage network environments
+Manage network environments (switch, add, list)
 
 Usage: soma env [OPTIONS] <COMMAND>
 
@@ -15,6 +15,10 @@ Commands:
   help      Print this message or the help of the given subcommand(s)
 
 Options:
-      --json     
-  -h, --help     Print help
-  -V, --version  Print version
+      --json  Output as JSON
+  -h, --help  Print help
+
+EXAMPLES:
+    soma env list
+    soma env switch testnet
+    soma env new --alias mynet --rpc http://...

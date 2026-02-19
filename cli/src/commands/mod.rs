@@ -17,6 +17,9 @@ pub mod tx;
 pub mod validator;
 pub mod wallet;
 
+// Shared parsing helpers used by model and submit commands
+pub(crate) mod parse_helpers;
+
 // Re-export subcommand enums for use in soma_commands.rs
 pub use challenge::ChallengeCommand;
 pub use claim::ClaimCommand;

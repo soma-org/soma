@@ -58,7 +58,7 @@ fn find_faucet_url(context: &WalletContext) -> Result<String> {
     let env = context.get_active_env().map_err(|_| {
         anyhow::anyhow!(
             "No active network environment configured. \
-             Please set one with `soma client env` or provide --url explicitly."
+             Please set one with `soma env` or provide --url explicitly."
         )
     })?;
 

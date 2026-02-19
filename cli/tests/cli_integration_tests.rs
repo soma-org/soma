@@ -228,7 +228,7 @@ fn test_model_status_display() {
 fn test_format_soma_public() {
     assert_eq!(cli::response::format_soma_public(0), "0 SOMA");
     assert_eq!(cli::response::format_soma_public(1_000_000_000), "1 SOMA");
-    assert_eq!(cli::response::format_soma_public(1_500_000_000), "1.50 SOMA");
+    assert_eq!(cli::response::format_soma_public(1_500_000_000), "1.5 SOMA");
     assert_eq!(cli::response::format_soma_public(1_000_000_000_000), "1.00K SOMA");
     assert_eq!(cli::response::format_soma_public(500_000_000), "0.5 SOMA");
 }

@@ -2,14 +2,16 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Show network connection status, version info, and active address
+Get transaction details by digest
 
-Usage: soma status [OPTIONS]
+Usage: soma tx [OPTIONS] <DIGEST>
+
+Arguments:
+  <DIGEST>  Transaction digest
 
 Options:
       --json  Output as JSON
   -h, --help  Print help
 
 EXAMPLES:
-    soma status
-    soma status --json
+    soma tx DIGEST_BASE58

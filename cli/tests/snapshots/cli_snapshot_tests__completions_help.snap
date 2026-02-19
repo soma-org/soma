@@ -1,0 +1,18 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Generate shell completion scripts
+
+Usage: soma completions <SHELL>
+
+Arguments:
+  <SHELL>  Shell to generate completions for [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+  -h, --help  Print help
+
+EXAMPLES:
+    soma completions bash > /usr/local/etc/bash_completion.d/soma
+    soma completions zsh > ~/.zfunc/_soma
+    soma completions fish > ~/.config/fish/completions/soma.fish

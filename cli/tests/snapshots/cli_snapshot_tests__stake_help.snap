@@ -2,14 +2,15 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Send SOMA to a recipient
+Stake SOMA with a validator or model
 
-Usage: soma send [OPTIONS] --to <TO> --amount <AMOUNT>
+Usage: soma stake [OPTIONS]
 
 Options:
-      --to <TO>                         Recipient address or alias
-      --amount <AMOUNT>                 Amount to send in SOMA (e.g., 1 or 0.5)
-      --coin <COIN>                     Specific coin to send from (auto-selected if not provided)
+      --validator <VALIDATOR>           Validator address to stake with
+      --model <MODEL>                   Model ID to stake with
+      --amount <AMOUNT>                 Amount to stake in SOMA (uses entire coin if not specified)
+      --coin <COIN>                     Coin to use for staking (auto-selected if not provided)
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
       --simulate                        Perform a dry run (simulation) of the transaction, without executing it
       --serialize-unsigned-transaction  Serialize the unsigned transaction data (base64) instead of executing. Use with `soma client execute-signed-tx --tx-bytes <TX_BYTES>`
@@ -18,5 +19,6 @@ Options:
   -h, --help                            Print help
 
 EXAMPLES:
-    soma send --to 0x1234...5678 --amount 1
-    soma send --to my-alias --amount 0.5 --coin 0xABCD...
+    soma stake --validator 0xVAL... --amount 10
+    soma stake --model 0xMODEL... --amount 5
+    soma stake --validator 0xVAL... --coin 0xCOIN...

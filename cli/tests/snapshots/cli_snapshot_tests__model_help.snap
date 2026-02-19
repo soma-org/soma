@@ -19,6 +19,17 @@ Commands:
   help                 Print this message or the help of the given subcommand(s)
 
 Options:
-      --json     
-  -h, --help     Print help
-  -V, --version  Print version
+      --json  Output as JSON
+  -h, --help  Print help
+
+EXAMPLES:
+    soma model list
+    soma model info 0xMODEL_ID
+    soma model commit 0xMODEL_ID --weights-url-commitment 0xHEX... \
+        --weights-commitment 0xHEX... --architecture-version 1 \
+        --stake-amount 100 --staking-pool-id 0xPOOL_ID
+    soma model reveal 0xMODEL_ID --weights-url https://... \
+        --weights-checksum 0xHEX... --weights-size 1024 \
+        --decryption-key 0xHEX... --embedding 0.1,0.2,0.3
+    soma model deactivate 0xMODEL_ID
+    soma model download 0xMODEL_ID --output ./weights.bin

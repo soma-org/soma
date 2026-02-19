@@ -11,9 +11,8 @@ Arguments:
 
 Options:
       --with-coins  Show individual coin details
-      --json        
+      --json        Output as JSON
   -h, --help        Print help
-  -V, --version     Print version
 
 EXAMPLES:
     soma balance

@@ -16,11 +16,20 @@ bin_version::bin_version!();
 /// - Strips the verbose `Debug` chain in favor of a clean message
 /// - Adds contextual hints for common error patterns
 fn format_error(err: &anyhow::Error) -> String {
-    let root = err.root_cause().to_string();
-    let display = err.to_string();
-
-    // Use the shorter representation when the root cause IS the full chain
-    let message = if display == root { display } else { format!("{display}") };
+    // If the root cause is a tonic::Status, extract just the message
+    // to avoid leaking gRPC internals (details, metadata) to users.
+    let message = if let Some(status) = err.root_cause().downcast_ref::<tonic::Status>() {
+        status.message().to_string()
+    } else {
+        let root = err.root_cause().to_string();
+        let display = err.to_string();
+        if display == root {
+            display
+        } else {
+            // Show the root cause for clarity when there's context wrapping
+            format!("{}: {}", display, root)
+        }
+    };
 
     let mut output = format!("{} {}", "Error:".red().bold(), message);
 
@@ -46,7 +55,7 @@ fn error_hint(msg: &str) -> Option<&'static str> {
         return Some("Is the network running? Try `soma start` to launch a local network.");
     }
     if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
-        return Some("Use `soma client faucet` to request test tokens.");
+        return Some("Use `soma faucet` to request test tokens.");
     }
     if msg_lower.contains("force-regenesis") {
         return Some("Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.");
@@ -67,7 +76,7 @@ fn error_hint(msg: &str) -> Option<&'static str> {
     rename_all = "kebab-case",
     author,
     version = VERSION,
-    propagate_version = true,
+    propagate_version = false,
 )]
 struct Args {
     #[clap(subcommand)]
@@ -103,5 +112,15 @@ mod tests {
         assert!(error_hint("Connection refused (os error 61)").is_some());
         assert!(error_hint("No soma config found in `/Users/...`").is_some());
         assert!(error_hint("some random error").is_none());
+    }
+
+    #[test]
+    fn test_format_error_strips_grpc_metadata() {
+        let status = tonic::Status::unavailable("tcp connect error");
+        let err: anyhow::Error = status.into();
+        let formatted = format_error(&err);
+        assert!(formatted.contains("tcp connect error"), "Should contain message: {formatted}");
+        assert!(!formatted.contains("MetadataMap"), "Should not leak metadata: {formatted}");
+        assert!(!formatted.contains("details: []"), "Should not leak details: {formatted}");
     }
 }

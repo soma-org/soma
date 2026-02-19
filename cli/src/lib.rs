@@ -4,4 +4,5 @@ pub mod genesis_ceremony;
 pub mod commands;
 pub mod keytool;
 pub mod response;
+pub mod soma_amount;
 pub mod soma_commands;

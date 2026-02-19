@@ -158,7 +158,7 @@ impl Display for TargetListOutput {
         }
 
         if self.targets.is_empty() {
-            return writeln!(f, "{}", "No open targets found.".yellow());
+            return writeln!(f, "{}", "No targets found.".yellow());
         }
 
         let mut builder = TableBuilder::default();
@@ -177,14 +177,14 @@ impl Display for TargetListOutput {
                 t.status.clone(),
                 t.generation_epoch.to_string(),
                 t.model_count.to_string(),
-                format!("{} SHANNONS", t.reward_pool),
+                crate::response::format_soma(t.reward_pool as u128),
                 t.distance_threshold.to_string(),
             ]);
         }
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Open Targets ({} total)", self.targets.len())));
+        table.with(TablePanel::header(format!("Targets ({} total)", self.targets.len())));
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
@@ -203,7 +203,10 @@ impl Display for TargetInfoOutput {
         builder.push_record(["Embedding Dimension", &t.embedding.len().to_string()]);
         builder.push_record(["Model Count", &t.model_ids.len().to_string()]);
         builder.push_record(["Distance Threshold", &t.distance_threshold.to_string()]);
-        builder.push_record(["Reward Pool", &format!("{} SHANNONS", t.reward_pool)]);
+        builder.push_record(["Reward Pool", &format!(
+            "{} shannons ({})", t.reward_pool,
+            crate::response::format_soma(t.reward_pool as u128),
+        )]);
 
         if let Some(miner) = &t.miner {
             builder.push_record(["Miner", &miner.to_string()]);
@@ -215,7 +218,10 @@ impl Display for TargetInfoOutput {
             builder.push_record(["Model Owner", &owner.to_string()]);
         }
         if t.bond_amount > 0 {
-            builder.push_record(["Bond Amount", &format!("{} SHANNONS", t.bond_amount)]);
+            builder.push_record(["Bond Amount", &format!(
+                "{} shannons ({})", t.bond_amount,
+                crate::response::format_soma(t.bond_amount as u128),
+            )]);
         }
 
         let mut table = builder.build();
@@ -249,13 +255,11 @@ fn format_status(status: &TargetStatus) -> String {
         TargetStatus::Filled { fill_epoch } => {
             format!("{} (epoch {})", "Filled".yellow(), fill_epoch)
         }
-        TargetStatus::Claimed => "Claimed".red().to_string(),
+        TargetStatus::Claimed => "Claimed".green().to_string(),
     }
 }
 
-fn truncate_id(s: &str) -> String {
-    if s.len() <= 16 { s.to_string() } else { format!("{}...{}", &s[..10], &s[s.len() - 6..]) }
-}
+use crate::response::truncate_id;
 
 impl TargetCommandResponse {
     pub fn print(&self, json: bool) {

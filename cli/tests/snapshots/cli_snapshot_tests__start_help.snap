@@ -45,9 +45,6 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 
-  -V, --version
-          Print version
-
 EXAMPLES:
     soma start                           # Persistent local network
     soma start --force-regenesis         # Fresh ephemeral network

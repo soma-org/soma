@@ -17,10 +17,6 @@ pub async fn execute_stake(
     coin: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
-    if validator.is_none() && model.is_none() {
-        bail!("Must specify --validator or --model");
-    }
-
     let sender = context.active_address()?;
     let client = context.get_client().await?;
 
@@ -30,7 +26,7 @@ pub async fn execute_stake(
             let obj = client
                 .get_object(coin_id)
                 .await
-                .map_err(|e| anyhow!("Failed to get coin: {}", e))?;
+                .map_err(|e| anyhow!("Failed to get coin: {}", e.message()))?;
             obj.compute_object_reference()
         }
         None => context
@@ -65,7 +61,7 @@ pub async fn execute_unstake(
     let staked_obj = client
         .get_object(staked_soma_id)
         .await
-        .map_err(|e| anyhow!("Failed to get staked SOMA object: {}", e))?;
+        .map_err(|e| anyhow!("Failed to get staked SOMA object: {}", e.message()))?;
     let staked_ref = staked_obj.compute_object_reference();
 
     let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };

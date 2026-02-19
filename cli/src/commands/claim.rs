@@ -18,7 +18,7 @@ use crate::response::TransactionResponse;
 /// Claim rewards from a filled target.
 ///
 /// Claims the reward pool from a target that was filled by the sender.
-/// The challenge window must have closed (fill_epoch + 1 must have ended).
+/// The challenge window (one full epoch after the target was filled) must have closed.
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub struct ClaimCommand {
@@ -45,12 +45,12 @@ impl ClaimCommand {
             }
             crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
                 Ok(ClaimCommandResponse::SerializedTransaction {
-                    serialized_unsigned_transaction: s,
+                    serialized_transaction: s,
                 })
             }
             crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
                 Ok(ClaimCommandResponse::SerializedTransaction {
-                    serialized_unsigned_transaction: s,
+                    serialized_transaction: s,
                 })
             }
             crate::response::ClientCommandResponse::TransactionDigest(d) => {
@@ -72,7 +72,7 @@ impl ClaimCommand {
 #[serde(untagged)]
 pub enum ClaimCommandResponse {
     Transaction(TransactionResponse),
-    SerializedTransaction { serialized_unsigned_transaction: String },
+    SerializedTransaction { serialized_transaction: String },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
 }
@@ -83,10 +83,10 @@ impl Display for ClaimCommandResponse {
             ClaimCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            ClaimCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
-                writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
+            ClaimCommandResponse::SerializedTransaction { serialized_transaction } => {
+                writeln!(f, "{}", "Serialized Transaction".cyan().bold())?;
                 writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)?;
+                writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
                 writeln!(
                     f,

@@ -39,10 +39,7 @@ use types::{
 
 use node::SomaNode;
 use sdk::SomaClient;
-use sdk::{
-    transaction_builder::{ExecutionOptions, TransactionBuilder},
-    wallet_context::WalletContext,
-};
+use sdk::wallet_context::WalletContext;
 use soma_keys::{
     key_derive::generate_new_key,
     keypair_file::{
@@ -59,25 +56,7 @@ use crate::response::{
     TransactionResponse, ValidatorCommandResponse, ValidatorStatus, ValidatorSummary,
 };
 
-/// Arguments related to transaction processing
-#[derive(Args, Debug, Default)]
-pub struct TxProcessingArgs {
-    /// Instead of executing the transaction, serialize the bcs bytes of the unsigned transaction data
-    /// (TransactionData) using base64 encoding, and print out the string <TX_BYTES>. The string can
-    /// be used to execute transaction with `soma client execute-signed-tx --tx-bytes <TX_BYTES>`.
-    #[arg(long)]
-    pub serialize_unsigned_transaction: bool,
-}
-
-impl From<TxProcessingArgs> for ExecutionOptions {
-    fn from(args: TxProcessingArgs) -> Self {
-        let mut opts = ExecutionOptions::new();
-        if args.serialize_unsigned_transaction {
-            opts = opts.serialize_unsigned();
-        }
-        opts
-    }
-}
+use crate::client_commands::TxProcessingArgs;
 
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
@@ -117,15 +96,16 @@ pub enum SomaValidatorCommand {
         tx_args: TxProcessingArgs,
     },
 
+    /// List all active and pending validators
+    #[clap(name = "list")]
+    List,
+
     /// Display validator metadata
     #[clap(name = "display-metadata")]
     DisplayMetadata {
         /// Validator address (defaults to active address)
         #[clap(name = "validator-address")]
         validator_address: Option<SomaAddress>,
-        /// Output as JSON
-        #[clap(long, default_value_t = false)]
-        json: bool,
     },
 
     /// Update validator metadata
@@ -217,13 +197,13 @@ impl SomaValidatorCommand {
             }
 
             SomaValidatorCommand::MakeValidatorInfo { host_name, commission_rate } => {
-                make_validator_info(context, &host_name, commission_rate)?;
-                Ok(ValidatorCommandResponse::MakeValidatorInfo)
+                let output = make_validator_info(context, &host_name, commission_rate)?;
+                Ok(ValidatorCommandResponse::MakeValidatorInfo(output))
             }
 
             SomaValidatorCommand::JoinCommittee { file, tx_args } => {
                 let kind = build_join_committee_tx(&file)?;
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
 
             SomaValidatorCommand::LeaveCommittee { tx_args } => {
@@ -233,13 +213,25 @@ impl SomaValidatorCommand {
                 let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs {
                     pubkey_bytes: vec![], // The signer is inferred from tx sender
                 });
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
 
-            SomaValidatorCommand::DisplayMetadata { validator_address, json } => {
+            SomaValidatorCommand::List => {
+                let client = context.get_client().await?;
+                let system_state = client
+                    .get_latest_system_state()
+                    .await
+                    .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
+                let validators = list_all_validators(&system_state);
+                Ok(ValidatorCommandResponse::List(crate::response::ValidatorListOutput {
+                    validators,
+                }))
+            }
+
+            SomaValidatorCommand::DisplayMetadata { validator_address } => {
                 let address = validator_address.unwrap_or(sender);
-                display_metadata(context, address, json).await?;
-                Ok(ValidatorCommandResponse::DisplayMetadata)
+                let output = display_metadata(context, address).await?;
+                Ok(ValidatorCommandResponse::DisplayMetadata(output))
             }
 
             SomaValidatorCommand::UpdateMetadata { metadata, tx_args } => {
@@ -251,7 +243,7 @@ impl SomaValidatorCommand {
                 .await?;
 
                 let kind = build_update_metadata_tx(metadata)?;
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
 
             SomaValidatorCommand::SetCommissionRate { commission_rate, tx_args } => {
@@ -268,7 +260,7 @@ impl SomaValidatorCommand {
                 }
 
                 let kind = TransactionKind::SetCommissionRate { new_rate: commission_rate };
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
 
             SomaValidatorCommand::ReportValidator { reportee_address, undo_report, tx_args } => {
@@ -285,7 +277,7 @@ impl SomaValidatorCommand {
                 } else {
                     TransactionKind::ReportValidator { reportee: reportee_address }
                 };
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
 
             SomaValidatorCommand::ReportModel { model_id, undo_report, tx_args } => {
@@ -297,7 +289,7 @@ impl SomaValidatorCommand {
                 } else {
                     TransactionKind::ReportModel { model_id }
                 };
-                execute_or_serialize(context, sender, kind, tx_args.into()).await
+                execute_tx(context, sender, kind, tx_args).await
             }
         }
     }
@@ -362,46 +354,41 @@ fn check_address(
     }
 }
 
-/// Execute a transaction or serialize it for offline signing
-async fn execute_or_serialize(
+/// Execute a validator transaction, delegating to the shared client_commands helper.
+async fn execute_tx(
     context: &mut WalletContext,
     sender: SomaAddress,
     kind: TransactionKind,
-    options: ExecutionOptions,
+    tx_args: TxProcessingArgs,
 ) -> Result<ValidatorCommandResponse> {
-    let builder = TransactionBuilder::new(context);
+    let result =
+        crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
 
-    if options.serialize_unsigned {
-        let serialized = builder.build_serialized_unsigned(sender, kind, options.gas).await?;
-        Ok(ValidatorCommandResponse::SerializedTransaction {
-            serialized_unsigned_transaction: serialized,
-        })
-    } else {
-        let tx = builder.build_transaction(sender, kind, options.gas).await?;
-        let response = execute_transaction(context, tx).await?;
-        Ok(ValidatorCommandResponse::Transaction(response))
+    // Convert ClientCommandResponse to ValidatorCommandResponse
+    match result {
+        crate::response::ClientCommandResponse::Transaction(tx) => {
+            Ok(ValidatorCommandResponse::Transaction(tx))
+        }
+        crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
+            Ok(ValidatorCommandResponse::SerializedTransaction { serialized_transaction: s })
+        }
+        crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
+            Ok(ValidatorCommandResponse::SerializedTransaction { serialized_transaction: s })
+        }
+        crate::response::ClientCommandResponse::TransactionDigest(d) => {
+            Ok(ValidatorCommandResponse::TransactionDigest(d))
+        }
+        crate::response::ClientCommandResponse::Simulation(sim) => {
+            Ok(ValidatorCommandResponse::Simulation(sim))
+        }
+        _ => bail!("Unexpected response type from transaction execution"),
     }
-}
-
-/// Execute a signed transaction and wait for checkpoint
-async fn execute_transaction(
-    context: &WalletContext,
-    tx: Transaction,
-) -> Result<TransactionResponse> {
-    // Execute and wait for checkpoint finality
-    let response = context.execute_transaction_may_fail(tx).await?;
-
-    Ok(TransactionResponse::from_effects_with_balance_changes(
-        &response.effects,
-        Some(response.checkpoint_sequence_number),
-        response.balance_changes,
-    ))
 }
 
 /// Create a key file if it doesn't exist
 fn make_key_file(path: &PathBuf, is_protocol_key: bool, key: Option<SomaKeyPair>) -> Result<()> {
     if path.exists() {
-        println!("Using existing key file: {:?}", path);
+        eprintln!("Using existing key file: {:?}", path);
         return Ok(());
     }
 
@@ -419,7 +406,7 @@ fn make_key_file(path: &PathBuf, is_protocol_key: bool, key: Option<SomaKeyPair>
         write_keypair_to_file(&kp, path)?;
     }
 
-    println!("Generated new key file: {:?}", path);
+    eprintln!("Generated new key file: {:?}", path);
     Ok(())
 }
 
@@ -428,7 +415,7 @@ fn make_validator_info(
     context: &mut WalletContext,
     host_name: &str,
     commission_rate: u64,
-) -> Result<()> {
+) -> Result<MakeValidatorInfoOutput> {
     let sender = context.active_address()?;
     let dir = std::env::current_dir()?;
 
@@ -473,10 +460,17 @@ fn make_validator_info(
     let validator_info_yaml = serde_yaml::to_string(&validator_info)?;
     fs::write(&validator_info_file, validator_info_yaml)?;
 
-    println!("Generated key files in: {}", dir.display());
-    println!("Generated validator info: {}", validator_info_file.display());
-
-    Ok(())
+    Ok(MakeValidatorInfoOutput {
+        output_dir: dir.display().to_string(),
+        validator_info_file: validator_info_file.display().to_string(),
+        files: vec![
+            "protocol.key".to_string(),
+            "account.key".to_string(),
+            "network.key".to_string(),
+            "worker.key".to_string(),
+            "validator.info".to_string(),
+        ],
+    })
 }
 
 /// Build a JoinCommittee (AddValidator) transaction from validator info file
@@ -557,7 +551,7 @@ pub async fn get_validator_summary(
     let system_state = client
         .get_latest_system_state()
         .await
-        .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
+        .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
 
     // Search for the validator in the system state
     Ok(find_validator_in_system_state(&system_state, address))
@@ -567,24 +561,25 @@ pub async fn get_validator_summary(
 async fn display_metadata(
     context: &mut WalletContext,
     address: SomaAddress,
-    json: bool,
-) -> Result<()> {
+) -> Result<DisplayMetadataOutput> {
     let client = context.get_client().await?;
 
     match get_validator_summary(&client, address).await? {
         Some((status, summary)) => {
-            println!("{}'s validator status: {}", address, status);
-            if json {
-                println!("{}", serde_json::to_string_pretty(&summary)?);
-            } else {
-                println!("{}", summary);
-            }
+            Ok(DisplayMetadataOutput {
+                address,
+                status: Some(status),
+                summary: Some(summary),
+            })
         }
         None => {
-            println!("{} is not an active, networking, or pending validator.", address);
+            Ok(DisplayMetadataOutput {
+                address,
+                status: None,
+                summary: None,
+            })
         }
     }
-    Ok(())
 }
 
 /// Check that the sender has the required validator status
@@ -625,6 +620,18 @@ fn validator_to_summary(validator: &Validator, status: ValidatorStatus) -> Valid
     }
 }
 
+/// List all validators from the SystemState
+fn list_all_validators(system_state: &SystemState) -> Vec<ValidatorSummary> {
+    let mut validators = Vec::new();
+    for validator in &system_state.validators.validators {
+        validators.push(validator_to_summary(validator, ValidatorStatus::Active));
+    }
+    for validator in &system_state.validators.pending_validators {
+        validators.push(validator_to_summary(validator, ValidatorStatus::Pending));
+    }
+    validators
+}
+
 /// Find a validator by address in the SystemState and return its summary
 fn find_validator_in_system_state(
     system_state: &SystemState,
@@ -651,4 +658,26 @@ fn find_validator_in_system_state(
     }
 
     None
+}
+
+// =============================================================================
+// Output types
+// =============================================================================
+
+/// Output from `make-validator-info` command
+#[derive(Debug, Serialize)]
+pub struct MakeValidatorInfoOutput {
+    pub output_dir: String,
+    pub validator_info_file: String,
+    pub files: Vec<String>,
+}
+
+/// Output from `display-metadata` command
+#[derive(Debug, Serialize)]
+pub struct DisplayMetadataOutput {
+    pub address: SomaAddress,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<ValidatorStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ValidatorSummary>,
 }

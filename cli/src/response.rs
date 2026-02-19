@@ -35,47 +35,64 @@ const SHANNONS_PER_SOMA: u128 = 1_000_000_000;
 // VALIDATOR COMMAND RESPONSE
 // =============================================================================
 
+pub use crate::commands::validator::{MakeValidatorInfoOutput, DisplayMetadataOutput};
+
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum ValidatorCommandResponse {
     Started,
-    MakeValidatorInfo,
-    DisplayMetadata,
+    MakeValidatorInfo(MakeValidatorInfoOutput),
+    DisplayMetadata(DisplayMetadataOutput),
+    List(ValidatorListOutput),
     Transaction(TransactionResponse),
-    SerializedTransaction { serialized_unsigned_transaction: String },
+    SerializedTransaction { serialized_transaction: String },
+    TransactionDigest(TransactionDigest),
+    Simulation(SimulationResponse),
 }
 
 impl Display for ValidatorCommandResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ValidatorCommandResponse::MakeValidatorInfo => {
-                writeln!(f, "{}", "✓ Validator info files created successfully.".green().bold())?;
+            ValidatorCommandResponse::MakeValidatorInfo(output) => {
+                writeln!(f, "{}", "Validator info files created successfully.".green().bold())?;
                 writeln!(f)?;
 
                 let mut builder = TableBuilder::default();
                 builder.push_record(["Generated Files"]);
-                builder.push_record(["protocol.key"]);
-                builder.push_record(["account.key"]);
-                builder.push_record(["network.key"]);
-                builder.push_record(["worker.key"]);
-                builder.push_record(["validator.info"]);
+                for file in &output.files {
+                    builder.push_record([file.as_str()]);
+                }
 
                 let mut table = builder.build();
                 table.with(TableStyle::rounded());
                 table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
                 write!(f, "{}", table)?;
+                writeln!(f)?;
+                writeln!(f, "  Output directory: {}", output.output_dir)?;
             }
-            ValidatorCommandResponse::DisplayMetadata | ValidatorCommandResponse::Started => {
-                // Metadata is printed separately via ValidatorSummary
+            ValidatorCommandResponse::DisplayMetadata(output) => {
+                match (&output.status, &output.summary) {
+                    (Some(status), Some(summary)) => {
+                        writeln!(f, "{}'s validator status: {}", output.address, status)?;
+                        write!(f, "{}", summary)?;
+                    }
+                    _ => {
+                        writeln!(f, "{} is not an active, networking, or pending validator.", output.address)?;
+                    }
+                }
+            }
+            ValidatorCommandResponse::Started => {}
+            ValidatorCommandResponse::List(output) => {
+                write!(f, "{}", output)?;
             }
             ValidatorCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)?;
             }
-            ValidatorCommandResponse::SerializedTransaction { serialized_unsigned_transaction } => {
+            ValidatorCommandResponse::SerializedTransaction { serialized_transaction } => {
                 writeln!(f, "{}", "Serialized Unsigned Transaction".cyan().bold())?;
                 writeln!(f)?;
-                writeln!(f, "{}", serialized_unsigned_transaction)?;
+                writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
                 writeln!(
                     f,
@@ -83,6 +100,10 @@ impl Display for ValidatorCommandResponse {
                     "→ Use 'soma client execute-signed-tx' to submit after signing.".yellow()
                 )?;
             }
+            ValidatorCommandResponse::TransactionDigest(digest) => {
+                writeln!(f, "{}: {}", "Transaction Digest".bold(), digest)?;
+            }
+            ValidatorCommandResponse::Simulation(sim) => write!(f, "{}", sim)?,
         }
         Ok(())
     }
@@ -305,17 +326,10 @@ impl TransactionResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format!("{} SHANNONS", self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
-        builder.push_record([
-            "Total",
-            &format!(
-                "{} SHANNONS ({})",
-                self.fee.total_fee,
-                format_soma(self.fee.total_fee as u128)
-            ),
-        ]);
+        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
+        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
+        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
+        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -406,7 +420,7 @@ impl TransactionResponse {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum ClientCommandResponse {
-    ActiveAddress(Option<SomaAddress>),
+    ActiveAddress(Option<ActiveAddressOutput>),
     Addresses(AddressesOutput),
     NewAddress(NewAddressOutput),
     RemoveAddress(RemoveAddressOutput),
@@ -455,8 +469,11 @@ impl ClientCommandResponse {
 impl Display for ClientCommandResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ClientCommandResponse::ActiveAddress(addr) => match addr {
-                Some(a) => writeln!(f, "{}", a),
+            ClientCommandResponse::ActiveAddress(output) => match output {
+                Some(out) => match &out.alias {
+                    Some(alias) => writeln!(f, "{} ({})", alias, out.address),
+                    None => writeln!(f, "{}", out.address),
+                },
                 None => writeln!(f, "{}", "No active address set".yellow()),
             },
             ClientCommandResponse::Addresses(output) => write!(f, "{}", output),
@@ -506,6 +523,22 @@ impl Display for ClientCommandResponse {
             ClientCommandResponse::TransactionQuery(output) => write!(f, "{}", output),
             ClientCommandResponse::NoOutput => Ok(()),
         }
+    }
+}
+
+// =============================================================================
+// ACTIVE ADDRESS OUTPUT
+// =============================================================================
+
+#[derive(Debug)]
+pub struct ActiveAddressOutput {
+    pub address: SomaAddress,
+    pub alias: Option<String>,
+}
+
+impl Serialize for ActiveAddressOutput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.address.serialize(serializer)
     }
 }
 
@@ -586,6 +619,12 @@ impl Display for NewAddressOutput {
             f,
             "{}",
             "⚠  Store this recovery phrase securely. It cannot be recovered!".yellow().bold()
+        )?;
+        writeln!(f)?;
+        writeln!(
+            f,
+            "  Run {} to make it active.",
+            format!("soma wallet switch {}", self.address).bold()
         )
     }
 }
@@ -681,7 +720,9 @@ pub struct NewEnvOutput {
 impl Display for NewEnvOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "{} Added environment [{}]", "✓".green(), self.alias.cyan())?;
-        writeln!(f, "  Chain ID: {}", self.chain_id)
+        writeln!(f, "  Chain ID: {}", self.chain_id)?;
+        writeln!(f)?;
+        writeln!(f, "  Run {} to activate it.", format!("soma env switch {}", self.alias).bold())
     }
 }
 
@@ -819,7 +860,7 @@ impl Display for ObjectOutput {
             match content {
                 ObjectContent::Coin { balance } => {
                     let mut builder = TableBuilder::default();
-                    builder.push_record(["Balance (SHANNONS)", &balance.to_string()]);
+                    builder.push_record(["Balance (shannons)", &balance.to_string()]);
                     builder.push_record(["Balance (SOMA)", &format_soma(*balance as u128)]);
 
                     let mut table = builder.build();
@@ -832,7 +873,7 @@ impl Display for ObjectOutput {
                 ObjectContent::StakedSoma(staked) => {
                     let mut builder = TableBuilder::default();
                     builder.push_record(["Pool ID", &staked.pool_id.to_string()]);
-                    builder.push_record(["Principal (SHANNONS)", &staked.principal.to_string()]);
+                    builder.push_record(["Principal (shannons)", &staked.principal.to_string()]);
                     builder
                         .push_record(["Principal (SOMA)", &format_soma(staked.principal as u128)]);
                     builder.push_record([
@@ -938,7 +979,7 @@ impl Display for GasCoinsOutput {
         }
 
         let mut builder = TableBuilder::default();
-        builder.push_record(["Object ID", "Balance (SHANNONS)", "Balance (SOMA)"]);
+        builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
 
         let mut total: u128 = 0;
         for (obj_ref, balance) in &self.coins {
@@ -954,8 +995,8 @@ impl Display for GasCoinsOutput {
         table.with(TableStyle::rounded());
         table.with(TablePanel::header(format!("Gas Coins ({} coins)", self.coins.len())));
         table.with(TablePanel::footer(format!(
-            "Total: {} SHANNONS ({})",
-            total,
+            "Total: {} shannons ({})",
+            format_with_commas(total),
             format_soma(total)
         )));
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
@@ -981,7 +1022,7 @@ impl Display for BalanceOutput {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
         builder.push_record(["Total (SOMA)", &format_soma(self.total_balance).green().to_string()]);
-        builder.push_record(["Total (SHANNONS)", &self.total_balance.to_string()]);
+        builder.push_record(["Total (shannons)", &self.total_balance.to_string()]);
         builder.push_record(["Coin Count", &self.coin_count.to_string()]);
 
         let mut table = builder.build();
@@ -994,10 +1035,14 @@ impl Display for BalanceOutput {
         if let Some(coins) = &self.coins {
             writeln!(f)?;
             let mut builder = TableBuilder::default();
-            builder.push_record(["Object ID", "Balance (SHANNONS)"]);
+            builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
 
             for (id, balance) in coins {
-                builder.push_record([id.to_string(), balance.to_string()]);
+                builder.push_record([
+                    id.to_string(),
+                    balance.to_string(),
+                    format_soma(*balance as u128),
+                ]);
             }
 
             let mut table = builder.build();
@@ -1015,6 +1060,85 @@ impl Display for BalanceOutput {
 }
 
 impl BalanceOutput {
+    pub fn print(&self, json: bool) {
+        if json {
+            match serde_json::to_string_pretty(self) {
+                Ok(s) => println!("{}", s),
+                Err(e) => eprintln!("Failed to serialize response: {}", e),
+            }
+        } else {
+            print!("{}", self);
+        }
+    }
+}
+
+// =============================================================================
+// STATUS OUTPUT
+// =============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct StatusOutput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    pub rpc_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epoch: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub balance: Option<u64>,
+    pub server_reachable: bool,
+}
+
+impl Display for StatusOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut builder = TableBuilder::default();
+        builder.push_record([
+            "Network",
+            self.network.as_deref().unwrap_or("none"),
+        ]);
+        builder.push_record(["RPC URL", &self.rpc_url]);
+        if let Some(ref ver) = self.server_version {
+            builder.push_record(["Server Version", ver]);
+        }
+        if let Some(ref cid) = self.chain_id {
+            builder.push_record(["Chain ID", cid]);
+        }
+        if let Some(e) = self.epoch {
+            builder.push_record(["Current Epoch", &e.to_string()]);
+        }
+        if let Some(ref addr) = self.active_address {
+            builder.push_record(["Active Address", addr]);
+        }
+        if let Some(bal) = self.balance {
+            let soma = format_soma(bal as u128);
+            builder.push_record(["Balance", &soma]);
+        }
+
+        let mut table = builder.build();
+        table.with(TableStyle::rounded());
+        table.with(TablePanel::header("Soma Network Status"));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(tabled::settings::style::BorderSpanCorrection);
+        writeln!(f, "{}", table)?;
+
+        if !self.server_reachable {
+            writeln!(
+                f,
+                "\n  {} Could not connect to RPC server at {}",
+                "Warning:".yellow().bold(),
+                self.rpc_url,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl StatusOutput {
     pub fn print(&self, json: bool) {
         if json {
             match serde_json::to_string_pretty(self) {
@@ -1056,7 +1180,7 @@ impl Display for SimulationResponse {
         builder.push_record(["Status", &status_str]);
         builder.push_record([
             "Estimated Gas",
-            &format!("{} SHANNONS ({})", self.gas_used, format_soma(self.gas_used as u128)),
+            &format!("{} shannons ({})", self.gas_used, format_soma(self.gas_used as u128)),
         ]);
 
         if !self.created.is_empty() {
@@ -1206,17 +1330,10 @@ impl TransactionQueryResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format!("{} SHANNONS", self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format!("{} SHANNONS", self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format!("{} SHANNONS", self.fee.value_fee)]);
-        builder.push_record([
-            "Total",
-            &format!(
-                "{} SHANNONS ({})",
-                self.fee.total_fee,
-                format_soma(self.fee.total_fee as u128)
-            ),
-        ]);
+        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
+        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
+        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
+        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1253,6 +1370,46 @@ impl TransactionQueryResponse {
         }
 
         Ok(())
+    }
+}
+
+// =============================================================================
+// VALIDATOR LIST OUTPUT
+// =============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct ValidatorListOutput {
+    pub validators: Vec<ValidatorSummary>,
+}
+
+impl Display for ValidatorListOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.validators.is_empty() {
+            return writeln!(f, "{}", "No validators found.".yellow());
+        }
+
+        let mut builder = TableBuilder::default();
+        builder.push_record(["Address", "Status", "Voting Power", "Commission"]);
+
+        for v in &self.validators {
+            builder.push_record([
+                truncate_id(&v.address.to_string()),
+                v.status.to_string(),
+                v.voting_power.to_string(),
+                format!("{:.2}%", v.commission_rate as f64 / 100.0),
+            ]);
+        }
+
+        let mut table = builder.build();
+        table.with(TableStyle::rounded());
+        table.with(TablePanel::header(format!(
+            "Validators ({} total)",
+            self.validators.len()
+        )));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
+        table.with(tabled::settings::style::BorderSpanCorrection);
+        writeln!(f, "{}", table)
     }
 }
 
@@ -1339,13 +1496,40 @@ impl Display for ValidatorSummary {
 // HELPER FUNCTIONS
 // =============================================================================
 
+/// Format a fee value showing SOMA first with shannons in parentheses.
+fn format_fee(shannons: u64) -> String {
+    format!(
+        "{} ({} shannons)",
+        format_soma(shannons as u128),
+        format_with_commas(shannons as u128)
+    )
+}
+
 /// Format a balance in shannons as SOMA with appropriate suffix (public API).
 pub fn format_soma_public(shannons: u128) -> String {
     format_soma(shannons)
 }
 
+/// Format a u64/u128 with comma separators for readability.
+pub fn format_with_commas(n: u128) -> String {
+    let s = n.to_string();
+    let mut result = String::with_capacity(s.len() + s.len() / 3);
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    result
+}
+
+/// Truncate a hex ID for display (public for use by command modules).
+pub fn truncate_id(s: &str) -> String {
+    if s.len() <= 16 { s.to_string() } else { format!("{}...{}", &s[..10], &s[s.len() - 6..]) }
+}
+
 /// Format a balance in shannons as SOMA with appropriate suffix
-fn format_soma(shannons: u128) -> String {
+pub fn format_soma(shannons: u128) -> String {
     if shannons == 0 {
         return "0 SOMA".to_string();
     }
@@ -1361,8 +1545,9 @@ fn format_soma(shannons: u128) -> String {
         format!("{:.2}K SOMA", whole as f64 / 1_000.0)
     } else if whole > 0 {
         if frac > 0 {
-            let decimal = frac / 10_000_000;
-            format!("{}.{:02} SOMA", whole, decimal)
+            let decimal_str = format!("{:09}", frac);
+            let trimmed = decimal_str.trim_end_matches('0');
+            format!("{}.{} SOMA", whole, trimmed)
         } else {
             format!("{} SOMA", whole)
         }
@@ -1408,7 +1593,9 @@ mod tests {
     fn test_format_soma() {
         assert_eq!(format_soma(0), "0 SOMA");
         assert_eq!(format_soma(1_000_000_000), "1 SOMA");
-        assert_eq!(format_soma(1_500_000_000), "1.50 SOMA");
+        assert_eq!(format_soma(1_500_000_000), "1.5 SOMA");
+        assert_eq!(format_soma(1_001_000_000), "1.001 SOMA");
+        assert_eq!(format_soma(1_999_999_999), "1.999999999 SOMA");
         assert_eq!(format_soma(1_000_000_000_000), "1.00K SOMA");
         assert_eq!(format_soma(1_500_000_000_000), "1.50K SOMA");
         assert_eq!(format_soma(1_000_000_000_000_000), "1.00M SOMA");
@@ -1423,5 +1610,103 @@ mod tests {
 
         let short = "0x1234";
         assert_eq!(truncate_address(short), "0x1234");
+    }
+
+    #[test]
+    fn test_active_address_output_json_serialization() {
+        // JSON output should be just the address string (backward compatible)
+        let output = ActiveAddressOutput {
+            address: SomaAddress::ZERO,
+            alias: Some("my-alias".to_string()),
+        };
+        let json = serde_json::to_string(&output).unwrap();
+        // Should serialize as the address, not as {"address":"...", "alias":"..."}
+        assert!(!json.contains("alias"), "JSON should not contain alias field: {json}");
+        assert!(json.contains(&SomaAddress::ZERO.to_string()));
+    }
+
+    #[test]
+    fn test_active_address_display_with_alias() {
+        let output = ActiveAddressOutput {
+            address: SomaAddress::ZERO,
+            alias: Some("my-alias".to_string()),
+        };
+        let response = ClientCommandResponse::ActiveAddress(Some(output));
+        let display = format!("{}", response);
+        assert!(display.contains("my-alias"), "Display should contain alias: {display}");
+        assert!(
+            display.contains(&SomaAddress::ZERO.to_string()),
+            "Display should contain address: {display}"
+        );
+    }
+
+    #[test]
+    fn test_active_address_display_without_alias() {
+        let output = ActiveAddressOutput { address: SomaAddress::ZERO, alias: None };
+        let response = ClientCommandResponse::ActiveAddress(Some(output));
+        let display = format!("{}", response);
+        assert!(
+            display.contains(&SomaAddress::ZERO.to_string()),
+            "Display should contain address: {display}"
+        );
+    }
+
+    #[test]
+    fn test_active_address_display_none() {
+        let response = ClientCommandResponse::ActiveAddress(None);
+        let display = format!("{}", response);
+        assert!(display.contains("No active address set"));
+    }
+
+    #[test]
+    fn test_validator_list_output_empty() {
+        let output = ValidatorListOutput { validators: vec![] };
+        let display = format!("{}", output);
+        assert!(display.contains("No validators found"));
+    }
+
+    #[test]
+    fn test_validator_list_output_with_validators() {
+        let output = ValidatorListOutput {
+            validators: vec![
+                ValidatorSummary {
+                    address: SomaAddress::ZERO,
+                    status: ValidatorStatus::Active,
+                    voting_power: 1000,
+                    commission_rate: 200,
+                    network_address: "/ip4/127.0.0.1/tcp/8080".to_string(),
+                    p2p_address: "/ip4/127.0.0.1/tcp/8084".to_string(),
+                    primary_address: "/ip4/127.0.0.1/tcp/8081".to_string(),
+                    protocol_pubkey: "abc123".to_string(),
+                    network_pubkey: "def456".to_string(),
+                    worker_pubkey: "ghi789".to_string(),
+                },
+            ],
+        };
+        let display = format!("{}", output);
+        assert!(display.contains("Validators (1 total)"), "Should show count: {display}");
+        assert!(display.contains("1000"), "Should show voting power: {display}");
+        assert!(display.contains("2.00%"), "Should show commission rate: {display}");
+    }
+
+    #[test]
+    fn test_validator_list_json_serialization() {
+        let output = ValidatorListOutput {
+            validators: vec![ValidatorSummary {
+                address: SomaAddress::ZERO,
+                status: ValidatorStatus::Active,
+                voting_power: 1000,
+                commission_rate: 200,
+                network_address: "/ip4/127.0.0.1/tcp/8080".to_string(),
+                p2p_address: "/ip4/127.0.0.1/tcp/8084".to_string(),
+                primary_address: "/ip4/127.0.0.1/tcp/8081".to_string(),
+                protocol_pubkey: "abc123".to_string(),
+                network_pubkey: "def456".to_string(),
+                worker_pubkey: "ghi789".to_string(),
+            }],
+        };
+        let json = serde_json::to_string_pretty(&output).unwrap();
+        assert!(json.contains("\"voting_power\""), "JSON should have voting_power field: {json}");
+        assert!(json.contains("\"validators\""), "JSON should have validators array: {json}");
     }
 }

@@ -5,6 +5,7 @@ use crate::{
         SomaValidatorCommand, SubmitCommand, TargetCommand, WalletCommand,
     },
     keytool::KeyToolCommand,
+    soma_amount::SomaAmount,
 };
 use anyhow::{Context as _, anyhow, bail, ensure};
 use clap::{Command, CommandFactory as _, Parser};
@@ -82,7 +83,7 @@ impl SomaEnvConfig {
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Parser)]
-#[clap(rename_all = "kebab-case")]
+#[clap(name = "soma", rename_all = "kebab-case")]
 pub enum SomaCommand {
     // =========================================================================
     // COMMON USER ACTIONS (Top-level for convenience)
@@ -99,33 +100,36 @@ EXAMPLES:
         /// Show individual coin details
         #[clap(long)]
         with_coins: bool,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Send SOMA to a recipient
     #[clap(name = "send", after_help = "\
 EXAMPLES:
-    soma send --to 0x1234...5678 --amount 1000000000
-    soma send --to my-alias --amount 500000000 --coin 0xABCD...")]
+    soma send --to 0x1234...5678 --amount 1
+    soma send --to my-alias --amount 0.5 --coin 0xABCD...")]
     Send {
         /// Recipient address or alias
         #[clap(long)]
         to: KeyIdentity,
-        /// Amount to send in shannons
+        /// Amount to send in SOMA (e.g., 1 or 0.5)
         #[clap(long)]
-        amount: u64,
+        amount: SomaAmount,
         /// Specific coin to send from (auto-selected if not provided)
         #[clap(long)]
         coin: Option<ObjectID>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Transfer an object to a recipient
-    #[clap(name = "transfer")]
+    #[clap(name = "transfer", after_help = "\
+EXAMPLES:
+    soma transfer --to 0x1234...5678 --object-id 0xABCD...
+    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS...")]
     Transfer {
         /// Recipient address or alias
         #[clap(long)]
@@ -138,85 +142,120 @@ EXAMPLES:
         gas: Option<ObjectID>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Pay SOMA to multiple recipients
-    #[clap(name = "pay")]
+    #[clap(name = "pay", after_help = "\
+EXAMPLES:
+    soma pay --recipients 0xABC... --amounts 1
+    soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
+    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN...")]
     Pay {
         /// Recipient addresses
-        #[clap(long, num_args(1..))]
+        #[clap(long, required = true, num_args(1..))]
         recipients: Vec<KeyIdentity>,
-        /// Amounts to send to each recipient (in shannons)
-        #[clap(long, num_args(1..))]
-        amounts: Vec<u64>,
+        /// Amounts to send to each recipient (in SOMA, e.g., 1 or 0.5)
+        #[clap(long, required = true, num_args(1..))]
+        amounts: Vec<SomaAmount>,
         /// Input coin object IDs (auto-selected if not provided)
         #[clap(long, num_args(1..))]
         coins: Option<Vec<ObjectID>>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Stake SOMA with a validator or model
-    #[clap(name = "stake")]
+    #[clap(name = "stake", after_help = "\
+EXAMPLES:
+    soma stake --validator 0xVAL... --amount 10
+    soma stake --model 0xMODEL... --amount 5
+    soma stake --validator 0xVAL... --coin 0xCOIN...")]
     Stake {
         /// Validator address to stake with
-        #[clap(long, group = "stake_target")]
+        #[clap(long, group = "stake_target", required_unless_present = "model")]
         validator: Option<SomaAddress>,
         /// Model ID to stake with
-        #[clap(long, group = "stake_target")]
+        #[clap(long, group = "stake_target", required_unless_present = "validator")]
         model: Option<ObjectID>,
-        /// Amount to stake (uses entire coin if not specified)
+        /// Amount to stake in SOMA (uses entire coin if not specified)
         #[clap(long)]
-        amount: Option<u64>,
+        amount: Option<SomaAmount>,
         /// Coin to use for staking (auto-selected if not provided)
         #[clap(long)]
         coin: Option<ObjectID>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Withdraw staked SOMA
-    #[clap(name = "unstake")]
+    #[clap(name = "unstake", after_help = "\
+EXAMPLES:
+    soma unstake 0xSTAKED_SOMA_ID")]
     Unstake {
         /// StakedSoma object ID to withdraw
         staked_soma_id: ObjectID,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Request test tokens from the faucet
+    #[clap(name = "faucet", after_help = "\
+EXAMPLES:
+    soma faucet
+    soma faucet --address 0x1234...5678
+    soma faucet --url http://127.0.0.1:9123/gas")]
+    Faucet {
+        /// Address to receive tokens (defaults to active address)
+        #[clap(long)]
+        address: Option<KeyIdentity>,
+        /// The URL of the faucet server
+        #[clap(long)]
+        url: Option<String>,
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Show network connection status, version info, and active address
-    #[clap(name = "status")]
+    #[clap(name = "status", after_help = "\
+EXAMPLES:
+    soma status
+    soma status --json")]
     Status {
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     // =========================================================================
     // QUERY COMMANDS
     // =========================================================================
-    /// Query objects
-    #[clap(name = "objects")]
+    /// Query on-chain objects by owner or ID
+    #[clap(name = "objects", after_help = "\
+EXAMPLES:
+    soma objects list
+    soma objects get 0xOBJECT_ID")]
     Objects {
         #[clap(subcommand)]
         cmd: ObjectsCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Get transaction details by digest
-    #[clap(name = "tx")]
+    #[clap(name = "tx", after_help = "\
+EXAMPLES:
+    soma tx DIGEST_BASE58")]
     Tx {
         /// Transaction digest
         digest: TransactionDigest,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
@@ -224,84 +263,106 @@ EXAMPLES:
     // MANAGEMENT COMMANDS
     // =========================================================================
     /// Manage wallet addresses and keys
-    #[clap(name = "wallet")]
+    #[clap(name = "wallet", after_help = "\
+EXAMPLES:
+    soma wallet list
+    soma wallet new --alias my-wallet
+    soma wallet switch 0x1234...5678")]
     Wallet {
         #[clap(subcommand)]
         cmd: WalletCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
-    /// Manage network environments
-    #[clap(name = "env")]
+    /// Manage network environments (switch, add, list)
+    #[clap(name = "env", after_help = "\
+EXAMPLES:
+    soma env list
+    soma env switch testnet
+    soma env new --alias mynet --rpc http://...")]
     Env {
         #[clap(subcommand)]
         cmd: EnvCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     // =========================================================================
-    // OPERATOR COMMANDS
+    // MINING COMMANDS
     // =========================================================================
-    /// A tool for validators and validator candidates
-    #[clap(name = "validator")]
-    Validator {
-        #[clap(flatten)]
-        config: SomaEnvConfig,
-        #[clap(subcommand)]
-        cmd: Option<SomaValidatorCommand>,
-        #[clap(long, global = true)]
-        json: bool,
-    },
-
     /// Manage models (commit, reveal, update, deactivate, query)
-    #[clap(name = "model")]
+    #[clap(name = "model", after_help = "\
+EXAMPLES:
+    soma model list
+    soma model info 0xMODEL_ID
+    soma model commit 0xMODEL_ID --weights-url-commitment 0xHEX... \\
+        --weights-commitment 0xHEX... --architecture-version 1 \\
+        --stake-amount 100 --staking-pool-id 0xPOOL_ID
+    soma model reveal 0xMODEL_ID --weights-url https://... \\
+        --weights-checksum 0xHEX... --weights-size 1024 \\
+        --decryption-key 0xHEX... --embedding 0.1,0.2,0.3
+    soma model deactivate 0xMODEL_ID
+    soma model download 0xMODEL_ID --output ./weights.bin")]
     Model {
         #[clap(subcommand)]
         cmd: ModelCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
-    /// Query targets in the mining competition
-    #[clap(name = "target")]
+    /// Query and inspect targets in the mining competition
+    #[clap(name = "target", after_help = "\
+EXAMPLES:
+    soma target list
+    soma target list --status open
+    soma target info 0xTARGET_ID")]
     Target {
         #[clap(subcommand)]
         cmd: TargetCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
-    /// Download submission data from filled targets
+    /// Download submission data for a filled target
     ///
     /// Fetches the winning submission's data via the validator proxy network.
-    #[clap(name = "data")]
+    #[clap(name = "data", after_help = "\
+EXAMPLES:
+    soma data 0xTARGET_ID
+    soma data 0xTARGET_ID --output ./my-data.bin")]
     Data {
-        #[clap(subcommand)]
+        #[clap(flatten)]
         cmd: DataCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Submit data to fill a target
-    #[clap(name = "submit")]
+    #[clap(name = "submit", after_help = "\
+EXAMPLES:
+    soma submit --target-id 0xTARGET... --data-commitment 0xHEX... \\
+        --data-url https://... --data-checksum 0xHEX... --data-size 1024 \\
+        --model-id 0xMODEL... --embedding 0.1,0.2,0.3 \\
+        --distance-score 0.5 --bond-coin 0xCOIN...")]
     Submit {
         #[clap(flatten)]
         cmd: SubmitCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     /// Claim rewards from a filled target
     ///
     /// Claims the reward pool from a target that was successfully filled.
-    /// The challenge window must have closed (fill_epoch + 1 must have ended).
-    #[clap(name = "claim")]
+    /// The challenge window (one full epoch after the target was filled) must have closed.
+    #[clap(name = "claim", after_help = "\
+EXAMPLES:
+    soma claim 0xTARGET_ID")]
     Claim {
         #[clap(flatten)]
         cmd: ClaimCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
@@ -309,25 +370,45 @@ EXAMPLES:
     ///
     /// Initiates a fraud challenge against a miner's submission for a filled target.
     /// Requires a bond proportional to the data size.
-    #[clap(name = "challenge")]
+    #[clap(name = "challenge", after_help = "\
+EXAMPLES:
+    soma challenge initiate --target-id 0xTARGET... --bond-coin 0xCOIN...
+    soma challenge info 0xCHALLENGE_ID")]
     Challenge {
         #[clap(subcommand)]
         cmd: ChallengeCommand,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    // =========================================================================
+    // OPERATOR COMMANDS
+    // =========================================================================
+    /// Manage validators (register, set gas price, commission)
+    #[clap(name = "validator", after_help = "\
+EXAMPLES:
+    soma validator display-metadata
+    soma validator list")]
+    Validator {
+        #[clap(flatten)]
+        config: SomaEnvConfig,
+        #[clap(subcommand)]
+        cmd: Option<SomaValidatorCommand>,
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
     // =========================================================================
     // ADVANCED CLIENT OPERATIONS (backward compatibility)
     // =========================================================================
-    /// Advanced client operations
+    /// Advanced operations (execute serialized transactions)
     #[clap(name = "client")]
     Client {
         #[clap(flatten)]
         config: SomaEnvConfig,
         #[clap(subcommand)]
         cmd: Option<SomaClientCommands>,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
 
@@ -391,6 +472,7 @@ EXAMPLES:
         with_faucet: Option<String>,
     },
 
+    /// Inspect local network configuration and validator addresses
     #[clap(name = "network")]
     Network {
         #[clap(long = "network.config")]
@@ -399,7 +481,7 @@ EXAMPLES:
         dump_addresses: bool,
     },
 
-    /// Bootstrap and initialize a new soma network
+    /// Bootstrap and initialize a new Soma network
     #[clap(name = "genesis")]
     Genesis {
         #[clap(long, help = "Start genesis with a given config file")]
@@ -419,17 +501,29 @@ EXAMPLES:
         committee_size: Option<usize>,
     },
 
+    /// Coordinate multi-validator genesis for network launches
     GenesisCeremony(crate::genesis_ceremony::Ceremony),
 
-    /// Soma keystore tool.
+    /// Low-level keystore operations (generate, import, export keys)
     #[clap(name = "keytool")]
     KeyTool {
         #[clap(long)]
         keystore_path: Option<PathBuf>,
-        #[clap(long, global = true)]
+        #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
         #[clap(subcommand)]
         cmd: KeyToolCommand,
+    },
+
+    /// Generate shell completion scripts
+    #[clap(name = "completions", after_help = "\
+EXAMPLES:
+    soma completions bash > /usr/local/etc/bash_completion.d/soma
+    soma completions zsh > ~/.zfunc/_soma
+    soma completions fish > ~/.config/fish/completions/soma.fish")]
+    Completions {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
     },
 }
 
@@ -456,9 +550,10 @@ impl SomaCommand {
             }
 
             SomaCommand::Send { to, amount, coin, tx_args, json } => {
+                ensure!(amount.shannons() > 0, "Amount must be greater than 0");
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
-                    commands::send::execute(&mut context, to, amount, coin, tx_args).await?;
+                    commands::send::execute(&mut context, to, amount.shannons(), coin, tx_args).await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -478,9 +573,19 @@ impl SomaCommand {
             }
 
             SomaCommand::Pay { recipients, amounts, coins, tx_args, json } => {
+                ensure!(
+                    recipients.len() == amounts.len(),
+                    "Number of recipients ({}) must match number of amounts ({})",
+                    recipients.len(),
+                    amounts.len()
+                );
+                for (i, a) in amounts.iter().enumerate() {
+                    ensure!(a.shannons() > 0, "Amount {} must be greater than 0", i + 1);
+                }
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
                 let result =
-                    commands::pay::execute(&mut context, recipients, amounts, coins, tx_args)
+                    commands::pay::execute(&mut context, recipients, amounts_shannons, coins, tx_args)
                         .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
@@ -495,7 +600,7 @@ impl SomaCommand {
                     &mut context,
                     validator,
                     model,
-                    amount,
+                    amount.map(|a| a.shannons()),
                     coin,
                     tx_args,
                 )
@@ -518,6 +623,12 @@ impl SomaCommand {
                 Ok(())
             }
 
+            SomaCommand::Faucet { address, url, json: _ } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                commands::faucet::execute(&mut context, address, url).await?;
+                Ok(())
+            }
+
             SomaCommand::Status { json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let active_address = context.active_address().ok();
@@ -528,7 +639,7 @@ impl SomaCommand {
                     .map(|e| e.rpc.clone())
                     .unwrap_or_default();
 
-                let (server_version, chain_id, epoch, balance) =
+                let (server_version, chain_id, epoch, balance, server_unreachable) =
                     match context.get_client().await {
                         Ok(client) => {
                             let chain_id = client.get_chain_identifier().await.ok();
@@ -543,61 +654,25 @@ impl SomaCommand {
                             } else {
                                 None
                             };
-                            (server_version, chain_id, epoch, balance)
+                            let unreachable = server_version.is_none()
+                                && chain_id.is_none()
+                                && epoch.is_none();
+                            (server_version, chain_id, epoch, balance, unreachable)
                         }
-                        Err(_) => (None, None, None, None),
+                        Err(_) => (None, None, None, None, true),
                     };
 
-                if json {
-                    let output = serde_json::json!({
-                        "network": active_env,
-                        "rpc_url": rpc_url,
-                        "server_version": server_version,
-                        "chain_id": chain_id,
-                        "epoch": epoch,
-                        "active_address": active_address.map(|a| a.to_string()),
-                        "balance": balance,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&output).unwrap());
-                } else {
-                    use tabled::{
-                        builder::Builder as TableBuilder,
-                        settings::{
-                            Panel as TablePanel, Style as TableStyle,
-                            style::HorizontalLine,
-                        },
-                    };
-
-                    let mut builder = TableBuilder::default();
-                    builder.push_record([
-                        "Network",
-                        &active_env.unwrap_or_else(|| "none".to_string()),
-                    ]);
-                    builder.push_record(["RPC URL", &rpc_url]);
-                    if let Some(ref ver) = server_version {
-                        builder.push_record(["Server Version", ver]);
-                    }
-                    if let Some(ref cid) = chain_id {
-                        builder.push_record(["Chain ID", cid]);
-                    }
-                    if let Some(e) = epoch {
-                        builder.push_record(["Current Epoch", &e.to_string()]);
-                    }
-                    if let Some(addr) = active_address {
-                        builder.push_record(["Active Address", &addr.to_string()]);
-                    }
-                    if let Some(bal) = balance {
-                        let soma = crate::response::format_soma_public(bal as u128);
-                        builder.push_record(["Balance", &soma]);
-                    }
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Soma Network Status"));
-                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    println!("{}", table);
-                }
+                let output = crate::response::StatusOutput {
+                    network: active_env,
+                    rpc_url,
+                    server_version,
+                    chain_id,
+                    epoch,
+                    active_address: active_address.map(|a| a.to_string()),
+                    balance,
+                    server_reachable: !server_unreachable,
+                };
+                output.print(json);
                 Ok(())
             }
 
@@ -792,6 +867,13 @@ impl SomaCommand {
                 cmd.execute(&mut keystore).await?.print(json);
                 Ok(())
             }
+
+            SomaCommand::Completions { shell } => {
+                use clap::CommandFactory as _;
+                let mut cmd = crate::soma_commands::SomaCommand::command();
+                clap_complete::generate(shell, &mut cmd, "soma", &mut io::stdout());
+                Ok(())
+            }
         }
     }
 }
@@ -942,15 +1024,18 @@ async fn start(
     let num_validators = committee_size.unwrap_or(1);
 
     // -- Build & launch -------------------------------------------------------
+    const STATUS_WIDTH: usize = 50;
     eprintln!();
     eprintln!("  {}", "Soma Local Network".bold());
-    eprintln!("  {}", "═".repeat(49));
+    eprintln!("  {}", "═".repeat(STATUS_WIDTH));
     eprintln!();
-    eprint!("  Generating genesis...                          ");
+    let msg = "Generating genesis...";
+    eprint!("  {msg:<width$}", width = STATUS_WIDTH);
     let mut swarm = swarm_builder.build();
     eprintln!("{}", "done".green());
 
-    eprint!("  Starting validators ({num_validators})...                    ");
+    let msg = format!("Starting validators ({num_validators})...");
+    eprint!("  {msg:<width$}", width = STATUS_WIDTH);
     swarm.launch().await?;
     eprintln!("{}", "done".green());
 
@@ -960,7 +1045,8 @@ async fn start(
         socket_addr_to_url(fullnode_rpc_address)?.to_string().trim_end_matches("/").to_string();
 
     if !no_full_node {
-        eprintln!("  Starting fullnode...                           {}", "done".green());
+        let msg = "Starting fullnode...";
+        eprintln!("  {msg:<width$}{done}", width = STATUS_WIDTH, done = "done".green());
     }
 
     if config_dir.join(SOMA_CLIENT_CONFIG).exists() {
@@ -976,7 +1062,8 @@ async fn start(
     // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/sui_commands.rs
     let mut faucet_url: Option<String> = None;
     if let Some(input) = with_faucet {
-        eprint!("  Starting faucet...                             ");
+        let msg = "Starting faucet...";
+        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
         let (host, port) = parse_faucet_host_port(&input)?;
 
         // Extract the last account key as the faucet key (added by add_faucet_account)
@@ -1066,17 +1153,24 @@ async fn start(
     let persistence = if force_regenesis { "ephemeral" } else { "enabled" };
 
     eprintln!();
-    eprintln!("  {} {}", "Network ready.".green().bold(), "");
+    eprintln!("  {}", "Network ready.".green().bold());
     eprintln!();
-    eprintln!(
-        "  {}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}  {:<14}{}\n  {}",
-        "┌─────────────────────────────────────────────────┐".dimmed(),
-        "│".dimmed(), "RPC URL", format!("{:<30} │", fullnode_rpc_url),
-        "│".dimmed(), "Faucet", format!("{:<30} │", faucet_url.as_deref().unwrap_or("disabled")),
-        "│".dimmed(), "Epoch", format!("{:<30} │", format!("{}s", epoch_ms / 1000)),
-        "│".dimmed(), "Persistence", format!("{:<30} │", persistence),
-        "└─────────────────────────────────────────────────┘".dimmed(),
-    );
+    let faucet_display = faucet_url.as_deref().unwrap_or("disabled");
+    let epoch_display = format!("{}s", epoch_ms / 1000);
+    let rows: [(&str, &str); 4] = [
+        ("RPC URL", &fullnode_rpc_url),
+        ("Faucet", faucet_display),
+        ("Epoch", &epoch_display),
+        ("Persistence", persistence),
+    ];
+    let label_w = 14;
+    let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
+    let inner_w = label_w + value_w + 1; // +1 for space between label padding and value
+    eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
+    for (label, value) in &rows {
+        eprintln!("  {}  {:<lw$}{:<vw$}{}", "│".dimmed(), label, value, "│".dimmed(), lw = label_w, vw = value_w + 1);
+    }
+    eprintln!("  {}", format!("└{}┘", "─".repeat(inner_w)).dimmed());
     eprintln!();
     eprintln!("  State dir: {}", state_dir.dimmed());
     eprintln!();
@@ -1100,12 +1194,14 @@ async fn start(
     for node in swarm.validator_nodes() {
         node.stop();
     }
-    eprintln!("  Stopping validators...                         {}", "done".green());
+    let msg = "Stopping validators...";
+    eprintln!("  {msg:<width$}{done}", width = STATUS_WIDTH, done = "done".green());
     for node in swarm.fullnodes() {
         node.stop();
     }
     if !no_full_node {
-        eprintln!("  Stopping fullnode...                           {}", "done".green());
+        let msg = "Stopping fullnode...";
+        eprintln!("  {msg:<width$}{done}", width = STATUS_WIDTH, done = "done".green());
     }
     if force_regenesis {
         eprintln!("  Ephemeral state discarded.");

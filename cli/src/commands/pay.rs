@@ -42,7 +42,7 @@ pub async fn execute(
                 let coin = client
                     .get_object(*coin_id)
                     .await
-                    .map_err(|e| anyhow!("Failed to get coin {}: {}", coin_id, e))?;
+                    .map_err(|e| anyhow!("Failed to get coin {}: {}", coin_id, e.message()))?;
                 refs.push(coin.compute_object_reference());
             }
             refs

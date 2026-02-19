@@ -1,0 +1,12 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+expression: stdout
+---
+Inspect local network configuration and validator addresses
+
+Usage: soma network [OPTIONS]
+
+Options:
+      --network.config <CONFIG>  
+  -d, --dump-addresses           Dump the public keys of all authorities
+  -h, --help                     Print help

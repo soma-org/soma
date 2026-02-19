@@ -16,21 +16,18 @@ use sdk::wallet_context::WalletContext;
 use types::object::ObjectID;
 use types::target::TargetId;
 
+/// Download submission data for a filled target
+///
+/// Fetches the winning submission's data from the validator proxy network.
+/// The target must be filled (have a winning submission) for this to work.
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
-pub enum DataCommand {
-    /// Download submission data for a filled target
-    ///
-    /// Fetches the winning submission's data from the validator proxy network.
-    /// The target must be filled (have a winning submission) for this to work.
-    #[clap(name = "get")]
-    Get {
-        /// Target ID to download submission data for
-        target_id: ObjectID,
-        /// Output file path (defaults to ./<target_id>.data)
-        #[clap(short, long)]
-        output: Option<PathBuf>,
-    },
+pub struct DataCommand {
+    /// Target ID to download submission data for
+    pub target_id: ObjectID,
+    /// Output file path (defaults to ./<target_id>.data)
+    #[clap(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 // =============================================================================
@@ -42,53 +39,49 @@ impl DataCommand {
         self,
         context: &mut WalletContext,
     ) -> Result<DataCommandResponse> {
-        match self {
-            DataCommand::Get { target_id, output } => {
-                let client = context.get_client().await?;
+        let client = context.get_client().await?;
 
-                // Get system state to create proxy client
-                let system_state = client
-                    .get_latest_system_state()
-                    .await
-                    .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
+        // Get system state to create proxy client
+        let system_state = client
+            .get_latest_system_state()
+            .await
+            .map_err(|e| anyhow!("Failed to get system state: {}", e))?;
 
-                // Create proxy client from system state
-                let proxy_client = ProxyClient::from_system_state(&system_state)
-                    .map_err(|e| anyhow!("Failed to create proxy client: {}", e))?;
+        // Create proxy client from system state
+        let proxy_client = ProxyClient::from_system_state(&system_state)
+            .map_err(|e| anyhow!("Failed to create proxy client: {}", e))?;
 
-                if proxy_client.validator_count() == 0 {
-                    bail!("No validators with proxy addresses available");
-                }
-
-                // Determine output path
-                let output_path = output.unwrap_or_else(|| {
-                    PathBuf::from(format!("{}.data", target_id))
-                });
-
-                // Download submission data
-                eprintln!("Downloading submission data for target {} from {} validators...",
-                    target_id, proxy_client.validator_count());
-
-                let data = proxy_client
-                    .fetch_submission_data(&target_id)
-                    .await
-                    .map_err(|e| anyhow!("Failed to download submission data: {}", e))?;
-
-                // Write to file
-                let mut file = tokio::fs::File::create(&output_path)
-                    .await
-                    .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
-                file.write_all(&data)
-                    .await
-                    .map_err(|e| anyhow!("Failed to write to file: {}", e))?;
-
-                Ok(DataCommandResponse::Downloaded(DataDownloadOutput {
-                    target_id,
-                    output_path,
-                    size_bytes: data.len(),
-                }))
-            }
+        if proxy_client.validator_count() == 0 {
+            bail!("No validators with proxy addresses available");
         }
+
+        // Determine output path
+        let output_path = self.output.unwrap_or_else(|| {
+            PathBuf::from(format!("{}.data", self.target_id))
+        });
+
+        // Download submission data
+        eprintln!("Downloading submission data for target {} from {} validators...",
+            self.target_id, proxy_client.validator_count());
+
+        let data = proxy_client
+            .fetch_submission_data(&self.target_id)
+            .await
+            .map_err(|e| anyhow!("Failed to download submission data: {}", e))?;
+
+        // Write to file
+        let mut file = tokio::fs::File::create(&output_path)
+            .await
+            .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
+        file.write_all(&data)
+            .await
+            .map_err(|e| anyhow!("Failed to write to file: {}", e))?;
+
+        Ok(DataCommandResponse::Downloaded(DataDownloadOutput {
+            target_id: self.target_id,
+            output_path,
+            size_bytes: data.len(),
+        }))
     }
 }
 
