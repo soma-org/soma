@@ -5,6 +5,7 @@ use std::{
 
 use crate::base::ExecutionDigests;
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,7 +32,17 @@ use crate::{
 
 pub mod object_change;
 
-/// # TransactionEffects
+/// Versioned wrapper for TransactionEffects.
+///
+/// All serialization goes through this enum. New versions are added as new variants.
+/// `#[enum_dispatch]` auto-generates forwarding of `TransactionEffectsAPI` trait methods.
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[enum_dispatch(TransactionEffectsAPI)]
+pub enum TransactionEffects {
+    V1(TransactionEffectsV1),
+}
+
+/// # TransactionEffectsV1
 ///
 /// The response from processing a transaction or a certified transaction. This structure
 /// contains all information about the outcome of transaction execution, including execution
@@ -51,7 +62,7 @@ pub mod object_change;
 /// ## Thread Safety
 /// This structure is immutable after creation and can be safely shared across threads.
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct TransactionEffects {
+pub struct TransactionEffectsV1 {
     /// The status of the execution (success or failure with reason)
     pub status: ExecutionStatus,
 
@@ -87,7 +98,7 @@ pub struct TransactionEffects {
     pub unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
 }
 
-impl TransactionEffectsAPI for TransactionEffects {
+impl TransactionEffectsAPI for TransactionEffectsV1 {
     fn status(&self) -> &ExecutionStatus {
         &self.status
     }
@@ -327,7 +338,7 @@ impl TransactionEffectsAPI for TransactionEffects {
     }
 }
 
-impl TransactionEffects {
+impl TransactionEffectsV1 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         status: ExecutionStatus,
@@ -384,10 +395,6 @@ impl TransactionEffects {
         result.check_invariant();
 
         result
-    }
-
-    pub fn execution_digests(&self) -> ExecutionDigests {
-        ExecutionDigests { transaction: *self.transaction_digest(), effects: self.digest() }
     }
 
     /// This function demonstrates what's the invariant of the effects.
@@ -458,6 +465,38 @@ impl TransactionEffects {
             assert!(unique_ids.insert(*id), "Duplicate object id: {:?}\n{:#?}", id, self);
         }
     }
+}
+
+impl TransactionEffects {
+    /// Construct a new TransactionEffects (currently always V1).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        status: ExecutionStatus,
+        executed_epoch: EpochId,
+        shared_objects: Vec<SharedInput>,
+        transaction_digest: TransactionDigest,
+        version: Version,
+        changed_objects: BTreeMap<ObjectID, EffectsObjectChange>,
+        dependencies: Vec<TransactionDigest>,
+        transaction_fee: TransactionFee,
+        gas_object: Option<ObjectID>,
+    ) -> Self {
+        TransactionEffects::V1(TransactionEffectsV1::new(
+            status,
+            executed_epoch,
+            shared_objects,
+            transaction_digest,
+            version,
+            changed_objects,
+            dependencies,
+            transaction_fee,
+            gas_object,
+        ))
+    }
+
+    pub fn execution_digests(&self) -> ExecutionDigests {
+        ExecutionDigests { transaction: *self.transaction_digest(), effects: self.digest() }
+    }
 
     /// Return an iterator that iterates through all changed objects, including mutated,
     /// created and unwrapped objects. In other words, all objects that still exist
@@ -484,7 +523,7 @@ impl TransactionEffects {
     }
 }
 
-impl Default for TransactionEffects {
+impl Default for TransactionEffectsV1 {
     fn default() -> Self {
         Self {
             status: ExecutionStatus::Success,
@@ -500,6 +539,12 @@ impl Default for TransactionEffects {
     }
 }
 
+impl Default for TransactionEffects {
+    fn default() -> Self {
+        TransactionEffects::V1(TransactionEffectsV1::default())
+    }
+}
+
 impl Message for TransactionEffects {
     type DigestType = TransactionEffectsDigest;
     const SCOPE: IntentScope = IntentScope::TransactionData;
@@ -509,6 +554,7 @@ impl Message for TransactionEffects {
     }
 }
 
+#[enum_dispatch]
 pub trait TransactionEffectsAPI {
     fn status(&self) -> &ExecutionStatus;
     fn into_status(self) -> ExecutionStatus;
@@ -681,6 +727,18 @@ pub enum ExecutionFailureStatus {
     /// Error when attempting to add a validator that already exists
     #[error("Cannot add validator that is already active or pending")]
     DuplicateValidator,
+
+    /// Error when validator metadata (key, address) duplicates an existing validator
+    #[error("Duplicate validator metadata: {field}")]
+    DuplicateValidatorMetadata { field: String },
+
+    /// Error when proof of possession is missing but required (protocol key change)
+    #[error("Missing proof of possession for protocol public key")]
+    MissingProofOfPossession,
+
+    /// Error when proof of possession verification fails
+    #[error("Invalid proof of possession: {reason}")]
+    InvalidProofOfPossession { reason: String },
 
     /// Error when trying to remove a validator that doesn't exist
     #[error("Cannot remove validator that is not active")]

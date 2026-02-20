@@ -18,6 +18,7 @@ use fastcrypto::ed25519::Ed25519KeyPair;
 use types::consensus::ConsensusTransaction;
 use types::crypto::get_key_pair;
 use types::object::{Object, ObjectID};
+use types::system_state::SystemStateTrait as _;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::transaction::{TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
@@ -35,7 +36,7 @@ async fn make_add_stake_consensus_tx(
     authority.insert_genesis_object(gas_object.clone()).await;
 
     let system_state = authority.get_system_state_object_for_testing().unwrap();
-    let validator_address = system_state.validators.validators[0].metadata.soma_address;
+    let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let gas_ref = gas_object.compute_object_reference();
     let data = TransactionData::new(
@@ -108,7 +109,7 @@ async fn test_consensus_handler_processes_user_transaction() {
         "Expected at least one batch of transactions to be scheduled"
     );
     // The first batch should contain at least the user transaction
-    // (plus possibly a ConsensusCommitPrologue system transaction)
+    // (plus possibly a ConsensusCommitPrologueV1 system transaction)
     let (schedulables, _assigned_versions, _source) = &captured[0];
     assert!(
         !schedulables.is_empty(),
@@ -154,7 +155,7 @@ async fn test_consensus_handler_deduplication() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let captured = setup.captured_transactions.lock();
-    // Both commits should produce output (each has a ConsensusCommitPrologue at minimum).
+    // Both commits should produce output (each has a ConsensusCommitPrologueV1 at minimum).
     // But the duplicate user transaction should only appear once.
     assert!(
         captured.len() >= 2,
@@ -209,7 +210,7 @@ async fn test_consensus_handler_shared_object_version_assignment() {
     );
 
     // The assigned versions should be non-empty because shared objects
-    // were involved (SystemState for AddStake, plus ConsensusCommitPrologue
+    // were involved (SystemState for AddStake, plus ConsensusCommitPrologueV1
     // also touches SystemState).
     let (_, assigned_versions, _) = &captured[0];
     let versions_map = assigned_versions.0.clone();
@@ -290,11 +291,11 @@ async fn test_consensus_handler_multiple_transactions_in_commit() {
         "Expected transactions to be scheduled"
     );
 
-    // Count total schedulable transactions (including ConsensusCommitPrologue)
+    // Count total schedulable transactions (including ConsensusCommitPrologueV1)
     let total_schedulables: usize =
         captured.iter().map(|(schedulables, _, _)| schedulables.len()).sum();
 
-    // Should have at least 3 user transactions + 1 ConsensusCommitPrologue = 4
+    // Should have at least 3 user transactions + 1 ConsensusCommitPrologueV1 = 4
     assert!(
         total_schedulables >= 4,
         "Expected at least 4 schedulable transactions (3 user + 1 system), got {}",

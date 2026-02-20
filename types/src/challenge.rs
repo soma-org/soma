@@ -51,7 +51,7 @@ pub type ChallengeId = ObjectID;
 /// **Fraud-only**: All challenges are fraud challenges. Availability issues are handled
 /// separately via submission reports (ReportSubmission/UndoReportSubmission).
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Challenge {
+pub struct ChallengeV1 {
     /// Unique identifier for this challenge (same as the Object's ID).
     /// Set when the challenge object is created.
     pub id: ChallengeId,
@@ -108,7 +108,7 @@ pub struct Challenge {
     pub challenge_reports: BTreeSet<SomaAddress>,
 }
 
-impl Challenge {
+impl ChallengeV1 {
     /// Creates a new pending fraud challenge with audit data from the target.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -240,7 +240,7 @@ mod tests {
         challenger: SomaAddress,
         challenger_bond: u64,
         challenge_epoch: EpochId,
-    ) -> Challenge {
+    ) -> ChallengeV1 {
         let model_id = ObjectID::random();
         let dummy_embedding = SomaTensor::zeros(vec![10]);
         let dummy_checksum = Checksum::default();
@@ -250,7 +250,7 @@ mod tests {
         let dummy_submission_manifest = SubmissionManifest { manifest: dummy_manifest };
         let dummy_commitment = DataCommitment::new([0u8; 32]);
 
-        Challenge::new(
+        ChallengeV1::new(
             challenge_id,
             target_id,
             challenger,

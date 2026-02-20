@@ -290,7 +290,7 @@ async fn execute_add_stake(
     // Get the first validator's soma_address from the system state
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-        system_state.validators.validators[0].metadata.soma_address
+        system_state.validators().validators[0].metadata.soma_address
     };
 
     let data = TransactionData::new(

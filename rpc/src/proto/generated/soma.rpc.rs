@@ -704,6 +704,12 @@ pub mod execution_error {
         DataExceedsMaxSize = 52,
         /// Challenge already exists for this target
         ChallengeAlreadyExists = 53,
+        /// Duplicate validator metadata (key or address conflicts with existing validator)
+        DuplicateValidatorMetadata = 54,
+        /// Missing proof of possession for protocol key change
+        MissingProofOfPossession = 55,
+        /// Invalid proof of possession signature
+        InvalidProofOfPossession = 56,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -767,6 +773,9 @@ pub mod execution_error {
                 Self::InvalidChallengeQuorum => "INVALID_CHALLENGE_QUORUM",
                 Self::DataExceedsMaxSize => "DATA_EXCEEDS_MAX_SIZE",
                 Self::ChallengeAlreadyExists => "CHALLENGE_ALREADY_EXISTS",
+                Self::DuplicateValidatorMetadata => "DUPLICATE_VALIDATOR_METADATA",
+                Self::MissingProofOfPossession => "MISSING_PROOF_OF_POSSESSION",
+                Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -831,6 +840,9 @@ pub mod execution_error {
                 "INVALID_CHALLENGE_QUORUM" => Some(Self::InvalidChallengeQuorum),
                 "DATA_EXCEEDS_MAX_SIZE" => Some(Self::DataExceedsMaxSize),
                 "CHALLENGE_ALREADY_EXISTS" => Some(Self::ChallengeAlreadyExists),
+                "DUPLICATE_VALIDATOR_METADATA" => Some(Self::DuplicateValidatorMetadata),
+                "MISSING_PROOF_OF_POSSESSION" => Some(Self::MissingProofOfPossession),
+                "INVALID_PROOF_OF_POSSESSION" => Some(Self::InvalidProofOfPossession),
                 _ => None,
             }
         }
@@ -3542,6 +3554,12 @@ pub struct Validator {
     /// HTTP proxy address for next epoch
     #[prost(string, optional, tag = "20")]
     pub next_epoch_proxy_address: ::core::option::Option<::prost::alloc::string::String>,
+    /// Proof of possession for the protocol key (BLS signature)
+    #[prost(bytes = "bytes", optional, tag = "21")]
+    pub proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Next epoch proof of possession (when protocol key is being changed)
+    #[prost(bytes = "bytes", optional, tag = "22")]
+    pub next_epoch_proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3904,6 +3922,8 @@ pub struct AddValidator {
     pub primary_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "7")]
     pub proxy_address: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "8")]
+    pub proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3940,6 +3960,8 @@ pub struct UpdateValidatorMetadata {
     pub next_epoch_worker_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "7")]
     pub next_epoch_network_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(bytes = "bytes", optional, tag = "8")]
+    pub next_epoch_proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]

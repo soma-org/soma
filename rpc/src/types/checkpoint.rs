@@ -71,6 +71,10 @@ pub struct CheckpointSummary {
 
     /// Extra data only present in the final checkpoint of an epoch.
     pub end_of_epoch_data: Option<EndOfEpochData>,
+
+    /// Opaque version-specific data for forward compatibility.
+    #[serde(default)]
+    pub version_specific_data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]

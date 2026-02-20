@@ -9,6 +9,7 @@ use types::{
     crypto::{SomaKeyPair, get_key_pair},
     effects::{ExecutionStatus, TransactionEffectsAPI},
     object::{Object, ObjectID, Owner},
+    system_state::SystemStateTrait as _,
     SYSTEM_STATE_OBJECT_ID,
     transaction::{
         SenderSignedData, TransactionData, TransactionKind,
@@ -330,8 +331,8 @@ async fn test_system_state_exists_after_genesis() {
     assert!(system_state.is_ok(), "System state should exist after genesis");
 
     let state = system_state.unwrap();
-    assert_eq!(state.epoch, 0, "Initial epoch should be 0");
-    assert!(!state.validators.validators.is_empty(), "Should have validators");
+    assert_eq!(state.epoch(), 0, "Initial epoch should be 0");
+    assert!(!state.validators().validators.is_empty(), "Should have validators");
 }
 
 #[tokio::test]
@@ -340,7 +341,7 @@ async fn test_system_state_has_emission_pool() {
     let state = authority_state.get_system_state_object_for_testing().unwrap();
 
     assert!(
-        state.emission_pool.balance > 0,
+        state.emission_pool().balance > 0,
         "Emission pool should have a positive balance after genesis"
     );
 }
@@ -351,7 +352,7 @@ async fn test_system_state_has_protocol_version() {
     let state = authority_state.get_system_state_object_for_testing().unwrap();
 
     assert!(
-        state.protocol_version >= 1,
+        state.protocol_version() >= 1,
         "Protocol version should be at least 1"
     );
 }
@@ -491,7 +492,7 @@ async fn test_staking_creates_shared_object_mutation() {
     authority_state.insert_genesis_object(coin.clone()).await;
 
     let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-    let validator_address = system_state.validators.validators[0].metadata.soma_address;
+    let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let data = TransactionData::new(
         TransactionKind::AddStake {

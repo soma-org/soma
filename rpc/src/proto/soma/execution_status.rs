@@ -44,6 +44,17 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             }
 
             E::DuplicateValidator => (ExecutionErrorKind::DuplicateValidator, None),
+            E::DuplicateValidatorMetadata { field } => (
+                ExecutionErrorKind::DuplicateValidatorMetadata,
+                Some(ErrorDetails::OtherError(field)),
+            ),
+            E::MissingProofOfPossession => {
+                (ExecutionErrorKind::MissingProofOfPossession, None)
+            }
+            E::InvalidProofOfPossession { reason } => (
+                ExecutionErrorKind::InvalidProofOfPossession,
+                Some(ErrorDetails::OtherError(reason)),
+            ),
             E::NotAValidator => (ExecutionErrorKind::NotAValidator, None),
             E::ValidatorAlreadyRemoved => (ExecutionErrorKind::ValidatorAlreadyRemoved, None),
             E::AdvancedToWrongEpoch => (ExecutionErrorKind::AdvancedToWrongEpoch, None),
@@ -220,6 +231,23 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             }
 
             K::DuplicateValidator => Ok(Self::DuplicateValidator),
+            K::DuplicateValidatorMetadata => {
+                let field = if let Some(ErrorDetails::OtherError(f)) = &value.error_details {
+                    f.clone()
+                } else {
+                    "unknown".to_string()
+                };
+                Ok(Self::DuplicateValidatorMetadata { field })
+            }
+            K::MissingProofOfPossession => Ok(Self::MissingProofOfPossession),
+            K::InvalidProofOfPossession => {
+                let reason = if let Some(ErrorDetails::OtherError(r)) = &value.error_details {
+                    r.clone()
+                } else {
+                    "unknown".to_string()
+                };
+                Ok(Self::InvalidProofOfPossession { reason })
+            }
             K::NotAValidator => Ok(Self::NotAValidator),
             K::ValidatorAlreadyRemoved => Ok(Self::ValidatorAlreadyRemoved),
             K::AdvancedToWrongEpoch => Ok(Self::AdvancedToWrongEpoch),

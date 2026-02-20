@@ -5,7 +5,7 @@ use std::{
 
 use crate::{checksum::Checksum, crypto::DefaultHash, metadata::ManifestAPI as _};
 use emission::EmissionPool;
-use epoch_start::{EpochStartSystemState, EpochStartValidatorInfo};
+use epoch_start::{EpochStartSystemState, EpochStartValidatorInfoV1};
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
     ed25519::Ed25519PublicKey,
@@ -14,8 +14,9 @@ use fastcrypto::{
 };
 use model_registry::ModelRegistry;
 use protocol_config::{ProtocolConfig, SomaTensor, SystemParameters};
+use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
-use staking::{StakedSoma, StakingPool};
+use staking::{StakedSomaV1, StakingPool};
 use target_state::TargetState;
 use tracing::{error, info};
 use url::Url;
@@ -33,7 +34,7 @@ use crate::{
     digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError, SomaResult},
-    model::{ArchitectureVersion, Model, ModelId, ModelWeightsManifest, PendingModelUpdate},
+    model::{ArchitectureVersion, ModelV1, ModelId, ModelWeightsManifest, PendingModelUpdate},
     multiaddr::Multiaddr,
     object::ObjectID,
     parameters,
@@ -73,6 +74,10 @@ mod target_tests;
 #[path = "unit_tests/test_utils.rs"]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod test_utils;
+#[cfg(test)]
+#[path = "unit_tests/validator_pop_tests.rs"]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod validator_pop_tests;
 
 /// Fee parameters for transaction execution
 /// Derived from SystemParameters at epoch start
@@ -110,6 +115,7 @@ pub type PublicKey = bls12381::min_sig::BLS12381PublicKey;
 
 const BPS_DENOMINATOR: u64 = 10000;
 
+#[enum_dispatch]
 pub trait SystemStateTrait {
     /// Get the current epoch number
     fn epoch(&self) -> u64;
@@ -129,8 +135,15 @@ pub trait SystemStateTrait {
     fn protocol_version(&self) -> u64;
 }
 
+/// Versioned wrapper for SystemState.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct SystemState {
+#[enum_dispatch(SystemStateTrait)]
+pub enum SystemState {
+    V1(SystemStateV1),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct SystemStateV1 {
     /// The current epoch number
     pub epoch: u64,
 
@@ -166,7 +179,7 @@ pub struct SystemState {
     pub safe_mode_accumulated_emissions: u64,
 }
 
-impl SystemState {
+impl SystemStateV1 {
     pub fn create(
         validators: Vec<Validator>,
         protocol_version: u64,
@@ -217,25 +230,75 @@ impl SystemState {
         pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
         worker_pubkey_bytes: Vec<u8>,
+        proof_of_possession_bytes: Vec<u8>,
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
         proxy_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
+        let protocol_pubkey = PublicKey::from_bytes(&pubkey_bytes).map_err(|e| {
+            ExecutionFailureStatus::InvalidArguments {
+                reason: format!("Invalid protocol public key: {}", e),
+            }
+        })?;
+
+        let network_pubkey = crypto::NetworkPublicKey::new(
+            Ed25519PublicKey::from_bytes(&network_pubkey_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid network public key: {}", e),
+                }
+            })?,
+        );
+
+        let worker_pubkey = crypto::NetworkPublicKey::new(
+            Ed25519PublicKey::from_bytes(&worker_pubkey_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid worker public key: {}", e),
+                }
+            })?,
+        );
+
+        // Parse and verify proof of possession
+        let pop = crypto::AuthoritySignature::from_bytes(&proof_of_possession_bytes).map_err(
+            |e| ExecutionFailureStatus::InvalidProofOfPossession {
+                reason: format!("Invalid PoP signature bytes: {}", e),
+            },
+        )?;
+        crypto::verify_proof_of_possession(&pop, &protocol_pubkey, signer).map_err(|e| {
+            ExecutionFailureStatus::InvalidProofOfPossession {
+                reason: format!("PoP verification failed: {}", e),
+            }
+        })?;
+
+        let parse_address = |bytes: &[u8], field: &str| -> Result<Multiaddr, ExecutionFailureStatus> {
+            let addr_str: String = bcs::from_bytes(bytes).map_err(|_| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Failed to BCS deserialize {} string", field),
+                }
+            })?;
+            Multiaddr::from_str(&addr_str).map_err(|e| {
+                ExecutionFailureStatus::InvalidArguments {
+                    reason: format!("Invalid {} multiaddr format: {}", field, e),
+                }
+            })
+        };
+
+        let net_addr = parse_address(&net_address, "network address")?;
+        let p2p_addr = parse_address(&p2p_address, "p2p address")?;
+        let primary_addr = parse_address(&primary_address, "primary address")?;
+        let proxy_addr = parse_address(&proxy_address, "proxy address")?;
+
         let validator = Validator::new(
             signer,
-            PublicKey::from_bytes(&pubkey_bytes).unwrap(),
-            crypto::NetworkPublicKey::new(
-                Ed25519PublicKey::from_bytes(&network_pubkey_bytes).unwrap(),
-            ),
-            crypto::NetworkPublicKey::new(
-                Ed25519PublicKey::from_bytes(&worker_pubkey_bytes).unwrap(),
-            ),
-            Multiaddr::from_str(bcs::from_bytes(&net_address).unwrap()).unwrap(),
-            Multiaddr::from_str(bcs::from_bytes(&p2p_address).unwrap()).unwrap(),
-            Multiaddr::from_str(bcs::from_bytes(&primary_address).unwrap()).unwrap(),
-            Multiaddr::from_str(bcs::from_bytes(&proxy_address).unwrap()).unwrap(),
+            protocol_pubkey,
+            network_pubkey,
+            worker_pubkey,
+            pop,
+            net_addr,
+            p2p_addr,
+            primary_addr,
+            proxy_addr,
             0,
             10,
             staking_pool_id,
@@ -260,6 +323,10 @@ impl SystemState {
         signer: SomaAddress,
         args: &UpdateValidatorMetadataArgs,
     ) -> ExecutionResult<()> {
+        // Snapshot all validators for cross-validator duplicate checks.
+        // We need this before taking a mutable borrow on the target validator.
+        let all_validators = self.validators.validators.clone();
+
         let validator = self
             .validators
             .find_validator_mut(signer)
@@ -267,7 +334,7 @@ impl SystemState {
             .ok_or(ExecutionFailureStatus::NotAValidator)?;
 
         // Delegate the processing of optional fields to the validator
-        validator.stage_next_epoch_metadata(args)
+        validator.stage_next_epoch_metadata(args, &all_validators)
     }
 
     /// Request to add stake to a validator
@@ -277,7 +344,7 @@ impl SystemState {
         signer: SomaAddress,
         address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSoma> {
+    ) -> ExecutionResult<StakedSomaV1> {
         // Try to find the validator in active or pending validators
         let validator = self.validators.find_validator_with_pending_mut(address);
 
@@ -305,7 +372,7 @@ impl SystemState {
         signer: SomaAddress,
         address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSoma> {
+    ) -> ExecutionResult<StakedSomaV1> {
         let validator = self.validators.find_validator_with_pending_mut(address);
 
         if let Some(validator) = validator {
@@ -354,7 +421,7 @@ impl SystemState {
             .exchange_rates
             .insert(0, staking::PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 });
 
-        let model = Model {
+        let model = ModelV1 {
             owner,
             architecture_version,
             weights_url_commitment,
@@ -379,7 +446,7 @@ impl SystemState {
         &mut self,
         model_id: &ModelId,
         amount: u64,
-    ) -> ExecutionResult<StakedSoma> {
+    ) -> ExecutionResult<StakedSomaV1> {
         assert!(self.epoch == 0, "Must be called during genesis");
 
         if amount == 0 {
@@ -402,9 +469,9 @@ impl SystemState {
     }
 
     /// Request to withdraw stake from a validator or model staking pool.
-    /// Uses `StakedSoma.pool_id` to route to the correct pool via staking_pool_mappings.
+    /// Uses `StakedSomaV1.pool_id` to route to the correct pool via staking_pool_mappings.
     #[allow(clippy::result_large_err)]
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma) -> ExecutionResult<u64> {
+    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1) -> ExecutionResult<u64> {
         let pool_id = staked_soma.pool_id;
 
         // First check validator pools (active, pending, inactive)
@@ -544,7 +611,7 @@ impl SystemState {
     // -----------------------------------------------------------------------
 
     /// Find a model by ID in active or pending registries (immutable).
-    pub fn find_model(&self, model_id: &ModelId) -> Option<&Model> {
+    pub fn find_model(&self, model_id: &ModelId) -> Option<&ModelV1> {
         self.model_registry
             .active_models
             .get(model_id)
@@ -552,7 +619,7 @@ impl SystemState {
     }
 
     /// Find a model by ID in active or pending registries (mutable).
-    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut Model> {
+    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut ModelV1> {
         if self.model_registry.active_models.contains_key(model_id) {
             return self.model_registry.active_models.get_mut(model_id);
         }
@@ -560,7 +627,7 @@ impl SystemState {
     }
 
     /// Commit a new model (Phase 1 of commit-reveal).
-    /// Creates a pending model with a new StakingPool. Returns the StakedSoma receipt.
+    /// Creates a pending model with a new StakingPool. Returns the StakedSomaV1 receipt.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::result_large_err)]
     pub fn request_commit_model(
@@ -573,7 +640,7 @@ impl SystemState {
         stake_amount: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
-    ) -> ExecutionResult<StakedSoma> {
+    ) -> ExecutionResult<StakedSomaV1> {
         if commission_rate > BPS_DENOMINATOR {
             return Err(ExecutionFailureStatus::ModelCommissionRateTooHigh);
         }
@@ -584,7 +651,7 @@ impl SystemState {
         // Pre-active pool: process stake immediately so soma_balance is set
         staking_pool.process_pending_stake();
 
-        let model = Model {
+        let model = ModelV1 {
             owner,
             architecture_version,
             weights_url_commitment,
@@ -744,7 +811,7 @@ impl SystemState {
         &mut self,
         model_id: &ModelId,
         amount: u64,
-    ) -> ExecutionResult<StakedSoma> {
+    ) -> ExecutionResult<StakedSomaV1> {
         if amount == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
                 reason: "Stake amount cannot be 0!".to_string(),
@@ -1035,7 +1102,7 @@ impl SystemState {
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
         epoch_randomness: Vec<u8>,
-    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
+    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
         // 1. Verify we're advancing to the correct epoch
         if new_epoch != self.epoch + 1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
@@ -1332,7 +1399,7 @@ impl SystemState {
     }
 }
 
-impl SystemStateTrait for SystemState {
+impl SystemStateTrait for SystemStateV1 {
     fn epoch(&self) -> u64 {
         self.epoch
     }
@@ -1380,7 +1447,7 @@ impl SystemStateTrait for SystemState {
     }
 
     fn into_epoch_start_state(self) -> EpochStartSystemState {
-        EpochStartSystemState {
+        EpochStartSystemState::V1(epoch_start::EpochStartSystemStateV1 {
             epoch: self.epoch,
             protocol_version: self.protocol_version,
             epoch_start_timestamp_ms: self.epoch_start_timestamp_ms,
@@ -1391,7 +1458,7 @@ impl SystemStateTrait for SystemState {
                 .iter()
                 .map(|validator| {
                     let metadata = validator.metadata.clone();
-                    EpochStartValidatorInfo {
+                    EpochStartValidatorInfoV1 {
                         soma_address: metadata.soma_address,
                         protocol_pubkey: metadata.protocol_pubkey.clone(),
                         network_pubkey: metadata.network_pubkey.clone(),
@@ -1406,19 +1473,263 @@ impl SystemStateTrait for SystemState {
                 .collect(),
 
             fee_parameters: self.fee_parameters(),
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments, clippy::result_large_err)]
+impl SystemState {
+    // --- Constructor ---
+
+    pub fn create(
+        validators: Vec<Validator>,
+        protocol_version: u64,
+        epoch_start_timestamp_ms: u64,
+        protocol_config: &ProtocolConfig,
+        emission_fund: u64,
+        emission_per_epoch: u64,
+        epoch_duration_ms_override: Option<u64>,
+    ) -> Self {
+        Self::V1(SystemStateV1::create(
+            validators,
+            protocol_version,
+            epoch_start_timestamp_ms,
+            protocol_config,
+            emission_fund,
+            emission_per_epoch,
+            epoch_duration_ms_override,
+        ))
+    }
+
+    /// Backward-compatible deserialization: try versioned format first, fall back to raw V1.
+    pub fn deserialize(contents: &[u8]) -> Result<Self, bcs::Error> {
+        bcs::from_bytes::<Self>(contents)
+            .or_else(|_| bcs::from_bytes::<SystemStateV1>(contents).map(Self::V1))
+    }
+
+    // --- Field accessors ---
+
+    pub fn parameters(&self) -> &SystemParameters {
+        match self { Self::V1(v1) => &v1.parameters }
+    }
+    pub fn parameters_mut(&mut self) -> &mut SystemParameters {
+        match self { Self::V1(v1) => &mut v1.parameters }
+    }
+    pub fn validators(&self) -> &ValidatorSet {
+        match self { Self::V1(v1) => &v1.validators }
+    }
+    pub fn validators_mut(&mut self) -> &mut ValidatorSet {
+        match self { Self::V1(v1) => &mut v1.validators }
+    }
+    pub fn model_registry(&self) -> &ModelRegistry {
+        match self { Self::V1(v1) => &v1.model_registry }
+    }
+    pub fn model_registry_mut(&mut self) -> &mut ModelRegistry {
+        match self { Self::V1(v1) => &mut v1.model_registry }
+    }
+    pub fn target_state(&self) -> &TargetState {
+        match self { Self::V1(v1) => &v1.target_state }
+    }
+    pub fn target_state_mut(&mut self) -> &mut TargetState {
+        match self { Self::V1(v1) => &mut v1.target_state }
+    }
+    pub fn emission_pool(&self) -> &EmissionPool {
+        match self { Self::V1(v1) => &v1.emission_pool }
+    }
+    pub fn emission_pool_mut(&mut self) -> &mut EmissionPool {
+        match self { Self::V1(v1) => &mut v1.emission_pool }
+    }
+    pub fn safe_mode(&self) -> bool {
+        match self { Self::V1(v1) => v1.safe_mode }
+    }
+    pub fn safe_mode_accumulated_fees(&self) -> u64 {
+        match self { Self::V1(v1) => v1.safe_mode_accumulated_fees }
+    }
+    pub fn safe_mode_accumulated_emissions(&self) -> u64 {
+        match self { Self::V1(v1) => v1.safe_mode_accumulated_emissions }
+    }
+    pub fn validator_report_records(&self) -> &BTreeMap<SomaAddress, BTreeSet<SomaAddress>> {
+        match self { Self::V1(v1) => &v1.validator_report_records }
+    }
+
+    // --- Forwarding for all public non-trait methods ---
+
+    pub fn request_add_validator(
+        &mut self, signer: SomaAddress, pubkey_bytes: Vec<u8>,
+        network_pubkey_bytes: Vec<u8>, worker_pubkey_bytes: Vec<u8>,
+        proof_of_possession_bytes: Vec<u8>, net_address: Vec<u8>,
+        p2p_address: Vec<u8>, primary_address: Vec<u8>, proxy_address: Vec<u8>,
+        staking_pool_id: ObjectID,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.request_add_validator(
+                signer, pubkey_bytes, network_pubkey_bytes, worker_pubkey_bytes,
+                proof_of_possession_bytes, net_address, p2p_address, primary_address,
+                proxy_address, staking_pool_id,
+            ),
         }
+    }
+
+    pub fn request_remove_validator(&mut self, signer: SomaAddress, pubkey_bytes: Vec<u8>) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_remove_validator(signer, pubkey_bytes) }
+    }
+
+    pub fn request_update_validator_metadata(&mut self, signer: SomaAddress, args: &UpdateValidatorMetadataArgs) -> ExecutionResult<()> {
+        match self { Self::V1(v1) => v1.request_update_validator_metadata(signer, args) }
+    }
+
+    pub fn request_add_stake(&mut self, signer: SomaAddress, address: SomaAddress, amount: u64) -> ExecutionResult<StakedSomaV1> {
+        match self { Self::V1(v1) => v1.request_add_stake(signer, address, amount) }
+    }
+
+    pub fn request_add_stake_at_genesis(&mut self, signer: SomaAddress, address: SomaAddress, amount: u64) -> ExecutionResult<StakedSomaV1> {
+        match self { Self::V1(v1) => v1.request_add_stake_at_genesis(signer, address, amount) }
+    }
+
+    pub fn add_model_at_genesis(
+        &mut self, model_id: ModelId, owner: SomaAddress,
+        weights_manifest: ModelWeightsManifest, weights_url_commitment: ModelWeightsUrlCommitment,
+        weights_commitment: ModelWeightsCommitment, architecture_version: ArchitectureVersion,
+        commission_rate: u64,
+    ) {
+        match self {
+            Self::V1(v1) => v1.add_model_at_genesis(
+                model_id, owner, weights_manifest, weights_url_commitment,
+                weights_commitment, architecture_version, commission_rate,
+            ),
+        }
+    }
+
+    pub fn request_add_stake_to_model_at_genesis(&mut self, model_id: &ModelId, amount: u64) -> ExecutionResult<StakedSomaV1> {
+        match self { Self::V1(v1) => v1.request_add_stake_to_model_at_genesis(model_id, amount) }
+    }
+
+    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1) -> ExecutionResult<u64> {
+        match self { Self::V1(v1) => v1.request_withdraw_stake(staked_soma) }
+    }
+
+    pub fn report_validator(&mut self, reporter: SomaAddress, reportee: SomaAddress) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.report_validator(reporter, reportee) }
+    }
+
+    pub fn undo_report_validator(&mut self, reporter: SomaAddress, reportee: SomaAddress) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.undo_report_validator(reporter, reportee) }
+    }
+
+    pub fn request_set_commission_rate(&mut self, signer: SomaAddress, new_rate: u64) -> Result<(), ExecutionFailureStatus> {
+        match self { Self::V1(v1) => v1.request_set_commission_rate(signer, new_rate) }
+    }
+
+    pub fn find_model(&self, model_id: &ModelId) -> Option<&ModelV1> {
+        match self { Self::V1(v1) => v1.find_model(model_id) }
+    }
+
+    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut ModelV1> {
+        match self { Self::V1(v1) => v1.find_model_mut(model_id) }
+    }
+
+    pub fn request_commit_model(
+        &mut self, owner: SomaAddress, model_id: ModelId,
+        weights_url_commitment: ModelWeightsUrlCommitment,
+        weights_commitment: ModelWeightsCommitment,
+        architecture_version: ArchitectureVersion, stake_amount: u64,
+        commission_rate: u64, staking_pool_id: ObjectID,
+    ) -> ExecutionResult<StakedSomaV1> {
+        match self {
+            Self::V1(v1) => v1.request_commit_model(
+                owner, model_id, weights_url_commitment, weights_commitment,
+                architecture_version, stake_amount, commission_rate, staking_pool_id,
+            ),
+        }
+    }
+
+    pub fn request_reveal_model(
+        &mut self, signer: SomaAddress, model_id: &ModelId,
+        weights_manifest: ModelWeightsManifest, embedding: SomaTensor,
+    ) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_reveal_model(signer, model_id, weights_manifest, embedding) }
+    }
+
+    pub fn request_commit_model_update(
+        &mut self, signer: SomaAddress, model_id: &ModelId,
+        weights_url_commitment: ModelWeightsUrlCommitment,
+        weights_commitment: ModelWeightsCommitment,
+    ) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_commit_model_update(signer, model_id, weights_url_commitment, weights_commitment) }
+    }
+
+    pub fn request_reveal_model_update(
+        &mut self, signer: SomaAddress, model_id: &ModelId,
+        weights_manifest: ModelWeightsManifest, embedding: SomaTensor,
+    ) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_reveal_model_update(signer, model_id, weights_manifest, embedding) }
+    }
+
+    pub fn request_add_stake_to_model(&mut self, model_id: &ModelId, amount: u64) -> ExecutionResult<StakedSomaV1> {
+        match self { Self::V1(v1) => v1.request_add_stake_to_model(model_id, amount) }
+    }
+
+    pub fn request_set_model_commission_rate(&mut self, signer: SomaAddress, model_id: &ModelId, new_rate: u64) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_set_model_commission_rate(signer, model_id, new_rate) }
+    }
+
+    pub fn request_deactivate_model(&mut self, signer: SomaAddress, model_id: &ModelId) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.request_deactivate_model(signer, model_id) }
+    }
+
+    pub fn report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.report_model(reporter, model_id) }
+    }
+
+    pub fn undo_report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
+        match self { Self::V1(v1) => v1.undo_report_model(reporter, model_id) }
+    }
+
+    pub fn advance_epoch(
+        &mut self, new_epoch: u64, next_protocol_config: &ProtocolConfig,
+        epoch_total_transaction_fees: u64, epoch_start_timestamp_ms: u64,
+        epoch_randomness: Vec<u8>,
+    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
+        match self {
+            Self::V1(v1) => v1.advance_epoch(
+                new_epoch, next_protocol_config, epoch_total_transaction_fees,
+                epoch_start_timestamp_ms, epoch_randomness,
+            ),
+        }
+    }
+
+    pub fn advance_epoch_safe_mode(&mut self, new_epoch: u64, epoch_total_transaction_fees: u64, epoch_start_timestamp_ms: u64) {
+        match self { Self::V1(v1) => v1.advance_epoch_safe_mode(new_epoch, epoch_total_transaction_fees, epoch_start_timestamp_ms) }
+    }
+
+    pub fn return_to_emissions_pool(&mut self, amount: u64) {
+        match self { Self::V1(v1) => v1.return_to_emissions_pool(amount) }
+    }
+
+    pub fn calculate_reward_per_target(&self) -> u64 {
+        match self { Self::V1(v1) => v1.calculate_reward_per_target() }
+    }
+
+    pub fn adjust_difficulty(&mut self) {
+        match self { Self::V1(v1) => v1.adjust_difficulty() }
+    }
+
+    pub fn advance_epoch_targets(&mut self) {
+        match self { Self::V1(v1) => v1.advance_epoch_targets() }
+    }
+
+    pub fn fee_parameters(&self) -> FeeParameters {
+        match self { Self::V1(v1) => v1.fee_parameters() }
     }
 }
 
 pub fn get_system_state(object_store: &dyn ObjectStore) -> Result<SystemState, SomaError> {
     let object = object_store
         .get_object(&SYSTEM_STATE_OBJECT_ID)
-        // Don't panic here on None because object_store is a generic store.
         .ok_or_else(|| {
             SomaError::SystemStateReadError("SystemState object not found".to_owned())
         })?;
 
-    let result = bcs::from_bytes::<SystemState>(object.as_inner().data.contents())
-        .map_err(|err| SomaError::SystemStateReadError(err.to_string()))?;
-    Ok(result)
+    SystemState::deserialize(object.as_inner().data.contents())
+        .map_err(|err| SomaError::SystemStateReadError(err.to_string()))
 }

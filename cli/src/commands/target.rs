@@ -12,7 +12,7 @@ use tabled::{
 use sdk::wallet_context::WalletContext;
 use types::{
     object::ObjectID,
-    target::{Target, TargetId, TargetStatus},
+    target::{TargetV1, TargetId, TargetStatus},
 };
 
 #[derive(Parser)]
@@ -94,7 +94,7 @@ impl TargetCommand {
                     .map_err(|e| anyhow!("Failed to get target object: {}", e))?;
 
                 // Deserialize the target from object contents
-                let target: Target = bcs::from_bytes(object.data.contents())
+                let target: TargetV1 = bcs::from_bytes(object.data.contents())
                     .map_err(|e| anyhow!("Failed to deserialize target: {}", e))?;
 
                 Ok(TargetCommandResponse::Info(TargetInfoOutput { target_id, target }))
@@ -135,7 +135,7 @@ pub struct TargetSummary {
 #[derive(Debug, Serialize)]
 pub struct TargetInfoOutput {
     pub target_id: TargetId,
-    pub target: Target,
+    pub target: TargetV1,
 }
 
 // =============================================================================

@@ -22,15 +22,15 @@ use types::{
     SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     challenge::{
-        Challenge, ChallengeStatus,
+        ChallengeV1, ChallengeStatus,
     },
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
     metadata::{ManifestAPI, MetadataAPI},
     object::{Object, ObjectID, ObjectType, Owner},
-    system_state::SystemState,
-    target::{Target, TargetStatus},
+    system_state::{SystemState, SystemStateTrait},
+    target::{TargetV1, TargetStatus},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
 };
@@ -87,13 +87,13 @@ impl ChallengeExecutor {
     fn load_target(
         store: &TemporaryStore,
         target_id: &ObjectID,
-    ) -> ExecutionResult<(Object, Target)> {
+    ) -> ExecutionResult<(Object, TargetV1)> {
         let target_object = store
             .read_object(target_id)
             .ok_or(ExecutionFailureStatus::TargetNotFound)?
             .clone();
 
-        let target = bcs::from_bytes::<Target>(target_object.as_inner().data.contents()).map_err(
+        let target = bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents()).map_err(
             |e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize target: {}",
@@ -109,7 +109,7 @@ impl ChallengeExecutor {
     fn save_target(
         store: &mut TemporaryStore,
         target_object: Object,
-        target: &Target,
+        target: &TargetV1,
     ) -> ExecutionResult<()> {
         let target_bytes = bcs::to_bytes(target).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -128,7 +128,7 @@ impl ChallengeExecutor {
     fn load_challenge(
         store: &TemporaryStore,
         challenge_id: &ObjectID,
-    ) -> ExecutionResult<(Object, Challenge)> {
+    ) -> ExecutionResult<(Object, ChallengeV1)> {
         let challenge_object = store.read_object(challenge_id).ok_or_else(|| {
             ExecutionFailureStatus::ChallengeNotFound {
                 challenge_id: *challenge_id,
@@ -136,7 +136,7 @@ impl ChallengeExecutor {
         })?;
 
         let challenge =
-            bcs::from_bytes::<Challenge>(challenge_object.as_inner().data.contents()).map_err(
+            bcs::from_bytes::<ChallengeV1>(challenge_object.as_inner().data.contents()).map_err(
                 |e| {
                     ExecutionFailureStatus::SomaError(SomaError::from(format!(
                         "Failed to deserialize challenge: {}",
@@ -152,7 +152,7 @@ impl ChallengeExecutor {
     fn save_challenge(
         store: &mut TemporaryStore,
         challenge_object: Object,
-        challenge: &Challenge,
+        challenge: &ChallengeV1,
     ) -> ExecutionResult<()> {
         let challenge_bytes = bcs::to_bytes(challenge).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -188,7 +188,7 @@ impl ChallengeExecutor {
 
         // Load system state for epoch and protocol config
         let (state_object, state) = Self::load_system_state(store)?;
-        let current_epoch = state.epoch;
+        let current_epoch = state.epoch();
 
         // Load target
         let (target_object, mut target) = Self::load_target(store, &args.target_id)?;
@@ -233,7 +233,7 @@ impl ChallengeExecutor {
             .metadata()
             .size() as u64;
 
-        let bond_per_byte = state.parameters.challenger_bond_per_byte;
+        let bond_per_byte = state.parameters().challenger_bond_per_byte;
         let required_bond = data_size * bond_per_byte;
 
         info!(
@@ -316,7 +316,7 @@ impl ChallengeExecutor {
             challenge_id, challenge_creation_num
         );
 
-        let challenge = Challenge::new(
+        let challenge = ChallengeV1::new(
             challenge_id,
             args.target_id,
             signer,
@@ -367,7 +367,7 @@ impl ChallengeExecutor {
         // Load system state to validate signer is active validator
         let (_, state) = Self::load_system_state(store)?;
 
-        if !state.validators.is_active_validator(signer) {
+        if !state.validators().is_active_validator(signer) {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
@@ -380,10 +380,10 @@ impl ChallengeExecutor {
         }
 
         // Validate challenge is from current epoch (not expired)
-        if challenge.challenge_epoch != state.epoch {
+        if challenge.challenge_epoch != state.epoch() {
             return Err(ExecutionFailureStatus::ChallengeExpired {
                 challenge_epoch: challenge.challenge_epoch,
-                current_epoch: state.epoch,
+                current_epoch: state.epoch(),
             });
         }
 
@@ -416,7 +416,7 @@ impl ChallengeExecutor {
         // Load system state to validate signer is active validator
         let (_, state) = Self::load_system_state(store)?;
 
-        if !state.validators.is_active_validator(signer) {
+        if !state.validators().is_active_validator(signer) {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
@@ -429,10 +429,10 @@ impl ChallengeExecutor {
         }
 
         // Validate challenge is from current epoch (not expired)
-        if challenge.challenge_epoch != state.epoch {
+        if challenge.challenge_epoch != state.epoch() {
             return Err(ExecutionFailureStatus::ChallengeExpired {
                 challenge_epoch: challenge.challenge_epoch,
-                current_epoch: state.epoch,
+                current_epoch: state.epoch(),
             });
         }
 
@@ -470,7 +470,7 @@ impl ChallengeExecutor {
     ) -> ExecutionResult<()> {
         // Load system state
         let (state_object, mut state) = Self::load_system_state(store)?;
-        let current_epoch = state.epoch;
+        let current_epoch = state.epoch();
 
         // Load challenge
         let (challenge_object, mut challenge) = Self::load_challenge(store, &challenge_id)?;
@@ -490,7 +490,7 @@ impl ChallengeExecutor {
 
         // Check tally-based quorum on Challenge object
         let (has_quorum, reporting_validators) =
-            challenge.get_challenge_report_quorum(&state.validators);
+            challenge.get_challenge_report_quorum(&state.validators());
 
         info!(
             "ClaimChallengeBond: challenge {:?}, has_quorum={}, reporters={:?}",
@@ -533,8 +533,8 @@ impl ChallengeExecutor {
             challenge.status = ChallengeStatus::Resolved { challenger_lost: false };
         }
 
-        // Save challenge and state (no target modification needed)
-        Self::save_challenge(store, challenge_object, &challenge)?;
+        // Delete the terminal challenge object and save state
+        store.delete_input_object(&challenge_id);
         Self::save_system_state(store, state_object, &state)?;
 
         Ok(())

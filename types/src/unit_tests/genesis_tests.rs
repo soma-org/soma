@@ -127,14 +127,14 @@ fn test_genesis_creates_validators() {
 
     let system_state = get_system_state(&unsigned.objects()).unwrap();
     assert_eq!(
-        system_state.validators.validators.len(),
+        system_state.validators().validators.len(),
         configs.len(),
         "Validator count must match configured count"
     );
 
     // Verify every configured validator address is present
     let validator_addrs: Vec<SomaAddress> = system_state
-        .validators
+        .validators()
         .validators
         .iter()
         .map(|v| v.metadata.soma_address)
@@ -150,7 +150,7 @@ fn test_genesis_creates_validators() {
     }
 
     // Each validator should have non-zero voting power (set_voting_power was called)
-    for v in &system_state.validators.validators {
+    for v in &system_state.validators().validators {
         assert!(v.voting_power > 0, "Validator voting power must be set");
     }
 }
@@ -292,11 +292,11 @@ fn test_genesis_builder_custom_parameters() {
         "Custom epoch duration must be reflected"
     );
     assert_eq!(
-        system_state.emission_pool.emission_per_epoch, custom_emission,
+        system_state.emission_pool().emission_per_epoch, custom_emission,
         "Custom emission per epoch must be reflected"
     );
     assert_eq!(
-        system_state.epoch_start_timestamp_ms, custom_timestamp,
+        system_state.epoch_start_timestamp_ms(), custom_timestamp,
         "Custom chain start timestamp must be reflected"
     );
 }
@@ -312,7 +312,7 @@ fn test_genesis_builder_multiple_validators() {
         let system_state = get_system_state(&unsigned.objects()).unwrap();
 
         assert_eq!(
-            system_state.validators.validators.len(),
+            system_state.validators().validators.len(),
             n,
             "Genesis with {} validators must produce {} validators in state",
             n,
@@ -361,18 +361,18 @@ fn test_genesis_emission_pool() {
     // if targets were generated at genesis (they draw from the pool).
     // But emission_per_epoch should match the default.
     assert!(
-        system_state.emission_pool.balance <= expected_emission_fund,
+        system_state.emission_pool().balance <= expected_emission_fund,
         "Emission pool balance must not exceed the emission fund allocation"
     );
     assert!(
-        system_state.emission_pool.is_emitting(),
+        system_state.emission_pool().is_emitting(),
         "Emission pool should still be emitting after genesis"
     );
 
     // Verify emission_per_epoch matches the default
     let default_params = GenesisCeremonyParameters::new();
     assert_eq!(
-        system_state.emission_pool.emission_per_epoch,
+        system_state.emission_pool().emission_per_epoch,
         default_params.emission_per_epoch,
         "Emission per epoch must match the configured value"
     );
@@ -459,7 +459,7 @@ fn test_genesis_creates_initial_targets() {
 
     // Model must be registered as active
     assert!(
-        system_state.model_registry.active_models.contains_key(&model_id),
+        system_state.model_registry().active_models.contains_key(&model_id),
         "Genesis model must be active in the model registry"
     );
 
@@ -615,19 +615,19 @@ fn test_genesis_transaction() {
     // Effects must show success
     let effects = unsigned.effects();
     assert!(
-        matches!(effects.status, ExecutionStatus::Success),
+        matches!(effects.status(), ExecutionStatus::Success),
         "Genesis transaction effects must show Success"
     );
 
     // Effects must have epoch 0
     assert_eq!(
-        effects.executed_epoch, 0,
+        effects.executed_epoch(), 0,
         "Genesis effects executed_epoch must be 0"
     );
 
     // Effects transaction_digest must match the transaction
     assert_eq!(
-        effects.transaction_digest,
+        *effects.transaction_digest(),
         *tx.digest(),
         "Effects digest must match the genesis transaction digest"
     );
@@ -734,11 +734,11 @@ fn test_genesis_no_token_distribution() {
 
     let system_state = get_system_state(&unsigned.objects()).unwrap();
     assert_eq!(system_state.epoch(), 0);
-    assert_eq!(system_state.validators.validators.len(), 4);
+    assert_eq!(system_state.validators().validators.len(), 4);
 
     // Emission pool balance should be 0 since no schedule was provided
     assert_eq!(
-        system_state.emission_pool.balance, 0,
+        system_state.emission_pool().balance, 0,
         "Emission pool balance must be 0 without token distribution schedule"
     );
 }
@@ -811,13 +811,13 @@ fn test_genesis_unsigned_serialization_roundtrip() {
         "SystemState epoch must survive roundtrip"
     );
     assert_eq!(
-        original_system_state.validators.validators.len(),
-        deser_system_state.validators.validators.len(),
+        original_system_state.validators().validators.len(),
+        deser_system_state.validators().validators.len(),
         "Validator count must survive roundtrip"
     );
     assert_eq!(
-        original_system_state.emission_pool,
-        deser_system_state.emission_pool,
+        original_system_state.emission_pool(),
+        deser_system_state.emission_pool(),
         "EmissionPool must survive roundtrip"
     );
 }

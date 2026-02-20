@@ -5,6 +5,7 @@ use crate::effects::*;
 use crate::envelope::Message;
 use crate::object::*;
 use crate::tx_fee::TransactionFee;
+#[allow(unused_imports)]
 use std::collections::BTreeMap;
 
 /// Helper to build a simple TransactionEffects with specified changed_objects.
@@ -12,7 +13,7 @@ fn make_effects(
     changed_objects: Vec<(ObjectID, EffectsObjectChange)>,
     gas_object_index: Option<u32>,
 ) -> TransactionEffects {
-    TransactionEffects {
+    TransactionEffects::V1(TransactionEffectsV1 {
         status: ExecutionStatus::Success,
         executed_epoch: 0,
         transaction_digest: TransactionDigest::random(),
@@ -22,7 +23,7 @@ fn make_effects(
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index,
-    }
+    })
 }
 
 #[test]
@@ -44,8 +45,10 @@ fn test_effects_digest_determinism() {
     assert_eq!(digest1, digest2);
 
     // A different effects should produce a different digest.
-    let mut effects3 = TransactionEffects::default();
-    effects3.executed_epoch = 99;
+    let effects3 = TransactionEffects::V1(TransactionEffectsV1 {
+        executed_epoch: 99,
+        ..TransactionEffectsV1::default()
+    });
     let digest3 = effects3.digest();
     assert_ne!(digest1, digest3);
 }
@@ -67,7 +70,7 @@ fn test_effects_created_objects() {
 
     assert_eq!(created.len(), 1);
     assert_eq!(created[0].0 .0, obj_id);
-    assert_eq!(created[0].0 .1, effects.version);
+    assert_eq!(created[0].0 .1, effects.version());
     assert_eq!(created[0].0 .2, obj_digest);
     assert_eq!(created[0].1, owner);
 }
@@ -90,7 +93,7 @@ fn test_effects_mutated_objects() {
 
     assert_eq!(mutated.len(), 1);
     assert_eq!(mutated[0].0 .0, obj_id);
-    assert_eq!(mutated[0].0 .1, effects.version);
+    assert_eq!(mutated[0].0 .1, effects.version());
     assert_eq!(mutated[0].0 .2, new_digest);
     assert_eq!(mutated[0].1, owner);
 }
@@ -112,7 +115,7 @@ fn test_effects_deleted_objects() {
 
     assert_eq!(deleted.len(), 1);
     assert_eq!(deleted[0].0, obj_id);
-    assert_eq!(deleted[0].1, effects.version);
+    assert_eq!(deleted[0].1, effects.version());
     assert_eq!(deleted[0].2, ObjectDigest::OBJECT_DIGEST_DELETED);
 }
 
@@ -158,7 +161,7 @@ fn test_effects_written_includes_all() {
         id_operation: IDOperation::Deleted,
     };
 
-    let effects = TransactionEffects {
+    let effects = TransactionEffects::V1(TransactionEffectsV1 {
         status: ExecutionStatus::Success,
         executed_epoch: 0,
         transaction_digest: TransactionDigest::random(),
@@ -172,7 +175,7 @@ fn test_effects_written_includes_all() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: None,
-    };
+    });
 
     let written = effects.written();
     // written() should include created, mutated, and deleted objects.
@@ -200,7 +203,7 @@ fn test_effects_gas_object() {
         id_operation: IDOperation::None,
     };
 
-    let effects = TransactionEffects {
+    let effects = TransactionEffects::V1(TransactionEffectsV1 {
         status: ExecutionStatus::Success,
         executed_epoch: 0,
         transaction_digest: TransactionDigest::random(),
@@ -210,7 +213,7 @@ fn test_effects_gas_object() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: Some(0),
-    };
+    });
 
     let (gas_ref, owner) = effects.gas_object();
     assert_eq!(gas_ref.0, gas_id);
@@ -247,7 +250,7 @@ fn test_effects_version_numbers() {
         id_operation: IDOperation::None,
     };
 
-    let effects = TransactionEffects {
+    let effects = TransactionEffects::V1(TransactionEffectsV1 {
         status: ExecutionStatus::Success,
         executed_epoch: 0,
         transaction_digest: TransactionDigest::random(),
@@ -257,7 +260,7 @@ fn test_effects_version_numbers() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: None,
-    };
+    });
 
     // All written objects should have the effects version.
     let written = effects.written();

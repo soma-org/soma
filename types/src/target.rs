@@ -46,7 +46,7 @@ pub type TargetId = ObjectID;
 /// SystemState from becoming a contention bottleneck at high TPS, since each
 /// target can be mutated independently by consensus.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Target {
+pub struct TargetV1 {
     /// Center embedding point miners must get close to.
     /// Stored as SomaTensor (wraps Burn's TensorData) for f32 embeddings.
     pub embedding: SomaTensor,
@@ -136,7 +136,7 @@ pub enum TargetStatus {
     Claimed,
 }
 
-impl Target {
+impl TargetV1 {
     /// Returns true if this target is accepting submissions.
     pub fn is_open(&self) -> bool {
         matches!(self.status, TargetStatus::Open)
@@ -254,7 +254,7 @@ pub fn generate_target(
     models_per_target: u64,
     embedding_dim: u64,
     current_epoch: EpochId,
-) -> ExecutionResult<Target> {
+) -> ExecutionResult<TargetV1> {
     // 1. Generate deterministic embedding for the target
     let embedding = deterministic_embedding(seed, embedding_dim);
 
@@ -263,7 +263,7 @@ pub fn generate_target(
         select_models_weighted_knn(seed, model_registry, &embedding, models_per_target)?;
 
     // 3. Create target with current difficulty thresholds and reward
-    Ok(Target {
+    Ok(TargetV1 {
         embedding,
         model_ids,
         distance_threshold: target_state.distance_threshold.clone(),
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_target_status_methods() {
-        let mut target = Target {
+        let mut target = TargetV1 {
             embedding: SomaTensor::zeros(vec![10]),
             model_ids: vec![],
             distance_threshold: SomaTensor::scalar(0.5),

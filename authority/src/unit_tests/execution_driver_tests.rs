@@ -130,7 +130,7 @@ async fn test_shared_object_version_assignment() {
     // Get the first validator's address from the system state
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-        system_state.validators.validators[0].metadata.soma_address
+        system_state.validators().validators[0].metadata.soma_address
     };
 
     // AddStake uses SystemState (shared object)
@@ -171,7 +171,7 @@ async fn test_execute_sequenced_shared_object_transaction() {
     // Get the first validator's address from the system state
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-        system_state.validators.validators[0].metadata.soma_address
+        system_state.validators().validators[0].metadata.soma_address
     };
 
     let coin_ref = coin.compute_object_reference();

@@ -12,7 +12,7 @@ use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig
 use types::consensus::block::BlockRef;
 use types::consensus::ConsensusPosition;
 use types::digests::TransactionEffectsDigest;
-use types::effects::TransactionEffects;
+use types::effects::{TransactionEffects, TransactionEffectsV1};
 use types::envelope::Message;
 use types::error::SomaError;
 use types::messages_grpc::{
@@ -178,8 +178,9 @@ async fn test_forked_execution_detection() {
 
     let digest_a = default_effects_digest();
     // Create a different digest by using a different TransactionEffects
-    let mut effects_b = TransactionEffects::default();
-    effects_b.executed_epoch = 999; // different content → different digest
+    let mut effects_b_v1 = TransactionEffectsV1::default();
+    effects_b_v1.executed_epoch = 999; // different content → different digest
+    let effects_b = TransactionEffects::V1(effects_b_v1);
     let digest_b = effects_b.digest();
     assert_ne!(digest_a, digest_b);
 

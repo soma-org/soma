@@ -26,7 +26,7 @@ use types::{
     model::ModelId,
     multiaddr::Multiaddr,
     object::{ObjectID, ObjectRef, Owner},
-    system_state::{SystemState, validator::Validator},
+    system_state::{SystemState, SystemStateTrait as _, validator::Validator},
     transaction::{
         AddValidatorArgs, RemoveValidatorArgs, TransactionKind, UpdateValidatorMetadataArgs,
     },
@@ -242,7 +242,7 @@ impl SomaValidatorCommand {
                 )
                 .await?;
 
-                let kind = build_update_metadata_tx(metadata)?;
+                let kind = build_update_metadata_tx(metadata, sender)?;
                 execute_tx(context, sender, kind, tx_args).await
             }
 
@@ -442,12 +442,17 @@ fn make_validator_info(
     let network_keypair: NetworkKeyPair = read_network_keypair_from_file(&network_key_file)?;
     let worker_keypair: NetworkKeyPair = read_network_keypair_from_file(&worker_key_file)?;
 
+    let account_address = SomaAddress::from(&account_keypair.public());
+    let pop = types::crypto::generate_proof_of_possession(&protocol_keypair, account_address);
+    let proof_of_possession = pop.as_ref().to_vec();
+
     let validator_info = GenesisValidatorInfo {
         info: types::validator_info::ValidatorInfo {
             protocol_key: protocol_keypair.public().into(),
             worker_key: worker_keypair.public().clone(),
-            account_address: SomaAddress::from(&account_keypair.public()),
+            account_address,
             network_key: network_keypair.public().clone(),
+            proof_of_possession,
             commission_rate,
             network_address: Multiaddr::try_from(format!("/dns/{}/tcp/8080/http", host_name))?,
             p2p_address: Multiaddr::try_from(format!("/dns/{}/tcp/8084/http", host_name))?,
@@ -483,6 +488,7 @@ fn build_join_committee_tx(file: &PathBuf) -> Result<TransactionKind> {
         pubkey_bytes: info.protocol_key.as_bytes().to_vec(),
         network_pubkey_bytes: info.network_key.to_bytes().to_vec(),
         worker_pubkey_bytes: info.worker_key.to_bytes().to_vec(),
+        proof_of_possession: info.proof_of_possession,
         net_address: bcs::to_bytes(&info.network_address.to_string())?,
         p2p_address: bcs::to_bytes(&info.p2p_address.to_string())?,
         primary_address: bcs::to_bytes(&info.primary_address.to_string())?,
@@ -491,7 +497,10 @@ fn build_join_committee_tx(file: &PathBuf) -> Result<TransactionKind> {
 }
 
 /// Build an UpdateValidatorMetadata transaction
-fn build_update_metadata_tx(metadata: MetadataUpdate) -> Result<TransactionKind> {
+fn build_update_metadata_tx(
+    metadata: MetadataUpdate,
+    sender: SomaAddress,
+) -> Result<TransactionKind> {
     let args = match metadata {
         MetadataUpdate::NetworkAddress { network_address } => {
             // Validate TCP address
@@ -527,8 +536,10 @@ fn build_update_metadata_tx(metadata: MetadataUpdate) -> Result<TransactionKind>
         }
         MetadataUpdate::ProtocolPubKey { file } => {
             let keypair: AuthorityKeyPair = read_authority_keypair_from_file(file)?;
+            let pop = types::crypto::generate_proof_of_possession(&keypair, sender);
             UpdateValidatorMetadataArgs {
                 next_epoch_protocol_pubkey: Some(keypair.public().as_bytes().to_vec()),
+                next_epoch_proof_of_possession: Some(pop.as_ref().to_vec()),
                 ..Default::default()
             }
         }
@@ -623,10 +634,10 @@ fn validator_to_summary(validator: &Validator, status: ValidatorStatus) -> Valid
 /// List all validators from the SystemState
 fn list_all_validators(system_state: &SystemState) -> Vec<ValidatorSummary> {
     let mut validators = Vec::new();
-    for validator in &system_state.validators.validators {
+    for validator in &system_state.validators().validators {
         validators.push(validator_to_summary(validator, ValidatorStatus::Active));
     }
-    for validator in &system_state.validators.pending_validators {
+    for validator in &system_state.validators().pending_validators {
         validators.push(validator_to_summary(validator, ValidatorStatus::Pending));
     }
     validators
@@ -638,7 +649,7 @@ fn find_validator_in_system_state(
     address: SomaAddress,
 ) -> Option<(ValidatorStatus, ValidatorSummary)> {
     // Check consensus validators
-    for validator in &system_state.validators.validators {
+    for validator in &system_state.validators().validators {
         if validator.metadata.soma_address == address {
             return Some((
                 ValidatorStatus::Active,
@@ -648,7 +659,7 @@ fn find_validator_in_system_state(
     }
 
     // Check pending validators
-    for validator in &system_state.validators.pending_validators {
+    for validator in &system_state.validators().pending_validators {
         if validator.metadata.soma_address == address {
             return Some((
                 ValidatorStatus::Pending,

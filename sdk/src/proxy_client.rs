@@ -186,7 +186,7 @@ impl ProxyClient {
     /// Extracts validator proxy addresses from the validator set.
     pub fn from_system_state(state: &SystemState) -> Result<Self, ProxyError> {
         let validators: Vec<ValidatorProxyInfo> = state
-            .validators
+            .validators()
             .validators
             .iter()
             .filter_map(|v| {
@@ -207,7 +207,7 @@ impl ProxyClient {
         config: ProxyClientConfig,
     ) -> Result<Self, ProxyError> {
         let validators: Vec<ValidatorProxyInfo> = state
-            .validators
+            .validators()
             .validators
             .iter()
             .filter_map(|v| {

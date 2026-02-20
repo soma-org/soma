@@ -61,13 +61,13 @@ use tokio::{
 use tracing::{Instrument, debug, error, error_span, info, warn};
 use types::{
     base::AuthorityName,
-    challenge::Challenge,
+    challenge::ChallengeV1,
     client::Config,
     committee::Committee,
     config::node_config::{
         ConsensusConfig, ForkCrashBehavior, ForkRecoveryConfig, NodeConfig, RunWithRange,
     },
-    consensus::{AuthorityCapabilities, ConsensusTransaction, ConsensusTransactionKind},
+    consensus::{AuthorityCapabilitiesV1, ConsensusTransaction, ConsensusTransactionKind},
     crypto::KeypairTraits,
     digests::{ChainIdentifier, CheckpointDigest, TransactionDigest, TransactionEffectsDigest},
     error::{SomaError, SomaResult},
@@ -117,7 +117,7 @@ pub struct ValidatorComponents {
     audit_service: Option<Arc<AuditService>>,
     /// Sender for challenge observer - used by CheckpointExecutor to notify AuditService
     /// of new Challenge objects. Cloned and passed to CheckpointExecutor at startup.
-    challenge_observer_sender: tokio::sync::mpsc::Sender<Challenge>,
+    challenge_observer_sender: tokio::sync::mpsc::Sender<ChallengeV1>,
     /// Handle for the HTTP proxy server (for serving data/model downloads).
     /// None if proxy_port is not configured.
     #[allow(unused)]
@@ -1064,7 +1064,7 @@ impl SomaNode {
                     .truncate_below(config.version);
 
                 let transaction =
-                    ConsensusTransaction::new_capability_notification(AuthorityCapabilities::new(
+                    ConsensusTransaction::new_capability_notification(AuthorityCapabilitiesV1::new(
                         self.state.name,
                         cur_epoch_store.get_chain_identifier().chain(),
                         supported_protocol_versions,
@@ -1540,7 +1540,7 @@ impl SomaNode {
         state: &Arc<AuthorityState>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
-        challenge_rx: tokio::sync::mpsc::Receiver<Challenge>,
+        challenge_rx: tokio::sync::mpsc::Receiver<ChallengeV1>,
     ) -> Option<Arc<AuditService>> {
         // Create real RuntimeV1 with the configured device backend
         let runtime_data_dir = config.db_path().join("runtime-data");

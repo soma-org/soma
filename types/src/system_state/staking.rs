@@ -44,12 +44,12 @@ impl StakingPool {
     }
 
     /// Request to add stake to the staking pool
-    pub fn request_add_stake(&mut self, stake: u64, stake_activation_epoch: u64) -> StakedSoma {
+    pub fn request_add_stake(&mut self, stake: u64, stake_activation_epoch: u64) -> StakedSomaV1 {
         assert!(stake > 0, "Stake amount must be greater than zero");
         assert!(!self.is_inactive(), "Cannot stake with inactive pool");
 
-        // Create StakedSoma
-        let staked_soma = StakedSoma::new(self.id, stake_activation_epoch, stake);
+        // Create StakedSomaV1
+        let staked_soma = StakedSomaV1::new(self.id, stake_activation_epoch, stake);
 
         // Update pending stake
         self.pending_stake += stake;
@@ -58,7 +58,7 @@ impl StakingPool {
     }
 
     /// Request to withdraw stake from the staking pool
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma, current_epoch: u64) -> u64 {
+    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1, current_epoch: u64) -> u64 {
         // Validate the staking pool ID matches
         assert!(staked_soma.pool_id == self.id, "StakedSoma belongs to a different pool");
 
@@ -100,7 +100,7 @@ impl StakingPool {
     }
 
     /// Calculate pool tokens and principal amount when withdrawing
-    pub fn withdraw_from_principal(&self, staked_soma: &StakedSoma) -> (u64, u64) {
+    pub fn withdraw_from_principal(&self, staked_soma: &StakedSomaV1) -> (u64, u64) {
         // Get exchange rate at staking epoch
         let exchange_rate =
             self.pool_token_exchange_rate_at_epoch(staked_soma.stake_activation_epoch);
@@ -342,7 +342,7 @@ pub struct PoolTokenExchangeRate {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct StakedSoma {
+pub struct StakedSomaV1 {
     /// Staking pool ID
     pub pool_id: ObjectID,
     /// Epoch when stake becomes active
@@ -351,8 +351,8 @@ pub struct StakedSoma {
     pub principal: u64,
 }
 
-impl StakedSoma {
+impl StakedSomaV1 {
     pub fn new(pool_id: ObjectID, stake_activation_epoch: u64, principal: u64) -> Self {
-        StakedSoma { pool_id, stake_activation_epoch, principal }
+        StakedSomaV1 { pool_id, stake_activation_epoch, principal }
     }
 }

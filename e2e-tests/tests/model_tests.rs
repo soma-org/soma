@@ -10,7 +10,7 @@ use types::{
     metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
-    system_state::SystemStateTrait,
+    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{CommitModelArgs, RevealModelArgs, TransactionData, TransactionKind},
 };
@@ -90,12 +90,12 @@ async fn test_genesis_model_bootstrap() {
 
     // Model should be in active_models (genesis models skip commit-reveal)
     assert!(
-        system_state.model_registry.active_models.contains_key(&model_id),
+        system_state.model_registry().active_models.contains_key(&model_id),
         "Genesis model should be in active_models"
     );
 
     // Verify model fields
-    let model = system_state.model_registry.active_models.get(&model_id).unwrap();
+    let model = system_state.model_registry().active_models.get(&model_id).unwrap();
     assert_eq!(model.owner, model_owner);
     assert_eq!(model.architecture_version, 1);
     assert_eq!(model.commission_rate, 0);
@@ -106,15 +106,15 @@ async fn test_genesis_model_bootstrap() {
     assert_eq!(model.staking_pool.soma_balance, initial_stake);
 
     // total_model_stake should match
-    assert_eq!(system_state.model_registry.total_model_stake, initial_stake);
+    assert_eq!(system_state.model_registry().total_model_stake, initial_stake);
 
     // Staking pool mapping should exist
     let pool_id = model.staking_pool.id;
-    assert_eq!(system_state.model_registry.staking_pool_mappings.get(&pool_id), Some(&model_id),);
+    assert_eq!(system_state.model_registry().staking_pool_mappings.get(&pool_id), Some(&model_id),);
 
     // No pending or inactive models
-    assert!(system_state.model_registry.pending_models.is_empty());
-    assert!(system_state.model_registry.inactive_models.is_empty());
+    assert!(system_state.model_registry().pending_models.is_empty());
+    assert!(system_state.model_registry().inactive_models.is_empty());
 
     info!("test_genesis_model_bootstrap passed");
 }
@@ -188,15 +188,15 @@ async fn test_model_commit_reveal_round_trip() {
     });
 
     assert!(
-        system_state.model_registry.pending_models.contains_key(&model_id),
+        system_state.model_registry().pending_models.contains_key(&model_id),
         "Model should be in pending_models after CommitModel"
     );
     assert!(
-        !system_state.model_registry.active_models.contains_key(&model_id),
+        !system_state.model_registry().active_models.contains_key(&model_id),
         "Model should NOT be in active_models yet"
     );
 
-    let pending_model = system_state.model_registry.pending_models.get(&model_id).unwrap();
+    let pending_model = system_state.model_registry().pending_models.get(&model_id).unwrap();
     assert!(pending_model.is_committed());
     assert_eq!(pending_model.owner, model_owner);
     assert_eq!(pending_model.commit_epoch, 0);
@@ -213,7 +213,7 @@ async fn test_model_commit_reveal_round_trip() {
 
     // Model should still be in pending_models (reveal window is now open)
     assert!(
-        system_state.model_registry.pending_models.contains_key(&model_id),
+        system_state.model_registry().pending_models.contains_key(&model_id),
         "Model should still be in pending_models after first reconfig"
     );
 
@@ -258,15 +258,15 @@ async fn test_model_commit_reveal_round_trip() {
     });
 
     assert!(
-        !system_state.model_registry.pending_models.contains_key(&model_id),
+        !system_state.model_registry().pending_models.contains_key(&model_id),
         "Model should no longer be in pending_models after reveal"
     );
     assert!(
-        system_state.model_registry.active_models.contains_key(&model_id),
+        system_state.model_registry().active_models.contains_key(&model_id),
         "Model should be in active_models after reveal"
     );
 
-    let active_model = system_state.model_registry.active_models.get(&model_id).unwrap();
+    let active_model = system_state.model_registry().active_models.get(&model_id).unwrap();
     assert!(active_model.is_active());
     assert!(active_model.weights_manifest.is_some());
     assert_eq!(active_model.owner, model_owner);
@@ -274,11 +274,11 @@ async fn test_model_commit_reveal_round_trip() {
     assert_eq!(active_model.staking_pool.soma_balance, stake_amount);
 
     // total_model_stake should reflect the newly active model
-    assert_eq!(system_state.model_registry.total_model_stake, stake_amount,);
+    assert_eq!(system_state.model_registry().total_model_stake, stake_amount,);
 
     // Staking pool mapping should exist
     let pool_id = active_model.staking_pool.id;
-    assert_eq!(system_state.model_registry.staking_pool_mappings.get(&pool_id), Some(&model_id),);
+    assert_eq!(system_state.model_registry().staking_pool_mappings.get(&pool_id), Some(&model_id),);
 
     info!("test_model_commit_reveal_round_trip passed");
 }

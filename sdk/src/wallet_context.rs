@@ -18,6 +18,7 @@ use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
 use tracing::info;
 use types::base::SomaAddress;
+use types::effects::TransactionEffectsAPI;
 use types::config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG};
 use types::crypto::{Signature, SomaKeyPair};
 use types::digests::{ObjectDigest, TransactionDigest};
@@ -394,7 +395,7 @@ impl WalletContext {
         tracing::debug!("Executing transaction: {:?}", tx);
         let response = self.execute_transaction_may_fail(tx).await.unwrap();
 
-        assert!(response.effects.status.is_ok(), "Transaction failed: {:?}", response);
+        assert!(response.effects.status().is_ok(), "Transaction failed: {:?}", response);
 
         response
     }

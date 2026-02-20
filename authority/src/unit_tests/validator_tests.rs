@@ -102,7 +102,7 @@ async fn test_set_commission_rate_success() {
     // Verify commission rate was set (takes effect next epoch)
     let system_state = setup.authority_state.get_system_state_object_for_testing().unwrap();
     let validator = system_state
-        .validators
+        .validators()
         .validators
         .iter()
         .find(|v| v.metadata.soma_address == setup.v0_address)
@@ -165,6 +165,7 @@ async fn test_update_validator_metadata_success() {
             next_epoch_protocol_pubkey: None,
             next_epoch_worker_pubkey: None,
             next_epoch_network_pubkey: None,
+            next_epoch_proof_of_possession: None,
         }),
         setup.v0_address,
         vec![setup.v0_gas_ref],

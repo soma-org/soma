@@ -1,14 +1,14 @@
 use crate::base::HexAccountAddress;
 use crate::{
     base::{FullObjectID, FullObjectRef, SOMA_ADDRESS_LENGTH, SomaAddress},
-    challenge::Challenge,
+    challenge::ChallengeV1,
     committee::EpochId,
     crypto::{DefaultHash, default_hash},
     digests::{ObjectDigest, TransactionDigest},
     error::{SomaError, SomaResult},
     serde::Readable,
-    system_state::staking::StakedSoma,
-    target::Target,
+    system_state::staking::StakedSomaV1,
+    target::TargetV1,
 };
 use anyhow::anyhow;
 use fastcrypto::{
@@ -359,7 +359,7 @@ impl Object {
     /// Create a new Object containing a StakedSoma
     pub fn new_staked_soma_object(
         id: ObjectID,
-        staked_soma: StakedSoma,
+        staked_soma: StakedSomaV1,
         owner: Owner,
         previous_transaction: TransactionDigest,
     ) -> Object {
@@ -379,7 +379,7 @@ impl Object {
     }
 
     /// Extract StakedSoma from an Object
-    pub fn as_staked_soma(&self) -> Option<StakedSoma> {
+    pub fn as_staked_soma(&self) -> Option<StakedSomaV1> {
         if *self.data.object_type() == ObjectType::StakedSoma {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
@@ -396,7 +396,7 @@ impl Object {
     /// will assign the lamport timestamp later.
     pub fn new_target_object(
         id: ObjectID,
-        target: Target,
+        target: TargetV1,
         previous_transaction: TransactionDigest,
     ) -> Object {
         // Serialize Target to bytes
@@ -413,38 +413,8 @@ impl Object {
     }
 
     /// Extract Target from an Object
-    pub fn as_target(&self) -> Option<Target> {
+    pub fn as_target(&self) -> Option<TargetV1> {
         if *self.data.object_type() == ObjectType::Target {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Create a new Object containing a Submission.
-    ///
-    /// Submissions are shared objects associated with a target.
-    pub fn new_submission_object(
-        id: ObjectID,
-        submission: crate::submission::Submission,
-        previous_transaction: TransactionDigest,
-    ) -> Object {
-        // Serialize Submission to bytes
-        let submission_bytes = bcs::to_bytes(&submission).unwrap();
-
-        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
-        let data =
-            ObjectData::new_with_id(id, ObjectType::Submission, Version::MIN, submission_bytes);
-
-        // Submissions are shared objects - use Version::new() as initial shared version
-        let owner = Owner::Shared { initial_shared_version: Version::new() };
-
-        Object::new(data, owner, previous_transaction)
-    }
-
-    /// Extract Submission from an Object
-    pub fn as_submission(&self) -> Option<crate::submission::Submission> {
-        if *self.data.object_type() == ObjectType::Submission {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
@@ -460,7 +430,7 @@ impl Object {
     /// CHALLENGE_OBJECT_SHARED_VERSION for consistent lookups.
     pub fn new_challenge_object(
         id: ObjectID,
-        challenge: Challenge,
+        challenge: ChallengeV1,
         previous_transaction: TransactionDigest,
     ) -> Object {
         // Serialize Challenge to bytes
@@ -484,7 +454,7 @@ impl Object {
     }
 
     /// Extract Challenge from an Object
-    pub fn as_challenge(&self) -> Option<Challenge> {
+    pub fn as_challenge(&self) -> Option<ChallengeV1> {
         if *self.data.object_type() == ObjectType::Challenge {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
@@ -647,8 +617,6 @@ pub enum ObjectType {
     StakedSoma,
     /// Represents a mining target object
     Target,
-    /// Represents a data submission to a target
-    Submission,
     /// Represents a challenge against a submission
     Challenge,
 }
@@ -660,7 +628,6 @@ impl fmt::Display for ObjectType {
             ObjectType::Coin => write!(f, "Coin"),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
             ObjectType::Target => write!(f, "Target"),
-            ObjectType::Submission => write!(f, "Submission"),
             ObjectType::Challenge => write!(f, "Challenge"),
         }
     }
@@ -675,7 +642,6 @@ impl FromStr for ObjectType {
             "Coin" => Ok(ObjectType::Coin),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
             "Target" => Ok(ObjectType::Target),
-            "Submission" => Ok(ObjectType::Submission),
             "Challenge" => Ok(ObjectType::Challenge),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }

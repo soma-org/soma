@@ -230,7 +230,7 @@ impl<S: ObjectStore> ProxyServer<S> {
             .ok_or(ProxyError::TargetNotFound(target_id))?;
 
         // Deserialize target
-        let target: types::target::Target = bcs::from_bytes(target.as_inner().data.contents())
+        let target: types::target::TargetV1 = bcs::from_bytes(target.as_inner().data.contents())
             .map_err(|e| ProxyError::Internal(format!("Failed to deserialize target: {}", e)))?;
 
         // Get the winning data manifest (only available if target is filled)
@@ -301,7 +301,7 @@ impl<S: ObjectStore> ProxyServer<S> {
 
         // Look up model in registry
         let model = system_state
-            .model_registry
+            .model_registry()
             .active_models
             .get(model_id)
             .ok_or(ProxyError::ModelNotFound(*model_id))?;

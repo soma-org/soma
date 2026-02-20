@@ -1,5 +1,8 @@
 use crate::base::SomaAddress;
-use crate::crypto::{AuthorityPublicKey, AuthorityPublicKeyBytes, NetworkPublicKey};
+use crate::crypto::{
+    AuthorityPublicKey, AuthorityPublicKeyBytes, NetworkPublicKey, generate_proof_of_possession,
+    verify_proof_of_possession,
+};
 use crate::multiaddr::Multiaddr;
 use anyhow::bail;
 use fastcrypto::traits::ToFromBytes;
@@ -17,6 +20,7 @@ pub struct ValidatorInfo {
     pub protocol_key: AuthorityPublicKeyBytes,
     pub worker_key: NetworkPublicKey,
     pub network_key: NetworkPublicKey,
+    pub proof_of_possession: Vec<u8>,
     pub commission_rate: u64,
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
@@ -95,6 +99,15 @@ impl GenesisValidatorInfo {
             bail!("commissions rate must be lower than 100%");
         }
 
+        // Verify proof of possession
+        let protocol_pubkey = AuthorityPublicKey::from_bytes(self.info.protocol_key.as_ref())
+            .map_err(|e| anyhow::anyhow!("Invalid protocol public key: {}", e))?;
+        let pop_sig =
+            crate::crypto::AuthoritySignature::from_bytes(&self.info.proof_of_possession)
+                .map_err(|e| anyhow::anyhow!("Invalid proof of possession bytes: {}", e))?;
+        verify_proof_of_possession(&pop_sig, &protocol_pubkey, self.info.account_address)
+            .map_err(|e| anyhow::anyhow!("Proof of possession verification failed: {}", e))?;
+
         Ok(())
     }
 }
@@ -118,11 +131,16 @@ impl From<&crate::config::genesis_config::ValidatorGenesisConfig> for ValidatorI
         // network_key_pair is NetworkKeyPair, .public() returns NetworkPublicKey
         let network_key = config.network_key_pair.public();
 
+        // Generate proof of possession from the authority keypair
+        let pop = generate_proof_of_possession(&config.key_pair, account_address);
+        let proof_of_possession = pop.as_ref().to_vec();
+
         Self {
             account_address,
             protocol_key,
             worker_key,
             network_key,
+            proof_of_possession,
             network_address: config.network_address.clone(),
             p2p_address: config.p2p_address.clone(),
             primary_address: config.consensus_address.clone(), // consensus_address maps to primary_address
@@ -146,6 +164,7 @@ impl From<GenesisValidatorInfo> for GenesisValidatorMetadata {
             protocol_public_key: info.protocol_key.as_ref().to_vec(),
             network_public_key: info.network_key.to_bytes().to_vec(),
             worker_public_key: info.worker_key.to_bytes().to_vec(),
+            proof_of_possession: info.proof_of_possession,
             network_address: info.network_address,
             p2p_address: info.p2p_address,
             primary_address: info.primary_address,
@@ -161,6 +180,7 @@ pub struct GenesisValidatorMetadata {
     pub protocol_public_key: Vec<u8>, // BLS12381 public key bytes
     pub network_public_key: Vec<u8>,  // Ed25519 public key bytes
     pub worker_public_key: Vec<u8>,   // Ed25519 public key bytes
+    pub proof_of_possession: Vec<u8>, // BLS12381 signature bytes
     pub network_address: Multiaddr,
     pub p2p_address: Multiaddr,
     pub primary_address: Multiaddr,

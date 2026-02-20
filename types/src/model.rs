@@ -47,7 +47,7 @@ pub struct PendingModelUpdate {
 /// The `Model` struct does not store its own ID; it is identified by `ModelId`
 /// (an `ObjectID`) as the key in `ModelRegistry` maps.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Model {
+pub struct ModelV1 {
     /// Owner address (the account that committed/revealed this model)
     pub owner: SomaAddress,
     /// Architecture version (must match protocol config at commit time)
@@ -86,7 +86,7 @@ pub struct Model {
     pub pending_update: Option<PendingModelUpdate>,
 }
 
-impl Model {
+impl ModelV1 {
     /// Returns true if this model is in the committed (pre-reveal) state.
     pub fn is_committed(&self) -> bool {
         self.weights_manifest.is_none() && self.staking_pool.deactivation_epoch.is_none()

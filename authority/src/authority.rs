@@ -32,7 +32,7 @@ use types::checkpoints::{
     ECMHLiveObjectSetDigest, VerifiedCheckpoint,
 };
 use types::config::node_config::{ExpensiveSafetyCheckConfig, StateDebugDumpConfig};
-use types::consensus::AuthorityCapabilities;
+use types::consensus::AuthorityCapabilitiesV1;
 use types::digests::{
     ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, ObjectDigest,
     TransactionEffectsDigest,
@@ -1025,7 +1025,7 @@ impl AuthorityState {
             gas_payment,
             input_objects,
             execution_params,
-            epoch_store.epoch_start_state().fee_parameters,
+            epoch_store.epoch_start_state().fee_parameters(),
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1169,7 +1169,7 @@ impl AuthorityState {
             gas_payment,
             checked_input_objects,
             execution_params,
-            epoch_store.epoch_start_state().fee_parameters,
+            epoch_store.epoch_start_state().fee_parameters(),
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {
@@ -1637,35 +1637,35 @@ impl AuthorityState {
         let mut system_state_balance: u128 = 0;
 
         // Emission pool
-        system_state_balance += system_state.emission_pool.balance as u128;
+        system_state_balance += system_state.emission_pool().balance as u128;
         // Safe mode accumulators
-        system_state_balance += system_state.safe_mode_accumulated_fees as u128;
-        system_state_balance += system_state.safe_mode_accumulated_emissions as u128;
+        system_state_balance += system_state.safe_mode_accumulated_fees() as u128;
+        system_state_balance += system_state.safe_mode_accumulated_emissions() as u128;
 
         // Validator staking pools (active, pending, inactive)
-        for v in &system_state.validators.validators {
+        for v in &system_state.validators().validators {
             system_state_balance += v.staking_pool.soma_balance as u128;
             system_state_balance += v.staking_pool.pending_stake as u128;
         }
-        for v in &system_state.validators.pending_validators {
+        for v in &system_state.validators().pending_validators {
             system_state_balance += v.staking_pool.soma_balance as u128;
             system_state_balance += v.staking_pool.pending_stake as u128;
         }
-        for v in system_state.validators.inactive_validators.values() {
+        for v in system_state.validators().inactive_validators.values() {
             system_state_balance += v.staking_pool.soma_balance as u128;
             system_state_balance += v.staking_pool.pending_stake as u128;
         }
 
         // Model staking pools (active, pending, inactive)
-        for m in system_state.model_registry.active_models.values() {
+        for m in system_state.model_registry().active_models.values() {
             system_state_balance += m.staking_pool.soma_balance as u128;
             system_state_balance += m.staking_pool.pending_stake as u128;
         }
-        for m in system_state.model_registry.pending_models.values() {
+        for m in system_state.model_registry().pending_models.values() {
             system_state_balance += m.staking_pool.soma_balance as u128;
             system_state_balance += m.staking_pool.pending_stake as u128;
         }
-        for m in system_state.model_registry.inactive_models.values() {
+        for m in system_state.model_registry().inactive_models.values() {
             system_state_balance += m.staking_pool.soma_balance as u128;
             system_state_balance += m.staking_pool.pending_stake as u128;
         }
@@ -2232,7 +2232,7 @@ impl AuthorityState {
         proposed_protocol_version: ProtocolVersion,
         protocol_config: &ProtocolConfig,
         committee: &Committee,
-        capabilities: Vec<AuthorityCapabilities>,
+        capabilities: Vec<AuthorityCapabilitiesV1>,
         mut buffer_stake_bps: u64,
     ) -> Option<ProtocolVersion> {
         if buffer_stake_bps > 10000 {
@@ -2299,7 +2299,7 @@ impl AuthorityState {
         current_protocol_version: ProtocolVersion,
         protocol_config: &ProtocolConfig,
         committee: &Committee,
-        capabilities: Vec<AuthorityCapabilities>,
+        capabilities: Vec<AuthorityCapabilitiesV1>,
         buffer_stake_bps: u64,
     ) -> ProtocolVersion {
         let mut next_protocol_version = current_protocol_version;
@@ -2429,7 +2429,7 @@ impl AuthorityState {
         // Allow tests to detect unexpected safe mode entry (e.g. from race conditions).
         // The test_advance_epoch_tx_race test registers a panic on this failpoint to verify
         // that the is_tx_already_executed guard prevents double-execution.
-        if system_obj.safe_mode {
+        if system_obj.safe_mode() {
             utils::fail_point!("checkpoint_builder_advance_epoch_is_safe_mode");
         }
 

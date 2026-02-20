@@ -33,7 +33,7 @@
 use crate::base::{AuthorityName, ConciseableName, SomaAddress};
 use crate::committee::{Committee, CommitteeTrait, EpochId, VotingPower};
 use crate::error::{SomaError, SomaResult};
-use crate::intent::{Intent, IntentMessage};
+use crate::intent::{Intent, IntentMessage, IntentScope};
 use crate::multisig::MultiSig;
 use crate::serde::Readable;
 use crate::serde::SomaBitmap;
@@ -784,6 +784,44 @@ impl SomaAuthoritySignature for AuthoritySignature {
             ),
         })
     }
+}
+
+/// Default epoch ID used for proof of possession signatures.
+/// PoP is epoch-independent, so we use epoch 0.
+pub const DEFAULT_EPOCH_ID: EpochId = 0;
+
+/// Creates a proof of possession: a BLS12-381 authority signature over
+/// `protocol_pubkey_bytes || soma_address`, wrapped in an IntentMessage
+/// with IntentScope::ProofOfPossession. This proves the holder of the
+/// authority protocol key also controls the validator's account address.
+pub fn generate_proof_of_possession(
+    keypair: &AuthorityKeyPair,
+    address: SomaAddress,
+) -> AuthoritySignature {
+    let mut msg: Vec<u8> = Vec::new();
+    msg.extend_from_slice(keypair.public().as_bytes());
+    msg.extend_from_slice(address.as_ref());
+    AuthoritySignature::new_secure(
+        &IntentMessage::new(Intent::soma_app(IntentScope::ProofOfPossession), msg),
+        &DEFAULT_EPOCH_ID,
+        keypair,
+    )
+}
+
+/// Verifies a proof of possession against the expected protocol public key
+/// and validator account address.
+pub fn verify_proof_of_possession(
+    pop: &AuthoritySignature,
+    protocol_pubkey: &AuthorityPublicKey,
+    soma_address: SomaAddress,
+) -> Result<(), SomaError> {
+    let mut msg = protocol_pubkey.as_bytes().to_vec();
+    msg.extend_from_slice(soma_address.as_ref());
+    pop.verify_secure(
+        &IntentMessage::new(Intent::soma_app(IntentScope::ProofOfPossession), msg),
+        DEFAULT_EPOCH_ID,
+        protocol_pubkey.into(),
+    )
 }
 
 pub fn get_authority_key_pair() -> (SomaAddress, AuthorityKeyPair) {

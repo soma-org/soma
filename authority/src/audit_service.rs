@@ -24,7 +24,7 @@ use blobs::BlobPath;
 use runtime::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use types::{
     base::{AuthorityName, SomaAddress},
-    challenge::{Challenge, ChallengeId},
+    challenge::{ChallengeV1, ChallengeId},
     committee::EpochId,
     consensus::ConsensusTransaction,
     crypto::{Signature, SomaKeyPair},
@@ -202,7 +202,7 @@ impl AuditService {
     /// Spawn the audit service task.
     ///
     /// - `challenge_rx`: Receives new Challenge objects from CheckpointExecutor
-    pub async fn spawn(self: Arc<Self>, mut challenge_rx: mpsc::Receiver<Challenge>) {
+    pub async fn spawn(self: Arc<Self>, mut challenge_rx: mpsc::Receiver<ChallengeV1>) {
         // Spawn task to handle new challenges
         tokio::spawn(async move {
             while let Some(challenge) = challenge_rx.recv().await {
@@ -222,7 +222,7 @@ impl AuditService {
     /// **Report semantics:**
     /// - `ReportSubmission`: "This submission is fraudulent" → miner loses bond
     /// - `ReportChallenge`: "This challenge is invalid" → challenger loses bond
-    async fn handle_new_challenge(&self, challenge: Challenge) {
+    async fn handle_new_challenge(&self, challenge: ChallengeV1) {
         info!("Auditing challenge {:?} for target {:?}", challenge.id, challenge.target_id);
 
         // Run fraud audit - returns true if fraud was found
@@ -303,7 +303,7 @@ impl AuditService {
         let state: types::system_state::SystemState =
             bcs::from_bytes(state_object.as_inner().data.contents()).map_err(|_| ())?;
 
-        let model = state.model_registry.active_models.get(model_id).ok_or(())?;
+        let model = state.model_registry().active_models.get(model_id).ok_or(())?;
 
         let weights_manifest = model.weights_manifest.as_ref().ok_or(())?;
 
@@ -325,7 +325,7 @@ impl AuditService {
     /// 4. **Distance mismatch**: Distance differs beyond tolerance → FRAUD
     /// 5. **Model unavailable**: System issue, not miner's fault → NO FRAUD
     /// 6. **Computation failed**: Validator issue, not miner's fault → NO FRAUD
-    async fn audit_fraud(&self, challenge: &Challenge) -> bool {
+    async fn audit_fraud(&self, challenge: &ChallengeV1) -> bool {
         let data_manifest = &challenge.winning_data_manifest.manifest;
 
         // Collect model manifests from the registry

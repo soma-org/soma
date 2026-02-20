@@ -21,7 +21,7 @@ use types::{
     digests::{ObjectDigest, TransactionDigest},
     effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    system_state::staking::StakedSoma,
+    system_state::staking::StakedSomaV1,
     tx_fee::TransactionFee,
 };
 
@@ -766,7 +766,6 @@ pub enum ObjectContent {
     StakedSoma(StakedSomaDisplay),
     SystemState,
     Target,
-    Submission,
     Challenge,
     Unknown,
 }
@@ -822,7 +821,6 @@ impl ObjectOutput {
             }),
             ObjectType::SystemState => Some(ObjectContent::SystemState),
             ObjectType::Target => Some(ObjectContent::Target),
-            ObjectType::Submission => Some(ObjectContent::Submission),
             ObjectType::Challenge => Some(ObjectContent::Challenge),
         }
     }
@@ -902,9 +900,6 @@ impl Display for ObjectOutput {
                         "{}",
                         "Target object (use 'soma target info <id>' for details)".dimmed()
                     )?;
-                }
-                ObjectContent::Submission => {
-                    writeln!(f, "{}", "Submission object".dimmed())?;
                 }
                 ObjectContent::Challenge => {
                     writeln!(

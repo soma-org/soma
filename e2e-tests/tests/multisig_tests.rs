@@ -138,7 +138,7 @@ async fn test_multisig_e2e() {
 
     let tx1 = build_multisig_tx(tx_data, multisig_pk.clone(), &[&keys[0], &keys[1]], 0b011);
     let res = test_cluster.wallet.execute_transaction_must_succeed(tx1).await;
-    assert!(res.effects.status.is_ok());
+    assert!(res.effects.status().is_ok());
     info!("Test 1 passed: 2-of-3 multisig with keys 0,1 succeeded");
 
     // Re-fund for next test
@@ -158,7 +158,7 @@ async fn test_multisig_e2e() {
 
     let tx2 = build_multisig_tx(tx_data, multisig_pk.clone(), &[&keys[1], &keys[2]], 0b110);
     let res = test_cluster.wallet.execute_transaction_must_succeed(tx2).await;
-    assert!(res.effects.status.is_ok());
+    assert!(res.effects.status().is_ok());
     info!("Test 2 passed: 2-of-3 multisig with keys 1,2 succeeded");
 
     // Re-fund for next test

@@ -12,7 +12,7 @@ use crate::config::genesis_config::{
     GenesisCeremonyParameters, GenesisModelConfig, TOTAL_SUPPLY_SHANNONS,
     TokenDistributionSchedule, ValidatorGenesisConfig,
 };
-use crate::crypto::AuthoritySignInfoTrait as _;
+use crate::crypto::{AuthoritySignInfoTrait as _, AuthoritySignature};
 use crate::envelope::Message as _;
 use crate::intent::{IntentMessage, IntentScope};
 use crate::object::{ObjectData, ObjectType, Version};
@@ -242,7 +242,7 @@ impl GenesisBuilder {
 
         assert_eq!(
             self.validators.len(),
-            system_state.validators.validators.len(),
+            system_state.validators().validators.len(),
             "Validator count mismatch"
         );
 
@@ -447,32 +447,38 @@ impl GenesisBuilder {
             .validators
             .iter()
             .map(|v| {
-                Validator {
-                    metadata: ValidatorMetadata {
-                        soma_address: v.info.account_address,
-                        protocol_pubkey: BLS12381PublicKey::from_bytes(
-                            v.info.protocol_key.as_bytes(),
-                        )
-                        .expect("Invalid protocol key"),
-                        network_pubkey: v.info.network_key.clone(),
-                        worker_pubkey: v.info.worker_key.clone(),
-                        net_address: v.info.network_address.clone(),
-                        p2p_address: v.info.p2p_address.clone(),
-                        primary_address: v.info.primary_address.clone(),
-                        proxy_address: v.info.proxy_address.clone(),
-                        next_epoch_protocol_pubkey: None,
-                        next_epoch_network_pubkey: None,
-                        next_epoch_net_address: None,
-                        next_epoch_p2p_address: None,
-                        next_epoch_primary_address: None,
-                        next_epoch_worker_pubkey: None,
-                        next_epoch_proxy_address: None,
-                    },
-                    voting_power: 0, // Will be set by set_voting_power()
-                    staking_pool: StakingPool::new(ObjectID::random()),
-                    commission_rate: v.info.commission_rate,
-                    next_epoch_stake: 0,
-                    next_epoch_commission_rate: v.info.commission_rate,
+                {
+                    let pop = AuthoritySignature::from_bytes(&v.info.proof_of_possession)
+                        .expect("Invalid proof of possession in genesis validator");
+                    Validator {
+                        metadata: ValidatorMetadata {
+                            soma_address: v.info.account_address,
+                            protocol_pubkey: BLS12381PublicKey::from_bytes(
+                                v.info.protocol_key.as_bytes(),
+                            )
+                            .expect("Invalid protocol key"),
+                            network_pubkey: v.info.network_key.clone(),
+                            worker_pubkey: v.info.worker_key.clone(),
+                            net_address: v.info.network_address.clone(),
+                            p2p_address: v.info.p2p_address.clone(),
+                            primary_address: v.info.primary_address.clone(),
+                            proxy_address: v.info.proxy_address.clone(),
+                            proof_of_possession: pop,
+                            next_epoch_protocol_pubkey: None,
+                            next_epoch_network_pubkey: None,
+                            next_epoch_net_address: None,
+                            next_epoch_p2p_address: None,
+                            next_epoch_primary_address: None,
+                            next_epoch_worker_pubkey: None,
+                            next_epoch_proof_of_possession: None,
+                            next_epoch_proxy_address: None,
+                        },
+                        voting_power: 0, // Will be set by set_voting_power()
+                        staking_pool: StakingPool::new(ObjectID::random()),
+                        commission_rate: v.info.commission_rate,
+                        next_epoch_stake: 0,
+                        next_epoch_commission_rate: v.info.commission_rate,
+                    }
                 }
             })
             .collect();
@@ -551,33 +557,33 @@ impl GenesisBuilder {
         }
 
         // Set voting power and build committee
-        system_state.validators.set_voting_power();
+        system_state.validators_mut().set_voting_power();
 
         // Generate seed targets at genesis (after models are active)
         // Only generate targets if we have at least one active model
-        if !system_state.model_registry.active_models.is_empty() {
+        if !system_state.model_registry().active_models.is_empty() {
             // Calculate initial reward_per_target for genesis
             // Use emission_per_epoch * target_allocation_bps as the pool, divided by estimated targets
-            let emission_per_epoch = system_state.emission_pool.emission_per_epoch;
-            let target_allocation_bps = system_state.parameters.target_reward_allocation_bps;
+            let emission_per_epoch = system_state.emission_pool().emission_per_epoch;
+            let target_allocation_bps = system_state.parameters().target_reward_allocation_bps;
             let bps_denominator: u64 = 10000;
             // Use u128 intermediate to avoid overflow when emission_per_epoch is large
             let target_allocation = (emission_per_epoch as u128 * target_allocation_bps as u128
                 / bps_denominator as u128) as u64;
 
             // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
-            let initial_target_count = system_state.parameters.target_initial_targets_per_epoch;
+            let initial_target_count = system_state.parameters().target_initial_targets_per_epoch;
             let estimated_targets = initial_target_count.saturating_mul(2).max(1);
-            system_state.target_state.reward_per_target = target_allocation / estimated_targets;
+            system_state.target_state_mut().reward_per_target = target_allocation / estimated_targets;
 
             let genesis_digest = TransactionDigest::default();
-            let models_per_target = system_state.parameters.target_models_per_target;
-            let embedding_dim = system_state.parameters.target_embedding_dim;
-            let reward_per_target = system_state.target_state.reward_per_target;
+            let models_per_target = system_state.parameters().target_models_per_target;
+            let embedding_dim = system_state.parameters().target_embedding_dim;
+            let reward_per_target = system_state.target_state().reward_per_target;
 
             for i in 0..initial_target_count {
                 // Check emission pool has enough balance
-                if system_state.emission_pool.balance < reward_per_target {
+                if system_state.emission_pool().balance < reward_per_target {
                     tracing::warn!(
                         "Emission pool depleted at genesis, stopping target generation at {}",
                         i
@@ -589,20 +595,20 @@ impl GenesisBuilder {
 
                 let target = generate_target(
                     seed,
-                    &system_state.model_registry,
-                    &system_state.target_state,
+                    system_state.model_registry(),
+                    system_state.target_state(),
                     models_per_target,
                     embedding_dim,
                     0, // epoch 0
                 );
 
                 // Record target generation for difficulty tracking
-                system_state.target_state.record_target_generated();
+                system_state.target_state_mut().record_target_generated();
 
                 match target {
                     Ok(t) => {
                         // Fund reward from emission pool
-                        system_state.emission_pool.balance -= reward_per_target;
+                        system_state.emission_pool_mut().balance -= reward_per_target;
 
                         // Create target as shared object
                         let target_id = ObjectID::random();
@@ -699,6 +705,7 @@ impl GenesisBuilder {
             end_of_epoch_data: None,
             timestamp_ms: self.parameters.chain_start_timestamp_ms,
             checkpoint_commitments: Default::default(),
+            version_specific_data: Default::default(),
         };
 
         (checkpoint, contents)

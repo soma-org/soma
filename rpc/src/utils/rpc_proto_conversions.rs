@@ -79,6 +79,13 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::InvalidTransactionType => (ExecutionErrorKind::InvalidTransactionType, None),
             E::InvalidArguments { reason } => (ExecutionErrorKind::InvalidArguments, Some(reason)),
             E::DuplicateValidator => (ExecutionErrorKind::DuplicateValidator, None),
+            E::DuplicateValidatorMetadata { field } => {
+                (ExecutionErrorKind::DuplicateValidatorMetadata, Some(field))
+            }
+            E::MissingProofOfPossession => (ExecutionErrorKind::MissingProofOfPossession, None),
+            E::InvalidProofOfPossession { reason } => {
+                (ExecutionErrorKind::InvalidProofOfPossession, Some(reason))
+            }
             E::NotAValidator => (ExecutionErrorKind::NotAValidator, None),
             E::ValidatorAlreadyRemoved => (ExecutionErrorKind::ValidatorAlreadyRemoved, None),
             E::AdvancedToWrongEpoch => (ExecutionErrorKind::AdvancedToWrongEpoch, None),
@@ -478,16 +485,15 @@ impl Merge<&types::transaction::TransactionData> for Transaction {
         }
 
         if mask.contains(Self::KIND_FIELD.name) {
-            self.kind = Some(source.kind.clone().into());
+            self.kind = Some(source.kind().clone().into());
         }
 
         if mask.contains(Self::SENDER_FIELD.name) {
-            self.sender = Some(source.sender.to_string());
+            self.sender = Some(source.sender().to_string());
         }
 
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
-            self.gas_payment =
-                source.gas_payment.clone().into_iter().map(object_ref_to_proto).collect();
+            self.gas_payment = source.gas().into_iter().map(object_ref_to_proto).collect();
         }
     }
 }
@@ -505,7 +511,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::Genesis(genesis) => Kind::Genesis(GenesisTransaction {
                 objects: genesis.objects.into_iter().map(Into::into).collect(),
             }),
-            K::ConsensusCommitPrologue(prologue) => Kind::ConsensusCommitPrologue(prologue.into()),
+            K::ConsensusCommitPrologueV1(prologue) => Kind::ConsensusCommitPrologue(prologue.into()),
             K::ChangeEpoch(change_epoch) => Kind::ChangeEpoch(change_epoch.into()),
             K::AddValidator(args) => Kind::AddValidator(args.into()),
             K::RemoveValidator(args) => Kind::RemoveValidator(args.into()),
@@ -655,6 +661,7 @@ impl From<types::transaction::AddValidatorArgs> for AddValidator {
             p2p_address: Some(args.p2p_address.into()),
             primary_address: Some(args.primary_address.into()),
             proxy_address: Some(args.proxy_address.into()),
+            proof_of_possession: Some(args.proof_of_possession.into()),
         }
     }
 }
@@ -675,6 +682,9 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
             next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey.map(|bytes| bytes.into()),
             next_epoch_worker_pubkey: args.next_epoch_worker_pubkey.map(|bytes| bytes.into()),
             next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| bytes.into()),
+            next_epoch_proof_of_possession: args
+                .next_epoch_proof_of_possession
+                .map(|bytes| bytes.into()),
         }
     }
 }
@@ -683,8 +693,8 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
 // ConsensusCommitPrologue
 //
 
-impl From<types::consensus::ConsensusCommitPrologue> for ConsensusCommitPrologue {
-    fn from(value: types::consensus::ConsensusCommitPrologue) -> Self {
+impl From<types::consensus::ConsensusCommitPrologueV1> for ConsensusCommitPrologue {
+    fn from(value: types::consensus::ConsensusCommitPrologueV1) -> Self {
         Self {
             epoch: Some(value.epoch),
             round: Some(value.round),
@@ -735,63 +745,68 @@ impl From<types::effects::TransactionEffects> for TransactionEffects {
 }
 impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
     fn merge(&mut self, source: &types::effects::TransactionEffects, mask: &FieldMaskTree) {
-        if mask.contains(Self::STATUS_FIELD.name) {
-            self.status = Some(source.status.clone().into());
-        }
+        match source {
+            types::effects::TransactionEffects::V1(source) => {
+                if mask.contains(Self::STATUS_FIELD.name) {
+                    self.status = Some(source.status.clone().into());
+                }
 
-        if mask.contains(Self::EPOCH_FIELD.name) {
-            self.epoch = Some(source.executed_epoch);
-        }
+                if mask.contains(Self::EPOCH_FIELD.name) {
+                    self.epoch = Some(source.executed_epoch);
+                }
 
-        if mask.contains(Self::FEE_FIELD.name) {
-            self.fee = Some(source.transaction_fee.clone().into());
-        }
+                if mask.contains(Self::FEE_FIELD.name) {
+                    self.fee = Some(source.transaction_fee.clone().into());
+                }
 
-        if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
-            self.transaction_digest = Some(source.transaction_digest.to_string());
-        }
+                if mask.contains(Self::TRANSACTION_DIGEST_FIELD.name) {
+                    self.transaction_digest = Some(source.transaction_digest.to_string());
+                }
 
-        if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
-            self.gas_object_index = source.gas_object_index;
-        }
+                if mask.contains(Self::GAS_OBJECT_INDEX_FIELD.name) {
+                    self.gas_object_index = source.gas_object_index;
+                }
 
-        if mask.contains(Self::DEPENDENCIES_FIELD.name) {
-            self.dependencies = source.dependencies.iter().map(ToString::to_string).collect();
-        }
+                if mask.contains(Self::DEPENDENCIES_FIELD.name) {
+                    self.dependencies =
+                        source.dependencies.iter().map(ToString::to_string).collect();
+                }
 
-        if mask.contains(Self::LAMPORT_VERSION_FIELD.name) {
-            self.lamport_version = Some(source.version.value());
-        }
+                if mask.contains(Self::LAMPORT_VERSION_FIELD.name) {
+                    self.lamport_version = Some(source.version.value());
+                }
 
-        if mask.contains(Self::CHANGED_OBJECTS_FIELD.name) {
-            self.changed_objects = source
-                .changed_objects
-                .iter()
-                .map(|(id, change)| {
-                    let mut message = ChangedObject::from(change.clone());
-                    message.object_id = Some(id.to_hex());
-                    message
-                })
-                .collect();
-        }
+                if mask.contains(Self::CHANGED_OBJECTS_FIELD.name) {
+                    self.changed_objects = source
+                        .changed_objects
+                        .iter()
+                        .map(|(id, change)| {
+                            let mut message = ChangedObject::from(change.clone());
+                            message.object_id = Some(id.to_hex());
+                            message
+                        })
+                        .collect();
+                }
 
-        // Set version for all objects that have output_digest but no output_version
-        for object in self.changed_objects.iter_mut() {
-            if object.output_digest.is_some() && object.output_version.is_none() {
-                object.output_version = Some(source.version.value());
+                // Set version for all objects that have output_digest but no output_version
+                for object in self.changed_objects.iter_mut() {
+                    if object.output_digest.is_some() && object.output_version.is_none() {
+                        object.output_version = Some(source.version.value());
+                    }
+                }
+
+                if mask.contains(Self::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
+                    self.unchanged_shared_objects = source
+                        .unchanged_shared_objects
+                        .iter()
+                        .map(|(id, unchanged)| {
+                            let mut message = UnchangedSharedObject::from(unchanged.clone());
+                            message.object_id = Some(id.to_hex());
+                            message
+                        })
+                        .collect();
+                }
             }
-        }
-
-        if mask.contains(Self::UNCHANGED_SHARED_OBJECTS_FIELD.name) {
-            self.unchanged_shared_objects = source
-                .unchanged_shared_objects
-                .iter()
-                .map(|(id, unchanged)| {
-                    let mut message = UnchangedSharedObject::from(unchanged.clone());
-                    message.object_id = Some(id.to_hex());
-                    message
-                })
-                .collect();
         }
     }
 }
@@ -920,7 +935,7 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             proto_state.target_state.map(|ts| ts.try_into()).transpose()?.unwrap_or_default();
 
         // Build initial committees
-        let system_state = types::system_state::SystemState {
+        let system_state = types::system_state::SystemState::V1(types::system_state::SystemStateV1 {
             epoch,
             protocol_version,
             epoch_start_timestamp_ms,
@@ -940,7 +955,7 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             safe_mode_accumulated_emissions: proto_state
                 .safe_mode_accumulated_emissions
                 .unwrap_or(0),
-        };
+        });
 
         Ok(system_state)
     }
@@ -1226,11 +1241,29 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             })
             .transpose()?;
 
+        let proof_of_possession = proto_val
+            .proof_of_possession
+            .map(|bytes| {
+                types::crypto::AuthoritySignature::from_bytes(&bytes)
+                    .map_err(|e| format!("Invalid proof_of_possession: {}", e))
+            })
+            .transpose()?
+            .ok_or("Missing proof_of_possession")?;
+
+        let next_epoch_proof_of_possession = proto_val
+            .next_epoch_proof_of_possession
+            .map(|bytes| {
+                types::crypto::AuthoritySignature::from_bytes(&bytes)
+                    .map_err(|e| format!("Invalid next_epoch_proof_of_possession: {}", e))
+            })
+            .transpose()?;
+
         let metadata = types::system_state::validator::ValidatorMetadata {
             soma_address,
             protocol_pubkey,
             network_pubkey,
             worker_pubkey,
+            proof_of_possession,
             net_address,
             p2p_address,
             primary_address,
@@ -1242,6 +1275,7 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             next_epoch_primary_address,
             next_epoch_worker_pubkey,
             next_epoch_proxy_address,
+            next_epoch_proof_of_possession,
         };
 
         let staking_pool = proto_val.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
@@ -1357,26 +1391,28 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
     type Error = String;
 
     fn try_from(domain_state: types::system_state::SystemState) -> Result<Self, Self::Error> {
+        let types::system_state::SystemState::V1(v1) = domain_state;
+
         // Convert validator report records
         let validator_report_records =
-            convert_report_records_to_proto(domain_state.validator_report_records)?;
+            convert_report_records_to_proto(v1.validator_report_records)?;
 
         // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
 
         Ok(SystemState {
-            epoch: Some(domain_state.epoch),
-            protocol_version: Some(domain_state.protocol_version),
-            epoch_start_timestamp_ms: Some(domain_state.epoch_start_timestamp_ms),
-            parameters: Some(domain_state.parameters.try_into()?),
-            validators: Some(domain_state.validators.try_into()?),
+            epoch: Some(v1.epoch),
+            protocol_version: Some(v1.protocol_version),
+            epoch_start_timestamp_ms: Some(v1.epoch_start_timestamp_ms),
+            parameters: Some(v1.parameters.try_into()?),
+            validators: Some(v1.validators.try_into()?),
             validator_report_records,
-            emission_pool: Some(domain_state.emission_pool.try_into()?),
-            target_state: Some(domain_state.target_state.into()),
-            model_registry: Some(domain_state.model_registry.try_into()?),
+            emission_pool: Some(v1.emission_pool.try_into()?),
+            target_state: Some(v1.target_state.into()),
+            model_registry: Some(v1.model_registry.try_into()?),
             submission_report_records: std::collections::BTreeMap::new(), // Empty for backward compat
-            safe_mode: Some(domain_state.safe_mode),
-            safe_mode_accumulated_fees: Some(domain_state.safe_mode_accumulated_fees),
-            safe_mode_accumulated_emissions: Some(domain_state.safe_mode_accumulated_emissions),
+            safe_mode: Some(v1.safe_mode),
+            safe_mode_accumulated_fees: Some(v1.safe_mode_accumulated_fees),
+            safe_mode_accumulated_emissions: Some(v1.safe_mode_accumulated_emissions),
         })
     }
 }
@@ -1595,6 +1631,10 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             next_epoch_p2p_address,
             next_epoch_primary_address,
             next_epoch_proxy_address,
+            proof_of_possession: Some(Bytes::from(metadata.proof_of_possession.as_ref().to_vec())),
+            next_epoch_proof_of_possession: metadata
+                .next_epoch_proof_of_possession
+                .map(|pop| Bytes::from(pop.as_ref().to_vec())),
         })
     }
 }
@@ -1731,10 +1771,10 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
 // Model
 //
 
-impl TryFrom<types::model::Model> for Model {
+impl TryFrom<types::model::ModelV1> for Model {
     type Error = String;
 
-    fn try_from(domain: types::model::Model) -> Result<Self, Self::Error> {
+    fn try_from(domain: types::model::ModelV1) -> Result<Self, Self::Error> {
         Ok(Model {
             owner: Some(domain.owner.to_string()),
             architecture_version: Some(domain.architecture_version),
@@ -1753,7 +1793,7 @@ impl TryFrom<types::model::Model> for Model {
     }
 }
 
-impl TryFrom<Model> for types::model::Model {
+impl TryFrom<Model> for types::model::ModelV1 {
     type Error = String;
 
     fn try_from(proto: Model) -> Result<Self, Self::Error> {
@@ -1788,7 +1828,7 @@ impl TryFrom<Model> for types::model::Model {
             Some(types::tensor::SomaTensor::new(proto.embedding, vec![dim]))
         };
 
-        Ok(types::model::Model {
+        Ok(types::model::ModelV1 {
             owner,
             architecture_version: proto
                 .architecture_version
@@ -1881,7 +1921,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .into_iter()
             .map(|(k, v)| {
                 let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::Model = v.try_into()?;
+                let model: types::model::ModelV1 = v.try_into()?;
                 Ok((id, model))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
@@ -1891,7 +1931,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .into_iter()
             .map(|(k, v)| {
                 let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::Model = v.try_into()?;
+                let model: types::model::ModelV1 = v.try_into()?;
                 Ok((id, model))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
@@ -1911,7 +1951,7 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .into_iter()
             .map(|(k, v)| {
                 let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::Model = v.try_into()?;
+                let model: types::model::ModelV1 = v.try_into()?;
                 Ok((id, model))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
@@ -2234,6 +2274,7 @@ impl Merge<types::checkpoints::CheckpointSummary> for CheckpointSummary {
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
+            version_specific_data: _,
         } = source;
 
         if mask.contains(Self::EPOCH_FIELD) {

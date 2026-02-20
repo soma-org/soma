@@ -76,12 +76,12 @@ impl ModelExecutor {
         let (state_object, mut state) = Self::load_system_state(store)?;
 
         // Validate architecture version
-        if args.architecture_version != state.parameters.model_architecture_version {
+        if args.architecture_version != state.parameters().model_architecture_version {
             return Err(ExecutionFailureStatus::ModelArchitectureVersionMismatch);
         }
 
         // Validate minimum stake
-        if args.stake_amount < state.parameters.model_min_stake {
+        if args.stake_amount < state.parameters().model_min_stake {
             return Err(ExecutionFailureStatus::ModelMinStakeNotMet);
         }
 

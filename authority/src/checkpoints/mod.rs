@@ -1486,8 +1486,8 @@ impl CheckpointBuilder {
                 let (transaction, size) = transaction_and_size
                     .unwrap_or_else(|| panic!("Could not find executed transaction {:?}", effects));
                 match transaction.inner().transaction_data().kind() {
-                    TransactionKind::ConsensusCommitPrologue(_) => {
-                        // ConsensusCommitPrologue  are guaranteed to be
+                    TransactionKind::ConsensusCommitPrologueV1(_) => {
+                        // ConsensusCommitPrologueV1  are guaranteed to be
                         // processed before we reach here.
                     }
 

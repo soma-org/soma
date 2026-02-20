@@ -4507,6 +4507,18 @@ mod _field_impls {
             number: 20i32,
             message_fields: None,
         };
+        pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
+            name: "proof_of_possession",
+            json_name: "proofOfPossession",
+            number: 21i32,
+            message_fields: None,
+        };
+        pub const NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_proof_of_possession",
+            json_name: "nextEpochProofOfPossession",
+            number: 22i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Validator {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -4530,6 +4542,8 @@ mod _field_impls {
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PROXY_ADDRESS_FIELD,
+            Self::PROOF_OF_POSSESSION_FIELD,
+            Self::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD,
         ];
     }
     impl Validator {
@@ -4630,6 +4644,14 @@ mod _field_impls {
         }
         pub fn next_epoch_proxy_address(mut self) -> String {
             self.path.push(Validator::NEXT_EPOCH_PROXY_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn proof_of_possession(mut self) -> String {
+            self.path.push(Validator::PROOF_OF_POSSESSION_FIELD.name);
+            self.finish()
+        }
+        pub fn next_epoch_proof_of_possession(mut self) -> String {
+            self.path.push(Validator::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD.name);
             self.finish()
         }
     }
@@ -6052,6 +6074,12 @@ mod _field_impls {
             number: 7i32,
             message_fields: None,
         };
+        pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
+            name: "proof_of_possession",
+            json_name: "proofOfPossession",
+            number: 8i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for AddValidator {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -6062,6 +6090,7 @@ mod _field_impls {
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
             Self::PROXY_ADDRESS_FIELD,
+            Self::PROOF_OF_POSSESSION_FIELD,
         ];
     }
     impl AddValidator {
@@ -6110,6 +6139,10 @@ mod _field_impls {
         }
         pub fn proxy_address(mut self) -> String {
             self.path.push(AddValidator::PROXY_ADDRESS_FIELD.name);
+            self.finish()
+        }
+        pub fn proof_of_possession(mut self) -> String {
+            self.path.push(AddValidator::PROOF_OF_POSSESSION_FIELD.name);
             self.finish()
         }
     }
@@ -6264,6 +6297,12 @@ mod _field_impls {
             number: 7i32,
             message_fields: None,
         };
+        pub const NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
+            name: "next_epoch_proof_of_possession",
+            json_name: "nextEpochProofOfPossession",
+            number: 8i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for UpdateValidatorMetadata {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -6274,6 +6313,7 @@ mod _field_impls {
             Self::NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD,
             Self::NEXT_EPOCH_WORKER_PUBKEY_FIELD,
             Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
+            Self::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD,
         ];
     }
     impl UpdateValidatorMetadata {
@@ -6326,6 +6366,13 @@ mod _field_impls {
         pub fn next_epoch_network_pubkey(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_NETWORK_PUBKEY_FIELD.name);
+            self.finish()
+        }
+        pub fn next_epoch_proof_of_possession(mut self) -> String {
+            self.path
+                .push(
+                    UpdateValidatorMetadata::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD.name,
+                );
             self.finish()
         }
     }

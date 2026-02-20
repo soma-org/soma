@@ -16,7 +16,7 @@ use types::{
     },
     crypto::{KeypairTraits, SomaKeyPair},
     effects::TransactionEffectsAPI,
-    system_state::SystemStateTrait,
+    system_state::SystemStateTrait as _,
     transaction::{
         AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
     },
@@ -59,7 +59,7 @@ async fn test_reconfig_with_committee_change_basic() {
         node.state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
-            .validators
+            .validators()
             .total_stake
     });
 
@@ -231,9 +231,9 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
                 .expect("Should be able to get SystemState");
 
             (
-                system_state.validators.total_stake,
+                system_state.validators().total_stake,
                 system_state
-                    .validators
+                    .validators()
                     .validators
                     .iter()
                     .map(|v| v.metadata.soma_address)
@@ -284,10 +284,10 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         let system_state = node
             .state()
             .get_system_state_object_for_testing()
-            .expect("Should be able to get SystemState")
-            .validators;
+            .expect("Should be able to get SystemState");
 
-        let candidate = system_state.validators.iter().find(|v| v.metadata.soma_address == address);
+        let validators = system_state.validators();
+        let candidate = validators.validators.iter().find(|v| v.metadata.soma_address == address);
 
         assert!(candidate.is_some());
         let candidate = candidate.unwrap();
@@ -297,7 +297,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         // Yet the candidate is not at risk.
         assert!(candidate.voting_power < VALIDATOR_CONSENSUS_MIN_POWER);
         assert!(candidate.voting_power > VALIDATOR_CONSENSUS_LOW_POWER);
-        assert_eq!(system_state.at_risk_validators.len(), 0);
+        assert_eq!(validators.at_risk_validators.len(), 0);
     });
 
     // Double validators' stake once again, and check that the new validator is now at risk.
@@ -321,10 +321,10 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         let system_state = node
             .state()
             .get_system_state_object_for_testing()
-            .expect("Should be able to get SystemState")
-            .validators;
+            .expect("Should be able to get SystemState");
 
-        let candidate = system_state
+        let validators = system_state.validators();
+        let candidate = validators
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == address)
@@ -337,7 +337,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         assert!(candidate.voting_power < VALIDATOR_CONSENSUS_MIN_POWER);
         assert!(candidate.voting_power < VALIDATOR_CONSENSUS_LOW_POWER);
         assert!(candidate.voting_power > VALIDATOR_CONSENSUS_VERY_LOW_POWER);
-        assert_eq!(system_state.at_risk_validators.len(), 1);
+        assert_eq!(validators.at_risk_validators.len(), 1);
     });
 
     // Wait for the grace period to expire.
@@ -351,7 +351,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
             node.state()
                 .get_system_state_object_for_testing()
                 .expect("Should be able to get SystemState")
-                .validators
+                .validators()
                 .validators
                 .len(),
             initial_num_validators
@@ -394,12 +394,12 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             let system_state = node
                 .state()
                 .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-                .validators;
+                .expect("Should be able to get SystemState");
 
+            let validators = system_state.validators();
             (
-                system_state.total_stake,
-                system_state.validators.iter().map(|v| v.metadata.soma_address).collect::<Vec<_>>(),
+                validators.total_stake,
+                validators.validators.iter().map(|v| v.metadata.soma_address).collect::<Vec<_>>(),
             )
         });
 
@@ -454,7 +454,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
             .state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
-            .validators
+            .validators()
             .validators
             .iter()
             .map(|v| v.metadata.soma_address)
@@ -511,7 +511,7 @@ async fn execute_add_validator_transactions(
             .state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState");
-        system_state.validators.pending_validators.len()
+        system_state.validators().pending_validators.len()
     });
 
     let gas_object = test_cluster
@@ -523,16 +523,24 @@ async fn execute_add_validator_transactions(
 
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
-            TransactionKind::AddValidator(AddValidatorArgs {
-                pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
-                network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public())
-                    .unwrap(),
-                worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
-                    .unwrap(),
-                net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
-                p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
-                primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
-                proxy_address: bcs::to_bytes(&new_validator.proxy_address).unwrap(),
+            TransactionKind::AddValidator({
+                let sender_address = SomaAddress::from(&new_validator.account_key_pair.public());
+                let pop = types::crypto::generate_proof_of_possession(
+                    &new_validator.key_pair,
+                    sender_address,
+                );
+                AddValidatorArgs {
+                    pubkey_bytes: bcs::to_bytes(&new_validator.key_pair.public()).unwrap(),
+                    network_pubkey_bytes: bcs::to_bytes(&new_validator.network_key_pair.public())
+                        .unwrap(),
+                    worker_pubkey_bytes: bcs::to_bytes(&new_validator.worker_key_pair.public())
+                        .unwrap(),
+                    proof_of_possession: pop.as_ref().to_vec(),
+                    net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
+                    p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
+                    primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
+                    proxy_address: bcs::to_bytes(&new_validator.proxy_address).unwrap(),
+                }
             }),
             (&new_validator.account_key_pair.public()).into(),
             vec![gas_object],
@@ -558,7 +566,7 @@ async fn execute_add_validator_transactions(
             .state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState");
-        let pending_active_validators = system_state.validators.pending_validators;
+        let pending_active_validators = &system_state.validators().pending_validators;
         assert_eq!(pending_active_validators.len(), pending_active_count + 1);
         assert_eq!(
             pending_active_validators[pending_active_validators.len() - 1].metadata.soma_address,
@@ -618,7 +626,7 @@ async fn test_inactive_validator_pool_read() {
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState");
         let validator = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_address)
@@ -633,7 +641,7 @@ async fn test_inactive_validator_pool_read() {
             .get_system_state_object_for_testing()
             .unwrap();
         assert!(
-            !system_state.validators.inactive_validators.contains_key(&validator_pool_id),
+            !system_state.validators().inactive_validators.contains_key(&validator_pool_id),
             "Validator should not be inactive before removal"
         );
     });
@@ -657,7 +665,7 @@ async fn test_inactive_validator_pool_read() {
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState");
         let inactive = system_state
-            .validators
+            .validators()
             .inactive_validators
             .get(&validator_pool_id)
             .expect("Removed validator should be in inactive_validators");
@@ -709,7 +717,7 @@ async fn test_validator_candidate_pool_read() {
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState");
         assert!(
-            system_state.validators.pending_validators.is_empty(),
+            system_state.validators().pending_validators.is_empty(),
             "No pending validators should exist initially"
         );
     });
@@ -725,11 +733,11 @@ async fn test_validator_candidate_pool_read() {
             .expect("Should be able to get SystemState");
 
         assert_eq!(
-            system_state.validators.pending_validators.len(),
+            system_state.validators().pending_validators.len(),
             1,
             "One validator should be pending"
         );
-        let pending = &system_state.validators.pending_validators[0];
+        let pending = &system_state.validators().pending_validators[0];
         assert_eq!(
             pending.metadata.soma_address, new_address,
             "Pending validator address should match"
@@ -769,7 +777,7 @@ async fn test_validator_candidate_pool_read() {
 
         // Pending should be empty now (promoted to active).
         assert!(
-            system_state.validators.pending_validators.is_empty(),
+            system_state.validators().pending_validators.is_empty(),
             "Pending validators should be empty after reconfig"
         );
 
@@ -782,7 +790,7 @@ async fn test_validator_candidate_pool_read() {
 
         // The new validator should be in the active set.
         let active = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == new_address);
@@ -876,7 +884,7 @@ async fn test_create_advance_epoch_tx_race() {
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address
@@ -951,7 +959,7 @@ async fn test_create_advance_epoch_tx_race() {
             .expect("SystemState should be readable")
     });
     assert!(system_state.epoch() >= target_epoch, "Should have reached target epoch");
-    assert_eq!(system_state.validators.validators.len(), 4, "Committee should remain unchanged");
+    assert_eq!(system_state.validators().validators.len(), 4, "Committee should remain unchanged");
 }
 
 /// Test that object locks from the current epoch are correctly handled across
@@ -974,7 +982,7 @@ async fn test_expired_locks() {
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address
@@ -1092,7 +1100,7 @@ async fn test_passive_reconfig_with_tx_load() {
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address
@@ -1163,5 +1171,5 @@ async fn test_passive_reconfig_with_tx_load() {
             .expect("SystemState should be readable")
     });
     assert!(system_state.epoch() >= target_epoch);
-    assert_eq!(system_state.validators.validators.len(), 4);
+    assert_eq!(system_state.validators().validators.len(), 4);
 }

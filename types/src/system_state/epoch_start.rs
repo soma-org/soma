@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use enum_dispatch::enum_dispatch;
 use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +17,15 @@ use crate::{
 
 use super::PublicKey;
 
+/// Versioned wrapper for EpochStartSystemState.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub struct EpochStartSystemState {
+#[enum_dispatch(EpochStartSystemStateTrait)]
+pub enum EpochStartSystemState {
+    V1(EpochStartSystemStateV1),
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct EpochStartSystemStateV1 {
     /// The epoch number
     pub epoch: EpochId,
 
@@ -28,7 +36,7 @@ pub struct EpochStartSystemState {
     pub epoch_duration_ms: u64,
 
     /// The active validators at the start of the epoch
-    pub active_validators: Vec<EpochStartValidatorInfo>,
+    pub active_validators: Vec<EpochStartValidatorInfoV1>,
 
     pub protocol_version: u64,
 
@@ -41,17 +49,17 @@ impl EpochStartSystemState {
         protocol_version: u64,
         epoch_start_timestamp_ms: u64,
         epoch_duration_ms: u64,
-        active_validators: Vec<EpochStartValidatorInfo>,
+        active_validators: Vec<EpochStartValidatorInfoV1>,
         fee_parameters: FeeParameters,
     ) -> Self {
-        Self {
+        EpochStartSystemState::V1(EpochStartSystemStateV1 {
             epoch,
             protocol_version,
             epoch_start_timestamp_ms,
             epoch_duration_ms,
             active_validators,
             fee_parameters,
-        }
+        })
     }
 
     pub fn new_for_testing() -> Self {
@@ -61,7 +69,7 @@ impl EpochStartSystemState {
     pub fn new_for_testing_with_epoch(epoch: EpochId) -> Self {
         let protocol_config =
             protocol_config::ProtocolConfig::get_for_version(ProtocolVersion::MAX, Chain::Mainnet);
-        Self {
+        EpochStartSystemState::V1(EpochStartSystemStateV1 {
             epoch,
             protocol_version: ProtocolVersion::MAX.as_u64(),
             epoch_start_timestamp_ms: 0,
@@ -70,11 +78,11 @@ impl EpochStartSystemState {
             fee_parameters: FeeParameters::from_system_parameters(
                 &protocol_config.build_system_parameters(None),
             ),
-        }
+        })
     }
 }
 
-impl EpochStartSystemStateTrait for EpochStartSystemState {
+impl EpochStartSystemStateTrait for EpochStartSystemStateV1 {
     fn epoch(&self) -> EpochId {
         self.epoch
     }
@@ -172,8 +180,13 @@ impl EpochStartSystemStateTrait for EpochStartSystemState {
             })
             .collect()
     }
+
+    fn fee_parameters(&self) -> FeeParameters {
+        self.fee_parameters
+    }
 }
 
+#[enum_dispatch]
 pub trait EpochStartSystemStateTrait {
     /// Get the epoch number
     fn epoch(&self) -> EpochId;
@@ -200,10 +213,12 @@ pub trait EpochStartSystemStateTrait {
     fn get_authority_names_to_hostnames(&self) -> HashMap<AuthorityName, String>;
 
     fn protocol_version(&self) -> ProtocolVersion;
+
+    fn fee_parameters(&self) -> FeeParameters;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-pub struct EpochStartValidatorInfo {
+pub struct EpochStartValidatorInfoV1 {
     /// The Soma blockchain address of the validator
     pub soma_address: SomaAddress,
 
@@ -232,7 +247,7 @@ pub struct EpochStartValidatorInfo {
     pub hostname: String,
 }
 
-impl EpochStartValidatorInfo {
+impl EpochStartValidatorInfoV1 {
     pub fn authority_name(&self) -> AuthorityName {
         (&self.protocol_pubkey).into()
     }

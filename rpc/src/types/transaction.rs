@@ -182,6 +182,7 @@ pub struct AddValidatorArgs {
     pub pubkey_bytes: Vec<u8>,
     pub network_pubkey_bytes: Vec<u8>,
     pub worker_pubkey_bytes: Vec<u8>,
+    pub proof_of_possession: Vec<u8>,
     pub net_address: Vec<u8>,
     pub p2p_address: Vec<u8>,
     pub primary_address: Vec<u8>,
@@ -202,6 +203,7 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
+    pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
 // Supporting types for model transactions

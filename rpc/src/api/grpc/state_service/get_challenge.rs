@@ -64,7 +64,7 @@ pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Resu
     }
 
     // Deserialize the Challenge from the object contents
-    let challenge: types::challenge::Challenge = bcs::from_bytes(object.data.contents()).map_err(|e| {
+    let challenge: types::challenge::ChallengeV1 = bcs::from_bytes(object.data.contents()).map_err(|e| {
         RpcError::new(
             tonic::Code::Internal,
             format!("Failed to deserialize Challenge: {e}"),
@@ -82,10 +82,10 @@ pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Resu
     Ok(response)
 }
 
-/// Convert a types::challenge::Challenge to proto Challenge with field mask.
+/// Convert a types::challenge::ChallengeV1 to proto Challenge with field mask.
 fn challenge_to_proto_with_id(
     id: &ObjectID,
-    challenge: &types::challenge::Challenge,
+    challenge: &types::challenge::ChallengeV1,
     mask: &FieldMaskTree,
 ) -> Challenge {
     let mut proto = Challenge::default();

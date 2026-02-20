@@ -37,7 +37,7 @@ use std::{sync::Arc, time::Instant};
 use tap::{TapFallible, TapOptional};
 use tracing::{debug, error, info, instrument, warn};
 use types::base::SequenceNumber;
-use types::challenge::Challenge;
+use types::challenge::ChallengeV1;
 use types::checkpoints::{
     CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
 };
@@ -136,7 +136,7 @@ pub struct CheckpointExecutor {
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
     /// Sender for notifying AuditService of new challenges.
     /// None for fullnodes (audit service only runs on validators).
-    challenge_observer_sender: Option<tokio::sync::mpsc::Sender<Challenge>>,
+    challenge_observer_sender: Option<tokio::sync::mpsc::Sender<ChallengeV1>>,
 }
 
 impl CheckpointExecutor {
@@ -148,7 +148,7 @@ impl CheckpointExecutor {
         backpressure_manager: Arc<BackpressureManager>,
         config: CheckpointExecutorConfig,
         subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
-        challenge_observer_sender: Option<tokio::sync::mpsc::Sender<Challenge>>,
+        challenge_observer_sender: Option<tokio::sync::mpsc::Sender<ChallengeV1>>,
     ) -> Self {
         Self {
             epoch_store: epoch_store.clone(),
@@ -695,7 +695,7 @@ impl CheckpointExecutor {
                             &*self.transaction_cache_reader,
                         );
                         None
-                    } else if txn.transaction_data().kind.is_end_of_epoch_tx() {
+                    } else if txn.transaction_data().kind().is_end_of_epoch_tx() {
                         None
                     } else {
                         let assigned_versions = self
@@ -730,7 +730,7 @@ impl CheckpointExecutor {
         let change_epoch_fx = tx_data.effects.last().unwrap();
         assert_eq!(change_epoch_tx.digest(), change_epoch_fx.transaction_digest());
         assert!(
-            change_epoch_tx.transaction_data().kind.is_end_of_epoch_tx(),
+            change_epoch_tx.transaction_data().kind().is_end_of_epoch_tx(),
             "final txn must be an end of epoch txn"
         );
 

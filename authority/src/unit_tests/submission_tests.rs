@@ -28,7 +28,7 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     submission::SubmissionManifest,
-    target::{Target, TargetStatus},
+    target::{TargetV1, TargetStatus},
     tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
     unit_tests::utils::to_sender_signed_transaction,
@@ -63,7 +63,7 @@ fn make_open_target(
     reward_pool: u64,
     generation_epoch: u64,
 ) -> Object {
-    let target = Target {
+    let target = TargetV1 {
         embedding: SomaTensor::zeros(vec![embedding_dim]),
         model_ids,
         distance_threshold: SomaTensor::scalar(distance_threshold),
@@ -97,7 +97,7 @@ fn make_filled_target(
     miner: SomaAddress,
     bond_amount: u64,
 ) -> Object {
-    let target = Target {
+    let target = TargetV1 {
         embedding: SomaTensor::zeros(vec![embedding_dim]),
         model_ids,
         distance_threshold: SomaTensor::scalar(distance_threshold),
@@ -121,7 +121,7 @@ fn make_filled_target(
 
 /// Build a claimed Target object.
 fn make_claimed_target(target_id: ObjectID, embedding_dim: usize, reward_pool: u64) -> Object {
-    let target = Target {
+    let target = TargetV1 {
         embedding: SomaTensor::zeros(vec![embedding_dim]),
         model_ids: vec![],
         distance_threshold: SomaTensor::scalar(0.5),
@@ -168,7 +168,7 @@ fn make_genesis_model_config(model_id: ModelId, owner: SomaAddress) -> GenesisMo
 /// Helper to get a genesis target from the authority state.
 /// Genesis creates targets for epoch 0 when active models exist.
 /// Returns (target_id, target) for the first open target found.
-async fn find_genesis_target(authority_state: &AuthorityState) -> Option<(ObjectID, Target)> {
+async fn find_genesis_target(authority_state: &AuthorityState) -> Option<(ObjectID, TargetV1)> {
     // Genesis creates targets as shared objects. We need to find them.
     // We can get the SystemState and look at target_state.targets_generated_this_epoch,
     // but we don't have a direct list of target IDs. Instead, the genesis builder
@@ -609,11 +609,11 @@ async fn test_submit_data_spawn_on_fill() {
     let (_, effects) = result.expect("SubmitData should succeed");
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Should create at least 2 objects: Submission + replacement Target
+    // Should create at least 1 object: the replacement Target
     let created_count = effects.created().len();
     assert!(
-        created_count >= 2,
-        "Should create Submission + replacement Target, got {} objects",
+        created_count >= 1,
+        "Should create replacement Target, got {} objects",
         created_count
     );
 }

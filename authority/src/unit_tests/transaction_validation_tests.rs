@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tests for transaction validation rules:
-//! - Users cannot send system transactions (Genesis, ChangeEpoch, ConsensusCommitPrologue)
+//! - Users cannot send system transactions (Genesis, ChangeEpoch, ConsensusCommitPrologueV1)
 //! - Gas validation edge cases
 //! - Transaction data serialization
 //! SPDX-License-Identifier: Apache-2.0
@@ -12,7 +12,7 @@
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::{
     base::SomaAddress,
-    consensus::ConsensusCommitPrologue,
+    consensus::ConsensusCommitPrologueV1,
     crypto::get_key_pair,
     digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest},
     effects::TransactionEffectsAPI,
@@ -69,7 +69,7 @@ async fn test_change_epoch_system_transaction_executes() {
 
 #[tokio::test]
 async fn test_consensus_commit_prologue_system_transaction_executes() {
-    // FINDING: ConsensusCommitPrologue is system-only conceptually, but the authority
+    // FINDING: ConsensusCommitPrologueV1 is system-only conceptually, but the authority
     // pipeline does NOT reject it at the execution level. In production, these are
     // only created by the consensus handler.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
@@ -80,7 +80,7 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
     authority_state.insert_genesis_object(gas).await;
 
     let data = TransactionData::new(
-        TransactionKind::ConsensusCommitPrologue(ConsensusCommitPrologue {
+        TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
             epoch: 0,
             round: 1,
             commit_timestamp_ms: 12345,
@@ -93,12 +93,12 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
     );
     let tx = to_sender_signed_transaction(data, &key);
 
-    // ConsensusCommitPrologue doesn't need shared objects in current impl
+    // ConsensusCommitPrologueV1 doesn't need shared objects in current impl
     let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
     // Currently succeeds — system transaction rejection is at the network/consensus layer
     assert!(
         result.is_ok(),
-        "ConsensusCommitPrologue should reach execution: {:?}",
+        "ConsensusCommitPrologueV1 should reach execution: {:?}",
         result.err()
     );
 }

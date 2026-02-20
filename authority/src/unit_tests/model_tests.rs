@@ -55,7 +55,7 @@ async fn execute_commit_model(
 
     // Get architecture version from system state if not overridden
     let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-    let arch_version = architecture_version.unwrap_or(system_state.parameters.model_architecture_version);
+    let arch_version = architecture_version.unwrap_or(system_state.parameters().model_architecture_version);
     let comm_rate = commission_rate.unwrap_or(1000); // 10% default
 
     let data = TransactionData::new(
@@ -124,7 +124,7 @@ async fn test_commit_model_success() {
     // Verify the model was added to pending_models in system state
     let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
     assert!(
-        !system_state.model_registry.pending_models.is_empty(),
+        !system_state.model_registry().pending_models.is_empty(),
         "Model should be in pending_models after commit"
     );
 

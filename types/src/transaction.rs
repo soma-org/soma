@@ -30,7 +30,7 @@ use crate::{
     SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
     base::{AuthorityName, SizeOneVec, SomaAddress},
     committee::{Committee, EpochId},
-    consensus::ConsensusCommitPrologue,
+    consensus::ConsensusCommitPrologueV1,
     crypto::{
         AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
         AuthorityStrongQuorumSignInfo, DefaultHash, Ed25519SomaSignature, EmptySignInfo,
@@ -55,7 +55,7 @@ use tap::Pipe;
 ///
 /// ## Variants
 /// - `Genesis`: Initial transaction that creates the genesis state
-/// - `ConsensusCommitPrologue`: System transaction that records consensus commit information
+/// - `ConsensusCommitPrologueV1`: System transaction that records consensus commit information
 /// - `StateTransaction`: User-initiated transaction that modifies blockchain state
 /// - `EndOfEpochTransaction`: System transaction that handles epoch transitions
 ///
@@ -66,7 +66,7 @@ pub enum TransactionKind {
     /// Genesis transaction that initializes the blockchain state
     Genesis(GenesisTransaction),
     /// Records consensus commit information in the blockchain state
-    ConsensusCommitPrologue(ConsensusCommitPrologue),
+    ConsensusCommitPrologueV1(ConsensusCommitPrologueV1),
     /// Transaction that changes the epoch, run by each validator at end of epoch
     ChangeEpoch(ChangeEpoch),
     // Validator management transactions
@@ -197,6 +197,8 @@ pub struct AddValidatorArgs {
     pub network_pubkey_bytes: Vec<u8>,
     /// The worker node's public key bytes
     pub worker_pubkey_bytes: Vec<u8>,
+    /// Proof of possession: BLS signature over (pubkey_bytes || sender_address)
+    pub proof_of_possession: Vec<u8>,
     /// The validator's network address
     pub net_address: Vec<u8>,
     /// The validator's peer-to-peer communication address
@@ -244,6 +246,10 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     /// Optional new network public key (Ed25519)
     pub next_epoch_network_pubkey: Option<Vec<u8>>,
+
+    /// Proof of possession for the new protocol public key (required when
+    /// next_epoch_protocol_pubkey is Some)
+    pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -342,7 +348,7 @@ impl TransactionKind {
         matches!(
             self,
             TransactionKind::Genesis(_)
-                | TransactionKind::ConsensusCommitPrologue(_)
+                | TransactionKind::ConsensusCommitPrologueV1(_)
                 | TransactionKind::ChangeEpoch(_)
         )
     }
@@ -849,7 +855,15 @@ impl VerifiedSignedTransaction {
     }
 }
 
-/// # TransactionData
+/// Versioned wrapper for TransactionData.
+///
+/// All serialization goes through this enum. New versions are added as new variants.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub enum TransactionData {
+    V1(TransactionDataV1),
+}
+
+/// # TransactionDataV1
 ///
 /// Contains the core data of a transaction, including its type and sender.
 ///
@@ -864,7 +878,7 @@ impl VerifiedSignedTransaction {
 /// ## Thread Safety
 /// This type is immutable and can be safely shared across threads.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct TransactionData {
+pub struct TransactionDataV1 {
     /// The specific type of transaction
     pub kind: TransactionKind,
     /// The address of the transaction sender
@@ -875,14 +889,14 @@ pub struct TransactionData {
 
 impl TransactionData {
     pub fn new(kind: TransactionKind, sender: SomaAddress, gas_payment: Vec<ObjectRef>) -> Self {
-        TransactionData { kind, sender, gas_payment }
+        TransactionData::V1(TransactionDataV1 { kind, sender, gas_payment })
     }
 
     fn new_system_transaction(kind: TransactionKind) -> Self {
         // assert transaction kind if a system transaction
         assert!(kind.is_system_tx());
         let sender = SomaAddress::default();
-        TransactionData { kind, sender, gas_payment: vec![] }
+        TransactionData::V1(TransactionDataV1 { kind, sender, gas_payment: vec![] })
     }
 
     pub fn new_pay_coins(
@@ -933,23 +947,19 @@ impl TransactionData {
     }
 
     pub fn signers(&self) -> NonEmpty<SomaAddress> {
-        let mut signers = nonempty![self.sender];
-        // if self.gas_owner() != self.sender {
-        //     signers.push(self.gas_owner());
-        // }
-        signers
+        nonempty![self.sender()]
     }
 
     pub fn is_system_tx(&self) -> bool {
-        self.kind.is_system_tx()
+        self.kind().is_system_tx()
     }
 
     pub fn is_genesis_tx(&self) -> bool {
-        matches!(self.kind, TransactionKind::Genesis(_))
+        matches!(self.kind(), TransactionKind::Genesis(_))
     }
 
     pub fn is_consensus_commit_prologue(&self) -> bool {
-        matches!(&self.kind, TransactionKind::ConsensusCommitPrologue(_))
+        matches!(self.kind(), TransactionKind::ConsensusCommitPrologueV1(_))
     }
 
     pub fn execution_parts(&self) -> (TransactionKind, SomaAddress, Vec<ObjectRef>) {
@@ -957,41 +967,49 @@ impl TransactionData {
     }
 
     pub fn kind(&self) -> &TransactionKind {
-        &self.kind
+        match self {
+            TransactionData::V1(v1) => &v1.kind,
+        }
     }
 
     pub fn sender(&self) -> SomaAddress {
-        self.sender
+        match self {
+            TransactionData::V1(v1) => v1.sender,
+        }
     }
 
     pub fn gas(&self) -> Vec<ObjectRef> {
-        self.gas_payment.clone()
+        match self {
+            TransactionData::V1(v1) => v1.gas_payment.clone(),
+        }
     }
 
     pub fn gas_mut(&mut self) -> &mut Vec<ObjectRef> {
-        &mut self.gas_payment
+        match self {
+            TransactionData::V1(v1) => &mut v1.gas_payment,
+        }
     }
 
     fn contains_shared_object(&self) -> bool {
-        self.kind.shared_input_objects().next().is_some()
+        self.kind().shared_input_objects().next().is_some()
     }
 
     pub fn shared_input_objects(&self) -> Vec<SharedInputObject> {
-        self.kind.shared_input_objects().collect()
+        self.kind().shared_input_objects().collect()
     }
 
     pub fn input_objects(&self) -> SomaResult<Vec<InputObjectKind>> {
         // Get inputs from transaction kind
-        let mut inputs = self.kind.input_objects()?;
+        let mut inputs = self.kind().input_objects()?;
 
         // For non-system transactions, add gas objects not already included in inputs
-        if !self.kind.is_system_tx() {
+        if !self.kind().is_system_tx() {
             // Create a set of object IDs already in the inputs
             let input_object_ids: HashSet<ObjectID> =
                 inputs.iter().map(|input| input.object_id()).collect();
 
             // Only add gas objects that aren't already in the inputs
-            for gas_ref in &self.gas_payment {
+            for gas_ref in &self.gas() {
                 if !input_object_ids.contains(&gas_ref.0) {
                     inputs.push(InputObjectKind::ImmOrOwnedObject(*gas_ref));
                 }
@@ -1008,7 +1026,7 @@ impl TransactionData {
     }
 
     pub fn receiving_objects(&self) -> Vec<ObjectRef> {
-        self.kind.receiving_objects()
+        self.kind().receiving_objects()
     }
 
     // Dependency (input, package & receiving) objects that already have a version,
@@ -1270,7 +1288,7 @@ impl VerifiedTransaction {
         consensus_commit_digest: ConsensusCommitDigest,
         additional_state_digest: AdditionalConsensusStateDigest,
     ) -> Self {
-        ConsensusCommitPrologue {
+        ConsensusCommitPrologueV1 {
             epoch,
             round,
             // sub_dag_index is reserved for when we have multi commits per round.
@@ -1279,7 +1297,7 @@ impl VerifiedTransaction {
             consensus_commit_digest,
             additional_state_digest,
         }
-        .pipe(TransactionKind::ConsensusCommitPrologue)
+        .pipe(TransactionKind::ConsensusCommitPrologueV1)
         .pipe(Self::new_system_transaction)
     }
 

@@ -23,6 +23,7 @@ use types::{
     quorum_driver::{
         ExecuteTransactionRequest, ExecuteTransactionRequestType, FinalizedEffects,
     },
+    system_state::SystemStateTrait as _,
     transaction::{TransactionData, TransactionKind},
 };
 use utils::logging::init_tracing;
@@ -428,7 +429,7 @@ async fn test_orchestrator_execute_staking() {
     let system_state = handle.with(|n| {
         n.state().get_system_state_object_for_testing().unwrap()
     });
-    let validator_address = system_state.validators.validators[0].metadata.soma_address;
+    let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     // Get sender and gas object
     let addresses = test_cluster.wallet.get_addresses();

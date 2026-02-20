@@ -130,6 +130,11 @@ message Validator {
   optional string next_epoch_p2p_address = 17;
   optional string next_epoch_primary_address = 18;
   optional string next_epoch_proxy_address = 20;  // HTTP proxy address for next epoch
+
+  // Proof of possession for the protocol key (BLS signature)
+  optional bytes proof_of_possession = 21;
+  // Next epoch proof of possession (when protocol key is being changed)
+  optional bytes next_epoch_proof_of_possession = 22;
 }
 
 message StakingPool {

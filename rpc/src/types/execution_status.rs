@@ -31,6 +31,9 @@ pub enum ExecutionError {
 
     // Validator errors
     DuplicateValidator,
+    DuplicateValidatorMetadata { field: String },
+    MissingProofOfPossession,
+    InvalidProofOfPossession { reason: String },
     NotAValidator,
     ValidatorAlreadyRemoved,
     AdvancedToWrongEpoch,

@@ -300,6 +300,9 @@ impl serde::Serialize for AddValidator {
         if self.proxy_address.is_some() {
             len += 1;
         }
+        if self.proof_of_possession.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddValidator", len)?;
         if let Some(v) = self.pubkey_bytes.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -336,6 +339,11 @@ impl serde::Serialize for AddValidator {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("proxyAddress", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.proof_of_possession.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("proofOfPossession", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -360,6 +368,8 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
             "primaryAddress",
             "proxy_address",
             "proxyAddress",
+            "proof_of_possession",
+            "proofOfPossession",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -371,6 +381,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
             P2pAddress,
             PrimaryAddress,
             ProxyAddress,
+            ProofOfPossession,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -400,6 +411,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                             "p2pAddress" | "p2p_address" => Ok(GeneratedField::P2pAddress),
                             "primaryAddress" | "primary_address" => Ok(GeneratedField::PrimaryAddress),
                             "proxyAddress" | "proxy_address" => Ok(GeneratedField::ProxyAddress),
+                            "proofOfPossession" | "proof_of_possession" => Ok(GeneratedField::ProofOfPossession),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -428,6 +440,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                 let mut p2p_address__ = None;
                 let mut primary_address__ = None;
                 let mut proxy_address__ = None;
+                let mut proof_of_possession__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::PubkeyBytes => {
@@ -486,6 +499,14 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::ProofOfPossession => {
+                            if proof_of_possession__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("proofOfPossession"));
+                            }
+                            proof_of_possession__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -499,6 +520,7 @@ impl<'de> serde::Deserialize<'de> for AddValidator {
                     p2p_address: p2p_address__,
                     primary_address: primary_address__,
                     proxy_address: proxy_address__,
+                    proof_of_possession: proof_of_possession__,
                 })
             }
         }
@@ -5044,6 +5066,9 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::InvalidChallengeQuorum => "INVALID_CHALLENGE_QUORUM",
             Self::DataExceedsMaxSize => "DATA_EXCEEDS_MAX_SIZE",
             Self::ChallengeAlreadyExists => "CHALLENGE_ALREADY_EXISTS",
+            Self::DuplicateValidatorMetadata => "DUPLICATE_VALIDATOR_METADATA",
+            Self::MissingProofOfPossession => "MISSING_PROOF_OF_POSSESSION",
+            Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
         };
         serializer.serialize_str(variant)
     }
@@ -5108,6 +5133,9 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "INVALID_CHALLENGE_QUORUM",
             "DATA_EXCEEDS_MAX_SIZE",
             "CHALLENGE_ALREADY_EXISTS",
+            "DUPLICATE_VALIDATOR_METADATA",
+            "MISSING_PROOF_OF_POSSESSION",
+            "INVALID_PROOF_OF_POSSESSION",
         ];
 
         struct GeneratedVisitor;
@@ -5201,6 +5229,9 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "INVALID_CHALLENGE_QUORUM" => Ok(execution_error::ExecutionErrorKind::InvalidChallengeQuorum),
                     "DATA_EXCEEDS_MAX_SIZE" => Ok(execution_error::ExecutionErrorKind::DataExceedsMaxSize),
                     "CHALLENGE_ALREADY_EXISTS" => Ok(execution_error::ExecutionErrorKind::ChallengeAlreadyExists),
+                    "DUPLICATE_VALIDATOR_METADATA" => Ok(execution_error::ExecutionErrorKind::DuplicateValidatorMetadata),
+                    "MISSING_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::MissingProofOfPossession),
+                    "INVALID_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::InvalidProofOfPossession),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -17647,6 +17678,9 @@ impl serde::Serialize for UpdateValidatorMetadata {
         if self.next_epoch_network_pubkey.is_some() {
             len += 1;
         }
+        if self.next_epoch_proof_of_possession.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.UpdateValidatorMetadata", len)?;
         if let Some(v) = self.next_epoch_network_address.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -17683,6 +17717,11 @@ impl serde::Serialize for UpdateValidatorMetadata {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("nextEpochNetworkPubkey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.next_epoch_proof_of_possession.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProofOfPossession", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -17707,6 +17746,8 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
             "nextEpochWorkerPubkey",
             "next_epoch_network_pubkey",
             "nextEpochNetworkPubkey",
+            "next_epoch_proof_of_possession",
+            "nextEpochProofOfPossession",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -17718,6 +17759,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
             NextEpochProtocolPubkey,
             NextEpochWorkerPubkey,
             NextEpochNetworkPubkey,
+            NextEpochProofOfPossession,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -17747,6 +17789,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                             "nextEpochProtocolPubkey" | "next_epoch_protocol_pubkey" => Ok(GeneratedField::NextEpochProtocolPubkey),
                             "nextEpochWorkerPubkey" | "next_epoch_worker_pubkey" => Ok(GeneratedField::NextEpochWorkerPubkey),
                             "nextEpochNetworkPubkey" | "next_epoch_network_pubkey" => Ok(GeneratedField::NextEpochNetworkPubkey),
+                            "nextEpochProofOfPossession" | "next_epoch_proof_of_possession" => Ok(GeneratedField::NextEpochProofOfPossession),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -17775,6 +17818,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                 let mut next_epoch_protocol_pubkey__ = None;
                 let mut next_epoch_worker_pubkey__ = None;
                 let mut next_epoch_network_pubkey__ = None;
+                let mut next_epoch_proof_of_possession__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::NextEpochNetworkAddress => {
@@ -17833,6 +17877,14 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::NextEpochProofOfPossession => {
+                            if next_epoch_proof_of_possession__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProofOfPossession"));
+                            }
+                            next_epoch_proof_of_possession__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -17846,6 +17898,7 @@ impl<'de> serde::Deserialize<'de> for UpdateValidatorMetadata {
                     next_epoch_protocol_pubkey: next_epoch_protocol_pubkey__,
                     next_epoch_worker_pubkey: next_epoch_worker_pubkey__,
                     next_epoch_network_pubkey: next_epoch_network_pubkey__,
+                    next_epoch_proof_of_possession: next_epoch_proof_of_possession__,
                 })
             }
         }
@@ -18054,6 +18107,12 @@ impl serde::Serialize for Validator {
         if self.next_epoch_proxy_address.is_some() {
             len += 1;
         }
+        if self.proof_of_possession.is_some() {
+            len += 1;
+        }
+        if self.next_epoch_proof_of_possession.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Validator", len)?;
         if let Some(v) = self.soma_address.as_ref() {
             struct_ser.serialize_field("somaAddress", v)?;
@@ -18135,6 +18194,16 @@ impl serde::Serialize for Validator {
         if let Some(v) = self.next_epoch_proxy_address.as_ref() {
             struct_ser.serialize_field("nextEpochProxyAddress", v)?;
         }
+        if let Some(v) = self.proof_of_possession.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("proofOfPossession", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.next_epoch_proof_of_possession.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("nextEpochProofOfPossession", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -18185,6 +18254,10 @@ impl<'de> serde::Deserialize<'de> for Validator {
             "nextEpochPrimaryAddress",
             "next_epoch_proxy_address",
             "nextEpochProxyAddress",
+            "proof_of_possession",
+            "proofOfPossession",
+            "next_epoch_proof_of_possession",
+            "nextEpochProofOfPossession",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -18209,6 +18282,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
             NextEpochP2pAddress,
             NextEpochPrimaryAddress,
             NextEpochProxyAddress,
+            ProofOfPossession,
+            NextEpochProofOfPossession,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -18251,6 +18326,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
                             "nextEpochP2pAddress" | "next_epoch_p2p_address" => Ok(GeneratedField::NextEpochP2pAddress),
                             "nextEpochPrimaryAddress" | "next_epoch_primary_address" => Ok(GeneratedField::NextEpochPrimaryAddress),
                             "nextEpochProxyAddress" | "next_epoch_proxy_address" => Ok(GeneratedField::NextEpochProxyAddress),
+                            "proofOfPossession" | "proof_of_possession" => Ok(GeneratedField::ProofOfPossession),
+                            "nextEpochProofOfPossession" | "next_epoch_proof_of_possession" => Ok(GeneratedField::NextEpochProofOfPossession),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -18292,6 +18369,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
                 let mut next_epoch_p2p_address__ = None;
                 let mut next_epoch_primary_address__ = None;
                 let mut next_epoch_proxy_address__ = None;
+                let mut proof_of_possession__ = None;
+                let mut next_epoch_proof_of_possession__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::SomaAddress => {
@@ -18434,6 +18513,22 @@ impl<'de> serde::Deserialize<'de> for Validator {
                             }
                             next_epoch_proxy_address__ = map_.next_value()?;
                         }
+                        GeneratedField::ProofOfPossession => {
+                            if proof_of_possession__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("proofOfPossession"));
+                            }
+                            proof_of_possession__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::NextEpochProofOfPossession => {
+                            if next_epoch_proof_of_possession__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("nextEpochProofOfPossession"));
+                            }
+                            next_epoch_proof_of_possession__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -18460,6 +18555,8 @@ impl<'de> serde::Deserialize<'de> for Validator {
                     next_epoch_p2p_address: next_epoch_p2p_address__,
                     next_epoch_primary_address: next_epoch_primary_address__,
                     next_epoch_proxy_address: next_epoch_proxy_address__,
+                    proof_of_possession: proof_of_possession__,
+                    next_epoch_proof_of_possession: next_epoch_proof_of_possession__,
                 })
             }
         }

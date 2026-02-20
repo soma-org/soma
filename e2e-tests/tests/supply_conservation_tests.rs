@@ -19,7 +19,7 @@ use tracing::info;
 use types::{
     config::genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT},
     effects::TransactionEffectsAPI,
-    system_state::SystemState,
+    system_state::{SystemState, SystemStateTrait as _},
     transaction::{TransactionData, TransactionKind},
 };
 use utils::logging::init_tracing;
@@ -27,36 +27,36 @@ use utils::logging::init_tracing;
 /// Extract supply-relevant balances from the system state.
 /// Returns (emission_pool_balance, total_staking_pool_balance, safe_mode_accumulators).
 fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
-    let emission = ss.emission_pool.balance as u128;
+    let emission = ss.emission_pool().balance as u128;
 
     let mut staking: u128 = 0;
-    for v in &ss.validators.validators {
+    for v in &ss.validators().validators {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    for v in &ss.validators.pending_validators {
+    for v in &ss.validators().pending_validators {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    for v in ss.validators.inactive_validators.values() {
+    for v in ss.validators().inactive_validators.values() {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry.active_models.values() {
+    for m in ss.model_registry().active_models.values() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry.pending_models.values() {
+    for m in ss.model_registry().pending_models.values() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry.inactive_models.values() {
+    for m in ss.model_registry().inactive_models.values() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }
 
     let safe_mode =
-        ss.safe_mode_accumulated_fees as u128 + ss.safe_mode_accumulated_emissions as u128;
+        ss.safe_mode_accumulated_fees() as u128 + ss.safe_mode_accumulated_emissions() as u128;
 
     (emission, staking, safe_mode)
 }
@@ -99,7 +99,7 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     info!("Pre-epoch: emission_pool={pre_emission}, staking_pools={pre_staking}");
 
     // Execute several AddStake transactions to move SOMA from coins -> staking pools.
-    let validator_address = pre_ss.validators.validators[0].metadata.soma_address;
+    let validator_address = pre_ss.validators().validators[0].metadata.soma_address;
 
     for i in 0..3 {
         let sender = test_cluster.get_addresses()[i];
@@ -145,7 +145,7 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     info!("Emission pool delta: {emission_delta} shannons");
 
     // Verify epoch advanced.
-    assert_eq!(post_ss.epoch, pre_ss.epoch + 1);
+    assert_eq!(post_ss.epoch(), pre_ss.epoch() + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +175,7 @@ async fn test_supply_conservation_multi_epoch() {
     let initial_ss = get_system_state(&test_cluster);
     let (initial_emission, _, _) = system_state_balances(&initial_ss);
 
-    let validator_address = initial_ss.validators.validators[0].metadata.soma_address;
+    let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
 
     let mut prev_emission = initial_emission;
 
@@ -222,7 +222,7 @@ async fn test_supply_conservation_multi_epoch() {
 
     // Verify we advanced 3 epochs.
     let final_ss = get_system_state(&test_cluster);
-    assert_eq!(final_ss.epoch, initial_ss.epoch + 3);
+    assert_eq!(final_ss.epoch(), initial_ss.epoch() + 3);
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +251,7 @@ async fn test_emission_pool_accounting() {
 
     let initial_ss = get_system_state(&test_cluster);
     let (initial_emission, initial_staking, _) = system_state_balances(&initial_ss);
-    let emission_per_epoch = initial_ss.emission_pool.emission_per_epoch;
+    let emission_per_epoch = initial_ss.emission_pool().emission_per_epoch;
 
     info!(
         "Initial: emission_pool={initial_emission}, emission_per_epoch={emission_per_epoch}, \
@@ -260,7 +260,7 @@ async fn test_emission_pool_accounting() {
 
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
-    let validator_address = initial_ss.validators.validators[0].metadata.soma_address;
+    let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
     let gas = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(sender)

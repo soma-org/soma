@@ -22,7 +22,7 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
     submission::SubmissionManifest,
-    system_state::SystemStateTrait,
+    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
 };
@@ -108,21 +108,21 @@ async fn test_genesis_target_bootstrap() {
 
     // Verify we have an active model
     assert!(
-        system_state.model_registry.active_models.contains_key(&model_id),
+        system_state.model_registry().active_models.contains_key(&model_id),
         "Genesis model should be active"
     );
 
     // Verify target_state was initialized
     assert!(
-        system_state.target_state.distance_threshold.as_scalar() > 0.0,
+        system_state.target_state().distance_threshold.as_scalar() > 0.0,
         "Distance threshold should be initialized"
     );
     assert!(
-        system_state.target_state.reward_per_target > 0,
+        system_state.target_state().reward_per_target > 0,
         "Reward per target should be calculated"
     );
 
-    let initial_targets_per_epoch = system_state.parameters.target_initial_targets_per_epoch;
+    let initial_targets_per_epoch = system_state.parameters().target_initial_targets_per_epoch;
 
     // Use the SDK to list targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -180,8 +180,8 @@ async fn test_submit_data_fills_target() {
             .expect("Should be able to get SystemState")
     });
 
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // List open targets using SDK
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -295,8 +295,8 @@ async fn test_claim_rewards_after_challenge_window() {
             .expect("Should be able to get SystemState")
     });
 
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -410,7 +410,7 @@ async fn test_epoch_boundary_issues_new_targets() {
             .expect("Should be able to get SystemState")
     });
 
-    let initial_targets_per_epoch = system_state.parameters.target_initial_targets_per_epoch;
+    let initial_targets_per_epoch = system_state.parameters().target_initial_targets_per_epoch;
 
     // Count epoch 0 targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -560,8 +560,8 @@ async fn test_submit_data_validation_errors() {
             .expect("Should be able to get SystemState")
     });
 
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();

@@ -219,3 +219,100 @@ fn test_soma_keypair_bech32_roundtrip() {
     let decoded = SomaKeyPair::decode(&encoded).unwrap();
     assert_eq!(soma_kp, decoded);
 }
+
+// =============================================================================
+// Proof of Possession tests
+// =============================================================================
+
+#[test]
+fn test_proof_of_possession_roundtrip() {
+    // Generate a PoP and verify it succeeds with the correct key and address.
+    let mut rng = StdRng::from_seed([0; 32]);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
+        get_key_pair_from_rng(&mut rng);
+
+    let pop = generate_proof_of_possession(&authority_kp, address);
+    assert!(
+        verify_proof_of_possession(&pop, authority_kp.public(), address).is_ok(),
+        "PoP should verify with correct key and address"
+    );
+}
+
+#[test]
+fn test_proof_of_possession_wrong_address() {
+    // PoP generated for one address should NOT verify with a different address.
+    let mut rng = StdRng::from_seed([1; 32]);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
+        get_key_pair_from_rng(&mut rng);
+    let (wrong_address, _): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
+    assert_ne!(address, wrong_address);
+
+    let pop = generate_proof_of_possession(&authority_kp, address);
+    assert!(
+        verify_proof_of_possession(&pop, authority_kp.public(), wrong_address).is_err(),
+        "PoP should fail when verified with wrong address"
+    );
+}
+
+#[test]
+fn test_proof_of_possession_wrong_key() {
+    // PoP generated with one key should NOT verify against a different public key.
+    let mut rng = StdRng::from_seed([2; 32]);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
+        get_key_pair_from_rng(&mut rng);
+    let (_, wrong_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
+
+    let pop = generate_proof_of_possession(&authority_kp, address);
+    assert!(
+        verify_proof_of_possession(&pop, wrong_kp.public(), address).is_err(),
+        "PoP should fail when verified with wrong public key"
+    );
+}
+
+#[test]
+fn test_proof_of_possession_deterministic() {
+    // Same key + same address should produce the same PoP.
+    let mut rng = StdRng::from_seed([3; 32]);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
+        get_key_pair_from_rng(&mut rng);
+
+    let pop1 = generate_proof_of_possession(&authority_kp, address);
+    let pop2 = generate_proof_of_possession(&authority_kp, address);
+    assert_eq!(pop1, pop2, "PoP should be deterministic for same inputs");
+}
+
+#[test]
+fn test_proof_of_possession_bytes_roundtrip() {
+    // Verify PoP survives serialization to/from bytes (as would happen in transactions).
+    let mut rng = StdRng::from_seed([4; 32]);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
+        get_key_pair_from_rng(&mut rng);
+
+    let pop = generate_proof_of_possession(&authority_kp, address);
+    let pop_bytes = pop.as_ref().to_vec();
+
+    // Reconstruct from bytes and verify
+    let pop_restored = AuthoritySignature::from_bytes(&pop_bytes)
+        .expect("Should parse PoP from valid bytes");
+    assert!(
+        verify_proof_of_possession(&pop_restored, authority_kp.public(), address).is_ok(),
+        "PoP should verify after bytes roundtrip"
+    );
+}
+
+#[test]
+fn test_proof_of_possession_invalid_bytes() {
+    // Garbage bytes should fail to parse as a valid PoP signature.
+    let address = SomaAddress::random();
+    let mut rng = StdRng::from_seed([5; 32]);
+    let (_, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
+
+    let garbage = vec![0xDE, 0xAD, 0xBE, 0xEF];
+    let result = AuthoritySignature::from_bytes(&garbage);
+    assert!(result.is_err(), "Garbage bytes should not parse as PoP");
+
+    // Empty bytes should also fail
+    let empty = vec![];
+    let result = AuthoritySignature::from_bytes(&empty);
+    assert!(result.is_err(), "Empty bytes should not parse as PoP");
+}

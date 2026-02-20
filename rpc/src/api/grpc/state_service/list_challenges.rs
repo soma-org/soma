@@ -125,7 +125,7 @@ pub fn list_challenges(
         };
 
         // Deserialize the challenge
-        let challenge: types::challenge::Challenge = match bcs::from_bytes(object.data.contents()) {
+        let challenge: types::challenge::ChallengeV1 = match bcs::from_bytes(object.data.contents()) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(
@@ -192,10 +192,10 @@ fn encode_page_token(page_token: PageToken) -> Bytes {
     bcs::to_bytes(&page_token).unwrap().into()
 }
 
-/// Convert a types::challenge::Challenge to proto Challenge with field mask.
+/// Convert a types::challenge::ChallengeV1 to proto Challenge with field mask.
 fn challenge_to_proto_with_id(
     id: &ObjectID,
-    challenge: &types::challenge::Challenge,
+    challenge: &types::challenge::ChallengeV1,
     mask: &FieldMaskTree,
 ) -> Challenge {
     let mut proto = Challenge::default();

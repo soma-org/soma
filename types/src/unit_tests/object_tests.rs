@@ -98,7 +98,6 @@ fn test_object_type_variants() {
         (ObjectType::Coin, "Coin"),
         (ObjectType::StakedSoma, "StakedSoma"),
         (ObjectType::Target, "Target"),
-        (ObjectType::Submission, "Submission"),
         (ObjectType::Challenge, "Challenge"),
     ];
 

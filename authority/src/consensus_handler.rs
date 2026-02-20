@@ -50,7 +50,7 @@ use types::{
     checkpoints::CheckpointSignatureMessage,
     committee::AuthorityIndex,
     consensus::{
-        AuthorityCapabilities, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey,
+        AuthorityCapabilitiesV1, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey,
         ConsensusTransactionKind,
     },
     digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest},
@@ -123,7 +123,7 @@ mod additional_consensus_state {
     /// reconstruct the state.
     ///
     /// To make sure that bugs in this process appear immediately, we record the digest of this
-    /// state in ConsensusCommitPrologue, so that any deviation causes an immediate fork.
+    /// state in ConsensusCommitPrologueV1, so that any deviation causes an immediate fork.
     #[derive(Serialize, Deserialize)]
     pub(super) struct AdditionalConsensusState {
         commit_interval_observer: CommitIntervalObserver,
@@ -435,7 +435,7 @@ impl<C> ConsensusHandler<C> {
 #[derive(Default)]
 struct CommitHandlerInput {
     user_transactions: Vec<VerifiedExecutableTransaction>,
-    capability_notifications: Vec<AuthorityCapabilities>,
+    capability_notifications: Vec<AuthorityCapabilitiesV1>,
     checkpoint_signature_messages: Vec<CheckpointSignatureMessage>,
     end_of_publish_transactions: Vec<AuthorityName>,
 }
@@ -717,7 +717,7 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
 
     fn process_capability_notifications(
         &self,
-        capability_notifications: Vec<AuthorityCapabilities>,
+        capability_notifications: Vec<AuthorityCapabilitiesV1>,
     ) {
         for capabilities in capability_notifications {
             self.epoch_store.record_capabilities(&capabilities).expect("db error");

@@ -18,7 +18,7 @@ use test_cluster::TestClusterBuilder;
 use tokio::time::sleep;
 use tracing::info;
 use types::effects::TransactionEffectsAPI;
-use types::system_state::SystemStateTrait;
+use types::system_state::SystemStateTrait as _;
 use utils::fp::{
     clear_fail_point, register_fail_point, register_fail_point_async, register_fail_point_if,
 };
@@ -379,7 +379,7 @@ async fn test_safe_mode_reconfig() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60))
         .await;
-    assert!(!system_state.safe_mode, "Should not be in safe mode at epoch 1");
+    assert!(!system_state.safe_mode(), "Should not be in safe mode at epoch 1");
     assert_eq!(system_state.epoch(), 1);
 
     // Now enable failure injection so the epoch 1→2 transition fails
@@ -389,18 +389,18 @@ async fn test_safe_mode_reconfig() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
         .await;
-    assert!(system_state.safe_mode, "Should be in safe mode at epoch 2");
+    assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
     assert_eq!(system_state.epoch(), 2);
-    assert_eq!(system_state.safe_mode_accumulated_fees, 0); // fees from just this epoch
+    assert_eq!(system_state.safe_mode_accumulated_fees(), 0); // fees from just this epoch
     // Emissions should have been accumulated
     assert!(
-        system_state.safe_mode_accumulated_emissions > 0,
+        system_state.safe_mode_accumulated_emissions() > 0,
         "Should have accumulated emissions during safe mode"
     );
 
     info!(
         "Safe mode activated: fees={}, emissions={}",
-        system_state.safe_mode_accumulated_fees, system_state.safe_mode_accumulated_emissions
+        system_state.safe_mode_accumulated_fees(), system_state.safe_mode_accumulated_emissions()
     );
 
     // Verify transactions still work during safe mode
@@ -409,7 +409,7 @@ async fn test_safe_mode_reconfig() {
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address
@@ -446,10 +446,10 @@ async fn test_safe_mode_reconfig() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60))
         .await;
-    assert!(!system_state.safe_mode, "Should have recovered from safe mode at epoch 3");
+    assert!(!system_state.safe_mode(), "Should have recovered from safe mode at epoch 3");
     assert_eq!(system_state.epoch(), 3);
-    assert_eq!(system_state.safe_mode_accumulated_fees, 0);
-    assert_eq!(system_state.safe_mode_accumulated_emissions, 0);
+    assert_eq!(system_state.safe_mode_accumulated_fees(), 0);
+    assert_eq!(system_state.safe_mode_accumulated_emissions(), 0);
 
     info!("Safe mode recovery complete at epoch 3");
 
@@ -483,7 +483,7 @@ async fn test_safe_mode_multi_epoch() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60))
         .await;
-    assert!(!system_state.safe_mode);
+    assert!(!system_state.safe_mode());
 
     // Enable failure injection for epochs 2 and 3
     INJECT_FAILURE.store(true, Ordering::SeqCst);
@@ -492,23 +492,23 @@ async fn test_safe_mode_multi_epoch() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
         .await;
-    assert!(system_state.safe_mode, "Should be in safe mode at epoch 2");
-    let epoch2_emissions = system_state.safe_mode_accumulated_emissions;
+    assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
+    let epoch2_emissions = system_state.safe_mode_accumulated_emissions();
     assert!(epoch2_emissions > 0, "Should have accumulated emissions");
 
     // Wait for epoch 3 (still safe mode, more accumulation)
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60))
         .await;
-    assert!(system_state.safe_mode, "Should still be in safe mode at epoch 3");
+    assert!(system_state.safe_mode(), "Should still be in safe mode at epoch 3");
     assert!(
-        system_state.safe_mode_accumulated_emissions >= epoch2_emissions,
+        system_state.safe_mode_accumulated_emissions() >= epoch2_emissions,
         "Accumulated emissions should increase across safe mode epochs"
     );
 
     info!(
         "Multi-epoch safe mode: total accumulated emissions={}",
-        system_state.safe_mode_accumulated_emissions
+        system_state.safe_mode_accumulated_emissions()
     );
 
     // Disable failure injection so epoch 4 recovers
@@ -518,10 +518,10 @@ async fn test_safe_mode_multi_epoch() {
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(4), Duration::from_secs(60))
         .await;
-    assert!(!system_state.safe_mode, "Should recover from safe mode at epoch 4");
-    assert_eq!(system_state.safe_mode_accumulated_fees, 0, "Accumulators should be drained");
+    assert!(!system_state.safe_mode(), "Should recover from safe mode at epoch 4");
+    assert_eq!(system_state.safe_mode_accumulated_fees(), 0, "Accumulators should be drained");
     assert_eq!(
-        system_state.safe_mode_accumulated_emissions, 0,
+        system_state.safe_mode_accumulated_emissions(), 0,
         "Accumulators should be drained"
     );
 
@@ -604,7 +604,7 @@ async fn test_advance_epoch_tx_race() {
         .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
         .await;
     assert!(
-        !system_state.safe_mode,
+        !system_state.safe_mode(),
         "Should not enter safe mode due to race condition"
     );
 
@@ -643,7 +643,7 @@ async fn test_crash_during_reconfig_with_tx_load() {
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address

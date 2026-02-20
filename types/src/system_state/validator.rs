@@ -14,7 +14,7 @@ use crate::{
         MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_CONSENSUS_LOW_POWER,
         VALIDATOR_CONSENSUS_MIN_POWER, VALIDATOR_CONSENSUS_VERY_LOW_POWER,
     },
-    crypto::{self, NetworkPublicKey},
+    crypto::{self, AuthoritySignature, NetworkPublicKey},
     effects::ExecutionFailureStatus,
     error::ExecutionResult,
     multiaddr::Multiaddr,
@@ -24,7 +24,7 @@ use crate::{
 
 use super::{
     PublicKey,
-    staking::{PoolTokenExchangeRate, StakedSoma, StakingPool},
+    staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool},
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]
@@ -55,6 +55,11 @@ pub struct ValidatorMetadata {
     /// Example: /dns/validator1.soma.io/tcp/8080/http
     pub proxy_address: Multiaddr,
 
+    /// Proof of possession for the current protocol public key.
+    /// BLS12-381 signature over (protocol_pubkey_bytes || soma_address)
+    /// with IntentScope::ProofOfPossession.
+    pub proof_of_possession: AuthoritySignature,
+
     /// Optional new protocol public key for the next epoch
     pub next_epoch_protocol_pubkey: Option<PublicKey>,
 
@@ -71,6 +76,10 @@ pub struct ValidatorMetadata {
     pub next_epoch_primary_address: Option<Multiaddr>,
 
     pub next_epoch_worker_pubkey: Option<crate::crypto::NetworkPublicKey>,
+
+    /// Proof of possession for the staged next-epoch protocol public key.
+    /// Required when next_epoch_protocol_pubkey is set.
+    pub next_epoch_proof_of_possession: Option<AuthoritySignature>,
 
     /// Optional new proxy address for the next epoch
     pub next_epoch_proxy_address: Option<Multiaddr>,
@@ -100,6 +109,7 @@ impl Validator {
         protocol_pubkey: PublicKey,
         network_pubkey: crypto::NetworkPublicKey,
         worker_pubkey: crypto::NetworkPublicKey,
+        proof_of_possession: AuthoritySignature,
         net_address: Multiaddr,
         p2p_address: Multiaddr,
         primary_address: Multiaddr,
@@ -119,6 +129,7 @@ impl Validator {
                 p2p_address,
                 primary_address,
                 proxy_address,
+                proof_of_possession,
 
                 next_epoch_protocol_pubkey: None,
                 next_epoch_network_pubkey: None,
@@ -126,6 +137,7 @@ impl Validator {
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
                 next_epoch_worker_pubkey: None,
+                next_epoch_proof_of_possession: None,
                 next_epoch_proxy_address: None,
             },
             voting_power,
@@ -142,7 +154,7 @@ impl Validator {
         stake: u64,
         staker_address: SomaAddress,
         current_epoch: u64,
-    ) -> StakedSoma {
+    ) -> StakedSomaV1 {
         assert!(stake > 0, "Stake amount must be positive");
 
         // Calculate activation epoch (typically next epoch)
@@ -167,7 +179,7 @@ impl Validator {
         stake: u64,
         staker_address: SomaAddress,
         current_epoch: u64,
-    ) -> StakedSoma {
+    ) -> StakedSomaV1 {
         assert!(current_epoch == 0, "Must be called during genesis");
         assert!(stake > 0, "Stake amount must be positive");
 
@@ -181,7 +193,7 @@ impl Validator {
     }
 
     /// Request to withdraw stake from the validator
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSoma, current_epoch: u64) -> u64 {
+    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1, current_epoch: u64) -> u64 {
         // Process withdrawal in staking pool
         let withdrawn_amount = self.staking_pool.request_withdraw_stake(staked_soma, current_epoch);
 
@@ -250,6 +262,7 @@ impl Validator {
     pub fn stage_next_epoch_metadata(
         &mut self,
         args: &UpdateValidatorMetadataArgs,
+        all_validators: &[Validator],
     ) -> ExecutionResult<()> {
         // Process Network Address
         if let Some(ref addr_bytes) = args.next_epoch_network_address {
@@ -263,7 +276,6 @@ impl Validator {
                     reason: format!("Invalid network multiaddr format: {}", e),
                 }
             })?;
-            // TODO: Additional validation? Check for duplicates against other *staged* values?
             self.metadata.next_epoch_net_address = Some(multiaddr);
         }
 
@@ -297,23 +309,34 @@ impl Validator {
             self.metadata.next_epoch_primary_address = Some(multiaddr);
         }
 
-        // Process Protocol Public Key
+        // Process Protocol Public Key (requires proof of possession)
         if let Some(ref key_bytes) = args.next_epoch_protocol_pubkey {
             let pubkey = PublicKey::from_bytes(key_bytes).map_err(|e| {
                 ExecutionFailureStatus::InvalidArguments {
                     reason: format!("Invalid protocol public key format: {}", e),
                 }
             })?;
-            // TODO: Proof of possession validation if needed
+
+            // PoP is mandatory when changing protocol key
+            let pop_bytes = args
+                .next_epoch_proof_of_possession
+                .as_ref()
+                .ok_or(ExecutionFailureStatus::MissingProofOfPossession)?;
+
+            let pop =
+                crypto::AuthoritySignature::from_bytes(pop_bytes).map_err(|e| {
+                    ExecutionFailureStatus::InvalidProofOfPossession {
+                        reason: format!("Invalid PoP signature bytes: {}", e),
+                    }
+                })?;
+
+            crypto::verify_proof_of_possession(&pop, &pubkey, self.metadata.soma_address)
+                .map_err(|e| ExecutionFailureStatus::InvalidProofOfPossession {
+                    reason: format!("PoP verification failed: {}", e),
+                })?;
+
             self.metadata.next_epoch_protocol_pubkey = Some(pubkey);
-            // Handle PoP if necessary:
-            // if let Some(pop_bytes) = &args.next_epoch_proof_of_possession {
-            //     verify_pop(&pubkey, pop_bytes)?;
-            //     self.metadata.next_epoch_proof_of_possession = Some(pop_bytes.clone());
-            // } else if self.metadata.next_epoch_protocol_pubkey.is_some() {
-            //     // If protocol key changes, PoP might be mandatory
-            //     return Err(ExecutionFailureStatus::MissingProofOfPossession);
-            // }
+            self.metadata.next_epoch_proof_of_possession = Some(pop);
         }
 
         // Process Worker Public Key
@@ -338,13 +361,147 @@ impl Validator {
             self.metadata.next_epoch_network_pubkey = Some(network_pubkey);
         }
 
-        // TODO: Add duplicate checks here? E.g., ensure staged network key != staged worker key?
+        // Self-consistency: staged network key must not equal staged worker key
+        let effective = self.effective_next_epoch_metadata();
+        if effective.network_pubkey.to_bytes() == effective.worker_pubkey.to_bytes() {
+            return Err(ExecutionFailureStatus::DuplicateValidatorMetadata {
+                field: "network_pubkey == worker_pubkey (self)".to_string(),
+            });
+        }
+
+        // Check for duplicates against all other validators
+        for other in all_validators {
+            if other.metadata.soma_address == self.metadata.soma_address {
+                continue;
+            }
+            if let Some(field) = self.is_duplicate(other) {
+                return Err(ExecutionFailureStatus::DuplicateValidatorMetadata { field });
+            }
+        }
 
         Ok(())
     }
 
+    /// Returns true if any `next_epoch_*` metadata field is staged.
+    pub fn has_staged_metadata(&self) -> bool {
+        self.metadata.next_epoch_protocol_pubkey.is_some()
+            || self.metadata.next_epoch_network_pubkey.is_some()
+            || self.metadata.next_epoch_worker_pubkey.is_some()
+            || self.metadata.next_epoch_net_address.is_some()
+            || self.metadata.next_epoch_p2p_address.is_some()
+            || self.metadata.next_epoch_primary_address.is_some()
+            || self.metadata.next_epoch_proxy_address.is_some()
+    }
+
+    /// Clear all staged metadata (used when effectuation would create duplicates).
+    pub fn clear_staged_metadata(&mut self) {
+        self.metadata.next_epoch_protocol_pubkey = None;
+        self.metadata.next_epoch_network_pubkey = None;
+        self.metadata.next_epoch_worker_pubkey = None;
+        self.metadata.next_epoch_proof_of_possession = None;
+        self.metadata.next_epoch_net_address = None;
+        self.metadata.next_epoch_p2p_address = None;
+        self.metadata.next_epoch_primary_address = None;
+        self.metadata.next_epoch_proxy_address = None;
+    }
+
+    /// Returns a copy of metadata with staged (next_epoch) values applied.
+    /// For any `next_epoch_*` field that is `Some`, the corresponding current
+    /// field is replaced. Used for pre-effectuation duplicate checking.
+    pub fn effective_next_epoch_metadata(&self) -> ValidatorMetadata {
+        let m = &self.metadata;
+        ValidatorMetadata {
+            soma_address: m.soma_address,
+            protocol_pubkey: m
+                .next_epoch_protocol_pubkey
+                .clone()
+                .unwrap_or_else(|| m.protocol_pubkey.clone()),
+            network_pubkey: m
+                .next_epoch_network_pubkey
+                .clone()
+                .unwrap_or_else(|| m.network_pubkey.clone()),
+            worker_pubkey: m
+                .next_epoch_worker_pubkey
+                .clone()
+                .unwrap_or_else(|| m.worker_pubkey.clone()),
+            net_address: m
+                .next_epoch_net_address
+                .clone()
+                .unwrap_or_else(|| m.net_address.clone()),
+            p2p_address: m
+                .next_epoch_p2p_address
+                .clone()
+                .unwrap_or_else(|| m.p2p_address.clone()),
+            primary_address: m
+                .next_epoch_primary_address
+                .clone()
+                .unwrap_or_else(|| m.primary_address.clone()),
+            proxy_address: m
+                .next_epoch_proxy_address
+                .clone()
+                .unwrap_or_else(|| m.proxy_address.clone()),
+            proof_of_possession: m
+                .next_epoch_proof_of_possession
+                .clone()
+                .unwrap_or_else(|| m.proof_of_possession.clone()),
+            // Staged fields are cleared in the effective view
+            next_epoch_protocol_pubkey: None,
+            next_epoch_network_pubkey: None,
+            next_epoch_worker_pubkey: None,
+            next_epoch_proof_of_possession: None,
+            next_epoch_net_address: None,
+            next_epoch_p2p_address: None,
+            next_epoch_primary_address: None,
+            next_epoch_proxy_address: None,
+        }
+    }
+
+    /// Check if this validator's metadata duplicates another validator's metadata.
+    /// Returns `Some(field_name)` if a duplicate is found, `None` otherwise.
+    ///
+    /// Performs a comprehensive 4-way check:
+    /// 1. Current fields vs current fields
+    /// 2. Current fields vs other's staged fields
+    /// 3. Staged fields vs other's current fields
+    /// 4. Staged fields vs other's staged fields
+    pub fn is_duplicate(&self, other: &Validator) -> Option<String> {
+        // Skip self-comparison
+        if self.metadata.soma_address == other.metadata.soma_address {
+            return None;
+        }
+        // Build effective metadata (current with staged applied) for both
+        let self_effective = self.effective_next_epoch_metadata();
+        let other_effective = other.effective_next_epoch_metadata();
+
+        // Check current vs current
+        if let Some(field) =
+            check_metadata_fields_duplicate(&self.metadata, &other.metadata)
+        {
+            return Some(field);
+        }
+        // Check current vs other's effective (includes staged)
+        if let Some(field) =
+            check_metadata_fields_duplicate(&self.metadata, &other_effective)
+        {
+            return Some(field);
+        }
+        // Check self's effective vs other's current
+        if let Some(field) =
+            check_metadata_fields_duplicate(&self_effective, &other.metadata)
+        {
+            return Some(field);
+        }
+        // Check effective vs effective (staged vs staged)
+        if let Some(field) =
+            check_metadata_fields_duplicate(&self_effective, &other_effective)
+        {
+            return Some(field);
+        }
+        None
+    }
+
     /// Apply staged metadata changes. Called during epoch transition.
-    fn effectuate_staged_metadata(&mut self) {
+    pub(crate) fn effectuate_staged_metadata(&mut self) {
         if let Some(addr) = self.metadata.next_epoch_net_address.take() {
             self.metadata.net_address = addr;
         }
@@ -357,10 +514,9 @@ impl Validator {
 
         if let Some(key) = self.metadata.next_epoch_protocol_pubkey.take() {
             self.metadata.protocol_pubkey = key;
-            // Apply staged PoP if it exists
-            // if let Some(pop) = self.metadata.next_epoch_proof_of_possession.take() {
-            //     self.metadata.proof_of_possession = pop;
-            // }
+            if let Some(pop) = self.metadata.next_epoch_proof_of_possession.take() {
+                self.metadata.proof_of_possession = pop;
+            }
         }
         if let Some(key) = self.metadata.next_epoch_network_pubkey.take() {
             self.metadata.network_pubkey = key;
@@ -482,10 +638,18 @@ impl ValidatorSet {
             return Err(ExecutionFailureStatus::DuplicateValidator);
         }
 
-        // TODO: Check for duplicate information with other validators
-        // if self.is_duplicate_validator(&validator) {
-        //     return Err(ExecutionFailureStatus::DuplicateValidator);
-        // }
+        // Check for duplicate metadata against active validators
+        for existing in &self.validators {
+            if let Some(field) = validator.is_duplicate(existing) {
+                return Err(ExecutionFailureStatus::DuplicateValidatorMetadata { field });
+            }
+        }
+        // Check for duplicate metadata against pending validators
+        for existing in &self.pending_validators {
+            if let Some(field) = validator.is_duplicate(existing) {
+                return Err(ExecutionFailureStatus::DuplicateValidatorMetadata { field });
+            }
+        }
 
         // Add the staking pool mapping
         let new_pool_id = validator.staking_pool.id;
@@ -533,7 +697,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         validator_low_stake_grace_period: u64,
-    ) -> BTreeMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
         let validator_rewards = self.calculate_and_distribute_rewards(
             total_rewards,
             reward_slashing_rate,
@@ -571,49 +735,55 @@ impl ValidatorSet {
     }
 
     /// Effectuate pending next epoch metadata changes for all active validators.
+    /// Before applying, checks whether applying staged metadata would create duplicates.
+    /// If it would, the offending validator's staged metadata is cleared instead (skip + log).
     fn effectuate_staged_metadata(&mut self) {
-        for validator in &mut self.validators {
-            validator.effectuate_staged_metadata();
-            // TODO: Add validation after effectuation if needed, e.g., check for duplicates based on new metadata.
-            // self.assert_no_active_duplicates(validator); // Example if needed
+        // Build effective (post-effectuation) metadata for each validator to check for duplicates.
+        let effective_metas: Vec<ValidatorMetadata> = self
+            .validators
+            .iter()
+            .map(|v| v.effective_next_epoch_metadata())
+            .collect();
+
+        // Pairwise duplicate check on effective metadata
+        let mut skip_indices: HashSet<usize> = HashSet::new();
+        for i in 0..effective_metas.len() {
+            for j in (i + 1)..effective_metas.len() {
+                if let Some(field) =
+                    check_metadata_fields_duplicate(&effective_metas[i], &effective_metas[j])
+                {
+                    // Skip whichever validator(s) have staged changes
+                    // If both have staged changes, skip the later one
+                    if self.validators[j].has_staged_metadata() {
+                        error!(
+                            "Effectuation: clearing staged metadata for {} — \
+                             duplicate field '{}' with {}",
+                            self.validators[j].metadata.soma_address,
+                            field,
+                            self.validators[i].metadata.soma_address,
+                        );
+                        skip_indices.insert(j);
+                    } else if self.validators[i].has_staged_metadata() {
+                        error!(
+                            "Effectuation: clearing staged metadata for {} — \
+                             duplicate field '{}' with {}",
+                            self.validators[i].metadata.soma_address,
+                            field,
+                            self.validators[j].metadata.soma_address,
+                        );
+                        skip_indices.insert(i);
+                    }
+                }
+            }
         }
 
-        // Optional: Check for duplicates *after* all changes are applied
-        self.check_for_duplicate_metadata_post_effectuation();
-    }
-
-    /// Helper function to check for duplicate metadata after effectuation (optional)
-    fn check_for_duplicate_metadata_post_effectuation(&self) {
-        let mut seen_protocol_keys = HashSet::new();
-        let mut seen_network_keys = HashSet::new();
-        let mut seen_worker_keys = HashSet::new();
-        let mut seen_net_addrs = HashSet::new();
-        let mut seen_p2p_addrs = HashSet::new();
-        // Add others as needed (primary, worker addr)
-
-        for validator in &self.validators {
-            let meta = &validator.metadata;
-            if !seen_protocol_keys.insert(meta.protocol_pubkey.as_bytes()) {
-                error!(
-                    "Duplicate protocol key found after effectuation: {:?}",
-                    meta.protocol_pubkey
-                );
-                // Potentially panic or handle error, though epoch change is usually non-recoverable
+        // Apply staged metadata for non-skipped validators, clear for skipped ones
+        for (i, validator) in self.validators.iter_mut().enumerate() {
+            if skip_indices.contains(&i) {
+                validator.clear_staged_metadata();
+            } else {
+                validator.effectuate_staged_metadata();
             }
-            if !seen_network_keys.insert(meta.network_pubkey.to_bytes()) {
-                error!("Duplicate network key found after effectuation: {:?}", meta.network_pubkey);
-            }
-            if !seen_worker_keys.insert(meta.worker_pubkey.to_bytes()) {
-                error!("Duplicate worker key found after effectuation: {:?}", meta.worker_pubkey);
-            }
-            if !seen_net_addrs.insert(meta.net_address.to_string()) {
-                // Use string representation for Multiaddr comparison
-                error!("Duplicate network address found after effectuation: {}", meta.net_address);
-            }
-            if !seen_p2p_addrs.insert(meta.p2p_address.to_string()) {
-                error!("Duplicate P2P address found after effectuation: {}", meta.p2p_address);
-            }
-            // Add checks for primary_address, worker_address if they exist and need uniqueness
         }
     }
 
@@ -745,7 +915,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
-    ) -> BTreeMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
         // Only consensus validators participate in rewards
         let total_voting_power: u64 = self.validators.iter().map(|v| v.voting_power).sum();
 
@@ -835,7 +1005,7 @@ impl ValidatorSet {
         adjusted_rewards: &[u64],
         total_rewards: &mut u64,
         new_epoch: u64,
-    ) -> BTreeMap<SomaAddress, StakedSoma> {
+    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
         assert!(!self.validators.is_empty(), "Validator set empty");
 
         let mut rewards = BTreeMap::new();
@@ -1186,6 +1356,44 @@ impl ValidatorSet {
         // Clear pending removals
         self.pending_removals.clear();
     }
+}
+
+/// Compare two `ValidatorMetadata` instances for duplicate fields.
+/// Returns `Some(field_name)` if any uniqueness-critical field matches.
+fn check_metadata_fields_duplicate(
+    a: &ValidatorMetadata,
+    b: &ValidatorMetadata,
+) -> Option<String> {
+    // Same address means same validator — skip
+    if a.soma_address == b.soma_address {
+        return None;
+    }
+    if a.protocol_pubkey.as_bytes() == b.protocol_pubkey.as_bytes() {
+        return Some("protocol_pubkey".to_string());
+    }
+    if a.network_pubkey.to_bytes() == b.network_pubkey.to_bytes() {
+        return Some("network_pubkey".to_string());
+    }
+    if a.worker_pubkey.to_bytes() == b.worker_pubkey.to_bytes() {
+        return Some("worker_pubkey".to_string());
+    }
+    // Cross-key checks: network_pubkey should not equal another's worker_pubkey
+    if a.network_pubkey.to_bytes() == b.worker_pubkey.to_bytes() {
+        return Some("network_pubkey/worker_pubkey".to_string());
+    }
+    if a.worker_pubkey.to_bytes() == b.network_pubkey.to_bytes() {
+        return Some("worker_pubkey/network_pubkey".to_string());
+    }
+    if a.net_address == b.net_address {
+        return Some("net_address".to_string());
+    }
+    if a.p2p_address == b.p2p_address {
+        return Some("p2p_address".to_string());
+    }
+    if a.primary_address == b.primary_address {
+        return Some("primary_address".to_string());
+    }
+    None
 }
 
 fn sort_removal_list(withdraw_list: &mut [usize]) {

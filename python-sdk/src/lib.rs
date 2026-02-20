@@ -324,12 +324,11 @@ impl PySomaClient {
                         rpc::types::ObjectType::StakedSoma
                     }
                     "target" => rpc::types::ObjectType::Target,
-                    "submission" => rpc::types::ObjectType::Submission,
                     "challenge" => rpc::types::ObjectType::Challenge,
                     "systemstate" | "system_state" => rpc::types::ObjectType::SystemState,
                     _ => {
                         return Err(to_py_val_err(format!(
-                            "Unknown object type '{}'. Valid types: coin, staked_soma, target, submission, challenge, system_state",
+                            "Unknown object type '{}'. Valid types: coin, staked_soma, target, challenge, system_state",
                             ot
                         )));
                     }
@@ -1223,7 +1222,7 @@ impl PyWalletContext {
     // -----------------------------------------------------------------------
 
     /// Build an AddValidator transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, pubkey_bytes, network_pubkey_bytes, worker_pubkey_bytes, net_address, p2p_address, primary_address, proxy_address, gas=None))]
+    #[pyo3(signature = (sender, pubkey_bytes, network_pubkey_bytes, worker_pubkey_bytes, proof_of_possession, net_address, p2p_address, primary_address, proxy_address, gas=None))]
     fn build_add_validator<'py>(
         &self,
         py: Python<'py>,
@@ -1231,6 +1230,7 @@ impl PyWalletContext {
         pubkey_bytes: Vec<u8>,
         network_pubkey_bytes: Vec<u8>,
         worker_pubkey_bytes: Vec<u8>,
+        proof_of_possession: Vec<u8>,
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
@@ -1246,6 +1246,7 @@ impl PyWalletContext {
                 pubkey_bytes,
                 network_pubkey_bytes,
                 worker_pubkey_bytes,
+                proof_of_possession,
                 net_address,
                 p2p_address,
                 primary_address,
@@ -1289,6 +1290,7 @@ impl PyWalletContext {
         next_epoch_protocol_pubkey=None,
         next_epoch_worker_pubkey=None,
         next_epoch_network_pubkey=None,
+        next_epoch_proof_of_possession=None,
     ))]
     fn build_update_validator_metadata<'py>(
         &self,
@@ -1302,6 +1304,7 @@ impl PyWalletContext {
         next_epoch_protocol_pubkey: Option<Vec<u8>>,
         next_epoch_worker_pubkey: Option<Vec<u8>>,
         next_epoch_network_pubkey: Option<Vec<u8>>,
+        next_epoch_proof_of_possession: Option<Vec<u8>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
@@ -1317,6 +1320,7 @@ impl PyWalletContext {
                     next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey,
                     next_epoch_network_pubkey,
+                    next_epoch_proof_of_possession,
                 });
             let tx_data = build_tx_data(&wallet, sender_addr, kind, gas_ref).await?;
             let bytes = bcs::to_bytes(&tx_data).map_err(to_py_err)?;

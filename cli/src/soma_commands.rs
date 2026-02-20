@@ -51,6 +51,7 @@ use types::{
 use types::{
     config::{Config, SOMA_GENESIS_FILENAME, network_config::ConfigBuilder},
     crypto::SomaKeyPair,
+    system_state::SystemStateTrait as _,
 };
 use url::Url;
 
@@ -685,7 +686,7 @@ impl SomaCommand {
                                 .get_latest_system_state()
                                 .await
                                 .ok()
-                                .map(|s| s.epoch);
+                                .map(|s| s.epoch());
                             let balance = if let Some(addr) = &active_address {
                                 client.get_balance(addr).await.ok()
                             } else {

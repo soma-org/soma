@@ -278,7 +278,7 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         // System transactions
         TransactionKind::ChangeEpoch(_) => Box::new(ChangeEpochExecutor::new()),
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
-        TransactionKind::ConsensusCommitPrologue(_) => Box::new(ConsensusCommitExecutor::new()),
+        TransactionKind::ConsensusCommitPrologueV1(_) => Box::new(ConsensusCommitExecutor::new()),
 
         // Coin and object transactions
         TransactionKind::TransferCoin { .. } | TransactionKind::PayCoins { .. } => {

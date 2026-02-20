@@ -708,6 +708,7 @@ impl From<crate::types::AddValidatorArgs> for AddValidator {
             p2p_address: Some(value.p2p_address.into()),
             primary_address: Some(value.primary_address.into()),
             proxy_address: Some(value.proxy_address.into()),
+            proof_of_possession: Some(value.proof_of_possession.into()),
         }
     }
 }
@@ -731,6 +732,11 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
                 .worker_pubkey_bytes
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("worker_pubkey_bytes"))?
+                .into(),
+            proof_of_possession: value
+                .proof_of_possession
+                .clone()
+                .ok_or_else(|| TryFromProtoError::missing("proof_of_possession"))?
                 .into(),
             net_address: value
                 .net_address
@@ -788,6 +794,9 @@ impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
+            next_epoch_proof_of_possession: value
+                .next_epoch_proof_of_possession
+                .map(|v| v.into()),
         }
     }
 }
@@ -804,6 +813,10 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),
+            next_epoch_proof_of_possession: value
+                .next_epoch_proof_of_possession
+                .clone()
+                .map(|v| v.into()),
         })
     }
 }

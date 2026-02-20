@@ -5,7 +5,7 @@ use types::{
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
     object::{Object, ObjectID, Owner},
-    system_state::SystemState,
+    system_state::{SystemState, SystemStateTrait},
     target::{generate_target, make_target_seed},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
@@ -30,11 +30,11 @@ impl FeeCalculator for ChangeEpochExecutor {}
 #[cfg(msim)]
 fn maybe_inject_advance_epoch_failure(
     result: ExecutionResult<
-        std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSoma>,
+        std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSomaV1>,
     >,
     new_epoch: u64,
 ) -> ExecutionResult<
-    std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSoma>,
+    std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSomaV1>,
 > {
     let should_fail = utils::fp::handle_fail_point_if("advance_epoch_result_injection");
     if should_fail {
@@ -120,17 +120,17 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 }
 
                 // Create initial targets for the new epoch if active models exist
-                if !state.model_registry.active_models.is_empty() {
-                    let initial_targets = state.parameters.target_initial_targets_per_epoch;
-                    let reward_per_target = state.target_state.reward_per_target;
-                    let models_per_target = state.parameters.target_models_per_target;
-                    let embedding_dim = state.parameters.target_embedding_dim;
-                    let new_epoch = state.epoch;
+                if !state.model_registry().active_models.is_empty() {
+                    let initial_targets = state.parameters().target_initial_targets_per_epoch;
+                    let reward_per_target = state.target_state().reward_per_target;
+                    let models_per_target = state.parameters().target_models_per_target;
+                    let embedding_dim = state.parameters().target_embedding_dim;
+                    let new_epoch = state.epoch();
 
                     let mut targets_created = 0u64;
                     for _ in 0..initial_targets {
                         // Check emission pool has sufficient funds
-                        if state.emission_pool.balance < reward_per_target {
+                        if state.emission_pool().balance < reward_per_target {
                             tracing::warn!(
                                 "Emission pool depleted at epoch {}, stopping target generation at {} targets",
                                 new_epoch,
@@ -144,18 +144,18 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
                         match generate_target(
                             seed,
-                            &state.model_registry,
-                            &state.target_state,
+                            &state.model_registry(),
+                            &state.target_state(),
                             models_per_target,
                             embedding_dim,
                             new_epoch,
                         ) {
                             Ok(target) => {
                                 // Deduct reward from emission pool
-                                state.emission_pool.balance -= reward_per_target;
+                                state.emission_pool_mut().balance -= reward_per_target;
 
                                 // Record that a target was generated (for difficulty adjustment)
-                                state.target_state.record_target_generated();
+                                state.target_state_mut().record_target_generated();
 
                                 // Create target as shared object
                                 let target_object = Object::new_target_object(

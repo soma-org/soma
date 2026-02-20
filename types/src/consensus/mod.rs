@@ -125,7 +125,7 @@ pub enum ConsensusTransactionKind {
 
     CheckpointSignature(Box<CheckpointSignatureMessage>),
 
-    CapabilityNotification(AuthorityCapabilities),
+    CapabilityNotification(AuthorityCapabilitiesV1),
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
@@ -159,11 +159,11 @@ impl Debug for ConsensusTransactionKey {
 /// Used to advertise capabilities of each authority via consensus. This allows validators to
 /// negotiate the creation of the ChangeEpoch transaction.
 #[derive(Serialize, Deserialize, Clone, Hash)]
-pub struct AuthorityCapabilities {
+pub struct AuthorityCapabilitiesV1 {
     /// Originating authority - must match transaction source authority from consensus.
     pub authority: AuthorityName,
     /// Generation number set by sending authority. Used to determine which of multiple
-    /// AuthorityCapabilities messages from the same authority is the most recent.
+    /// AuthorityCapabilitiesV1 messages from the same authority is the most recent.
     ///
     /// (Currently, we just set this to the current time in milliseconds since the epoch, but this
     /// should not be interpreted as a timestamp.)
@@ -173,9 +173,9 @@ pub struct AuthorityCapabilities {
     pub supported_protocol_versions: SupportedProtocolVersionsWithHashes,
 }
 
-impl Debug for AuthorityCapabilities {
+impl Debug for AuthorityCapabilitiesV1 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuthorityCapabilities")
+        f.debug_struct("AuthorityCapabilitiesV1")
             .field("authority", &self.authority.concise())
             .field("generation", &self.generation)
             .field("supported_protocol_versions", &self.supported_protocol_versions)
@@ -183,7 +183,7 @@ impl Debug for AuthorityCapabilities {
     }
 }
 
-impl AuthorityCapabilities {
+impl AuthorityCapabilitiesV1 {
     pub fn new(
         authority: AuthorityName,
         chain: Chain,
@@ -239,7 +239,7 @@ impl ConsensusTransaction {
         Self { tracking_id, kind: ConsensusTransactionKind::CheckpointSignature(Box::new(data)) }
     }
 
-    pub fn new_capability_notification(capabilities: AuthorityCapabilities) -> Self {
+    pub fn new_capability_notification(capabilities: AuthorityCapabilitiesV1) -> Self {
         let mut hasher = DefaultHasher::new();
         capabilities.hash(&mut hasher);
         let tracking_id = hasher.finish().to_le_bytes();
@@ -319,7 +319,7 @@ impl ConsensusTransaction {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct ConsensusCommitPrologue {
+pub struct ConsensusCommitPrologueV1 {
     /// Epoch of the commit prologue transaction
     pub epoch: u64,
 

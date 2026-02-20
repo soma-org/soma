@@ -67,7 +67,7 @@ use types::{
     },
     committee::{Authority, Committee, EpochId},
     consensus::{
-        AuthorityCapabilities, ConsensusCommitPrologue, ConsensusPosition, ConsensusTransaction,
+        AuthorityCapabilitiesV1, ConsensusCommitPrologueV1, ConsensusPosition, ConsensusTransaction,
         ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef,
         validator_set::ValidatorSet,
     },
@@ -138,7 +138,7 @@ pub enum ConsensusCertificateResult {
     SuiTransaction(VerifiedExecutableTransaction),
     // The transaction should be re-processed at a future commit, specified by the DeferralKey
     // Deferred(DeferralKey),
-    /// Everything else, e.g. AuthorityCapabilities, CheckpointSignatures, etc.
+    /// Everything else, e.g. AuthorityCapabilitiesV1, CheckpointSignatures, etc.
     ConsensusMessage,
     /// A system message in consensus was ignored (e.g. because of end of epoch).
     IgnoredSystem,
@@ -424,7 +424,7 @@ pub struct AuthorityEpochTables {
     pub running_root_state_hash: DBMap<CheckpointSequenceNumber, GlobalStateHash>,
 
     /// Record of the capabilities advertised by each authority.
-    authority_capabilities: DBMap<AuthorityName, AuthorityCapabilities>,
+    authority_capabilities: DBMap<AuthorityName, AuthorityCapabilitiesV1>,
 
     /// Contains a single key, which overrides the value of
     /// ProtocolConfig::buffer_stake_for_protocol_upgrade_bps
@@ -1556,7 +1556,7 @@ impl AuthorityPerEpochStore {
     }
 
     /// Record most recently advertised capabilities of all authorities
-    pub fn record_capabilities(&self, capabilities: &AuthorityCapabilities) -> SomaResult {
+    pub fn record_capabilities(&self, capabilities: &AuthorityCapabilitiesV1) -> SomaResult {
         info!("received capabilities {:?}", capabilities);
         let authority = &capabilities.authority;
         let tables = self.tables()?;
@@ -1575,7 +1575,7 @@ impl AuthorityPerEpochStore {
         Ok(())
     }
 
-    pub fn get_capabilities(&self) -> SomaResult<Vec<AuthorityCapabilities>> {
+    pub fn get_capabilities(&self) -> SomaResult<Vec<AuthorityCapabilitiesV1>> {
         Ok(self
             .tables()?
             .authority_capabilities
@@ -1738,7 +1738,7 @@ impl AuthorityPerEpochStore {
             }
             SequencedConsensusTransactionKind::External(ConsensusTransaction {
                 kind:
-                    ConsensusTransactionKind::CapabilityNotification(AuthorityCapabilities {
+                    ConsensusTransactionKind::CapabilityNotification(AuthorityCapabilitiesV1 {
                         authority,
                         ..
                     }),

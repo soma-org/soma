@@ -8,7 +8,7 @@ mod delegation_tests {
         error::SomaError,
         system_state::{
             SystemParameters, SystemState,
-            staking::StakedSoma,
+            staking::StakedSomaV1,
             test_utils::{
                 self, add_validator, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
                 assert_validator_total_stake_amounts, create_test_system_state,
@@ -66,13 +66,13 @@ mod delegation_tests {
     fn remove_validator_candidate(system_state: &mut SystemState, address: SomaAddress) {
         // Find and remove the validator from pending_active_validators
         let idx = system_state
-            .validators
+            .validators()
             .pending_validators
             .iter()
             .position(|v| v.metadata.soma_address == address)
             .expect("Validator candidate not found");
 
-        system_state.validators.pending_validators.remove(idx);
+        system_state.validators_mut().pending_validators.remove(idx);
     }
 
     #[test]
@@ -184,14 +184,14 @@ mod delegation_tests {
 
         // Get validator's staked tokens
         let validator_pool_id = system_state
-            .validators
+            .validators()
             .staking_pool_mappings
             .iter()
             .find_map(|(id, addr)| if *addr == validator_addr_1() { Some(id) } else { None })
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state.validators.inactive_validators.get(validator_pool_id).unwrap();
+        let validator = system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator should still have their self-stake + rewards.
         // v1 gets ~53.336 SOMA reward total; validator owns 100/200 of pool, same as staker.
@@ -236,14 +236,14 @@ mod delegation_tests {
 
         // Get validator's staked tokens
         let validator_pool_id = system_state
-            .validators
+            .validators()
             .staking_pool_mappings
             .iter()
             .find_map(|(id, addr)| if *addr == validator_addr_1() { Some(id) } else { None })
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state.validators.inactive_validators.get(validator_pool_id).unwrap();
+        let validator = system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator retains their 100 SOMA + same reward share as staker
         assert_eq!(
@@ -269,7 +269,7 @@ mod delegation_tests {
         let _ = advance_epoch_with_rewards(&mut system_state, 0).unwrap();
 
         // Verify validator is no longer active
-        assert!(!system_state.validators.is_active_validator(validator_addr_1()));
+        assert!(!system_state.validators().is_active_validator(validator_addr_1()));
 
         // Try to add stake to the inactive validator - should fail
         let result = system_state.request_add_stake(
@@ -391,7 +391,7 @@ mod delegation_tests {
 
         // Check exchange rates
         let validator = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == validator_addr_2())

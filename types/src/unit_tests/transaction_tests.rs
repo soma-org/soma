@@ -3,7 +3,7 @@ use crate::{
     base::SomaAddress,
     challenge::ChallengeId,
     checksum::Checksum,
-    consensus::ConsensusCommitPrologue,
+    consensus::ConsensusCommitPrologueV1,
     crypto::{
         DecryptionKey, default_hash, get_key_pair,
     },
@@ -162,7 +162,7 @@ fn test_transaction_kind_classification() {
     assert!(!genesis.is_submission_tx());
     assert!(!genesis.is_challenge_tx());
 
-    let ccp = TransactionKind::ConsensusCommitPrologue(ConsensusCommitPrologue {
+    let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
         round: 1,
         sub_dag_index: None,
@@ -191,6 +191,7 @@ fn test_transaction_kind_classification() {
         p2p_address: vec![],
         primary_address: vec![],
         proxy_address: vec![],
+        proof_of_possession: vec![],
     });
     assert!(add_val.is_validator_tx());
     assert!(!add_val.is_system_tx());
@@ -333,9 +334,9 @@ fn test_system_tx_has_no_gas() {
     assert!(genesis_data.gas().is_empty());
     assert!(genesis_data.is_system_tx());
 
-    // ConsensusCommitPrologue
-    let ccp_data = make_system_tx_data(TransactionKind::ConsensusCommitPrologue(
-        ConsensusCommitPrologue {
+    // ConsensusCommitPrologueV1
+    let ccp_data = make_system_tx_data(TransactionKind::ConsensusCommitPrologueV1(
+        ConsensusCommitPrologueV1 {
             epoch: 0,
             round: 1,
             sub_dag_index: None,
@@ -399,7 +400,7 @@ fn test_all_tx_kinds_bcs_roundtrip() {
     let kinds: Vec<TransactionKind> = vec![
         // System
         TransactionKind::Genesis(GenesisTransaction { objects: vec![] }),
-        TransactionKind::ConsensusCommitPrologue(ConsensusCommitPrologue {
+        TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
             epoch: 1,
             round: 2,
             sub_dag_index: Some(3),
@@ -423,6 +424,7 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             p2p_address: vec![50],
             primary_address: vec![60],
             proxy_address: vec![70],
+            proof_of_possession: vec![80],
         }),
         TransactionKind::RemoveValidator(RemoveValidatorArgs {
             pubkey_bytes: vec![10],
@@ -580,12 +582,12 @@ fn test_change_epoch_transaction() {
 }
 
 // ---------------------------------------------------------------------------
-// 11. ConsensusCommitPrologue transaction classification
+// 11. ConsensusCommitPrologueV1 transaction classification
 // ---------------------------------------------------------------------------
 
 #[test]
 fn test_consensus_commit_prologue_transaction() {
-    let ccp = ConsensusCommitPrologue {
+    let ccp = ConsensusCommitPrologueV1 {
         epoch: 3,
         round: 42,
         sub_dag_index: None,
@@ -593,7 +595,7 @@ fn test_consensus_commit_prologue_transaction() {
         consensus_commit_digest: ConsensusCommitDigest::new([7; 32]),
         additional_state_digest: AdditionalConsensusStateDigest::new([8; 32]),
     };
-    let data = make_system_tx_data(TransactionKind::ConsensusCommitPrologue(ccp));
+    let data = make_system_tx_data(TransactionKind::ConsensusCommitPrologueV1(ccp));
 
     assert!(data.is_system_tx());
     assert!(data.is_consensus_commit_prologue());
@@ -639,6 +641,7 @@ fn test_shared_input_objects() {
         p2p_address: vec![],
         primary_address: vec![],
         proxy_address: vec![],
+        proof_of_possession: vec![],
     });
     let shared: Vec<_> = add_val.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);
@@ -799,9 +802,9 @@ fn test_execution_parts() {
     let (data, sender) = make_transfer_coin_data();
     let (kind, exec_sender, gas) = data.execution_parts();
 
-    assert_eq!(kind, data.kind);
+    assert_eq!(&kind, data.kind());
     assert_eq!(exec_sender, sender);
-    assert_eq!(gas, data.gas_payment);
+    assert_eq!(gas, data.gas());
 }
 
 // ---------------------------------------------------------------------------
@@ -976,6 +979,7 @@ fn test_requires_system_state() {
         p2p_address: vec![],
         primary_address: vec![],
         proxy_address: vec![],
+        proof_of_possession: vec![],
     });
     assert!(add_val.requires_system_state());
 
@@ -1040,7 +1044,7 @@ fn test_input_objects_system_tx() {
     assert!(inputs.is_empty(), "Genesis should have no input objects");
 
     // CCP has no input objects
-    let ccp = TransactionKind::ConsensusCommitPrologue(ConsensusCommitPrologue {
+    let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
         round: 1,
         sub_dag_index: None,

@@ -10,7 +10,7 @@
 
 use types::{
     effects::ExecutionFailureStatus,
-    system_state::SystemState,
+    system_state::{SystemState, SystemStateTrait as _},
 };
 
 // =============================================================================
@@ -30,10 +30,10 @@ async fn get_genesis_system_state() -> SystemState {
 #[tokio::test]
 async fn test_advance_epoch_basic() {
     let mut state = get_genesis_system_state().await;
-    assert_eq!(state.epoch, 0);
+    assert_eq!(state.epoch(), 0);
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
@@ -47,21 +47,21 @@ async fn test_advance_epoch_basic() {
 
     assert!(result.is_ok(), "advance_epoch should succeed: {:?}", result.err());
 
-    assert_eq!(state.epoch, 1, "Epoch should be incremented to 1");
+    assert_eq!(state.epoch(), 1, "Epoch should be incremented to 1");
     assert!(
-        state.epoch_start_timestamp_ms >= 1_000_000,
+        state.epoch_start_timestamp_ms() >= 1_000_000,
         "Timestamp should be updated"
     );
-    assert!(!state.safe_mode, "Should not be in safe mode after successful advance");
+    assert!(!state.safe_mode(), "Should not be in safe mode after successful advance");
 }
 
 #[tokio::test]
 async fn test_advance_epoch_wrong_epoch_rejected() {
     let mut state = get_genesis_system_state().await;
-    assert_eq!(state.epoch, 0);
+    assert_eq!(state.epoch(), 0);
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
@@ -83,7 +83,7 @@ async fn test_advance_epoch_returns_validator_rewards() {
     let mut state = get_genesis_system_state().await;
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
@@ -94,7 +94,7 @@ async fn test_advance_epoch_returns_validator_rewards() {
     let validator_rewards = result.unwrap();
     // With non-zero fees + emissions, validators should receive some rewards
     // (unless validator_reward_allocation_bps is 0)
-    if state.parameters.validator_reward_allocation_bps > 0 {
+    if state.parameters().validator_reward_allocation_bps > 0 {
         assert!(
             !validator_rewards.is_empty(),
             "Validators should receive rewards when fees > 0 and allocation_bps > 0"
@@ -109,27 +109,27 @@ async fn test_advance_epoch_returns_validator_rewards() {
 #[tokio::test]
 async fn test_advance_epoch_emission_pool_decreases() {
     let mut state = get_genesis_system_state().await;
-    let initial_emission = state.emission_pool.balance;
-    let emission_per_epoch = state.emission_pool.emission_per_epoch;
+    let initial_emission = state.emission_pool().balance;
+    let emission_per_epoch = state.emission_pool().emission_per_epoch;
 
     assert!(initial_emission > 0, "Genesis emission pool should be positive");
     assert!(emission_per_epoch > 0, "Emission per epoch should be positive");
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
     // Timestamp must be >= prev_epoch_start + epoch_duration_ms to trigger emissions
-    let future_timestamp = state.epoch_start_timestamp_ms + state.parameters.epoch_duration_ms + 1;
+    let future_timestamp = state.epoch_start_timestamp_ms() + state.parameters().epoch_duration_ms + 1;
     let _ = state.advance_epoch(1, &protocol_config, 0, future_timestamp, vec![]);
 
     // Emission pool should decrease by approximately emission_per_epoch
     // (some goes to rewards, some to targets)
     assert!(
-        state.emission_pool.balance < initial_emission,
+        state.emission_pool().balance < initial_emission,
         "Emission pool should decrease after epoch: {} >= {}",
-        state.emission_pool.balance,
+        state.emission_pool().balance,
         initial_emission
     );
 }
@@ -141,25 +141,25 @@ async fn test_advance_epoch_emission_pool_decreases() {
 #[tokio::test]
 async fn test_advance_epoch_safe_mode_basic() {
     let mut state = get_genesis_system_state().await;
-    let initial_epoch = state.epoch;
+    let initial_epoch = state.epoch();
     let fees = 5000u64;
     let timestamp = 2_000_000u64;
 
     // Call safe mode directly
     state.advance_epoch_safe_mode(initial_epoch + 1, fees, timestamp);
 
-    assert_eq!(state.epoch, initial_epoch + 1, "Epoch should still advance in safe mode");
-    assert!(state.safe_mode, "Should be in safe mode");
+    assert_eq!(state.epoch(), initial_epoch + 1, "Epoch should still advance in safe mode");
+    assert!(state.safe_mode(), "Should be in safe mode");
     assert_eq!(
-        state.safe_mode_accumulated_fees, fees,
+        state.safe_mode_accumulated_fees(), fees,
         "Fees should accumulate in safe mode"
     );
     assert!(
-        state.safe_mode_accumulated_emissions > 0,
+        state.safe_mode_accumulated_emissions() > 0,
         "Emissions should accumulate in safe mode (emission_per_epoch > 0)"
     );
     assert_eq!(
-        state.epoch_start_timestamp_ms, timestamp,
+        state.epoch_start_timestamp_ms(), timestamp,
         "Timestamp should be updated in safe mode"
     );
 }
@@ -170,19 +170,19 @@ async fn test_advance_epoch_safe_mode_accumulates_across_epochs() {
 
     // Enter safe mode for multiple epochs
     state.advance_epoch_safe_mode(1, 1000, 1_000_000);
-    let first_fees = state.safe_mode_accumulated_fees;
-    let first_emissions = state.safe_mode_accumulated_emissions;
+    let first_fees = state.safe_mode_accumulated_fees();
+    let first_emissions = state.safe_mode_accumulated_emissions();
 
     state.advance_epoch_safe_mode(2, 2000, 2_000_000);
 
-    assert_eq!(state.epoch, 2);
+    assert_eq!(state.epoch(), 2);
     assert_eq!(
-        state.safe_mode_accumulated_fees,
+        state.safe_mode_accumulated_fees(),
         first_fees + 2000,
         "Fees should accumulate across safe mode epochs"
     );
     assert!(
-        state.safe_mode_accumulated_emissions > first_emissions,
+        state.safe_mode_accumulated_emissions() > first_emissions,
         "Emissions should accumulate across safe mode epochs"
     );
 }
@@ -193,11 +193,11 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
 
     // Enter safe mode
     state.advance_epoch_safe_mode(1, 5000, 1_000_000);
-    assert!(state.safe_mode);
-    assert_eq!(state.safe_mode_accumulated_fees, 5000);
+    assert!(state.safe_mode());
+    assert_eq!(state.safe_mode_accumulated_fees(), 5000);
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
@@ -205,13 +205,13 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
     let result = state.advance_epoch(2, &protocol_config, 1000, 2_000_000, vec![]);
     assert!(result.is_ok(), "Recovery advance_epoch should succeed");
 
-    assert!(!state.safe_mode, "Should exit safe mode after successful advance");
+    assert!(!state.safe_mode(), "Should exit safe mode after successful advance");
     assert_eq!(
-        state.safe_mode_accumulated_fees, 0,
+        state.safe_mode_accumulated_fees(), 0,
         "Safe mode fees should be drained on recovery"
     );
     assert_eq!(
-        state.safe_mode_accumulated_emissions, 0,
+        state.safe_mode_accumulated_emissions(), 0,
         "Safe mode emissions should be drained on recovery"
     );
 }
@@ -225,17 +225,17 @@ async fn test_advance_epoch_hit_rate_tracking() {
     let mut state = get_genesis_system_state().await;
 
     // Simulate some hits and targets
-    state.target_state.record_target_generated();
-    state.target_state.record_target_generated();
-    state.target_state.record_hit();
+    state.target_state_mut().record_target_generated();
+    state.target_state_mut().record_target_generated();
+    state.target_state_mut().record_hit();
 
-    let targets_before = state.target_state.targets_generated_this_epoch;
-    let hits_before = state.target_state.hits_this_epoch;
+    let targets_before = state.target_state().targets_generated_this_epoch;
+    let hits_before = state.target_state().hits_this_epoch;
     assert_eq!(targets_before, 2);
     assert_eq!(hits_before, 1);
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 
@@ -243,11 +243,11 @@ async fn test_advance_epoch_hit_rate_tracking() {
 
     // After epoch advance, hit rate counters should be reset for the new epoch
     assert_eq!(
-        state.target_state.hits_this_epoch, 0,
+        state.target_state().hits_this_epoch, 0,
         "Hits should be reset after epoch advance"
     );
     assert_eq!(
-        state.target_state.targets_generated_this_epoch, 0,
+        state.target_state().targets_generated_this_epoch, 0,
         "Targets generated should be reset after epoch advance"
     );
 }
@@ -263,7 +263,7 @@ async fn test_advance_epoch_u128_overflow_protection() {
     let mut state = get_genesis_system_state().await;
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version.into(),
+        state.protocol_version().into(),
         protocol_config::Chain::Mainnet,
     );
 

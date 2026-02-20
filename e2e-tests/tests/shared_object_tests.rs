@@ -29,6 +29,7 @@ use types::{
     object::{ObjectID, Owner},
     quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
     submission::SubmissionManifest,
+    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{
         ClaimRewardsArgs, SubmitDataArgs, Transaction, TransactionData, TransactionKind,
@@ -177,8 +178,8 @@ async fn test_shared_object_mutation_via_submit_data() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find an open target
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -421,8 +422,8 @@ async fn test_shared_object_status_transition_via_claim() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find and fill an open target
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -606,8 +607,8 @@ async fn test_target_version_increments_on_mutations() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find an open target and get its initial version
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -807,8 +808,8 @@ async fn test_transaction_replay_idempotency() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find an open target
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -974,8 +975,8 @@ async fn test_racing_miners_concurrent_shared_mutations() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find an open target
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -1120,8 +1121,8 @@ async fn test_shared_object_dependency_tracking() {
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // Find an open target
     let client = test_cluster.wallet.get_client().await.unwrap();

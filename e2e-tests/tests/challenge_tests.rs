@@ -30,6 +30,7 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
     submission::SubmissionManifest,
+    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{
         ClaimRewardsArgs, InitiateChallengeArgs, SubmitDataArgs, Transaction, TransactionData,
@@ -188,8 +189,8 @@ async fn fill_target_with_distance(
                 .expect("Should be able to get SystemState")
         });
 
-    let embedding_dim = system_state.parameters.target_embedding_dim as usize;
-    let distance_threshold = system_state.target_state.distance_threshold.as_scalar();
+    let embedding_dim = system_state.parameters().target_embedding_dim as usize;
+    let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
     // List open targets
     let client = test_cluster.wallet.get_client().await.unwrap();
@@ -381,7 +382,7 @@ async fn test_initiate_challenge_locks_bond() {
                 .get_system_state_object_for_testing()
                 .expect("Should get SystemState")
         });
-    let bond_per_byte = system_state.parameters.challenger_bond_per_byte;
+    let bond_per_byte = system_state.parameters().challenger_bond_per_byte;
     let data_size = 1024u64; // From make_submission_manifest
     let expected_bond = data_size * bond_per_byte;
 
@@ -530,7 +531,7 @@ async fn test_report_submission_transaction() {
                 .expect("Should get SystemState")
         });
 
-    let validator_address = system_state.validators.validators[0].metadata.soma_address;
+    let validator_address = system_state.validators().validators[0].metadata.soma_address;
     info!("Validator address: {}", validator_address);
 
     // Non-validator tries to report - should fail
@@ -604,7 +605,7 @@ async fn test_claim_rewards_forfeits_on_quorum_reports() {
         });
 
     // Verify the quorum threshold is calculated correctly
-    let num_validators = system_state.validators.validators.len();
+    let num_validators = system_state.validators().validators.len();
     info!("Number of validators: {}", num_validators);
 
     // The quorum logic is tested in unit tests. Here we just verify the

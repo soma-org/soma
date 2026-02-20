@@ -138,7 +138,7 @@ impl MockAuthorityApi {
         &self,
         tx_digest: types::digests::TransactionDigest,
     ) -> SignedTransactionEffects {
-        let effects = TransactionEffects {
+        let effects = TransactionEffects::V1(types::effects::TransactionEffectsV1 {
             status: ExecutionStatus::Success,
             executed_epoch: self.epoch,
             transaction_fee: TransactionFee::default(),
@@ -148,7 +148,7 @@ impl MockAuthorityApi {
             version: types::object::OBJECT_START_VERSION,
             changed_objects: vec![],
             unchanged_shared_objects: vec![],
-        };
+        });
         let sig = AuthoritySignInfo::new(
             self.epoch,
             &effects,

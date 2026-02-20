@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     base::SomaAddress,
-    model::{Model, ModelId},
+    model::{ModelV1, ModelId},
     object::ObjectID,
 };
 
@@ -17,17 +17,17 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ModelRegistry {
     /// Active models: revealed and eligible for target selection.
-    pub active_models: BTreeMap<ModelId, Model>,
+    pub active_models: BTreeMap<ModelId, ModelV1>,
 
     /// Pending models: committed, awaiting reveal in the next epoch.
-    pub pending_models: BTreeMap<ModelId, Model>,
+    pub pending_models: BTreeMap<ModelId, ModelV1>,
 
     /// Maps staking pool ObjectID -> ModelId (for stake routing, mirrors ValidatorSet pattern).
     pub staking_pool_mappings: BTreeMap<ObjectID, ModelId>,
 
     /// Inactive models: pool kept alive for delegator withdrawals
     /// (mirrors ValidatorSet.inactive_validators).
-    pub inactive_models: BTreeMap<ModelId, Model>,
+    pub inactive_models: BTreeMap<ModelId, ModelV1>,
 
     /// Sum of all active model staking pool balances (cache for weighted selection).
     pub total_model_stake: u64,

@@ -16,7 +16,7 @@ use types::{
     effects::{TransactionEffects, TransactionEffectsAPI},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     storage::object_store::ObjectStore,
-    system_state::{SystemState, validator::Validator},
+    system_state::{SystemState, SystemStateTrait as _, validator::Validator},
     transaction::{Transaction, TransactionData, TransactionKind},
 };
 use utils::logging::init_tracing;
@@ -104,9 +104,9 @@ impl StressTestRunner {
     pub fn pick_random_active_validator(&mut self) -> Validator {
         let system_state = self.system_state();
         system_state
+            .validators()
             .validators
-            .validators
-            .get(self.rng.gen_range(0..system_state.validators.validators.len()))
+            .get(self.rng.gen_range(0..system_state.validators().validators.len()))
             .unwrap()
             .clone()
     }
@@ -142,7 +142,7 @@ impl StressTestRunner {
         let pre_state_summary = self.system_state();
         self.test_cluster.trigger_reconfiguration().await;
         let post_state_summary = self.system_state();
-        info!("Changing epoch form {} to {}", pre_state_summary.epoch, post_state_summary.epoch);
+        info!("Changing epoch form {} to {}", pre_state_summary.epoch(), post_state_summary.epoch());
     }
 
     pub async fn get_created_object_of_type(
@@ -183,7 +183,7 @@ impl StressTestRunner {
 
 mod add_stake {
     use super::*;
-    use types::{effects::TransactionEffects, system_state::staking::StakedSoma};
+    use types::{effects::TransactionEffects, system_state::staking::StakedSomaV1};
 
     pub struct RequestAddStakeGen;
 
@@ -238,7 +238,7 @@ mod add_stake {
                 runner.get_created_object_of_type(effects, ObjectType::StakedSoma).await.unwrap();
 
             // Get object contents and make sure that the values in it are correct.
-            let staked_soma: StakedSoma = object.as_staked_soma().unwrap();
+            let staked_soma: StakedSomaV1 = object.as_staked_soma().unwrap();
 
             assert_eq!(staked_soma.principal, self.stake_amount);
             assert_eq!(
@@ -264,7 +264,7 @@ mod add_stake {
             // 2. The staking pool's pending_stake has been cleared (processed).
             let system_state = runner.system_state();
             let validator = system_state
-                .validators
+                .validators()
                 .validators
                 .iter()
                 .find(|v| v.metadata.soma_address == self.staked_with)
@@ -370,7 +370,7 @@ mod remove_stake {
 
             // Verify all validator pools have processed their pending withdrawals.
             let system_state = runner.system_state();
-            for v in &system_state.validators.validators {
+            for v in &system_state.validators().validators {
                 assert_eq!(
                     v.staking_pool.pending_total_soma_withdraw, 0,
                     "Validator {}'s pending_total_soma_withdraw should be 0 after epoch",
@@ -417,7 +417,7 @@ async fn fuzz_dynamic_committee() {
 
     let mut initial_committee = runner
         .system_state()
-        .validators
+        .validators()
         .validators
         .iter()
         .map(|v| (v.metadata.soma_address, v.voting_power))
@@ -436,7 +436,8 @@ async fn fuzz_dynamic_committee() {
 
     // Collect information about total stake of validators, and then check if each validator's
     // voting power is the right % of the total stake.
-    let active_validators = runner.system_state().validators.validators;
+    let system_state = runner.system_state();
+    let active_validators = &system_state.validators().validators;
     let total_stake = active_validators.iter().fold(0, |acc, v| acc + v.staking_pool.soma_balance);
 
     // Use the formula for voting_power from System to check if the voting power is correctly
@@ -476,7 +477,7 @@ async fn fuzz_dynamic_committee() {
     // Expect the active set to return to initial state.
     let mut post_epoch_committee = runner
         .system_state()
-        .validators
+        .validators()
         .validators
         .iter()
         .map(|v| (v.metadata.soma_address, v.voting_power))

@@ -20,7 +20,7 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
         get_system_state(&genesis.objects()).expect("System state must exist in genesis");
 
     // Prepare Validator info
-    let consensus_set = &system_state.validators.validators;
+    let consensus_set = &system_state.validators().validators;
     let consensus_validator_map: BTreeMap<String, &Validator> =
         consensus_set.iter().map(|v| (v.metadata.soma_address.to_string(), v)).collect();
 
@@ -35,7 +35,7 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
 
     // Add emission pool
     let entry = soma_distribution.entry("System".to_string()).or_default();
-    entry.insert("Emission Pool".to_string(), (STR_SOMA, system_state.emission_pool.balance));
+    entry.insert("Emission Pool".to_string(), (STR_SOMA, system_state.emission_pool().balance));
 
     println!("Total Number of Objects: {}", genesis.objects().len());
 

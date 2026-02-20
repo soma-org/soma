@@ -2715,6 +2715,8 @@ mod _getter_impls {
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
                 next_epoch_proxy_address: None,
+                proof_of_possession: None,
+                next_epoch_proof_of_possession: None,
             }
         }
         #[doc(hidden)]
@@ -2824,6 +2826,17 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_proxy_address(mut self, field: String) -> Self {
             self.next_epoch_proxy_address = Some(field.into());
+            self
+        }
+        pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.proof_of_possession = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_proof_of_possession(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_proof_of_possession = Some(field.into());
             self
         }
     }
@@ -4496,6 +4509,7 @@ mod _getter_impls {
                 p2p_address: None,
                 primary_address: None,
                 proxy_address: None,
+                proof_of_possession: None,
             }
         }
         #[doc(hidden)]
@@ -4532,6 +4546,10 @@ mod _getter_impls {
         }
         pub fn with_proxy_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.proxy_address = Some(field.into());
+            self
+        }
+        pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.proof_of_possession = Some(field.into());
             self
         }
     }
@@ -4587,6 +4605,7 @@ mod _getter_impls {
                 next_epoch_protocol_pubkey: None,
                 next_epoch_worker_pubkey: None,
                 next_epoch_network_pubkey: None,
+                next_epoch_proof_of_possession: None,
             }
         }
         #[doc(hidden)]
@@ -4641,6 +4660,13 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.next_epoch_network_pubkey = Some(field.into());
+            self
+        }
+        pub fn with_next_epoch_proof_of_possession(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.next_epoch_proof_of_possession = Some(field.into());
             self
         }
     }

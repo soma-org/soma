@@ -13,9 +13,8 @@ use types::{
     error::{ExecutionResult, SomaError},
     metadata::{ManifestAPI, MetadataAPI},
     object::{Object, ObjectID, ObjectType, Owner},
-    submission::Submission,
-    system_state::SystemState,
-    target::{Target, TargetStatus, generate_target, make_target_seed},
+    system_state::{SystemState, SystemStateTrait},
+    target::{TargetV1, TargetStatus, generate_target, make_target_seed},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
 };
@@ -76,12 +75,12 @@ impl SubmissionExecutor {
     fn load_target(
         store: &TemporaryStore,
         target_id: &ObjectID,
-    ) -> ExecutionResult<(Object, Target)> {
+    ) -> ExecutionResult<(Object, TargetV1)> {
         let target_object =
             store.read_object(target_id).ok_or(ExecutionFailureStatus::TargetNotFound)?.clone();
 
         let target =
-            bcs::from_bytes::<Target>(target_object.as_inner().data.contents()).map_err(|e| {
+            bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents()).map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize target: {}",
                     e
@@ -95,7 +94,7 @@ impl SubmissionExecutor {
     fn save_target(
         store: &mut TemporaryStore,
         target_object: Object,
-        target: &Target,
+        target: &TargetV1,
     ) -> ExecutionResult<()> {
         let target_bytes = bcs::to_bytes(target).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -134,11 +133,11 @@ impl SubmissionExecutor {
 
         info!(
             "SubmitData: loaded state epoch={}, emission_pool={}, target_status={:?}",
-            state.epoch, state.emission_pool.balance, target.status
+            state.epoch(), state.emission_pool().balance, target.status
         );
 
         // Get current epoch from system state
-        let current_epoch = state.epoch;
+        let current_epoch = state.epoch();
 
         // 1. Validate target is open
         if !target.is_open() {
@@ -183,7 +182,7 @@ impl SubmissionExecutor {
 
         // 6. Validate data size against protocol limit
         let data_size = args.data_manifest.manifest.metadata().size() as u64;
-        let max_data_size = state.parameters.max_submission_data_size;
+        let max_data_size = state.parameters().max_submission_data_size;
         if data_size > max_data_size {
             return Err(ExecutionFailureStatus::DataExceedsMaxSize {
                 size: data_size,
@@ -192,7 +191,7 @@ impl SubmissionExecutor {
         }
 
         // 7. Calculate required bond from protocol config and validate
-        let bond_per_byte = state.parameters.submission_bond_per_byte;
+        let bond_per_byte = state.parameters().submission_bond_per_byte;
         let required_bond = data_size * bond_per_byte;
 
         // 8. Get and validate bond coin
@@ -236,7 +235,7 @@ impl SubmissionExecutor {
         target.winning_model_id = Some(args.model_id);
         // Capture model owner at fill time - model must be active
         let model = state
-            .model_registry
+            .model_registry()
             .active_models
             .get(&args.model_id)
             .ok_or(ExecutionFailureStatus::ModelNotActive)?;
@@ -250,39 +249,20 @@ impl SubmissionExecutor {
         target.winning_embedding = Some(args.embedding.clone());
         target.winning_distance_score = Some(args.distance_score.clone());
 
-        // 12. Create submission object (moves args.data_manifest and args.embedding)
-        let submission = Submission::new(
-            signer,
-            args.data_commitment,
-            args.data_manifest,
-            args.model_id,
-            args.embedding,
-            args.distance_score,
-            required_bond,
-            current_epoch,
-        );
+        // 12. Record hit in target_state (for difficulty adjustment at epoch boundary)
+        state.target_state_mut().record_hit();
 
-        // 13. Record hit in target_state (for difficulty adjustment at epoch boundary)
-        state.target_state.record_hit();
+        // Bump creation counter to preserve deterministic ID derivation for the
+        // replacement target below (its ObjectID depends on the counter value).
+        let _ = store.next_creation_num();
 
-        // 14. Create submission object that holds the submission data
-        // Submission is stored as a shared object associated with the target
-        let submission_creation_num = store.next_creation_num();
-        let submission_id = ObjectID::derive_id(tx_digest, submission_creation_num);
-        info!(
-            "SubmitData: creating submission object with id={:?}, creation_num={}",
-            submission_id, submission_creation_num
-        );
-        let submission_object = Object::new_submission_object(submission_id, submission, tx_digest);
-        store.create_object(submission_object);
-
-        // 15. Spawn replacement target if there are active models and emission pool has funds
-        let reward_per_target = state.target_state.reward_per_target;
-        if !state.model_registry.active_models.is_empty()
-            && state.emission_pool.balance >= reward_per_target
+        // 13. Spawn replacement target if there are active models and emission pool has funds
+        let reward_per_target = state.target_state().reward_per_target;
+        if !state.model_registry().active_models.is_empty()
+            && state.emission_pool().balance >= reward_per_target
         {
             // Deduct reward from emission pool for the new target
-            state.emission_pool.balance -= reward_per_target;
+            state.emission_pool_mut().balance -= reward_per_target;
 
             let seed_creation_num = store.next_creation_num();
             let seed = make_target_seed(&tx_digest, seed_creation_num);
@@ -292,20 +272,20 @@ impl SubmissionExecutor {
             );
 
             // Get target parameters from system state
-            let models_per_target = state.parameters.target_models_per_target;
-            let embedding_dim = state.parameters.target_embedding_dim;
+            let models_per_target = state.parameters().target_models_per_target;
+            let embedding_dim = state.parameters().target_embedding_dim;
 
             let new_target = generate_target(
                 seed,
-                &state.model_registry,
-                &state.target_state,
+                state.model_registry(),
+                state.target_state(),
                 models_per_target,
                 embedding_dim,
                 current_epoch,
             )?;
 
             // Record that a new target was generated (for difficulty adjustment)
-            state.target_state.record_target_generated();
+            state.target_state_mut().record_target_generated();
 
             // Create replacement target as shared object
             let target_creation_num = store.next_creation_num();
@@ -351,7 +331,7 @@ impl SubmissionExecutor {
         let (target_object, mut target) = Self::load_target(store, &args.target_id)?;
 
         // Get current epoch from system state
-        let current_epoch = state.epoch;
+        let current_epoch = state.epoch();
 
         match target.status {
             TargetStatus::Claimed => {
@@ -383,8 +363,8 @@ impl SubmissionExecutor {
             }
         }
 
-        // Save updated target and state
-        Self::save_target(store, target_object, &target)?;
+        // Delete the terminal target object and save state
+        store.delete_input_object(&args.target_id);
         Self::save_system_state(store, state_object, &state)?;
 
         Ok(())
@@ -401,7 +381,7 @@ impl SubmissionExecutor {
         &self,
         store: &mut TemporaryStore,
         state: &mut SystemState,
-        target: &mut Target,
+        target: &mut TargetV1,
         _target_id: &ObjectID,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
@@ -428,7 +408,7 @@ impl SubmissionExecutor {
 
         // Check submission reports on Target object using tally-based quorum
         let (has_quorum, winning_challenger, reporters) =
-            target.get_submission_report_quorum(&state.validators);
+            target.get_submission_report_quorum(state.validators());
 
         // Clear submission reports from Target
         target.clear_submission_reports();
@@ -457,10 +437,10 @@ impl SubmissionExecutor {
             }
 
             // Reward → emission pool (forfeited)
-            state.emission_pool.balance += reward;
+            state.emission_pool_mut().balance += reward;
 
             // Pay claimer incentive for triggering the cleanup
-            let claimer_share = (reward * state.parameters.target_claimer_incentive_bps) / BPS_DENOMINATOR;
+            let claimer_share = (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
             if claimer_share > 0 {
                 let claimer_coin = Object::new_coin(
                     ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -477,7 +457,7 @@ impl SubmissionExecutor {
         // No quorum - distribute rewards normally
         // Full reward goes to miner, model owner, and claimer (100% distributed)
         if reward > 0 {
-            let params = &state.parameters;
+            let params = state.parameters();
             let miner_share = (reward * params.target_miner_reward_share_bps) / BPS_DENOMINATOR;
             let model_share = (reward * params.target_model_reward_share_bps) / BPS_DENOMINATOR;
             let claimer_share = (reward * params.target_claimer_incentive_bps) / BPS_DENOMINATOR;
@@ -570,7 +550,7 @@ impl SubmissionExecutor {
         &self,
         store: &mut TemporaryStore,
         state: &mut SystemState,
-        target: &mut Target,
+        target: &mut TargetV1,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
         current_epoch: EpochId,
@@ -588,11 +568,11 @@ impl SubmissionExecutor {
         // Return most of the reward pool to emissions, pay claimer incentive
         if reward > 0 {
             let claimer_share =
-                (reward * state.parameters.target_claimer_incentive_bps) / BPS_DENOMINATOR;
+                (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
             let return_to_pool = reward - claimer_share;
 
             // Return to emission pool
-            state.emission_pool.balance += return_to_pool;
+            state.emission_pool_mut().balance += return_to_pool;
 
             // Pay claimer incentive for cleanup
             if claimer_share > 0 {
@@ -628,7 +608,7 @@ impl SubmissionExecutor {
         let (target_object, mut target) = Self::load_target(store, &target_id)?;
 
         // Validate signer is an active validator
-        if !state.validators.is_active_validator(signer) {
+        if !state.validators().is_active_validator(signer) {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
@@ -641,10 +621,10 @@ impl SubmissionExecutor {
 
         // Verify we're still within the challenge window (fill_epoch + 1)
         let challenge_window_end = fill_epoch + 1;
-        if state.epoch > challenge_window_end {
+        if state.epoch() > challenge_window_end {
             return Err(ExecutionFailureStatus::ChallengeWindowClosed {
                 fill_epoch,
-                current_epoch: state.epoch,
+                current_epoch: state.epoch(),
             });
         }
 
@@ -679,7 +659,7 @@ impl SubmissionExecutor {
         let (target_object, mut target) = Self::load_target(store, &target_id)?;
 
         // Validate signer is an active validator
-        if !state.validators.is_active_validator(signer) {
+        if !state.validators().is_active_validator(signer) {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
@@ -692,10 +672,10 @@ impl SubmissionExecutor {
 
         // Verify we're still within the challenge window (fill_epoch + 1)
         let challenge_window_end = fill_epoch + 1;
-        if state.epoch > challenge_window_end {
+        if state.epoch() > challenge_window_end {
             return Err(ExecutionFailureStatus::ChallengeWindowClosed {
                 fill_epoch,
-                current_epoch: state.epoch,
+                current_epoch: state.epoch(),
             });
         }
 
@@ -754,7 +734,7 @@ impl FeeCalculator for SubmissionExecutor {
                 // Value fee on the reward amount
                 // Load target to get reward_pool - if not found, return 0
                 let target = match store.read_object(&args.target_id) {
-                    Some(obj) => match bcs::from_bytes::<Target>(obj.as_inner().data.contents()) {
+                    Some(obj) => match bcs::from_bytes::<TargetV1>(obj.as_inner().data.contents()) {
                         Ok(t) => t,
                         Err(_) => return 0,
                     },

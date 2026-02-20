@@ -18,6 +18,7 @@ use protocol_config::ProtocolConfig;
 use types::balance_change::derive_balance_changes_2;
 use types::base::SomaAddress;
 use types::effects::TransactionEffectsAPI;
+use types::system_state::SystemStateTrait;
 use types::object::ObjectID;
 use types::object::ObjectRef;
 use types::object::ObjectType;
@@ -51,7 +52,7 @@ pub fn simulate_transaction(
     let protocol_config = {
         let system_state = service.reader.get_system_state()?;
         ProtocolConfig::get_for_version_if_supported(
-            system_state.protocol_version.into(),
+            system_state.protocol_version().into(),
             service.reader.inner().get_chain_identifier()?.chain(),
         )
         .ok_or_else(|| {

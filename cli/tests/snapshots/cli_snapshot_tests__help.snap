@@ -25,6 +25,7 @@ Commands:
   submit            Submit data to fill a target
   claim             Claim rewards from a filled target
   challenge         Challenge a filled target's submission
+  score             Start the scoring service for computing embeddings and distances
   validator         Manage validators (register, set gas price, commission)
   client            Advanced operations (execute serialized transactions)
   start             Start a local Soma network for development and testing

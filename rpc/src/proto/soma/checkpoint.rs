@@ -30,6 +30,7 @@ impl Merge<crate::types::CheckpointSummary> for CheckpointSummary {
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
+            version_specific_data: _,
         } = source;
 
         if mask.contains(Self::EPOCH_FIELD.name) {
@@ -186,6 +187,7 @@ impl TryFrom<&CheckpointSummary> for crate::types::CheckpointSummary {
             timestamp_ms,
             checkpoint_commitments,
             end_of_epoch_data,
+            version_specific_data: Vec::new(),
         })
     }
 }

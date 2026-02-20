@@ -18,9 +18,9 @@ use types::{
     crypto::DecryptionKey,
     digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ArchitectureVersion, Model, ModelId, ModelWeightsManifest},
+    model::{ArchitectureVersion, ModelV1, ModelId, ModelWeightsManifest},
     object::ObjectID,
-    system_state::SystemState,
+    system_state::{SystemState, SystemStateTrait as _},
     tensor::SomaTensor,
     transaction::{
         CommitModelArgs, CommitModelUpdateArgs, RevealModelArgs, RevealModelUpdateArgs,
@@ -538,7 +538,7 @@ pub struct ModelSummary {
     pub has_pending_update: bool,
 }
 
-fn model_to_summary(model_id: &ModelId, model: &Model, status: ModelStatus) -> ModelSummary {
+fn model_to_summary(model_id: &ModelId, model: &ModelV1, status: ModelStatus) -> ModelSummary {
     ModelSummary {
         model_id: *model_id,
         owner: model.owner,
@@ -555,17 +555,17 @@ fn find_model(
     system_state: &SystemState,
     model_id: &ModelId,
 ) -> Option<(ModelStatus, ModelSummary)> {
-    if let Some(model) = system_state.model_registry.active_models.get(model_id) {
+    if let Some(model) = system_state.model_registry().active_models.get(model_id) {
         let summary = model_to_summary(model_id, model, ModelStatus::Active);
         return Some((ModelStatus::Active, summary));
     }
 
-    if let Some(model) = system_state.model_registry.pending_models.get(model_id) {
+    if let Some(model) = system_state.model_registry().pending_models.get(model_id) {
         let summary = model_to_summary(model_id, model, ModelStatus::Pending);
         return Some((ModelStatus::Pending, summary));
     }
 
-    if let Some(model) = system_state.model_registry.inactive_models.get(model_id) {
+    if let Some(model) = system_state.model_registry().inactive_models.get(model_id) {
         let summary = model_to_summary(model_id, model, ModelStatus::Inactive);
         return Some((ModelStatus::Inactive, summary));
     }
@@ -574,7 +574,7 @@ fn find_model(
 }
 
 fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
-    let registry = &system_state.model_registry;
+    let registry = system_state.model_registry();
     let mut models = Vec::new();
 
     for (id, model) in &registry.active_models {

@@ -56,7 +56,6 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::Coin => ObjectType::Coin,
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
             types::object::ObjectType::Target => ObjectType::Target,
-            types::object::ObjectType::Submission => ObjectType::Submission,
             types::object::ObjectType::Challenge => ObjectType::Challenge,
         };
 
@@ -84,7 +83,6 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::Coin => types::object::ObjectType::Coin,
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
             ObjectType::Target => types::object::ObjectType::Target,
-            ObjectType::Submission => types::object::ObjectType::Submission,
             ObjectType::Challenge => types::object::ObjectType::Challenge,
         };
 
@@ -104,11 +102,13 @@ impl TryFrom<types::transaction::TransactionData> for Transaction {
     type Error = SdkTypeConversionError;
 
     fn try_from(value: types::transaction::TransactionData) -> Result<Self, Self::Error> {
-        Ok(Self {
-            kind: value.kind.try_into()?,
-            sender: value.sender.into(),
-            gas_payment: value.gas_payment.into_iter().map(Into::into).collect(),
-        })
+        match value {
+            types::transaction::TransactionData::V1(v1) => Ok(Self {
+                kind: v1.kind.try_into()?,
+                sender: v1.sender.into(),
+                gas_payment: v1.gas_payment.into_iter().map(Into::into).collect(),
+            }),
+        }
     }
 }
 
@@ -303,7 +303,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     .collect::<Result<_, _>>()?,
             }),
 
-            TK::ConsensusCommitPrologue(prologue) => {
+            TK::ConsensusCommitPrologueV1(prologue) => {
                 TransactionKind::ConsensusCommitPrologue(ConsensusCommitPrologue {
                     epoch: prologue.epoch,
                     round: prologue.round,
@@ -327,6 +327,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 pubkey_bytes: args.pubkey_bytes,
                 network_pubkey_bytes: args.network_pubkey_bytes,
                 worker_pubkey_bytes: args.worker_pubkey_bytes,
+                proof_of_possession: args.proof_of_possession,
                 net_address: args.net_address,
                 p2p_address: args.p2p_address,
                 primary_address: args.primary_address,
@@ -354,6 +355,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
+                    next_epoch_proof_of_possession: args.next_epoch_proof_of_possession,
                 })
             }
 
@@ -507,7 +509,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
 
             TransactionKind::ConsensusCommitPrologue(prologue) => {
-                TK::ConsensusCommitPrologue(types::consensus::ConsensusCommitPrologue {
+                TK::ConsensusCommitPrologueV1(types::consensus::ConsensusCommitPrologueV1 {
                     epoch: prologue.epoch,
                     round: prologue.round,
                     sub_dag_index: prologue.sub_dag_index,
@@ -533,6 +535,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     pubkey_bytes: args.pubkey_bytes,
                     network_pubkey_bytes: args.network_pubkey_bytes,
                     worker_pubkey_bytes: args.worker_pubkey_bytes,
+                    proof_of_possession: args.proof_of_possession,
                     net_address: args.net_address,
                     p2p_address: args.p2p_address,
                     primary_address: args.primary_address,
@@ -563,6 +566,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
+                    next_epoch_proof_of_possession: args.next_epoch_proof_of_possession,
                 })
             }
 
@@ -731,33 +735,35 @@ impl TryFrom<types::effects::TransactionEffects> for crate::types::TransactionEf
     type Error = SdkTypeConversionError;
 
     fn try_from(value: types::effects::TransactionEffects) -> Result<Self, Self::Error> {
-        Ok(Self {
-            status: value.status.into(),
-            epoch: value.executed_epoch,
-            fee: value.transaction_fee.into(),
-            transaction_digest: value.transaction_digest.into(),
-            dependencies: value.dependencies.into_iter().map(Into::into).collect(),
-            lamport_version: value.version.value(),
-            gas_object_index: value.gas_object_index,
-            changed_objects: value
-                .changed_objects
-                .into_iter()
-                .map(|(object_id, change)| crate::types::ChangedObject {
-                    object_id: object_id.into(),
-                    input_state: change.input_state.into(),
-                    output_state: change.output_state.into(),
-                    id_operation: change.id_operation.into(),
-                })
-                .collect(),
-            unchanged_shared_objects: value
-                .unchanged_shared_objects
-                .into_iter()
-                .map(|(object_id, kind)| crate::types::UnchangedSharedObject {
-                    object_id: object_id.into(),
-                    kind: kind.into(),
-                })
-                .collect(),
-        })
+        match value {
+            types::effects::TransactionEffects::V1(v1) => Ok(Self {
+                status: v1.status.into(),
+                epoch: v1.executed_epoch,
+                fee: v1.transaction_fee.into(),
+                transaction_digest: v1.transaction_digest.into(),
+                dependencies: v1.dependencies.into_iter().map(Into::into).collect(),
+                lamport_version: v1.version.value(),
+                gas_object_index: v1.gas_object_index,
+                changed_objects: v1
+                    .changed_objects
+                    .into_iter()
+                    .map(|(object_id, change)| crate::types::ChangedObject {
+                        object_id: object_id.into(),
+                        input_state: change.input_state.into(),
+                        output_state: change.output_state.into(),
+                        id_operation: change.id_operation.into(),
+                    })
+                    .collect(),
+                unchanged_shared_objects: v1
+                    .unchanged_shared_objects
+                    .into_iter()
+                    .map(|(object_id, kind)| crate::types::UnchangedSharedObject {
+                        object_id: object_id.into(),
+                        kind: kind.into(),
+                    })
+                    .collect(),
+            }),
+        }
     }
 }
 
@@ -765,34 +771,36 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
     type Error = SdkTypeConversionError;
 
     fn try_from(value: crate::types::TransactionEffects) -> Result<Self, Self::Error> {
-        Ok(Self {
-            status: value.status.into(),
-            executed_epoch: value.epoch,
-            transaction_fee: value.fee.into(),
-            transaction_digest: value.transaction_digest.into(),
-            dependencies: value.dependencies.into_iter().map(Into::into).collect(),
-            version: types::object::Version::from_u64(value.lamport_version),
-            gas_object_index: value.gas_object_index,
-            changed_objects: value
-                .changed_objects
-                .into_iter()
-                .map(|object| {
-                    (
-                        object.object_id.into(),
-                        types::effects::object_change::EffectsObjectChange {
-                            input_state: object.input_state.into(),
-                            output_state: object.output_state.into(),
-                            id_operation: object.id_operation.into(),
-                        },
-                    )
-                })
-                .collect(),
-            unchanged_shared_objects: value
-                .unchanged_shared_objects
-                .into_iter()
-                .map(|object| (object.object_id.into(), object.kind.into()))
-                .collect(),
-        })
+        Ok(types::effects::TransactionEffects::V1(
+            types::effects::TransactionEffectsV1 {
+                status: value.status.into(),
+                executed_epoch: value.epoch,
+                transaction_fee: value.fee.into(),
+                transaction_digest: value.transaction_digest.into(),
+                dependencies: value.dependencies.into_iter().map(Into::into).collect(),
+                version: types::object::Version::from_u64(value.lamport_version),
+                gas_object_index: value.gas_object_index,
+                changed_objects: value
+                    .changed_objects
+                    .into_iter()
+                    .map(|object| {
+                        (
+                            object.object_id.into(),
+                            types::effects::object_change::EffectsObjectChange {
+                                input_state: object.input_state.into(),
+                                output_state: object.output_state.into(),
+                                id_operation: object.id_operation.into(),
+                            },
+                        )
+                    })
+                    .collect(),
+                unchanged_shared_objects: value
+                    .unchanged_shared_objects
+                    .into_iter()
+                    .map(|object| (object.object_id.into(), object.kind.into()))
+                    .collect(),
+            },
+        ))
     }
 }
 
@@ -1270,6 +1278,15 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Self::InvalidArguments { reason }
             }
             types::effects::ExecutionFailureStatus::DuplicateValidator => Self::DuplicateValidator,
+            types::effects::ExecutionFailureStatus::DuplicateValidatorMetadata { field } => {
+                Self::DuplicateValidatorMetadata { field }
+            }
+            types::effects::ExecutionFailureStatus::MissingProofOfPossession => {
+                Self::MissingProofOfPossession
+            }
+            types::effects::ExecutionFailureStatus::InvalidProofOfPossession { reason } => {
+                Self::InvalidProofOfPossession { reason }
+            }
             types::effects::ExecutionFailureStatus::NotAValidator => Self::NotAValidator,
             types::effects::ExecutionFailureStatus::ValidatorAlreadyRemoved => {
                 Self::ValidatorAlreadyRemoved
@@ -1412,6 +1429,13 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
 
             // Validator errors
             ExecutionError::DuplicateValidator => Self::DuplicateValidator,
+            ExecutionError::DuplicateValidatorMetadata { field } => {
+                Self::DuplicateValidatorMetadata { field }
+            }
+            ExecutionError::MissingProofOfPossession => Self::MissingProofOfPossession,
+            ExecutionError::InvalidProofOfPossession { reason } => {
+                Self::InvalidProofOfPossession { reason }
+            }
             ExecutionError::NotAValidator => Self::NotAValidator,
             ExecutionError::ValidatorAlreadyRemoved => Self::ValidatorAlreadyRemoved,
             ExecutionError::AdvancedToWrongEpoch => Self::AdvancedToWrongEpoch,
@@ -1807,6 +1831,7 @@ impl TryFrom<types::checkpoints::CheckpointSummary> for crate::types::Checkpoint
                 .map(Into::into)
                 .collect(),
             end_of_epoch_data: value.end_of_epoch_data.map(TryInto::try_into).transpose()?,
+            version_specific_data: value.version_specific_data,
         })
     }
 }
@@ -1829,6 +1854,7 @@ impl TryFrom<crate::types::CheckpointSummary> for types::checkpoints::Checkpoint
                 .map(Into::into)
                 .collect(),
             end_of_epoch_data: value.end_of_epoch_data.map(TryInto::try_into).transpose()?,
+            version_specific_data: value.version_specific_data,
         })
     }
 }

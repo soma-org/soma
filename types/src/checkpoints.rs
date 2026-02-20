@@ -285,6 +285,11 @@ pub struct CheckpointSummary {
 
     /// Present only on the final checkpoint of the epoch.
     pub end_of_epoch_data: Option<EndOfEpochData>,
+
+    /// Opaque version-specific data for forward compatibility.
+    /// Protocol version upgrades can store additional data here without changing the struct layout.
+    #[serde(default)]
+    pub version_specific_data: Vec<u8>,
 }
 
 impl Message for CheckpointSummary {
@@ -321,6 +326,7 @@ impl CheckpointSummary {
             end_of_epoch_data,
             timestamp_ms,
             checkpoint_commitments,
+            version_specific_data: Vec::new(),
         }
     }
 

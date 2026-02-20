@@ -20,6 +20,7 @@ use types::{
     checkpoints::CheckpointCommitment,
     effects::TransactionEffectsAPI,
     envelope::Message,
+    system_state::{SystemStateTrait as _, epoch_start::EpochStartSystemStateTrait as _},
     transaction::{TransactionData, TransactionKind},
 };
 use utils::logging::init_tracing;
@@ -38,7 +39,7 @@ async fn execute_stake_tx(
         node.state()
             .get_system_state_object_for_testing()
             .unwrap()
-            .validators
+            .validators()
             .validators[0]
             .metadata
             .soma_address
@@ -428,8 +429,8 @@ async fn test_passive_epoch_with_transactions_smoke() {
         let epoch_store = state.epoch_store_for_testing();
         let start_state = epoch_store.epoch_start_state();
         (
-            start_state.epoch_duration_ms,
-            start_state.epoch_start_timestamp_ms,
+            start_state.epoch_duration_ms(),
+            start_state.epoch_start_timestamp_ms(),
             0u64, // placeholder
         )
     });

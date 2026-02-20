@@ -60,7 +60,7 @@ pub fn get_target(service: &RpcService, request: GetTargetRequest) -> Result<Get
     }
 
     // Deserialize the Target from the object contents
-    let target: types::target::Target = bcs::from_bytes(object.data.contents()).map_err(|e| {
+    let target: types::target::TargetV1 = bcs::from_bytes(object.data.contents()).map_err(|e| {
         RpcError::new(tonic::Code::Internal, format!("Failed to deserialize Target: {e}"))
     })?;
 

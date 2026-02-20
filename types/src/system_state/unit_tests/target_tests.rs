@@ -62,8 +62,8 @@ fn test_target_generation_requires_active_models() {
     // Try to generate a target - should fail with NoActiveModels
     let result = generate_target(
         42,
-        &system_state.model_registry,
-        &system_state.target_state,
+        system_state.model_registry(),
+        system_state.target_state(),
         3,   // models_per_target
         768, // embedding_dim
         0,   // current_epoch
@@ -94,14 +94,14 @@ fn test_target_generation_single_model() {
     reveal_model_with_dim(&mut system_state, owner, &model_id, 768);
 
     // Set up target_state with some thresholds
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.target_state.reward_per_target = 1000;
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.target_state_mut().reward_per_target = 1000;
 
     // Generate target - should succeed with single model
     let result = generate_target(
         42,
-        &system_state.model_registry,
-        &system_state.target_state,
+        system_state.model_registry(),
+        system_state.target_state(),
         3,   // models_per_target (will be capped to 1)
         768, // embedding_dim
         1,   // current_epoch
@@ -144,14 +144,14 @@ fn test_target_generation_multiple_models() {
     }
 
     // Set up target_state
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.target_state.reward_per_target = 1000;
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.target_state_mut().reward_per_target = 1000;
 
     // Generate target with 3 models
     let result = generate_target(
         42,
-        &system_state.model_registry,
-        &system_state.target_state,
+        system_state.model_registry(),
+        system_state.target_state(),
         3,   // models_per_target
         768, // embedding_dim
         1,   // current_epoch
@@ -179,9 +179,9 @@ fn test_calculate_reward_per_target() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set up parameters
-    system_state.emission_pool.emission_per_epoch = 1_000_000 * SHANNONS_PER_SOMA;
-    system_state.parameters.target_reward_allocation_bps = 8000; // 80%
-    system_state.parameters.target_initial_targets_per_epoch = 100; // 100 targets per epoch
+    system_state.emission_pool_mut().emission_per_epoch = 1_000_000 * SHANNONS_PER_SOMA;
+    system_state.parameters_mut().target_reward_allocation_bps = 8000; // 80%
+    system_state.parameters_mut().target_initial_targets_per_epoch = 100; // 100 targets per epoch
 
     let reward_per_target = system_state.calculate_reward_per_target();
 
@@ -202,23 +202,23 @@ fn test_difficulty_adjustment_high_hit_rate() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set initial thresholds (f32 values)
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target hit rate
-    system_state.parameters.target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
-    system_state.parameters.target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters.target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target hit rate
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
+    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate high hit rate (95% of targets filled, target = 80%)
-    system_state.target_state.targets_generated_this_epoch = 100;
-    system_state.target_state.hits_this_epoch = 95;
+    system_state.target_state_mut().targets_generated_this_epoch = 100;
+    system_state.target_state_mut().hits_this_epoch = 95;
 
-    let old_distance = system_state.target_state.distance_threshold.as_scalar();
+    let old_distance = system_state.target_state().distance_threshold.as_scalar();
 
     system_state.adjust_difficulty();
 
     // Thresholds should decrease (harder) when hit rate is too high
     assert!(
-        system_state.target_state.distance_threshold.as_scalar() < old_distance,
+        system_state.target_state().distance_threshold.as_scalar() < old_distance,
         "Distance threshold should decrease when hit rate is too high"
     );
 }
@@ -230,23 +230,23 @@ fn test_difficulty_adjustment_low_hit_rate() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set initial thresholds (f32 values)
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target hit rate
-    system_state.parameters.target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
-    system_state.parameters.target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters.target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target hit rate
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
+    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate low hit rate (50% of targets filled, target = 80%)
-    system_state.target_state.targets_generated_this_epoch = 100;
-    system_state.target_state.hits_this_epoch = 50;
+    system_state.target_state_mut().targets_generated_this_epoch = 100;
+    system_state.target_state_mut().hits_this_epoch = 50;
 
-    let old_distance = system_state.target_state.distance_threshold.as_scalar();
+    let old_distance = system_state.target_state().distance_threshold.as_scalar();
 
     system_state.adjust_difficulty();
 
     // Thresholds should increase (easier) when hit rate is too low
     assert!(
-        system_state.target_state.distance_threshold.as_scalar() > old_distance,
+        system_state.target_state().distance_threshold.as_scalar() > old_distance,
         "Distance threshold should increase when hit rate is too low"
     );
 }
@@ -258,21 +258,21 @@ fn test_difficulty_adjustment_min_bounds() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set thresholds at minimum already (f32 values)
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target
-    system_state.parameters.target_difficulty_adjustment_rate_bps = 500;
-    system_state.parameters.target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters.target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
+    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate very high hit rate (100%, target = 80%)
-    system_state.target_state.targets_generated_this_epoch = 100;
-    system_state.target_state.hits_this_epoch = 100;
+    system_state.target_state_mut().targets_generated_this_epoch = 100;
+    system_state.target_state_mut().hits_this_epoch = 100;
 
     system_state.adjust_difficulty();
 
     // Should be clamped to min
     assert_eq!(
-        system_state.target_state.distance_threshold.as_scalar(), 0.1,
+        system_state.target_state().distance_threshold.as_scalar(), 0.1,
         "Distance threshold should not go below min"
     );
 }
@@ -284,21 +284,21 @@ fn test_difficulty_adjustment_max_bounds() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set thresholds at maximum already (f32 values)
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
-    system_state.parameters.target_hit_rate_target_bps = 8000; // 80% target
-    system_state.parameters.target_difficulty_adjustment_rate_bps = 500;
-    system_state.parameters.target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters.target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
+    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate very low hit rate (10%, target = 80%)
-    system_state.target_state.targets_generated_this_epoch = 100;
-    system_state.target_state.hits_this_epoch = 10;
+    system_state.target_state_mut().targets_generated_this_epoch = 100;
+    system_state.target_state_mut().hits_this_epoch = 10;
 
     system_state.adjust_difficulty();
 
     // Should be clamped to max
     assert_eq!(
-        system_state.target_state.distance_threshold.as_scalar(), 10.0,
+        system_state.target_state().distance_threshold.as_scalar(), 10.0,
         "Distance threshold should not go above max"
     );
 }
@@ -310,16 +310,16 @@ fn test_difficulty_adjustment_bootstrap_mode() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set initial thresholds (f32 values)
-    system_state.target_state.distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.target_state.targets_generated_this_epoch = 0; // Bootstrap mode
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.target_state_mut().targets_generated_this_epoch = 0; // Bootstrap mode
 
-    let old_distance = system_state.target_state.distance_threshold.as_scalar();
+    let old_distance = system_state.target_state().distance_threshold.as_scalar();
 
     system_state.adjust_difficulty();
 
     // No adjustment in bootstrap mode
     assert_eq!(
-        system_state.target_state.distance_threshold.as_scalar(),
+        system_state.target_state().distance_threshold.as_scalar(),
         old_distance,
         "Distance threshold should not change in bootstrap mode"
     );
@@ -332,31 +332,31 @@ fn test_advance_epoch_targets() {
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
     // Set up parameters
-    system_state.emission_pool.emission_per_epoch = 1_000_000 * SHANNONS_PER_SOMA;
-    system_state.parameters.target_reward_allocation_bps = 8000;
-    system_state.parameters.target_initial_targets_per_epoch = 100;
+    system_state.emission_pool_mut().emission_per_epoch = 1_000_000 * SHANNONS_PER_SOMA;
+    system_state.parameters_mut().target_reward_allocation_bps = 8000;
+    system_state.parameters_mut().target_initial_targets_per_epoch = 100;
 
     // Set some epoch counters
-    system_state.target_state.targets_generated_this_epoch = 50;
-    system_state.target_state.hits_this_epoch = 40;
+    system_state.target_state_mut().targets_generated_this_epoch = 50;
+    system_state.target_state_mut().hits_this_epoch = 40;
 
     // Initially reward_per_target is 0
-    assert_eq!(system_state.target_state.reward_per_target, 0);
+    assert_eq!(system_state.target_state().reward_per_target, 0);
 
     system_state.advance_epoch_targets();
 
     // After advance, reward_per_target should be calculated
     assert!(
-        system_state.target_state.reward_per_target > 0,
+        system_state.target_state().reward_per_target > 0,
         "reward_per_target should be set after advance_epoch_targets"
     );
 
     // Counters should be reset
     assert_eq!(
-        system_state.target_state.targets_generated_this_epoch, 0,
+        system_state.target_state().targets_generated_this_epoch, 0,
         "targets_generated_this_epoch should be reset"
     );
-    assert_eq!(system_state.target_state.hits_this_epoch, 0, "hits_this_epoch should be reset");
+    assert_eq!(system_state.target_state().hits_this_epoch, 0, "hits_this_epoch should be reset");
 }
 
 /// Test target status transitions
@@ -366,7 +366,7 @@ fn test_target_status_transitions() {
     use crate::tensor::SomaTensor;
 
     // Start with Open status
-    let mut target = crate::target::Target {
+    let mut target = crate::target::TargetV1 {
         embedding: SomaTensor::zeros(vec![10]),
         model_ids: vec![],
         distance_threshold: SomaTensor::scalar(1000.0),
@@ -436,7 +436,7 @@ fn test_model_selection_uniqueness() {
     }
 
     // Select 5 models from 10 - should be unique
-    let selected = crate::target::select_models_uniform(42, &system_state.model_registry, 5)
+    let selected = crate::target::select_models_uniform(42, system_state.model_registry(), 5)
         .expect("Model selection should succeed");
 
     assert_eq!(selected.len(), 5, "Should select exactly 5 models");
@@ -468,12 +468,12 @@ fn test_model_selection_capped_to_available() {
 
     // Advance epoch and reveal all models
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
-    for (model_id, _) in system_state.model_registry.pending_models.clone() {
+    for (model_id, _) in system_state.model_registry().pending_models.clone() {
         reveal_model(&mut system_state, owner, &model_id);
     }
 
     // Request 5 models but only 2 exist
-    let selected = crate::target::select_models_uniform(42, &system_state.model_registry, 5)
+    let selected = crate::target::select_models_uniform(42, system_state.model_registry(), 5)
         .expect("Model selection should succeed");
 
     assert_eq!(selected.len(), 2, "Should cap selection to available models");
@@ -496,19 +496,19 @@ fn test_model_selection_seed_affects_result() {
 
     // Advance epoch and reveal all models
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
-    for (model_id, _) in system_state.model_registry.pending_models.clone() {
+    for (model_id, _) in system_state.model_registry().pending_models.clone() {
         reveal_model(&mut system_state, owner, &model_id);
     }
 
     // Same seed = same selection
-    let selection1 = crate::target::select_models_uniform(42, &system_state.model_registry, 3)
+    let selection1 = crate::target::select_models_uniform(42, system_state.model_registry(), 3)
         .expect("Model selection should succeed");
-    let selection2 = crate::target::select_models_uniform(42, &system_state.model_registry, 3)
+    let selection2 = crate::target::select_models_uniform(42, system_state.model_registry(), 3)
         .expect("Model selection should succeed");
     assert_eq!(selection1, selection2, "Same seed should produce same selection");
 
     // Different seed = likely different selection (with 5 models, very unlikely to be same)
-    let selection3 = crate::target::select_models_uniform(999, &system_state.model_registry, 3)
+    let selection3 = crate::target::select_models_uniform(999, system_state.model_registry(), 3)
         .expect("Model selection should succeed");
     // Note: We don't assert inequality because technically same selection is possible (just unlikely)
     // The main test is that different seeds can produce different selections

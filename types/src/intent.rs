@@ -57,6 +57,7 @@ pub enum IntentScope {
     CommitSummary = 5,  // Used for a signature on a commit summary.
     ValidatorSet = 6,   // Used for a signature on a validator set.
     CheckpointSummary = 7,
+    ProofOfPossession = 8, // Used for validator proof of possession of protocol key.
 }
 
 impl TryFrom<u8> for IntentScope {

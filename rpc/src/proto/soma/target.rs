@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::utils::{field::FieldMaskTree, merge::Merge};
-use types::target::{Target as DomainTarget, TargetStatus};
+use types::target::{TargetV1 as DomainTarget, TargetStatus};
 
 //
 // Target

@@ -90,6 +90,7 @@ message AddValidator {
   optional bytes p2p_address = 5;
   optional bytes primary_address = 6;
   optional bytes proxy_address = 7;
+  optional bytes proof_of_possession = 8;
 }
 
 message RemoveValidator {
@@ -112,6 +113,7 @@ message UpdateValidatorMetadata {
   optional bytes next_epoch_protocol_pubkey = 5;
   optional bytes next_epoch_worker_pubkey = 6;
   optional bytes next_epoch_network_pubkey = 7;
+  optional bytes next_epoch_proof_of_possession = 8;
 }
 
 message SetCommissionRate {

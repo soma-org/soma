@@ -15,9 +15,9 @@ use crate::{
     multiaddr::Multiaddr,
     object::ObjectID,
     system_state::{
-        PublicKey, SystemParameters, SystemState,
+        PublicKey, SystemParameters, SystemState, SystemStateTrait,
         emission::EmissionPool,
-        staking::{PoolTokenExchangeRate, StakedSoma, StakingPool},
+        staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool},
         validator::{Validator, ValidatorSet},
     },
     tensor::SomaTensor,
@@ -45,8 +45,8 @@ pub struct ValidatorRewards {
     initial_stakes: BTreeMap<SomaAddress, u64>,
 
     // Commission rewards for validators per epoch
-    // First key is validator address, second key is epoch, value is StakedSoma
-    commission_rewards: BTreeMap<SomaAddress, BTreeMap<u64, StakedSoma>>,
+    // First key is validator address, second key is epoch, value is StakedSomaV1
+    commission_rewards: BTreeMap<SomaAddress, BTreeMap<u64, StakedSomaV1>>,
 }
 
 #[cfg(test)]
@@ -71,7 +71,7 @@ impl ValidatorRewards {
     pub fn add_commission_rewards(
         &mut self,
         epoch: u64,
-        rewards: BTreeMap<SomaAddress, StakedSoma>,
+        rewards: BTreeMap<SomaAddress, StakedSomaV1>,
     ) {
         for (addr, staked_soma) in rewards {
             self.commission_rewards
@@ -122,14 +122,14 @@ pub fn stake_with(
     staker: SomaAddress,
     validator: SomaAddress,
     amount: u64,
-) -> StakedSoma {
+) -> StakedSomaV1 {
     system_state
         .request_add_stake(staker, validator, amount * SHANNONS_PER_SOMA)
         .expect("Failed to add stake")
 }
 
 // Helper function to request to withdraw stake
-pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSoma) -> u64 {
+pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSomaV1) -> u64 {
     system_state.request_withdraw_stake(staked_soma).expect("Failed to withdraw stake")
 }
 
@@ -142,11 +142,11 @@ pub fn advance_epoch_with_reward_amounts(
     validator_stakes: &mut ValidatorRewards,
 ) {
     // Calculate next epoch
-    let next_epoch = system_state.epoch + 1;
+    let next_epoch = system_state.epoch() + 1;
 
     // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
-        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
@@ -176,11 +176,11 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     validator_stakes: &mut ValidatorRewards,
 ) {
     // Calculate next epoch
-    let next_epoch = system_state.epoch + 1;
+    let next_epoch = system_state.epoch() + 1;
 
     // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
-        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
 
     let mut protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
@@ -218,7 +218,7 @@ pub fn assert_validator_total_stake_amounts(
 
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
@@ -250,7 +250,7 @@ pub fn assert_validator_self_stake_amounts(
 
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
@@ -259,7 +259,7 @@ pub fn assert_validator_self_stake_amounts(
         // Calculate self-stake with rewards
 
         let self_stake_with_rewards =
-            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch);
+            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch());
 
         let expected_amount = expected_amounts[i];
 
@@ -286,7 +286,7 @@ pub fn assert_validator_non_self_stake_amounts(
 
     for (i, addr) in validator_addrs.iter().enumerate() {
         let validator = system_state
-            .validators
+            .validators()
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == *addr)
@@ -294,7 +294,7 @@ pub fn assert_validator_non_self_stake_amounts(
 
         // Get self-stake
         let self_stake_with_rewards =
-            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch);
+            validator_stakes.calculate_self_stake_with_rewards(validator, system_state.epoch());
 
         // Non-self stake is total stake minus self stake with rewards
         let non_self_stake = validator.staking_pool.soma_balance - self_stake_with_rewards;
@@ -317,9 +317,15 @@ pub fn total_soma_balance(
     *staker_withdrawals.get(&staker).unwrap_or(&0)
 }
 
-/// Create a test validator with specified address and stake amount
-pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Validator {
-    let mut rng = StdRng::from_seed([0; 32]);
+/// Create a test validator with specified address, stake, and a unique seed for key generation.
+/// The seed ensures each validator in a set gets distinct keys and addresses.
+pub fn create_validator_for_testing_with_seed(
+    addr: SomaAddress,
+    init_stake_amount: u64,
+    seed: [u8; 32],
+    port_base: u16,
+) -> Validator {
+    let mut rng = StdRng::from_seed(seed);
 
     // Create protocol public key (BLS)
     let protocol_keypair = AuthorityKeyPair::generate(&mut rng);
@@ -330,11 +336,17 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
     // Create worker public key (ED25519)
     let worker_keypair = NetworkKeyPair::generate(&mut rng);
 
-    // Create multiaddresses
-    let net_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080").unwrap();
-    let p2p_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8081").unwrap();
-    let primary_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8082").unwrap();
-    let proxy_address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8083/http").unwrap();
+    // Generate proof of possession
+    let pop = crypto::generate_proof_of_possession(&protocol_keypair, addr);
+
+    // Create unique multiaddresses using port_base
+    let net_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port_base)).unwrap();
+    let p2p_address =
+        Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port_base + 1)).unwrap();
+    let primary_address =
+        Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port_base + 2)).unwrap();
+    let proxy_address =
+        Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}/http", port_base + 3)).unwrap();
 
     // Create validator
     let mut validator = Validator::new(
@@ -342,6 +354,7 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
         protocol_keypair.public().to_owned(),
         network_keypair.public(),
         worker_keypair.public(),
+        pop,
         net_address,
         p2p_address,
         primary_address,
@@ -357,6 +370,19 @@ pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -
     validator.staking_pool.pool_token_balance = init_stake_amount;
 
     validator
+}
+
+/// Create a test validator with specified address and stake amount.
+/// Uses a deterministic seed derived from the address for unique keys.
+pub fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Validator {
+    // Derive a unique seed from the address bytes so each address gets unique keys
+    let addr_bytes: &[u8] = addr.as_ref();
+    let mut seed = [0u8; 32];
+    let copy_len = std::cmp::min(addr_bytes.len(), 32);
+    seed[..copy_len].copy_from_slice(&addr_bytes[..copy_len]);
+    // Use first 2 bytes for port base to avoid collisions (port range 10000+)
+    let port_base = 10000u16.wrapping_add(u16::from_le_bytes([seed[0], seed[1]]));
+    create_validator_for_testing_with_seed(addr, init_stake_amount, seed, port_base)
 }
 
 /// Create validators with specified stake amounts
@@ -397,7 +423,7 @@ pub fn create_test_system_state(
     );
     // Set validator_reward_allocation_bps to 100% so all fees go to validators.
     // This decouples validator/delegation/reward tests from the mining reward split.
-    state.parameters.validator_reward_allocation_bps = 10000; // 100%
+    state.parameters_mut().validator_reward_allocation_bps = 10000; // 100%
     state
 }
 
@@ -419,13 +445,13 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
-) -> ExecutionResult<BTreeMap<SomaAddress, StakedSoma>> {
+) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
     // Calculate next epoch
-    let next_epoch = system_state.epoch + 1;
+    let next_epoch = system_state.epoch() + 1;
 
     // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
-        system_state.epoch_start_timestamp_ms + system_state.parameters.epoch_duration_ms;
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
@@ -448,7 +474,7 @@ pub fn add_validator(system_state: &mut SystemState, address: SomaAddress) -> Va
 
     // Add the validator to pending active validators
     system_state
-        .validators
+        .validators_mut()
         .request_add_validator(validator.clone())
         .expect("Failed to add validator candidate");
 
@@ -470,7 +496,7 @@ pub fn validator_stake_amount(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.validators {
+    for validator in &system_state.validators().validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }
@@ -483,7 +509,7 @@ pub fn stake_plus_current_rewards_for_validator(
     system_state: &SystemState,
     validator_address: SomaAddress,
 ) -> Option<u64> {
-    for validator in &system_state.validators.validators {
+    for validator in &system_state.validators().validators {
         if validator.metadata.soma_address == validator_address {
             return Some(validator.staking_pool.soma_balance);
         }
@@ -510,14 +536,14 @@ pub fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
     ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
 }
 
-/// Commit a model into `pending_models`. Returns the StakedSoma receipt.
+/// Commit a model into `pending_models`. Returns the StakedSomaV1 receipt.
 /// Uses a deterministic test URL derived from model_id to generate matching commitments.
 pub fn commit_model(
     system_state: &mut SystemState,
     owner: SomaAddress,
     model_id: ModelId,
     stake_amount: u64,
-) -> StakedSoma {
+) -> StakedSomaV1 {
     commit_model_with_commission(system_state, owner, model_id, stake_amount, 0)
 }
 
@@ -528,7 +554,7 @@ pub fn commit_model_with_commission(
     model_id: ModelId,
     stake_amount: u64,
     commission_rate: u64,
-) -> StakedSoma {
+) -> StakedSomaV1 {
     let url_str = format!("https://example.com/models/{}", model_id);
     let url_commitment = url_commitment_for(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
@@ -540,7 +566,7 @@ pub fn commit_model_with_commission(
             model_id,
             url_commitment,
             weights_commitment,
-            system_state.parameters.model_architecture_version,
+            system_state.parameters().model_architecture_version,
             stake_amount,
             commission_rate,
             staking_pool_id,
@@ -638,7 +664,7 @@ pub fn stake_with_model(
     system_state: &mut SystemState,
     model_id: &ModelId,
     amount: u64,
-) -> StakedSoma {
+) -> StakedSomaV1 {
     system_state
         .request_add_stake_to_model(model_id, amount * SHANNONS_PER_SOMA)
         .expect("Failed to stake with model")

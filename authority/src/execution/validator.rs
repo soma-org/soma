@@ -35,6 +35,7 @@ impl ValidatorExecutor {
                 args.pubkey_bytes.clone(),
                 args.network_pubkey_bytes.clone(),
                 args.worker_pubkey_bytes.clone(),
+                args.proof_of_possession.clone(),
                 args.net_address.clone(),
                 args.p2p_address.clone(),
                 args.primary_address.clone(),

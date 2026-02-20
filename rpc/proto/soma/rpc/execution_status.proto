@@ -211,6 +211,15 @@ message ExecutionError {
 
     // Challenge already exists for this target
     CHALLENGE_ALREADY_EXISTS = 53;
+
+    // Duplicate validator metadata (key or address conflicts with existing validator)
+    DUPLICATE_VALIDATOR_METADATA = 54;
+
+    // Missing proof of possession for protocol key change
+    MISSING_PROOF_OF_POSSESSION = 55;
+
+    // Invalid proof of possession signature
+    INVALID_PROOF_OF_POSSESSION = 56;
   }
 
   optional ExecutionErrorKind kind = 2;

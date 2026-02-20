@@ -103,7 +103,7 @@ pub fn list_targets(
         };
 
         // Deserialize the target
-        let target: types::target::Target = match bcs::from_bytes(object.data.contents()) {
+        let target: types::target::TargetV1 = match bcs::from_bytes(object.data.contents()) {
             Ok(t) => t,
             Err(e) => {
                 tracing::warn!("failed to deserialize target {}: {}", target_info.target_id, e);

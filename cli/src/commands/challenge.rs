@@ -14,7 +14,7 @@ use tabled::{
 use sdk::wallet_context::WalletContext;
 use types::{
     base::SomaAddress,
-    challenge::{Challenge, ChallengeId, ChallengeStatus},
+    challenge::{ChallengeV1, ChallengeId, ChallengeStatus},
     object::ObjectID,
     target::TargetId,
     transaction::{InitiateChallengeArgs, TransactionKind},
@@ -110,7 +110,7 @@ impl ChallengeCommand {
                     .map_err(|e| anyhow!("Failed to get challenge object: {}", e.message()))?;
 
                 // Deserialize the challenge from object contents
-                let challenge: Challenge = bcs::from_bytes(object.data.contents())
+                let challenge: ChallengeV1 = bcs::from_bytes(object.data.contents())
                     .map_err(|e| anyhow!("Failed to deserialize challenge: {}", e))?;
 
                 Ok(ChallengeCommandResponse::Info(ChallengeInfoOutput {
@@ -220,7 +220,7 @@ pub struct ChallengeInitiatedOutput {
 #[derive(Debug, Serialize)]
 pub struct ChallengeInfoOutput {
     pub challenge_id: ChallengeId,
-    pub challenge: Challenge,
+    pub challenge: ChallengeV1,
 }
 
 #[derive(Debug, Serialize)]
