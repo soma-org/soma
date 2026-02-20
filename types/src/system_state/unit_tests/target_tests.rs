@@ -195,59 +195,55 @@ fn test_calculate_reward_per_target() {
     );
 }
 
-/// Test difficulty adjustment when hit rate is too high (too easy)
+/// Test difficulty adjustment when too many hits (too easy)
 #[test]
-fn test_difficulty_adjustment_high_hit_rate() {
+fn test_difficulty_adjustment_too_many_hits() {
     let validators = create_validators_with_stakes(vec![100, 100]);
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
-    // Set initial thresholds (f32 values)
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target hit rate
+    system_state.parameters_mut().target_hits_per_epoch = 16; // target 16 hits/epoch
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
     system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
     system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
-    // Simulate high hit rate (95% of targets filled, target = 80%)
-    system_state.target_state_mut().targets_generated_this_epoch = 100;
-    system_state.target_state_mut().hits_this_epoch = 95;
+    // Simulate 30 hits (above target of 16)
+    system_state.target_state_mut().hits_this_epoch = 30;
 
     let old_distance = system_state.target_state().distance_threshold.as_scalar();
 
     system_state.adjust_difficulty();
 
-    // Thresholds should decrease (harder) when hit rate is too high
+    // Thresholds should decrease (harder) when hits exceed target
     assert!(
         system_state.target_state().distance_threshold.as_scalar() < old_distance,
-        "Distance threshold should decrease when hit rate is too high"
+        "Distance threshold should decrease when hits exceed target"
     );
 }
 
-/// Test difficulty adjustment when hit rate is too low (too hard)
+/// Test difficulty adjustment when too few hits (too hard)
 #[test]
-fn test_difficulty_adjustment_low_hit_rate() {
+fn test_difficulty_adjustment_too_few_hits() {
     let validators = create_validators_with_stakes(vec![100, 100]);
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
-    // Set initial thresholds (f32 values)
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target hit rate
+    system_state.parameters_mut().target_hits_per_epoch = 16; // target 16 hits/epoch
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
     system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
     system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
-    // Simulate low hit rate (50% of targets filled, target = 80%)
-    system_state.target_state_mut().targets_generated_this_epoch = 100;
-    system_state.target_state_mut().hits_this_epoch = 50;
+    // Simulate 5 hits (below target of 16)
+    system_state.target_state_mut().hits_this_epoch = 5;
 
     let old_distance = system_state.target_state().distance_threshold.as_scalar();
 
     system_state.adjust_difficulty();
 
-    // Thresholds should increase (easier) when hit rate is too low
+    // Thresholds should increase (easier) when hits are below target
     assert!(
         system_state.target_state().distance_threshold.as_scalar() > old_distance,
-        "Distance threshold should increase when hit rate is too low"
+        "Distance threshold should increase when hits are below target"
     );
 }
 
@@ -257,15 +253,14 @@ fn test_difficulty_adjustment_min_bounds() {
     let validators = create_validators_with_stakes(vec![100, 100]);
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
-    // Set thresholds at minimum already (f32 values)
+    // Set thresholds at minimum already
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target
+    system_state.parameters_mut().target_hits_per_epoch = 16;
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
     system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
     system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
-    // Simulate very high hit rate (100%, target = 80%)
-    system_state.target_state_mut().targets_generated_this_epoch = 100;
+    // Simulate many hits (above target) to trigger decrease
     system_state.target_state_mut().hits_this_epoch = 100;
 
     system_state.adjust_difficulty();
@@ -283,16 +278,15 @@ fn test_difficulty_adjustment_max_bounds() {
     let validators = create_validators_with_stakes(vec![100, 100]);
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
-    // Set thresholds at maximum already (f32 values)
+    // Set thresholds at maximum already
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
-    system_state.parameters_mut().target_hit_rate_target_bps = 8000; // 80% target
+    system_state.parameters_mut().target_hits_per_epoch = 16;
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
     system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
     system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
 
-    // Simulate very low hit rate (10%, target = 80%)
-    system_state.target_state_mut().targets_generated_this_epoch = 100;
-    system_state.target_state_mut().hits_this_epoch = 10;
+    // Simulate very few hits (below target) to trigger increase
+    system_state.target_state_mut().hits_this_epoch = 2;
 
     system_state.adjust_difficulty();
 
@@ -303,15 +297,14 @@ fn test_difficulty_adjustment_max_bounds() {
     );
 }
 
-/// Test no adjustment in bootstrap mode (no targets generated)
+/// Test no adjustment in bootstrap mode (no hits yet)
 #[test]
 fn test_difficulty_adjustment_bootstrap_mode() {
     let validators = create_validators_with_stakes(vec![100, 100]);
     let mut system_state = create_test_system_state(validators, 1000, 100);
 
-    // Set initial thresholds (f32 values)
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
-    system_state.target_state_mut().targets_generated_this_epoch = 0; // Bootstrap mode
+    system_state.target_state_mut().hits_this_epoch = 0; // No hits = bootstrap
 
     let old_distance = system_state.target_state().distance_threshold.as_scalar();
 

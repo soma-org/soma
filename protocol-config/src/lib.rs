@@ -14,7 +14,7 @@ use serde_with::skip_serializing_none;
 use tracing::{info, warn};
 
 mod tensor;
-pub use tensor::{BcsF32, SomaTensor};
+pub use tensor::{BcsF32, Dtype, SomaTensor};
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
@@ -229,12 +229,12 @@ pub struct ProtocolConfig {
     target_initial_distance_threshold: Option<BcsF32>,
     /// Percentage of epoch emissions allocated to targets (bps, e.g. 8000 = 80%)
     target_reward_allocation_bps: Option<u64>,
-    /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
-    /// Difficulty adjusts toward this rate. Higher rate = make easier, lower = harder.
-    target_hit_rate_target_bps: Option<u64>,
-    /// Decay factor for hit rate EMA (bps, e.g. 9000 = 90% decay means 10% weight on new data)
+    /// Target number of hits (filled targets) per epoch.
+    /// Difficulty adjusts toward this count. More hits than target = make harder, fewer = easier.
+    target_hits_per_epoch: Option<u64>,
+    /// Decay factor for hits-per-epoch EMA (bps, e.g. 9000 = 90% decay means 10% weight on new data)
     /// Higher decay = smoother/slower adjustments; lower = more responsive.
-    target_hit_rate_ema_decay_bps: Option<u64>,
+    target_hits_ema_decay_bps: Option<u64>,
     /// Difficulty adjustment rate per epoch (bps, e.g. 500 = 5% max change)
     target_difficulty_adjustment_rate_bps: Option<u64>,
     /// Maximum distance threshold (cap for difficulty decrease, as BcsF32)
@@ -374,10 +374,10 @@ impl ProtocolConfig {
             // Target/Mining parameters
             target_models_per_target: Some(3), // 3 models per target
             target_embedding_dim: Some(768),   // Standard transformer embedding dim
-            target_initial_distance_threshold: Some(BcsF32(0.5)), // Cosine distance (0-2 range)
+            target_initial_distance_threshold: Some(BcsF32(1.0)), // Cosine distance 1.0 = easy start
             target_reward_allocation_bps: Some(8000), // 80% of emissions to targets
-            target_hit_rate_target_bps: Some(8000), // 80% target hit rate
-            target_hit_rate_ema_decay_bps: Some(9000), // 90% decay (10% weight on new data)
+            target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
+            target_hits_ema_decay_bps: Some(9000), // 90% decay (10% weight on new data)
             target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
             target_max_distance_threshold: Some(BcsF32(1.0)), // Max distance (easiest)
             target_min_distance_threshold: Some(BcsF32(0.1)), // Min distance (hardest)
@@ -494,8 +494,8 @@ impl ProtocolConfig {
                 self.target_initial_distance_threshold().value(),
             ),
             target_reward_allocation_bps: self.target_reward_allocation_bps(),
-            target_hit_rate_target_bps: self.target_hit_rate_target_bps(),
-            target_hit_rate_ema_decay_bps: self.target_hit_rate_ema_decay_bps(),
+            target_hits_per_epoch: self.target_hits_per_epoch(),
+            target_hits_ema_decay_bps: self.target_hits_ema_decay_bps(),
             target_difficulty_adjustment_rate_bps: self.target_difficulty_adjustment_rate_bps(),
             target_max_distance_threshold: SomaTensor::scalar(
                 self.target_max_distance_threshold().value(),
@@ -565,11 +565,11 @@ pub struct SystemParameters {
     pub target_initial_distance_threshold: SomaTensor,
     /// Percentage of epoch emissions allocated to targets (bps)
     pub target_reward_allocation_bps: u64,
-    /// Target hit rate (bps, e.g. 8000 = 80% of targets should be filled)
-    /// Difficulty adjusts toward this rate.
-    pub target_hit_rate_target_bps: u64,
-    /// Decay factor for hit rate EMA (bps, e.g. 9000 = 90% decay)
-    pub target_hit_rate_ema_decay_bps: u64,
+    /// Target number of hits (filled targets) per epoch.
+    /// Difficulty adjusts toward this count.
+    pub target_hits_per_epoch: u64,
+    /// Decay factor for hits-per-epoch EMA (bps, e.g. 9000 = 90% decay)
+    pub target_hits_ema_decay_bps: u64,
     /// Difficulty adjustment rate per epoch (bps)
     pub target_difficulty_adjustment_rate_bps: u64,
     /// Maximum distance threshold (cap, as scalar SomaTensor)

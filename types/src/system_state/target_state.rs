@@ -2,7 +2,8 @@
 //!
 //! `TargetState` is a lightweight struct stored in SystemState that tracks:
 //! - Current difficulty thresholds for new targets
-//! - Per-epoch counters for hits and targets (used for difficulty adjustment)
+//! - Per-epoch counters for hits and targets
+//! - Hits-per-epoch EMA for difficulty adjustment (absolute count, not percentage)
 //! - Reward per target for the current epoch
 //!
 //! The actual Target objects are shared objects stored separately from SystemState.
@@ -17,17 +18,17 @@ use serde::{Deserialize, Serialize};
 /// are separate shared objects. This separation prevents contention on SystemState
 /// when multiple submissions target different targets.
 ///
-/// Uses per-epoch counters for difficulty adjustment rather than time-based EMAs.
+/// Uses per-epoch counters and an EMA of absolute hit counts for difficulty adjustment.
 /// This avoids needing consensus timestamps during execution, which would create
 /// issues during checkpoint replay (fullnodes don't have consensus timestamps).
 ///
-/// The hit_rate_ema_bps provides a smoothed view of hit rate across epochs
-/// for more stable difficulty adjustments.
+/// The `hits_ema` provides a smoothed view of hits per epoch (absolute count)
+/// for stable difficulty adjustments.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TargetState {
     /// Current distance threshold for new targets (cosine distance as scalar SomaTensor).
-    /// Lower distance = closer to target center = better.
-    /// This threshold is dynamically adjusted based on hit_rate_ema_bps.
+    /// Lower distance = closer to target center = harder.
+    /// This threshold is dynamically adjusted based on hits_ema vs target_hits_per_epoch.
     pub distance_threshold: SomaTensor,
 
     /// Number of targets generated this epoch (initial + spawn-on-fill replacements).
@@ -36,13 +37,12 @@ pub struct TargetState {
 
     /// Number of successful hits (filled targets) this epoch.
     /// Reset to 0 at epoch boundary after difficulty adjustment.
-    /// hit_rate = hits_this_epoch / targets_generated_this_epoch
     pub hits_this_epoch: u64,
 
-    /// Exponential Moving Average of hit rate in basis points (0-10000).
-    /// Updated at each epoch boundary: EMA = decay * EMA + (1-decay) * current_rate.
+    /// Exponential Moving Average of hits per epoch (absolute count).
+    /// Updated at each epoch boundary: EMA = decay * EMA + (1-decay) * hits_this_epoch.
     /// 0 indicates bootstrap mode (no data yet).
-    pub hit_rate_ema_bps: u64,
+    pub hits_ema: u64,
 
     /// Reward per target for the current epoch (in shannons).
     /// Calculated at epoch boundary from target_allocation / estimated_targets.
@@ -56,7 +56,7 @@ impl Default for TargetState {
             distance_threshold: SomaTensor::scalar(0.0),
             targets_generated_this_epoch: 0,
             hits_this_epoch: 0,
-            hit_rate_ema_bps: 0,
+            hits_ema: 0,
             reward_per_target: 0,
         }
     }
@@ -66,14 +66,14 @@ impl TargetState {
     /// Create a new TargetState with initial thresholds from protocol config.
     ///
     /// Epoch counters start at 0 and are reset at each epoch boundary.
-    /// `hit_rate_ema_bps` starts at 0 (bootstrap mode).
+    /// `hits_ema` starts at 0 (bootstrap mode).
     /// `reward_per_target` is calculated separately after construction.
     pub fn new(initial_distance_threshold: SomaTensor) -> Self {
         Self {
             distance_threshold: initial_distance_threshold,
             targets_generated_this_epoch: 0,
             hits_this_epoch: 0,
-            hit_rate_ema_bps: 0,
+            hits_ema: 0,
             reward_per_target: 0,
         }
     }
@@ -95,39 +95,27 @@ impl TargetState {
         self.hits_this_epoch += 1;
     }
 
-    /// Calculate the hit rate for this epoch in basis points (0-10000).
-    /// Returns None if no targets were generated.
-    pub fn hit_rate_bps(&self) -> Option<u64> {
-        if self.targets_generated_this_epoch == 0 {
-            None
-        } else {
-            Some((self.hits_this_epoch * 10000) / self.targets_generated_this_epoch)
-        }
-    }
-
-    /// Update the hit rate EMA at epoch boundary.
+    /// Update the hits-per-epoch EMA at epoch boundary.
     /// `decay_bps` is the decay factor in basis points (e.g., 9000 = 0.9).
     /// Returns the new EMA value.
     ///
-    /// EMA formula: new_ema = decay * old_ema + (1 - decay) * current_rate
-    /// In bps arithmetic: new_ema = (decay_bps * old_ema + (10000 - decay_bps) * current_rate) / 10000
+    /// EMA formula: new_ema = decay * old_ema + (1 - decay) * hits_this_epoch
+    /// In bps arithmetic: new_ema = (decay_bps * old_ema + (10000 - decay_bps) * hits_this_epoch) / 10000
     ///
-    /// If `hit_rate_ema_bps` is 0 (bootstrap), we initialize it to the current rate.
-    pub fn update_hit_rate_ema(&mut self, decay_bps: u64) -> u64 {
-        if let Some(current_rate_bps) = self.hit_rate_bps() {
-            if self.hit_rate_ema_bps == 0 {
-                // Bootstrap: initialize to current rate
-                self.hit_rate_ema_bps = current_rate_bps;
-            } else {
-                // EMA update: decay * old + (1-decay) * new
-                let weight_old = decay_bps;
-                let weight_new = 10000 - decay_bps;
-                self.hit_rate_ema_bps =
-                    (weight_old * self.hit_rate_ema_bps + weight_new * current_rate_bps) / 10000;
-            }
+    /// If `hits_ema` is 0 (bootstrap), we initialize it to the current hit count.
+    pub fn update_hits_ema(&mut self, decay_bps: u64) -> u64 {
+        let current_hits = self.hits_this_epoch;
+        if self.hits_ema == 0 {
+            // Bootstrap: initialize to current count
+            self.hits_ema = current_hits;
+        } else {
+            // EMA update: decay * old + (1-decay) * new
+            let weight_old = decay_bps;
+            let weight_new = 10000 - decay_bps;
+            self.hits_ema =
+                (weight_old * self.hits_ema + weight_new * current_hits) / 10000;
         }
-        // If no targets generated, keep the EMA unchanged
-        self.hit_rate_ema_bps
+        self.hits_ema
     }
 }
 
@@ -141,7 +129,7 @@ mod tests {
         assert_eq!(state.distance_threshold.as_scalar(), 0.0);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
-        assert_eq!(state.hit_rate_ema_bps, 0);
+        assert_eq!(state.hits_ema, 0);
         assert_eq!(state.reward_per_target, 0);
     }
 
@@ -151,7 +139,7 @@ mod tests {
         assert_eq!(state.distance_threshold.as_scalar(), 0.5);
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
-        assert_eq!(state.hit_rate_ema_bps, 0);
+        assert_eq!(state.hits_ema, 0);
         assert_eq!(state.reward_per_target, 0);
     }
 
@@ -169,63 +157,62 @@ mod tests {
         assert_eq!(state.targets_generated_this_epoch, 3);
         assert_eq!(state.hits_this_epoch, 2);
 
-        // Check hit rate (2/3 = 6666 bps)
-        let rate_bps = state.hit_rate_bps().unwrap();
-        assert_eq!(rate_bps, 6666);
-
         // Reset counters
         state.reset_epoch_counters();
         assert_eq!(state.targets_generated_this_epoch, 0);
         assert_eq!(state.hits_this_epoch, 0);
-        assert!(state.hit_rate_bps().is_none());
     }
 
     #[test]
-    fn test_hit_rate_ema_bootstrap() {
+    fn test_hits_ema_bootstrap() {
         let mut state = TargetState::new(SomaTensor::scalar(0.5));
 
-        // Record 8/10 = 80% hit rate
-        for _ in 0..10 {
-            state.record_target_generated();
-        }
+        // Record 8 hits this epoch
         for _ in 0..8 {
             state.record_hit();
         }
 
-        // Bootstrap: EMA starts at 0, should be set to current rate
-        assert_eq!(state.hit_rate_ema_bps, 0);
-        let ema = state.update_hit_rate_ema(9000); // 90% decay
-        assert_eq!(ema, 8000); // 80% = 8000 bps
-        assert_eq!(state.hit_rate_ema_bps, 8000);
+        // Bootstrap: EMA starts at 0, should be set to current hit count
+        assert_eq!(state.hits_ema, 0);
+        let ema = state.update_hits_ema(9000); // 90% decay
+        assert_eq!(ema, 8); // Initialized to 8 hits
+        assert_eq!(state.hits_ema, 8);
     }
 
     #[test]
-    fn test_hit_rate_ema_update() {
+    fn test_hits_ema_update() {
         let mut state = TargetState::new(SomaTensor::scalar(0.5));
-        state.hit_rate_ema_bps = 8000; // 80%
+        state.hits_ema = 20; // Previous EMA: 20 hits/epoch
 
-        // Epoch with 60% hit rate
+        // This epoch: 10 hits
         for _ in 0..10 {
-            state.record_target_generated();
-        }
-        for _ in 0..6 {
             state.record_hit();
         }
 
         // EMA update with 90% decay
-        // new_ema = (9000 * 8000 + 1000 * 6000) / 10000 = (72000000 + 6000000) / 10000 = 7800
-        let ema = state.update_hit_rate_ema(9000);
-        assert_eq!(ema, 7800);
+        // new_ema = (9000 * 20 + 1000 * 10) / 10000 = (180000 + 10000) / 10000 = 19
+        let ema = state.update_hits_ema(9000);
+        assert_eq!(ema, 19);
     }
 
     #[test]
-    fn test_hit_rate_ema_no_targets() {
+    fn test_hits_ema_no_hits() {
         let mut state = TargetState::new(SomaTensor::scalar(0.5));
-        state.hit_rate_ema_bps = 8000; // 80%
+        state.hits_ema = 20; // Previous EMA: 20 hits/epoch
 
-        // No targets generated this epoch
-        // EMA should remain unchanged
-        let ema = state.update_hit_rate_ema(9000);
-        assert_eq!(ema, 8000);
+        // No hits this epoch
+        // new_ema = (9000 * 20 + 1000 * 0) / 10000 = 180000 / 10000 = 18
+        let ema = state.update_hits_ema(9000);
+        assert_eq!(ema, 18);
+    }
+
+    #[test]
+    fn test_hits_ema_bootstrap_zero_hits() {
+        let mut state = TargetState::new(SomaTensor::scalar(0.5));
+
+        // No hits, bootstrap mode: stays at 0
+        assert_eq!(state.hits_ema, 0);
+        let ema = state.update_hits_ema(9000);
+        assert_eq!(ema, 0); // Still in bootstrap mode
     }
 }

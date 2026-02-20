@@ -3438,9 +3438,9 @@ pub struct SystemParameters {
     #[prost(uint64, optional, tag = "17")]
     pub target_reward_allocation_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "18")]
-    pub target_hit_rate_target_bps: ::core::option::Option<u64>,
+    pub target_hits_per_epoch: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "19")]
-    pub target_hit_rate_ema_decay_bps: ::core::option::Option<u64>,
+    pub target_hits_ema_decay_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "20")]
     pub target_difficulty_adjustment_rate_bps: ::core::option::Option<u64>,
     #[prost(float, optional, tag = "21")]
@@ -3684,10 +3684,10 @@ pub struct TargetState {
     /// Count of successful hits this epoch
     #[prost(uint64, optional, tag = "3")]
     pub hits_this_epoch: ::core::option::Option<u64>,
-    /// EMA of hit rate across epochs (bps, 0-10000)
+    /// EMA of hits per epoch (absolute count)
     /// 0 indicates bootstrap mode (no data yet)
     #[prost(uint64, optional, tag = "4")]
-    pub hit_rate_ema_bps: ::core::option::Option<u64>,
+    pub hits_ema: ::core::option::Option<u64>,
     /// Reward per target for current epoch (in shannons)
     #[prost(uint64, optional, tag = "5")]
     pub reward_per_target: ::core::option::Option<u64>,

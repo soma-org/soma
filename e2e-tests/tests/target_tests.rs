@@ -22,7 +22,6 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
     submission::SubmissionManifest,
-    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
 };
@@ -368,17 +367,16 @@ async fn test_claim_rewards_after_challenge_window() {
 
     info!("ClaimRewards succeeded");
 
-    // Verify target is now claimed
-    let mut claimed_request = ListTargetsRequest::default();
-    claimed_request.status_filter = Some("claimed".to_string());
-    claimed_request.page_size = Some(100);
-    let claimed_response = client.list_targets(claimed_request).await.unwrap();
-    let claimed_target = claimed_response
+    // Verify target is deleted (claimed targets are pruned from storage and index)
+    let mut all_request = ListTargetsRequest::default();
+    all_request.page_size = Some(100);
+    let all_response = client.list_targets(all_request).await.unwrap();
+    let found = all_response
         .targets
         .iter()
-        .find(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
+        .any(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
 
-    assert!(claimed_target.is_some(), "Target should be claimed after ClaimRewards");
+    assert!(!found, "Target should be deleted after ClaimRewards");
 
     info!("test_claim_rewards_after_challenge_window passed");
 }
@@ -516,17 +514,16 @@ async fn test_claim_expired_unfilled_target() {
 
     info!("ClaimRewards on expired unfilled target succeeded");
 
-    // Verify target is now claimed
-    let mut claimed_request = ListTargetsRequest::default();
-    claimed_request.status_filter = Some("claimed".to_string());
-    claimed_request.page_size = Some(100);
-    let claimed_response = client.list_targets(claimed_request).await.unwrap();
-    let claimed_target = claimed_response
+    // Verify target is deleted (claimed targets are pruned from storage and index)
+    let mut all_request = ListTargetsRequest::default();
+    all_request.page_size = Some(100);
+    let all_response = client.list_targets(all_request).await.unwrap();
+    let found = all_response
         .targets
         .iter()
-        .find(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
+        .any(|t| t.id.as_ref().and_then(|id_str| id_str.parse().ok()) == Some(target_id));
 
-    assert!(claimed_target.is_some(), "Target should be claimed after ClaimRewards");
+    assert!(!found, "Target should be deleted after ClaimRewards");
 
     info!("test_claim_expired_unfilled_target passed");
 }

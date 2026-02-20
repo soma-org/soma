@@ -7,7 +7,7 @@ mod digest;
 mod effects;
 mod execution_status;
 mod fee;
-mod hash;
+pub mod hash;
 mod object;
 mod transaction;
 

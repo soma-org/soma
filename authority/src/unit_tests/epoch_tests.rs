@@ -221,7 +221,7 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_advance_epoch_hit_rate_tracking() {
+async fn test_advance_epoch_hit_counter_tracking() {
     let mut state = get_genesis_system_state().await;
 
     // Simulate some hits and targets

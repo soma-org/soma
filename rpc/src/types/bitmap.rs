@@ -18,7 +18,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     /// let bitmap = Bitmap::new();
     /// ```
     pub fn new() -> Self {
@@ -30,7 +30,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// assert_eq!(bitmap.len(), 0);
@@ -51,7 +51,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// bitmap.insert(1);
@@ -68,7 +68,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// assert_eq!(bitmap.is_empty(), true);
@@ -87,7 +87,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// assert_eq!(bitmap.insert(3), true);
@@ -104,7 +104,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// bitmap.insert_range(2..4);
@@ -124,7 +124,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// bitmap.insert(3);
@@ -141,7 +141,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let mut bitmap = Bitmap::new();
     /// bitmap.insert(1);
@@ -159,7 +159,7 @@ impl Bitmap {
     ///
     /// ```rust
     /// use core::iter::FromIterator;
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let bitmap = (1..3).collect::<Bitmap>();
     /// let mut iter = bitmap.iter();
@@ -182,7 +182,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let bitmap1: Bitmap = (1..4).collect();
     /// let mut bytes = vec![];
@@ -209,7 +209,7 @@ impl Bitmap {
     /// # Examples
     ///
     /// ```rust
-    /// use sui_sdk_types::Bitmap;
+    /// use rpc::types::Bitmap;
     ///
     /// let bitmap1: Bitmap = (1..4).collect();
     /// let mut bytes = vec![];

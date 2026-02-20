@@ -1,12 +1,13 @@
 //! BCS-compatible wrappers for floating-point types.
 //!
 //! BCS (Binary Canonical Serialization) does not support floating-point types directly.
-//! This module provides wrapper types that serialize f32 values as raw bytes (little-endian
+//! This module provides wrapper types that serialize float values as raw bytes (little-endian
 //! IEEE 754), making them BCS-compatible while preserving the full precision.
 //!
 //! Types:
 //! - `BcsF32`: Simple f32 wrapper for single values (used in ProtocolConfig)
 //! - `SomaTensor`: TensorData wrapper for multi-dimensional arrays (used in transactions)
+//! - `Dtype`: Element data type enum for forward-compatible tensor serialization
 
 use burn::tensor::TensorData;
 use schemars::JsonSchema;
@@ -95,14 +96,48 @@ impl std::str::FromStr for BcsF32 {
 }
 
 // ============================================================================
+// Dtype - Element data type for tensors
+// ============================================================================
+
+/// Element data type for SomaTensor.
+///
+/// Stored in the BCS serialization format to enable future dtype extensibility
+/// (e.g., f16 support) without breaking the wire format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum Dtype {
+    /// 32-bit IEEE 754 floating point (4 bytes per element)
+    F32 = 0,
+    // F16 = 1,  // Reserved for future use
+}
+
+impl Dtype {
+    /// Size of a single element in bytes.
+    pub fn element_size(&self) -> usize {
+        match self {
+            Dtype::F32 => 4,
+        }
+    }
+}
+
+impl Default for Dtype {
+    fn default() -> Self {
+        Dtype::F32
+    }
+}
+
+// ============================================================================
 // SomaTensor - TensorData wrapper for BCS serialization
 // ============================================================================
 
 /// BCS-compatible serialization format for SomaTensor.
-/// Stores f32 values as raw bytes since BCS doesn't support floats.
+/// Stores element values as raw bytes since BCS doesn't support floats.
+/// Includes a dtype discriminant for forward-compatible extensibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SomaTensorBcs {
-    /// Raw bytes of the f32 values (little-endian IEEE 754)
+    /// Data type discriminant (0 = F32, future: 1 = F16, etc.)
+    dtype: u8,
+    /// Raw bytes of the element values (little-endian IEEE 754)
     bytes: Vec<u8>,
     /// Shape of the tensor
     shape: Vec<usize>,
@@ -114,7 +149,8 @@ struct SomaTensorBcs {
 /// The underlying TensorData stores shape and bytes, making it compatible with
 /// Burn's tensor operations and the CompetitionAPI.
 ///
-/// Serialization uses a BCS-compatible format that stores f32 values as raw bytes.
+/// Serialization uses a BCS-compatible format that stores element values as raw bytes
+/// with a dtype discriminant for forward-compatible extensibility (currently f32 only).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SomaTensor(pub TensorData);
 
@@ -126,9 +162,12 @@ impl Serialize for SomaTensor {
         S: Serializer,
     {
         let values = self.to_vec();
-        // Convert f32 values to raw bytes (little-endian)
         let bytes: Vec<u8> = values.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let bcs_format = SomaTensorBcs { bytes, shape: self.0.shape.clone() };
+        let bcs_format = SomaTensorBcs {
+            dtype: Dtype::F32 as u8,
+            bytes,
+            shape: self.0.shape.clone(),
+        };
         bcs_format.serialize(serializer)
     }
 }
@@ -139,16 +178,24 @@ impl<'de> Deserialize<'de> for SomaTensor {
         D: Deserializer<'de>,
     {
         let bcs_format = SomaTensorBcs::deserialize(deserializer)?;
-        // Convert raw bytes back to f32 values
-        let values: Vec<f32> = bcs_format
-            .bytes
-            .chunks(4)
-            .map(|chunk| {
-                let arr: [u8; 4] = chunk.try_into().expect("Invalid byte chunk size");
-                f32::from_le_bytes(arr)
-            })
-            .collect();
-        Ok(SomaTensor::new(values, bcs_format.shape))
+        match bcs_format.dtype {
+            0 => {
+                // Dtype::F32
+                let values: Vec<f32> = bcs_format
+                    .bytes
+                    .chunks(4)
+                    .map(|chunk| {
+                        let arr: [u8; 4] = chunk.try_into().expect("Invalid byte chunk size");
+                        f32::from_le_bytes(arr)
+                    })
+                    .collect();
+                Ok(SomaTensor::new(values, bcs_format.shape))
+            }
+            other => Err(serde::de::Error::custom(format!(
+                "Unsupported SomaTensor dtype: {}",
+                other
+            ))),
+        }
     }
 }
 
@@ -193,12 +240,18 @@ impl SomaTensor {
         &self.0.shape
     }
 
+    /// Get the element data type of this tensor.
+    /// Currently always returns `Dtype::F32`; future-proofed for f16 support.
+    pub fn dtype(&self) -> Dtype {
+        Dtype::F32
+    }
+
     /// Get the underlying data as f32 values.
     ///
     /// # Panics
-    /// Panics if the underlying data is not f32 (should never happen for SomaTensor).
+    /// Panics if the underlying data is not f32.
     pub fn to_vec(&self) -> Vec<f32> {
-        self.0.to_vec::<f32>().expect("SomaTensor always stores f32")
+        self.0.to_vec::<f32>().expect("SomaTensor data is not f32")
     }
 
     /// Create a scalar SomaTensor from a single f32 value.
@@ -224,7 +277,7 @@ impl SomaTensor {
 
 /// Hash implementation using byte representation.
 ///
-/// This is deterministic for identical f32 values since we hash the raw bytes.
+/// This is deterministic for identical element values since we hash the raw bytes.
 /// The hash includes both shape and data to ensure different-shaped tensors
 /// with the same data produce different hashes.
 impl Hash for SomaTensor {
@@ -354,5 +407,25 @@ mod tests {
         assert_eq!(original[0], restored[0]); // 0.0
         assert_eq!(original[2], restored[2]); // INFINITY
         assert_eq!(original[3], restored[3]); // NEG_INFINITY
+    }
+
+    #[test]
+    fn test_soma_tensor_dtype() {
+        let tensor = SomaTensor::new(vec![1.0, 2.0], vec![2]);
+        assert_eq!(tensor.dtype(), Dtype::F32);
+        assert_eq!(tensor.dtype().element_size(), 4);
+    }
+
+    #[test]
+    fn test_soma_tensor_unknown_dtype_errors() {
+        // Manually construct BCS bytes with an unknown dtype (255)
+        let fake_bcs = SomaTensorBcs {
+            dtype: 255,
+            bytes: vec![0; 4],
+            shape: vec![1],
+        };
+        let serialized = bcs::to_bytes(&fake_bcs).unwrap();
+        let result = bcs::from_bytes::<SomaTensor>(&serialized);
+        assert!(result.is_err());
     }
 }

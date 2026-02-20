@@ -67,8 +67,8 @@ message SystemParameters {
   optional uint64 target_embedding_dim = 15;
   optional float target_initial_distance_threshold = 16;
   optional uint64 target_reward_allocation_bps = 17;
-  optional uint64 target_hit_rate_target_bps = 18;
-  optional uint64 target_hit_rate_ema_decay_bps = 19;
+  optional uint64 target_hits_per_epoch = 18;
+  optional uint64 target_hits_ema_decay_bps = 19;
   optional uint64 target_difficulty_adjustment_rate_bps = 20;
   optional float target_max_distance_threshold = 21;
   optional float target_min_distance_threshold = 22;
@@ -196,9 +196,9 @@ message TargetState {
   // Count of successful hits this epoch
   optional uint64 hits_this_epoch = 3;
 
-  // EMA of hit rate across epochs (bps, 0-10000)
+  // EMA of hits per epoch (absolute count)
   // 0 indicates bootstrap mode (no data yet)
-  optional uint64 hit_rate_ema_bps = 4;
+  optional uint64 hits_ema = 4;
 
   // Reward per target for current epoch (in shannons)
   optional uint64 reward_per_target = 5;

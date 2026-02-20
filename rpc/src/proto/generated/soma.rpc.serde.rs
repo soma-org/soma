@@ -14180,10 +14180,10 @@ impl serde::Serialize for SystemParameters {
         if self.target_reward_allocation_bps.is_some() {
             len += 1;
         }
-        if self.target_hit_rate_target_bps.is_some() {
+        if self.target_hits_per_epoch.is_some() {
             len += 1;
         }
-        if self.target_hit_rate_ema_decay_bps.is_some() {
+        if self.target_hits_ema_decay_bps.is_some() {
             len += 1;
         }
         if self.target_difficulty_adjustment_rate_bps.is_some() {
@@ -14300,15 +14300,15 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("targetRewardAllocationBps", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.target_hit_rate_target_bps.as_ref() {
+        if let Some(v) = self.target_hits_per_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetHitRateTargetBps", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetHitsPerEpoch", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.target_hit_rate_ema_decay_bps.as_ref() {
+        if let Some(v) = self.target_hits_ema_decay_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetHitRateEmaDecayBps", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetHitsEmaDecayBps", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.target_difficulty_adjustment_rate_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14400,10 +14400,10 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "targetInitialDistanceThreshold",
             "target_reward_allocation_bps",
             "targetRewardAllocationBps",
-            "target_hit_rate_target_bps",
-            "targetHitRateTargetBps",
-            "target_hit_rate_ema_decay_bps",
-            "targetHitRateEmaDecayBps",
+            "target_hits_per_epoch",
+            "targetHitsPerEpoch",
+            "target_hits_ema_decay_bps",
+            "targetHitsEmaDecayBps",
             "target_difficulty_adjustment_rate_bps",
             "targetDifficultyAdjustmentRateBps",
             "target_max_distance_threshold",
@@ -14445,8 +14445,8 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             TargetEmbeddingDim,
             TargetInitialDistanceThreshold,
             TargetRewardAllocationBps,
-            TargetHitRateTargetBps,
-            TargetHitRateEmaDecayBps,
+            TargetHitsPerEpoch,
+            TargetHitsEmaDecayBps,
             TargetDifficultyAdjustmentRateBps,
             TargetMaxDistanceThreshold,
             TargetMinDistanceThreshold,
@@ -14496,8 +14496,8 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                             "targetEmbeddingDim" | "target_embedding_dim" => Ok(GeneratedField::TargetEmbeddingDim),
                             "targetInitialDistanceThreshold" | "target_initial_distance_threshold" => Ok(GeneratedField::TargetInitialDistanceThreshold),
                             "targetRewardAllocationBps" | "target_reward_allocation_bps" => Ok(GeneratedField::TargetRewardAllocationBps),
-                            "targetHitRateTargetBps" | "target_hit_rate_target_bps" => Ok(GeneratedField::TargetHitRateTargetBps),
-                            "targetHitRateEmaDecayBps" | "target_hit_rate_ema_decay_bps" => Ok(GeneratedField::TargetHitRateEmaDecayBps),
+                            "targetHitsPerEpoch" | "target_hits_per_epoch" => Ok(GeneratedField::TargetHitsPerEpoch),
+                            "targetHitsEmaDecayBps" | "target_hits_ema_decay_bps" => Ok(GeneratedField::TargetHitsEmaDecayBps),
                             "targetDifficultyAdjustmentRateBps" | "target_difficulty_adjustment_rate_bps" => Ok(GeneratedField::TargetDifficultyAdjustmentRateBps),
                             "targetMaxDistanceThreshold" | "target_max_distance_threshold" => Ok(GeneratedField::TargetMaxDistanceThreshold),
                             "targetMinDistanceThreshold" | "target_min_distance_threshold" => Ok(GeneratedField::TargetMinDistanceThreshold),
@@ -14546,8 +14546,8 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 let mut target_embedding_dim__ = None;
                 let mut target_initial_distance_threshold__ = None;
                 let mut target_reward_allocation_bps__ = None;
-                let mut target_hit_rate_target_bps__ = None;
-                let mut target_hit_rate_ema_decay_bps__ = None;
+                let mut target_hits_per_epoch__ = None;
+                let mut target_hits_ema_decay_bps__ = None;
                 let mut target_difficulty_adjustment_rate_bps__ = None;
                 let mut target_max_distance_threshold__ = None;
                 let mut target_min_distance_threshold__ = None;
@@ -14696,19 +14696,19 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::TargetHitRateTargetBps => {
-                            if target_hit_rate_target_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetHitRateTargetBps"));
+                        GeneratedField::TargetHitsPerEpoch => {
+                            if target_hits_per_epoch__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetHitsPerEpoch"));
                             }
-                            target_hit_rate_target_bps__ = 
+                            target_hits_per_epoch__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::TargetHitRateEmaDecayBps => {
-                            if target_hit_rate_ema_decay_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetHitRateEmaDecayBps"));
+                        GeneratedField::TargetHitsEmaDecayBps => {
+                            if target_hits_ema_decay_bps__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetHitsEmaDecayBps"));
                             }
-                            target_hit_rate_ema_decay_bps__ = 
+                            target_hits_ema_decay_bps__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -14815,8 +14815,8 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     target_embedding_dim: target_embedding_dim__,
                     target_initial_distance_threshold: target_initial_distance_threshold__,
                     target_reward_allocation_bps: target_reward_allocation_bps__,
-                    target_hit_rate_target_bps: target_hit_rate_target_bps__,
-                    target_hit_rate_ema_decay_bps: target_hit_rate_ema_decay_bps__,
+                    target_hits_per_epoch: target_hits_per_epoch__,
+                    target_hits_ema_decay_bps: target_hits_ema_decay_bps__,
                     target_difficulty_adjustment_rate_bps: target_difficulty_adjustment_rate_bps__,
                     target_max_distance_threshold: target_max_distance_threshold__,
                     target_min_distance_threshold: target_min_distance_threshold__,
@@ -15498,7 +15498,7 @@ impl serde::Serialize for TargetState {
         if self.hits_this_epoch.is_some() {
             len += 1;
         }
-        if self.hit_rate_ema_bps.is_some() {
+        if self.hits_ema.is_some() {
             len += 1;
         }
         if self.reward_per_target.is_some() {
@@ -15518,10 +15518,10 @@ impl serde::Serialize for TargetState {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("hitsThisEpoch", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.hit_rate_ema_bps.as_ref() {
+        if let Some(v) = self.hits_ema.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("hitRateEmaBps", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("hitsEma", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.reward_per_target.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -15544,8 +15544,8 @@ impl<'de> serde::Deserialize<'de> for TargetState {
             "targetsGeneratedThisEpoch",
             "hits_this_epoch",
             "hitsThisEpoch",
-            "hit_rate_ema_bps",
-            "hitRateEmaBps",
+            "hits_ema",
+            "hitsEma",
             "reward_per_target",
             "rewardPerTarget",
         ];
@@ -15555,7 +15555,7 @@ impl<'de> serde::Deserialize<'de> for TargetState {
             DistanceThreshold,
             TargetsGeneratedThisEpoch,
             HitsThisEpoch,
-            HitRateEmaBps,
+            HitsEma,
             RewardPerTarget,
             __SkipField__,
         }
@@ -15582,7 +15582,7 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                             "distanceThreshold" | "distance_threshold" => Ok(GeneratedField::DistanceThreshold),
                             "targetsGeneratedThisEpoch" | "targets_generated_this_epoch" => Ok(GeneratedField::TargetsGeneratedThisEpoch),
                             "hitsThisEpoch" | "hits_this_epoch" => Ok(GeneratedField::HitsThisEpoch),
-                            "hitRateEmaBps" | "hit_rate_ema_bps" => Ok(GeneratedField::HitRateEmaBps),
+                            "hitsEma" | "hits_ema" => Ok(GeneratedField::HitsEma),
                             "rewardPerTarget" | "reward_per_target" => Ok(GeneratedField::RewardPerTarget),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -15608,7 +15608,7 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                 let mut distance_threshold__ = None;
                 let mut targets_generated_this_epoch__ = None;
                 let mut hits_this_epoch__ = None;
-                let mut hit_rate_ema_bps__ = None;
+                let mut hits_ema__ = None;
                 let mut reward_per_target__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -15636,11 +15636,11 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::HitRateEmaBps => {
-                            if hit_rate_ema_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("hitRateEmaBps"));
+                        GeneratedField::HitsEma => {
+                            if hits_ema__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("hitsEma"));
                             }
-                            hit_rate_ema_bps__ = 
+                            hits_ema__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -15661,7 +15661,7 @@ impl<'de> serde::Deserialize<'de> for TargetState {
                     distance_threshold: distance_threshold__,
                     targets_generated_this_epoch: targets_generated_this_epoch__,
                     hits_this_epoch: hits_this_epoch__,
-                    hit_rate_ema_bps: hit_rate_ema_bps__,
+                    hits_ema: hits_ema__,
                     reward_per_target: reward_per_target__,
                 })
             }

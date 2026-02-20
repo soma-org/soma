@@ -30,7 +30,6 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::ObjectID,
     submission::SubmissionManifest,
-    system_state::SystemStateTrait as _,
     tensor::SomaTensor,
     transaction::{
         ClaimRewardsArgs, InitiateChallengeArgs, SubmitDataArgs, Transaction, TransactionData,

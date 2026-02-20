@@ -31,10 +31,10 @@ max_value_fee_bps: 100
 fee_adjustment_rate_bps: 1250
 target_models_per_target: 3
 target_embedding_dim: 768
-target_initial_distance_threshold: 0.5
+target_initial_distance_threshold: 1
 target_reward_allocation_bps: 8000
-target_hit_rate_target_bps: 8000
-target_hit_rate_ema_decay_bps: 9000
+target_hits_per_epoch: 16
+target_hits_ema_decay_bps: 9000
 target_difficulty_adjustment_rate_bps: 500
 target_max_distance_threshold: 1
 target_min_distance_threshold: 0.1

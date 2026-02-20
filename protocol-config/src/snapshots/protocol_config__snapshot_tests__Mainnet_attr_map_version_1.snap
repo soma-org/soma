@@ -62,12 +62,12 @@ target_embedding_dim:
   u64: 768
 target_epoch_fee_collection:
   u64: 1000000000
-target_hit_rate_ema_decay_bps:
+target_hits_ema_decay_bps:
   u64: 9000
-target_hit_rate_target_bps:
-  u64: 8000
+target_hits_per_epoch:
+  u64: 16
 target_initial_distance_threshold:
-  BcsF32: 0.5
+  BcsF32: 1
 target_initial_targets_per_epoch:
   u64: 20
 target_max_distance_threshold:

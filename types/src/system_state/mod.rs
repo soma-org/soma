@@ -1266,23 +1266,23 @@ impl SystemStateV1 {
         target_emissions / estimated_targets
     }
 
-    /// Adjust difficulty thresholds based on hit rate for the epoch.
+    /// Adjust difficulty thresholds based on hits per epoch.
     /// Called during epoch transition in advance_epoch_targets().
     ///
-    /// Hit rate = hits_this_epoch / targets_generated_this_epoch
-    /// If hit_rate_ema > target_rate: make harder (decrease thresholds)
-    /// If hit_rate_ema < target_rate: make easier (increase thresholds)
+    /// Compares the EMA of absolute hit counts against target_hits_per_epoch:
+    /// If ema_hits > target: too many hits → decrease thresholds (harder)
+    /// If ema_hits < target: too few hits → increase thresholds (easier)
     ///
-    /// Uses an EMA of hit rate across epochs for smoother adjustments.
+    /// Uses an EMA of hits per epoch for smoother adjustments.
     pub fn adjust_difficulty(&mut self) {
-        let target_hit_rate_bps = self.parameters.target_hit_rate_target_bps;
-        let decay_bps = self.parameters.target_hit_rate_ema_decay_bps;
+        let target_hits = self.parameters.target_hits_per_epoch;
+        let decay_bps = self.parameters.target_hits_ema_decay_bps;
 
-        // Update the EMA with this epoch's hit rate
-        let ema_bps = self.target_state.update_hit_rate_ema(decay_bps);
+        // Update the EMA with this epoch's hit count
+        let ema_hits = self.target_state.update_hits_ema(decay_bps);
 
         // Skip adjustment if still in bootstrap mode (EMA is 0)
-        if ema_bps == 0 {
+        if ema_hits == 0 {
             info!("Difficulty adjustment skipped: bootstrap mode (no hit data yet)");
             return;
         }
@@ -1291,18 +1291,21 @@ impl SystemStateV1 {
         let min_distance = self.parameters.target_min_distance_threshold.as_scalar();
         let max_distance = self.parameters.target_max_distance_threshold.as_scalar();
 
-        // Calculate adjustment factor based on EMA
-        // If ema > target_rate, we're too easy → decrease thresholds (harder)
-        // If ema < target_rate, we're too hard → increase thresholds (easier)
-        let adjustment_factor: f32 = if ema_bps > target_hit_rate_bps {
+        // Calculate adjustment factor based on EMA vs target
+        // If ema > target, we're too easy → decrease thresholds (harder)
+        // If ema < target, we're too hard → increase thresholds (easier)
+        // If ema == target, no adjustment needed
+        let adjustment_factor: f32 = if ema_hits > target_hits {
             // Too easy - make harder (decrease thresholds)
             // factor < 1.0
             (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
                 / BPS_DENOMINATOR as f32
-        } else {
+        } else if ema_hits < target_hits {
             // Too hard - make easier (increase thresholds)
             // factor > 1.0
             (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32
+        } else {
+            1.0 // Exact match, no adjustment
         };
 
         // Apply adjustment to distance threshold
@@ -1311,25 +1314,24 @@ impl SystemStateV1 {
         self.target_state.distance_threshold = SomaTensor::scalar(new_distance);
 
         info!(
-            "Difficulty adjusted: distance={} (ema={}bps, target={}bps, hits={}, targets={})",
+            "Difficulty adjusted: distance={} (ema_hits={}, target_hits={}, hits_this_epoch={})",
             self.target_state.distance_threshold,
-            ema_bps,
-            target_hit_rate_bps,
+            ema_hits,
+            target_hits,
             self.target_state.hits_this_epoch,
-            self.target_state.targets_generated_this_epoch
         );
     }
 
     /// Called at epoch boundary to update target state for the new epoch.
     ///
-    /// 1. Adjust difficulty based on hit rate from the previous epoch
+    /// 1. Adjust difficulty based on hits from the previous epoch
     /// 2. Reset epoch counters for the new epoch
     /// 3. Calculate reward_per_target for the new epoch
     ///
     /// Note: Actual target objects are separate shared objects.
     /// This only updates the coordination state in SystemState.
     pub fn advance_epoch_targets(&mut self) {
-        // 1. Adjust difficulty thresholds based on last epoch's hit rate
+        // 1. Adjust difficulty thresholds based on last epoch's hits
         self.adjust_difficulty();
 
         // 2. Reset epoch counters for the new epoch

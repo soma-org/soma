@@ -59,9 +59,9 @@ impl crate::types::Ed25519PublicKey {
     /// `hash( 0x00 || 32-byte ed25519 public key)`
     ///
     /// ```
-    /// use sui_sdk_types::Address;
-    /// use sui_sdk_types::Ed25519PublicKey;
-    /// use sui_sdk_types::hash::Hasher;
+    /// use rpc::types::Address;
+    /// use rpc::types::Ed25519PublicKey;
+    /// use rpc::types::hash::Hasher;
     ///
     /// let public_key_bytes = [0; 32];
     /// let mut hasher = Hasher::new();

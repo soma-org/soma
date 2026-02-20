@@ -3985,15 +3985,15 @@ mod _field_impls {
             number: 17i32,
             message_fields: None,
         };
-        pub const TARGET_HIT_RATE_TARGET_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_hit_rate_target_bps",
-            json_name: "targetHitRateTargetBps",
+        pub const TARGET_HITS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "target_hits_per_epoch",
+            json_name: "targetHitsPerEpoch",
             number: 18i32,
             message_fields: None,
         };
-        pub const TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_hit_rate_ema_decay_bps",
-            json_name: "targetHitRateEmaDecayBps",
+        pub const TARGET_HITS_EMA_DECAY_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_hits_ema_decay_bps",
+            json_name: "targetHitsEmaDecayBps",
             number: 19i32,
             message_fields: None,
         };
@@ -4077,8 +4077,8 @@ mod _field_impls {
             Self::TARGET_EMBEDDING_DIM_FIELD,
             Self::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD,
             Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
-            Self::TARGET_HIT_RATE_TARGET_BPS_FIELD,
-            Self::TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD,
+            Self::TARGET_HITS_PER_EPOCH_FIELD,
+            Self::TARGET_HITS_EMA_DECAY_BPS_FIELD,
             Self::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD,
             Self::TARGET_MAX_DISTANCE_THRESHOLD_FIELD,
             Self::TARGET_MIN_DISTANCE_THRESHOLD_FIELD,
@@ -4180,12 +4180,12 @@ mod _field_impls {
             self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
             self.finish()
         }
-        pub fn target_hit_rate_target_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HIT_RATE_TARGET_BPS_FIELD.name);
+        pub fn target_hits_per_epoch(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_HITS_PER_EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn target_hit_rate_ema_decay_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HIT_RATE_EMA_DECAY_BPS_FIELD.name);
+        pub fn target_hits_ema_decay_bps(mut self) -> String {
+            self.path.push(SystemParameters::TARGET_HITS_EMA_DECAY_BPS_FIELD.name);
             self.finish()
         }
         pub fn target_difficulty_adjustment_rate_bps(mut self) -> String {
@@ -5101,9 +5101,9 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
-        pub const HIT_RATE_EMA_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "hit_rate_ema_bps",
-            json_name: "hitRateEmaBps",
+        pub const HITS_EMA_FIELD: &'static MessageField = &MessageField {
+            name: "hits_ema",
+            json_name: "hitsEma",
             number: 4i32,
             message_fields: None,
         };
@@ -5119,7 +5119,7 @@ mod _field_impls {
             Self::DISTANCE_THRESHOLD_FIELD,
             Self::TARGETS_GENERATED_THIS_EPOCH_FIELD,
             Self::HITS_THIS_EPOCH_FIELD,
-            Self::HIT_RATE_EMA_BPS_FIELD,
+            Self::HITS_EMA_FIELD,
             Self::REWARD_PER_TARGET_FIELD,
         ];
     }
@@ -5155,8 +5155,8 @@ mod _field_impls {
             self.path.push(TargetState::HITS_THIS_EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn hit_rate_ema_bps(mut self) -> String {
-            self.path.push(TargetState::HIT_RATE_EMA_BPS_FIELD.name);
+        pub fn hits_ema(mut self) -> String {
+            self.path.push(TargetState::HITS_EMA_FIELD.name);
             self.finish()
         }
         pub fn reward_per_target(mut self) -> String {

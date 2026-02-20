@@ -1006,12 +1006,12 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             target_reward_allocation_bps: proto_params
                 .target_reward_allocation_bps
                 .ok_or("Missing target_reward_allocation_bps")?,
-            target_hit_rate_target_bps: proto_params
-                .target_hit_rate_target_bps
-                .ok_or("Missing target_hit_rate_target_bps")?,
-            target_hit_rate_ema_decay_bps: proto_params
-                .target_hit_rate_ema_decay_bps
-                .ok_or("Missing target_hit_rate_ema_decay_bps")?,
+            target_hits_per_epoch: proto_params
+                .target_hits_per_epoch
+                .ok_or("Missing target_hits_per_epoch")?,
+            target_hits_ema_decay_bps: proto_params
+                .target_hits_ema_decay_bps
+                .ok_or("Missing target_hits_ema_decay_bps")?,
             target_difficulty_adjustment_rate_bps: proto_params
                 .target_difficulty_adjustment_rate_bps
                 .ok_or("Missing target_difficulty_adjustment_rate_bps")?,
@@ -1427,7 +1427,7 @@ impl From<types::system_state::target_state::TargetState> for TargetState {
             distance_threshold: Some(domain.distance_threshold.as_scalar()),
             targets_generated_this_epoch: Some(domain.targets_generated_this_epoch),
             hits_this_epoch: Some(domain.hits_this_epoch),
-            hit_rate_ema_bps: Some(domain.hit_rate_ema_bps),
+            hits_ema: Some(domain.hits_ema),
             reward_per_target: Some(domain.reward_per_target),
         }
     }
@@ -1445,7 +1445,7 @@ impl TryFrom<TargetState> for types::system_state::target_state::TargetState {
                 .targets_generated_this_epoch
                 .ok_or("Missing targets_generated_this_epoch")?,
             hits_this_epoch: proto.hits_this_epoch.ok_or("Missing hits_this_epoch")?,
-            hit_rate_ema_bps: proto.hit_rate_ema_bps.ok_or("Missing hit_rate_ema_bps")?,
+            hits_ema: proto.hits_ema.ok_or("Missing hits_ema")?,
             reward_per_target: proto.reward_per_target.ok_or("Missing reward_per_target")?,
         })
     }
@@ -1476,8 +1476,8 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
                 domain_params.target_initial_distance_threshold.as_scalar(),
             ),
             target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
-            target_hit_rate_target_bps: Some(domain_params.target_hit_rate_target_bps),
-            target_hit_rate_ema_decay_bps: Some(domain_params.target_hit_rate_ema_decay_bps),
+            target_hits_per_epoch: Some(domain_params.target_hits_per_epoch),
+            target_hits_ema_decay_bps: Some(domain_params.target_hits_ema_decay_bps),
             target_difficulty_adjustment_rate_bps: Some(
                 domain_params.target_difficulty_adjustment_rate_bps,
             ),

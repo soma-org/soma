@@ -2483,8 +2483,8 @@ mod _getter_impls {
                 target_embedding_dim: None,
                 target_initial_distance_threshold: None,
                 target_reward_allocation_bps: None,
-                target_hit_rate_target_bps: None,
-                target_hit_rate_ema_decay_bps: None,
+                target_hits_per_epoch: None,
+                target_hits_ema_decay_bps: None,
                 target_difficulty_adjustment_rate_bps: None,
                 target_max_distance_threshold: None,
                 target_min_distance_threshold: None,
@@ -2570,12 +2570,12 @@ mod _getter_impls {
             self.target_reward_allocation_bps = Some(field.into());
             self
         }
-        pub fn with_target_hit_rate_target_bps(mut self, field: u64) -> Self {
-            self.target_hit_rate_target_bps = Some(field.into());
+        pub fn with_target_hits_per_epoch(mut self, field: u64) -> Self {
+            self.target_hits_per_epoch = Some(field.into());
             self
         }
-        pub fn with_target_hit_rate_ema_decay_bps(mut self, field: u64) -> Self {
-            self.target_hit_rate_ema_decay_bps = Some(field.into());
+        pub fn with_target_hits_ema_decay_bps(mut self, field: u64) -> Self {
+            self.target_hits_ema_decay_bps = Some(field.into());
             self
         }
         pub fn with_target_difficulty_adjustment_rate_bps(mut self, field: u64) -> Self {
@@ -3065,7 +3065,7 @@ mod _getter_impls {
                 distance_threshold: None,
                 targets_generated_this_epoch: None,
                 hits_this_epoch: None,
-                hit_rate_ema_bps: None,
+                hits_ema: None,
                 reward_per_target: None,
             }
         }
@@ -3086,8 +3086,8 @@ mod _getter_impls {
             self.hits_this_epoch = Some(field.into());
             self
         }
-        pub fn with_hit_rate_ema_bps(mut self, field: u64) -> Self {
-            self.hit_rate_ema_bps = Some(field.into());
+        pub fn with_hits_ema(mut self, field: u64) -> Self {
+            self.hits_ema = Some(field.into());
             self
         }
         pub fn with_reward_per_target(mut self, field: u64) -> Self {
