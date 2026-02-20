@@ -270,6 +270,13 @@ pub struct ProtocolConfig {
     /// Submissions exceeding this size will be rejected.
     /// This also affects audit timeouts which are calculated based on data size.
     max_submission_data_size: Option<u64>,
+
+    // === Execution Versioning ===
+    /// Execution version controls which code paths are used when executing transactions.
+    /// Bumped independently of protocol_version when execution logic changes.
+    /// This ensures state sync determinism: a node replaying old epochs uses the
+    /// execution version from that epoch, even if its binary supports newer versions.
+    execution_version: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -390,8 +397,11 @@ impl ProtocolConfig {
             // Data size limits
             max_submission_data_size: Some(1024 * 1024 * 1024), // 1 GiB max data size
 
-                                                                // When adding a new constant, set it to None in the earliest version, like this:
-                                                                // new_constant: None,
+            // Execution versioning
+            execution_version: Some(0), // Initial execution version
+
+                                        // When adding a new constant, set it to None in the earliest version, like this:
+                                        // new_constant: None,
         };
         if version.0 >= 2 {
             panic!("unsupported version {:?}", version);

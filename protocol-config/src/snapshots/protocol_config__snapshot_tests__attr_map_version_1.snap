@@ -22,6 +22,8 @@ consensus_max_transactions_in_block_bytes:
   u64: 524288
 epoch_duration_ms:
   u64: 86400
+execution_version:
+  u64: 0
 fee_adjustment_rate_bps:
   u64: 1250
 initial_value_fee_bps:

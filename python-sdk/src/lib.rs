@@ -13,7 +13,7 @@ use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
 use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ArchitectureVersion, ModelWeightsManifest};
+use types::model::ModelWeightsManifest;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
@@ -176,6 +176,15 @@ impl PySomaClient {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let version = client.get_protocol_version().await.map_err(to_py_err)?;
+            Ok(version)
+        })
+    }
+
+    /// Get the current model architecture version from the network.
+    fn get_architecture_version<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let version = client.get_architecture_version().await.map_err(to_py_err)?;
             Ok(version)
         })
     }
@@ -772,7 +781,10 @@ impl PyWalletContext {
     // -----------------------------------------------------------------------
 
     /// Build a CommitModel transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, model_id, weights_url_commitment, weights_commitment, architecture_version, stake_amount, commission_rate, staking_pool_id, gas=None))]
+    ///
+    /// The architecture version is automatically fetched from the chain to ensure
+    /// the model commit matches the current on-chain version.
+    #[pyo3(signature = (sender, model_id, weights_url_commitment, weights_commitment, stake_amount, commission_rate, staking_pool_id, gas=None))]
     fn build_commit_model<'py>(
         &self,
         py: Python<'py>,
@@ -780,7 +792,6 @@ impl PyWalletContext {
         model_id: String,
         weights_url_commitment: String,
         weights_commitment: String,
-        architecture_version: ArchitectureVersion,
         stake_amount: u64,
         commission_rate: u64,
         staking_pool_id: String,
@@ -795,6 +806,12 @@ impl PyWalletContext {
         let inner = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let wallet = inner.lock().await;
+            // Auto-fetch the current architecture version from the chain
+            let client = wallet.get_client().await.map_err(to_py_err)?;
+            let architecture_version = client
+                .get_architecture_version()
+                .await
+                .map_err(to_py_err)?;
             let kind = TransactionKind::CommitModel(CommitModelArgs {
                 model_id: model,
                 weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),

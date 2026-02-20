@@ -350,6 +350,36 @@ impl Client {
             .ok_or_else(|| tonic::Status::not_found("protocol version not found"))
     }
 
+    /// Fetch the epoch with full protocol config (all attributes).
+    pub async fn get_epoch_with_config(
+        &mut self,
+        epoch: Option<u64>,
+    ) -> Result<proto::GetEpochResponse> {
+        let request = match epoch {
+            Some(e) => proto::GetEpochRequest::new(e),
+            None => proto::GetEpochRequest::latest(),
+        }
+        .with_read_mask(FieldMask::from_paths(["epoch", "protocol_config"]));
+
+        self.0.ledger_client().get_epoch(request).await.map(|r| r.into_inner())
+    }
+
+    /// Fetch the current on-chain model architecture version.
+    pub async fn get_architecture_version(&mut self) -> Result<u64> {
+        let response = self.get_epoch_with_config(None).await?;
+        let config = response
+            .epoch
+            .and_then(|e| e.protocol_config)
+            .ok_or_else(|| tonic::Status::not_found("protocol config not found"))?;
+        config
+            .attributes
+            .get("model_architecture_version")
+            .and_then(|v| v.parse::<u64>().ok())
+            .ok_or_else(|| {
+                tonic::Status::not_found("model_architecture_version not found in protocol config")
+            })
+    }
+
     pub async fn simulate_transaction(
         &mut self,
         tx_data: &types::transaction::TransactionData,

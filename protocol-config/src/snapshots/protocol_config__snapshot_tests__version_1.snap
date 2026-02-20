@@ -45,3 +45,4 @@ target_claimer_incentive_bps: 100
 submission_bond_per_byte: 10
 challenger_bond_per_byte: 5
 max_submission_data_size: 1073741824
+execution_version: 0

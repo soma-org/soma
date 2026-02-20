@@ -1018,6 +1018,7 @@ impl AuthorityState {
         #[allow(unused_mut)]
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
+            epoch_store.protocol_config().execution_version(),
             self.get_object_store().as_ref(),
             tx_digest,
             kind,
@@ -1162,6 +1163,7 @@ impl AuthorityState {
 
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
+            epoch_store.protocol_config().execution_version(),
             self.get_object_store().as_ref(),
             transaction.digest(),
             kind,

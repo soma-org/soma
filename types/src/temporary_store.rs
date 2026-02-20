@@ -248,6 +248,10 @@ pub struct TemporaryStore {
 
     /// Fee parameters for this epoch
     pub fee_parameters: FeeParameters,
+
+    /// Execution version for this epoch (from ProtocolConfig::execution_version).
+    /// Used by executors to gate behavior changes across protocol upgrades.
+    pub execution_version: u64,
 }
 
 impl TemporaryStore {
@@ -257,6 +261,7 @@ impl TemporaryStore {
         tx_digest: TransactionDigest,
         cur_epoch: EpochId,
         fee_parameters: FeeParameters,
+        execution_version: u64,
     ) -> Self {
         let mutable_input_refs = input_objects.mutable_inputs();
         let lamport_timestamp = input_objects.lamport_timestamp(&receiving_objects);
@@ -290,6 +295,7 @@ impl TemporaryStore {
             gas_object_id: None,
             creation_counter: 0,
             fee_parameters,
+            execution_version,
         }
     }
 

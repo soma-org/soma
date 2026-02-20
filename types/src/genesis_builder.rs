@@ -661,6 +661,7 @@ impl GenesisBuilder {
             genesis_digest,
             0,
             system_state.fee_parameters(),
+            0, // execution_version: genesis always uses v0
         );
 
         for object in objects {

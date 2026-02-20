@@ -261,6 +261,12 @@ impl SomaClient {
         client.get_protocol_version().await
     }
 
+    /// Get the current model architecture version from the network
+    pub async fn get_architecture_version(&self) -> Result<u64, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_architecture_version().await
+    }
+
     /// Simulate a transaction without executing it (no signature required)
     pub async fn simulate_transaction(
         &self,

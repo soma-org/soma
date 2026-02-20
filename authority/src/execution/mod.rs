@@ -88,6 +88,7 @@ pub trait FeeCalculator {
 
 pub fn execute_transaction(
     epoch_id: EpochId,
+    execution_version: u64,
     store: &dyn ObjectStore,
     tx_digest: TransactionDigest,
     kind: TransactionKind,
@@ -109,6 +110,7 @@ pub fn execute_transaction(
         tx_digest,
         epoch_id,
         fee_parameters,
+        execution_version,
     );
 
     let mut executor = create_executor(&kind);

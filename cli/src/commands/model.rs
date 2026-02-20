@@ -43,7 +43,6 @@ EXAMPLES:
     soma model commit 0xMODEL_ID \\
         --weights-url-commitment 0xABC...DEF \\
         --weights-commitment 0x123...456 \\
-        --architecture-version 1 \\
         --stake-amount 100 \\
         --staking-pool-id 0xPOOL_ID")]
     Commit {
@@ -55,9 +54,9 @@ EXAMPLES:
         /// Hex-encoded commitment to the decrypted model weights (32 bytes)
         #[clap(long)]
         weights_commitment: String,
-        /// Model architecture version
+        /// Model architecture version (auto-fetched from chain if omitted)
         #[clap(long)]
-        architecture_version: ArchitectureVersion,
+        architecture_version: Option<ArchitectureVersion>,
         /// Amount of SOMA to stake (e.g., 100 or 0.5)
         #[clap(long)]
         stake_amount: crate::soma_amount::SomaAmount,
@@ -251,6 +250,18 @@ impl ModelCommand {
                         commission_rate as f64 / 100.0,
                     );
                 }
+
+                // Auto-fetch architecture version from chain if not provided
+                let architecture_version = match architecture_version {
+                    Some(v) => v,
+                    None => {
+                        let client = context.get_client().await?;
+                        client
+                            .get_architecture_version()
+                            .await
+                            .map_err(|e| anyhow!("Failed to fetch architecture version from chain: {}", e.message()))?
+                    }
+                };
 
                 let kind = TransactionKind::CommitModel(CommitModelArgs {
                     model_id,
