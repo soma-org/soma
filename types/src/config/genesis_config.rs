@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::Result;
 use fastcrypto::traits::KeyPair as _;
-use protocol_config::ProtocolVersion;
+use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -313,6 +313,15 @@ pub struct GenesisCeremonyParameters {
     /// The amount of rewards to be drawn down per distribution.
     #[serde(default = "GenesisCeremonyParameters::default_emission_per_epoch")]
     pub emission_per_epoch: u64,
+
+    /// Which chain this genesis is for. Controls protocol config feature flags.
+    #[serde(default)]
+    pub chain: Chain,
+
+    /// Override target_embedding_dim from the protocol config.
+    /// Used for small-model testing where embedding dimension differs from production.
+    #[serde(default)]
+    pub target_embedding_dim_override: Option<u64>,
 }
 
 impl GenesisCeremonyParameters {
@@ -322,6 +331,8 @@ impl GenesisCeremonyParameters {
             protocol_version: ProtocolVersion::max(),
             epoch_duration_ms: Self::default_epoch_duration_ms(),
             emission_per_epoch: Self::default_emission_per_epoch(),
+            chain: Chain::default(),
+            target_embedding_dim_override: None,
         }
     }
 

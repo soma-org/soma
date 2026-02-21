@@ -374,12 +374,12 @@ impl ProtocolConfig {
             // Target/Mining parameters
             target_models_per_target: Some(3), // 3 models per target
             target_embedding_dim: Some(768),   // Standard transformer embedding dim
-            target_initial_distance_threshold: Some(BcsF32(1.0)), // Cosine distance 1.0 = easy start
+            target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
             target_reward_allocation_bps: Some(8000), // 80% of emissions to targets
             target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
             target_hits_ema_decay_bps: Some(9000), // 90% decay (10% weight on new data)
             target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
-            target_max_distance_threshold: Some(BcsF32(1.0)), // Max distance (easiest)
+            target_max_distance_threshold: Some(BcsF32(2.0)), // Max distance (easiest, max cosine distance)
             target_min_distance_threshold: Some(BcsF32(0.1)), // Min distance (hardest)
             target_initial_targets_per_epoch: Some(20), // 20 targets at genesis and each epoch start
 

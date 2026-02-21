@@ -35,13 +35,29 @@ impl ScoringEngine {
             .map(|m| manifest_from_input(&m.url, &m.checksum, m.size))
             .collect::<Result<Vec<_>>>()?;
 
+        let model_keys = request
+            .model_manifests
+            .iter()
+            .map(|m| {
+                m.decryption_key.as_ref().map(|hex_key| {
+                    let stripped = hex_key.strip_prefix("0x").unwrap_or(hex_key);
+                    let bytes = hex::decode(stripped)
+                        .expect("invalid hex in decryption_key");
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    arr
+                })
+            })
+            .collect::<Vec<_>>();
+
         let target = TensorData::new(
             request.target_embedding.clone(),
             [request.target_embedding.len()],
         );
 
         let input =
-            ManifestCompetitionInput::new(data_manifest, model_manifests, target, request.seed);
+            ManifestCompetitionInput::new(data_manifest, model_manifests, target, request.seed)
+                .with_model_keys(model_keys);
 
         let output = self
             .runtime

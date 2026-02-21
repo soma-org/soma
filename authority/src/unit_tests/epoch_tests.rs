@@ -34,7 +34,7 @@ async fn test_advance_epoch_basic() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     let result = state.advance_epoch(
@@ -62,7 +62,7 @@ async fn test_advance_epoch_wrong_epoch_rejected() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Try to advance to epoch 5 (should be epoch 1)
@@ -84,7 +84,7 @@ async fn test_advance_epoch_returns_validator_rewards() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Advance with some fees collected
@@ -117,7 +117,7 @@ async fn test_advance_epoch_emission_pool_decreases() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Timestamp must be >= prev_epoch_start + epoch_duration_ms to trigger emissions
@@ -198,7 +198,7 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Recovery: successful advance_epoch should drain accumulators
@@ -236,7 +236,7 @@ async fn test_advance_epoch_hit_counter_tracking() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     let _ = state.advance_epoch(1, &protocol_config, 0, 1_000_000, vec![]);
@@ -264,7 +264,7 @@ async fn test_advance_epoch_u128_overflow_protection() {
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Large fees that would overflow u64 multiplication without u128 intermediates

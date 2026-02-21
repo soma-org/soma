@@ -1,6 +1,14 @@
 # soma_sdk.pyi
 from collections.abc import Generator
+from dataclasses import dataclass
 from typing import Optional
+
+# Constants
+SHANNONS_PER_SOMA: int
+
+# Unit conversion
+def to_shannons(soma: float) -> int: ...
+def to_soma(shannons: int) -> float: ...
 
 class SomaClient:
     def __init__(self, rpc_url: str) -> None: ...
@@ -10,6 +18,10 @@ class SomaClient:
     async def get_chain_identifier(self) -> str: ...
     async def get_server_version(self) -> str: ...
     async def get_protocol_version(self) -> int: ...
+    async def get_architecture_version(self) -> int: ...
+    async def get_embedding_dim(self) -> int: ...
+    async def get_model_min_stake(self) -> int: ...
+    async def get_model_manifests(self, model_ids: list[str]) -> str: ...
     async def check_api_version(self) -> None: ...
 
     # Objects & State
@@ -31,6 +43,7 @@ class SomaClient:
         status: Optional[str] = None,
         epoch: Optional[int] = None,
         limit: Optional[int] = None,
+        read_mask: Optional[str] = None,
     ) -> str: ...
     async def get_challenge(self, challenge_id: str) -> str: ...
     async def list_challenges(
@@ -64,6 +77,11 @@ class WalletContext:
     async def sign_transaction(self, tx_data_bytes: bytes) -> bytes: ...
     async def sign_and_execute_transaction(self, tx_data_bytes: bytes) -> str: ...
     async def sign_and_execute_transaction_may_fail(self, tx_data_bytes: bytes) -> str: ...
+    async def execute(
+        self,
+        tx_data_bytes: bytes,
+        label: Optional[str] = None,
+    ) -> str: ...
 
     # Transaction Builders — Coin & Object
     async def build_transfer_coin(
@@ -121,7 +139,6 @@ class WalletContext:
         model_id: str,
         weights_url_commitment: str,
         weights_commitment: str,
-        architecture_version: int,
         stake_amount: int,
         commission_rate: int,
         staking_pool_id: str,
@@ -252,6 +269,7 @@ class WalletContext:
         pubkey_bytes: bytes,
         network_pubkey_bytes: bytes,
         worker_pubkey_bytes: bytes,
+        proof_of_possession: bytes,
         net_address: bytes,
         p2p_address: bytes,
         primary_address: bytes,
@@ -275,6 +293,7 @@ class WalletContext:
         next_epoch_protocol_pubkey: Optional[bytes] = None,
         next_epoch_worker_pubkey: Optional[bytes] = None,
         next_epoch_network_pubkey: Optional[bytes] = None,
+        next_epoch_proof_of_possession: Optional[bytes] = None,
     ) -> bytes: ...
     async def build_set_commission_rate(
         self,
@@ -295,13 +314,87 @@ class WalletContext:
         gas: Optional[dict] = None,
     ) -> bytes: ...
 
+# High-level Wallet wrapper (pure Python — soma_sdk)
+
+class Wallet:
+    def __init__(self, config_path: str, client: SomaClient) -> None: ...
+    @property
+    def ctx(self) -> WalletContext: ...
+    @property
+    def client(self) -> SomaClient: ...
+    @property
+    def sender(self) -> str: ...
+    async def active_address(self) -> str: ...
+    async def get_balance(self) -> float: ...
+    async def embedding_dim(self) -> int: ...
+    async def get_targets(
+        self,
+        status: Optional[str] = None,
+        epoch: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> list["Target"]: ...
+    async def get_model_manifests(self, target: "Target") -> list[ModelManifest]: ...
+    async def commit_model(
+        self,
+        *,
+        weights_url: str,
+        encrypted_weights: bytes,
+        commission_rate: int,
+        stake_amount: Optional[float] = None,
+        model_id: Optional[str] = None,
+        staking_pool_id: Optional[str] = None,
+    ) -> str: ...
+    async def reveal_model(
+        self,
+        *,
+        model_id: str,
+        weights_url: str,
+        encrypted_weights: bytes,
+        decryption_key: str,
+        embedding: list[float],
+    ) -> None: ...
+    async def submit_data(
+        self,
+        *,
+        target_id: str,
+        data: bytes,
+        data_url: str,
+        model_id: str,
+        embedding: list[float],
+        distance_score: float,
+    ) -> None: ...
+    async def claim_rewards(self, *, target_id: str) -> None: ...
+
+# Typed target (pure Python — soma_sdk)
+
+@dataclass
+class Target:
+    id: str
+    status: str
+    embedding: list[float]
+    model_ids: list[str]
+    distance_threshold: float
+    reward_pool: int
+    generation_epoch: int
+    bond_amount: int
+    miner: Optional[str]
+    winning_model_id: Optional[str]
+
 # Scoring Service Client (pure Python — soma_sdk.scoring)
 
 class ModelManifest:
     url: str
     checksum: str
     size: int
-    def __init__(self, url: str, checksum: str, size: int) -> None: ...
+    decryption_key: Optional[str]
+    def __init__(
+        self,
+        url: str,
+        encrypted_weights: Optional[bytes] = None,
+        checksum: Optional[str] = None,
+        size: Optional[int] = None,
+        decryption_key: Optional[str] = None,
+    ) -> None: ...
 
 class ScoreResult:
     winner: int
@@ -316,9 +409,38 @@ class ScoringClient:
     def score(
         self,
         data_url: str,
-        data_checksum: str,
-        data_size: int,
         models: list[ModelManifest],
         target_embedding: list[float],
-        seed: int,
+        data: Optional[bytes] = None,
+        data_checksum: Optional[str] = None,
+        data_size: Optional[int] = None,
+        seed: int = 0,
     ) -> ScoreResult: ...
+
+# Utility functions
+
+def blake2b_commitment(data: bytes) -> str: ...
+commitment = blake2b_commitment
+
+def encrypt_weights(
+    data: bytes,
+    key: Optional[bytes] = None,
+) -> tuple[bytes, str]: ...
+
+def random_object_id() -> str: ...
+
+async def get_targets(
+    client: SomaClient,
+    status: Optional[str] = None,
+    epoch: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> list[Target]: ...
+
+def advance_epoch(admin_url: str = "http://127.0.0.1:9125") -> int: ...
+
+async def wait_for_next_epoch(client: SomaClient, timeout: float = 120.0) -> int: ...
+
+def request_faucet(
+    address: str,
+    faucet_url: str = "http://127.0.0.1:9123",
+) -> dict: ...

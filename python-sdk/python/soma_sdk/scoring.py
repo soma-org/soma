@@ -11,37 +11,69 @@ Example::
     client = ScoringClient()           # default http://127.0.0.1:9124
     result = client.score(
         data_url="http://...",
-        data_checksum="abcd...",
-        data_size=1024,
-        models=[ModelManifest(url="http://...", checksum="...", size=2048)],
+        data=raw_bytes,
+        models=[ModelManifest(url="http://...", encrypted_weights=enc_bytes, decryption_key=key)],
         target_embedding=[0.1] * 2048,
-        seed=42,
     )
     print(result.winner, result.distance)
 """
 
+import hashlib
 import json
 import urllib.request
-from dataclasses import dataclass
 
 
-@dataclass
+def _blake2b(data: bytes) -> str:
+    return hashlib.blake2b(data, digest_size=32).hexdigest()
+
+
 class ScoreResult:
     """Result returned by the scoring service."""
 
-    winner: int
-    loss_score: list[float]
-    embedding: list[float]
-    distance: list[float]
+    __slots__ = ("winner", "loss_score", "embedding", "distance")
+
+    def __init__(
+        self,
+        winner: int,
+        loss_score: list[float],
+        embedding: list[float],
+        distance: list[float],
+    ):
+        self.winner = winner
+        self.loss_score = loss_score
+        self.embedding = embedding
+        self.distance = distance
 
 
-@dataclass
 class ModelManifest:
-    """A model manifest to score against."""
+    """A model manifest to score against.
 
-    url: str
-    checksum: str
-    size: int
+    Either pass ``encrypted_weights`` (checksum and size are computed
+    automatically) or explicit ``checksum`` + ``size``.
+    """
+
+    __slots__ = ("url", "checksum", "size", "decryption_key")
+
+    def __init__(
+        self,
+        url: str,
+        encrypted_weights: bytes | None = None,
+        checksum: str | None = None,
+        size: int | None = None,
+        decryption_key: str | None = None,
+    ):
+        self.url = url
+        if encrypted_weights is not None:
+            self.checksum = checksum or _blake2b(encrypted_weights)
+            self.size = size if size is not None else len(encrypted_weights)
+        else:
+            if checksum is None or size is None:
+                raise ValueError(
+                    "Either encrypted_weights or both checksum and size are required"
+                )
+            self.checksum = checksum
+            self.size = size
+        self.decryption_key = decryption_key
 
 
 class ScoringClient:
@@ -65,36 +97,38 @@ class ScoringClient:
     def score(
         self,
         data_url: str,
-        data_checksum: str,
-        data_size: int,
         models: list[ModelManifest],
         target_embedding: list[float],
-        seed: int,
+        data: bytes | None = None,
+        data_checksum: str | None = None,
+        data_size: int | None = None,
+        seed: int = 0,
     ) -> ScoreResult:
         """Run a scoring competition and return the result.
 
-        Args:
-            data_url: URL where the data blob can be downloaded.
-            data_checksum: Hex-encoded blake2b-256 checksum of the data.
-            data_size: Size of the data blob in bytes.
-            models: List of model manifests to evaluate.
-            target_embedding: Target embedding vector.
-            seed: Random seed for reproducibility.
-
-        Returns:
-            A :class:`ScoreResult` with winner index, loss scores,
-            embedding, and distance.
-
-        Raises:
-            urllib.error.HTTPError: If the scoring service returns an error.
+        Pass ``data`` (raw bytes) to have checksum and size computed
+        automatically, or provide explicit ``data_checksum`` + ``data_size``.
         """
+        if data is not None:
+            data_checksum = data_checksum or _blake2b(data)
+            data_size = data_size if data_size is not None else len(data)
+        elif data_checksum is None or data_size is None:
+            raise ValueError(
+                "Either data or both data_checksum and data_size are required"
+            )
+
         body = json.dumps(
             {
                 "data_url": data_url,
                 "data_checksum": data_checksum,
                 "data_size": data_size,
                 "model_manifests": [
-                    {"url": m.url, "checksum": m.checksum, "size": m.size}
+                    {
+                        "url": m.url,
+                        "checksum": m.checksum,
+                        "size": m.size,
+                        **({"decryption_key": m.decryption_key} if m.decryption_key else {}),
+                    }
                     for m in models
                 ],
                 "target_embedding": target_embedding,

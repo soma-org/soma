@@ -9,6 +9,9 @@ pub struct ManifestInput {
     pub url: String,
     pub checksum: String,
     pub size: usize,
+    /// Optional hex-encoded AES-256 decryption key (64 hex chars = 32 bytes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decryption_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -67,6 +70,7 @@ mod tests {
                     "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
                         .to_string(),
                 size: 5242880,
+                decryption_key: None,
             }],
             target_embedding: vec![0.1, 0.2, 0.3],
             seed: 42,

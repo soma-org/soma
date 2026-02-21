@@ -17,6 +17,7 @@ use types::model::ModelWeightsManifest;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
+use types::effects::TransactionEffectsAPI as _;
 use types::transaction::{
     AddValidatorArgs, ClaimRewardsArgs, CommitModelArgs, CommitModelUpdateArgs,
     InitiateChallengeArgs, RemoveValidatorArgs, RevealModelArgs, RevealModelUpdateArgs,
@@ -363,13 +364,17 @@ impl PySomaClient {
     }
 
     /// List targets with optional filtering. Returns JSON string.
-    #[pyo3(signature = (status=None, epoch=None, limit=None))]
+    ///
+    /// By default all commonly-needed fields are returned.  Pass an explicit
+    /// ``read_mask`` (comma-separated field names) to limit the response.
+    #[pyo3(signature = (status=None, epoch=None, limit=None, read_mask=None))]
     fn list_targets<'py>(
         &self,
         py: Python<'py>,
         status: Option<String>,
         epoch: Option<u64>,
         limit: Option<u32>,
+        read_mask: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -379,6 +384,16 @@ impl PySomaClient {
             if let Some(limit) = limit {
                 request.page_size = Some(limit);
             }
+            // Default to all commonly-needed fields so callers don't have to
+            // specify a read_mask for every query.
+            let effective_mask = read_mask.unwrap_or_else(|| {
+                "id,status,generation_epoch,reward_pool,embedding,model_ids,\
+                 distance_threshold,miner,winning_model_id,bond_amount"
+                    .to_string()
+            });
+            request.read_mask = Some(rpc::utils::field::FieldMask {
+                paths: effective_mask.split(',').map(|s| s.trim().to_string()).collect(),
+            });
             let response = client.list_targets(request).await.map_err(to_py_err)?;
             let json = serde_json::to_string(&response).map_err(to_py_err)?;
             Ok(json)
@@ -423,6 +438,65 @@ impl PySomaClient {
             let response =
                 client.list_challenges(request).await.map_err(to_py_err)?;
             let json = serde_json::to_string(&response).map_err(to_py_err)?;
+            Ok(json)
+        })
+    }
+
+    /// Get the target embedding dimension from the current system parameters.
+    fn get_embedding_dim<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            Ok(state.parameters().target_embedding_dim)
+        })
+    }
+
+    /// Get the minimum model stake (in shannons) from the current system parameters.
+    fn get_model_min_stake<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            Ok(state.parameters().model_min_stake)
+        })
+    }
+
+    /// Look up revealed model manifests from the system state model registry.
+    /// Takes a list of model ID hex strings and returns a JSON array of objects
+    /// with {model_id, url, checksum, size, decryption_key} for each revealed model.
+    /// Models that haven't been revealed yet are omitted.
+    fn get_model_manifests<'py>(
+        &self,
+        py: Python<'py>,
+        model_ids: Vec<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use types::metadata::ManifestAPI as _;
+            use types::metadata::MetadataAPI as _;
+
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            let registry = &state.model_registry();
+
+            let mut results: Vec<serde_json::Value> = Vec::new();
+            for id_str in &model_ids {
+                let id = id_str.parse::<ObjectID>().map_err(to_py_val_err)?;
+                let model = registry
+                    .active_models
+                    .get(&id)
+                    .or_else(|| registry.inactive_models.get(&id));
+                if let Some(model) = model {
+                    if let Some(wm) = &model.weights_manifest {
+                        results.push(serde_json::json!({
+                            "model_id": id_str,
+                            "url": wm.manifest.url().to_string(),
+                            "checksum": hex::encode(wm.manifest.metadata().checksum().0),
+                            "size": wm.manifest.metadata().size(),
+                            "decryption_key": hex::encode(wm.decryption_key.as_bytes()),
+                        }));
+                    }
+                }
+            }
+            let json = serde_json::to_string(&results).map_err(to_py_err)?;
             Ok(json)
         })
     }
@@ -582,6 +656,34 @@ impl PyWalletContext {
             let wallet = inner.lock().await;
             let signed = wallet.sign_transaction(&tx_data).await;
             let response = wallet.execute_transaction_may_fail(signed).await.map_err(to_py_err)?;
+            let json = serde_json::to_string(&response.effects).map_err(to_py_err)?;
+            Ok(json)
+        })
+    }
+
+    /// Sign and execute a transaction, checking for success.
+    ///
+    /// Returns effects as JSON string on success.
+    /// Raises ``RuntimeError`` with the failure status on failure.
+    #[pyo3(signature = (tx_data_bytes, label=None))]
+    fn execute<'py>(
+        &self,
+        py: Python<'py>,
+        tx_data_bytes: Vec<u8>,
+        label: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let label = label.unwrap_or_else(|| "Transaction".to_string());
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let tx_data: TransactionData =
+                bcs::from_bytes(&tx_data_bytes).map_err(to_py_val_err)?;
+            let wallet = inner.lock().await;
+            let signed = wallet.sign_transaction(&tx_data).await;
+            let response = wallet.execute_transaction_may_fail(signed).await.map_err(to_py_err)?;
+            if !response.effects.status().is_ok() {
+                let json = serde_json::to_string(&response.effects).map_err(to_py_err)?;
+                return Err(PyRuntimeError::new_err(format!("{} failed: {}", label, json)));
+            }
             let json = serde_json::to_string(&response.effects).map_err(to_py_err)?;
             Ok(json)
         })
@@ -1412,6 +1514,47 @@ impl PyWalletContext {
 }
 
 // ---------------------------------------------------------------------------
+// Standalone functions
+// ---------------------------------------------------------------------------
+
+/// Encrypt model weights with AES-256-CTR (zero IV).
+///
+/// Returns ``(encrypted_bytes, key_hex)`` where *key_hex* is the 64-char hex
+/// string to pass as ``decryption_key`` in ``build_reveal_model``.
+///
+/// If *key* is ``None`` a random 32-byte key is generated.
+#[pyfunction]
+#[pyo3(signature = (data, key=None))]
+fn encrypt_weights<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    key: Option<&[u8]>,
+) -> PyResult<(Bound<'py, PyBytes>, String)> {
+    use aes::Aes256;
+    use ctr::Ctr128BE;
+    use ctr::cipher::{KeyIvInit, StreamCipher};
+    use rand::RngCore;
+
+    let key_bytes: [u8; 32] = match key {
+        Some(k) => k
+            .try_into()
+            .map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?,
+        None => {
+            let mut k = [0u8; 32];
+            rand::thread_rng().fill_bytes(&mut k);
+            k
+        }
+    };
+
+    let iv = [0u8; 16];
+    let mut cipher = Ctr128BE::<Aes256>::new(&key_bytes.into(), &iv.into());
+    let mut encrypted = data.to_vec();
+    cipher.apply_keystream(&mut encrypted);
+
+    Ok((PyBytes::new(py, &encrypted), hex::encode(key_bytes)))
+}
+
+// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
 
@@ -1420,5 +1563,6 @@ impl PyWalletContext {
 fn soma_sdk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySomaClient>()?;
     m.add_class::<PyWalletContext>()?;
+    m.add_function(wrap_pyfunction!(encrypt_weights, m)?)?;
     Ok(())
 }

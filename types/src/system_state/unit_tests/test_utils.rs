@@ -150,7 +150,7 @@ pub fn advance_epoch_with_reward_amounts(
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Advance the epoch
@@ -184,7 +184,7 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
 
     let mut protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Override the slashing rate with the test-specified value
@@ -406,7 +406,7 @@ pub fn create_test_system_state(
 ) -> SystemState {
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
     // Create system state
     let epoch_start_timestamp_ms = 1000;
@@ -455,7 +455,7 @@ pub fn advance_epoch_with_rewards(
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
-        protocol_config::Chain::Mainnet,
+        protocol_config::Chain::default(),
     );
 
     // Advance the epoch

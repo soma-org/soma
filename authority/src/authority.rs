@@ -1027,6 +1027,7 @@ impl AuthorityState {
             input_objects,
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
+            epoch_store.get_chain(),
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1172,6 +1173,7 @@ impl AuthorityState {
             checked_input_objects,
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
+            epoch_store.get_chain(),
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {

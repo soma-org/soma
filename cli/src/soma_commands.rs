@@ -49,6 +49,7 @@ use types::{
     peer_id::PeerId,
 };
 use types::{
+    committee::CommitteeTrait as _,
     config::{Config, SOMA_GENESIS_FILENAME, network_config::ConfigBuilder},
     crypto::SomaKeyPair,
     system_state::SystemStateTrait as _,
@@ -58,7 +59,7 @@ use url::Url;
 use crate::client_commands::TxProcessingArgs;
 use crate::commands;
 
-const DEFAULT_EPOCH_DURATION_MS: u64 = 60_000;
+const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 
 #[derive(Parser)]
 #[derive(Default)]
@@ -459,10 +460,9 @@ EXAMPLES:
     /// for an ephemeral network that starts fresh each time.
     #[clap(name = "start", verbatim_doc_comment, after_help = "\
 EXAMPLES:
-    soma start                           # Persistent local network
-    soma start --force-regenesis         # Fresh ephemeral network
-    soma start --with-faucet             # With faucet at 0.0.0.0:9123
-    soma start --force-regenesis --with-faucet --epoch-duration-ms 10000")]
+    soma start --force-regenesis --small-model  # Fresh network, small models
+    soma start --force-regenesis                # Fresh network, full-size models
+    soma start --no-faucet --no-scoring         # Persistent network, no services")]
     Start {
         /// Config directory that will be used to store network config, node db, keystore.
         #[clap(long = "network.config")]
@@ -497,8 +497,7 @@ EXAMPLES:
         #[clap(long, default_value = "info")]
         log_level: String,
 
-        /// Start a faucet server alongside the local network.
-        /// Optionally specify host:port (default: 0.0.0.0:9123).
+        /// Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable.
         #[clap(
             long,
             default_missing_value = "0.0.0.0:9123",
@@ -507,6 +506,18 @@ EXAMPLES:
             value_name = "FAUCET_HOST_PORT",
         )]
         with_faucet: Option<String>,
+
+        /// Disable the faucet server.
+        #[clap(long)]
+        no_faucet: bool,
+
+        /// Disable the scoring server.
+        #[clap(long)]
+        no_scoring: bool,
+
+        /// Use small model config for the scoring server (embedding_dim=16, num_layers=2).
+        #[clap(long)]
+        small_model: bool,
     },
 
     /// Inspect local network configuration and validator addresses
@@ -931,7 +942,18 @@ impl SomaCommand {
                 committee_size,
                 log_level: _,
                 with_faucet,
+                no_faucet,
+                no_scoring,
+                small_model,
             } => {
+                // Faucet: on by default unless --no-faucet
+                let faucet = if no_faucet {
+                    None
+                } else {
+                    Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
+                };
+                // Scoring: on by default unless --no-scoring
+                let scoring = !no_scoring;
                 start(
                     config_dir.clone(),
                     force_regenesis,
@@ -940,7 +962,9 @@ impl SomaCommand {
                     data_ingestion_dir,
                     no_full_node,
                     committee_size,
-                    with_faucet,
+                    faucet,
+                    scoring,
+                    small_model,
                 )
                 .await?;
                 Ok(())
@@ -1002,6 +1026,8 @@ async fn start(
     no_full_node: bool,
     committee_size: Option<usize>,
     with_faucet: Option<String>,
+    with_scoring: bool,
+    small_model: bool,
 ) -> Result<(), anyhow::Error> {
     if force_regenesis {
         ensure!(
@@ -1027,11 +1053,15 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let genesis_config = if with_faucet.is_some() {
+        let mut genesis_config = if with_faucet.is_some() {
             GenesisConfig::for_local_testing().add_faucet_account()
         } else {
             GenesisConfig::for_local_testing()
         };
+        if small_model {
+            // Small model uses embedding_dim=16; override protocol config default of 768
+            genesis_config.parameters.target_embedding_dim_override = Some(16);
+        }
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
@@ -1257,6 +1287,53 @@ async fn start(
         eprintln!("{}", "done".green());
     }
 
+    // -- Scoring service ------------------------------------------------------
+    let mut scoring_url: Option<String> = None;
+    if with_scoring {
+        use types::config::node_config::DeviceConfig;
+
+        let msg = "Starting scoring service...";
+        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
+
+        let model_config = if small_model {
+            scoring::model_config_small()
+        } else {
+            runtime::ModelConfig::new()
+        };
+
+        let scoring_data_dir = config_dir.join("scoring-data");
+        fs::create_dir_all(&scoring_data_dir)?;
+        let engine = std::sync::Arc::new(
+            scoring::scoring::ScoringEngine::new(&scoring_data_dir, model_config, &DeviceConfig::Cpu)
+                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+        );
+
+        tokio::spawn(async move {
+            if let Err(e) = scoring::server::start_scoring_server("0.0.0.0", 9124, engine).await {
+                tracing::error!("Scoring server error: {}", e);
+            }
+        });
+
+        scoring_url = Some("http://127.0.0.1:9124".to_string());
+        eprintln!("{}", "done".green());
+    }
+
+    // -- Admin server (epoch advance) -----------------------------------------
+    let swarm = std::sync::Arc::new(swarm);
+    {
+        let admin_swarm = swarm.clone();
+        tokio::spawn(async move {
+            let app = axum::Router::new()
+                .route("/advance-epoch", axum::routing::post(advance_epoch_handler))
+                .with_state(admin_swarm);
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", 9125))
+                .await
+                .expect("Failed to bind admin server on port 9125");
+            axum::serve(listener, app).await.expect("Admin server error");
+        });
+    }
+    let admin_url = "http://127.0.0.1:9125".to_string();
+
     // -- Network ready banner -------------------------------------------------
     let epoch_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
     let state_dir = config_dir.display().to_string();
@@ -1266,16 +1343,19 @@ async fn start(
     eprintln!("  {}", "Network ready.".green().bold());
     eprintln!();
     let faucet_display = faucet_url.as_deref().unwrap_or("disabled");
+    let scoring_display = scoring_url.as_deref().unwrap_or("disabled");
     let epoch_display = format!("{}s", epoch_ms / 1000);
-    let rows: [(&str, &str); 4] = [
+    let rows: Vec<(&str, &str)> = vec![
         ("RPC URL", &fullnode_rpc_url),
         ("Faucet", faucet_display),
+        ("Scoring", scoring_display),
+        ("Admin", &admin_url),
         ("Epoch", &epoch_display),
         ("Persistence", persistence),
     ];
     let label_w = 14;
     let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
-    let inner_w = label_w + value_w + 1; // +1 for space between label padding and value
+    let inner_w = 2 + label_w + value_w + 1; // 2 inner padding + label + value + trailing space
     eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
     for (label, value) in &rows {
         eprintln!("  {}  {:<lw$}{:<vw$}{}", "│".dimmed(), label, value, "│".dimmed(), lw = label_w, vw = value_w + 1);
@@ -1288,10 +1368,16 @@ async fn start(
 
     // -- Main loop ------------------------------------------------------------
     let mut interval = interval(Duration::from_secs(3));
+    let mut sigterm =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
 
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
+                break;
+            }
+            _ = sigterm.recv() => {
                 break;
             }
             _ = interval.tick() => {}
@@ -1321,6 +1407,135 @@ async fn start(
     eprintln!("  {}", "Done.".green().bold());
 
     Ok(())
+}
+
+/// Admin handler: trigger epoch advancement on localnet.
+/// Follows the same pattern as `trigger_reconfiguration` in test-cluster.
+async fn advance_epoch_handler(
+    axum::extract::State(swarm): axum::extract::State<std::sync::Arc<Swarm>>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    info!("[admin] advance_epoch_handler called");
+
+    // Get current epoch from fullnode
+    let fullnode = match swarm.fullnodes().next() {
+        Some(node) => node,
+        None => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "No fullnode available").into_response();
+        }
+    };
+
+    let fullnode_handle = match fullnode.get_node_handle() {
+        Some(handle) => handle,
+        None => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Fullnode handle unavailable").into_response();
+        }
+    };
+
+    let cur_committee = fullnode_handle.with(|node| node.state().clone_committee_for_testing());
+    let target_epoch = cur_committee.epoch + 1;
+    info!("[admin] current epoch={}, target={}", cur_committee.epoch, target_epoch);
+
+    // Wait for all validators to reach the current fullnode epoch first.
+    // This ensures no validator is still mid-reconfiguration from a previous advance.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    'wait_ready: loop {
+        let mut all_ready = true;
+        for node in swarm.validator_nodes() {
+            if let Some(handle) = node.get_node_handle() {
+                let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
+                if v_epoch < cur_committee.epoch {
+                    info!("[admin] validator at epoch {v_epoch}, waiting for {}", cur_committee.epoch);
+                    all_ready = false;
+                    break;
+                }
+            }
+        }
+        if all_ready {
+            break 'wait_ready;
+        }
+        if tokio::time::Instant::now() > deadline {
+            return (StatusCode::GATEWAY_TIMEOUT, "Validators did not reach current epoch").into_response();
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    info!("[admin] all validators ready");
+
+    // Close epoch on all validator nodes sequentially.
+    // Important: do NOT use timeout here — dropping the close_epoch future
+    // mid-lock-acquisition aborts it entirely, and the epoch never advances.
+    info!("[admin] calling close_epoch_for_testing...");
+    for node in swarm.validator_nodes() {
+        if let Some(handle) = node.get_node_handle() {
+            info!("[admin] close_epoch_for_testing: acquiring lock...");
+            if let Err(e) = handle.with_async(|n| async move {
+                n.close_epoch_for_testing().await
+            }).await {
+                tracing::warn!("[admin] close_epoch_for_testing failed: {e}");
+            }
+            info!("[admin] close_epoch_for_testing: done");
+        }
+    }
+    info!("[admin] all close_epoch calls done, polling for epoch {target_epoch}...");
+
+    // Wait for ALL nodes to fully reconfigure (not just epoch_store update).
+    // Matches the test-cluster pattern in test-cluster/src/lib.rs:321-350.
+    // epoch_store updates mid-reconfiguration (before consensus restarts),
+    // so we also check the fullnode's authority aggregator committee epoch.
+    loop {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let mut all_ready = true;
+
+        // Check fullnode: epoch_store AND authority aggregator
+        if let Some(handle) = fullnode.get_node_handle() {
+            let ready = handle.with(|node| {
+                let epoch = node.state().epoch_store_for_testing().epoch();
+                if epoch < target_epoch {
+                    return false;
+                }
+                // Authority aggregator reconfigures after epoch_store — critical for
+                // the fullnode to correctly route transactions to validators.
+                if let Some(agg) = node.clone_authority_aggregator() {
+                    agg.committee.epoch() >= target_epoch
+                } else {
+                    true
+                }
+            });
+            if !ready {
+                all_ready = false;
+            }
+        }
+
+        // Check all validators: epoch_store only (validators don't have auth_agg)
+        if all_ready {
+            for node in swarm.validator_nodes() {
+                if let Some(handle) = node.get_node_handle() {
+                    let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
+                    if v_epoch < target_epoch {
+                        all_ready = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if all_ready {
+            // Grace period for consensus startup: consensus restarts AFTER epoch_store
+            // update (node/src/lib.rs:1160-1191) and the validator_components lock is
+            // released at line 1230. This sleep covers that window.
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            info!("[admin] epoch advanced to {target_epoch}");
+            return axum::Json(serde_json::json!({"epoch": target_epoch})).into_response();
+        }
+
+        if tokio::time::Instant::now() > deadline {
+            info!("[admin] TIMEOUT waiting for epoch {target_epoch}");
+            return (StatusCode::GATEWAY_TIMEOUT, "Epoch did not advance within 120s").into_response();
+        }
+    }
 }
 
 async fn genesis(

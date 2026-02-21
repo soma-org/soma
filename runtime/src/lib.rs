@@ -61,6 +61,8 @@ impl CompetitionInput {
 pub struct ManifestCompetitionInput {
     data: Manifest,
     models: Vec<Manifest>,
+    /// Optional AES-256-CTR decryption keys, one per model. `None` means unencrypted.
+    model_keys: Vec<Option<[u8; 32]>>,
     target: TensorData,
     seed: u64,
 }
@@ -68,7 +70,14 @@ pub struct ManifestCompetitionInput {
 impl ManifestCompetitionInput {
     /// Create a new CompetitionInput.
     pub fn new(data: Manifest, models: Vec<Manifest>, target: TensorData, seed: u64) -> Self {
-        Self { data, models, target, seed }
+        let num_models = models.len();
+        Self { data, models, model_keys: vec![None; num_models], target, seed }
+    }
+
+    /// Set decryption keys for encrypted model weights.
+    pub fn with_model_keys(mut self, keys: Vec<Option<[u8; 32]>>) -> Self {
+        self.model_keys = keys;
+        self
     }
 
     /// Get the data manifest.
@@ -79,6 +88,11 @@ impl ManifestCompetitionInput {
     /// Get the model entries (id + manifest).
     pub fn models(&self) -> &[Manifest] {
         &self.models
+    }
+
+    /// Get the decryption keys.
+    pub fn model_keys(&self) -> &[Option<[u8; 32]>] {
+        &self.model_keys
     }
 
     /// Get the target embedding.

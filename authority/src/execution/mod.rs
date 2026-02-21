@@ -97,6 +97,7 @@ pub fn execute_transaction(
     input_objects: CheckedInputObjects,
     execution_params: ExecutionOrEarlyError,
     fee_parameters: FeeParameters,
+    chain: protocol_config::Chain,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
@@ -111,6 +112,7 @@ pub fn execute_transaction(
         epoch_id,
         fee_parameters,
         execution_version,
+        chain,
     );
 
     let mut executor = create_executor(&kind);

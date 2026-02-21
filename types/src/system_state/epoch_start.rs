@@ -68,7 +68,7 @@ impl EpochStartSystemState {
 
     pub fn new_for_testing_with_epoch(epoch: EpochId) -> Self {
         let protocol_config =
-            protocol_config::ProtocolConfig::get_for_version(ProtocolVersion::MAX, Chain::Mainnet);
+            protocol_config::ProtocolConfig::get_for_version(ProtocolVersion::MAX, Chain::default());
         EpochStartSystemState::V1(EpochStartSystemStateV1 {
             epoch,
             protocol_version: ProtocolVersion::MAX.as_u64(),

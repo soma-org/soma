@@ -389,11 +389,11 @@ impl Object {
 
     /// Create a new Object containing a Target.
     ///
-    /// Targets are shared objects with `initial_shared_version` set to `Version::new()`.
-    /// This matches how SystemState and other shared objects are created at genesis.
-    ///
-    /// Note: The object data version is set to `Version::MIN` because TemporaryStore
-    /// will assign the lamport timestamp later.
+    /// Targets are shared objects with `initial_shared_version` set to `OBJECT_START_VERSION`.
+    /// Using OBJECT_START_VERSION (1) instead of Version::new() (0) ensures TemporaryStore
+    /// won't replace it with the lamport timestamp, giving targets a predictable
+    /// initial_shared_version that matches TARGET_OBJECT_SHARED_VERSION regardless of
+    /// when the target is created (genesis or epoch change).
     pub fn new_target_object(
         id: ObjectID,
         target: TargetV1,
@@ -405,9 +405,11 @@ impl Object {
         // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
         let data = ObjectData::new_with_id(id, ObjectType::Target, Version::MIN, target_bytes);
 
-        // Targets are shared objects - any address can submit to them
-        // Use Version::new() as the initial shared version (matches genesis pattern)
-        let owner = Owner::Shared { initial_shared_version: Version::new() };
+        // Targets are shared objects - use OBJECT_START_VERSION (1) directly
+        // so TemporaryStore won't update it (it only updates Version::new() = 0)
+        let owner = Owner::Shared {
+            initial_shared_version: OBJECT_START_VERSION,
+        };
 
         Object::new(data, owner, previous_transaction)
     }

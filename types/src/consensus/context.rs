@@ -65,7 +65,7 @@ impl Context {
             Parameters { db_path: temp_dir.keep(), ..Default::default() },
             ProtocolConfig::get_for_version(
                 protocol_config::MAX_PROTOCOL_VERSION.into(),
-                protocol_config::Chain::Testnet,
+                protocol_config::Chain::default(),
             ),
             clock,
         );

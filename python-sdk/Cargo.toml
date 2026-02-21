@@ -1,6 +1,6 @@
 [package]
 name = "soma-sdk"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 
 [lib]
@@ -22,6 +22,9 @@ bcs.workspace = true
 futures.workspace = true
 hex.workspace = true
 url.workspace = true
+aes.workspace = true
+ctr.workspace = true
+rand.workspace = true
 
 [lints]
 workspace = true

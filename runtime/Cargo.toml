@@ -12,6 +12,8 @@ types.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+aes.workspace = true
+ctr.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

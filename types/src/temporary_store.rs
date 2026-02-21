@@ -252,6 +252,10 @@ pub struct TemporaryStore {
     /// Execution version for this epoch (from ProtocolConfig::execution_version).
     /// Used by executors to gate behavior changes across protocol upgrades.
     pub execution_version: u64,
+
+    /// Which chain we are running on. Used by executors that need chain-specific
+    /// protocol config (e.g. ChangeEpochExecutor).
+    pub chain: protocol_config::Chain,
 }
 
 impl TemporaryStore {
@@ -262,6 +266,7 @@ impl TemporaryStore {
         cur_epoch: EpochId,
         fee_parameters: FeeParameters,
         execution_version: u64,
+        chain: protocol_config::Chain,
     ) -> Self {
         let mutable_input_refs = input_objects.mutable_inputs();
         let lamport_timestamp = input_objects.lamport_timestamp(&receiving_objects);
@@ -296,6 +301,7 @@ impl TemporaryStore {
             creation_counter: 0,
             fee_parameters,
             execution_version,
+            chain,
         }
     }
 

@@ -1,19 +1,29 @@
 use std::sync::Arc;
 
 use crate::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
+use aes::Aes256;
 use async_trait::async_trait;
 use blobs::{BlobPath, downloader::BlobDownloader, loader::BlobLoader};
 use burn::{Tensor, prelude::Backend};
+use ctr::Ctr128BE;
+use ctr::cipher::{KeyIvInit, StreamCipher};
 use models::{
     ModelAPI, ModelOutput, consine_distance::cosine_distance, select_best::select_best_model,
 };
-use object_store::ObjectStore;
+use object_store::{ObjectStore, PutPayload};
 use tokio::task::JoinSet;
 use types::{
     committee::EpochId,
-    error::{RuntimeError, RuntimeResult},
+    error::{BlobError, RuntimeError, RuntimeResult},
     metadata::{Manifest, ManifestAPI, MetadataAPI},
 };
+
+/// Decrypt data in-place with AES-256-CTR (zero IV).
+fn decrypt_aes256_ctr(data: &mut [u8], key: &[u8; 32]) {
+    let iv = [0u8; 16];
+    let mut cipher = Ctr128BE::<Aes256>::new(key.into(), &iv.into());
+    cipher.apply_keystream(data);
+}
 
 pub struct RuntimeV1<B, S, D, M>
 where
@@ -124,6 +134,28 @@ where
             result
                 .map_err(|e| RuntimeError::ModelError(e.to_string()))?
                 .map_err(RuntimeError::BlobError)?;
+        }
+
+        // Decrypt model weights if decryption keys are provided.
+        for (i, key) in input.model_keys().iter().enumerate() {
+            if let Some(key) = key {
+                let path = &model_paths[i];
+                let get_result = self
+                    .store
+                    .get(&path.path())
+                    .await
+                    .map_err(|e| RuntimeError::BlobError(BlobError::ObjectStoreError(e)))?;
+                let encrypted = get_result
+                    .bytes()
+                    .await
+                    .map_err(|e| RuntimeError::BlobError(BlobError::ObjectStoreError(e)))?;
+                let mut decrypted = encrypted.to_vec();
+                decrypt_aes256_ctr(&mut decrypted, key);
+                self.store
+                    .put(&path.path(), PutPayload::from(decrypted))
+                    .await
+                    .map_err(|e| RuntimeError::BlobError(BlobError::ObjectStoreError(e)))?;
+            }
         }
 
         let competition_input =

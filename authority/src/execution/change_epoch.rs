@@ -83,7 +83,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         let next_protocol_config = protocol_config::ProtocolConfig::get_for_version(
             change_epoch.protocol_version,
-            protocol_config::Chain::Mainnet, // TODO: detect which chain to use here
+            store.chain,
         );
 
         // Store epoch_start_timestamp_ms for target generation (before moving change_epoch)

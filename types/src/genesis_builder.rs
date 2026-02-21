@@ -84,6 +84,11 @@ impl GenesisBuilder {
         self
     }
 
+    pub fn with_chain(mut self, chain: protocol_config::Chain) -> Self {
+        self.parameters.chain = chain;
+        self
+    }
+
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.parameters.protocol_version
     }
@@ -439,7 +444,7 @@ impl GenesisBuilder {
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
             self.parameters.protocol_version,
-            protocol_config::Chain::Mainnet, // TODO: detect what chain to use here
+            self.parameters.chain,
         );
 
         // Convert GenesisValidatorInfo to on-chain Validator
@@ -496,6 +501,11 @@ impl GenesisBuilder {
             self.parameters.emission_per_epoch,
             Some(self.parameters.epoch_duration_ms),
         );
+
+        // Apply target_embedding_dim override if set (for small-model testing)
+        if let Some(dim) = self.parameters.target_embedding_dim_override {
+            system_state.parameters_mut().target_embedding_dim = dim;
+        }
 
         // Add genesis models (skip commit-reveal, created directly as active)
         for model_config in &self.genesis_models {
@@ -662,6 +672,7 @@ impl GenesisBuilder {
             0,
             system_state.fee_parameters(),
             0, // execution_version: genesis always uses v0
+            self.parameters.chain,
         );
 
         for object in objects {
