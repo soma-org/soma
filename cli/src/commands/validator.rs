@@ -297,20 +297,27 @@ impl SomaValidatorCommand {
 
 /// Start a validator node from a config file
 async fn start_validator_node(config_path: PathBuf) -> Result<()> {
+    crate::soma_commands::print_banner("Validator");
+
     info!("Loading validator config from {:?}", config_path);
 
     let node_config: NodeConfig = PersistedConfig::read(&config_path).map_err(|err| {
         anyhow!("Cannot open validator config file at {:?}: {}", config_path, err)
     })?;
 
-    info!("Starting validator node with protocol key: {:?}", node_config.protocol_public_key());
+    let protocol_key = format!("{:?}", node_config.protocol_public_key());
+    eprint!("  {:<50}", "Starting validator...");
 
     // Start the validator node
     let node = SomaNode::start(node_config)
         .await
         .map_err(|err| anyhow!("Failed to start validator node: {}", err))?;
 
-    info!("Validator node started successfully");
+    eprintln!("{}", "done".green());
+    eprintln!();
+    eprintln!("  Protocol key: {}", protocol_key.dimmed());
+    eprintln!();
+    eprintln!("  Press {} to stop.", "Ctrl+C".bold());
 
     // Keep the node running until Ctrl+C or SIGTERM
     let mut interval = tokio::time::interval(Duration::from_secs(5));

@@ -61,6 +61,51 @@ use crate::commands;
 
 const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 
+pub(crate) const SOMA_BANNER: &str =
+    "   ██████████        ███████████      ███         ████        ███
+  ████   █████    ████      ██████    ████        ████       █████
+  ███      ███   ██            ████   █████      █████      ███ ███
+  ██████        ███             ████  ██████    ██████      ███  ███
+    █████████   ██              ████  ██ ███    ███ ██     ███   ████
+          ████  ███             ████  ██  ███  ███  ██    ███████████
+  ███       ███  ███           ████   ██  ███████   ██   █████████████
+  █████  █████    ████      ██████    ██   ██████   ██   ███       ████
+    █████████        ███████████      ██    ████    ██  ███         ███";
+
+/// Print the Soma ASCII banner with a subtitle line underneath.
+pub(crate) fn print_banner(subtitle: &str) {
+    let banner_width = SOMA_BANNER.lines().map(|l| l.chars().count()).max().unwrap_or(68);
+    eprintln!();
+    for line in SOMA_BANNER.lines() {
+        eprintln!("{line}");
+    }
+    eprintln!();
+    eprintln!("  {}", "─".repeat(banner_width - 2).dimmed());
+    eprintln!("  {}", subtitle.bold());
+    eprintln!("  {}", "─".repeat(banner_width - 2).dimmed());
+    eprintln!();
+}
+
+/// Print a key-value info panel inside a box.
+fn print_info_panel(rows: &[(&str, &str)]) {
+    let label_w = rows.iter().map(|(l, _)| l.len()).max().unwrap_or(10) + 2;
+    let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
+    let inner_w = 2 + label_w + value_w + 1;
+    eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
+    for (label, value) in rows {
+        eprintln!(
+            "  {}  {:<lw$}{:<vw$}{}",
+            "│".dimmed(),
+            label,
+            value,
+            "│".dimmed(),
+            lw = label_w,
+            vw = value_w + 1,
+        );
+    }
+    eprintln!("  {}", format!("└{}┘", "─".repeat(inner_w)).dimmed());
+}
+
 #[derive(Parser)]
 #[derive(Default)]
 #[clap(rename_all = "kebab-case")]
@@ -82,7 +127,6 @@ impl SomaEnvConfig {
     }
 }
 
-
 #[allow(clippy::large_enum_variant)]
 #[derive(Parser)]
 #[clap(name = "soma", rename_all = "kebab-case")]
@@ -91,11 +135,14 @@ pub enum SomaCommand {
     // COMMON USER ACTIONS (Top-level for convenience)
     // =========================================================================
     /// Check SOMA balance for an address
-    #[clap(name = "balance", after_help = "\
+    #[clap(
+        name = "balance",
+        after_help = "\
 EXAMPLES:
     soma balance
     soma balance 0x1234...5678
-    soma balance --with-coins")]
+    soma balance --with-coins"
+    )]
     Balance {
         /// Address to check (defaults to active address)
         address: Option<KeyIdentity>,
@@ -107,10 +154,13 @@ EXAMPLES:
     },
 
     /// Send SOMA to a recipient
-    #[clap(name = "send", after_help = "\
+    #[clap(
+        name = "send",
+        after_help = "\
 EXAMPLES:
     soma send --to 0x1234...5678 --amount 1
-    soma send --to my-alias --amount 0.5 --coin 0xABCD...")]
+    soma send --to my-alias --amount 0.5 --coin 0xABCD..."
+    )]
     Send {
         /// Recipient address or alias
         #[clap(long)]
@@ -128,10 +178,13 @@ EXAMPLES:
     },
 
     /// Transfer an object to a recipient
-    #[clap(name = "transfer", after_help = "\
+    #[clap(
+        name = "transfer",
+        after_help = "\
 EXAMPLES:
     soma transfer --to 0x1234...5678 --object-id 0xABCD...
-    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS...")]
+    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS..."
+    )]
     Transfer {
         /// Recipient address or alias
         #[clap(long)]
@@ -149,11 +202,14 @@ EXAMPLES:
     },
 
     /// Pay SOMA to multiple recipients
-    #[clap(name = "pay", after_help = "\
+    #[clap(
+        name = "pay",
+        after_help = "\
 EXAMPLES:
     soma pay --recipients 0xABC... --amounts 1
     soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN...")]
+    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN..."
+    )]
     Pay {
         /// Recipient addresses
         #[clap(long, required = true, num_args(1..))]
@@ -171,11 +227,14 @@ EXAMPLES:
     },
 
     /// Stake SOMA with a validator or model
-    #[clap(name = "stake", after_help = "\
+    #[clap(
+        name = "stake",
+        after_help = "\
 EXAMPLES:
     soma stake --validator 0xVAL... --amount 10
     soma stake --model 0xMODEL... --amount 5
-    soma stake --validator 0xVAL... --coin 0xCOIN...")]
+    soma stake --validator 0xVAL... --coin 0xCOIN..."
+    )]
     Stake {
         /// Validator address to stake with
         #[clap(long, group = "stake_target", required_unless_present = "model")]
@@ -196,9 +255,12 @@ EXAMPLES:
     },
 
     /// Withdraw staked SOMA
-    #[clap(name = "unstake", after_help = "\
+    #[clap(
+        name = "unstake",
+        after_help = "\
 EXAMPLES:
-    soma unstake 0xSTAKED_SOMA_ID")]
+    soma unstake 0xSTAKED_SOMA_ID"
+    )]
     Unstake {
         /// StakedSoma object ID to withdraw
         staked_soma_id: ObjectID,
@@ -209,11 +271,14 @@ EXAMPLES:
     },
 
     /// Request test tokens from the faucet
-    #[clap(name = "faucet", after_help = "\
+    #[clap(
+        name = "faucet",
+        after_help = "\
 EXAMPLES:
     soma faucet
     soma faucet --address 0x1234...5678
-    soma faucet --url http://127.0.0.1:9123/gas")]
+    soma faucet --url http://127.0.0.1:9123/gas"
+    )]
     Faucet {
         /// Address to receive tokens (defaults to active address)
         #[clap(long)]
@@ -226,10 +291,13 @@ EXAMPLES:
     },
 
     /// Show network connection status, version info, and active address
-    #[clap(name = "status", after_help = "\
+    #[clap(
+        name = "status",
+        after_help = "\
 EXAMPLES:
     soma status
-    soma status --json")]
+    soma status --json"
+    )]
     Status {
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
@@ -239,10 +307,13 @@ EXAMPLES:
     // QUERY COMMANDS
     // =========================================================================
     /// Query on-chain objects by owner or ID
-    #[clap(name = "objects", after_help = "\
+    #[clap(
+        name = "objects",
+        after_help = "\
 EXAMPLES:
     soma objects list
-    soma objects get 0xOBJECT_ID")]
+    soma objects get 0xOBJECT_ID"
+    )]
     Objects {
         #[clap(subcommand)]
         cmd: ObjectsCommand,
@@ -251,9 +322,12 @@ EXAMPLES:
     },
 
     /// Get transaction details by digest
-    #[clap(name = "tx", after_help = "\
+    #[clap(
+        name = "tx",
+        after_help = "\
 EXAMPLES:
-    soma tx DIGEST_BASE58")]
+    soma tx DIGEST_BASE58"
+    )]
     Tx {
         /// Transaction digest
         digest: TransactionDigest,
@@ -265,11 +339,14 @@ EXAMPLES:
     // MANAGEMENT COMMANDS
     // =========================================================================
     /// Manage wallet addresses and keys
-    #[clap(name = "wallet", after_help = "\
+    #[clap(
+        name = "wallet",
+        after_help = "\
 EXAMPLES:
     soma wallet list
     soma wallet new --alias my-wallet
-    soma wallet switch 0x1234...5678")]
+    soma wallet switch 0x1234...5678"
+    )]
     Wallet {
         #[clap(subcommand)]
         cmd: WalletCommand,
@@ -278,11 +355,14 @@ EXAMPLES:
     },
 
     /// Manage network environments (switch, add, list)
-    #[clap(name = "env", after_help = "\
+    #[clap(
+        name = "env",
+        after_help = "\
 EXAMPLES:
     soma env list
     soma env switch testnet
-    soma env new --alias mynet --rpc http://...")]
+    soma env new --alias mynet --rpc http://..."
+    )]
     Env {
         #[clap(subcommand)]
         cmd: EnvCommand,
@@ -294,7 +374,9 @@ EXAMPLES:
     // MINING COMMANDS
     // =========================================================================
     /// Manage models (commit, reveal, update, deactivate, query)
-    #[clap(name = "model", after_help = "\
+    #[clap(
+        name = "model",
+        after_help = "\
 EXAMPLES:
     soma model list
     soma model info 0xMODEL_ID
@@ -305,7 +387,8 @@ EXAMPLES:
         --weights-checksum 0xHEX... --weights-size 1024 \\
         --decryption-key 0xHEX... --embedding 0.1,0.2,0.3
     soma model deactivate 0xMODEL_ID
-    soma model download 0xMODEL_ID --output ./weights.bin")]
+    soma model download 0xMODEL_ID --output ./weights.bin"
+    )]
     Model {
         #[clap(subcommand)]
         cmd: ModelCommand,
@@ -314,11 +397,14 @@ EXAMPLES:
     },
 
     /// Query and inspect targets in the mining competition
-    #[clap(name = "target", after_help = "\
+    #[clap(
+        name = "target",
+        after_help = "\
 EXAMPLES:
     soma target list
     soma target list --status open
-    soma target info 0xTARGET_ID")]
+    soma target info 0xTARGET_ID"
+    )]
     Target {
         #[clap(subcommand)]
         cmd: TargetCommand,
@@ -329,10 +415,13 @@ EXAMPLES:
     /// Download submission data for a filled target
     ///
     /// Fetches the winning submission's data via the validator proxy network.
-    #[clap(name = "data", after_help = "\
+    #[clap(
+        name = "data",
+        after_help = "\
 EXAMPLES:
     soma data 0xTARGET_ID
-    soma data 0xTARGET_ID --output ./my-data.bin")]
+    soma data 0xTARGET_ID --output ./my-data.bin"
+    )]
     Data {
         #[clap(flatten)]
         cmd: DataCommand,
@@ -341,12 +430,15 @@ EXAMPLES:
     },
 
     /// Submit data to fill a target
-    #[clap(name = "submit", after_help = "\
+    #[clap(
+        name = "submit",
+        after_help = "\
 EXAMPLES:
     soma submit --target-id 0xTARGET... --data-commitment 0xHEX... \\
         --data-url https://... --data-checksum 0xHEX... --data-size 1024 \\
         --model-id 0xMODEL... --embedding 0.1,0.2,0.3 \\
-        --distance-score 0.5 --bond-coin 0xCOIN...")]
+        --distance-score 0.5 --bond-coin 0xCOIN..."
+    )]
     Submit {
         #[clap(flatten)]
         cmd: SubmitCommand,
@@ -358,9 +450,12 @@ EXAMPLES:
     ///
     /// Claims the reward pool from a target that was successfully filled.
     /// The challenge window (one full epoch after the target was filled) must have closed.
-    #[clap(name = "claim", after_help = "\
+    #[clap(
+        name = "claim",
+        after_help = "\
 EXAMPLES:
-    soma claim 0xTARGET_ID")]
+    soma claim 0xTARGET_ID"
+    )]
     Claim {
         #[clap(flatten)]
         cmd: ClaimCommand,
@@ -372,10 +467,13 @@ EXAMPLES:
     ///
     /// Initiates a fraud challenge against a miner's submission for a filled target.
     /// Requires a bond proportional to the data size.
-    #[clap(name = "challenge", after_help = "\
+    #[clap(
+        name = "challenge",
+        after_help = "\
 EXAMPLES:
     soma challenge initiate --target-id 0xTARGET... --bond-coin 0xCOIN...
-    soma challenge info 0xCHALLENGE_ID")]
+    soma challenge info 0xCHALLENGE_ID"
+    )]
     Challenge {
         #[clap(subcommand)]
         cmd: ChallengeCommand,
@@ -391,12 +489,15 @@ EXAMPLES:
     /// Runs an HTTP server that accepts scoring requests via POST /score.
     /// A Python mining program can POST data/model URLs and get back
     /// embeddings and distance scores for on-chain submission.
-    #[clap(name = "score", after_help = "\
+    #[clap(
+        name = "score",
+        after_help = "\
 EXAMPLES:
     soma score
     soma score --host 127.0.0.1 --port 8080
     soma score --device wgpu --small-model
-    soma score --data-dir /tmp/soma-data")]
+    soma score --data-dir /tmp/soma-data"
+    )]
     Score {
         /// Host to bind the scoring service to
         #[clap(long, default_value = "0.0.0.0")]
@@ -423,10 +524,13 @@ EXAMPLES:
     // OPERATOR COMMANDS
     // =========================================================================
     /// Manage validators (register, set gas price, commission)
-    #[clap(name = "validator", after_help = "\
+    #[clap(
+        name = "validator",
+        after_help = "\
 EXAMPLES:
     soma validator display-metadata
-    soma validator list")]
+    soma validator list"
+    )]
     Validator {
         #[clap(flatten)]
         config: SomaEnvConfig,
@@ -458,11 +562,15 @@ EXAMPLES:
     /// Launches a local validator, fullnode, and optionally a faucet.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
     /// for an ephemeral network that starts fresh each time.
-    #[clap(name = "start", verbatim_doc_comment, after_help = "\
+    #[clap(
+        name = "start",
+        verbatim_doc_comment,
+        after_help = "\
 EXAMPLES:
     soma start --force-regenesis --small-model  # Fresh network, small models
     soma start --force-regenesis                # Fresh network, full-size models
-    soma start --no-faucet --no-scoring         # Persistent network, no services")]
+    soma start --no-faucet --no-scoring         # Persistent network, no services"
+    )]
     Start {
         /// Config directory that will be used to store network config, node db, keystore.
         #[clap(long = "network.config")]
@@ -564,11 +672,14 @@ EXAMPLES:
     },
 
     /// Generate shell completion scripts
-    #[clap(name = "completions", after_help = "\
+    #[clap(
+        name = "completions",
+        after_help = "\
 EXAMPLES:
     soma completions bash > /usr/local/etc/bash_completion.d/soma
     soma completions zsh > ~/.zfunc/_soma
-    soma completions fish > ~/.config/fish/completions/soma.fish")]
+    soma completions fish > ~/.config/fish/completions/soma.fish"
+    )]
     Completions {
         /// Shell to generate completions for
         shell: clap_complete::Shell,
@@ -602,7 +713,8 @@ impl SomaCommand {
                 ensure!(amount.shannons() > 0, "Amount must be greater than 0");
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
-                    commands::send::execute(&mut context, to, amount.shannons(), coin, tx_args).await?;
+                    commands::send::execute(&mut context, to, amount.shannons(), coin, tx_args)
+                        .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -633,9 +745,14 @@ impl SomaCommand {
                 }
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
-                let result =
-                    commands::pay::execute(&mut context, recipients, amounts_shannons, coins, tx_args)
-                        .await?;
+                let result = commands::pay::execute(
+                    &mut context,
+                    recipients,
+                    amounts_shannons,
+                    coins,
+                    tx_args,
+                )
+                .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -682,30 +799,23 @@ impl SomaCommand {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let active_address = context.active_address().ok();
                 let active_env = context.config.active_env.clone();
-                let rpc_url = context
-                    .config
-                    .get_active_env()
-                    .map(|e| e.rpc.clone())
-                    .unwrap_or_default();
+                let rpc_url =
+                    context.config.get_active_env().map(|e| e.rpc.clone()).unwrap_or_default();
 
                 let (server_version, chain_id, epoch, balance, server_unreachable) =
                     match context.get_client().await {
                         Ok(client) => {
                             let chain_id = client.get_chain_identifier().await.ok();
                             let server_version = client.get_server_version().await.ok();
-                            let epoch = client
-                                .get_latest_system_state()
-                                .await
-                                .ok()
-                                .map(|s| s.epoch());
+                            let epoch =
+                                client.get_latest_system_state().await.ok().map(|s| s.epoch());
                             let balance = if let Some(addr) = &active_address {
                                 client.get_balance(addr).await.ok()
                             } else {
                                 None
                             };
-                            let unreachable = server_version.is_none()
-                                && chain_id.is_none()
-                                && epoch.is_none();
+                            let unreachable =
+                                server_version.is_none() && chain_id.is_none() && epoch.is_none();
                             (server_version, chain_id, epoch, balance, unreachable)
                         }
                         Err(_) => (None, None, None, None, true),
@@ -833,9 +943,7 @@ impl SomaCommand {
                 };
 
                 let data_dir = data_dir.unwrap_or_else(|| {
-                    soma_config_dir()
-                        .unwrap_or_else(|_| PathBuf::from("."))
-                        .join("scoring-data")
+                    soma_config_dir().unwrap_or_else(|_| PathBuf::from(".")).join("scoring-data")
                 });
                 fs::create_dir_all(&data_dir)?;
 
@@ -850,33 +958,19 @@ impl SomaCommand {
                         .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
                 );
 
-                const STATUS_WIDTH: usize = 50;
-                eprintln!();
-                eprintln!("  {}", "Soma Scoring Service".bold());
-                eprintln!("  {}", "═".repeat(STATUS_WIDTH));
-                eprintln!();
+                print_banner("Scoring Service");
 
-                let display_host =
-                    if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+                let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
                 let device_str = device.to_string();
-                let rows: [(&str, &str); 4] = [
-                    ("URL", &format!("http://{display_host}:{port}")),
-                    ("Score endpoint", &format!("POST http://{display_host}:{port}/score")),
+                let url = format!("http://{display_host}:{port}");
+                let score_ep = format!("POST {url}/score");
+                let data_display = data_dir.display().to_string();
+                print_info_panel(&[
+                    ("URL", &url),
+                    ("Score endpoint", &score_ep),
                     ("Device", &device_str),
-                    ("Data dir", &data_dir.display().to_string()),
-                ];
-                let label_w = 16;
-                let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
-                let inner_w = label_w + value_w + 1;
-                eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
-                for (label, value) in &rows {
-                    eprintln!(
-                        "  {}  {:<lw$}{:<vw$}{}",
-                        "│".dimmed(), label, value, "│".dimmed(),
-                        lw = label_w, vw = value_w + 1,
-                    );
-                }
-                eprintln!("  {}", format!("└{}┘", "─".repeat(inner_w)).dimmed());
+                    ("Data dir", &data_display),
+                ]);
                 eprintln!();
                 eprintln!("  Press {} to stop.", "Ctrl+C".bold());
 
@@ -1165,10 +1259,7 @@ async fn start(
 
     // -- Build & launch -------------------------------------------------------
     const STATUS_WIDTH: usize = 50;
-    eprintln!();
-    eprintln!("  {}", "Soma Local Network".bold());
-    eprintln!("  {}", "═".repeat(STATUS_WIDTH));
-    eprintln!();
+    print_banner("Local Network");
     let msg = "Generating genesis...";
     eprint!("  {msg:<width$}", width = STATUS_WIDTH);
     let mut swarm = swarm_builder.build();
@@ -1232,8 +1323,7 @@ async fn start(
 
         let active_address = faucet_keystore.addresses().pop();
 
-        let mut client_config =
-            SomaClientConfig::new(Keystore::from(faucet_keystore));
+        let mut client_config = SomaClientConfig::new(Keystore::from(faucet_keystore));
         client_config.active_address = active_address;
         client_config.add_env(SomaEnv {
             alias: "localnet".to_string(),
@@ -1243,18 +1333,13 @@ async fn start(
         });
         client_config.active_env = Some("localnet".to_string());
 
-        let faucet_config_path = keystore_path
-            .parent()
-            .expect("keystore path has a parent")
-            .join(SOMA_CLIENT_CONFIG);
+        let faucet_config_path =
+            keystore_path.parent().expect("keystore path has a parent").join(SOMA_CLIENT_CONFIG);
         client_config.save(&faucet_config_path)?;
 
         let wallet_context = create_wallet_context(
             60,
-            faucet_config_path
-                .parent()
-                .expect("config path has a parent")
-                .to_path_buf(),
+            faucet_config_path.parent().expect("config path has a parent").to_path_buf(),
         )?;
 
         let faucet_config = faucet::faucet_config::FaucetConfig {
@@ -1263,12 +1348,10 @@ async fn start(
             ..Default::default()
         };
 
-        let faucet_instance = faucet::local_faucet::LocalFaucet::new(
-            wallet_context,
-            faucet_config.clone(),
-        )
-        .await
-        .map_err(|e| anyhow!("Failed to initialize faucet: {e}"))?;
+        let faucet_instance =
+            faucet::local_faucet::LocalFaucet::new(wallet_context, faucet_config.clone())
+                .await
+                .map_err(|e| anyhow!("Failed to initialize faucet: {e}"))?;
 
         let app_state = std::sync::Arc::new(faucet::app_state::AppState {
             faucet: std::sync::Arc::new(faucet_instance),
@@ -1281,8 +1364,7 @@ async fn start(
             }
         });
 
-        let display_host =
-            if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
         faucet_url = Some(format!("http://{display_host}:{port}/gas"));
         eprintln!("{}", "done".green());
     }
@@ -1295,17 +1377,18 @@ async fn start(
         let msg = "Starting scoring service...";
         eprint!("  {msg:<width$}", width = STATUS_WIDTH);
 
-        let model_config = if small_model {
-            scoring::model_config_small()
-        } else {
-            runtime::ModelConfig::new()
-        };
+        let model_config =
+            if small_model { scoring::model_config_small() } else { runtime::ModelConfig::new() };
 
         let scoring_data_dir = config_dir.join("scoring-data");
         fs::create_dir_all(&scoring_data_dir)?;
         let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(&scoring_data_dir, model_config, &DeviceConfig::Cpu)
-                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+            scoring::scoring::ScoringEngine::new(
+                &scoring_data_dir,
+                model_config,
+                &DeviceConfig::Cpu,
+            )
+            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
         );
 
         tokio::spawn(async move {
@@ -1353,14 +1436,7 @@ async fn start(
         ("Epoch", &epoch_display),
         ("Persistence", persistence),
     ];
-    let label_w = 14;
-    let value_w = rows.iter().map(|(_, v)| v.len()).max().unwrap_or(20).max(20);
-    let inner_w = 2 + label_w + value_w + 1; // 2 inner padding + label + value + trailing space
-    eprintln!("  {}", format!("┌{}┐", "─".repeat(inner_w)).dimmed());
-    for (label, value) in &rows {
-        eprintln!("  {}  {:<lw$}{:<vw$}{}", "│".dimmed(), label, value, "│".dimmed(), lw = label_w, vw = value_w + 1);
-    }
-    eprintln!("  {}", format!("└{}┘", "─".repeat(inner_w)).dimmed());
+    print_info_panel(&rows);
     eprintln!();
     eprintln!("  State dir: {}", state_dir.dimmed());
     eprintln!();
@@ -1368,9 +1444,8 @@ async fn start(
 
     // -- Main loop ------------------------------------------------------------
     let mut interval = interval(Duration::from_secs(3));
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to register SIGTERM handler");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to register SIGTERM handler");
 
     loop {
         tokio::select! {
@@ -1430,7 +1505,8 @@ async fn advance_epoch_handler(
     let fullnode_handle = match fullnode.get_node_handle() {
         Some(handle) => handle,
         None => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "Fullnode handle unavailable").into_response();
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Fullnode handle unavailable")
+                .into_response();
         }
     };
 
@@ -1447,7 +1523,10 @@ async fn advance_epoch_handler(
             if let Some(handle) = node.get_node_handle() {
                 let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
                 if v_epoch < cur_committee.epoch {
-                    info!("[admin] validator at epoch {v_epoch}, waiting for {}", cur_committee.epoch);
+                    info!(
+                        "[admin] validator at epoch {v_epoch}, waiting for {}",
+                        cur_committee.epoch
+                    );
                     all_ready = false;
                     break;
                 }
@@ -1457,7 +1536,8 @@ async fn advance_epoch_handler(
             break 'wait_ready;
         }
         if tokio::time::Instant::now() > deadline {
-            return (StatusCode::GATEWAY_TIMEOUT, "Validators did not reach current epoch").into_response();
+            return (StatusCode::GATEWAY_TIMEOUT, "Validators did not reach current epoch")
+                .into_response();
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
@@ -1470,9 +1550,9 @@ async fn advance_epoch_handler(
     for node in swarm.validator_nodes() {
         if let Some(handle) = node.get_node_handle() {
             info!("[admin] close_epoch_for_testing: acquiring lock...");
-            if let Err(e) = handle.with_async(|n| async move {
-                n.close_epoch_for_testing().await
-            }).await {
+            if let Err(e) =
+                handle.with_async(|n| async move { n.close_epoch_for_testing().await }).await
+            {
                 tracing::warn!("[admin] close_epoch_for_testing failed: {e}");
             }
             info!("[admin] close_epoch_for_testing: done");
@@ -1533,7 +1613,8 @@ async fn advance_epoch_handler(
 
         if tokio::time::Instant::now() > deadline {
             info!("[admin] TIMEOUT waiting for epoch {target_epoch}");
-            return (StatusCode::GATEWAY_TIMEOUT, "Epoch did not advance within 120s").into_response();
+            return (StatusCode::GATEWAY_TIMEOUT, "Epoch did not advance within 120s")
+                .into_response();
         }
     }
 }
@@ -1844,9 +1925,8 @@ fn parse_faucet_host_port(input: &str) -> Result<(String, u16), anyhow::Error> {
 
     // Try host:port format
     if let Some((host, port_str)) = input.rsplit_once(':') {
-        let port: u16 = port_str
-            .parse()
-            .map_err(|_| anyhow!("Invalid port in faucet address: {input}"))?;
+        let port: u16 =
+            port_str.parse().map_err(|_| anyhow!("Invalid port in faucet address: {input}"))?;
         return Ok((host.to_string(), port));
     }
 
