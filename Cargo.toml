@@ -315,5 +315,9 @@ fdlimit = "0.2.1"
 uint = "0.9.5"
 
 [patch.crates-io]
-tokio = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7" }
+tokio = { path = "mysten-sim/msim-tokio" }
+
+[patch.'https://github.com/MystenLabs/mysten-sim.git']
+msim = { path = "mysten-sim/msim" }
+msim-macros = { path = "mysten-sim/msim-macros" }
 # SHARED DEPENDENCIES
