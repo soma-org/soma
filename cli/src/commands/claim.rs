@@ -84,11 +84,7 @@ impl Display for ClaimCommandResponse {
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
-                writeln!(
-                    f,
-                    "{}",
-                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
-                )
+                writeln!(f, "{}", "Use 'soma tx execute-signed' to submit after signing.".yellow())
             }
             ClaimCommandResponse::TransactionDigest(digest) => {
                 writeln!(f, "{}: {}", "Transaction Digest".bold(), digest)

@@ -247,11 +247,7 @@ impl Display for ChallengeCommandResponse {
                     "{}",
                     "Challenge ID will be derived from transaction digest after signing and execution.".yellow()
                 )?;
-                writeln!(
-                    f,
-                    "{}",
-                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
-                )
+                writeln!(f, "{}", "Use 'soma tx execute-signed' to submit after signing.".yellow())
             }
             ChallengeCommandResponse::TransactionDigest { challenge_id, digest } => {
                 writeln!(f, "{}: {}", "Challenge ID".bold(), challenge_id)?;

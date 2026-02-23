@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use faucet::app_state::AppState;
-use faucet::faucet_config::{FaucetConfig, DEFAULT_AMOUNT, DEFAULT_FAUCET_PORT, DEFAULT_NUM_COINS};
+use faucet::faucet_config::{DEFAULT_AMOUNT, DEFAULT_FAUCET_PORT, DEFAULT_NUM_COINS, FaucetConfig};
 use faucet::faucet_gen::faucet_client::FaucetClient;
 use faucet::faucet_types::GasRequest;
 use faucet::local_faucet::LocalFaucet;

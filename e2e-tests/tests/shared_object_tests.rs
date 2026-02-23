@@ -477,10 +477,7 @@ async fn test_shared_object_status_transition_via_claim() {
     // 1. Target should appear in deleted() (ClaimRewards deletes the terminal target)
     let deleted_ids: Vec<_> =
         claim_response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
-    assert!(
-        deleted_ids.contains(&target_id),
-        "Target should be deleted by ClaimRewards"
-    );
+    assert!(deleted_ids.contains(&target_id), "Target should be deleted by ClaimRewards");
 
     // 3. New reward coins should be created (miner reward + model owner reward + bond return)
     let created = claim_response.effects.created();

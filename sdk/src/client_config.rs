@@ -13,10 +13,7 @@ use types::{
     config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME},
 };
 
-use crate::{
-    SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient,
-    SomaClientBuilder,
-};
+use crate::{SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient, SomaClientBuilder};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]

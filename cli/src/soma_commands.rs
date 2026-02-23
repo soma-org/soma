@@ -1,8 +1,8 @@
 use crate::{
     client_commands::SomaClientCommands,
     commands::{
-        ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand,
-        SomaValidatorCommand, TargetCommand, WalletCommand,
+        ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand,
+        TargetCommand, WalletCommand,
     },
     keytool::KeyToolCommand,
     soma_amount::SomaAmount,
@@ -1096,8 +1096,7 @@ impl SomaCommand {
 
                         print_banner("Scoring Service");
 
-                        let display_host =
-                            if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+                        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
                         let device_str = device.to_string();
                         let url = format!("http://{display_host}:{port}");
                         let score_ep = format!("POST {url}/score");
@@ -1339,12 +1338,8 @@ async fn start(
         let device = DeviceConfig::Wgpu;
 
         let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(
-                &scoring_data_dir,
-                model_config,
-                &device,
-            )
-            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+            scoring::scoring::ScoringEngine::new(&scoring_data_dir, model_config, &device)
+                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
         );
 
         tokio::spawn(async move {

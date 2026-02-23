@@ -52,7 +52,9 @@ fn error_hint(msg: &str) -> Option<&'static str> {
         return Some("Run `soma start localnet` to launch a local network first.");
     }
     if msg_lower.contains("connection refused") || msg_lower.contains("status: unavailable") {
-        return Some("Is the network running? Try `soma start localnet` to launch a local network.");
+        return Some(
+            "Is the network running? Try `soma start localnet` to launch a local network.",
+        );
     }
     if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
         return Some("Use `soma faucet` to request test tokens.");

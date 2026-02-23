@@ -168,11 +168,7 @@ impl Display for SubmitCommandResponse {
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_transaction)?;
                 writeln!(f)?;
-                writeln!(
-                    f,
-                    "{}",
-                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
-                )
+                writeln!(f, "{}", "Use 'soma tx execute-signed' to submit after signing.".yellow())
             }
             SubmitCommandResponse::TransactionDigest(digest) => {
                 writeln!(f, "{}: {}", "Transaction Digest".bold(), digest)
