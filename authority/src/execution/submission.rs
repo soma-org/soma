@@ -461,7 +461,8 @@ impl SubmissionExecutor {
         // Full reward goes to submitter, model owner, and claimer (100% distributed)
         if reward > 0 {
             let params = state.parameters();
-            let submitter_share = (reward * params.target_submitter_reward_share_bps) / BPS_DENOMINATOR;
+            let submitter_share =
+                (reward * params.target_submitter_reward_share_bps) / BPS_DENOMINATOR;
             let model_share = (reward * params.target_model_reward_share_bps) / BPS_DENOMINATOR;
             let claimer_share = (reward * params.target_claimer_incentive_bps) / BPS_DENOMINATOR;
             // Remainder after rounding goes to submitter (ensures 100% distribution)

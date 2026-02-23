@@ -1494,7 +1494,9 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             ),
             target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
             // Reward distribution parameters
-            target_submitter_reward_share_bps: Some(domain_params.target_submitter_reward_share_bps),
+            target_submitter_reward_share_bps: Some(
+                domain_params.target_submitter_reward_share_bps,
+            ),
             target_model_reward_share_bps: Some(domain_params.target_model_reward_share_bps),
             target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
             // Submission parameters

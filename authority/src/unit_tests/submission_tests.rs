@@ -653,7 +653,8 @@ async fn test_claim_rewards_too_early() {
     authority_state.insert_genesis_object(gas).await;
 
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
+    let target_obj =
+        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -748,7 +749,8 @@ async fn test_report_submission_not_validator() {
 
     let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
+    let target_obj =
+        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -925,7 +927,8 @@ async fn test_undo_report_submission_not_validator() {
 
     let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
+    let target_obj =
+        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -965,7 +968,8 @@ async fn test_undo_report_submission_no_prior_report() {
 
     let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
+    let target_obj =
+        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(

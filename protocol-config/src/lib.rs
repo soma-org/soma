@@ -385,8 +385,8 @@ impl ProtocolConfig {
 
             // Reward distribution parameters
             target_submitter_reward_share_bps: Some(6900), // 69% to submitter
-            target_model_reward_share_bps: Some(3000), // 30% to model owner
-            target_claimer_incentive_bps: Some(100),   // 1% to claimer as incentive
+            target_model_reward_share_bps: Some(3000),     // 30% to model owner
+            target_claimer_incentive_bps: Some(100),       // 1% to claimer as incentive
 
             // Submission parameters
             submission_bond_per_byte: Some(10), // 10 shannons per byte

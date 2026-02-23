@@ -633,7 +633,10 @@ async fn test_claim_rewards_succeeds_without_quorum() {
         .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter))
         .count() as u64;
 
-    assert!(submitter_received > 0, "Submitter should receive at least one coin (bond return or reward)");
+    assert!(
+        submitter_received > 0,
+        "Submitter should receive at least one coin (bond return or reward)"
+    );
 
     info!(
         "test_claim_rewards_succeeds_without_quorum passed: submitter received {} coins",
@@ -871,7 +874,10 @@ async fn test_challenge_flow_availability_no_challenger() {
         .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter))
         .collect();
 
-    info!("Submitter received {} coins (expected 0 due to availability quorum)", submitter_coins.len());
+    info!(
+        "Submitter received {} coins (expected 0 due to availability quorum)",
+        submitter_coins.len()
+    );
 
     // Validators should have received coins
     let mut validator_coins = 0;
@@ -1321,7 +1327,10 @@ async fn test_audit_service_fraud_flow_submitter_lies() {
     // Fill a target with default distance (threshold - 0.1, a large value)
     // MockCompetitionAPI returns 0.0, so this will be detected as fraud
     let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by DISHONEST submitter {} with high claimed distance", target_id, submitter);
+    info!(
+        "Target {} filled by DISHONEST submitter {} with high claimed distance",
+        target_id, submitter
+    );
 
     // Challenger initiates challenge
     let challenger = test_cluster.get_addresses()[1];
@@ -1443,7 +1452,9 @@ async fn test_audit_service_fraud_flow_submitter_lies() {
             submitter_coins.is_empty(),
             "Submitter should receive nothing when fraud is detected (bond forfeited)"
         );
-        info!("test_audit_service_fraud_flow_submitter_lies PASSED: challenger got submitter's bond");
+        info!(
+            "test_audit_service_fraud_flow_submitter_lies PASSED: challenger got submitter's bond"
+        );
     } else {
         // AuditService may not have completed in time - this is acceptable for now
         // The manual tests (test_challenge_flow_fraud_with_challenger) verify the
@@ -1494,7 +1505,8 @@ async fn test_audit_service_success_flow_submitter_honest() {
 
     // Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
     // This will NOT be detected as fraud
-    let (target_id, submitter) = fill_target_with_distance(&test_cluster, model_id, Some(0.0)).await;
+    let (target_id, submitter) =
+        fill_target_with_distance(&test_cluster, model_id, Some(0.0)).await;
     info!("Target {} filled by HONEST submitter {} with claimed distance=0", target_id, submitter);
 
     // Challenger initiates challenge (incorrectly - submitter is honest)

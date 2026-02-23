@@ -1033,7 +1033,11 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
                     info!("Submitter {} won the race (target filled)", i);
                 } else {
                     failures += 1;
-                    info!("Submitter {} lost the race (execution failed): {:?}", i, effects.status());
+                    info!(
+                        "Submitter {} lost the race (execution failed): {:?}",
+                        i,
+                        effects.status()
+                    );
                 }
             }
             Err(e) => {
@@ -1056,7 +1060,10 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
         failures
     );
 
-    info!("test_racing_submitters_concurrent_shared_mutations passed: 1 winner, {} losers", failures);
+    info!(
+        "test_racing_submitters_concurrent_shared_mutations passed: 1 winner, {} losers",
+        failures
+    );
 }
 
 // ===================================================================
