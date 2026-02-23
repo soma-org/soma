@@ -92,13 +92,9 @@ impl ModelExecutor {
 
         // Deduct stake_amount from the gas coin (implicit funding source).
         // CommitModel doesn't take a separate coin_ref, so the gas coin is used.
-        let gas_id = store
-            .gas_object_id
-            .ok_or_else(|| {
-                ExecutionFailureStatus::SomaError(SomaError::from(
-                    "No gas object set for CommitModel",
-                ))
-            })?;
+        let gas_id = store.gas_object_id.ok_or_else(|| {
+            ExecutionFailureStatus::SomaError(SomaError::from("No gas object set for CommitModel"))
+        })?;
 
         let gas_object = store
             .read_object(&gas_id)

@@ -32,12 +32,8 @@ async fn basic_checkpoints_integration_test() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
@@ -51,18 +47,14 @@ async fn basic_checkpoints_integration_test() {
 
     // Poll until all validators include the transaction in a checkpoint
     for _ in 0..600 {
-        let all_included = test_cluster
-            .swarm
-            .validator_node_handles()
-            .into_iter()
-            .all(|handle| {
-                handle.with(|node| {
-                    node.state()
-                        .epoch_store_for_testing()
-                        .is_transaction_executed_in_checkpoint(&digest)
-                        .unwrap()
-                })
-            });
+        let all_included = test_cluster.swarm.validator_node_handles().into_iter().all(|handle| {
+            handle.with(|node| {
+                node.state()
+                    .epoch_store_for_testing()
+                    .is_transaction_executed_in_checkpoint(&digest)
+                    .unwrap()
+            })
+        });
         if all_included {
             info!("Transaction included in checkpoint on all validators");
             return;
@@ -83,10 +75,8 @@ async fn test_checkpoint_timestamps_non_decreasing() {
     let epoch_duration_ms = 10_000; // 10 seconds
     let num_epochs_to_run = 3;
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(epoch_duration_ms)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_epoch_duration_ms(epoch_duration_ms).build().await;
 
     // Wait for multiple epochs to pass
     sleep(Duration::from_millis(epoch_duration_ms * num_epochs_to_run + epoch_duration_ms / 2))
@@ -95,8 +85,7 @@ async fn test_checkpoint_timestamps_non_decreasing() {
     // Retrieve checkpoints from the first fullnode
     let fullnode_handle = &test_cluster.fullnode_handle.soma_node;
 
-    let checkpoint_store =
-        fullnode_handle.with(|node| node.state().get_checkpoint_store().clone());
+    let checkpoint_store = fullnode_handle.with(|node| node.state().get_checkpoint_store().clone());
 
     let highest_executed_checkpoint = checkpoint_store
         .get_highest_executed_checkpoint()
@@ -147,18 +136,11 @@ async fn test_checkpoint_timestamps_non_decreasing() {
 async fn test_checkpoint_fork_detection_storage() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     // Get the first validator for testing
-    let validator_handle = test_cluster
-        .swarm
-        .validator_node_handles()
-        .into_iter()
-        .next()
-        .expect("No validator found");
+    let validator_handle =
+        test_cluster.swarm.validator_node_handles().into_iter().next().expect("No validator found");
 
     // Test: Basic fork detection storage functionality
     validator_handle.with(|node| {

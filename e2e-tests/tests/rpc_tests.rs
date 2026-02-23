@@ -146,11 +146,7 @@ async fn test_get_transaction() {
     assert!(tx_result.checkpoint.is_some(), "Checkpoint should be present");
     assert!(tx_result.timestamp_ms.is_some(), "Timestamp should be present");
 
-    info!(
-        "Transaction {} in checkpoint {}",
-        digest,
-        tx_result.checkpoint.unwrap()
-    );
+    info!("Transaction {} in checkpoint {}", digest, tx_result.checkpoint.unwrap());
 }
 
 /// Query checkpoint 0 (genesis) and the latest checkpoint.
@@ -166,12 +162,8 @@ async fn test_get_checkpoint() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
@@ -214,11 +206,9 @@ async fn test_get_epoch() {
     let epoch0 = client.get_epoch(Some(0)).await.unwrap();
     let epoch_info = epoch0.epoch.as_ref().expect("epoch info should be present");
     assert_eq!(epoch_info.epoch, Some(0), "Epoch should be 0");
-    let protocol_config = epoch_info.protocol_config.as_ref().expect("protocol_config should be present");
-    assert!(
-        protocol_config.protocol_version.is_some(),
-        "protocol_version should be present"
-    );
+    let protocol_config =
+        epoch_info.protocol_config.as_ref().expect("protocol_config should be present");
+    assert!(protocol_config.protocol_version.is_some(), "protocol_version should be present");
 
     // Query latest epoch
     let latest = client.get_epoch(None).await.unwrap();
@@ -227,8 +217,7 @@ async fn test_get_epoch() {
 
     info!(
         "Epoch 0 protocol_version={:?}, latest epoch={:?}",
-        protocol_config.protocol_version,
-        latest_epoch_info.epoch
+        protocol_config.protocol_version, latest_epoch_info.epoch
     );
 }
 
@@ -284,10 +273,5 @@ async fn test_get_balance_and_list_owned_objects() {
     assert!(!coins.is_empty(), "Funded address should own at least one Coin");
     assert_eq!(objects.len(), coins.len(), "All objects for a funded address should be Coins");
 
-    info!(
-        "Balance for {} = {}, objects owned = {}",
-        funded_address,
-        balance,
-        objects.len()
-    );
+    info!("Balance for {} = {}, objects owned = {}", funded_address, balance, objects.len());
 }

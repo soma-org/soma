@@ -32,12 +32,8 @@ use tracing::{info, warn};
 use url::Url;
 
 use types::{
-    base::AuthorityName,
-    model::ModelId,
-    multiaddr::Multiaddr,
-    object::ObjectID,
-    system_state::SystemState,
-    target::TargetId,
+    base::AuthorityName, model::ModelId, multiaddr::Multiaddr, object::ObjectID,
+    system_state::SystemState, target::TargetId,
 };
 
 // ===========================================================================
@@ -50,10 +46,7 @@ pub enum ProxyError {
     /// No validators have proxy addresses configured
     NoValidators,
     /// All validators failed to serve the request
-    AllValidatorsFailed {
-        attempts: usize,
-        last_error: String,
-    },
+    AllValidatorsFailed { attempts: usize, last_error: String },
     /// Failed to build HTTP client
     ClientBuildError(String),
     /// Network error during request
@@ -174,11 +167,7 @@ impl ProxyClient {
             .build()
             .map_err(|e| ProxyError::ClientBuildError(e.to_string()))?;
 
-        Ok(Self {
-            validators,
-            http_client,
-            config,
-        })
+        Ok(Self { validators, http_client, config })
     }
 
     /// Create a proxy client from SystemState.
@@ -191,10 +180,7 @@ impl ProxyClient {
             .iter()
             .filter_map(|v| {
                 let proxy_url = multiaddr_to_http_url(&v.metadata.proxy_address)?;
-                Some(ValidatorProxyInfo {
-                    name: (&v.metadata.protocol_pubkey).into(),
-                    proxy_url,
-                })
+                Some(ValidatorProxyInfo { name: (&v.metadata.protocol_pubkey).into(), proxy_url })
             })
             .collect();
 
@@ -217,10 +203,7 @@ impl ProxyClient {
     ) -> Result<Self, ProxyError> {
         let proxy_url = Url::parse(url.as_ref())
             .map_err(|e| ProxyError::InvalidProxyAddress(format!("{}: {}", url.as_ref(), e)))?;
-        let validators = vec![ValidatorProxyInfo {
-            name: AuthorityName::default(),
-            proxy_url,
-        }];
+        let validators = vec![ValidatorProxyInfo { name: AuthorityName::default(), proxy_url }];
         Self::new(validators, config)
     }
 
@@ -235,10 +218,7 @@ impl ProxyClient {
             .iter()
             .filter_map(|v| {
                 let proxy_url = multiaddr_to_http_url(&v.metadata.proxy_address)?;
-                Some(ValidatorProxyInfo {
-                    name: (&v.metadata.protocol_pubkey).into(),
-                    proxy_url,
-                })
+                Some(ValidatorProxyInfo { name: (&v.metadata.protocol_pubkey).into(), proxy_url })
             })
             .collect();
 
@@ -273,8 +253,7 @@ impl ProxyClient {
         expected_size: u64,
     ) -> Result<Vec<u8>, ProxyError> {
         let timeout = self.config.timeout_for_size(expected_size);
-        self.fetch_with_retry_and_timeout(&format!("/data/{}", target_id), timeout)
-            .await
+        self.fetch_with_retry_and_timeout(&format!("/data/{}", target_id), timeout).await
     }
 
     /// Fetch model weights with a custom timeout.
@@ -286,14 +265,12 @@ impl ProxyClient {
         expected_size: u64,
     ) -> Result<Vec<u8>, ProxyError> {
         let timeout = self.config.timeout_for_size(expected_size);
-        self.fetch_with_retry_and_timeout(&format!("/model/{}", model_id), timeout)
-            .await
+        self.fetch_with_retry_and_timeout(&format!("/model/{}", model_id), timeout).await
     }
 
     /// Internal method to fetch with retry across validators.
     async fn fetch_with_retry(&self, path: &str) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_with_retry_and_timeout(path, self.config.base_timeout)
-            .await
+        self.fetch_with_retry_and_timeout(path, self.config.base_timeout).await
     }
 
     /// Internal method to fetch with retry and custom timeout.
@@ -330,10 +307,7 @@ impl ProxyClient {
                     return Ok(data);
                 }
                 Err(e) => {
-                    warn!(
-                        "Failed to fetch from validator {:?}: {}",
-                        validator.name, e
-                    );
+                    warn!("Failed to fetch from validator {:?}: {}", validator.name, e);
                     last_error = e.to_string();
                 }
             }
@@ -358,10 +332,7 @@ impl ProxyClient {
             return Err(ProxyError::ValidatorError(status.as_u16(), body));
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| ProxyError::NetworkError(e.to_string()))?;
+        let bytes = response.bytes().await.map_err(|e| ProxyError::NetworkError(e.to_string()))?;
 
         Ok(bytes.to_vec())
     }
@@ -380,11 +351,7 @@ fn multiaddr_to_http_url(addr: &Multiaddr) -> Option<Url> {
     let port = addr.port()?;
 
     // Check if it has /http or /https protocol
-    let scheme = if addr.to_string().contains("/https") {
-        "https"
-    } else {
-        "http"
-    };
+    let scheme = if addr.to_string().contains("/https") { "https" } else { "http" };
 
     let url_str = format!("{}://{}:{}", scheme, hostname, port);
     Url::parse(&url_str).ok()
@@ -434,10 +401,7 @@ mod tests {
     #[test]
     fn test_validator_proxy_info_creation() {
         let url = Url::parse("http://validator1.soma.io:8080").unwrap();
-        let info = ValidatorProxyInfo {
-            name: AuthorityName::default(),
-            proxy_url: url.clone(),
-        };
+        let info = ValidatorProxyInfo { name: AuthorityName::default(), proxy_url: url.clone() };
         assert_eq!(info.proxy_url, url);
     }
 

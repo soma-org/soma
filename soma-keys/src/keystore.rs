@@ -51,7 +51,6 @@ pub enum GenerateOptions {
     ExternalSigner(String),
 }
 
-
 pub struct GeneratedKey {
     pub address: SomaAddress,
     pub public_key: PublicKey,

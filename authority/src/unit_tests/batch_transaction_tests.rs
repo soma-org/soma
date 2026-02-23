@@ -40,12 +40,8 @@ async fn test_multiple_sequential_transfers() {
     let mut current_coin_ref = coin.compute_object_reference();
 
     for (i, recipient) in recipients.iter().enumerate() {
-        let data = TransactionData::new_transfer_coin(
-            *recipient,
-            sender,
-            Some(1000),
-            current_coin_ref,
-        );
+        let data =
+            TransactionData::new_transfer_coin(*recipient, sender, Some(1000), current_coin_ref);
         let tx = to_sender_signed_transaction(data, &sender_key);
         let (_, effects) = send_and_confirm_transaction(&authority_state, tx)
             .await
@@ -70,10 +66,7 @@ async fn test_multiple_sequential_transfers() {
         "Balance should reflect 3 transfers plus fees: got {}",
         final_balance
     );
-    assert!(
-        final_balance > 0,
-        "Balance should still be positive after 3 small transfers"
-    );
+    assert!(final_balance > 0, "Balance should still be positive after 3 small transfers");
 }
 
 // =============================================================================
@@ -108,20 +101,14 @@ async fn test_failed_execution_reverts_non_gas() {
     let effects = effects.into_data();
 
     // Transaction should fail
-    assert!(
-        !effects.status().is_ok(),
-        "Transaction should fail: transfer + fees > balance"
-    );
+    assert!(!effects.status().is_ok(), "Transaction should fail: transfer + fees > balance");
 
     // Gas coin should still exist (fee was deducted from it)
     let gas_obj = authority_state.get_object(&coin_id).await;
     assert!(gas_obj.is_some(), "Gas coin should still exist after failed tx");
 
     // No new objects should be created for recipient
-    assert!(
-        effects.created().is_empty(),
-        "Failed execution should not create objects"
-    );
+    assert!(effects.created().is_empty(), "Failed execution should not create objects");
 
     // Gas should have been deducted
     let fee = effects.transaction_fee();
@@ -149,12 +136,8 @@ async fn test_effects_accumulate_correctly() {
     // Execute 3 transactions
     for i in 0..3 {
         let recipient = dbg_addr((i + 1) as u8);
-        let data = TransactionData::new_transfer_coin(
-            recipient,
-            sender,
-            Some(1000),
-            current_coin_ref,
-        );
+        let data =
+            TransactionData::new_transfer_coin(recipient, sender, Some(1000), current_coin_ref);
         let tx = to_sender_signed_transaction(data, &sender_key);
         let tx_digest = *tx.digest();
 
@@ -173,11 +156,7 @@ async fn test_effects_accumulate_correctly() {
     // Verify each transaction's effects are retrievable
     for (i, digest) in digests.iter().enumerate() {
         let effects = authority_state.notify_read_effects(*digest).await;
-        assert!(
-            effects.is_ok(),
-            "Effects for transaction {} should be readable",
-            i
-        );
+        assert!(effects.is_ok(), "Effects for transaction {} should be readable", i);
         let effects = effects.unwrap();
         assert_eq!(
             effects.transaction_digest(),

@@ -20,9 +20,7 @@ use tokio::time::{sleep, timeout};
 use tracing::info;
 use types::{
     effects::TransactionEffectsAPI,
-    quorum_driver::{
-        ExecuteTransactionRequest, ExecuteTransactionRequestType, FinalizedEffects,
-    },
+    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType, FinalizedEffects},
     system_state::SystemStateTrait as _,
     transaction::{TransactionData, TransactionKind},
 };
@@ -122,10 +120,7 @@ async fn test_blocking_execution() {
 async fn test_fullnode_wal_log() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(600_000)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_epoch_duration_ms(600_000).build().await;
 
     let handle = &test_cluster.fullnode_handle.soma_node;
     let orchestrator =
@@ -296,9 +291,7 @@ async fn test_tx_across_epoch_boundaries() {
 
     // Let 2 validators close their epoch early, preventing quorum until full reconfig
     for handle in authorities.iter().take(2) {
-        handle
-            .with_async(|node| async { node.close_epoch_for_testing().await.unwrap() })
-            .await;
+        handle.with_async(|node| async { node.close_epoch_for_testing().await.unwrap() }).await;
     }
 
     // Spawn a task that submits the transaction through the orchestrator
@@ -317,11 +310,14 @@ async fn test_tx_across_epoch_boundaries() {
             include_output_objects: false,
         };
 
-        match orchestrator.execute_transaction_block(
-            request,
-            ExecuteTransactionRequestType::WaitForLocalExecution,
-            None,
-        ).await {
+        match orchestrator
+            .execute_transaction_block(
+                request,
+                ExecuteTransactionRequestType::WaitForLocalExecution,
+                None,
+            )
+            .await
+        {
             Ok((response, _)) => {
                 info!(?tx_digest, "tx result: ok");
                 result_tx.send(response.effects).await.unwrap();
@@ -335,9 +331,7 @@ async fn test_tx_across_epoch_boundaries() {
 
     // Ask the remaining 2 validators to close epoch
     for handle in authorities.iter().skip(2) {
-        handle
-            .with_async(|node| async { node.close_epoch_for_testing().await.unwrap() })
-            .await;
+        handle.with_async(|node| async { node.close_epoch_for_testing().await.unwrap() }).await;
     }
 
     // Wait for the network to reach epoch 1
@@ -347,25 +341,27 @@ async fn test_tx_across_epoch_boundaries() {
     let start = std::time::Instant::now();
     match timeout(Duration::from_secs(30), result_rx.recv()).await {
         Ok(Some(effects_cert)) => {
-            info!(
-                epoch = effects_cert.epoch(),
-                "Transaction finalized across epoch boundary"
-            );
+            info!(epoch = effects_cert.epoch(), "Transaction finalized across epoch boundary");
         }
         Ok(None) => {
             // Channel closed — the spawn task might have errored.
             // Verify the transaction was still executed.
-            let executed = test_cluster.fullnode_handle.soma_node.with(|node| {
-                node.state().is_tx_already_executed(&tx_digest)
-            });
+            let executed = test_cluster
+                .fullnode_handle
+                .soma_node
+                .with(|node| node.state().is_tx_already_executed(&tx_digest));
             assert!(executed, "Transaction should have been executed even if channel closed");
         }
         Err(_) => {
             // Timeout — check if executed anyway
-            let executed = test_cluster.fullnode_handle.soma_node.with(|node| {
-                node.state().is_tx_already_executed(&tx_digest)
-            });
-            assert!(executed, "Transaction should have been executed within 30s after epoch change");
+            let executed = test_cluster
+                .fullnode_handle
+                .soma_node
+                .with(|node| node.state().is_tx_already_executed(&tx_digest));
+            assert!(
+                executed,
+                "Transaction should have been executed within 30s after epoch change"
+            );
         }
     }
 
@@ -392,10 +388,8 @@ async fn test_orchestrator_execute_transaction() {
         include_output_objects: true,
     };
 
-    let response = orchestrator
-        .execute_transaction(request, None)
-        .await
-        .expect("Transaction should succeed");
+    let response =
+        orchestrator.execute_transaction(request, None).await.expect("Transaction should succeed");
 
     let effects = &response.effects.effects;
 
@@ -426,9 +420,7 @@ async fn test_orchestrator_execute_staking() {
         handle.with(|n| n.transaction_orchestrator().expect("fullnode must have orchestrator"));
 
     // Get a validator address to stake with
-    let system_state = handle.with(|n| {
-        n.state().get_system_state_object_for_testing().unwrap()
-    });
+    let system_state = handle.with(|n| n.state().get_system_state_object_for_testing().unwrap());
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     // Get sender and gas object
@@ -442,7 +434,11 @@ async fn test_orchestrator_execute_staking() {
         .expect("sender must have a gas object");
 
     let tx_data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref: gas, amount: Some(1_000_000) },
+        TransactionKind::AddStake {
+            address: validator_address,
+            coin_ref: gas,
+            amount: Some(1_000_000),
+        },
         sender,
         vec![gas],
     );
@@ -459,10 +455,7 @@ async fn test_orchestrator_execute_staking() {
         .await
         .expect("Staking transaction should succeed");
 
-    assert!(
-        response.effects.effects.status().is_ok(),
-        "Staking transaction should succeed"
-    );
+    assert!(response.effects.effects.status().is_ok(), "Staking transaction should succeed");
 
     info!("Orchestrator staking transaction test passed");
 }
@@ -589,10 +582,7 @@ async fn test_early_validation_with_old_object_version() {
         .await;
 
     // Transaction should be rejected (stale object version)
-    assert!(
-        result.is_err(),
-        "Transaction with old object version should be rejected"
-    );
+    assert!(result.is_err(), "Transaction with old object version should be rejected");
 
     info!("Early validation with old object version test passed");
 }

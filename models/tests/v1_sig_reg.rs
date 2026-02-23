@@ -99,9 +99,7 @@ fn test_v1_sig_reg_small_dim() {
         &device,
     );
     let noise: Tensor<TestBackend, 2> = Tensor::from_data(
-        normal_array(seed + 2, &[embedding_dim, slices], 0.0, 1.0)
-            .to_tensor_data()
-            .unwrap(),
+        normal_array(seed + 2, &[embedding_dim, slices], 0.0, 1.0).to_tensor_data().unwrap(),
         &device,
     );
 

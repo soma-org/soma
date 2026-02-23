@@ -42,11 +42,8 @@ async fn test_randomized_dag_all_direct_commit() {
         let mut all_sequences = Vec::new();
 
         for authority_idx in 0..num_authorities {
-            let ctx = CommitTestFixture::context_with_options(
-                num_authorities,
-                authority_idx as u32,
-                0,
-            );
+            let ctx =
+                CommitTestFixture::context_with_options(num_authorities, authority_idx as u32, 0);
             let mut fixture = CommitTestFixture::new(ctx);
 
             // Add all blocks in round order (natural delivery).
@@ -146,10 +143,7 @@ const MAX_STEP: u32 = 3;
 /// equivocators. Builds a single DAG from the given config, then runs multiple
 /// iterations delivering blocks in constrained random order and committing
 /// incrementally. Asserts all runs produce the same commit sequence.
-fn test_randomized_dag_with_reject_votes(
-    config: RandomDagConfig,
-    num_runs: usize,
-) {
+fn test_randomized_dag_with_reject_votes(config: RandomDagConfig, num_runs: usize) {
     let mut rng = StdRng::seed_from_u64(42);
 
     tracing::info!(
@@ -164,17 +158,13 @@ fn test_randomized_dag_with_reject_votes(
 
     // Pick an own_index that is NOT an equivocator, because DagState asserts
     // that we never add multiple blocks per slot for our own authority.
-    let equivocator_indices: Vec<u32> = config
-        .equivocators
-        .iter()
-        .map(|(a, _)| a.value() as u32)
-        .collect();
+    let equivocator_indices: Vec<u32> =
+        config.equivocators.iter().map(|(a, _)| a.value() as u32).collect();
     let own_index = (0..config.num_authorities as u32)
         .find(|idx| !equivocator_indices.contains(idx))
         .expect("There must be at least one non-equivocating authority");
 
-    let context =
-        CommitTestFixture::context_with_options(config.num_authorities, own_index, 0);
+    let context = CommitTestFixture::context_with_options(config.num_authorities, own_index, 0);
     let dag = EquivocatingRandomDag::new(context.clone(), &mut rng, config);
 
     // Collect finalized commit sequences from each run.
@@ -182,11 +172,7 @@ fn test_randomized_dag_with_reject_votes(
 
     for i in 0..num_runs {
         tracing::info!("Run {i} of randomized test...");
-        let ctx = CommitTestFixture::context_with_options(
-            context.committee.size(),
-            own_index,
-            0,
-        );
+        let ctx = CommitTestFixture::context_with_options(context.committee.size(), own_index, 0);
         let mut fixture = CommitTestFixture::new(ctx);
         let mut finalized_commits = Vec::new();
         let mut last_decided = Slot::new(0, AuthorityIndex::new_for_test(0));
@@ -194,8 +180,7 @@ fn test_randomized_dag_with_reject_votes(
         for block in dag.random_iter(&mut rng, MAX_STEP) {
             fixture.try_accept_blocks(vec![block]);
 
-            let (commits, new_last_decided) =
-                fixture.try_commit_tracking(last_decided);
+            let (commits, new_last_decided) = fixture.try_commit_tracking(last_decided);
             finalized_commits.extend(commits);
             last_decided = new_last_decided;
         }
@@ -207,11 +192,7 @@ fn test_randomized_dag_with_reject_votes(
     assert_commit_sequences_match(&commit_sequences);
 
     // The test should produce at least some commits to be meaningful.
-    let total_commits: usize = commit_sequences
-        .iter()
-        .map(|s| s.len())
-        .max()
-        .unwrap_or(0);
+    let total_commits: usize = commit_sequences.iter().map(|s| s.len()).max().unwrap_or(0);
     tracing::info!("Produced {total_commits} commits across runs.");
 }
 

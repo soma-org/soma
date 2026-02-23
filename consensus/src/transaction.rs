@@ -148,13 +148,13 @@ impl TransactionConsumer {
             None
         };
 
-        if let Some(t) = self.pending_transactions.take()
-            && let Some(pending_transactions) = handle_txs(t)
-        {
-            debug!(
-                "Previously pending transaction(s) should fit into an empty block! Dropping: {:?}",
-                pending_transactions.transactions
-            );
+        if let Some(t) = self.pending_transactions.take() {
+            if let Some(pending_transactions) = handle_txs(t) {
+                debug!(
+                    "Previously pending transaction(s) should fit into an empty block! Dropping: {:?}",
+                    pending_transactions.transactions
+                );
+            }
         }
 
         // Until we have reached the limit for the pull.
@@ -445,21 +445,15 @@ mod tests {
         gc_depth: Option<u32>,
     ) -> Arc<Context> {
         let (mut context, _keys) = Context::new_for_test(4);
-        context
-            .protocol_config
-            .set_consensus_max_transaction_size_bytes_for_testing(max_tx_size);
+        context.protocol_config.set_consensus_max_transaction_size_bytes_for_testing(max_tx_size);
         context
             .protocol_config
             .set_consensus_max_transactions_in_block_bytes_for_testing(max_block_bytes);
         if let Some(n) = max_num_tx {
-            context
-                .protocol_config
-                .set_consensus_max_num_transactions_in_block_for_testing(n);
+            context.protocol_config.set_consensus_max_num_transactions_in_block_for_testing(n);
         }
         if let Some(d) = gc_depth {
-            context
-                .protocol_config
-                .set_consensus_gc_depth_for_testing(d);
+            context.protocol_config.set_consensus_gc_depth_for_testing(d);
         }
         Arc::new(context)
     }
@@ -492,9 +486,7 @@ mod tests {
         }
 
         assert!(
-            timeout(Duration::from_secs(1), included_in_block_waiters.next())
-                .await
-                .is_err(),
+            timeout(Duration::from_secs(1), included_in_block_waiters.next()).await.is_err(),
             "We should expect to timeout as none of the transactions have been acknowledged yet"
         );
 
@@ -687,10 +679,7 @@ mod tests {
                 })
                 .collect();
             let result = client.submit_no_wait(transactions).await.unwrap_err();
-            assert_eq!(
-                result.to_string(),
-                "Transaction bundle size (210B) is over limit (200B)"
-            );
+            assert_eq!(result.to_string(), "Transaction bundle size (210B) is over limit (200B)");
         }
 
         // now pull the transactions from the consumer.
@@ -821,9 +810,7 @@ mod tests {
             assert_eq!(limit, LimitReached::MaxBytes);
             assert!(
                 batch.len()
-                    < context
-                        .protocol_config
-                        .consensus_max_num_transactions_in_block() as usize,
+                    < context.protocol_config.consensus_max_num_transactions_in_block() as usize,
                 "Should have submitted less than the max number of transactions in a block"
             );
             assert!(size <= max_transactions_in_block_bytes);
@@ -888,7 +875,8 @@ mod tests {
         // Ensure that enough space is allocated in the channel for the pending transactions, so we don't end up consuming the transactions in chunks.
         static MAX_PENDING_TRANSACTIONS: usize = 2 * MAX_NUM_TRANSACTIONS_IN_BLOCK as usize;
 
-        let context = context_with_tx_limits(200_000, 1_000_000, Some(MAX_NUM_TRANSACTIONS_IN_BLOCK), None);
+        let context =
+            context_with_tx_limits(200_000, 1_000_000, Some(MAX_NUM_TRANSACTIONS_IN_BLOCK), None);
         let (client, tx_receiver) = TransactionClient::new_with_max_pending_transactions(
             context.clone(),
             MAX_PENDING_TRANSACTIONS,
@@ -913,10 +901,7 @@ mod tests {
         let t: String = bcs::from_bytes(transactions.last().unwrap().data()).unwrap();
         assert_eq!(
             t,
-            format!(
-                "t {}",
-                PING_TRANSACTION_INDEX - NUM_RESERVED_TRANSACTION_INDICES - 1
-            )
+            format!("t {}", PING_TRANSACTION_INDEX - NUM_RESERVED_TRANSACTION_INDICES - 1)
         );
     }
 }

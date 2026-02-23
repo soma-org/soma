@@ -20,8 +20,7 @@ use types::{
 };
 
 use crate::{
-    authority::AuthorityState,
-    authority_test_utils::send_and_confirm_transaction_,
+    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
     test_authority_builder::TestAuthorityBuilder,
 };
 
@@ -48,10 +47,8 @@ async fn setup_validator_test() -> (ValidatorTestSetup, SomaKeyPair) {
     let v0_address = v0_config.soma_address();
     let v0_key = v0_config.account_key_pair.keypair().copy();
 
-    let authority_state = TestAuthorityBuilder::new()
-        .with_network_config(&network_config, 0)
-        .build()
-        .await;
+    let authority_state =
+        TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
     // Insert a gas coin for validator 0
     let v0_gas_id = ObjectID::random();
@@ -59,15 +56,7 @@ async fn setup_validator_test() -> (ValidatorTestSetup, SomaKeyPair) {
     let v0_gas_ref = gas.compute_object_reference();
     authority_state.insert_genesis_object(gas).await;
 
-    (
-        ValidatorTestSetup {
-            authority_state,
-            v0_address,
-            v0_gas_id,
-            v0_gas_ref,
-        },
-        v0_key,
-    )
+    (ValidatorTestSetup { authority_state, v0_address, v0_gas_id, v0_gas_ref }, v0_key)
 }
 
 // =============================================================================
@@ -93,7 +82,7 @@ async fn test_set_commission_rate_success() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // SystemState should be mutated
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
     assert!(
         mutated_ids.contains(&SYSTEM_STATE_OBJECT_ID),
         "SystemState should be mutated during SetCommissionRate"
@@ -202,10 +191,7 @@ async fn test_report_validator_not_a_validator_reporter() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Non-validator should not be able to report"
-            );
+            assert!(!effects.status().is_ok(), "Non-validator should not be able to report");
         }
         Err(_) => {
             // Also acceptable if rejected at input validation
@@ -255,10 +241,7 @@ async fn test_report_validator_self_report() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Validator should not be able to report themselves"
-            );
+            assert!(!effects.status().is_ok(), "Validator should not be able to report themselves");
         }
         Err(_) => {
             // Also acceptable
@@ -286,10 +269,7 @@ async fn test_undo_report_validator_no_record() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Should fail: no report to undo"
-            );
+            assert!(!effects.status().is_ok(), "Should fail: no report to undo");
         }
         Err(_) => {
             // Also acceptable

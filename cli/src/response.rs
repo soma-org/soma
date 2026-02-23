@@ -35,7 +35,7 @@ const SHANNONS_PER_SOMA: u128 = 1_000_000_000;
 // VALIDATOR COMMAND RESPONSE
 // =============================================================================
 
-pub use crate::commands::validator::{MakeValidatorInfoOutput, DisplayMetadataOutput};
+pub use crate::commands::validator::{DisplayMetadataOutput, MakeValidatorInfoOutput};
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
@@ -78,7 +78,11 @@ impl Display for ValidatorCommandResponse {
                         write!(f, "{}", summary)?;
                     }
                     _ => {
-                        writeln!(f, "{} is not an active, networking, or pending validator.", output.address)?;
+                        writeln!(
+                            f,
+                            "{} is not an active, networking, or pending validator.",
+                            output.address
+                        )?;
                     }
                 }
             }
@@ -1092,10 +1096,7 @@ pub struct StatusOutput {
 impl Display for StatusOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
-        builder.push_record([
-            "Network",
-            self.network.as_deref().unwrap_or("none"),
-        ]);
+        builder.push_record(["Network", self.network.as_deref().unwrap_or("none")]);
         builder.push_record(["RPC URL", &self.rpc_url]);
         if let Some(ref ver) = self.server_version {
             builder.push_record(["Server Version", ver]);
@@ -1397,10 +1398,7 @@ impl Display for ValidatorListOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!(
-            "Validators ({} total)",
-            self.validators.len()
-        )));
+        table.with(TablePanel::header(format!("Validators ({} total)", self.validators.len())));
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
@@ -1493,11 +1491,7 @@ impl Display for ValidatorSummary {
 
 /// Format a fee value showing SOMA first with shannons in parentheses.
 fn format_fee(shannons: u64) -> String {
-    format!(
-        "{} ({} shannons)",
-        format_soma(shannons as u128),
-        format_with_commas(shannons as u128)
-    )
+    format!("{} ({} shannons)", format_soma(shannons as u128), format_with_commas(shannons as u128))
 }
 
 /// Format a balance in shannons as SOMA with appropriate suffix (public API).
@@ -1610,10 +1604,8 @@ mod tests {
     #[test]
     fn test_active_address_output_json_serialization() {
         // JSON output should be just the address string (backward compatible)
-        let output = ActiveAddressOutput {
-            address: SomaAddress::ZERO,
-            alias: Some("my-alias".to_string()),
-        };
+        let output =
+            ActiveAddressOutput { address: SomaAddress::ZERO, alias: Some("my-alias".to_string()) };
         let json = serde_json::to_string(&output).unwrap();
         // Should serialize as the address, not as {"address":"...", "alias":"..."}
         assert!(!json.contains("alias"), "JSON should not contain alias field: {json}");
@@ -1622,10 +1614,8 @@ mod tests {
 
     #[test]
     fn test_active_address_display_with_alias() {
-        let output = ActiveAddressOutput {
-            address: SomaAddress::ZERO,
-            alias: Some("my-alias".to_string()),
-        };
+        let output =
+            ActiveAddressOutput { address: SomaAddress::ZERO, alias: Some("my-alias".to_string()) };
         let response = ClientCommandResponse::ActiveAddress(Some(output));
         let display = format!("{}", response);
         assert!(display.contains("my-alias"), "Display should contain alias: {display}");
@@ -1663,20 +1653,18 @@ mod tests {
     #[test]
     fn test_validator_list_output_with_validators() {
         let output = ValidatorListOutput {
-            validators: vec![
-                ValidatorSummary {
-                    address: SomaAddress::ZERO,
-                    status: ValidatorStatus::Active,
-                    voting_power: 1000,
-                    commission_rate: 200,
-                    network_address: "/ip4/127.0.0.1/tcp/8080".to_string(),
-                    p2p_address: "/ip4/127.0.0.1/tcp/8084".to_string(),
-                    primary_address: "/ip4/127.0.0.1/tcp/8081".to_string(),
-                    protocol_pubkey: "abc123".to_string(),
-                    network_pubkey: "def456".to_string(),
-                    worker_pubkey: "ghi789".to_string(),
-                },
-            ],
+            validators: vec![ValidatorSummary {
+                address: SomaAddress::ZERO,
+                status: ValidatorStatus::Active,
+                voting_power: 1000,
+                commission_rate: 200,
+                network_address: "/ip4/127.0.0.1/tcp/8080".to_string(),
+                p2p_address: "/ip4/127.0.0.1/tcp/8084".to_string(),
+                primary_address: "/ip4/127.0.0.1/tcp/8081".to_string(),
+                protocol_pubkey: "abc123".to_string(),
+                network_pubkey: "def456".to_string(),
+                worker_pubkey: "ghi789".to_string(),
+            }],
         };
         let display = format!("{}", output);
         assert!(display.contains("Validators (1 total)"), "Should show count: {display}");

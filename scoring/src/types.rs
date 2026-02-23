@@ -10,7 +10,7 @@ use url::Url;
 mod vec_f32_as_u32_bits {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(vals: &Vec<f32>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(vals: &[f32], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -101,9 +101,8 @@ mod tests {
             data_size: 1024,
             model_manifests: vec![ManifestInput {
                 url: "https://example.com/weights.safetensors".to_string(),
-                checksum:
-                    "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
-                        .to_string(),
+                checksum: "0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+                    .to_string(),
                 size: 5242880,
                 decryption_key: None,
             }],

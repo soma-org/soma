@@ -48,9 +48,7 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 ExecutionErrorKind::DuplicateValidatorMetadata,
                 Some(ErrorDetails::OtherError(field)),
             ),
-            E::MissingProofOfPossession => {
-                (ExecutionErrorKind::MissingProofOfPossession, None)
-            }
+            E::MissingProofOfPossession => (ExecutionErrorKind::MissingProofOfPossession, None),
             E::InvalidProofOfPossession { reason } => (
                 ExecutionErrorKind::InvalidProofOfPossession,
                 Some(ErrorDetails::OtherError(reason)),
@@ -128,11 +126,7 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             }
         };
 
-        Self {
-            description,
-            kind: Some(kind.into()),
-            error_details,
-        }
+        Self { description, kind: Some(kind.into()), error_details }
     }
 }
 

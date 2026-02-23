@@ -204,8 +204,10 @@ fn test_difficulty_adjustment_too_many_hits() {
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
     system_state.parameters_mut().target_hits_per_epoch = 16; // target 16 hits/epoch
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
-    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate 30 hits (above target of 16)
     system_state.target_state_mut().hits_this_epoch = 30;
@@ -230,8 +232,10 @@ fn test_difficulty_adjustment_too_few_hits() {
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
     system_state.parameters_mut().target_hits_per_epoch = 16; // target 16 hits/epoch
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500; // 5% adjustment
-    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate 5 hits (below target of 16)
     system_state.target_state_mut().hits_this_epoch = 5;
@@ -257,8 +261,10 @@ fn test_difficulty_adjustment_min_bounds() {
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
     system_state.parameters_mut().target_hits_per_epoch = 16;
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
-    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate many hits (above target) to trigger decrease
     system_state.target_state_mut().hits_this_epoch = 100;
@@ -267,7 +273,8 @@ fn test_difficulty_adjustment_min_bounds() {
 
     // Should be clamped to min
     assert_eq!(
-        system_state.target_state().distance_threshold.as_scalar(), 0.1,
+        system_state.target_state().distance_threshold.as_scalar(),
+        0.1,
         "Distance threshold should not go below min"
     );
 }
@@ -282,8 +289,10 @@ fn test_difficulty_adjustment_max_bounds() {
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
     system_state.parameters_mut().target_hits_per_epoch = 16;
     system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 500;
-    system_state.parameters_mut().target_min_distance_threshold = crate::tensor::SomaTensor::scalar(0.1);
-    system_state.parameters_mut().target_max_distance_threshold = crate::tensor::SomaTensor::scalar(10.0);
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(10.0);
 
     // Simulate very few hits (below target) to trigger increase
     system_state.target_state_mut().hits_this_epoch = 2;
@@ -292,7 +301,8 @@ fn test_difficulty_adjustment_max_bounds() {
 
     // Should be clamped to max
     assert_eq!(
-        system_state.target_state().distance_threshold.as_scalar(), 10.0,
+        system_state.target_state().distance_threshold.as_scalar(),
+        10.0,
         "Distance threshold should not go above max"
     );
 }
@@ -346,7 +356,8 @@ fn test_advance_epoch_targets() {
 
     // Counters should be reset
     assert_eq!(
-        system_state.target_state().targets_generated_this_epoch, 0,
+        system_state.target_state().targets_generated_this_epoch,
+        0,
         "targets_generated_this_epoch should be reset"
     );
     assert_eq!(system_state.target_state().hits_this_epoch, 0, "hits_this_epoch should be reset");

@@ -12,16 +12,15 @@ use crate::{
     SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     config::genesis_config::{
-        GenesisCeremonyParameters, GenesisModelConfig, SHANNONS_PER_SOMA,
-        TokenAllocation, TokenDistributionSchedule, TokenDistributionScheduleBuilder,
-        ValidatorGenesisConfigBuilder,
+        GenesisCeremonyParameters, GenesisModelConfig, SHANNONS_PER_SOMA, TokenAllocation,
+        TokenDistributionSchedule, TokenDistributionScheduleBuilder, ValidatorGenesisConfigBuilder,
     },
     effects::{ExecutionStatus, TransactionEffectsAPI},
     envelope::Message,
     genesis_builder::GenesisBuilder,
     object::{ObjectType, Owner},
-    system_state::{SystemStateTrait, get_system_state},
     system_state::epoch_start::EpochStartSystemStateTrait,
+    system_state::{SystemStateTrait, get_system_state},
     transaction::TransactionKind,
 };
 
@@ -31,9 +30,7 @@ use crate::{
 
 fn make_validator_configs(n: usize) -> Vec<crate::config::genesis_config::ValidatorGenesisConfig> {
     let mut rng = StdRng::from_seed([42u8; 32]);
-    (0..n)
-        .map(|_| ValidatorGenesisConfigBuilder::new().build(&mut rng))
-        .collect()
+    (0..n).map(|_| ValidatorGenesisConfigBuilder::new().build(&mut rng)).collect()
 }
 
 /// Build a simple TokenDistributionSchedule that allocates `per_validator`
@@ -87,8 +84,7 @@ fn make_schedule_with_coins(
 /// Returns the UnsignedGenesis for inspection.
 fn build_unsigned_genesis_with_validators(
     n: usize,
-) -> (crate::genesis::UnsignedGenesis, Vec<crate::config::genesis_config::ValidatorGenesisConfig>)
-{
+) -> (crate::genesis::UnsignedGenesis, Vec<crate::config::genesis_config::ValidatorGenesisConfig>) {
     let configs = make_validator_configs(n);
     let schedule = make_schedule_for_validators(&configs, 1_000 * SHANNONS_PER_SOMA);
     let unsigned = GenesisBuilder::new()
@@ -133,12 +129,8 @@ fn test_genesis_creates_validators() {
     );
 
     // Verify every configured validator address is present
-    let validator_addrs: Vec<SomaAddress> = system_state
-        .validators()
-        .validators
-        .iter()
-        .map(|v| v.metadata.soma_address)
-        .collect();
+    let validator_addrs: Vec<SomaAddress> =
+        system_state.validators().validators.iter().map(|v| v.metadata.soma_address).collect();
 
     for config in &configs {
         let expected_addr = SomaAddress::from(&config.account_key_pair.public());
@@ -191,10 +183,7 @@ fn test_genesis_creates_initial_coins() {
         })
         .sum();
 
-    assert_eq!(
-        total_coin_balance, coin_amount,
-        "Total coin balance must match allocation"
-    );
+    assert_eq!(total_coin_balance, coin_amount, "Total coin balance must match allocation");
 }
 
 // ===========================================================================
@@ -292,11 +281,13 @@ fn test_genesis_builder_custom_parameters() {
         "Custom epoch duration must be reflected"
     );
     assert_eq!(
-        system_state.emission_pool().emission_per_epoch, custom_emission,
+        system_state.emission_pool().emission_per_epoch,
+        custom_emission,
         "Custom emission per epoch must be reflected"
     );
     assert_eq!(
-        system_state.epoch_start_timestamp_ms(), custom_timestamp,
+        system_state.epoch_start_timestamp_ms(),
+        custom_timestamp,
         "Custom chain start timestamp must be reflected"
     );
 }
@@ -321,12 +312,7 @@ fn test_genesis_builder_multiple_validators() {
 
         // Committee should be extractable
         let committee = system_state.into_epoch_start_state().get_committee();
-        assert_eq!(
-            committee.num_members(),
-            n,
-            "Committee must have {} members",
-            n
-        );
+        assert_eq!(committee.num_members(), n, "Committee must have {} members", n);
     }
 }
 
@@ -412,11 +398,11 @@ fn test_genesis_creates_initial_targets() {
     let schedule = sched_builder.build();
 
     // Create a genesis model config
+    use crate::checksum::Checksum;
+    use crate::crypto::{DecryptionKey, DefaultHash};
     use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
     use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
     use crate::model::ModelWeightsManifest;
-    use crate::checksum::Checksum;
-    use crate::crypto::{DecryptionKey, DefaultHash};
     use fastcrypto::hash::HashFunction as _;
     use url::Url;
 
@@ -424,10 +410,8 @@ fn test_genesis_creates_initial_targets() {
     let url = Url::parse(url_str).unwrap();
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    let weights_manifest = ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new([0xAA; 32]),
-    };
+    let weights_manifest =
+        ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) };
 
     let url_bytes = url_str.as_bytes();
     let url_hash = {
@@ -464,24 +448,15 @@ fn test_genesis_creates_initial_targets() {
     );
 
     // Targets should have been generated since there is at least one active model
-    let target_objects: Vec<_> = unsigned
-        .objects()
-        .iter()
-        .filter(|o| *o.type_() == ObjectType::Target)
-        .collect();
+    let target_objects: Vec<_> =
+        unsigned.objects().iter().filter(|o| *o.type_() == ObjectType::Target).collect();
 
     // With an active model and a non-empty emission pool, we expect some targets
-    assert!(
-        !target_objects.is_empty(),
-        "Genesis with an active model should produce seed targets"
-    );
+    assert!(!target_objects.is_empty(), "Genesis with an active model should produce seed targets");
 
     // All targets should be shared objects
     for t in &target_objects {
-        assert!(
-            matches!(t.owner, Owner::Shared { .. }),
-            "Target objects must be Shared"
-        );
+        assert!(matches!(t.owner, Owner::Shared { .. }), "Target objects must be Shared");
     }
 }
 
@@ -495,11 +470,8 @@ fn test_genesis_objects_have_correct_owners() {
     let coin_addr = SomaAddress::random();
     let coin_amount = 500 * SHANNONS_PER_SOMA;
 
-    let schedule = make_schedule_with_coins(
-        &configs,
-        1_000 * SHANNONS_PER_SOMA,
-        &[(coin_addr, coin_amount)],
-    );
+    let schedule =
+        make_schedule_with_coins(&configs, 1_000 * SHANNONS_PER_SOMA, &[(coin_addr, coin_amount)]);
 
     let unsigned = GenesisBuilder::new()
         .with_validator_configs(configs)
@@ -508,10 +480,7 @@ fn test_genesis_objects_have_correct_owners() {
 
     // SystemState must be Shared
     let ss_obj = unsigned.object(SYSTEM_STATE_OBJECT_ID).unwrap();
-    assert!(
-        matches!(ss_obj.owner, Owner::Shared { .. }),
-        "SystemState must be a Shared object"
-    );
+    assert!(matches!(ss_obj.owner, Owner::Shared { .. }), "SystemState must be a Shared object");
 
     // Coin objects must be AddressOwner
     for obj in unsigned.objects() {
@@ -529,16 +498,10 @@ fn test_genesis_objects_have_correct_owners() {
                 );
             }
             ObjectType::SystemState => {
-                assert!(
-                    matches!(obj.owner, Owner::Shared { .. }),
-                    "SystemState must be Shared"
-                );
+                assert!(matches!(obj.owner, Owner::Shared { .. }), "SystemState must be Shared");
             }
             ObjectType::Target => {
-                assert!(
-                    matches!(obj.owner, Owner::Shared { .. }),
-                    "Target objects must be Shared"
-                );
+                assert!(matches!(obj.owner, Owner::Shared { .. }), "Target objects must be Shared");
             }
             _ => {}
         }
@@ -559,10 +522,7 @@ fn test_genesis_checkpoint() {
     assert_eq!(checkpoint.epoch, 0, "Genesis checkpoint epoch must be 0");
 
     // Sequence number must be 0
-    assert_eq!(
-        checkpoint.sequence_number, 0,
-        "Genesis checkpoint sequence number must be 0"
-    );
+    assert_eq!(checkpoint.sequence_number, 0, "Genesis checkpoint sequence number must be 0");
 
     // No previous digest (it is the first checkpoint)
     assert!(
@@ -597,14 +557,8 @@ fn test_genesis_transaction() {
     let tx_data = tx.data().transaction_data();
 
     // Must be a genesis transaction
-    assert!(
-        tx_data.is_genesis_tx(),
-        "Genesis transaction must be identified as genesis"
-    );
-    assert!(
-        tx_data.is_system_tx(),
-        "Genesis transaction must be a system transaction"
-    );
+    assert!(tx_data.is_genesis_tx(), "Genesis transaction must be identified as genesis");
+    assert!(tx_data.is_system_tx(), "Genesis transaction must be a system transaction");
 
     // Kind should be TransactionKind::Genesis
     assert!(
@@ -620,10 +574,7 @@ fn test_genesis_transaction() {
     );
 
     // Effects must have epoch 0
-    assert_eq!(
-        effects.executed_epoch(), 0,
-        "Genesis effects executed_epoch must be 0"
-    );
+    assert_eq!(effects.executed_epoch(), 0, "Genesis effects executed_epoch must be 0");
 
     // Effects transaction_digest must match the transaction
     assert_eq!(
@@ -700,10 +651,7 @@ fn test_genesis_effects_created_objects() {
     let effects = unsigned.effects();
 
     // Effects should have created objects
-    assert!(
-        !effects.created().is_empty(),
-        "Genesis effects must have created objects"
-    );
+    assert!(!effects.created().is_empty(), "Genesis effects must have created objects");
 
     // Every object in the genesis set must appear in the effects' created list
     let created_ids: std::collections::HashSet<_> =
@@ -728,9 +676,7 @@ fn test_genesis_no_token_distribution() {
 
     // Building without a token distribution schedule should still succeed
     // (emission fund defaults to 0)
-    let unsigned = GenesisBuilder::new()
-        .with_validator_configs(configs)
-        .build_unsigned_genesis();
+    let unsigned = GenesisBuilder::new().with_validator_configs(configs).build_unsigned_genesis();
 
     let system_state = get_system_state(&unsigned.objects()).unwrap();
     assert_eq!(system_state.epoch(), 0);
@@ -738,7 +684,8 @@ fn test_genesis_no_token_distribution() {
 
     // Emission pool balance should be 0 since no schedule was provided
     assert_eq!(
-        system_state.emission_pool().balance, 0,
+        system_state.emission_pool().balance,
+        0,
         "Emission pool balance must be 0 without token distribution schedule"
     );
 }
@@ -759,11 +706,8 @@ fn test_genesis_staked_allocations() {
         .build_unsigned_genesis();
 
     // There should be StakedSoma objects for each validator's staked allocation
-    let staked_objects: Vec<_> = unsigned
-        .objects()
-        .iter()
-        .filter(|o| *o.type_() == ObjectType::StakedSoma)
-        .collect();
+    let staked_objects: Vec<_> =
+        unsigned.objects().iter().filter(|o| *o.type_() == ObjectType::StakedSoma).collect();
 
     assert_eq!(
         staked_objects.len(),

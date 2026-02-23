@@ -1,6 +1,6 @@
 use futures::Stream;
-use rpc::proto::soma::ListOwnedObjectsRequest;
 use rpc::api::client::Client;
+use rpc::proto::soma::ListOwnedObjectsRequest;
 use std::pin::Pin;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{Mutex, RwLock};
@@ -22,9 +22,9 @@ pub mod wallet_context;
 
 // Re-export types for downstream crates
 #[cfg(feature = "grpc-services")]
-pub use scoring::types as scoring_types;
-#[cfg(feature = "grpc-services")]
 pub use admin::admin_types;
+#[cfg(feature = "grpc-services")]
+pub use scoring::types as scoring_types;
 
 // gRPC client type aliases (tonic 0.14.3 channels, separate from core ledger)
 #[cfg(feature = "grpc-services")]
@@ -255,10 +255,8 @@ impl SomaClient {
             self.get_server_version().await.map_err(|e| crate::error::Error::RpcError(e.into()))?;
         let client_version = env!("CARGO_PKG_VERSION");
         // Server may report version as "soma-node/1.0.0" — strip the prefix for comparison
-        let server_version_normalized = server_version
-            .rsplit('/')
-            .next()
-            .unwrap_or(&server_version);
+        let server_version_normalized =
+            server_version.rsplit('/').next().unwrap_or(&server_version);
         if server_version_normalized != client_version {
             return Err(crate::error::Error::ServerVersionMismatch {
                 client_version: client_version.to_string(),
@@ -485,5 +483,4 @@ impl SomaClient {
             .into_inner();
         Ok(response.epoch)
     }
-
 }

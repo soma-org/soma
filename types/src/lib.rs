@@ -41,8 +41,8 @@ pub mod supported_protocol_versions;
 pub mod sync;
 pub mod system_state;
 pub mod target;
-pub mod tensor;
 pub mod temporary_store;
+pub mod tensor;
 #[cfg(feature = "tls")]
 pub mod tls;
 pub mod traffic_control;

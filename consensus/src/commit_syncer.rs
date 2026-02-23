@@ -71,10 +71,10 @@ impl CommitSyncerHandle {
     pub(crate) async fn stop(self) {
         let _ = self.tx_shutdown.send(());
         // Do not abort schedule task, which waits for fetches to shut down.
-        if let Err(e) = self.schedule_task.await
-            && e.is_panic()
-        {
-            std::panic::resume_unwind(e.into_panic());
+        if let Err(e) = self.schedule_task.await {
+            if e.is_panic() {
+                std::panic::resume_unwind(e.into_panic());
+            }
         }
     }
 }
@@ -792,8 +792,7 @@ mod tests {
         let network_client = Arc::new(FakeNetworkClient::default());
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
-        let (blocks_sender, _blocks_receiver) =
-            tokio::sync::mpsc::unbounded_channel();
+        let (blocks_sender, _blocks_receiver) = tokio::sync::mpsc::unbounded_channel();
         let transaction_certifier = TransactionCertifier::new(
             context.clone(),
             block_verifier.clone(),

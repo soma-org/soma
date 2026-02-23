@@ -64,11 +64,7 @@ async fn make_transfer_consensus_tx(
 
     let gas_ref = gas_object.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas_ref,
-            amount: Some(1_000),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas_ref, amount: Some(1_000), recipient },
         sender,
         vec![gas_ref],
     );
@@ -95,26 +91,17 @@ async fn test_consensus_handler_processes_user_transaction() {
         1, // sub_dag_index
     );
 
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit)
-        .await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit).await;
 
     // Wait for async capture
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let captured = setup.captured_transactions.lock();
-    assert!(
-        !captured.is_empty(),
-        "Expected at least one batch of transactions to be scheduled"
-    );
+    assert!(!captured.is_empty(), "Expected at least one batch of transactions to be scheduled");
     // The first batch should contain at least the user transaction
     // (plus possibly a ConsensusCommitPrologueV1 system transaction)
     let (schedulables, _assigned_versions, _source) = &captured[0];
-    assert!(
-        !schedulables.is_empty(),
-        "Expected at least one schedulable transaction"
-    );
+    assert!(!schedulables.is_empty(), "Expected at least one schedulable transaction");
 }
 
 /// Test that the consensus handler deduplicates the same transaction
@@ -130,27 +117,11 @@ async fn test_consensus_handler_deduplication() {
     let consensus_tx = make_transfer_consensus_tx(&authority).await;
 
     // Submit the same transaction in two different rounds
-    let commit1 = TestConsensusCommit::new(
-        vec![consensus_tx.clone()],
-        1,
-        epoch_start_ts,
-        1,
-    );
-    let commit2 = TestConsensusCommit::new(
-        vec![consensus_tx],
-        2,
-        epoch_start_ts + 1000,
-        2,
-    );
+    let commit1 = TestConsensusCommit::new(vec![consensus_tx.clone()], 1, epoch_start_ts, 1);
+    let commit2 = TestConsensusCommit::new(vec![consensus_tx], 2, epoch_start_ts + 1000, 2);
 
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit1)
-        .await;
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit2)
-        .await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit1).await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit2).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
@@ -189,25 +160,14 @@ async fn test_consensus_handler_shared_object_version_assignment() {
     // AddStake touches the shared SystemState object
     let consensus_tx = make_add_stake_consensus_tx(&authority).await;
 
-    let commit = TestConsensusCommit::new(
-        vec![consensus_tx],
-        1,
-        epoch_start_ts,
-        1,
-    );
+    let commit = TestConsensusCommit::new(vec![consensus_tx], 1, epoch_start_ts, 1);
 
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit)
-        .await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let captured = setup.captured_transactions.lock();
-    assert!(
-        !captured.is_empty(),
-        "Expected transactions to be scheduled"
-    );
+    assert!(!captured.is_empty(), "Expected transactions to be scheduled");
 
     // The assigned versions should be non-empty because shared objects
     // were involved (SystemState for AddStake, plus ConsensusCommitPrologueV1
@@ -232,17 +192,9 @@ async fn test_consensus_handler_creates_pending_checkpoint() {
 
     let consensus_tx = make_transfer_consensus_tx(&authority).await;
 
-    let commit = TestConsensusCommit::new(
-        vec![consensus_tx],
-        1,
-        epoch_start_ts,
-        1,
-    );
+    let commit = TestConsensusCommit::new(vec![consensus_tx], 1, epoch_start_ts, 1);
 
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit)
-        .await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
@@ -271,25 +223,14 @@ async fn test_consensus_handler_multiple_transactions_in_commit() {
     let tx2 = make_transfer_consensus_tx(&authority).await;
     let tx3 = make_transfer_consensus_tx(&authority).await;
 
-    let commit = TestConsensusCommit::new(
-        vec![tx1, tx2, tx3],
-        1,
-        epoch_start_ts,
-        1,
-    );
+    let commit = TestConsensusCommit::new(vec![tx1, tx2, tx3], 1, epoch_start_ts, 1);
 
-    setup
-        .consensus_handler
-        .handle_consensus_commit_for_test(commit)
-        .await;
+    setup.consensus_handler.handle_consensus_commit_for_test(commit).await;
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let captured = setup.captured_transactions.lock();
-    assert!(
-        !captured.is_empty(),
-        "Expected transactions to be scheduled"
-    );
+    assert!(!captured.is_empty(), "Expected transactions to be scheduled");
 
     // Count total schedulable transactions (including ConsensusCommitPrologueV1)
     let total_schedulables: usize =

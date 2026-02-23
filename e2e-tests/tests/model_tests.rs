@@ -231,7 +231,8 @@ async fn test_model_commit_reveal_round_trip() {
         .expect("Model owner should have a gas object for reveal");
 
     // Create a test embedding (10-dimensional)
-    let embedding = SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
+    let embedding =
+        SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
 
     let reveal_tx_data = TransactionData::new(
         TransactionKind::RevealModel(RevealModelArgs { model_id, weights_manifest, embedding }),

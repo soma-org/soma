@@ -1,6 +1,6 @@
 [package]
 name = "store-derive"
-edition = "2024"
+edition = "2021"
 version.workspace = true
 
 [dependencies]

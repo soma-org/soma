@@ -113,10 +113,7 @@ pub fn handle_fail_point_arg<T: Send + 'static>(identifier: &'static str) -> Opt
 // --- Public registration API (called from tests) ---
 
 /// Register a synchronous fail point callback.
-pub fn register_fail_point(
-    identifier: &'static str,
-    callback: impl Fn() + Sync + Send + 'static,
-) {
+pub fn register_fail_point(identifier: &'static str, callback: impl Fn() + Sync + Send + 'static) {
     register_fail_point_impl(
         identifier,
         Arc::new(move || {

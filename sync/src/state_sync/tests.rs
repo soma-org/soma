@@ -10,22 +10,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::RwLock;
-use tokio::sync::broadcast;
 use rand::{SeedableRng, rngs::StdRng};
+use tokio::sync::broadcast;
 use tonic::Request;
 use types::{
-    config::{
-        p2p_config::P2pConfig,
-        state_sync_config::StateSyncConfig,
-    },
+    config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
     crypto::NetworkKeyPair,
     digests::CheckpointDigest,
     peer_id::PeerId,
     storage::write_store::WriteStore,
     sync::{
         GetCheckpointAvailabilityRequest, GetCheckpointContentsRequest,
-        GetCheckpointSummaryRequest, PushCheckpointSummaryRequest,
-        active_peers::ActivePeers,
+        GetCheckpointSummaryRequest, PushCheckpointSummaryRequest, active_peers::ActivePeers,
         channel_manager::PeerInfo,
     },
 };
@@ -338,10 +334,8 @@ fn test_peer_balancer_summary_filters_by_height() {
     // For summary mode, peers need height >= requested
     // Verify the filtering logic used by PeerBalancer
     let requested = 15u64;
-    let eligible: Vec<_> = heights
-        .peers_on_same_chain()
-        .filter(|(_, info)| info.height >= requested)
-        .collect();
+    let eligible: Vec<_> =
+        heights.peers_on_same_chain().filter(|(_, info)| info.height >= requested).collect();
     assert_eq!(eligible.len(), 1); // Only peer2 (height 20) qualifies
     assert_eq!(*eligible[0].0, peer2);
 }
@@ -385,10 +379,8 @@ fn test_peer_balancer_empty_when_no_eligible_peers() {
 
     // No peers have height >= 100
     let requested = 100u64;
-    let eligible: Vec<_> = heights
-        .peers_on_same_chain()
-        .filter(|(_, info)| info.height >= requested)
-        .collect();
+    let eligible: Vec<_> =
+        heights.peers_on_same_chain().filter(|(_, info)| info.height >= requested).collect();
     assert_eq!(eligible.len(), 0);
 }
 
@@ -412,10 +404,8 @@ async fn test_server_push_checkpoint_summary() {
     let genesis_digest = *checkpoints[0].digest();
 
     let config = make_p2p_config();
-    let (_, unstarted_state_sync, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, unstarted_state_sync, server) =
+        P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let peer = make_peer_id(1);
 
@@ -426,9 +416,8 @@ async fn test_server_push_checkpoint_summary() {
         .insert_peer_info(peer, make_peer_info(genesis_digest, 0, 0));
 
     // Push checkpoint 3 from the peer
-    let mut request = Request::new(PushCheckpointSummaryRequest {
-        checkpoint: checkpoints[3].inner().clone(),
-    });
+    let mut request =
+        Request::new(PushCheckpointSummaryRequest { checkpoint: checkpoints[3].inner().clone() });
     request.extensions_mut().insert(PeerInfo { peer_id: peer });
 
     let response = server.push_checkpoint_summary(request).await;
@@ -449,17 +438,13 @@ async fn test_server_push_checkpoint_unknown_peer_ignored() {
     let store = fixture.init_store();
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let unknown_peer = make_peer_id(99);
 
     // Push from unknown peer (not in peer_heights)
-    let mut request = Request::new(PushCheckpointSummaryRequest {
-        checkpoint: checkpoints[1].inner().clone(),
-    });
+    let mut request =
+        Request::new(PushCheckpointSummaryRequest { checkpoint: checkpoints[1].inner().clone() });
     request.extensions_mut().insert(PeerInfo { peer_id: unknown_peer });
 
     // Should succeed but not update anything (update_peer_info returns false for unknown peer)
@@ -473,10 +458,7 @@ async fn test_server_get_checkpoint_summary_latest() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(5);
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let request = Request::new(GetCheckpointSummaryRequest::Latest);
     let response = server.get_checkpoint_summary(request).await.unwrap().into_inner();
@@ -490,10 +472,7 @@ async fn test_server_get_checkpoint_summary_by_sequence_number() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(5);
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     // Existing checkpoint
     let request = Request::new(GetCheckpointSummaryRequest::BySequenceNumber(2));
@@ -514,10 +493,7 @@ async fn test_server_get_checkpoint_summary_by_digest() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(5);
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     // Existing digest
     let target_digest = *checkpoints[3].digest();
@@ -527,9 +503,8 @@ async fn test_server_get_checkpoint_summary_by_digest() {
     assert_eq!(*cp.sequence_number(), 3);
 
     // Non-existent digest
-    let request = Request::new(GetCheckpointSummaryRequest::ByDigest(CheckpointDigest::new(
-        [0xff; 32],
-    )));
+    let request =
+        Request::new(GetCheckpointSummaryRequest::ByDigest(CheckpointDigest::new([0xff; 32])));
     let response = server.get_checkpoint_summary(request).await.unwrap().into_inner();
     assert!(response.checkpoint.is_none());
 }
@@ -540,10 +515,7 @@ async fn test_server_get_checkpoint_availability() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(10);
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let request = Request::new(GetCheckpointAvailabilityRequest { _unused: true });
     let response = server.get_checkpoint_availability(request).await.unwrap().into_inner();
@@ -558,10 +530,7 @@ async fn test_server_get_checkpoint_contents_found() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(5);
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let digest = checkpoints[2].content_digest;
     let request = Request::new(GetCheckpointContentsRequest { digest });
@@ -575,10 +544,7 @@ async fn test_server_get_checkpoint_contents_not_found() {
     let store = fixture.init_store();
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     let digest = types::digests::CheckpointContentsDigest::new([0xab; 32]);
     let request = Request::new(GetCheckpointContentsRequest { digest });
@@ -592,10 +558,8 @@ async fn test_server_get_known_peers() {
     let store = fixture.init_store();
 
     let config = make_p2p_config();
-    let (discovery_builder, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (discovery_builder, _, server) =
+        P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     // Before setting our_info, get_known_peers should fail
     let mut rng = StdRng::from_seed([42; 32]);
@@ -633,10 +597,7 @@ async fn test_server_get_known_peers_not_initialized() {
     let store = fixture.init_store();
 
     let config = make_p2p_config();
-    let (_, _, server) = P2pBuilder::new()
-        .store(store.clone())
-        .config(config)
-        .build_internal();
+    let (_, _, server) = P2pBuilder::new().store(store.clone()).config(config).build_internal();
 
     // our_info not set -> should return error
     let mut rng = StdRng::from_seed([42; 32]);
@@ -696,10 +657,7 @@ fn test_committee_fixture_checkpoint_chain_from_previous() {
 
     assert_eq!(second_batch.len(), 3);
     assert_eq!(*second_batch[0].sequence_number(), 5);
-    assert_eq!(
-        second_batch[0].previous_digest,
-        Some(*first_batch.last().unwrap().digest())
-    );
+    assert_eq!(second_batch[0].previous_digest, Some(*first_batch.last().unwrap().digest()));
 }
 
 #[test]
@@ -708,10 +666,8 @@ fn test_committee_fixture_end_of_epoch_checkpoint() {
     let checkpoints = fixture.make_empty_checkpoints(5, None);
 
     let next_fixture = CommitteeFixture::generate(1, 4);
-    let eoe = fixture.make_end_of_epoch_checkpoint(
-        checkpoints.last().unwrap(),
-        next_fixture.committee.clone(),
-    );
+    let eoe = fixture
+        .make_end_of_epoch_checkpoint(checkpoints.last().unwrap(), next_fixture.committee.clone());
 
     assert_eq!(*eoe.sequence_number(), 5);
     assert!(eoe.end_of_epoch_data.is_some());
@@ -739,9 +695,7 @@ fn test_committee_fixture_init_store_with_checkpoints() {
     // All checkpoints should be in store
     for cp in &checkpoints {
         let inner = store.inner();
-        let stored = inner
-            .get_checkpoint_by_sequence_number(*cp.sequence_number())
-            .unwrap();
+        let stored = inner.get_checkpoint_by_sequence_number(*cp.sequence_number()).unwrap();
         assert_eq!(stored.digest(), cp.digest());
     }
 
@@ -781,11 +735,7 @@ fn test_get_or_insert_returns_existing_checkpoint() {
     let (store, checkpoints) = fixture.init_store_with_checkpoints(5);
 
     // Checkpoint 3 is already in the store
-    let result = get_or_insert_verified_checkpoint(
-        &store,
-        checkpoints[3].inner().clone(),
-        true,
-    );
+    let result = get_or_insert_verified_checkpoint(&store, checkpoints[3].inner().clone(), true);
     assert!(result.is_ok());
     let verified = result.unwrap();
     assert_eq!(*verified.sequence_number(), 3);
@@ -806,11 +756,7 @@ fn test_get_or_insert_verifies_and_inserts_new_checkpoint() {
     // Should not be in store yet
     assert!(store.inner().get_checkpoint_by_sequence_number(5).is_none());
 
-    let result = get_or_insert_verified_checkpoint(
-        &store,
-        new_cp.inner().clone(),
-        true,
-    );
+    let result = get_or_insert_verified_checkpoint(&store, new_cp.inner().clone(), true);
     assert!(result.is_ok());
     let verified = result.unwrap();
     assert_eq!(*verified.sequence_number(), 5);
@@ -835,11 +781,7 @@ fn test_get_or_insert_fails_when_previous_missing() {
     // chain[0]=seq3, chain[1]=seq4, chain[2]=seq5
     // Store only has 0..2, so inserting seq5 should fail (missing seq4)
 
-    let result = get_or_insert_verified_checkpoint(
-        &store,
-        chain[2].inner().clone(),
-        true,
-    );
+    let result = get_or_insert_verified_checkpoint(&store, chain[2].inner().clone(), true);
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
     assert!(
@@ -859,11 +801,7 @@ fn test_get_or_insert_without_verification() {
 
     // Insert checkpoint 4 directly without previous checkpoints 1-3 in store
     // With verify=false, this should succeed
-    let result = get_or_insert_verified_checkpoint(
-        &store,
-        checkpoints[4].inner().clone(),
-        false,
-    );
+    let result = get_or_insert_verified_checkpoint(&store, checkpoints[4].inner().clone(), false);
     assert!(result.is_ok());
     let verified = result.unwrap();
     assert_eq!(*verified.sequence_number(), 4);
@@ -881,11 +819,7 @@ fn test_get_or_insert_fails_for_genesis_with_verify() {
 
     let (root, _) = fixture.create_root_checkpoint();
 
-    let result = get_or_insert_verified_checkpoint(
-        &store,
-        root.inner().clone(),
-        true,
-    );
+    let result = get_or_insert_verified_checkpoint(&store, root.inner().clone(), true);
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
     assert!(
@@ -921,10 +855,8 @@ fn test_get_or_insert_across_epoch_boundary() {
 
     // Build epoch 0 chain with end-of-epoch
     let (store, e0_checkpoints) = fixture_e0.init_store_with_checkpoints(5);
-    let eoe = fixture_e0.make_end_of_epoch_checkpoint(
-        e0_checkpoints.last().unwrap(),
-        fixture_e1.committee.clone(),
-    );
+    let eoe = fixture_e0
+        .make_end_of_epoch_checkpoint(e0_checkpoints.last().unwrap(), fixture_e1.committee.clone());
 
     // Insert end-of-epoch checkpoint
     store.insert_checkpoint(&eoe).unwrap();
@@ -991,10 +923,7 @@ async fn test_worker_process_checkpoint_empty() {
 
     // Contents should be stored
     use types::storage::read_store::ReadStore;
-    let contents = store.get_full_checkpoint_contents(
-        Some(3),
-        &new_cp.content_digest,
-    );
+    let contents = store.get_full_checkpoint_contents(Some(3), &new_cp.content_digest);
     assert!(contents.is_some());
 }
 
@@ -1060,10 +989,7 @@ fn make_event_loop(
     broadcast::Receiver<types::checkpoints::VerifiedCheckpoint>,
 ) {
     let config = make_p2p_config();
-    let (_, unstarted, _server) = P2pBuilder::new()
-        .store(store)
-        .config(config)
-        .build_internal();
+    let (_, unstarted, _server) = P2pBuilder::new().store(store).config(config).build_internal();
 
     let active_peers = ActivePeers::new(100);
     let (_, peer_event_rx) = broadcast::channel(100);
@@ -1088,9 +1014,7 @@ async fn test_handle_checkpoint_from_consensus_updates_watermarks() {
     // The debug_assertions block in handle_checkpoint_from_consensus expects
     // checkpoints and their contents to exist in the store.
     store.insert_certified_checkpoint(new_cp);
-    store
-        .insert_checkpoint_contents(new_cp, CommitteeFixture::empty_verified_contents())
-        .unwrap();
+    store.insert_checkpoint_contents(new_cp, CommitteeFixture::empty_verified_contents()).unwrap();
 
     // Verify watermark is still at 4 (not bumped)
     {
@@ -1138,9 +1062,7 @@ async fn test_handle_checkpoint_from_consensus_broadcasts_event() {
     let new_cp = &new_cps[0];
     // Use insert_certified_checkpoint to avoid bumping watermark
     store.insert_certified_checkpoint(new_cp);
-    store
-        .insert_checkpoint_contents(new_cp, CommitteeFixture::empty_verified_contents())
-        .unwrap();
+    store.insert_checkpoint_contents(new_cp, CommitteeFixture::empty_verified_contents()).unwrap();
 
     let (mut event_loop, mut rx) = make_event_loop(store.clone());
 
@@ -1197,15 +1119,11 @@ async fn test_handle_checkpoint_from_consensus_end_of_epoch_updates_watermarks()
     let (store, checkpoints) = fixture_e0.init_store_with_checkpoints(5);
 
     // Create end-of-epoch checkpoint
-    let eoe = fixture_e0.make_end_of_epoch_checkpoint(
-        checkpoints.last().unwrap(),
-        fixture_e1.committee.clone(),
-    );
+    let eoe = fixture_e0
+        .make_end_of_epoch_checkpoint(checkpoints.last().unwrap(), fixture_e1.committee.clone());
     // insert_certified_checkpoint auto-inserts the next committee from end_of_epoch_data
     store.insert_certified_checkpoint(&eoe);
-    store
-        .insert_checkpoint_contents(&eoe, CommitteeFixture::empty_verified_contents())
-        .unwrap();
+    store.insert_checkpoint_contents(&eoe, CommitteeFixture::empty_verified_contents()).unwrap();
 
     // Verify watermark is still at 4 (insert_certified_checkpoint doesn't bump it)
     {

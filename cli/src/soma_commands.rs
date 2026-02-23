@@ -875,10 +875,10 @@ impl SomaCommand {
             SomaCommand::Validator { config, cmd, json } => {
                 let mut context = get_wallet_context(&config).await?;
                 if let Some(cmd) = cmd {
-                    if let Ok(client) = context.get_client().await
-                        && let Err(e) = client.check_api_version().await
-                    {
-                        eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                    if let Ok(client) = context.get_client().await {
+                        if let Err(e) = client.check_api_version().await {
+                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                        }
                     }
                     cmd.execute(&mut context).await?.print(json);
                 } else {
@@ -936,9 +936,9 @@ impl SomaCommand {
                     "wgpu" | "gpu" => DeviceConfig::Wgpu,
                     "cuda" => DeviceConfig::Cuda,
                     "rocm" | "amd" => DeviceConfig::Rocm,
-                    other => anyhow::bail!(
-                        "Unknown device '{other}'. Options: cpu, wgpu, cuda, rocm"
-                    ),
+                    other => {
+                        anyhow::bail!("Unknown device '{other}'. Options: cpu, wgpu, cuda, rocm")
+                    }
                 };
 
                 let data_dir = data_dir.unwrap_or_else(|| {
@@ -987,10 +987,10 @@ impl SomaCommand {
                 if let Some(cmd) = cmd {
                     let mut context = get_wallet_context(&config).await?;
 
-                    if let Ok(client) = context.get_client().await
-                        && let Err(e) = client.check_api_version().await
-                    {
-                        eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                    if let Ok(client) = context.get_client().await {
+                        if let Err(e) = client.check_api_version().await {
+                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                        }
                     }
                     cmd.execute(&mut context).await?.print(json);
                 } else {
@@ -1520,8 +1520,7 @@ impl admin::admin_gen::admin_server::Admin for AdminServiceImpl {
             .get_node_handle()
             .ok_or_else(|| admin::tonic::Status::internal("Fullnode handle unavailable"))?;
 
-        let cur_committee =
-            fullnode_handle.with(|node| node.state().clone_committee_for_testing());
+        let cur_committee = fullnode_handle.with(|node| node.state().clone_committee_for_testing());
         let target_epoch = cur_committee.epoch + 1;
         info!("[admin] current epoch={}, target={}", cur_committee.epoch, target_epoch);
 
@@ -1593,8 +1592,7 @@ impl admin::admin_gen::admin_server::Admin for AdminServiceImpl {
             if all_ready {
                 for node in self.swarm.validator_nodes() {
                     if let Some(handle) = node.get_node_handle() {
-                        let v_epoch =
-                            handle.with(|n| n.state().epoch_store_for_testing().epoch());
+                        let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
                         if v_epoch < target_epoch {
                             all_ready = false;
                             break;
@@ -1607,9 +1605,9 @@ impl admin::admin_gen::admin_server::Admin for AdminServiceImpl {
                 // Grace period for consensus startup
                 tokio::time::sleep(Duration::from_millis(1000)).await;
                 info!("[admin] epoch advanced to {target_epoch}");
-                return Ok(admin::tonic::Response::new(
-                    admin::admin_types::AdvanceEpochResponse { epoch: target_epoch },
-                ));
+                return Ok(admin::tonic::Response::new(admin::admin_types::AdvanceEpochResponse {
+                    epoch: target_epoch,
+                }));
             }
 
             if tokio::time::Instant::now() > deadline {

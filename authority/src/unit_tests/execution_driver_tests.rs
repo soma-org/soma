@@ -61,12 +61,10 @@ async fn test_execution_scheduler_basic_enqueue() {
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
 
     // Execute via the scheduler path
-    let results = enqueue_all_and_execute_all(
-        &authority_state,
-        vec![(cert.clone(), ExecutionEnv::new())],
-    )
-    .await
-    .unwrap();
+    let results =
+        enqueue_all_and_execute_all(&authority_state, vec![(cert.clone(), ExecutionEnv::new())])
+            .await
+            .unwrap();
 
     assert_eq!(results.len(), 1);
     assert_eq!(*results[0].status(), ExecutionStatus::Success);
@@ -97,18 +95,11 @@ async fn test_execution_scheduler_multiple_independent_txns() {
         certs_and_envs.push((cert, ExecutionEnv::new()));
     }
 
-    let results = enqueue_all_and_execute_all(&authority_state, certs_and_envs)
-        .await
-        .unwrap();
+    let results = enqueue_all_and_execute_all(&authority_state, certs_and_envs).await.unwrap();
 
     assert_eq!(results.len(), 5);
     for (i, effects) in results.iter().enumerate() {
-        assert_eq!(
-            *effects.status(),
-            ExecutionStatus::Success,
-            "Transaction {} should succeed",
-            i
-        );
+        assert_eq!(*effects.status(), ExecutionStatus::Success, "Transaction {} should succeed", i);
     }
 }
 
@@ -136,11 +127,7 @@ async fn test_shared_object_version_assignment() {
     // AddStake uses SystemState (shared object)
     let coin_ref = coin.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref,
-            amount: Some(1_000_000),
-        },
+        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
         sender,
         vec![coin_ref],
     );
@@ -176,11 +163,7 @@ async fn test_execute_sequenced_shared_object_transaction() {
 
     let coin_ref = coin.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref,
-            amount: Some(1_000_000),
-        },
+        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
         sender,
         vec![coin_ref],
     );
@@ -227,12 +210,7 @@ async fn test_dependent_transactions_execute_in_order() {
     let updated_ref = updated_coin.compute_object_reference();
 
     // Second transfer using updated ref
-    let data2 = TransactionData::new_transfer_coin(
-        dbg_addr(2),
-        sender,
-        Some(100),
-        updated_ref,
-    );
+    let data2 = TransactionData::new_transfer_coin(dbg_addr(2), sender, Some(100), updated_ref);
     let tx2 = to_sender_signed_transaction(data2, &sender_key);
     let (_, effects2) = send_and_confirm_transaction(&authority_state, tx2).await.unwrap();
     assert_eq!(*effects2.status(), ExecutionStatus::Success);
@@ -272,15 +250,11 @@ async fn test_effects_idempotent_reexecution() {
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
 
     // Execute the first time
-    let (effects1, _) = authority_state
-        .try_execute_for_test(&cert, ExecutionEnv::new())
-        .await;
+    let (effects1, _) = authority_state.try_execute_for_test(&cert, ExecutionEnv::new()).await;
     assert_eq!(*effects1.status(), ExecutionStatus::Success);
 
     // Execute again — should return same effects
-    let (effects2, _) = authority_state
-        .try_execute_for_test(&cert, ExecutionEnv::new())
-        .await;
+    let (effects2, _) = authority_state.try_execute_for_test(&cert, ExecutionEnv::new()).await;
 
     assert_eq!(
         effects1.digest(),

@@ -307,19 +307,14 @@ mod tests {
         let (context, _keys) = Context::new_for_test(num_authorities);
         let context = Arc::new(context);
 
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
         let mut linearizer = Linearizer::new(context.clone(), dag_state.clone());
 
         // Populate fully connected test blocks for round 0 ~ 10, authorities 0 ~ 3.
         let num_rounds: u32 = 10;
         let mut dag_builder = DagBuilder::new(context.clone());
-        dag_builder
-            .layers(1..=num_rounds)
-            .build()
-            .persist_layers(dag_state.clone());
+        dag_builder.layers(1..=num_rounds).build().persist_layers(dag_state.clone());
 
         let leaders = dag_builder
             .leader_blocks(1..=num_rounds)
@@ -339,11 +334,10 @@ mod tests {
                     .filter(|block_ref| block_ref.round == leaders[idx].round() - 1)
                     .cloned()
                     .collect::<Vec<_>>();
-                let blocks = dag_state
-                    .read()
-                    .get_blocks(&block_refs)
-                    .into_iter()
-                    .map(|block_opt| block_opt.expect("We should have all blocks in dag state."));
+                let blocks =
+                    dag_state.read().get_blocks(&block_refs).into_iter().map(|block_opt| {
+                        block_opt.expect("We should have all blocks in dag state.")
+                    });
 
                 median_timestamp_by_stake(&context, blocks).unwrap()
             };
@@ -370,14 +364,10 @@ mod tests {
         let (context, _) = Context::new_for_test(num_authorities);
         let context = Arc::new(context);
 
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(
-            context.clone(),
-            LeaderSwapTable::default(),
-        ));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
+        let leader_schedule =
+            Arc::new(LeaderSchedule::new(context.clone(), LeaderSwapTable::default()));
         let mut linearizer = Linearizer::new(context.clone(), dag_state.clone());
         let wave_length = DEFAULT_WAVE_LENGTH;
 
@@ -436,9 +426,8 @@ mod tests {
         let mut blocks: Vec<_> = blocks.into_iter().map(|block| block.reference()).collect();
 
         // Now get the latest leader which is the leader round of wave 2
-        let leader = dag_builder
-            .leader_block(leader_round_wave_2)
-            .expect("Leader block should exist");
+        let leader =
+            dag_builder.leader_block(leader_round_wave_2).expect("Leader block should exist");
 
         last_commit_index += 1;
         let expected_second_commit = TrustedCommit::new_for_test(
@@ -460,11 +449,7 @@ mod tests {
         let expected_ts = median_timestamp_by_stake(
             &context,
             subdag.blocks.iter().filter_map(|block| {
-                if block.round() == subdag.leader.round - 1 {
-                    Some(block.clone())
-                } else {
-                    None
-                }
+                if block.round() == subdag.leader.round - 1 { Some(block.clone()) } else { None }
             }),
         )
         .unwrap();
@@ -473,12 +458,7 @@ mod tests {
         // Using the same sorting as used in CommittedSubDag::sort
         blocks.sort_by(|a, b| a.round.cmp(&b.round).then_with(|| a.author.cmp(&b.author)));
         assert_eq!(
-            subdag
-                .blocks
-                .clone()
-                .into_iter()
-                .map(|b| b.reference())
-                .collect::<Vec<_>>(),
+            subdag.blocks.clone().into_iter().map(|b| b.reference()).collect::<Vec<_>>(),
             blocks
         );
         for block in subdag.blocks.iter() {
@@ -494,15 +474,11 @@ mod tests {
 
         let num_authorities = 4;
         let (mut context, _keys) = Context::new_for_test(num_authorities);
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+        context.protocol_config.set_consensus_gc_depth_for_testing(GC_DEPTH);
 
         let context = Arc::new(context);
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
         let mut linearizer = Linearizer::new(context.clone(), dag_state.clone());
 
         // Authorities of index 0->2 will always creates blocks that see each other, but until round 5 they won't see the blocks of authority 3.
@@ -535,11 +511,7 @@ mod tests {
         dag_builder.print();
         dag_builder.persist_all_blocks(dag_state.clone());
 
-        let leaders = dag_builder
-            .leader_blocks(1..=6)
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let leaders = dag_builder.leader_blocks(1..=6).into_iter().flatten().collect::<Vec<_>>();
 
         let commits = linearizer.handle_commit(leaders.clone());
         for (idx, subdag) in commits.into_iter().enumerate() {
@@ -553,11 +525,10 @@ mod tests {
                     .filter(|block_ref| block_ref.round == leaders[idx].round() - 1)
                     .cloned()
                     .collect::<Vec<_>>();
-                let blocks = dag_state
-                    .read()
-                    .get_blocks(&block_refs)
-                    .into_iter()
-                    .map(|block_opt| block_opt.expect("We should have all blocks in dag state."));
+                let blocks =
+                    dag_state.read().get_blocks(&block_refs).into_iter().map(|block_opt| {
+                        block_opt.expect("We should have all blocks in dag state.")
+                    });
 
                 median_timestamp_by_stake(&context, blocks).unwrap()
             };
@@ -602,15 +573,11 @@ mod tests {
 
         let num_authorities = 4;
         let (mut context, _keys) = Context::new_for_test(num_authorities);
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(GC_DEPTH);
+        context.protocol_config.set_consensus_gc_depth_for_testing(GC_DEPTH);
 
         let context = Arc::new(context);
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
         let mut linearizer = Linearizer::new(context.clone(), dag_state.clone());
 
         // Authority D will create an "orphaned" block on round 1 as it won't reference to it on the block of round 2. Similar, no other authority will reference to it on round 2.
@@ -637,11 +604,7 @@ mod tests {
         dag_builder.print();
         dag_builder.persist_all_blocks(dag_state.clone());
 
-        let leaders = dag_builder
-            .leader_blocks(1..=4)
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let leaders = dag_builder.leader_blocks(1..=4).into_iter().flatten().collect::<Vec<_>>();
 
         let commits = linearizer.handle_commit(leaders.clone());
         for (idx, subdag) in commits.into_iter().enumerate() {
@@ -655,11 +618,10 @@ mod tests {
                     .filter(|block_ref| block_ref.round == leaders[idx].round() - 1)
                     .cloned()
                     .collect::<Vec<_>>();
-                let blocks = dag_state
-                    .read()
-                    .get_blocks(&block_refs)
-                    .into_iter()
-                    .map(|block_opt| block_opt.expect("We should have all blocks in dag state."));
+                let blocks =
+                    dag_state.read().get_blocks(&block_refs).into_iter().map(|block_opt| {
+                        block_opt.expect("We should have all blocks in dag state.")
+                    });
 
                 median_timestamp_by_stake(&context, blocks).unwrap()
             };
@@ -727,12 +689,7 @@ mod tests {
         let leader_block = VerifiedBlock::new_for_test(
             TestBlock::new(5, 0)
                 .set_timestamp_ms(5_000)
-                .set_ancestors(
-                    ancestors
-                        .iter()
-                        .map(|block| block.reference())
-                        .collect::<Vec<_>>(),
-                )
+                .set_ancestors(ancestors.iter().map(|block| block.reference()).collect::<Vec<_>>())
                 .build(),
         );
 
@@ -756,11 +713,7 @@ mod tests {
             TestBlock::new(5, 0)
                 .set_timestamp_ms(5_000)
                 .set_ancestors(
-                    ancestors
-                        .iter()
-                        .skip(1)
-                        .map(|block| block.reference())
-                        .collect::<Vec<_>>(),
+                    ancestors.iter().skip(1).map(|block| block.reference()).collect::<Vec<_>>(),
                 )
                 .build(),
         );
@@ -789,11 +742,7 @@ mod tests {
             TestBlock::new(5, 0)
                 .set_timestamp_ms(5_000)
                 .set_ancestors(
-                    ancestors
-                        .iter()
-                        .take(1)
-                        .map(|block| block.reference())
-                        .collect::<Vec<_>>(),
+                    ancestors.iter().take(1).map(|block| block.reference()).collect::<Vec<_>>(),
                 )
                 .build(),
         );
@@ -830,14 +779,7 @@ mod tests {
         assert_eq!(median_timestamps_by_stake_inner(timestamps, 10), 3_000);
 
         // Unequal stakes.
-        let timestamps = vec![
-            (500, 2),
-            (4_000, 2),
-            (2_500, 3),
-            (1_000, 5),
-            (3_000, 3),
-            (2_000, 4),
-        ];
+        let timestamps = vec![(500, 2), (4_000, 2), (2_500, 3), (1_000, 5), (3_000, 3), (2_000, 4)];
         assert_eq!(median_timestamps_by_stake_inner(timestamps, 19), 2_000);
 
         // One authority dominates.

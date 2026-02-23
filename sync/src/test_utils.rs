@@ -12,8 +12,9 @@ use std::collections::BTreeMap;
 use tokio::sync::{broadcast, mpsc};
 use types::{
     checkpoints::{
-        CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber, CheckpointSummary,
-        EndOfEpochData, FullCheckpointContents, VerifiedCheckpoint, VerifiedCheckpointContents,
+        CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
+        CheckpointSummary, EndOfEpochData, FullCheckpointContents, VerifiedCheckpoint,
+        VerifiedCheckpointContents,
     },
     committee::{Authority, Committee, EpochId, get_available_local_address},
     crypto::{AuthorityKeyPair, NetworkKeyPair},
@@ -47,7 +48,8 @@ impl CommitteeFixture {
             Committee::new_simple_test_committee_of_size(committee_size)
         } else {
             // For non-zero epochs, create with epoch 0 then rebuild with correct epoch
-            let (committee, keypairs) = Committee::new_simple_test_committee_of_size(committee_size);
+            let (committee, keypairs) =
+                Committee::new_simple_test_committee_of_size(committee_size);
             let voting_rights: BTreeMap<_, _> = committee.voting_rights.iter().cloned().collect();
             let authorities: BTreeMap<_, _> =
                 committee.authorities.iter().map(|(k, v)| (*k, v.clone())).collect();
@@ -85,7 +87,15 @@ impl CommitteeFixture {
         assert_eq!(self.epoch, 0, "root checkpoint must be epoch 0");
         let contents = Self::empty_contents();
         let summary = CheckpointSummary::new(
-            0, 0, 0, &contents, None, TransactionFee::default(), None, 0, vec![],
+            0,
+            0,
+            0,
+            &contents,
+            None,
+            TransactionFee::default(),
+            None,
+            0,
+            vec![],
         );
         (self.create_certified_checkpoint(summary), Self::empty_verified_contents())
     }

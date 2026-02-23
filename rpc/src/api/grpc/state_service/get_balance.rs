@@ -29,9 +29,6 @@ pub fn get_balance(service: &RpcService, request: GetBalanceRequest) -> Result<G
 
     let balance_info = indexes.get_balance(&owner)?.unwrap_or_default(); // Use default (zero) if no balance found
 
-    let response = GetBalanceResponse {
-        balance: Some(balance_info.balance),
-        ..Default::default()
-    };
+    let response = GetBalanceResponse { balance: Some(balance_info.balance), ..Default::default() };
     Ok(response)
 }

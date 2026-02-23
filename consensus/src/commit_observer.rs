@@ -276,8 +276,8 @@ mod tests {
         commit::{CommitAPI, CommitIndex, CommittedSubDag},
         context::Context,
     };
-    use types::storage::consensus::mem_store::MemStore;
     use types::storage::consensus::Store;
+    use types::storage::consensus::mem_store::MemStore;
 
     use crate::{
         CommitConsumerArgs,
@@ -298,15 +298,11 @@ mod tests {
         let context = Arc::new(context);
 
         let mem_store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            mem_store.clone(),
-        )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
         let last_processed_commit_index = 0;
         let (commit_consumer, mut commit_receiver, _block_receiver) =
             CommitConsumerArgs::new(0, last_processed_commit_index);
-        let (blocks_sender, _blocks_receiver) =
-            tokio::sync::mpsc::unbounded_channel();
+        let (blocks_sender, _blocks_receiver) = tokio::sync::mpsc::unbounded_channel();
         let transaction_certifier = TransactionCertifier::new(
             context.clone(),
             Arc::new(NoopBlockVerifier {}),
@@ -331,17 +327,9 @@ mod tests {
         // Populate fully connected test blocks for round 0 ~ 10, authorities 0 ~ 3.
         let num_rounds = 10;
         let mut builder = DagBuilder::new(context.clone());
-        builder
-            .layers(1..=num_rounds)
-            .build()
-            .persist_layers(dag_state.clone());
-        transaction_certifier.add_voted_blocks(
-            builder
-                .all_blocks()
-                .iter()
-                .map(|b| (b.clone(), vec![]))
-                .collect(),
-        );
+        builder.layers(1..=num_rounds).build().persist_layers(dag_state.clone());
+        transaction_certifier
+            .add_voted_blocks(builder.all_blocks().iter().map(|b| (b.clone(), vec![])).collect());
 
         let leaders = builder
             .leader_blocks(1..=num_rounds)
@@ -350,9 +338,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         // Commit first 5 leaders.
-        let mut commits = observer
-            .handle_commit(leaders[0..5].to_vec(), true)
-            .unwrap();
+        let mut commits = observer.handle_commit(leaders[0..5].to_vec(), true).unwrap();
 
         // Trigger a leader schedule update.
         leader_schedule.update_leader_schedule_v2(&dag_state);
@@ -389,19 +375,15 @@ mod tests {
                     .filter(|block_ref| block_ref.round == leaders[idx].round() - 1)
                     .cloned()
                     .collect::<Vec<_>>();
-                let blocks = dag_state
-                    .read()
-                    .get_blocks(&block_refs)
-                    .into_iter()
-                    .map(|block_opt| block_opt.expect("We should have all blocks in dag state."));
+                let blocks =
+                    dag_state.read().get_blocks(&block_refs).into_iter().map(|block_opt| {
+                        block_opt.expect("We should have all blocks in dag state.")
+                    });
                 median_timestamp_by_stake(&context, blocks).unwrap()
             };
 
-            let expected_ts = if idx == 0 {
-                expected_ts
-            } else {
-                expected_ts.max(commits[idx - 1].timestamp_ms)
-            };
+            let expected_ts =
+                if idx == 0 { expected_ts } else { expected_ts.max(commits[idx - 1].timestamp_ms) };
 
             assert_eq!(expected_ts, subdag.timestamp_ms);
 
@@ -436,13 +418,8 @@ mod tests {
 
         // Check commits have been persisted to storage
         let last_commit = mem_store.read_last_commit().unwrap().unwrap();
-        assert_eq!(
-            last_commit.index(),
-            commits.last().unwrap().commit_ref.index
-        );
-        let all_stored_commits = mem_store
-            .scan_commits((0..=CommitIndex::MAX).into())
-            .unwrap();
+        assert_eq!(last_commit.index(), commits.last().unwrap().commit_ref.index);
+        let all_stored_commits = mem_store.scan_commits((0..=CommitIndex::MAX).into()).unwrap();
         assert_eq!(all_stored_commits.len(), leaders.len());
     }
 
@@ -451,12 +428,8 @@ mod tests {
         let num_authorities = 4;
         let context = Arc::new(Context::new_for_test(num_authorities).0);
         let mem_store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            mem_store.clone(),
-        )));
-        let (blocks_sender, _blocks_receiver) =
-            tokio::sync::mpsc::unbounded_channel();
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
+        let (blocks_sender, _blocks_receiver) = tokio::sync::mpsc::unbounded_channel();
         let transaction_certifier = TransactionCertifier::new(
             context.clone(),
             Arc::new(NoopBlockVerifier {}),
@@ -466,10 +439,8 @@ mod tests {
         let last_processed_commit_index = 0;
         let (commit_consumer, mut commit_receiver, _block_receiver) =
             CommitConsumerArgs::new(0, last_processed_commit_index);
-        let leader_schedule = Arc::new(LeaderSchedule::from_store(
-            context.clone(),
-            dag_state.clone(),
-        ));
+        let leader_schedule =
+            Arc::new(LeaderSchedule::from_store(context.clone(), dag_state.clone()));
 
         let mut observer = CommitObserver::new(
             context.clone(),
@@ -483,17 +454,9 @@ mod tests {
         // Populate fully connected test blocks for round 0 ~ 10, authorities 0 ~ 3.
         let num_rounds = 10;
         let mut builder = DagBuilder::new(context.clone());
-        builder
-            .layers(1..=num_rounds)
-            .build()
-            .persist_layers(dag_state.clone());
-        transaction_certifier.add_voted_blocks(
-            builder
-                .all_blocks()
-                .iter()
-                .map(|b| (b.clone(), vec![]))
-                .collect(),
-        );
+        builder.layers(1..=num_rounds).build().persist_layers(dag_state.clone());
+        transaction_certifier
+            .add_voted_blocks(builder.all_blocks().iter().map(|b| (b.clone(), vec![])).collect());
 
         let leaders = builder
             .leader_blocks(1..=num_rounds)
@@ -525,10 +488,7 @@ mod tests {
 
         // Check last stored commit is correct
         let last_commit = mem_store.read_last_commit().unwrap().unwrap();
-        assert_eq!(
-            last_commit.index(),
-            expected_last_processed_index as CommitIndex
-        );
+        assert_eq!(last_commit.index(), expected_last_processed_index as CommitIndex);
 
         // Handle next batch of leaders (10 - 2 = 8), these will be sent by consensus but not
         // "processed" by consensus output channel.
@@ -561,10 +521,8 @@ mod tests {
         {
             let replay_after_commit_index = 2;
             let consumer_last_processed_commit_index = 10;
-            let dag_state = Arc::new(RwLock::new(DagState::new(
-                context.clone(),
-                mem_store.clone(),
-            )));
+            let dag_state =
+                Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
             let (commit_consumer, mut commit_receiver, _block_receiver) = CommitConsumerArgs::new(
                 replay_after_commit_index,
                 consumer_last_processed_commit_index,
@@ -606,10 +564,8 @@ mod tests {
         {
             let replay_after_commit_index = 10;
             let consumer_last_processed_commit_index = 10;
-            let dag_state = Arc::new(RwLock::new(DagState::new(
-                context.clone(),
-                mem_store.clone(),
-            )));
+            let dag_state =
+                Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
             let (commit_consumer, mut commit_receiver, _block_receiver) = CommitConsumerArgs::new(
                 replay_after_commit_index,
                 consumer_last_processed_commit_index,
@@ -629,7 +585,9 @@ mod tests {
     }
 
     /// After receiving all expected subdags, ensure channel is empty
-    async fn verify_channel_empty(receiver: &mut tokio::sync::mpsc::UnboundedReceiver<CommittedSubDag>) {
+    async fn verify_channel_empty(
+        receiver: &mut tokio::sync::mpsc::UnboundedReceiver<CommittedSubDag>,
+    ) {
         if let Ok(Some(_)) = timeout(Duration::from_secs(1), receiver.recv()).await {
             panic!("Expected the consensus output channel to be empty, but found more subdags.")
         }

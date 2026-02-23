@@ -14,7 +14,10 @@ pub const READ_MASK_DEFAULT: &str =
     "id,target_id,challenger,status,challenge_epoch,challenger_bond";
 
 #[tracing::instrument(skip(service))]
-pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Result<GetChallengeResponse> {
+pub fn get_challenge(
+    service: &RpcService,
+    request: GetChallengeRequest,
+) -> Result<GetChallengeResponse> {
     // Parse and validate challenge_id
     let challenge_id: Address = request
         .challenge_id
@@ -33,9 +36,7 @@ pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Resu
 
     // Validate and build field mask
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Challenge>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -56,29 +57,21 @@ pub fn get_challenge(service: &RpcService, request: GetChallengeRequest) -> Resu
     if *object_type != types::object::ObjectType::Challenge {
         return Err(RpcError::new(
             tonic::Code::InvalidArgument,
-            format!(
-                "Object {} is not a Challenge (type: {:?})",
-                challenge_id, object_type
-            ),
+            format!("Object {} is not a Challenge (type: {:?})", challenge_id, object_type),
         ));
     }
 
     // Deserialize the Challenge from the object contents
-    let challenge: types::challenge::ChallengeV1 = bcs::from_bytes(object.data.contents()).map_err(|e| {
-        RpcError::new(
-            tonic::Code::Internal,
-            format!("Failed to deserialize Challenge: {e}"),
-        )
-    })?;
+    let challenge: types::challenge::ChallengeV1 = bcs::from_bytes(object.data.contents())
+        .map_err(|e| {
+            RpcError::new(tonic::Code::Internal, format!("Failed to deserialize Challenge: {e}"))
+        })?;
 
     // Convert to proto with field mask
     let object_id: ObjectID = challenge_id.into();
     let challenge_proto = challenge_to_proto_with_id(&object_id, &challenge, &read_mask);
 
-    let response = GetChallengeResponse {
-        challenge: Some(challenge_proto),
-        ..Default::default()
-    };
+    let response = GetChallengeResponse { challenge: Some(challenge_proto), ..Default::default() };
     Ok(response)
 }
 
@@ -109,14 +102,14 @@ fn challenge_to_proto_with_id(
         proto.status = Some(format_status(&challenge.status));
     }
     // Simplified design: verdict is now part of status (challenger_lost: bool)
-    if mask.contains("verdict")
-        && let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status
-    {
-        proto.verdict = Some(if *challenger_lost {
-            "challenger_lost".to_string()
-        } else {
-            "challenger_won".to_string()
-        });
+    if mask.contains("verdict") {
+        if let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status {
+            proto.verdict = Some(if *challenger_lost {
+                "challenger_lost".to_string()
+            } else {
+                "challenger_won".to_string()
+            });
+        }
     }
     // win_reason is no longer applicable in simplified design
     if mask.contains("distance_threshold") {

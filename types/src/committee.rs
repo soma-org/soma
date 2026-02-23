@@ -421,12 +421,9 @@ impl CommitteeTrait<AuthorityName> for Committee {
         };
 
         let mut result: Vec<AuthorityName> =
-            Self::choose_multiple_weighted(&preferred, preferred.len(), rng)
-                .copied()
-                .collect();
+            Self::choose_multiple_weighted(&preferred, preferred.len(), rng).copied().collect();
 
-        let rest_sampled =
-            Self::choose_multiple_weighted(&rest, rest.len(), rng).copied();
+        let rest_sampled = Self::choose_multiple_weighted(&rest, rest.len(), rng).copied();
 
         result.extend(rest_sampled);
         result

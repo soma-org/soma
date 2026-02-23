@@ -53,13 +53,13 @@ pub fn list_targets(
         request.page_token.as_ref().map(|token| decode_page_token(token)).transpose()?;
 
     // Validate page token parameters match request
-    if let Some(ref token) = page_token
-        && (token.status_filter != status_filter || token.epoch_filter != epoch_filter)
-    {
-        return Err(FieldViolation::new("page_token")
-            .with_description("page_token parameters do not match request filters")
-            .with_reason(ErrorReason::FieldInvalid)
-            .into());
+    if let Some(ref token) = page_token {
+        if token.status_filter != status_filter || token.epoch_filter != epoch_filter {
+            return Err(FieldViolation::new("page_token")
+                .with_description("page_token parameters do not match request filters")
+                .with_reason(ErrorReason::FieldInvalid)
+                .into());
+        }
     }
 
     // Validate and build field mask
@@ -135,11 +135,7 @@ pub fn list_targets(
             })
         });
 
-    let response = ListTargetsResponse {
-        targets,
-        next_page_token,
-        ..Default::default()
-    };
+    let response = ListTargetsResponse { targets, next_page_token, ..Default::default() };
     Ok(response)
 }
 

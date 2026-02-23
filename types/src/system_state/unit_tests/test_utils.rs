@@ -74,10 +74,7 @@ impl ValidatorRewards {
         rewards: BTreeMap<SomaAddress, StakedSomaV1>,
     ) {
         for (addr, staked_soma) in rewards {
-            self.commission_rewards
-                .entry(addr)
-                .or_default()
-                .insert(epoch, staked_soma);
+            self.commission_rewards.entry(addr).or_default().insert(epoch, staked_soma);
         }
     }
 
@@ -601,8 +598,8 @@ pub fn reveal_model_with_dim(
 
 /// Create a deterministic test embedding based on model_id
 fn make_test_embedding(model_id: &ModelId, dim: usize) -> SomaTensor {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
     model_id.hash(&mut hasher);

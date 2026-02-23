@@ -321,9 +321,8 @@ async fn start_validator_node(config_path: PathBuf) -> Result<()> {
 
     // Keep the node running until Ctrl+C or SIGTERM
     let mut interval = tokio::time::interval(Duration::from_secs(5));
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to register SIGTERM handler");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to register SIGTERM handler");
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -353,13 +352,13 @@ fn check_address(
     print_unsigned_transaction_only: bool,
 ) -> Result<SomaAddress, anyhow::Error> {
     if !print_unsigned_transaction_only {
-        if let Some(validator_address) = validator_address
-            && validator_address != active_address
-        {
-            bail!(
-                "`--validator-address` must be the same as the current active address: {}",
-                active_address
-            );
+        if let Some(validator_address) = validator_address {
+            if validator_address != active_address {
+                bail!(
+                    "`--validator-address` must be the same as the current active address: {}",
+                    active_address
+                );
+            }
         }
         Ok(active_address)
     } else {
@@ -591,19 +590,9 @@ async fn display_metadata(
 
     match get_validator_summary(&client, address).await? {
         Some((status, summary)) => {
-            Ok(DisplayMetadataOutput {
-                address,
-                status: Some(status),
-                summary: Some(summary),
-            })
+            Ok(DisplayMetadataOutput { address, status: Some(status), summary: Some(summary) })
         }
-        None => {
-            Ok(DisplayMetadataOutput {
-                address,
-                status: None,
-                summary: None,
-            })
-        }
+        None => Ok(DisplayMetadataOutput { address, status: None, summary: None }),
     }
 }
 

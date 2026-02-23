@@ -99,10 +99,7 @@ async fn test_base_fee_deducted_on_insufficient_balance_for_transfer() {
 
     let effects = res.txn_result.unwrap().into_data();
     // Should fail because transfer + fees > balance
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: transfer amount + fees > balance"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: transfer amount + fees > balance");
 
     // Base fee should still be charged even on failure
     let fee = effects.transaction_fee();
@@ -117,14 +114,9 @@ async fn test_insufficient_gas_below_base_fee() {
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 500); // < 1000 base fee
 
     let recipient = dbg_addr(1);
-    let res = execute_transfer_coin(
-        coin,
-        recipient,
-        Some(100),
-        sender,
-        SomaKeyPair::Ed25519(sender_key),
-    )
-    .await;
+    let res =
+        execute_transfer_coin(coin, recipient, Some(100), sender, SomaKeyPair::Ed25519(sender_key))
+            .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(
@@ -144,14 +136,9 @@ async fn test_zero_balance_coin_gas() {
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 0);
 
     let recipient = dbg_addr(1);
-    let res = execute_transfer_coin(
-        coin,
-        recipient,
-        Some(0),
-        sender,
-        SomaKeyPair::Ed25519(sender_key),
-    )
-    .await;
+    let res =
+        execute_transfer_coin(coin, recipient, Some(0), sender, SomaKeyPair::Ed25519(sender_key))
+            .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(
@@ -393,7 +380,7 @@ async fn test_gas_coin_deleted_when_balance_reaches_zero() {
 
     // Recipient should have a new coin with balance = original - total_fee
     assert_eq!(effects.created().len(), 1);
-    let created_id = effects.created()[0].0 .0;
+    let created_id = effects.created()[0].0.0;
     let created_obj = res.authority_state.get_object(&created_id).await.unwrap();
     let gas_used = effects.transaction_fee().total_fee;
     assert_eq!(created_obj.as_coin().unwrap(), 5_000_000 - gas_used);
@@ -479,14 +466,8 @@ async fn test_balance_barely_above_base_fee() {
     // 1001 = base_fee + 1, not enough for operation_fee (300 * num_objects)
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, BASE_FEE + 1);
 
-    let res = execute_transfer_coin(
-        coin,
-        dbg_addr(1),
-        Some(0),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res =
+        execute_transfer_coin(coin, dbg_addr(1), Some(0), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     // After base_fee deduction, only 1 left. Operation fee for 2 objects = 600.

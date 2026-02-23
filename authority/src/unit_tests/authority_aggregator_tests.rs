@@ -4,13 +4,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::SomaAddress;
 use types::committee::Committee;
-use fastcrypto::ed25519::Ed25519KeyPair;
 use types::crypto::{AuthorityKeyPair, KeypairTraits, get_key_pair};
 use types::digests::TransactionDigest;
 use types::error::SomaError;
-use types::object::{Object, ObjectRef, OBJECT_START_VERSION};
+use types::object::{OBJECT_START_VERSION, Object, ObjectRef};
 use types::storage::committee_store::CommitteeStore;
 use types::transaction::{Transaction, TransactionData, TransactionKind};
 
@@ -23,14 +23,9 @@ use crate::test_authority_clients::MockAuthorityApi;
 /// Returns the aggregator, the committee, and the mock clients (for injecting responses).
 fn setup_aggregator(
     size: usize,
-) -> (
-    AuthorityAggregator<MockAuthorityApi>,
-    Committee,
-    Vec<MockAuthorityApi>,
-) {
+) -> (AuthorityAggregator<MockAuthorityApi>, Committee, Vec<MockAuthorityApi>) {
     let (committee, keypairs) = Committee::new_simple_test_committee_of_size(size);
-    let committee_store =
-        Arc::new(CommitteeStore::new_for_testing(&committee));
+    let committee_store = Arc::new(CommitteeStore::new_for_testing(&committee));
 
     // Build name→keypair map to correctly associate keys with sorted committee names.
     // keypairs are in generation order but committee.names() returns sorted BTreeMap order.
@@ -71,11 +66,7 @@ fn make_test_transaction() -> Transaction {
     let recipient: SomaAddress = SomaAddress::default();
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas_object_ref,
-            amount: Some(100),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas_object_ref, amount: Some(100), recipient },
         sender,
         vec![gas_object_ref],
     );
@@ -102,9 +93,7 @@ async fn test_process_transaction_quorum_success() {
         } => {
             assert!(newly_formed, "Expected newly formed certificate");
             // Certificate should have valid committee signatures
-            assert!(certificate
-                .verify_committee_sigs_only(&_committee)
-                .is_ok());
+            assert!(certificate.verify_committee_sigs_only(&_committee).is_ok());
         }
         _ => panic!("Expected Certified result"),
     }
@@ -159,8 +148,12 @@ async fn test_process_transaction_non_retryable_errors_fatal() {
     let (aggregator, _committee, mocks) = setup_aggregator(4);
     let tx = make_test_transaction();
 
-    mocks[0].enqueue_handle_transaction_error(SomaError::InvalidSignature { error: "bad tx".to_string() });
-    mocks[1].enqueue_handle_transaction_error(SomaError::InvalidSignature { error: "bad tx".to_string() });
+    mocks[0].enqueue_handle_transaction_error(SomaError::InvalidSignature {
+        error: "bad tx".to_string(),
+    });
+    mocks[1].enqueue_handle_transaction_error(SomaError::InvalidSignature {
+        error: "bad tx".to_string(),
+    });
 
     let result = aggregator.process_transaction(tx, None).await;
     assert!(result.is_err());
@@ -219,7 +212,9 @@ async fn test_process_transaction_all_errors_non_retryable() {
     let tx = make_test_transaction();
 
     for mock in &mocks {
-        mock.enqueue_handle_transaction_error(SomaError::InvalidSignature { error: "invalid".to_string() });
+        mock.enqueue_handle_transaction_error(SomaError::InvalidSignature {
+            error: "invalid".to_string(),
+        });
     }
 
     let result = aggregator.process_transaction(tx, None).await;
@@ -240,7 +235,9 @@ async fn test_process_transaction_mixed_retryable_and_non_retryable() {
     let (aggregator, _committee, mocks) = setup_aggregator(4);
     let tx = make_test_transaction();
 
-    mocks[0].enqueue_handle_transaction_error(SomaError::InvalidSignature { error: "invalid".to_string() });
+    mocks[0].enqueue_handle_transaction_error(SomaError::InvalidSignature {
+        error: "invalid".to_string(),
+    });
     mocks[1].enqueue_handle_transaction_error(SomaError::RpcError(
         "timeout".to_string(),
         "test".to_string(),
@@ -279,11 +276,9 @@ fn make_test_certificate(
         sigs.push(sig);
     }
 
-    let cert_sig = types::crypto::AuthorityQuorumSignInfo::<true>::new_from_auth_sign_infos(
-        sigs,
-        committee,
-    )
-    .expect("Failed to create quorum sig");
+    let cert_sig =
+        types::crypto::AuthorityQuorumSignInfo::<true>::new_from_auth_sign_infos(sigs, committee)
+            .expect("Failed to create quorum sig");
 
     CertifiedTransaction::new_from_data_and_sig(tx.clone().into_data(), cert_sig)
 }
@@ -338,8 +333,12 @@ async fn test_process_certificate_non_retryable_failure() {
     let tx = make_test_transaction();
     let cert = make_test_certificate(&aggregator, &tx);
 
-    mocks[0].enqueue_handle_certificate_error(SomaError::InvalidSignature { error: "cert invalid".to_string() });
-    mocks[1].enqueue_handle_certificate_error(SomaError::InvalidSignature { error: "cert invalid".to_string() });
+    mocks[0].enqueue_handle_certificate_error(SomaError::InvalidSignature {
+        error: "cert invalid".to_string(),
+    });
+    mocks[1].enqueue_handle_certificate_error(SomaError::InvalidSignature {
+        error: "cert invalid".to_string(),
+    });
 
     let request = types::messages_grpc::HandleCertificateRequest {
         certificate: cert,
@@ -350,9 +349,7 @@ async fn test_process_certificate_non_retryable_failure() {
     let result = aggregator.process_certificate(request, None).await;
     assert!(result.is_err());
     match result.unwrap_err() {
-        AggregatorProcessCertificateError::FatalExecuteCertificate {
-            non_retryable_errors,
-        } => {
+        AggregatorProcessCertificateError::FatalExecuteCertificate { non_retryable_errors } => {
             assert!(!non_retryable_errors.is_empty());
         }
         other => panic!("Expected FatalExecuteCertificate, got: {:?}", other),

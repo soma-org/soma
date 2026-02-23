@@ -9,9 +9,7 @@ use rand::{SeedableRng, rngs::StdRng};
 /// Helper: generate N Ed25519 key pairs from a deterministic seed.
 fn ed25519_keys(n: usize) -> Vec<SomaKeyPair> {
     let mut rng = StdRng::from_seed([42; 32]);
-    (0..n)
-        .map(|_| SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1))
-        .collect()
+    (0..n).map(|_| SomaKeyPair::Ed25519(get_key_pair_from_rng(&mut rng).1)).collect()
 }
 
 /// End-to-end: create MultiSigPublicKey from 3 Ed25519 keys (weights 1,1,1,
@@ -22,8 +20,7 @@ fn test_multisig_verify_ed25519() {
     let keys = ed25519_keys(3);
     let pks: Vec<_> = keys.iter().map(|k| k.public()).collect();
 
-    let multisig_pk =
-        MultiSigPublicKey::new(pks, vec![1, 1, 1], 2).expect("valid multisig pk");
+    let multisig_pk = MultiSigPublicKey::new(pks, vec![1, 1, 1], 2).expect("valid multisig pk");
 
     let multisig_address = SomaAddress::from(&multisig_pk);
 
@@ -52,8 +49,7 @@ fn test_multisig_insufficient_weight() {
     let pks: Vec<_> = keys.iter().map(|k| k.public()).collect();
 
     // Weights: [1, 1, 1], threshold: 3  =>  any 2 keys only sum to 2 < 3
-    let multisig_pk =
-        MultiSigPublicKey::new(pks, vec![1, 1, 1], 3).expect("valid multisig pk");
+    let multisig_pk = MultiSigPublicKey::new(pks, vec![1, 1, 1], 3).expect("valid multisig pk");
 
     let multisig_address = SomaAddress::from(&multisig_pk);
 
@@ -70,10 +66,7 @@ fn test_multisig_insufficient_weight() {
         MultiSig::combine(vec![sig0, sig1], multisig_pk).expect("combine should succeed");
 
     let result = multisig.verify_claims(&msg, multisig_address);
-    assert!(
-        result.is_err(),
-        "Verification must fail when combined weight < threshold"
-    );
+    assert!(result.is_err(), "Verification must fail when combined weight < threshold");
 
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
@@ -92,8 +85,7 @@ fn test_multisig_exact_threshold() {
 
     // Weights: [2, 3, 5], threshold: 5
     // key[0] alone has weight 2 < 5, keys[0]+[1] = 5 == threshold, exactly enough
-    let multisig_pk =
-        MultiSigPublicKey::new(pks, vec![2, 3, 5], 5).expect("valid multisig pk");
+    let multisig_pk = MultiSigPublicKey::new(pks, vec![2, 3, 5], 5).expect("valid multisig pk");
 
     let multisig_address = SomaAddress::from(&multisig_pk);
 
@@ -132,26 +124,16 @@ fn test_multisig_address_deterministic() {
     let addr_a = SomaAddress::from(&multisig_pk_a);
     let addr_b = SomaAddress::from(&multisig_pk_b);
 
-    assert_eq!(
-        addr_a, addr_b,
-        "Same keys + threshold must yield the same address"
-    );
+    assert_eq!(addr_a, addr_b, "Same keys + threshold must yield the same address");
 
     // A different threshold should produce a different address
     let multisig_pk_c =
         MultiSigPublicKey::new(pks.clone(), vec![1, 2, 3], 4).expect("valid multisig pk");
     let addr_c = SomaAddress::from(&multisig_pk_c);
-    assert_ne!(
-        addr_a, addr_c,
-        "Different thresholds should yield different addresses"
-    );
+    assert_ne!(addr_a, addr_c, "Different thresholds should yield different addresses");
 
     // Different weights should produce a different address
-    let multisig_pk_d =
-        MultiSigPublicKey::new(pks, vec![2, 2, 3], 3).expect("valid multisig pk");
+    let multisig_pk_d = MultiSigPublicKey::new(pks, vec![2, 2, 3], 3).expect("valid multisig pk");
     let addr_d = SomaAddress::from(&multisig_pk_d);
-    assert_ne!(
-        addr_a, addr_d,
-        "Different weights should yield different addresses"
-    );
+    assert_ne!(addr_a, addr_d, "Different weights should yield different addresses");
 }

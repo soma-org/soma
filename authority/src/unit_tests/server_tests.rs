@@ -20,8 +20,7 @@ use types::{
 };
 
 use crate::{
-    authority_server::AuthorityServer,
-    authority_test_utils::send_and_confirm_transaction,
+    authority_server::AuthorityServer, authority_test_utils::send_and_confirm_transaction,
     test_authority_builder::TestAuthorityBuilder,
 };
 
@@ -65,18 +64,13 @@ async fn test_handle_transaction_basic() {
     let tx = to_sender_signed_transaction(data, &sender_key);
 
     // handle_transaction_for_benchmarking returns a tonic::Response<HandleTransactionResponse>
-    let response = validator_service
-        .handle_transaction_for_benchmarking(tx)
-        .await;
+    let response = validator_service.handle_transaction_for_benchmarking(tx).await;
 
     assert!(response.is_ok(), "handle_transaction should succeed: {:?}", response.err());
     let handle_response = response.unwrap().into_inner();
     // The response should contain a Signed status (authority signed the tx)
     assert!(
-        matches!(
-            handle_response.status,
-            types::messages_grpc::TransactionStatus::Signed(_)
-        ),
+        matches!(handle_response.status, types::messages_grpc::TransactionStatus::Signed(_)),
         "Response should contain a Signed status"
     );
 }
@@ -101,11 +95,7 @@ async fn test_handle_object_info_request() {
 
     assert!(response.is_ok(), "Object info request should succeed: {:?}", response.err());
     let info = response.unwrap();
-    assert_eq!(
-        info.object.id(),
-        object_id,
-        "Returned object should have the requested ID"
-    );
+    assert_eq!(info.object.id(), object_id, "Returned object should have the requested ID");
     assert_eq!(
         info.object.owner,
         types::object::Owner::AddressOwner(sender),
@@ -153,9 +143,7 @@ async fn test_handle_transaction_info_request() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Now request transaction info
-    let request = TransactionInfoRequest {
-        transaction_digest: tx_digest,
-    };
+    let request = TransactionInfoRequest { transaction_digest: tx_digest };
     let response = authority_state.handle_transaction_info_request(request).await;
 
     assert!(response.is_ok(), "Transaction info request should succeed: {:?}", response.err());
@@ -170,10 +158,7 @@ async fn test_handle_transaction_info_request() {
 
     // Status should be Executed (since we already executed and committed it)
     assert!(
-        matches!(
-            info.status,
-            types::messages_grpc::TransactionStatus::Executed(_, _)
-        ),
+        matches!(info.status, types::messages_grpc::TransactionStatus::Executed(_, _)),
         "Status should be Executed after transaction has been committed"
     );
 }
@@ -183,9 +168,8 @@ async fn test_handle_transaction_info_request_not_found() {
     // Requesting info for a non-existent transaction should return an error.
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    let request = TransactionInfoRequest {
-        transaction_digest: types::digests::TransactionDigest::random(),
-    };
+    let request =
+        TransactionInfoRequest { transaction_digest: types::digests::TransactionDigest::random() };
     let response = authority_state.handle_transaction_info_request(request).await;
 
     assert!(response.is_err(), "Should fail for non-existent transaction digest");

@@ -83,53 +83,53 @@ fn test_v1_attention() {
         "mha.query.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 1,
-           &[head_dim * num_heads, head_dim * num_heads],
+            &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.query.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2,&[head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 2, &[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.key.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 3,
-           &[head_dim * num_heads, head_dim * num_heads],
+            &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.key.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4,&[head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 4, &[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.value.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 5,
-           &[head_dim * num_heads, head_dim * num_heads],
+            &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.value.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 6,&[head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 6, &[head_dim * num_heads], 0.0, 1.0)),
     );
     tensors.insert(
         "mha.output.weight".to_string(),
         ArrayWrapper(normal_array(
             seed + 7,
-           &[head_dim * num_heads, head_dim * num_heads],
+            &[head_dim * num_heads, head_dim * num_heads],
             0.0,
             1.0,
         )),
     );
     tensors.insert(
         "mha.output.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 8,&[head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 8, &[head_dim * num_heads], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -138,10 +138,9 @@ fn test_v1_attention() {
 
     model.load_from(&mut store).unwrap();
 
-    let input_data =
-        normal_array(seed + 9,&[batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
-            .to_tensor_data()
-            .unwrap();
+    let input_data = normal_array(seed + 9, &[batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
+        .to_tensor_data()
+        .unwrap();
     let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
@@ -177,10 +176,9 @@ fn test_v1_rope_multi_position() {
     let scale_factor = 1.0;
     let seed = 70u64;
     let device = Default::default();
-    let input_data =
-        normal_array(seed, &[batch_size, seq_len, num_heads, head_dim], 0.0, 1.0)
-            .to_tensor_data()
-            .unwrap();
+    let input_data = normal_array(seed, &[batch_size, seq_len, num_heads, head_dim], 0.0, 1.0)
+        .to_tensor_data()
+        .unwrap();
     let input_tensor: Tensor<TestBackend, 4> = Tensor::from_data(input_data, &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
@@ -190,24 +188,40 @@ fn test_v1_rope_multi_position() {
     let expected_output = Tensor::<TestBackend, 4>::from_floats(
         [
             [
-                [[0.47776070, -0.48515794, 0.26153922, -2.41498089],
-                 [0.99376506, 0.90728259, -1.43244362, 0.09139032]],
-                [[-0.06775475, 0.15760149, -0.07331341, 1.00924647],
-                 [0.46687761, 1.30162942, -0.95026934, -0.30788255]],
-                [[-0.76642752, -0.87616366, 2.00954461, -0.66655433],
-                 [-0.53347385, 0.33248445, -0.25528368, 1.70450819]],
-                [[0.68225688, 0.77837843, -1.03880394, -0.73422980],
-                 [0.94099069, -0.55226529, -0.84172773, -0.39250299]],
+                [
+                    [0.47776070, -0.48515794, 0.26153922, -2.41498089],
+                    [0.99376506, 0.90728259, -1.43244362, 0.09139032],
+                ],
+                [
+                    [-0.06775475, 0.15760149, -0.07331341, 1.00924647],
+                    [0.46687761, 1.30162942, -0.95026934, -0.30788255],
+                ],
+                [
+                    [-0.76642752, -0.87616366, 2.00954461, -0.66655433],
+                    [-0.53347385, 0.33248445, -0.25528368, 1.70450819],
+                ],
+                [
+                    [0.68225688, 0.77837843, -1.03880394, -0.73422980],
+                    [0.94099069, -0.55226529, -0.84172773, -0.39250299],
+                ],
             ],
             [
-                [[0.53636390, 1.04667366, -0.62744135, -1.57136846],
-                 [0.56636423, 0.85205758, -2.16002727, -0.19352338]],
-                [[1.11170232, 1.09174263, -0.25253245, -0.36698121],
-                 [1.58594680, -1.20130229, -0.42448375, -0.20691611]],
-                [[0.38839683, 0.45338595, -0.52934897, -0.38279817],
-                 [-0.89073908, 0.54021513, -1.11969602, -1.80852568]],
-                [[-0.01806840, -0.24985033, -0.84394234, -0.19104014],
-                 [-0.67495888, 1.27409673, -0.01402950, -1.07746637]],
+                [
+                    [0.53636390, 1.04667366, -0.62744135, -1.57136846],
+                    [0.56636423, 0.85205758, -2.16002727, -0.19352338],
+                ],
+                [
+                    [1.11170232, 1.09174263, -0.25253245, -0.36698121],
+                    [1.58594680, -1.20130229, -0.42448375, -0.20691611],
+                ],
+                [
+                    [0.38839683, 0.45338595, -0.52934897, -0.38279817],
+                    [-0.89073908, 0.54021513, -1.11969602, -1.80852568],
+                ],
+                [
+                    [-0.01806840, -0.24985033, -0.84394234, -0.19104014],
+                    [-0.67495888, 1.27409673, -0.01402950, -1.07746637],
+                ],
             ],
         ],
         &device,
@@ -226,7 +240,12 @@ fn test_v1_attention_multi_batch() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "mha.query.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[head_dim * num_heads, head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(
+            seed + 1,
+            &[head_dim * num_heads, head_dim * num_heads],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
         "mha.query.bias".to_string(),
@@ -234,7 +253,12 @@ fn test_v1_attention_multi_batch() {
     );
     tensors.insert(
         "mha.key.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 3, &[head_dim * num_heads, head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(
+            seed + 3,
+            &[head_dim * num_heads, head_dim * num_heads],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
         "mha.key.bias".to_string(),
@@ -242,7 +266,12 @@ fn test_v1_attention_multi_batch() {
     );
     tensors.insert(
         "mha.value.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 5, &[head_dim * num_heads, head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(
+            seed + 5,
+            &[head_dim * num_heads, head_dim * num_heads],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
         "mha.value.bias".to_string(),
@@ -250,7 +279,12 @@ fn test_v1_attention_multi_batch() {
     );
     tensors.insert(
         "mha.output.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 7, &[head_dim * num_heads, head_dim * num_heads], 0.0, 1.0)),
+        ArrayWrapper(normal_array(
+            seed + 7,
+            &[head_dim * num_heads, head_dim * num_heads],
+            0.0,
+            1.0,
+        )),
     );
     tensors.insert(
         "mha.output.bias".to_string(),
@@ -262,10 +296,9 @@ fn test_v1_attention_multi_batch() {
     let mut model: MhaModule<TestBackend> = MhaModule::new(head_dim, num_heads, &device);
     model.load_from(&mut store).unwrap();
 
-    let input_data =
-        normal_array(seed + 9, &[batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
-            .to_tensor_data()
-            .unwrap();
+    let input_data = normal_array(seed + 9, &[batch_size, seq_len, num_heads * head_dim], 0.0, 1.0)
+        .to_tensor_data()
+        .unwrap();
     let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);

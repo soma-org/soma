@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use types::{checksum::Checksum, committee::Epoch};
 
-pub(crate) mod engine;
 pub mod downloader;
+pub(crate) mod engine;
 pub mod loader;
 pub mod transfer;
 

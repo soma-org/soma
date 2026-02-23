@@ -18,10 +18,10 @@ use protocol_config::ProtocolConfig;
 use types::balance_change::derive_balance_changes_2;
 use types::base::SomaAddress;
 use types::effects::TransactionEffectsAPI;
-use types::system_state::SystemStateTrait;
 use types::object::ObjectID;
 use types::object::ObjectRef;
 use types::object::ObjectType;
+use types::system_state::SystemStateTrait;
 use types::transaction_executor::SimulateTransactionResult;
 use types::transaction_executor::TransactionChecks;
 
@@ -158,10 +158,7 @@ pub fn simulate_transaction(
         None
     };
 
-    let response = SimulateTransactionResponse {
-        transaction,
-        ..Default::default()
-    };
+    let response = SimulateTransactionResponse { transaction, ..Default::default() };
     Ok(response)
 }
 

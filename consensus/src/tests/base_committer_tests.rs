@@ -24,10 +24,8 @@ use crate::{
 #[tokio::test]
 async fn try_direct_commit() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let num_rounds_in_dag = 8;
@@ -43,9 +41,7 @@ async fn try_direct_commit() {
 
     leader_rounds.sort_by(|a, b| b.cmp(a));
     for round in leader_rounds.into_iter() {
-        let leader = committer
-            .elect_leader(round)
-            .expect("should have elected leader");
+        let leader = committer.elect_leader(round).expect("should have elected leader");
         let leader_status = committer.try_direct_decide(leader);
 
         if round < incomplete_wave_leader_round {
@@ -54,12 +50,10 @@ async fn try_direct_commit() {
             } else {
                 panic!("Expected a committed leader at round {}", round)
             };
+        } else if let LeaderStatus::Undecided(undecided_slot) = leader_status {
+            assert_eq!(undecided_slot, leader)
         } else {
-            if let LeaderStatus::Undecided(undecided_slot) = leader_status {
-                assert_eq!(undecided_slot, leader)
-            } else {
-                panic!("Expected an undecided leader")
-            };
+            panic!("Expected an undecided leader")
         }
     }
 }
@@ -68,19 +62,15 @@ async fn try_direct_commit() {
 #[tokio::test]
 async fn idempotence() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let decision_round_wave_1 = committer.decision_round(1);
     build_dag(context, dag_state, None, decision_round_wave_1);
 
     let leader_round_wave_1 = committer.leader_round(1);
-    let leader = committer
-        .elect_leader(leader_round_wave_1)
-        .expect("should have elected leader");
+    let leader = committer.elect_leader(leader_round_wave_1).expect("should have elected leader");
     let leader_status = committer.try_direct_decide(leader);
 
     if let LeaderStatus::Commit(ref block) = leader_status {
@@ -102,26 +92,17 @@ async fn idempotence() {
 #[tokio::test]
 async fn multiple_direct_commit() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let mut ancestors = None;
     for n in 1..=10 {
         let decision_round = committer.decision_round(n);
-        ancestors = Some(build_dag(
-            context.clone(),
-            dag_state.clone(),
-            ancestors,
-            decision_round,
-        ));
+        ancestors = Some(build_dag(context.clone(), dag_state.clone(), ancestors, decision_round));
 
         let leader_round = committer.leader_round(n);
-        let leader = committer
-            .elect_leader(leader_round)
-            .expect("should have elected leader");
+        let leader = committer.elect_leader(leader_round).expect("should have elected leader");
         let leader_status = committer.try_direct_decide(leader);
 
         if let LeaderStatus::Commit(ref committed_block) = leader_status {
@@ -136,23 +117,16 @@ async fn multiple_direct_commit() {
 #[tokio::test]
 async fn direct_skip() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let leader_round_wave_1 = committer.leader_round(1);
-    let references_leader_round_wave_1 = build_dag(
-        context.clone(),
-        dag_state.clone(),
-        None,
-        leader_round_wave_1,
-    );
+    let references_leader_round_wave_1 =
+        build_dag(context.clone(), dag_state.clone(), None, leader_round_wave_1);
 
-    let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
-        .expect("should have elected leader");
+    let leader_wave_1 =
+        committer.elect_leader(leader_round_wave_1).expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .into_iter()
         .filter(|x| x.author != leader_wave_1.authority)
@@ -179,23 +153,16 @@ async fn direct_skip() {
 #[tokio::test]
 async fn indirect_commit() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let leader_round_wave_1 = committer.leader_round(1);
-    let references_leader_round_wave_1 = build_dag(
-        context.clone(),
-        dag_state.clone(),
-        None,
-        leader_round_wave_1,
-    );
+    let references_leader_round_wave_1 =
+        build_dag(context.clone(), dag_state.clone(), None, leader_round_wave_1);
 
-    let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
-        .expect("should have elected leader");
+    let leader_wave_1 =
+        committer.elect_leader(leader_round_wave_1).expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .iter()
         .cloned()
@@ -230,10 +197,8 @@ async fn indirect_commit() {
         .take(context.committee.validity_n())
         .map(|authority| (authority.0, references_with_votes_for_leader_wave_1.clone()))
         .collect();
-    references_decision_round_wave_1.extend(build_dag_layer(
-        connections_with_certs_for_leader_wave_1,
-        dag_state.clone(),
-    ));
+    references_decision_round_wave_1
+        .extend(build_dag_layer(connections_with_certs_for_leader_wave_1, dag_state.clone()));
 
     let references_voting_round_wave_1: Vec<_> = references_without_votes_for_leader_wave_1
         .into_iter()
@@ -247,10 +212,8 @@ async fn indirect_commit() {
         .skip(context.committee.validity_n())
         .map(|authority| (authority.0, references_voting_round_wave_1.clone()))
         .collect();
-    references_decision_round_wave_1.extend(build_dag_layer(
-        connections_without_votes_for_leader_1,
-        dag_state.clone(),
-    ));
+    references_decision_round_wave_1
+        .extend(build_dag_layer(connections_without_votes_for_leader_1, dag_state.clone()));
 
     let decision_round_wave_2 = committer.decision_round(2);
     build_dag(
@@ -260,9 +223,8 @@ async fn indirect_commit() {
         decision_round_wave_2,
     );
 
-    let leader_wave_2 = committer
-        .elect_leader(committer.leader_round(2))
-        .expect("should have elected leader");
+    let leader_wave_2 =
+        committer.elect_leader(committer.leader_round(2)).expect("should have elected leader");
     let leader_status = committer.try_direct_decide(leader_wave_2);
 
     let mut decided_leaders = vec![];
@@ -294,23 +256,16 @@ async fn indirect_commit() {
 #[tokio::test]
 async fn indirect_skip() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let leader_round_wave_2 = committer.leader_round(2);
-    let references_leader_round_wave_2 = build_dag(
-        context.clone(),
-        dag_state.clone(),
-        None,
-        leader_round_wave_2,
-    );
+    let references_leader_round_wave_2 =
+        build_dag(context.clone(), dag_state.clone(), None, leader_round_wave_2);
 
-    let leader_wave_2 = committer
-        .elect_leader(leader_round_wave_2)
-        .expect("should have elected leader");
+    let leader_wave_2 =
+        committer.elect_leader(leader_round_wave_2).expect("should have elected leader");
     let references_without_leader_wave_2: Vec<_> = references_leader_round_wave_2
         .iter()
         .cloned()
@@ -326,10 +281,8 @@ async fn indirect_skip() {
         .map(|authority| (authority.0, references_leader_round_wave_2.clone()))
         .collect();
 
-    references_voting_round_wave_2.extend(build_dag_layer(
-        connections_with_vote_leader_wave_2,
-        dag_state.clone(),
-    ));
+    references_voting_round_wave_2
+        .extend(build_dag_layer(connections_with_vote_leader_wave_2, dag_state.clone()));
 
     let connections_without_vote_leader_wave_2 = context
         .committee
@@ -338,10 +291,8 @@ async fn indirect_skip() {
         .map(|authority| (authority.0, references_without_leader_wave_2.clone()))
         .collect();
 
-    references_voting_round_wave_2.extend(build_dag_layer(
-        connections_without_vote_leader_wave_2,
-        dag_state.clone(),
-    ));
+    references_voting_round_wave_2
+        .extend(build_dag_layer(connections_without_vote_leader_wave_2, dag_state.clone()));
 
     let decision_round_wave_3 = committer.decision_round(3);
     build_dag(
@@ -353,9 +304,8 @@ async fn indirect_skip() {
 
     // 1. Ensure we commit the leader of wave 3.
     let leader_round_wave_3 = committer.leader_round(3);
-    let leader_wave_3 = committer
-        .elect_leader(leader_round_wave_3)
-        .expect("should have elected leader");
+    let leader_wave_3 =
+        committer.elect_leader(leader_round_wave_3).expect("should have elected leader");
     let leader_status = committer.try_direct_decide(leader_wave_3);
 
     let mut decided_leaders = vec![];
@@ -367,9 +317,8 @@ async fn indirect_skip() {
     };
 
     // 2. Ensure we directly mark leader of wave 2 undecided.
-    let leader_wave_2 = committer
-        .elect_leader(leader_round_wave_2)
-        .expect("should have elected leader");
+    let leader_wave_2 =
+        committer.elect_leader(leader_round_wave_2).expect("should have elected leader");
     let leader_status = committer.try_direct_decide(leader_wave_2);
 
     if let LeaderStatus::Undecided(undecided_slot) = leader_status {
@@ -389,9 +338,8 @@ async fn indirect_skip() {
 
     // Ensure we directly commit the leader of wave 1.
     let leader_round_wave_1 = committer.leader_round(1);
-    let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
-        .expect("should have elected leader");
+    let leader_wave_1 =
+        committer.elect_leader(leader_round_wave_1).expect("should have elected leader");
     let leader_status = committer.try_direct_decide(leader_wave_1);
 
     if let LeaderStatus::Commit(ref committed_block) = leader_status {
@@ -405,23 +353,16 @@ async fn indirect_skip() {
 #[tokio::test]
 async fn undecided() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let leader_round_wave_1 = committer.leader_round(1);
-    let references_leader_round_wave_1 = build_dag(
-        context.clone(),
-        dag_state.clone(),
-        None,
-        leader_round_wave_1,
-    );
+    let references_leader_round_wave_1 =
+        build_dag(context.clone(), dag_state.clone(), None, leader_round_wave_1);
 
-    let leader_wave_1 = committer
-        .elect_leader(leader_round_wave_1)
-        .expect("should have elected leader");
+    let leader_wave_1 =
+        committer.elect_leader(leader_round_wave_1).expect("should have elected leader");
     let references_without_leader_wave_1: Vec<_> = references_leader_round_wave_1
         .iter()
         .cloned()
@@ -430,20 +371,16 @@ async fn undecided() {
 
     // Create a dag layer where only one authority votes for the leader of wave 1.
     let mut authorities = context.committee.authorities();
-    let connections_leader_wave_1 = vec![(
-        authorities.next().unwrap().0,
-        references_leader_round_wave_1,
-    )];
+    let connections_leader_wave_1 =
+        vec![(authorities.next().unwrap().0, references_leader_round_wave_1)];
 
     let connections_without_leader_wave_1: Vec<_> = authorities
         .take(context.committee.quorum_n() - 1)
         .map(|authority| (authority.0, references_without_leader_wave_1.clone()))
         .collect();
 
-    let connections_voting_round_wave_1 = connections_leader_wave_1
-        .into_iter()
-        .chain(connections_without_leader_wave_1)
-        .collect();
+    let connections_voting_round_wave_1 =
+        connections_leader_wave_1.into_iter().chain(connections_without_leader_wave_1).collect();
     let references_voting_round_wave_1 =
         build_dag_layer(connections_voting_round_wave_1, dag_state.clone());
 
@@ -476,19 +413,13 @@ async fn undecided() {
 #[tokio::test]
 async fn test_byzantine_direct_commit() {
     let context = Arc::new(Context::new_for_test(4).0);
-    let dag_state = Arc::new(RwLock::new(DagState::new(
-        context.clone(),
-        Arc::new(MemStore::new()),
-    )));
+    let dag_state =
+        Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
     let committer = BaseCommitterBuilder::new(context.clone(), dag_state.clone()).build();
 
     let leader_round_wave_4 = committer.leader_round(4);
-    let references_leader_round_wave_4 = build_dag(
-        context.clone(),
-        dag_state.clone(),
-        None,
-        leader_round_wave_4,
-    );
+    let references_leader_round_wave_4 =
+        build_dag(context.clone(), dag_state.clone(), None, leader_round_wave_4);
 
     let voting_round_wave_4 = leader_round_wave_4 + 1;
     let good_references_voting_round_wave_4 = build_dag(
@@ -498,9 +429,8 @@ async fn test_byzantine_direct_commit() {
         voting_round_wave_4,
     );
 
-    let leader_wave_4 = committer
-        .elect_leader(leader_round_wave_4)
-        .expect("should have elected leader");
+    let leader_wave_4 =
+        committer.elect_leader(leader_round_wave_4).expect("should have elected leader");
 
     let references_without_leader_round_wave_4: Vec<_> = references_leader_round_wave_4
         .into_iter()
@@ -513,9 +443,7 @@ async fn test_byzantine_direct_commit() {
             .set_transactions(vec![Transaction::new(vec![1])])
             .build(),
     );
-    dag_state
-        .write()
-        .accept_block(byzantine_block_c13_1.clone());
+    dag_state.write().accept_block(byzantine_block_c13_1.clone());
 
     let byzantine_block_c13_2 = VerifiedBlock::new_for_test(
         TestBlock::new(13, 2)
@@ -523,9 +451,7 @@ async fn test_byzantine_direct_commit() {
             .set_transactions(vec![Transaction::new(vec![2])])
             .build(),
     );
-    dag_state
-        .write()
-        .accept_block(byzantine_block_c13_2.clone());
+    dag_state.write().accept_block(byzantine_block_c13_2.clone());
 
     let byzantine_block_c13_3 = VerifiedBlock::new_for_test(
         TestBlock::new(13, 2)
@@ -533,14 +459,10 @@ async fn test_byzantine_direct_commit() {
             .set_transactions(vec![Transaction::new(vec![3])])
             .build(),
     );
-    dag_state
-        .write()
-        .accept_block(byzantine_block_c13_3.clone());
+    dag_state.write().accept_block(byzantine_block_c13_3.clone());
 
     let decison_block_a14 = VerifiedBlock::new_for_test(
-        TestBlock::new(14, 0)
-            .set_ancestors(good_references_voting_round_wave_4.clone())
-            .build(),
+        TestBlock::new(14, 0).set_ancestors(good_references_voting_round_wave_4.clone()).build(),
     );
     dag_state.write().accept_block(decison_block_a14.clone());
 

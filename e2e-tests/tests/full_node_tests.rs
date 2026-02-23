@@ -107,11 +107,7 @@ async fn test_full_node_run_with_range_epoch() {
     });
 
     let signal = test_cluster.wait_for_run_with_range_shutdown_signal().await;
-    assert_eq!(
-        signal,
-        Some(RunWithRange::Epoch(0)),
-        "Shutdown signal should be Epoch(0)"
-    );
+    assert_eq!(signal, Some(RunWithRange::Epoch(0)), "Shutdown signal should be Epoch(0)");
 
     info!("Fullnode shut down at epoch 0 boundary as expected");
 }

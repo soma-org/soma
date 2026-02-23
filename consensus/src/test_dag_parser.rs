@@ -315,10 +315,7 @@ mod tests {
         let d3_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_d3);
         assert_eq!(d3_blocks.len(), 1);
         let d3_ref = d3_blocks[0].reference();
-        assert!(
-            !a4_block.ancestors().contains(&d3_ref),
-            "A4 should not contain D3 as ancestor"
-        );
+        assert!(!a4_block.ancestors().contains(&d3_ref), "A4 should not contain D3 as ancestor");
 
         // Verify round 5 block C only has A4 as ancestor
         let slot_c5 = Slot::new(5, AuthorityIndex::new_for_test(2));
@@ -328,20 +325,14 @@ mod tests {
         assert_eq!(c5_block.ancestors().len(), 1, "C5 should have exactly 1 ancestor (A4)");
 
         let a4_ref = a4_blocks[0].reference();
-        assert!(
-            c5_block.ancestors().contains(&a4_ref),
-            "C5's ancestor should be A4"
-        );
+        assert!(c5_block.ancestors().contains(&a4_ref), "C5's ancestor should be A4");
 
         // Verify round 5 block D also only has A4 as ancestor
         let slot_d5 = Slot::new(5, AuthorityIndex::new_for_test(3));
         let d5_blocks = dag_builder.get_uncommitted_blocks_at_slot(slot_d5);
         assert_eq!(d5_blocks.len(), 1, "Expected exactly one block at D5");
         assert_eq!(d5_blocks[0].ancestors().len(), 1, "D5 should have exactly 1 ancestor (A4)");
-        assert!(
-            d5_blocks[0].ancestors().contains(&a4_ref),
-            "D5's ancestor should be A4"
-        );
+        assert!(d5_blocks[0].ancestors().contains(&a4_ref), "D5's ancestor should be A4");
     }
 
     #[tokio::test]
@@ -383,12 +374,7 @@ mod tests {
         for i in 0..4u32 {
             let slot = Slot::new(1, AuthorityIndex::new_for_test(i));
             let blocks = dag_builder.get_uncommitted_blocks_at_slot(slot);
-            assert_eq!(
-                blocks.len(),
-                1,
-                "Expected 1 block at round 1 for authority {}",
-                i
-            );
+            assert_eq!(blocks.len(), 1, "Expected 1 block at round 1 for authority {}", i);
             // Each block at round 1 should have 4 ancestors (all genesis blocks)
             assert_eq!(
                 blocks[0].ancestors().len(),
@@ -483,32 +469,14 @@ mod tests {
     #[tokio::test]
     async fn test_str_to_authority_index() {
         // Single uppercase letters: A=0, B=1, ..., Z=25
-        assert_eq!(
-            str_to_authority_index("A"),
-            Some(AuthorityIndex::new_for_test(0))
-        );
-        assert_eq!(
-            str_to_authority_index("B"),
-            Some(AuthorityIndex::new_for_test(1))
-        );
-        assert_eq!(
-            str_to_authority_index("Z"),
-            Some(AuthorityIndex::new_for_test(25))
-        );
+        assert_eq!(str_to_authority_index("A"), Some(AuthorityIndex::new_for_test(0)));
+        assert_eq!(str_to_authority_index("B"), Some(AuthorityIndex::new_for_test(1)));
+        assert_eq!(str_to_authority_index("Z"), Some(AuthorityIndex::new_for_test(25)));
 
         // Bracketed numeric index for values > 25
-        assert_eq!(
-            str_to_authority_index("[26]"),
-            Some(AuthorityIndex::new_for_test(26))
-        );
-        assert_eq!(
-            str_to_authority_index("[100]"),
-            Some(AuthorityIndex::new_for_test(100))
-        );
-        assert_eq!(
-            str_to_authority_index("[0]"),
-            Some(AuthorityIndex::new_for_test(0))
-        );
+        assert_eq!(str_to_authority_index("[26]"), Some(AuthorityIndex::new_for_test(26)));
+        assert_eq!(str_to_authority_index("[100]"), Some(AuthorityIndex::new_for_test(100)));
+        assert_eq!(str_to_authority_index("[0]"), Some(AuthorityIndex::new_for_test(0)));
 
         // Invalid inputs
         assert_eq!(str_to_authority_index("a"), None); // lowercase

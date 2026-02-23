@@ -11,8 +11,7 @@ use prost_types::FieldMask;
 use types::object::ObjectID;
 
 /// Default fields to return if no read_mask is specified.
-pub const READ_MASK_DEFAULT: &str =
-    "id,status,generation_epoch,reward_pool,distance_threshold";
+pub const READ_MASK_DEFAULT: &str = "id,status,generation_epoch,reward_pool,distance_threshold";
 
 #[tracing::instrument(skip(service))]
 pub fn get_target(service: &RpcService, request: GetTargetRequest) -> Result<GetTargetResponse> {
@@ -68,9 +67,6 @@ pub fn get_target(service: &RpcService, request: GetTargetRequest) -> Result<Get
     let object_id: ObjectID = target_id.into();
     let target_proto = target_to_proto_with_id(&object_id, &target, &read_mask);
 
-    let response = GetTargetResponse {
-        target: Some(target_proto),
-        ..Default::default()
-    };
+    let response = GetTargetResponse { target: Some(target_proto), ..Default::default() };
     Ok(response)
 }

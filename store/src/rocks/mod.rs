@@ -10,10 +10,8 @@ use crate::{Map, nondeterministic};
 
 use backoff::backoff::Backoff;
 use fastcrypto::hash::{Digest, HashFunction};
-use rocksdb::properties::num_files_at_level;
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamilyDescriptor, Error, MultiThreaded, ReadOptions, WriteBatch,
-    properties,
 };
 use rocksdb::{DBPinnableSlice, LiveFile, checkpoint::Checkpoint};
 use serde::{Serialize, de::DeserializeOwned};
@@ -27,13 +25,13 @@ use std::{
     time::Duration,
 };
 use std::{collections::HashSet, ffi::CStr};
-use tokio::sync::oneshot;
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, instrument};
 
 use crate::memstore::{InMemoryBatch, InMemoryDB};
 pub use crate::rocks::options::{DBMapTableConfigMap, DBOptions, read_size_from_env};
 use crate::{DbIterator, TypedStoreError, be_fix_int_ser};
 
+#[allow(dead_code, unsafe_code)]
 const ROCKSDB_PROPERTY_TOTAL_BLOB_FILES_SIZE: &CStr =
     unsafe { CStr::from_bytes_with_nul_unchecked("rocksdb.total-blob-file-size\0".as_bytes()) };
 
@@ -363,6 +361,7 @@ pub struct DBMap<K, V> {
     pub opts: ReadWriteOptions,
 }
 
+#[allow(unsafe_code)]
 unsafe impl<K: Send, V: Send> Send for DBMap<K, V> {}
 
 impl<K, V> DBMap<K, V> {
@@ -371,10 +370,10 @@ impl<K, V> DBMap<K, V> {
         opts: &ReadWriteOptions,
         opt_cf: &str,
         column_family: ColumnFamily,
-        is_deprecated: bool,
+        _is_deprecated: bool,
     ) -> Self {
-        let db_cloned = Arc::downgrade(&db.clone());
-        let cf = opt_cf.to_string();
+        let _db_cloned = Arc::downgrade(&db.clone());
+        let _cf = opt_cf.to_string();
 
         DBMap {
             db: db.clone(),
@@ -453,11 +452,12 @@ impl<K, V> DBMap<K, V> {
             .into_iter()
             .collect();
         let entries = results?;
-        let entry_size = entries.iter().flatten().map(|entry| entry.len()).sum::<usize>();
+        let _entry_size = entries.iter().flatten().map(|entry| entry.len()).sum::<usize>();
 
         Ok(entries)
     }
 
+    #[allow(dead_code)]
     fn get_rocksdb_int_property(
         rocksdb: &RocksDB,
         cf: &impl AsColumnFamilyRef,
@@ -545,7 +545,7 @@ impl DBBatch {
     /// Consume the batch and write its operations to the database with custom write options
     #[instrument(level = "trace", skip_all, err)]
     pub fn write_opt(self, write_options: &rocksdb::WriteOptions) -> Result<(), TypedStoreError> {
-        let db_name = self.database.db_name();
+        let _db_name = self.database.db_name();
 
         self.database.write_opt(self.batch, write_options)?;
 

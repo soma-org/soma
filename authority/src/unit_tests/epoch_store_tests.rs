@@ -39,23 +39,14 @@ async fn test_epoch_store_basic_properties() {
 
     // Committee should contain at least one validator
     let committee = epoch_store.committee();
-    assert!(
-        !committee.voting_rights.is_empty(),
-        "Committee should have voting members"
-    );
+    assert!(!committee.voting_rights.is_empty(), "Committee should have voting members");
 
     // Protocol config should be accessible
     let protocol_config = epoch_store.protocol_config();
-    assert!(
-        protocol_config.version.as_u64() >= 1,
-        "Protocol version should be at least 1"
-    );
+    assert!(protocol_config.version.as_u64() >= 1, "Protocol version should be at least 1");
 
     // This node should be a validator in this epoch
-    assert!(
-        epoch_store.is_validator(),
-        "Test authority should be a validator in its own epoch"
-    );
+    assert!(epoch_store.is_validator(), "Test authority should be a validator in its own epoch");
 }
 
 #[tokio::test]
@@ -65,11 +56,7 @@ async fn test_epoch_store_epoch_start_state() {
     let epoch_store = authority_state.epoch_store_for_testing();
 
     let epoch_start_state = epoch_store.epoch_start_state();
-    assert_eq!(
-        epoch_start_state.epoch(),
-        0,
-        "Epoch start state should report epoch 0"
-    );
+    assert_eq!(epoch_start_state.epoch(), 0, "Epoch start state should report epoch 0");
 }
 
 // =============================================================================
@@ -103,11 +90,7 @@ async fn test_epoch_store_signed_transaction_storage() {
     // Retrieve the signed transaction from epoch store
     let epoch_store = authority_state.epoch_store_for_testing();
     let signed_tx = epoch_store.get_signed_transaction(&tx_digest);
-    assert!(
-        signed_tx.is_ok(),
-        "get_signed_transaction should not error: {:?}",
-        signed_tx.err()
-    );
+    assert!(signed_tx.is_ok(), "get_signed_transaction should not error: {:?}", signed_tx.err());
     assert!(
         signed_tx.unwrap().is_some(),
         "Signed transaction should exist in epoch store after execution"
@@ -157,11 +140,7 @@ async fn test_epoch_store_effects_signatures() {
 
     // Effects signature should exist
     let effects_sig = epoch_store.get_effects_signature(&tx_digest);
-    assert!(
-        effects_sig.is_ok(),
-        "get_effects_signature should not error: {:?}",
-        effects_sig.err()
-    );
+    assert!(effects_sig.is_ok(), "get_effects_signature should not error: {:?}", effects_sig.err());
     assert!(
         effects_sig.unwrap().is_some(),
         "Effects signature should exist after transaction execution"

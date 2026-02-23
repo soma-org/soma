@@ -26,8 +26,7 @@ impl FromStr for SomaAmount {
         let parts: Vec<&str> = s.split('.').collect();
         match parts.len() {
             1 => {
-                let whole: u64 =
-                    parts[0].parse().map_err(|_| format!("invalid amount: {}", s))?;
+                let whole: u64 = parts[0].parse().map_err(|_| format!("invalid amount: {}", s))?;
                 whole
                     .checked_mul(SHANNONS_PER_SOMA)
                     .map(SomaAmount)
@@ -47,9 +46,7 @@ impl FromStr for SomaAmount {
                         .ok_or_else(|| format!("amount overflow: {} SOMA", s));
                 }
                 if frac_str.len() > 9 {
-                    return Err(
-                        "precision beyond 1 shannon (max 9 decimal places)".into(),
-                    );
+                    return Err("precision beyond 1 shannon (max 9 decimal places)".into());
                 }
                 let frac_padded = format!("{:0<9}", frac_str);
                 let frac: u64 =

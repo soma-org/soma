@@ -26,7 +26,7 @@ use scoring::tonic_gen::scoring_client::ScoringClient;
 use scoring::types::{ManifestInput, ScoreRequest};
 use types::{
     base::{AuthorityName, SomaAddress},
-    challenge::{ChallengeV1, ChallengeId},
+    challenge::{ChallengeId, ChallengeV1},
     committee::EpochId,
     consensus::ConsensusTransaction,
     crypto::{Signature, SomaKeyPair},
@@ -136,11 +136,7 @@ impl RuntimeAPI for RemoteScoringRuntime {
         ))
     }
 
-    async fn download_manifest(
-        &self,
-        _manifest: &Manifest,
-        _path: &BlobPath,
-    ) -> RuntimeResult<()> {
+    async fn download_manifest(&self, _manifest: &Manifest, _path: &BlobPath) -> RuntimeResult<()> {
         // The remote scoring service handles its own downloads.
         Ok(())
     }

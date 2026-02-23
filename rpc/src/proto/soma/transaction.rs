@@ -12,10 +12,8 @@ impl From<crate::types::Metadata> for Metadata {
         let mut message = Self::default();
         match value {
             crate::types::Metadata::V1(v1) => {
-                let proto_v1 = MetadataV1 {
-                    checksum: Some(v1.checksum.into()),
-                    size: Some(v1.size),
-                };
+                let proto_v1 =
+                    MetadataV1 { checksum: Some(v1.checksum.into()), size: Some(v1.size) };
                 message.version = Some(Version::V1(proto_v1));
             }
         }
@@ -56,10 +54,8 @@ impl From<crate::types::Manifest> for Manifest {
         let mut message = Self::default();
         match value {
             crate::types::Manifest::V1(v1) => {
-                let proto_v1 = ManifestV1 {
-                    url: Some(v1.url.into()),
-                    metadata: Some(v1.metadata.into()),
-                };
+                let proto_v1 =
+                    ManifestV1 { url: Some(v1.url.into()), metadata: Some(v1.metadata.into()) };
                 message.version = Some(Version::V1(proto_v1));
             }
         }
@@ -284,13 +280,17 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             ClaimRewards(args) => Kind::ClaimRewards(super::ClaimRewards {
                 target_id: Some(args.target_id.to_string()),
             }),
-            ReportSubmission { target_id, challenger } => Kind::ReportSubmission(super::ReportSubmission {
-                target_id: Some(target_id.to_string()),
-                challenger: challenger.map(|c| c.to_string()),
-            }),
-            UndoReportSubmission { target_id } => Kind::UndoReportSubmission(super::UndoReportSubmission {
-                target_id: Some(target_id.to_string()),
-            }),
+            ReportSubmission { target_id, challenger } => {
+                Kind::ReportSubmission(super::ReportSubmission {
+                    target_id: Some(target_id.to_string()),
+                    challenger: challenger.map(|c| c.to_string()),
+                })
+            }
+            UndoReportSubmission { target_id } => {
+                Kind::UndoReportSubmission(super::UndoReportSubmission {
+                    target_id: Some(target_id.to_string()),
+                })
+            }
 
             // Challenge transactions
             // All challenges are fraud challenges now (simplified design v2)
@@ -304,12 +304,16 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             ReportChallenge { challenge_id } => Kind::ReportChallenge(super::ReportChallenge {
                 challenge_id: Some(challenge_id.to_string()),
             }),
-            UndoReportChallenge { challenge_id } => Kind::UndoReportChallenge(super::UndoReportChallenge {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
-            ClaimChallengeBond { challenge_id } => Kind::ClaimChallengeBond(super::ClaimChallengeBond {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
+            UndoReportChallenge { challenge_id } => {
+                Kind::UndoReportChallenge(super::UndoReportChallenge {
+                    challenge_id: Some(challenge_id.to_string()),
+                })
+            }
+            ClaimChallengeBond { challenge_id } => {
+                Kind::ClaimChallengeBond(super::ClaimChallengeBond {
+                    challenge_id: Some(challenge_id.to_string()),
+                })
+            }
         };
 
         TransactionKind { kind: Some(kind) }
@@ -794,9 +798,7 @@ impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
-            next_epoch_proof_of_possession: value
-                .next_epoch_proof_of_possession
-                .map(|v| v.into()),
+            next_epoch_proof_of_possession: value.next_epoch_proof_of_possession.map(|v| v.into()),
         }
     }
 }
@@ -877,13 +879,7 @@ impl TryFrom<&ConsensusCommitPrologue> for crate::types::ConsensusCommitPrologue
 //
 impl From<crate::types::GenesisTransaction> for GenesisTransaction {
     fn from(value: crate::types::GenesisTransaction) -> Self {
-        Self {
-            objects: value
-                .objects
-                .into_iter()
-                .map(Object::from)
-                .collect(),
-        }
+        Self { objects: value.objects.into_iter().map(Object::from).collect() }
     }
 }
 

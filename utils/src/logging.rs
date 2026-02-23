@@ -74,10 +74,10 @@ impl NodeFiles {
     /// Get or create a file for the given node ID
     fn get_or_create(&self, node_id: u32) -> Option<Arc<Mutex<File>>> {
         // First try to get the file with a read lock
-        if let Ok(files) = self.files.read()
-            && let Some(file) = files.get(&node_id)
-        {
-            return Some(file.clone());
+        if let Ok(files) = self.files.read() {
+            if let Some(file) = files.get(&node_id) {
+                return Some(file.clone());
+            }
         }
 
         // If not found, acquire a write lock and create the file
@@ -202,10 +202,10 @@ where
         let mut visitor = FieldVisitor::new();
         values.record(&mut visitor);
 
-        if let Ok(mut cache) = self.span_values.write()
-            && let Some(span_values) = cache.get_mut(id)
-        {
-            span_values.extend(visitor.values);
+        if let Ok(mut cache) = self.span_values.write() {
+            if let Some(span_values) = cache.get_mut(id) {
+                span_values.extend(visitor.values);
+            }
         }
     }
 
@@ -295,13 +295,16 @@ where
         // }
 
         // Use regex to extract node ID from the formatted log line
-        if let Some(captures) = self.node_id_regex.captures(&log_line)
-            && let Some(id_match) = captures.get(1)
-            && let Ok(node_id) = id_match.as_str().parse::<u32>()
-            && let Some(file_mutex) = self.node_files.get_or_create(node_id)
-            && let Ok(mut file) = file_mutex.lock()
-        {
-            let _ = writeln!(file, "{}", log_line);
+        if let Some(captures) = self.node_id_regex.captures(&log_line) {
+            if let Some(id_match) = captures.get(1) {
+                if let Ok(node_id) = id_match.as_str().parse::<u32>() {
+                    if let Some(file_mutex) = self.node_files.get_or_create(node_id) {
+                        if let Ok(mut file) = file_mutex.lock() {
+                            let _ = writeln!(file, "{}", log_line);
+                        }
+                    }
+                }
+            }
         }
     }
 

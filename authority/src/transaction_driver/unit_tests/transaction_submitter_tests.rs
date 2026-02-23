@@ -6,14 +6,12 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use types::committee::Committee;
-use types::crypto::KeypairTraits;
 use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
-use types::consensus::block::BlockRef;
 use types::consensus::ConsensusPosition;
+use types::consensus::block::BlockRef;
+use types::crypto::KeypairTraits;
 use types::error::SomaError;
-use types::messages_grpc::{
-    SubmitTxRequest, SubmitTxResponse, SubmitTxResult, TxType,
-};
+use types::messages_grpc::{SubmitTxRequest, SubmitTxResponse, SubmitTxResult, TxType};
 use types::storage::committee_store::CommitteeStore;
 
 use crate::authority_aggregator::AuthorityAggregator;
@@ -59,10 +57,7 @@ fn setup() -> (
     ));
 
     let agg_swap = Arc::new(ArcSwap::new(aggregator.clone()));
-    let monitor = ValidatorClientMonitor::new(
-        ValidatorClientMonitorConfig::default(),
-        agg_swap,
-    );
+    let monitor = ValidatorClientMonitor::new(ValidatorClientMonitorConfig::default(), agg_swap);
 
     let submitter = TransactionSubmitter::new();
 
@@ -70,20 +65,13 @@ fn setup() -> (
 }
 
 fn make_submit_request() -> SubmitTxRequest {
-    SubmitTxRequest {
-        transaction: None,
-        ping_type: None,
-    }
+    SubmitTxRequest { transaction: None, ping_type: None }
 }
 
 fn make_success_response() -> SubmitTxResponse {
     SubmitTxResponse {
         results: vec![SubmitTxResult::Submitted {
-            consensus_position: ConsensusPosition {
-                epoch: 0,
-                block: BlockRef::MIN,
-                index: 0,
-            },
+            consensus_position: ConsensusPosition { epoch: 0, block: BlockRef::MIN, index: 0 },
         }],
     }
 }
@@ -213,8 +201,7 @@ async fn test_submit_transaction_non_retriable_rejected() {
     assert!(result.is_err());
     match result.unwrap_err() {
         TransactionDriverError::RejectedByValidators {
-            submission_non_retriable_errors,
-            ..
+            submission_non_retriable_errors, ..
         } => {
             assert!(
                 submission_non_retriable_errors.total_stake > 0,

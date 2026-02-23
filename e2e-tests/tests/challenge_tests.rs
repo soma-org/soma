@@ -60,7 +60,10 @@ fn sign_transaction_as_validator(
 }
 
 /// Get validator's soma address by index
-fn get_validator_address(test_cluster: &test_cluster::TestCluster, validator_index: usize) -> SomaAddress {
+fn get_validator_address(
+    test_cluster: &test_cluster::TestCluster,
+    validator_index: usize,
+) -> SomaAddress {
     test_cluster.swarm.config().validator_configs[validator_index].soma_address()
 }
 
@@ -96,10 +99,10 @@ async fn get_validator_gas_object(
     // Find the created coin for the validator
     let created = response.effects.created();
     for (obj_ref, owner) in created {
-        if let types::object::Owner::AddressOwner(addr) = owner
-            && addr == validator_address
-        {
-            return obj_ref;
+        if let types::object::Owner::AddressOwner(addr) = owner {
+            if addr == validator_address {
+                return obj_ref;
+            }
         }
     }
 
@@ -118,10 +121,7 @@ fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest {
-        manifest,
-        decryption_key: DecryptionKey::new([0xAA; 32]),
-    }
+    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
 }
 
 fn make_genesis_model_config(
@@ -179,14 +179,11 @@ async fn fill_target_with_distance(
     let miner = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should be able to get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -267,10 +264,8 @@ async fn test_initiate_challenge_creates_challenge_object() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target (this stays in epoch 0)
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -290,17 +285,12 @@ async fn test_initiate_challenge_creates_challenge_object() {
     // Create InitiateChallenge transaction
     // ChallengeId is derived from tx_digest during execution, not client-provided
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
 
-    let response = test_cluster
-        .sign_and_execute_transaction(&challenge_tx)
-        .await;
+    let response = test_cluster.sign_and_execute_transaction(&challenge_tx).await;
 
     assert!(
         response.effects.status().is_ok(),
@@ -312,19 +302,14 @@ async fn test_initiate_challenge_creates_challenge_object() {
 
     // Find the created Challenge object from effects
     let created_objects = response.effects.created();
-    let challenge_object_ref = created_objects
-        .iter()
-        .find(|(_, owner)| {
-            // The challenge is a shared object
-            matches!(owner, types::object::Owner::Shared { .. })
-        });
+    let challenge_object_ref = created_objects.iter().find(|(_, owner)| {
+        // The challenge is a shared object
+        matches!(owner, types::object::Owner::Shared { .. })
+    });
 
-    assert!(
-        challenge_object_ref.is_some(),
-        "Should have created a Challenge shared object"
-    );
+    assert!(challenge_object_ref.is_some(), "Should have created a Challenge shared object");
 
-    let created_challenge_id = challenge_object_ref.unwrap().0 .0;
+    let created_challenge_id = challenge_object_ref.unwrap().0.0;
     info!("Challenge created with ID: {}", created_challenge_id);
 
     info!("test_initiate_challenge_creates_challenge_object passed");
@@ -348,10 +333,8 @@ async fn test_initiate_challenge_locks_bond() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -373,14 +356,9 @@ async fn test_initiate_challenge_locks_bond() {
     let balance_before = bond_object_before.as_coin().expect("Should be a coin");
 
     // Get the expected bond from protocol config
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().expect("Should get SystemState")
+    });
     let bond_per_byte = system_state.parameters().challenger_bond_per_byte;
     let data_size = 1024u64; // From make_submission_manifest
     let expected_bond = data_size * bond_per_byte;
@@ -393,21 +371,13 @@ async fn test_initiate_challenge_locks_bond() {
     // Create and execute InitiateChallenge
     // ChallengeId is derived from tx_digest during execution, not client-provided
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
 
-    let response = test_cluster
-        .sign_and_execute_transaction(&challenge_tx)
-        .await;
-    assert!(
-        response.effects.status().is_ok(),
-        "InitiateChallenge should succeed"
-    );
+    let response = test_cluster.sign_and_execute_transaction(&challenge_tx).await;
+    assert!(response.effects.status().is_ok(), "InitiateChallenge should succeed");
 
     // Check balance after (coin should still exist since it's gas coin)
     let bond_object_after = client.get_object(bond_coin.0).await.unwrap();
@@ -422,10 +392,7 @@ async fn test_initiate_challenge_locks_bond() {
         expected_bond
     );
 
-    info!(
-        "test_initiate_challenge_locks_bond passed: balance decreased by {}",
-        balance_decrease
-    );
+    info!("test_initiate_challenge_locks_bond passed: balance decreased by {}", balance_decrease);
 }
 
 // ===================================================================
@@ -446,10 +413,8 @@ async fn test_initiate_challenge_window_closed() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target in epoch 0
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -470,17 +435,12 @@ async fn test_initiate_challenge_window_closed() {
 
     // ChallengeId is derived from tx_digest during execution, not client-provided
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
 
-    let response = test_cluster
-        .sign_and_execute_transaction(&challenge_tx)
-        .await;
+    let response = test_cluster.sign_and_execute_transaction(&challenge_tx).await;
 
     // Should fail with ChallengeWindowClosed
     assert!(
@@ -488,9 +448,7 @@ async fn test_initiate_challenge_window_closed() {
         "InitiateChallenge should fail when challenge window is closed"
     );
 
-    info!(
-        "test_initiate_challenge_window_closed passed: challenge correctly rejected"
-    );
+    info!("test_initiate_challenge_window_closed passed: challenge correctly rejected");
 }
 
 // ===================================================================
@@ -511,24 +469,17 @@ async fn test_report_submission_transaction() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled", target_id);
 
     // Get a validator address (from the committee)
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().expect("Should get SystemState")
+    });
 
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
     info!("Validator address: {}", validator_address);
@@ -543,23 +494,15 @@ async fn test_report_submission_transaction() {
         .expect("Non-validator should have a gas object");
 
     let report_tx = TransactionData::new(
-        TransactionKind::ReportSubmission {
-            target_id,
-            challenger: None,
-        },
+        TransactionKind::ReportSubmission { target_id, challenger: None },
         non_validator,
         vec![gas_coin],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&report_tx).await;
-    assert!(
-        response.effects.status().is_err(),
-        "ReportSubmission should fail for non-validator"
-    );
+    assert!(response.effects.status().is_err(), "ReportSubmission should fail for non-validator");
 
-    info!(
-        "test_report_submission_transaction passed: non-validator correctly rejected"
-    );
+    info!("test_report_submission_transaction passed: non-validator correctly rejected");
 }
 
 // ===================================================================
@@ -584,24 +527,17 @@ async fn test_claim_rewards_forfeits_on_quorum_reports() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, miner) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled by miner {}", target_id, miner);
 
     // Get system state to check report mechanism exists
-    let system_state = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| {
-            node.state()
-                .get_system_state_object_for_testing()
-                .expect("Should get SystemState")
-        });
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().expect("Should get SystemState")
+    });
 
     // Verify the quorum threshold is calculated correctly
     let num_validators = system_state.validators().validators.len();
@@ -657,10 +593,8 @@ async fn test_claim_rewards_succeeds_without_quorum() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, miner) = fill_target(&test_cluster, model_id).await;
@@ -699,10 +633,7 @@ async fn test_claim_rewards_succeeds_without_quorum() {
         .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner))
         .count() as u64;
 
-    assert!(
-        miner_received > 0,
-        "Miner should receive at least one coin (bond return or reward)"
-    );
+    assert!(miner_received > 0, "Miner should receive at least one coin (bond return or reward)");
 
     info!(
         "test_claim_rewards_succeeds_without_quorum passed: miner received {} coins",
@@ -732,10 +663,8 @@ async fn test_challenge_flow_fraud_with_challenger() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, miner) = fill_target(&test_cluster, model_id).await;
@@ -751,10 +680,7 @@ async fn test_challenge_flow_fraud_with_challenger() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
@@ -843,10 +769,7 @@ async fn test_challenge_flow_fraud_with_challenger() {
         .collect();
 
     // With fraud quorum, miner's bond goes to challenger, so miner gets 0 coins
-    info!(
-        "Miner received {} coins (expected 0 due to fraud)",
-        miner_coins.len()
-    );
+    info!("Miner received {} coins (expected 0 due to fraud)", miner_coins.len());
 
     info!("test_challenge_flow_fraud_with_challenger passed");
 }
@@ -873,10 +796,8 @@ async fn test_challenge_flow_availability_no_challenger() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, miner) = fill_target(&test_cluster, model_id).await;
@@ -886,10 +807,7 @@ async fn test_challenge_flow_availability_no_challenger() {
 
     // All 4 validators report the submission WITHOUT challenger attribution
     let num_validators = test_cluster.swarm.config().validator_configs.len();
-    info!(
-        "Submitting availability reports from {} validators (no challenger)",
-        num_validators
-    );
+    info!("Submitting availability reports from {} validators (no challenger)", num_validators);
 
     for i in 0..num_validators {
         let validator_addr = get_validator_address(&test_cluster, i);
@@ -953,10 +871,7 @@ async fn test_challenge_flow_availability_no_challenger() {
         .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner))
         .collect();
 
-    info!(
-        "Miner received {} coins (expected 0 due to availability quorum)",
-        miner_coins.len()
-    );
+    info!("Miner received {} coins (expected 0 due to availability quorum)", miner_coins.len());
 
     // Validators should have received coins
     let mut validator_coins = 0;
@@ -971,10 +886,7 @@ async fn test_challenge_flow_availability_no_challenger() {
         validator_coins += count;
     }
 
-    info!(
-        "Validators received {} coins total (miner bond split)",
-        validator_coins
-    );
+    info!("Validators received {} coins total (miner bond split)", validator_coins);
 
     info!("test_challenge_flow_availability_no_challenger passed");
 }
@@ -1000,10 +912,8 @@ async fn test_challenge_flow_challenger_loses() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -1019,19 +929,13 @@ async fn test_challenge_flow_challenger_loses() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&challenge_tx).await;
-    assert!(
-        response.effects.status().is_ok(),
-        "InitiateChallenge should succeed"
-    );
+    assert!(response.effects.status().is_ok(), "InitiateChallenge should succeed");
 
     // Find the created Challenge ID
     let challenge_id = response
@@ -1103,10 +1007,7 @@ async fn test_challenge_flow_challenger_loses() {
         })
         .collect();
 
-    info!(
-        "Challenger received {} coins (expected 0 - bond forfeited)",
-        challenger_coins.len()
-    );
+    info!("Challenger received {} coins (expected 0 - bond forfeited)", challenger_coins.len());
 
     // Validators should have received the challenger's bond
     let mut validator_coins = 0;
@@ -1121,10 +1022,7 @@ async fn test_challenge_flow_challenger_loses() {
         validator_coins += count;
     }
 
-    info!(
-        "Validators received {} coins total (challenger bond split)",
-        validator_coins
-    );
+    info!("Validators received {} coins total (challenger bond split)", validator_coins);
 
     info!("test_challenge_flow_challenger_loses passed");
 }
@@ -1150,10 +1048,8 @@ async fn test_challenge_flow_no_quorum() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -1169,19 +1065,13 @@ async fn test_challenge_flow_no_quorum() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&challenge_tx).await;
-    assert!(
-        response.effects.status().is_ok(),
-        "InitiateChallenge should succeed"
-    );
+    assert!(response.effects.status().is_ok(), "InitiateChallenge should succeed");
 
     let challenge_id = response
         .effects
@@ -1205,10 +1095,7 @@ async fn test_challenge_flow_no_quorum() {
 
     let signed_tx = sign_transaction_as_validator(&test_cluster, 0, &report_tx);
     let response = test_cluster.execute_transaction(signed_tx).await;
-    assert!(
-        response.effects.status().is_ok(),
-        "ReportChallenge should succeed"
-    );
+    assert!(response.effects.status().is_ok(), "ReportChallenge should succeed");
     info!("Only 1 validator reported - no quorum");
 
     // Advance epochs to close challenge window
@@ -1247,15 +1134,9 @@ async fn test_challenge_flow_no_quorum() {
         })
         .collect();
 
-    assert!(
-        !challenger_coins.is_empty(),
-        "Challenger should get bond back when no quorum"
-    );
+    assert!(!challenger_coins.is_empty(), "Challenger should get bond back when no quorum");
 
-    info!(
-        "Challenger received {} coins (bond returned due to no quorum)",
-        challenger_coins.len()
-    );
+    info!("Challenger received {} coins (bond returned due to no quorum)", challenger_coins.len());
 
     info!("test_challenge_flow_no_quorum passed");
 }
@@ -1278,10 +1159,8 @@ async fn test_duplicate_challenge_rejected() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -1306,10 +1185,7 @@ async fn test_duplicate_challenge_rejected() {
     );
 
     let response = test_cluster.sign_and_execute_transaction(&challenge_tx1).await;
-    assert!(
-        response.effects.status().is_ok(),
-        "First InitiateChallenge should succeed"
-    );
+    assert!(response.effects.status().is_ok(), "First InitiateChallenge should succeed");
     info!("First challenge initiated by {}", challenger1);
 
     // Second challenger attempts to challenge the same target
@@ -1356,10 +1232,8 @@ async fn test_report_challenge_validator_only() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
     let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
@@ -1374,10 +1248,7 @@ async fn test_report_challenge_validator_only() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
@@ -1409,10 +1280,7 @@ async fn test_report_challenge_validator_only() {
     );
 
     let response = test_cluster.sign_and_execute_transaction(&report_tx).await;
-    assert!(
-        response.effects.status().is_err(),
-        "ReportChallenge should fail for non-validator"
-    );
+    assert!(response.effects.status().is_err(), "ReportChallenge should fail for non-validator");
 
     info!("test_report_challenge_validator_only passed");
 }
@@ -1447,10 +1315,8 @@ async fn test_audit_service_fraud_flow_miner_lies() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target with default distance (threshold - 0.1, a large value)
     // MockCompetitionAPI returns 0.0, so this will be detected as fraud
@@ -1467,10 +1333,7 @@ async fn test_audit_service_fraud_flow_miner_lies() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
@@ -1626,10 +1489,8 @@ async fn test_audit_service_success_flow_miner_honest() {
     let initial_stake = 5 * SHANNONS_PER_SOMA;
     let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_genesis_models(vec![model_config])
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
     // This will NOT be detected as fraud
@@ -1646,10 +1507,7 @@ async fn test_audit_service_success_flow_miner_honest() {
         .expect("Challenger should have a gas object");
 
     let challenge_tx = TransactionData::new(
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin,
-        }),
+        TransactionKind::InitiateChallenge(InitiateChallengeArgs { target_id, bond_coin }),
         challenger,
         vec![bond_coin],
     );
@@ -1784,18 +1642,12 @@ async fn test_audit_service_success_flow_miner_honest() {
         })
         .collect();
 
-    info!(
-        "REWARDS: miner received {} coins (bond return + rewards)",
-        miner_coins.len()
-    );
+    info!("REWARDS: miner received {} coins (bond return + rewards)", miner_coins.len());
 
     // Honest miner should receive:
     // - Their original bond back
     // - Any mining rewards
-    assert!(
-        !miner_coins.is_empty(),
-        "Honest miner should receive bond + rewards"
-    );
+    assert!(!miner_coins.is_empty(), "Honest miner should receive bond + rewards");
 
     info!("test_audit_service_success_flow_miner_honest PASSED: miner rewarded");
 }

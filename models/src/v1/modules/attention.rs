@@ -2,10 +2,7 @@ use crate::v1::{V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_SCALE_FACT
 use burn::{
     config::Config,
     module::Module,
-    nn::{
-        Initializer, Linear, LinearConfig,
-        attention::generate_autoregressive_mask,
-    },
+    nn::{Initializer, Linear, LinearConfig, attention::generate_autoregressive_mask},
     prelude::Backend,
     tensor::{Bool, Int, Tensor, activation::softmax},
 };

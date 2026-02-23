@@ -580,15 +580,14 @@ impl TestClusterBuilder {
         // Start a mock scoring server so validators can run the audit service.
         let scoring_host = local_ip_utils::get_new_ip();
         let scoring_port = local_ip_utils::get_available_port(&scoring_host);
-        let scoring_addr: SocketAddr =
-            format!("{scoring_host}:{scoring_port}").parse().unwrap();
+        let scoring_addr: SocketAddr = format!("{scoring_host}:{scoring_port}").parse().unwrap();
 
         let listener = tokio::net::TcpListener::bind(scoring_addr).await?;
         tokio::spawn(async move {
             scoring::tonic::transport::Server::builder()
-                .add_service(
-                    scoring::tonic_gen::scoring_server::ScoringServer::new(MockScoringService),
-                )
+                .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
+                    MockScoringService,
+                ))
                 .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                 .await
                 .expect("mock scoring server");

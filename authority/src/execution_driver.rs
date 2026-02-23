@@ -102,7 +102,7 @@ pub async fn execution_process(
                     &epoch_store_clone,
                 ).await {
                     ExecutionOutput::Success(_) => {
-                    
+
                     }
                     ExecutionOutput::EpochEnded => {
                         warn!("Could not execute transaction {digest:?} because validator is halted at epoch end. certificate={certificate:?}");

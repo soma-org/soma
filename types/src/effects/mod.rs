@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::base::ExecutionDigests;
-use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use enum_dispatch::enum_dispatch;
+use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -226,8 +226,8 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
                 }
                 _ => None,
             })
-            .chain(self.unchanged_shared_objects.iter().map(|(id, change_kind)| {
-                match change_kind {
+            .chain(self.unchanged_shared_objects.iter().map(
+                |(id, change_kind)| match change_kind {
                     UnchangedSharedKind::ReadOnlyRoot((version, digest)) => {
                         InputSharedObject::ReadOnly((*id, *version, *digest))
                     }
@@ -240,8 +240,8 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
                     UnchangedSharedKind::Cancelled(seqno) => {
                         InputSharedObject::Cancelled(*id, *seqno)
                     }
-                }
-            }))
+                },
+            ))
             .collect()
     }
 
@@ -835,13 +835,8 @@ pub enum ExecutionFailureStatus {
     //
     // Challenge errors
     //
-    #[error(
-        "Challenge window has closed: fill_epoch={fill_epoch}, current_epoch={current_epoch}"
-    )]
-    ChallengeWindowClosed {
-        fill_epoch: EpochId,
-        current_epoch: EpochId,
-    },
+    #[error("Challenge window has closed: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
+    ChallengeWindowClosed { fill_epoch: EpochId, current_epoch: EpochId },
 
     #[error("Insufficient challenger bond: required {required}, provided {provided}.")]
     InsufficientChallengerBond { required: u64, provided: u64 },
@@ -855,13 +850,8 @@ pub enum ExecutionFailureStatus {
     #[error("Challenge already exists for this target (only first challenger wins)")]
     ChallengeAlreadyExists,
 
-    #[error(
-        "Challenge expired: challenge_epoch={challenge_epoch}, current_epoch={current_epoch}"
-    )]
-    ChallengeExpired {
-        challenge_epoch: EpochId,
-        current_epoch: EpochId,
-    },
+    #[error("Challenge expired: challenge_epoch={challenge_epoch}, current_epoch={current_epoch}")]
+    ChallengeExpired { challenge_epoch: EpochId, current_epoch: EpochId },
 
     #[error("Invalid challenge result: challenge_id mismatch")]
     InvalidChallengeResult,

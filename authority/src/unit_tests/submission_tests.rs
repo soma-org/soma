@@ -18,7 +18,7 @@ use types::{
         genesis_config::{GenesisConfig, GenesisModelConfig},
         network_config::ConfigBuilder,
     },
-    crypto::{DecryptionKey, DIGEST_LENGTH, SomaKeyPair, get_key_pair},
+    crypto::{DIGEST_LENGTH, DecryptionKey, SomaKeyPair, get_key_pair},
     digests::{
         DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment, TransactionDigest,
     },
@@ -28,7 +28,7 @@ use types::{
     model::{ModelId, ModelWeightsManifest},
     object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
     submission::SubmissionManifest,
-    target::{TargetV1, TargetStatus},
+    target::{TargetStatus, TargetV1},
     tensor::SomaTensor,
     transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
     unit_tests::utils::to_sender_signed_transaction,
@@ -36,8 +36,7 @@ use types::{
 use url::Url;
 
 use crate::{
-    authority::AuthorityState,
-    authority_test_utils::send_and_confirm_transaction_,
+    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
     test_authority_builder::TestAuthorityBuilder,
 };
 
@@ -201,23 +200,18 @@ async fn build_authority_with_model() -> ModelTestSetup {
     let mut genesis_config = GenesisConfig::for_local_testing();
     genesis_config.genesis_models.push(make_genesis_model_config(model_id, model_owner));
 
-    let network_config = ConfigBuilder::new_with_temp_dir()
-        .with_genesis_config(genesis_config)
-        .build();
+    let network_config =
+        ConfigBuilder::new_with_temp_dir().with_genesis_config(genesis_config).build();
 
-    let authority_state = TestAuthorityBuilder::new()
-        .with_network_config(&network_config, 0)
-        .build()
-        .await;
+    let authority_state =
+        TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
     // Find a genesis target that references our model
     // Genesis creates targets as shared objects. They are stored in the object store.
     // We need to find one by scanning genesis objects.
     let genesis_objects = network_config.genesis.objects();
-    let genesis_target_id = genesis_objects
-        .iter()
-        .find(|obj| *obj.type_() == ObjectType::Target)
-        .map(|obj| obj.id());
+    let genesis_target_id =
+        genesis_objects.iter().find(|obj| *obj.type_() == ObjectType::Target).map(|obj| obj.id());
 
     ModelTestSetup { authority_state, model_id, model_owner, genesis_target_id }
 }
@@ -289,14 +283,14 @@ async fn test_submit_data_basic() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Should have created at least a Submission object
-    assert!(!effects.created().is_empty(), "Should create Submission (and possibly replacement target)");
+    assert!(
+        !effects.created().is_empty(),
+        "Should create Submission (and possibly replacement target)"
+    );
 
     // Target should be mutated (status -> Filled)
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
-    assert!(
-        mutated_ids.contains(&genesis_target_id),
-        "Target should be mutated to Filled status"
-    );
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
+    assert!(mutated_ids.contains(&genesis_target_id), "Target should be mutated to Filled status");
 }
 
 #[tokio::test]
@@ -412,17 +406,8 @@ async fn test_submit_data_filled_target() {
     let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let model_id = ObjectID::random();
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(
-        target_id,
-        vec![model_id],
-        10,
-        0.5,
-        1_000_000,
-        0,
-        0,
-        miner,
-        10_000,
-    );
+    let target_obj =
+        make_filled_target(target_id, vec![model_id], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -611,11 +596,7 @@ async fn test_submit_data_spawn_on_fill() {
 
     // Should create at least 1 object: the replacement Target
     let created_count = effects.created().len();
-    assert!(
-        created_count >= 1,
-        "Should create replacement Target, got {} objects",
-        created_count
-    );
+    assert!(created_count >= 1, "Should create replacement Target, got {} objects", created_count);
 }
 
 // =============================================================================
@@ -672,8 +653,7 @@ async fn test_claim_rewards_too_early() {
     authority_state.insert_genesis_object(gas).await;
 
     let target_id = ObjectID::random();
-    let target_obj =
-        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -768,8 +748,7 @@ async fn test_report_submission_not_validator() {
 
     let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj =
-        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -799,10 +778,8 @@ async fn test_report_submission_target_not_filled() {
     let v0_address = v0_config.soma_address();
     let v0_key = v0_config.account_key_pair.keypair().copy();
 
-    let authority_state = TestAuthorityBuilder::new()
-        .with_network_config(&network_config, 0)
-        .build()
-        .await;
+    let authority_state =
+        TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
     let gas_id = ObjectID::random();
     let gas = Object::with_id_owner_coin_for_testing(gas_id, v0_address, 50_000_000);
@@ -837,28 +814,21 @@ async fn test_report_submission_tally() {
     let model_owner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
 
     let mut genesis_config = GenesisConfig::for_local_testing();
-    genesis_config
-        .genesis_models
-        .push(make_genesis_model_config(model_id, model_owner));
+    genesis_config.genesis_models.push(make_genesis_model_config(model_id, model_owner));
 
-    let network_config = ConfigBuilder::new_with_temp_dir()
-        .with_genesis_config(genesis_config)
-        .build();
+    let network_config =
+        ConfigBuilder::new_with_temp_dir().with_genesis_config(genesis_config).build();
 
     let v0_config = &network_config.validator_configs()[0];
     let v0_address = v0_config.soma_address();
     let v0_key = v0_config.account_key_pair.keypair().copy();
 
-    let authority_state = TestAuthorityBuilder::new()
-        .with_network_config(&network_config, 0)
-        .build()
-        .await;
+    let authority_state =
+        TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
     // Find a genesis target that includes our model
     let genesis_objects = network_config.genesis.objects();
-    let genesis_target = genesis_objects
-        .iter()
-        .find(|obj| *obj.type_() == ObjectType::Target);
+    let genesis_target = genesis_objects.iter().find(|obj| *obj.type_() == ObjectType::Target);
 
     let genesis_target_id = match genesis_target {
         Some(obj) => obj.id(),
@@ -926,11 +896,8 @@ async fn test_report_submission_tally() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Target should be mutated (report added)
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
-    assert!(
-        mutated_ids.contains(&genesis_target_id),
-        "Target should be mutated with new report"
-    );
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
+    assert!(mutated_ids.contains(&genesis_target_id), "Target should be mutated with new report");
 
     // Verify the report was recorded on the target
     let target_obj = authority_state.get_object(&genesis_target_id).await.unwrap();
@@ -958,8 +925,7 @@ async fn test_undo_report_submission_not_validator() {
 
     let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj =
-        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -989,10 +955,8 @@ async fn test_undo_report_submission_no_prior_report() {
     let v0_address = v0_config.soma_address();
     let v0_key = v0_config.account_key_pair.keypair().copy();
 
-    let authority_state = TestAuthorityBuilder::new()
-        .with_network_config(&network_config, 0)
-        .build()
-        .await;
+    let authority_state =
+        TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
     let gas_id = ObjectID::random();
     let gas = Object::with_id_owner_coin_for_testing(gas_id, v0_address, 50_000_000);
@@ -1001,8 +965,7 @@ async fn test_undo_report_submission_no_prior_report() {
 
     let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj =
-        make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(

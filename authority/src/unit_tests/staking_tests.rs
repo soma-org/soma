@@ -14,8 +14,7 @@ use types::{
 };
 
 use crate::{
-    authority::AuthorityState,
-    authority_test_utils::send_and_confirm_transaction_,
+    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
     test_authority_builder::TestAuthorityBuilder,
 };
 
@@ -37,13 +36,7 @@ async fn test_add_stake_specific_amount() {
     let coin_id = ObjectID::random();
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
-    let res = execute_add_stake(
-        coin,
-        Some(10_000_000),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(coin, Some(10_000_000), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -83,10 +76,7 @@ async fn test_add_stake_entire_coin_as_gas() {
 
     // Coin should be deleted (entire balance staked minus fees)
     let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
-    assert!(
-        deleted_ids.contains(&coin_id),
-        "Coin should be deleted when staking all"
-    );
+    assert!(deleted_ids.contains(&coin_id), "Coin should be deleted when staking all");
 
     // Should have created a StakedSoma object
     assert!(effects.created().len() >= 1, "Should create StakedSoma");
@@ -103,13 +93,7 @@ async fn test_add_stake_half_value_fee() {
     let stake_amount = 10_000_000u64;
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 50_000_000);
 
-    let res = execute_add_stake(
-        coin,
-        Some(stake_amount),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -146,10 +130,7 @@ async fn test_add_stake_insufficient_balance_specific_amount() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: stake amount + fees > balance"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: stake amount + fees > balance");
 }
 
 #[tokio::test]
@@ -158,13 +139,7 @@ async fn test_add_stake_insufficient_gas() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 500);
 
-    let res = execute_add_stake(
-        coin,
-        Some(100),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(coin, Some(100), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(
@@ -217,13 +192,7 @@ async fn test_add_stake_gas_coin_reserves_for_fees() {
     // Available after base fee = 9_999_000
     // This should succeed (9_999_000 > 9_995_595)
 
-    let res = execute_add_stake(
-        coin,
-        Some(stake_amount),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res = execute_add_stake(coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -294,20 +263,15 @@ async fn execute_add_stake(
     };
 
     let data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref,
-            amount,
-        },
+        TransactionKind::AddStake { address: validator_address, coin_ref, amount },
         sender,
         vec![coin_ref],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     // AddStake requires SystemState (shared object) — must use with_shared: true
-    let txn_result =
-        send_and_confirm_transaction_(&authority_state, None, tx, true)
-            .await
-            .map(|(_, effects)| effects);
+    let txn_result = send_and_confirm_transaction_(&authority_state, None, tx, true)
+        .await
+        .map(|(_, effects)| effects);
 
     TransactionResult { authority_state, txn_result }
 }

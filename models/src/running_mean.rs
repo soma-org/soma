@@ -5,9 +5,15 @@ pub struct RunningMean<B: Backend, const D: usize> {
     count: usize,
 }
 
+impl<B: Backend, const D: usize> Default for RunningMean<B, D> {
+    fn default() -> Self {
+        Self { running_mean: None, count: 0 }
+    }
+}
+
 impl<B: Backend, const D: usize> RunningMean<B, D> {
     pub fn new() -> Self {
-        Self { running_mean: None, count: 0 }
+        Self::default()
     }
 
     pub fn add(&mut self, tensor: Tensor<B, D>) {

@@ -548,7 +548,7 @@ where
                 |name, client| {
                     Box::pin(
                         async move {
-                          
+
                             let concise_name = name.concise_owned();
                             client.handle_transaction(transaction_ref.clone(), client_addr)
                                 .instrument(trace_span!("handle_transaction", cancelled = false, authority =? concise_name))
@@ -570,8 +570,8 @@ where
                             Err(err) => {
                                 let concise_name = name.concise();
                                 debug!(?tx_digest, name=?concise_name, weight, "Error processing transaction from validator: {:?}", err);
-                              
-                                
+
+
                                 // Record conflicting transactions if any to report to user.
                                 state.record_conflicting_transaction_if_any(name, weight, &err);
                                 let (retryable, categorized) = err.is_retryable();
@@ -930,7 +930,7 @@ where
                             HandleCertificateRequest {
                                 include_input_objects: false,
                                 include_output_objects: false,
-                               
+
                                 ..request_ref
                             }
                         };
@@ -946,24 +946,24 @@ where
                             .await
                             .map(|response| HandleCertificateResponse {
                                 effects: response.effects,
-                             
+
                                 input_objects: None,
                                 output_objects: None,
-                              
+
                             })
                     }
                 })
             },
             move |mut state, name, weight, response| {
                 let committee_clone = committee.clone();
-               
+
                 let display_name = validator_display_names.get(&name).unwrap_or(&name.concise().to_string()).clone();
                 Box::pin(async move {
                     // We aggregate the effects response, until we have more than 2f
                     // and return.
                     match AuthorityAggregator::<A>::handle_process_certificate_response(
                         committee_clone,
-                      
+
                         &tx_digest, &mut state, response, name)
                     {
                         Ok(Some(effects)) => ReduceOutput::Success(effects),
@@ -981,8 +981,8 @@ where
                         Err(err) => {
                             let concise_name = name.concise();
                             debug!(?tx_digest, name=?concise_name, "Error processing certificate from validator: {:?}", err);
-                           
-                           
+
+
                             let (retryable, categorized) = err.is_retryable();
                             if !categorized {
                                 // TODO: Should minimize possible uncategorized errors here
@@ -1017,7 +1017,7 @@ where
                 "Received effects responses from validators"
             );
 
-           
+
             if state.retryable {
                 AggregatorProcessCertificateError::RetryableExecuteCertificate {
                     retryable_errors: group_errors(state.retryable_errors),

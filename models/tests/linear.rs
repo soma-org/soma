@@ -112,10 +112,8 @@ fn load_wrong_weight_shape_reports_error() {
     let output_dim = 4;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     // weight should be [2, 4] but we provide [3, 5]
-    tensors.insert(
-        "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed, &[3, 5], 0.0, 1.0)),
-    );
+    tensors
+        .insert("linear.weight".to_string(), ArrayWrapper(normal_array(seed, &[3, 5], 0.0, 1.0)));
     tensors.insert(
         "linear.bias".to_string(),
         ArrayWrapper(normal_array(seed + 1, &[output_dim], 0.0, 1.0)),

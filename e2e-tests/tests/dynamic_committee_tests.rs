@@ -142,7 +142,11 @@ impl StressTestRunner {
         let pre_state_summary = self.system_state();
         self.test_cluster.trigger_reconfiguration().await;
         let post_state_summary = self.system_state();
-        info!("Changing epoch form {} to {}", pre_state_summary.epoch(), post_state_summary.epoch());
+        info!(
+            "Changing epoch form {} to {}",
+            pre_state_summary.epoch(),
+            post_state_summary.epoch()
+        );
     }
 
     pub async fn get_created_object_of_type(
@@ -354,13 +358,8 @@ mod remove_stake {
             // Verify:
             // 1. The StakedSoma object has been consumed (no longer in the object store).
             // 2. All validator staking pools have cleared pending withdrawals.
-            let db = runner
-                .test_cluster
-                .fullnode_handle
-                .soma_node
-                .state()
-                .get_object_store()
-                .clone();
+            let db =
+                runner.test_cluster.fullnode_handle.soma_node.state().get_object_store().clone();
             let staked_soma_obj = db.get_object(&self.object_id);
             assert!(
                 staked_soma_obj.is_none(),

@@ -25,15 +25,9 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    base::SomaAddress,
-    committee::EpochId,
-    digests::DataCommitment,
-    model::ModelId,
-    object::ObjectID,
-    submission::SubmissionManifest,
-    system_state::validator::ValidatorSet,
-    target::TargetId,
-    tensor::SomaTensor,
+    base::SomaAddress, committee::EpochId, digests::DataCommitment, model::ModelId,
+    object::ObjectID, submission::SubmissionManifest, system_state::validator::ValidatorSet,
+    target::TargetId, tensor::SomaTensor,
 };
 
 /// Unique identifier for a challenge (same as ObjectID).

@@ -41,8 +41,7 @@ impl ScoringEngine {
             .map(|m| {
                 m.decryption_key.as_ref().map(|hex_key| {
                     let stripped = hex_key.strip_prefix("0x").unwrap_or(hex_key);
-                    let bytes = hex::decode(stripped)
-                        .expect("invalid hex in decryption_key");
+                    let bytes = hex::decode(stripped).expect("invalid hex in decryption_key");
                     let mut arr = [0u8; 32];
                     arr.copy_from_slice(&bytes);
                     arr
@@ -50,10 +49,8 @@ impl ScoringEngine {
             })
             .collect::<Vec<_>>();
 
-        let target = TensorData::new(
-            request.target_embedding.clone(),
-            [request.target_embedding.len()],
-        );
+        let target =
+            TensorData::new(request.target_embedding.clone(), [request.target_embedding.len()]);
 
         let input =
             ManifestCompetitionInput::new(data_manifest, model_manifests, target, request.seed)
@@ -78,11 +75,6 @@ impl ScoringEngine {
             .to_vec::<f32>()
             .map_err(|e| anyhow::anyhow!("Failed to convert distance: {e:?}"))?;
 
-        Ok(ScoreResponse {
-            winner: output.winner(),
-            loss_score,
-            embedding,
-            distance,
-        })
+        Ok(ScoreResponse { winner: output.winner(), loss_score, embedding, distance })
     }
 }

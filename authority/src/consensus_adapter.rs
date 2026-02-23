@@ -743,15 +743,15 @@ impl ConsensusAdapter {
                 tokio::select! {
                     processed = epoch_store.consensus_messages_processed_notify(vec![transaction_key]) => {
                         processed.expect("Storage error when waiting for consensus message processed");
-                       
+
                         return ProcessedMethod::Consensus;
                     },
                     processed = epoch_store.transactions_executed_in_checkpoint_notify(transaction_digests), if !transaction_digests.is_empty() => {
                         processed.expect("Storage error when waiting for transaction executed in checkpoint");
-                        
+
                     }
                     _ = checkpoint_synced_future => {
-                       
+
                     }
                 }
                 ProcessedMethod::Checkpoint

@@ -44,14 +44,10 @@ impl ClaimCommand {
                 Ok(ClaimCommandResponse::Transaction(tx))
             }
             crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
-                Ok(ClaimCommandResponse::SerializedTransaction {
-                    serialized_transaction: s,
-                })
+                Ok(ClaimCommandResponse::SerializedTransaction { serialized_transaction: s })
             }
             crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
-                Ok(ClaimCommandResponse::SerializedTransaction {
-                    serialized_transaction: s,
-                })
+                Ok(ClaimCommandResponse::SerializedTransaction { serialized_transaction: s })
             }
             crate::response::ClientCommandResponse::TransactionDigest(d) => {
                 Ok(ClaimCommandResponse::TransactionDigest(d))

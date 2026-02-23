@@ -228,10 +228,10 @@ impl IndexerExecutor {
                     last_checkpoint = last_checkpoint.max(checkpoint_sequence_number);
                     total_processed += 1;
 
-                    if let Some(limit) = reader_options.upper_limit
-                        && checkpoint_sequence_number >= limit && self.pool_senders.len() == 1
-                    {
-                        break;
+                    if let Some(limit) = reader_options.upper_limit {
+                        if checkpoint_sequence_number >= limit && self.pool_senders.len() == 1 {
+                            break;
+                        }
                     }
                 }
 

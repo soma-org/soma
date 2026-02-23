@@ -28,8 +28,10 @@ pub fn list_challenges(
     request: ListChallengesRequest,
 ) -> Result<ListChallengesResponse> {
     // Validate status filter if provided
-    let status_filter = request.status_filter.as_ref().map(|s| {
-        match s.to_lowercase().as_str() {
+    let status_filter = request
+        .status_filter
+        .as_ref()
+        .map(|s| match s.to_lowercase().as_str() {
             "pending" | "resolved" => Ok(s.to_lowercase()),
             _ => Err(FieldViolation::new("status_filter")
                 .with_description(format!(
@@ -37,48 +39,48 @@ pub fn list_challenges(
                     s
                 ))
                 .with_reason(ErrorReason::FieldInvalid)),
-        }
-    }).transpose()?;
+        })
+        .transpose()?;
 
     let epoch_filter = request.epoch_filter;
 
     // Parse target_id filter if provided
-    let target_filter = request.target_id.as_ref().map(|id| {
-        id.parse::<ObjectID>().map_err(|e| {
-            FieldViolation::new("target_id")
-                .with_description(format!("invalid target_id: {e}"))
-                .with_reason(ErrorReason::FieldInvalid)
+    let target_filter = request
+        .target_id
+        .as_ref()
+        .map(|id| {
+            id.parse::<ObjectID>().map_err(|e| {
+                FieldViolation::new("target_id")
+                    .with_description(format!("invalid target_id: {e}"))
+                    .with_reason(ErrorReason::FieldInvalid)
+            })
         })
-    }).transpose()?;
+        .transpose()?;
 
     let page_size = request
         .page_size
         .map(|s| (s as usize).clamp(1, MAX_PAGE_SIZE))
         .unwrap_or(DEFAULT_PAGE_SIZE);
 
-    let page_token = request
-        .page_token
-        .as_ref()
-        .map(|token| decode_page_token(token))
-        .transpose()?;
+    let page_token =
+        request.page_token.as_ref().map(|token| decode_page_token(token)).transpose()?;
 
     // Validate page token parameters match request
-    if let Some(ref token) = page_token
-        && (token.status_filter != status_filter
+    if let Some(ref token) = page_token {
+        if token.status_filter != status_filter
             || token.epoch_filter != epoch_filter
-            || token.target_filter != target_filter)
-    {
-        return Err(FieldViolation::new("page_token")
-            .with_description("page_token parameters do not match request filters")
-            .with_reason(ErrorReason::FieldInvalid)
-            .into());
+            || token.target_filter != target_filter
+        {
+            return Err(FieldViolation::new("page_token")
+                .with_description("page_token parameters do not match request filters")
+                .with_reason(ErrorReason::FieldInvalid)
+                .into());
+        }
     }
 
     // Validate and build field mask
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Challenge>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -88,11 +90,7 @@ pub fn list_challenges(
     };
 
     // Get indexes for challenge iteration
-    let indexes = service
-        .reader
-        .inner()
-        .indexes()
-        .ok_or_else(RpcError::not_found)?;
+    let indexes = service.reader.inner().indexes().ok_or_else(RpcError::not_found)?;
 
     // Get the cursor from page token if present
     let cursor = page_token.as_ref().map(|t| t.cursor.clone());
@@ -105,10 +103,8 @@ pub fn list_challenges(
     let mut challenges = Vec::with_capacity(page_size);
     let mut size_bytes = 0;
 
-    while let Some(challenge_info) = iter
-        .next()
-        .transpose()
-        .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
+    while let Some(challenge_info) =
+        iter.next().transpose().map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?
     {
         // Load the full challenge object
         let Some(object) = service
@@ -125,7 +121,8 @@ pub fn list_challenges(
         };
 
         // Deserialize the challenge
-        let challenge: types::challenge::ChallengeV1 = match bcs::from_bytes(object.data.contents()) {
+        let challenge: types::challenge::ChallengeV1 = match bcs::from_bytes(object.data.contents())
+        {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(
@@ -138,7 +135,8 @@ pub fn list_challenges(
         };
 
         // Convert to proto
-        let challenge_proto = challenge_to_proto_with_id(&challenge_info.challenge_id, &challenge, &read_mask);
+        let challenge_proto =
+            challenge_to_proto_with_id(&challenge_info.challenge_id, &challenge, &read_mask);
 
         size_bytes += challenge_proto.encoded_len();
         challenges.push(challenge_proto);
@@ -162,11 +160,7 @@ pub fn list_challenges(
             })
         });
 
-    let response = ListChallengesResponse {
-        challenges,
-        next_page_token,
-        ..Default::default()
-    };
+    let response = ListChallengesResponse { challenges, next_page_token, ..Default::default() };
     Ok(response)
 }
 
@@ -219,14 +213,14 @@ fn challenge_to_proto_with_id(
         proto.status = Some(format_status(&challenge.status));
     }
     // Simplified design: verdict is now part of status (challenger_lost: bool)
-    if mask.contains("verdict")
-        && let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status
-    {
-        proto.verdict = Some(if *challenger_lost {
-            "challenger_lost".to_string()
-        } else {
-            "challenger_won".to_string()
-        });
+    if mask.contains("verdict") {
+        if let types::challenge::ChallengeStatus::Resolved { challenger_lost } = &challenge.status {
+            proto.verdict = Some(if *challenger_lost {
+                "challenger_lost".to_string()
+            } else {
+                "challenger_won".to_string()
+            });
+        }
     }
     // win_reason is no longer applicable in simplified design
     if mask.contains("distance_threshold") {

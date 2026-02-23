@@ -41,11 +41,8 @@ async fn test_reconfig_with_delay() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 3u64;
     let system_state = test_cluster
@@ -76,11 +73,8 @@ async fn test_change_epoch_tx_delay() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 3u64;
     let system_state = test_cluster
@@ -112,18 +106,19 @@ async fn test_crash_before_open_new_epoch_store() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 3u64;
     let system_state = test_cluster
         .wait_for_epoch_with_timeout(Some(target_epoch), Duration::from_secs(120))
         .await;
 
-    info!(epoch = system_state.epoch(), crashed = CRASHED.load(Ordering::SeqCst), "crash-before-open-new-epoch-store test passed");
+    info!(
+        epoch = system_state.epoch(),
+        crashed = CRASHED.load(Ordering::SeqCst),
+        "crash-before-open-new-epoch-store test passed"
+    );
     assert!(system_state.epoch() >= target_epoch);
     assert!(CRASHED.load(Ordering::SeqCst), "Failpoint should have fired");
 
@@ -146,11 +141,8 @@ async fn test_crash_before_commit_certificate() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 2u64;
     let system_state = test_cluster
@@ -181,11 +173,8 @@ async fn test_crash_after_consensus_commit() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 2u64;
     let system_state = test_cluster
@@ -216,11 +205,8 @@ async fn test_crash_after_accumulate_epoch() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 2u64;
     let system_state = test_cluster
@@ -257,11 +243,8 @@ async fn test_crash_after_db_write() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 2u64;
     let system_state = test_cluster
@@ -298,11 +281,8 @@ async fn test_crash_after_build_batch() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let target_epoch = 2u64;
     let system_state = test_cluster
@@ -333,11 +313,8 @@ async fn test_highest_executed_checkpoint_failpoint() {
         HIT_COUNT.fetch_add(1, Ordering::SeqCst);
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(3000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(3000).build().await;
 
     let target_epoch = 3u64;
     let system_state = test_cluster
@@ -345,7 +322,11 @@ async fn test_highest_executed_checkpoint_failpoint() {
         .await;
 
     let hits = HIT_COUNT.load(Ordering::SeqCst);
-    info!(hits, epoch = system_state.epoch(), "highest-executed-checkpoint failpoint was hit {hits} times");
+    info!(
+        hits,
+        epoch = system_state.epoch(),
+        "highest-executed-checkpoint failpoint was hit {hits} times"
+    );
     assert!(hits > 0, "Failpoint should have been hit at least once during checkpoint execution");
 
     clear_fail_point("highest-executed-checkpoint");
@@ -369,16 +350,12 @@ async fn test_safe_mode_reconfig() {
         INJECT_FAILURE.load(Ordering::SeqCst)
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     // Wait for epoch 1 to complete normally
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode(), "Should not be in safe mode at epoch 1");
     assert_eq!(system_state.epoch(), 1);
 
@@ -386,9 +363,8 @@ async fn test_safe_mode_reconfig() {
     INJECT_FAILURE.store(true, Ordering::SeqCst);
 
     // Epoch 2 transition will fail → safe mode
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
     assert_eq!(system_state.epoch(), 2);
     assert_eq!(system_state.safe_mode_accumulated_fees(), 0); // fees from just this epoch
@@ -400,26 +376,20 @@ async fn test_safe_mode_reconfig() {
 
     info!(
         "Safe mode activated: fees={}, emissions={}",
-        system_state.safe_mode_accumulated_fees(), system_state.safe_mode_accumulated_emissions()
+        system_state.safe_mode_accumulated_fees(),
+        system_state.safe_mode_accumulated_emissions()
     );
 
     // Verify transactions still work during safe mode
     let sender = test_cluster.get_addresses()[0];
     let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_system_state_object_for_testing()
-            .unwrap()
-            .validators()
-            .validators[0]
+        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
             .metadata
             .soma_address
     });
 
-    if let Some(gas_object) = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
+    if let Some(gas_object) =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
     {
         let tx_data = types::transaction::TransactionData::new(
             types::transaction::TransactionKind::AddStake {
@@ -432,10 +402,7 @@ async fn test_safe_mode_reconfig() {
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
-        assert!(
-            response.effects.status().is_ok(),
-            "Transactions should work during safe mode"
-        );
+        assert!(response.effects.status().is_ok(), "Transactions should work during safe mode");
         info!("Transaction succeeded during safe mode");
     }
 
@@ -443,9 +410,8 @@ async fn test_safe_mode_reconfig() {
     INJECT_FAILURE.store(false, Ordering::SeqCst);
 
     // Wait for epoch 3 — should recover from safe mode
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode(), "Should have recovered from safe mode at epoch 3");
     assert_eq!(system_state.epoch(), 3);
     assert_eq!(system_state.safe_mode_accumulated_fees(), 0);
@@ -473,33 +439,27 @@ async fn test_safe_mode_multi_epoch() {
         INJECT_FAILURE.load(Ordering::SeqCst)
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     // Wait for epoch 1 (normal)
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode());
 
     // Enable failure injection for epochs 2 and 3
     INJECT_FAILURE.store(true, Ordering::SeqCst);
 
     // Wait for epoch 2 (safe mode)
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
     let epoch2_emissions = system_state.safe_mode_accumulated_emissions();
     assert!(epoch2_emissions > 0, "Should have accumulated emissions");
 
     // Wait for epoch 3 (still safe mode, more accumulation)
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should still be in safe mode at epoch 3");
     assert!(
         system_state.safe_mode_accumulated_emissions() >= epoch2_emissions,
@@ -515,15 +475,11 @@ async fn test_safe_mode_multi_epoch() {
     INJECT_FAILURE.store(false, Ordering::SeqCst);
 
     // Wait for epoch 4 (recovery)
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(4), Duration::from_secs(60))
-        .await;
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(4), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode(), "Should recover from safe mode at epoch 4");
     assert_eq!(system_state.safe_mode_accumulated_fees(), 0, "Accumulators should be drained");
-    assert_eq!(
-        system_state.safe_mode_accumulated_emissions(), 0,
-        "Accumulators should be drained"
-    );
+    assert_eq!(system_state.safe_mode_accumulated_emissions(), 0, "Accumulators should be drained");
 
     info!("Multi-epoch safe mode recovery complete at epoch 4");
 
@@ -576,16 +532,11 @@ async fn test_advance_epoch_tx_race() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     // Wait for epoch 1 (normal — failpoint disabled)
-    test_cluster
-        .wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60))
-        .await;
+    test_cluster.wait_for_epoch_with_timeout(Some(1), Duration::from_secs(60)).await;
 
     // Enable the delay for the epoch 1→2 transition
     ENABLED.store(true, Ordering::SeqCst);
@@ -600,13 +551,9 @@ async fn test_advance_epoch_tx_race() {
     notify.notify_one();
 
     // Wait for epoch 2 — if the race guard failed, the panic failpoint would have fired
-    let system_state = test_cluster
-        .wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60))
-        .await;
-    assert!(
-        !system_state.safe_mode(),
-        "Should not enter safe mode due to race condition"
-    );
+    let system_state =
+        test_cluster.wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60)).await;
+    assert!(!system_state.safe_mode(), "Should not enter safe mode due to race condition");
 
     info!("Advance epoch tx race test passed — no unexpected safe mode entry");
 
@@ -632,19 +579,12 @@ async fn test_crash_during_reconfig_with_tx_load() {
         }
     });
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(7)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
 
     let sender = test_cluster.get_addresses()[0];
     let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_system_state_object_for_testing()
-            .unwrap()
-            .validators()
-            .validators[0]
+        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
             .metadata
             .soma_address
     });
@@ -653,19 +593,17 @@ async fn test_crash_during_reconfig_with_tx_load() {
     let mut tx_count = 0u64;
 
     loop {
-        let current_epoch = test_cluster.fullnode_handle.soma_node.with(|node| {
-            node.state().epoch_store_for_testing().epoch()
-        });
+        let current_epoch = test_cluster
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.state().epoch_store_for_testing().epoch());
         if current_epoch >= target_epoch {
             break;
         }
 
         // Submit stake transactions while epochs transition
-        if let Some(gas_object) = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
+        if let Some(gas_object) =
+            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
         {
             let tx_data = types::transaction::TransactionData::new(
                 types::transaction::TransactionKind::AddStake {

@@ -30,13 +30,16 @@ pub enum WordLength {
 
 impl WordLength {
     fn to_string_option(self) -> Option<String> {
-        Some(match self {
-            WordLength::Word12 => "word12",
-            WordLength::Word15 => "word15",
-            WordLength::Word18 => "word18",
-            WordLength::Word21 => "word21",
-            WordLength::Word24 => "word24",
-        }.to_string())
+        Some(
+            match self {
+                WordLength::Word12 => "word12",
+                WordLength::Word15 => "word15",
+                WordLength::Word18 => "word18",
+                WordLength::Word21 => "word21",
+                WordLength::Word24 => "word24",
+            }
+            .to_string(),
+        )
     }
 }
 
@@ -119,9 +122,12 @@ pub async fn execute(
         }
 
         WalletCommand::New { key_scheme, alias, derivation_path, word_length } => {
-            let (address, keypair, scheme, phrase) =
-                key_derive::generate_new_key(key_scheme, derivation_path, word_length.to_string_option())
-                    .map_err(|e| anyhow!("Failed to generate new key: {}", e))?;
+            let (address, keypair, scheme, phrase) = key_derive::generate_new_key(
+                key_scheme,
+                derivation_path,
+                word_length.to_string_option(),
+            )
+            .map_err(|e| anyhow!("Failed to generate new key: {}", e))?;
 
             context.config.keystore.import(alias.clone(), keypair).await?;
 

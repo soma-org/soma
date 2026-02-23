@@ -63,9 +63,7 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
 
 fn get_system_state(test_cluster: &test_cluster::TestCluster) -> SystemState {
     test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_system_state_object_for_testing()
-            .expect("SystemState must exist")
+        node.state().get_system_state_object_for_testing().expect("SystemState must exist")
     })
 }
 
@@ -85,10 +83,7 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig {
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
-                address: None,
-            };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
             5
         ])
         .build()
@@ -163,10 +158,7 @@ async fn test_supply_conservation_multi_epoch() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig {
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
-                address: None,
-            };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
             10
         ])
         .build()
@@ -209,9 +201,7 @@ async fn test_supply_conservation_multi_epoch() {
 
         let ss = get_system_state(&test_cluster);
         let (emission, staking, safe_mode) = system_state_balances(&ss);
-        info!(
-            "After epoch {epoch}: emission={emission}, staking={staking}, safe_mode={safe_mode}"
-        );
+        info!("After epoch {epoch}: emission={emission}, staking={staking}, safe_mode={safe_mode}");
 
         // Log emission pool delta. It may increase due to remainder return
         // (non-validator share of rewards goes back to emission pool).
@@ -240,10 +230,7 @@ async fn test_emission_pool_accounting() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig {
-                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
-                address: None,
-            };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
             3
         ])
         .build()
@@ -261,12 +248,8 @@ async fn test_emission_pool_accounting() {
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
     let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {

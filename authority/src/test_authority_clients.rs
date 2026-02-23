@@ -15,9 +15,9 @@ use types::error::{SomaError, SomaResult};
 use types::intent::{Intent, IntentScope};
 use types::messages_grpc::{
     HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse,
-    ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse,
-    SystemStateRequest, TransactionInfoRequest, TransactionInfoResponse, TransactionStatus,
-    ValidatorHealthRequest, ValidatorHealthResponse, WaitForEffectsRequest, WaitForEffectsResponse,
+    ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse, SystemStateRequest,
+    TransactionInfoRequest, TransactionInfoResponse, TransactionStatus, ValidatorHealthRequest,
+    ValidatorHealthResponse, WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::system_state::SystemState;
 use types::transaction::Transaction;
@@ -62,11 +62,7 @@ pub struct MockAuthorityApi {
 }
 
 impl MockAuthorityApi {
-    pub fn new(
-        authority_key: AuthorityKeyPair,
-        name: AuthorityPublicKeyBytes,
-        epoch: u64,
-    ) -> Self {
+    pub fn new(authority_key: AuthorityKeyPair, name: AuthorityPublicKeyBytes, epoch: u64) -> Self {
         Self {
             authority_key: Arc::new(authority_key),
             name,

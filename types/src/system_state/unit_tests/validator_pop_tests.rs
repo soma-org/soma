@@ -145,15 +145,15 @@ mod validator_pop_tests {
     fn make_add_validator_args(
         rng: &mut StdRng,
     ) -> (
-        SomaAddress,           // signer
-        Vec<u8>,               // pubkey_bytes
-        Vec<u8>,               // network_pubkey_bytes
-        Vec<u8>,               // worker_pubkey_bytes
-        Vec<u8>,               // proof_of_possession_bytes
-        Vec<u8>,               // net_address (BCS serialized)
-        Vec<u8>,               // p2p_address
-        Vec<u8>,               // primary_address
-        Vec<u8>,               // proxy_address
+        SomaAddress, // signer
+        Vec<u8>,     // pubkey_bytes
+        Vec<u8>,     // network_pubkey_bytes
+        Vec<u8>,     // worker_pubkey_bytes
+        Vec<u8>,     // proof_of_possession_bytes
+        Vec<u8>,     // net_address (BCS serialized)
+        Vec<u8>,     // p2p_address
+        Vec<u8>,     // primary_address
+        Vec<u8>,     // proxy_address
     ) {
         let (signer, _): (SomaAddress, fastcrypto::ed25519::Ed25519KeyPair) =
             get_key_pair_from_rng(rng);
@@ -179,11 +179,8 @@ mod validator_pop_tests {
 
     #[test]
     fn test_request_add_validator_valid_pop() {
-        let mut system_state = create_test_system_state(
-            create_validators_with_stakes(vec![100]),
-            1_000_000,
-            0,
-        );
+        let mut system_state =
+            create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([20; 32]);
         let (signer, pubkey, net_pub, worker_pub, pop, net, p2p, primary, proxy) =
@@ -207,11 +204,8 @@ mod validator_pop_tests {
 
     #[test]
     fn test_request_add_validator_invalid_pop() {
-        let mut system_state = create_test_system_state(
-            create_validators_with_stakes(vec![100]),
-            1_000_000,
-            0,
-        );
+        let mut system_state =
+            create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([21; 32]);
         let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary, proxy) =
@@ -250,11 +244,8 @@ mod validator_pop_tests {
 
     #[test]
     fn test_request_add_validator_garbage_pop() {
-        let mut system_state = create_test_system_state(
-            create_validators_with_stakes(vec![100]),
-            1_000_000,
-            0,
-        );
+        let mut system_state =
+            create_test_system_state(create_validators_with_stakes(vec![100]), 1_000_000, 0);
 
         let mut rng = StdRng::from_seed([22; 32]);
         let (signer, pubkey, net_pub, worker_pub, _valid_pop, net, p2p, primary, proxy) =
@@ -265,7 +256,7 @@ mod validator_pop_tests {
             pubkey,
             net_pub,
             worker_pub,
-            vec![0xBA, 0xD0],  // garbage bytes
+            vec![0xBA, 0xD0], // garbage bytes
             net,
             p2p,
             primary,
@@ -407,11 +398,7 @@ mod validator_pop_tests {
             [70; 32],
             22000,
         );
-        let mut system_state = create_test_system_state(
-            vec![existing.clone()],
-            1_000_000,
-            0,
-        );
+        let mut system_state = create_test_system_state(vec![existing.clone()], 1_000_000, 0);
 
         // Generate a new validator with the SAME protocol key seed
         let mut rng = StdRng::from_seed([70; 32]);

@@ -61,10 +61,7 @@ pub async fn start_faucet(app_state: Arc<AppState>) -> Result<(), Box<dyn std::e
 
     info!("Faucet gRPC server listening on {}", addr);
 
-    tonic::transport::Server::builder()
-        .add_service(FaucetServer::new(svc))
-        .serve(addr)
-        .await?;
+    tonic::transport::Server::builder().add_service(FaucetServer::new(svc)).serve(addr).await?;
 
     Ok(())
 }

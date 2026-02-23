@@ -251,10 +251,10 @@ impl DiscoveryEventLoop {
 
         // Clean out the pending_dials
         self.pending_dials.retain(|_k, v| !v.is_finished());
-        if let Some(abort_handle) = &self.dial_seed_peers_task
-            && abort_handle.is_finished()
-        {
-            self.dial_seed_peers_task = None;
+        if let Some(abort_handle) = &self.dial_seed_peers_task {
+            if abort_handle.is_finished() {
+                self.dial_seed_peers_task = None;
+            }
         }
 
         // Find eligible peers to connect to
@@ -336,7 +336,7 @@ async fn try_to_connect_to_peer(
     }
 
     match rx.await {
-        Ok(Ok(_)) => {},
+        Ok(Ok(_)) => {}
         Ok(Err(e)) => {
             debug!(
                 "error connecting to {} at address '{}': {e}",

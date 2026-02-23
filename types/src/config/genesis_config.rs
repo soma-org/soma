@@ -159,10 +159,7 @@ impl GenesisConfig {
     pub fn add_faucet_account(mut self) -> Self {
         self.accounts.push(AccountConfig {
             address: None,
-            gas_amounts: vec![
-                DEFAULT_GAS_AMOUNT * 10;
-                DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT
-            ],
+            gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT],
         });
         self
     }

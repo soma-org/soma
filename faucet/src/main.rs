@@ -29,14 +29,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let wallet = create_wallet_context(config.wallet_client_timeout_secs, config_dir)?;
 
-    let faucet = LocalFaucet::new(wallet, config.clone()).await.map_err(|e| {
-        format!("Failed to initialize faucet: {e}")
-    })?;
+    let faucet = LocalFaucet::new(wallet, config.clone())
+        .await
+        .map_err(|e| format!("Failed to initialize faucet: {e}"))?;
 
-    let app_state = Arc::new(AppState {
-        faucet: Arc::new(faucet),
-        config,
-    });
+    let app_state = Arc::new(AppState { faucet: Arc::new(faucet), config });
 
     start_faucet(app_state).await?;
 

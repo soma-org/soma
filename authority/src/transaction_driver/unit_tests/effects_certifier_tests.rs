@@ -6,18 +6,16 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use types::base::SomaAddress;
-use types::crypto::KeypairTraits;
 use types::committee::Committee;
 use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
-use types::consensus::block::BlockRef;
 use types::consensus::ConsensusPosition;
+use types::consensus::block::BlockRef;
+use types::crypto::KeypairTraits;
 use types::digests::TransactionEffectsDigest;
 use types::effects::{TransactionEffects, TransactionEffectsV1};
 use types::envelope::Message;
 use types::error::SomaError;
-use types::messages_grpc::{
-    ExecutedData, SubmitTxResult, TxType, WaitForEffectsResponse,
-};
+use types::messages_grpc::{ExecutedData, SubmitTxResult, TxType, WaitForEffectsResponse};
 use types::object::OBJECT_START_VERSION;
 use types::storage::committee_store::CommitteeStore;
 
@@ -64,10 +62,7 @@ fn setup() -> (
     ));
 
     let agg_swap = Arc::new(ArcSwap::new(aggregator.clone()));
-    let monitor = ValidatorClientMonitor::new(
-        ValidatorClientMonitorConfig::default(),
-        agg_swap,
-    );
+    let monitor = ValidatorClientMonitor::new(ValidatorClientMonitorConfig::default(), agg_swap);
 
     let certifier = EffectsCertifier::new();
 
@@ -108,11 +103,7 @@ async fn test_successful_certified_effects_with_submitted() {
     }
 
     let submit_result = SubmitTxResult::Submitted {
-        consensus_position: ConsensusPosition {
-            epoch: 0,
-            block: BlockRef::MIN,
-            index: 0,
-        },
+        consensus_position: ConsensusPosition { epoch: 0, block: BlockRef::MIN, index: 0 },
     };
 
     let result = certifier
@@ -228,10 +219,7 @@ async fn test_forked_execution_detection() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        TransactionDriverError::ForkedExecution {
-            observed_effects_digests,
-            ..
-        } => {
+        TransactionDriverError::ForkedExecution { observed_effects_digests, .. } => {
             assert_eq!(
                 observed_effects_digests.digests.len(),
                 2,
@@ -292,8 +280,7 @@ async fn test_non_retriable_rejection_by_validators() {
     assert!(result.is_err());
     match result.unwrap_err() {
         TransactionDriverError::RejectedByValidators {
-            submission_non_retriable_errors,
-            ..
+            submission_non_retriable_errors, ..
         } => {
             assert!(
                 submission_non_retriable_errors.total_stake > 0,

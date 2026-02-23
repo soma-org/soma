@@ -1,17 +1,10 @@
-use std::{
-    cell::RefCell,
-    collections::BTreeSet,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::collections::BTreeSet;
 
-use clap::*;
-use fastcrypto::encoding::{Base58, Encoding, Hex};
 use protocol_config_macros::{
     ProtocolConfigAccessors, ProtocolConfigFeatureFlagsGetters, ProtocolConfigOverride,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use tracing::{info, warn};
 
 mod tensor;
 pub use tensor::{BcsF32, Dtype, SomaTensor};
@@ -98,14 +91,17 @@ impl Chain {
 
 pub struct Error(pub String);
 
+#[allow(dead_code)]
 fn is_false(b: &bool) -> bool {
     !b
 }
 
+#[allow(dead_code)]
 fn is_empty(b: &BTreeSet<String>) -> bool {
     b.is_empty()
 }
 
+#[allow(dead_code)]
 fn is_zero(val: &u64) -> bool {
     *val == 0
 }
@@ -375,7 +371,7 @@ impl ProtocolConfig {
             target_models_per_target: Some(3), // 3 models per target
             target_embedding_dim: Some(768),   // Standard transformer embedding dim
             target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
-            target_reward_allocation_bps: Some(8000), // 80% of emissions to targets
+            target_reward_allocation_bps: Some(8000),             // 80% of emissions to targets
             target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
             target_hits_ema_decay_bps: Some(7000), // 70% decay (30% weight on new data)
             target_difficulty_adjustment_rate_bps: Some(1000), // 10% max adjustment per epoch

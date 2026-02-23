@@ -65,10 +65,7 @@ pub async fn start_scoring_server(
 
     info!("Scoring service listening on {}", addr);
 
-    tonic::transport::Server::builder()
-        .add_service(ScoringServer::new(svc))
-        .serve(addr)
-        .await?;
+    tonic::transport::Server::builder().add_service(ScoringServer::new(svc)).serve(addr).await?;
 
     Ok(())
 }
@@ -84,8 +81,7 @@ mod tests {
         let engine = Arc::new(ScoringEngine::new(dir.path(), config, &device).expect("engine"));
         let svc = ScoringService::new(engine);
 
-        let listener =
-            tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let port = listener.local_addr().expect("local addr").port();
 
         // Leak the tempdir so it lives long enough for the server
@@ -106,9 +102,9 @@ mod tests {
     #[tokio::test]
     async fn test_health() {
         let port = start_test_server().await;
-        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(
-            format!("http://127.0.0.1:{port}"),
-        )
+        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(format!(
+            "http://127.0.0.1:{port}"
+        ))
         .await
         .expect("connect");
         let resp = client.health(HealthRequest {}).await.expect("health");
@@ -118,9 +114,9 @@ mod tests {
     #[tokio::test]
     async fn test_score_empty_models() {
         let port = start_test_server().await;
-        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(
-            format!("http://127.0.0.1:{port}"),
-        )
+        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(format!(
+            "http://127.0.0.1:{port}"
+        ))
         .await
         .expect("connect");
         let request = ScoreRequest {

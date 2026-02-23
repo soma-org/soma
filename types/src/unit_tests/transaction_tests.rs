@@ -4,9 +4,7 @@ use crate::{
     challenge::ChallengeId,
     checksum::Checksum,
     consensus::ConsensusCommitPrologueV1,
-    crypto::{
-        DecryptionKey, default_hash, get_key_pair,
-    },
+    crypto::{DecryptionKey, default_hash, get_key_pair},
     digests::{
         AdditionalConsensusStateDigest, ConsensusCommitDigest, DataCommitment,
         ModelWeightsCommitment, ModelWeightsUrlCommitment, ObjectDigest,
@@ -196,19 +194,14 @@ fn test_transaction_kind_classification() {
     assert!(add_val.is_validator_tx());
     assert!(!add_val.is_system_tx());
 
-    let remove_val = TransactionKind::RemoveValidator(RemoveValidatorArgs {
-        pubkey_bytes: vec![1],
-    });
+    let remove_val =
+        TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes: vec![1] });
     assert!(remove_val.is_validator_tx());
 
-    let report_val = TransactionKind::ReportValidator {
-        reportee: SomaAddress::random(),
-    };
+    let report_val = TransactionKind::ReportValidator { reportee: SomaAddress::random() };
     assert!(report_val.is_validator_tx());
 
-    let undo_report_val = TransactionKind::UndoReportValidator {
-        reportee: SomaAddress::random(),
-    };
+    let undo_report_val = TransactionKind::UndoReportValidator { reportee: SomaAddress::random() };
     assert!(undo_report_val.is_validator_tx());
 
     let set_commission = TransactionKind::SetCommissionRate { new_rate: 500 };
@@ -228,9 +221,7 @@ fn test_transaction_kind_classification() {
     assert!(!add_stake.is_validator_tx());
     assert!(!add_stake.is_system_tx());
 
-    let withdraw_stake = TransactionKind::WithdrawStake {
-        staked_soma: random_object_ref(),
-    };
+    let withdraw_stake = TransactionKind::WithdrawStake { staked_soma: random_object_ref() };
     assert!(withdraw_stake.is_staking_tx());
 
     // Model transactions
@@ -280,10 +271,7 @@ fn test_transaction_kind_classification() {
     let claim_rewards = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id });
     assert!(claim_rewards.is_submission_tx());
 
-    let report_sub = TransactionKind::ReportSubmission {
-        target_id,
-        challenger: None,
-    };
+    let report_sub = TransactionKind::ReportSubmission { target_id, challenger: None };
     assert!(report_sub.is_submission_tx());
 
     let undo_report_sub = TransactionKind::UndoReportSubmission { target_id };
@@ -328,9 +316,8 @@ fn test_transaction_kind_classification() {
 #[test]
 fn test_system_tx_has_no_gas() {
     // Genesis
-    let genesis_data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
-        objects: vec![],
-    }));
+    let genesis_data =
+        make_system_tx_data(TransactionKind::Genesis(GenesisTransaction { objects: vec![] }));
     assert!(genesis_data.gas().is_empty());
     assert!(genesis_data.is_system_tx());
 
@@ -349,14 +336,13 @@ fn test_system_tx_has_no_gas() {
     assert!(ccp_data.is_system_tx());
 
     // ChangeEpoch
-    let change_epoch_data =
-        make_system_tx_data(TransactionKind::ChangeEpoch(ChangeEpoch {
-            epoch: 1,
-            epoch_start_timestamp_ms: 0,
-            protocol_version: protocol_config::ProtocolVersion::MIN,
-            fees: 0,
-            epoch_randomness: vec![],
-        }));
+    let change_epoch_data = make_system_tx_data(TransactionKind::ChangeEpoch(ChangeEpoch {
+        epoch: 1,
+        epoch_start_timestamp_ms: 0,
+        protocol_version: protocol_config::ProtocolVersion::MIN,
+        fees: 0,
+        epoch_randomness: vec![],
+    }));
     assert!(change_epoch_data.gas().is_empty());
     assert!(change_epoch_data.is_system_tx());
 }
@@ -376,11 +362,7 @@ fn test_user_tx_has_gas() {
     let coin_ref = random_object_ref();
     let gas_ref = random_object_ref();
     let add_stake_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: SomaAddress::random(),
-            coin_ref,
-            amount: Some(1000),
-        },
+        TransactionKind::AddStake { address: SomaAddress::random(), coin_ref, amount: Some(1000) },
         sender,
         vec![gas_ref],
     );
@@ -426,15 +408,9 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             proxy_address: vec![70],
             proof_of_possession: vec![80],
         }),
-        TransactionKind::RemoveValidator(RemoveValidatorArgs {
-            pubkey_bytes: vec![10],
-        }),
-        TransactionKind::ReportValidator {
-            reportee: SomaAddress::random(),
-        },
-        TransactionKind::UndoReportValidator {
-            reportee: SomaAddress::random(),
-        },
+        TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes: vec![10] }),
+        TransactionKind::ReportValidator { reportee: SomaAddress::random() },
+        TransactionKind::UndoReportValidator { reportee: SomaAddress::random() },
         TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs::default()),
         TransactionKind::SetCommissionRate { new_rate: 100 },
         // Coin/object
@@ -458,9 +434,7 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             coin_ref: random_object_ref(),
             amount: Some(1000),
         },
-        TransactionKind::WithdrawStake {
-            staked_soma: random_object_ref(),
-        },
+        TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
         // Model
         TransactionKind::CommitModel(CommitModelArgs {
             model_id,
@@ -491,10 +465,7 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             coin_ref: random_object_ref(),
             amount: Some(500),
         },
-        TransactionKind::SetModelCommissionRate {
-            model_id,
-            new_rate: 300,
-        },
+        TransactionKind::SetModelCommissionRate { model_id, new_rate: 300 },
         TransactionKind::DeactivateModel { model_id },
         TransactionKind::ReportModel { model_id },
         TransactionKind::UndoReportModel { model_id },
@@ -509,10 +480,7 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             bond_coin: random_object_ref(),
         }),
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        TransactionKind::ReportSubmission {
-            target_id,
-            challenger: Some(SomaAddress::random()),
-        },
+        TransactionKind::ReportSubmission { target_id, challenger: Some(SomaAddress::random()) },
         TransactionKind::UndoReportSubmission { target_id },
         // Challenge
         TransactionKind::InitiateChallenge(InitiateChallengeArgs {
@@ -610,9 +578,8 @@ fn test_consensus_commit_prologue_transaction() {
 
 #[test]
 fn test_genesis_transaction() {
-    let data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
-        objects: vec![],
-    }));
+    let data =
+        make_system_tx_data(TransactionKind::Genesis(GenesisTransaction { objects: vec![] }));
 
     assert!(data.is_system_tx());
     assert!(data.is_genesis_tx());
@@ -726,10 +693,7 @@ fn test_input_objects_no_duplicates() {
     let inputs = data.input_objects().expect("input_objects should succeed");
     // The coin appears once as ImmOrOwnedObject, and since the gas_payment contains
     // the same ObjectID, it should NOT be added again.
-    let coin_count = inputs
-        .iter()
-        .filter(|inp| inp.object_id() == coin_ref.0)
-        .count();
+    let coin_count = inputs.iter().filter(|inp| inp.object_id() == coin_ref.0).count();
     assert_eq!(coin_count, 1, "Gas coin should not be duplicated in input_objects");
 }
 
@@ -745,10 +709,7 @@ fn test_contains_shared_object() {
         amount: Some(100),
         recipient: SomaAddress::random(),
     };
-    assert!(
-        !transfer.contains_shared_object(),
-        "TransferCoin should not contain shared objects"
-    );
+    assert!(!transfer.contains_shared_object(), "TransferCoin should not contain shared objects");
 
     // AddStake touches SystemState
     let add_stake = TransactionKind::AddStake {
@@ -771,26 +732,15 @@ fn test_contains_shared_object() {
         distance_score: dummy_scalar_tensor(),
         bond_coin: random_object_ref(),
     });
-    assert!(
-        submit.contains_shared_object(),
-        "SubmitData should contain shared objects"
-    );
+    assert!(submit.contains_shared_object(), "SubmitData should contain shared objects");
 
     // ReportChallenge touches SystemState + Challenge
-    let report_chal = TransactionKind::ReportChallenge {
-        challenge_id: ObjectID::random(),
-    };
-    assert!(
-        report_chal.contains_shared_object(),
-        "ReportChallenge should contain shared objects"
-    );
+    let report_chal = TransactionKind::ReportChallenge { challenge_id: ObjectID::random() };
+    assert!(report_chal.contains_shared_object(), "ReportChallenge should contain shared objects");
 
     // Genesis does NOT touch shared state
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
-    assert!(
-        !genesis.contains_shared_object(),
-        "Genesis should not contain shared objects"
-    );
+    assert!(!genesis.contains_shared_object(), "Genesis should not contain shared objects");
 }
 
 // ---------------------------------------------------------------------------
@@ -819,10 +769,7 @@ fn test_verify_sender_signed_transaction() {
     let data = TransactionData::new_transfer_coin(recipient, sender, Some(100), coin_ref);
 
     let tx = Transaction::from_data_and_signer(data, vec![&kp]);
-    assert!(
-        tx.verify_signature_for_testing().is_ok(),
-        "Valid signature should pass verification"
-    );
+    assert!(tx.verify_signature_for_testing().is_ok(), "Valid signature should pass verification");
 }
 
 // ---------------------------------------------------------------------------
@@ -951,11 +898,7 @@ fn test_transaction_data_constructors() {
     // Gas payment should be the first coin
     assert_eq!(pay_data.gas(), vec![coin1]);
     match pay_data.kind() {
-        TransactionKind::PayCoins {
-            coins,
-            amounts,
-            recipients,
-        } => {
+        TransactionKind::PayCoins { coins, amounts, recipients } => {
             assert_eq!(coins.len(), 2);
             assert_eq!(*amounts, Some(vec![100, 200]));
             assert_eq!(recipients.len(), 2);
@@ -992,21 +935,15 @@ fn test_requires_system_state() {
     assert!(add_stake.requires_system_state());
 
     // Model tx requires system state
-    let deactivate = TransactionKind::DeactivateModel {
-        model_id: ModelId::random(),
-    };
+    let deactivate = TransactionKind::DeactivateModel { model_id: ModelId::random() };
     assert!(deactivate.requires_system_state());
 
     // Submission tx requires system state
-    let claim = TransactionKind::ClaimRewards(ClaimRewardsArgs {
-        target_id: ObjectID::random(),
-    });
+    let claim = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: ObjectID::random() });
     assert!(claim.requires_system_state());
 
     // Challenge tx requires system state
-    let claim_bond = TransactionKind::ClaimChallengeBond {
-        challenge_id: ObjectID::random(),
-    };
+    let claim_bond = TransactionKind::ClaimChallengeBond { challenge_id: ObjectID::random() };
     assert!(claim_bond.requires_system_state());
 
     // ChangeEpoch requires system state (is_epoch_change)
@@ -1149,10 +1086,7 @@ fn test_transaction_data_signers() {
 fn test_shared_input_object() {
     let sys = SharedInputObject::SYSTEM_OBJ;
     assert_eq!(sys.id(), SYSTEM_STATE_OBJECT_ID);
-    assert_eq!(
-        sys.id_and_version(),
-        (SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION)
-    );
+    assert_eq!(sys.id_and_version(), (SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION));
     assert!(sys.mutable);
 
     let custom = SharedInputObject {

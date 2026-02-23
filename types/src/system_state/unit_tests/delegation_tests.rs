@@ -191,7 +191,8 @@ mod delegation_tests {
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
+        let validator =
+            system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator should still have their self-stake + rewards.
         // v1 gets ~53.336 SOMA reward total; validator owns 100/200 of pool, same as staker.
@@ -243,7 +244,8 @@ mod delegation_tests {
             .unwrap();
 
         // Find validator in inactive validators
-        let validator = system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
+        let validator =
+            system_state.validators().inactive_validators.get(validator_pool_id).unwrap();
 
         // Validator retains their 100 SOMA + same reward share as staker
         assert_eq!(

@@ -109,11 +109,7 @@ fn test_object_type_variants() {
         // Test FromStr roundtrip
         let parsed = ObjectType::from_str(expected_str)
             .unwrap_or_else(|e| panic!("FromStr should succeed for {}: {}", expected_str, e));
-        assert_eq!(
-            &parsed, variant,
-            "FromStr roundtrip failed for {}",
-            expected_str
-        );
+        assert_eq!(&parsed, variant, "FromStr roundtrip failed for {}", expected_str);
     }
 
     // Also test that an unknown string fails
@@ -166,10 +162,7 @@ fn test_owner_immutable() {
 #[test]
 fn test_version_ordering() {
     assert!(Version::MIN < Version::MAX, "MIN should be less than MAX");
-    assert!(
-        Version::MAX < Version::CANCELLED_READ,
-        "MAX should be less than CANCELLED_READ"
-    );
+    assert!(Version::MAX < Version::CANCELLED_READ, "MAX should be less than CANCELLED_READ");
 
     // Verify specific values
     assert_eq!(Version::MIN.value(), 0);

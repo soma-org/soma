@@ -72,14 +72,14 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
         rem
     }
 
-    pub fn register_one(&self, key: &K) -> Registration<K, V> {
+    pub fn register_one<'a>(&'a self, key: &K) -> Registration<'a, K, V> {
         self.count_pending.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         self.register(key, sender);
         Registration { this: self, registration: Some((key.clone(), receiver)) }
     }
 
-    pub fn register_all(&self, keys: &[K]) -> Vec<Registration<K, V>> {
+    pub fn register_all<'a>(&'a self, keys: &[K]) -> Vec<Registration<'a, K, V>> {
         self.count_pending.fetch_add(keys.len(), Ordering::Relaxed);
         let mut registrations = vec![];
         for key in keys.iter() {
@@ -96,7 +96,7 @@ impl<K: Eq + Hash + Clone, V: Clone> NotifyRead<K, V> {
         self.pending(key).entry(key.clone()).or_default().push(sender);
     }
 
-    fn pending(&self, key: &K) -> MutexGuard<HashMap<K, Registrations<V>>> {
+    fn pending<'a>(&'a self, key: &K) -> MutexGuard<'a, HashMap<K, Registrations<V>>> {
         let mut state = DefaultHasher::new();
         key.hash(&mut state);
         let hash = state.finish();

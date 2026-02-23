@@ -499,7 +499,11 @@ pub trait RpcIndexes: Send + Sync {
         owner: SomaAddress,
         object_type: Option<ObjectType>,
         cursor: Option<OwnedObjectInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<OwnedObjectInfo, crate::storage::storage_error::Error>> + '_>>;
+    ) -> Result<
+        Box<
+            dyn Iterator<Item = Result<OwnedObjectInfo, crate::storage::storage_error::Error>> + '_,
+        >,
+    >;
 
     fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
 
@@ -517,7 +521,9 @@ pub trait RpcIndexes: Send + Sync {
         status_filter: Option<String>,
         epoch_filter: Option<u64>,
         cursor: Option<TargetInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<TargetInfo, crate::storage::storage_error::Error>> + '_>>;
+    ) -> Result<
+        Box<dyn Iterator<Item = Result<TargetInfo, crate::storage::storage_error::Error>> + '_>,
+    >;
 
     /// Iterate over Challenge objects with optional filtering by status, epoch, and target.
     ///
@@ -532,7 +538,9 @@ pub trait RpcIndexes: Send + Sync {
         epoch_filter: Option<u64>,
         target_filter: Option<ObjectID>,
         cursor: Option<ChallengeInfo>,
-    ) -> Result<Box<dyn Iterator<Item = Result<ChallengeInfo, crate::storage::storage_error::Error>> + '_>>;
+    ) -> Result<
+        Box<dyn Iterator<Item = Result<ChallengeInfo, crate::storage::storage_error::Error>> + '_>,
+    >;
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

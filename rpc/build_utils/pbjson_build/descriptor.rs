@@ -140,6 +140,7 @@ pub struct DescriptorSet {
 }
 
 impl DescriptorSet {
+    #[allow(dead_code)]
     pub fn register_encoded(&mut self, encoded: &[u8]) -> Result<()> {
         let descriptors: FileDescriptorSet =
             prost::Message::decode(encoded).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;

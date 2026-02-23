@@ -56,10 +56,8 @@ fn test_1d_param() {
     let seed = 42u64;
     let embedding_dim = 4;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
-    tensors.insert(
-        "param".to_string(),
-        ArrayWrapper(normal_array(seed,&[embedding_dim], 0.0, 1.0)),
-    );
+    tensors
+        .insert("param".to_string(), ArrayWrapper(normal_array(seed, &[embedding_dim], 0.0, 1.0)));
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
@@ -81,7 +79,7 @@ fn test_3d_param() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        ArrayWrapper(normal_array(seed,&[1, 1, embedding_dim], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed, &[1, 1, embedding_dim], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

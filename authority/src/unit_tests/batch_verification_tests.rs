@@ -23,8 +23,7 @@ use types::{
 };
 
 use crate::{
-    authority_test_utils::certify_transaction,
-    signature_verifier::SignatureVerifier,
+    authority_test_utils::certify_transaction, signature_verifier::SignatureVerifier,
     test_authority_builder::TestAuthorityBuilder,
 };
 

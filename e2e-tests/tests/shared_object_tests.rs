@@ -17,6 +17,7 @@ use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
 use types::{
+    SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
     checksum::Checksum,
     config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA},
@@ -34,7 +35,6 @@ use types::{
     transaction::{
         ClaimRewardsArgs, SubmitDataArgs, Transaction, TransactionData, TransactionKind,
     },
-    SYSTEM_STATE_OBJECT_ID,
 };
 use url::Url;
 use utils::logging::init_tracing;
@@ -139,10 +139,10 @@ async fn get_validator_gas_object(
 
     let created = response.effects.created();
     for (obj_ref, owner) in created {
-        if let Owner::AddressOwner(addr) = owner
-            && addr == validator_address
-        {
-            return obj_ref;
+        if let Owner::AddressOwner(addr) = owner {
+            if addr == validator_address {
+                return obj_ref;
+            }
         }
     }
 
@@ -245,12 +245,8 @@ async fn test_shared_object_mutation_via_submit_data() {
     );
 
     // 3. SystemState should also appear in mutated() (shared object, always mutated by SubmitData)
-    let system_state_mutated =
-        mutated.iter().find(|((id, _, _), _)| *id == SYSTEM_STATE_OBJECT_ID);
-    assert!(
-        system_state_mutated.is_some(),
-        "SystemState should appear in mutated objects"
-    );
+    let system_state_mutated = mutated.iter().find(|((id, _, _), _)| *id == SYSTEM_STATE_OBJECT_ID);
+    assert!(system_state_mutated.is_some(), "SystemState should appear in mutated objects");
 
     // 4. Check input_shared_objects() includes both Target and SystemState
     let input_shared = response.effects.input_shared_objects();
@@ -267,17 +263,12 @@ async fn test_shared_object_mutation_via_submit_data() {
     assert!(system_state_in_shared, "SystemState should be in input_shared_objects as Mutate");
 
     // 5. Target should NOT appear in created() or deleted()
-    let created_ids: Vec<_> = response.effects.created().iter().map(|((id, _, _), _)| *id).collect();
-    assert!(
-        !created_ids.contains(&target_id),
-        "Target should not appear in created objects"
-    );
+    let created_ids: Vec<_> =
+        response.effects.created().iter().map(|((id, _, _), _)| *id).collect();
+    assert!(!created_ids.contains(&target_id), "Target should not appear in created objects");
 
     let deleted_ids: Vec<_> = response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
-    assert!(
-        !deleted_ids.contains(&target_id),
-        "Target should not appear in deleted objects"
-    );
+    assert!(!deleted_ids.contains(&target_id), "Target should not appear in deleted objects");
 
     // 6. New objects should be created (Submission object + replacement target)
     assert!(
@@ -319,11 +310,7 @@ async fn test_conflicting_owned_transactions_same_coin() {
         .unwrap()
         .expect("Sender should have a gas object");
 
-    info!(
-        "Using coin {} version {} for both transactions",
-        coin_ref.0,
-        coin_ref.1.value()
-    );
+    info!("Using coin {} version {} for both transactions", coin_ref.0, coin_ref.1.value());
 
     // Create two TransferCoin transactions using the SAME ObjectRef
     let tx1_data = TransactionData::new(
@@ -374,19 +361,16 @@ async fn test_conflicting_owned_transactions_same_coin() {
         }
         Err(e) => {
             // The transaction may fail at the orchestrator level (before execution)
-            info!(
-                "Second transfer correctly rejected at submission: {}",
-                e
-            );
+            info!("Second transfer correctly rejected at submission: {}", e);
         }
     }
 
     // Verify the coin was only spent once — check that recipient_a received funds
     // but recipient_b did not get a new coin from this specific transfer
     let created_by_tx1 = response1.effects.created();
-    let recipient_a_coin = created_by_tx1.iter().any(|(_, owner)| {
-        matches!(owner, Owner::AddressOwner(addr) if *addr == recipient_a)
-    });
+    let recipient_a_coin = created_by_tx1
+        .iter()
+        .any(|(_, owner)| matches!(owner, Owner::AddressOwner(addr) if *addr == recipient_a));
     assert!(recipient_a_coin, "recipient_a should have received a coin from tx1");
 
     info!("test_conflicting_owned_transactions_same_coin passed: equivocation correctly prevented");
@@ -493,13 +477,11 @@ async fn test_shared_object_status_transition_via_claim() {
     // 1. Target should appear in mutated() (status changed to Claimed, NOT deleted)
     let mutated = claim_response.effects.mutated();
     let target_mutated = mutated.iter().find(|((id, _, _), _)| *id == target_id);
-    assert!(
-        target_mutated.is_some(),
-        "Target should appear in mutated objects after ClaimRewards"
-    );
+    assert!(target_mutated.is_some(), "Target should appear in mutated objects after ClaimRewards");
 
     // 2. Target should NOT appear in deleted()
-    let deleted_ids: Vec<_> = claim_response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
+    let deleted_ids: Vec<_> =
+        claim_response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
     assert!(
         !deleted_ids.contains(&target_id),
         "Target should NOT be deleted by ClaimRewards (status transition, not deletion)"
@@ -507,10 +489,7 @@ async fn test_shared_object_status_transition_via_claim() {
 
     // 3. New reward coins should be created (miner reward + model owner reward + bond return)
     let created = claim_response.effects.created();
-    assert!(
-        !created.is_empty(),
-        "ClaimRewards should create reward coins"
-    );
+    assert!(!created.is_empty(), "ClaimRewards should create reward coins");
     info!("ClaimRewards created {} objects (rewards + bond return)", created.len());
 
     // 4. Verify miner received at least one coin
@@ -518,10 +497,7 @@ async fn test_shared_object_status_transition_via_claim() {
         .iter()
         .filter(|(_, owner)| matches!(owner, Owner::AddressOwner(addr) if *addr == miner))
         .collect();
-    assert!(
-        !miner_coins.is_empty(),
-        "Miner should receive rewards or bond return"
-    );
+    assert!(!miner_coins.is_empty(), "Miner should receive rewards or bond return");
 
     // === Verify subsequent operations on Claimed target fail ===
 
@@ -657,7 +633,7 @@ async fn test_target_version_increments_on_mutations() {
     let mutated = submit_response.effects.mutated();
     let target_after_submit = mutated.iter().find(|((id, _, _), _)| *id == target_id);
     assert!(target_after_submit.is_some(), "Target should be in mutated objects");
-    let version_1 = target_after_submit.unwrap().0 .1;
+    let version_1 = target_after_submit.unwrap().0.1;
 
     info!(
         "After SubmitData: target version {} -> {} (effects version {})",
@@ -712,7 +688,7 @@ async fn test_target_version_increments_on_mutations() {
     let mutated2 = report_response.effects.mutated();
     let target_after_report = mutated2.iter().find(|((id, _, _), _)| *id == target_id);
     assert!(target_after_report.is_some(), "Target should be in mutated objects after report");
-    let version_2 = target_after_report.unwrap().0 .1;
+    let version_2 = target_after_report.unwrap().0.1;
 
     info!(
         "After ReportSubmission: target version {} -> {} (effects version {})",
@@ -754,7 +730,7 @@ async fn test_target_version_increments_on_mutations() {
     let mutated3 = report_response_2.effects.mutated();
     let target_after_report_2 = mutated3.iter().find(|((id, _, _), _)| *id == target_id);
     assert!(target_after_report_2.is_some(), "Target should be in mutated objects");
-    let version_3 = target_after_report_2.unwrap().0 .1;
+    let version_3 = target_after_report_2.unwrap().0.1;
 
     info!(
         "After second ReportSubmission: target version {} -> {}",
@@ -926,10 +902,7 @@ async fn test_transaction_replay_idempotency() {
     );
 
     // 3. Same execution status
-    assert!(
-        effects2.status().is_ok(),
-        "Replayed transaction should also report success"
-    );
+    assert!(effects2.status().is_ok(), "Replayed transaction should also report success");
 
     // 4. Same set of mutated objects
     assert_eq!(
@@ -1087,10 +1060,7 @@ async fn test_racing_miners_concurrent_shared_mutations() {
         failures
     );
 
-    info!(
-        "test_racing_miners_concurrent_shared_mutations passed: 1 winner, {} losers",
-        failures
-    );
+    info!("test_racing_miners_concurrent_shared_mutations passed: 1 winner, {} losers", failures);
 }
 
 // ===================================================================
@@ -1199,10 +1169,7 @@ async fn test_shared_object_dependency_tracking() {
     );
 
     // Dependencies should not be empty
-    assert!(
-        !tx2_deps.is_empty(),
-        "Transaction dependencies should not be empty"
-    );
+    assert!(!tx2_deps.is_empty(), "Transaction dependencies should not be empty");
 
     // === Mutation 3: Second validator report — should depend on mutation 2 ===
     let validator_addr_2 = get_validator_address(&test_cluster, 1);
@@ -1232,7 +1199,9 @@ async fn test_shared_object_dependency_tracking() {
 
     info!(
         "test_shared_object_dependency_tracking passed: {} -> {} -> {}",
-        tx1_digest, tx2_digest, response3.effects.transaction_digest()
+        tx1_digest,
+        tx2_digest,
+        response3.effects.transaction_digest()
     );
 }
 
@@ -1266,11 +1235,7 @@ async fn test_concurrent_conflicting_owned_transactions() {
         .unwrap()
         .expect("Sender should have a gas object");
 
-    info!(
-        "Concurrent spend of coin {} version {}",
-        coin_ref.0,
-        coin_ref.1.value()
-    );
+    info!("Concurrent spend of coin {} version {}", coin_ref.0, coin_ref.1.value());
 
     // Create and sign two conflicting TransferCoin transactions
     let tx1_data = TransactionData::new(
@@ -1345,22 +1310,23 @@ async fn test_concurrent_conflicting_owned_transactions() {
     let result2 = result2.unwrap();
 
     // Exactly one should succeed, the other should fail with ObjectsDoubleUsed
-    let (successes, failures) = [("TX1", &result1), ("TX2", &result2)]
-        .iter()
-        .fold((0, 0), |(s, f), (name, result)| match result {
-            Ok((response, _)) => {
-                let effects = &response.effects.effects;
-                if effects.status().is_ok() {
-                    info!("{} succeeded", name);
-                    (s + 1, f)
-                } else {
-                    info!("{} failed in effects: {:?}", name, effects.status());
+    let (successes, failures) =
+        [("TX1", &result1), ("TX2", &result2)].iter().fold((0, 0), |(s, f), (name, result)| {
+            match result {
+                Ok((response, _)) => {
+                    let effects = &response.effects.effects;
+                    if effects.status().is_ok() {
+                        info!("{} succeeded", name);
+                        (s + 1, f)
+                    } else {
+                        info!("{} failed in effects: {:?}", name, effects.status());
+                        (s, f + 1)
+                    }
+                }
+                Err(e) => {
+                    info!("{} failed at submission: {:?}", name, e);
                     (s, f + 1)
                 }
-            }
-            Err(e) => {
-                info!("{} failed at submission: {:?}", name, e);
-                (s, f + 1)
             }
         });
 
@@ -1379,10 +1345,7 @@ async fn test_concurrent_conflicting_owned_transactions() {
     let executed_count = [digest1, digest2]
         .iter()
         .filter(|d| {
-            test_cluster
-                .fullnode_handle
-                .soma_node
-                .with(|n| n.state().is_tx_already_executed(d))
+            test_cluster.fullnode_handle.soma_node.with(|n| n.state().is_tx_already_executed(d))
         })
         .count();
 
@@ -1392,7 +1355,5 @@ async fn test_concurrent_conflicting_owned_transactions() {
         executed_count
     );
 
-    info!(
-        "test_concurrent_conflicting_owned_transactions passed: 1 success, 1 rejection"
-    );
+    info!("test_concurrent_conflicting_owned_transactions passed: 1 success, 1 rejection");
 }

@@ -55,11 +55,7 @@ impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequ
         let pos_ids = Tensor::cat(pos_tensors, 0).to_device(device);
         let targets = Tensor::cat(target_tensors, 0).to_device(device);
 
-        ByteSequenceBatch {
-            token_ids,
-            pos_ids,
-            targets,
-        }
+        ByteSequenceBatch { token_ids, pos_ids, targets }
     }
 }
 

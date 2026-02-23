@@ -20,8 +20,8 @@ use types::{
 };
 use utils::logging::init_tracing;
 
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 /// Generate 3 deterministic Ed25519 keypairs for testing.
 fn test_keys() -> Vec<SomaKeyPair> {
@@ -113,12 +113,9 @@ async fn test_multisig_e2e() {
     let pk2 = keys[2].public();
 
     // Create multisig with threshold = 2
-    let multisig_pk = MultiSigPublicKey::new(
-        vec![pk0.clone(), pk1.clone(), pk2.clone()],
-        vec![1, 1, 1],
-        2,
-    )
-    .expect("MultiSigPublicKey creation should succeed");
+    let multisig_pk =
+        MultiSigPublicKey::new(vec![pk0.clone(), pk1.clone(), pk2.clone()], vec![1, 1, 1], 2)
+            .expect("MultiSigPublicKey creation should succeed");
     let multisig_addr = SomaAddress::from(&multisig_pk);
 
     // Fund the multisig address
@@ -198,30 +195,20 @@ async fn test_multisig_e2e() {
 
     let intent_msg = IntentMessage::new(Intent::soma_transaction(), &tx_data);
     let empty_combine = MultiSig::combine(vec![], multisig_pk.clone());
-    assert!(
-        empty_combine.is_err(),
-        "Combining zero signatures should fail"
-    );
+    assert!(empty_combine.is_err(), "Combining zero signatures should fail");
     info!("Test 4 passed: empty signature set correctly rejected");
 
     // 5. Duplicate signatures (same key signed twice) — should fail
     info!("Test 5: Duplicate signatures");
     let sig0: GenericSignature = Signature::new_secure(&intent_msg, &keys[0]).into();
     let dup_combine = MultiSig::combine(vec![sig0.clone(), sig0.clone()], multisig_pk.clone());
-    assert!(
-        dup_combine.is_err(),
-        "Combining duplicate signatures should fail"
-    );
+    assert!(dup_combine.is_err(), "Combining duplicate signatures should fail");
     info!("Test 5 passed: duplicate signatures correctly rejected");
 
     // 6. Wrong sender (multisig pk doesn't match sender address)
     info!("Test 6: Wrong sender address");
-    let wrong_multisig_pk = MultiSigPublicKey::new(
-        vec![pk0.clone(), pk1.clone()],
-        vec![1, 1],
-        1,
-    )
-    .unwrap();
+    let wrong_multisig_pk =
+        MultiSigPublicKey::new(vec![pk0.clone(), pk1.clone()], vec![1, 1], 1).unwrap();
     let wrong_sender = SomaAddress::from(&wrong_multisig_pk);
 
     // Fund the wrong sender address
@@ -243,10 +230,7 @@ async fn test_multisig_e2e() {
 
     // Try to combine with wrong_multisig_pk — key 2 is not in this pk map
     let combine_result = MultiSig::combine(vec![sig2], wrong_multisig_pk.clone());
-    assert!(
-        combine_result.is_err(),
-        "Should fail when signature key not in multisig pk"
-    );
+    assert!(combine_result.is_err(), "Should fail when signature key not in multisig pk");
     info!("Test 6 passed: wrong sender / key mismatch correctly rejected");
 
     info!("All multisig E2E tests passed");

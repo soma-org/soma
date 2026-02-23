@@ -18,10 +18,10 @@ use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
 use tracing::info;
 use types::base::SomaAddress;
-use types::effects::TransactionEffectsAPI;
 use types::config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG};
 use types::crypto::{Signature, SomaKeyPair};
 use types::digests::{ObjectDigest, TransactionDigest};
+use types::effects::TransactionEffectsAPI;
 use types::intent::Intent;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::transaction::{Transaction, TransactionData, TransactionKind};
@@ -167,9 +167,11 @@ impl WalletContext {
         force_recache: bool,
     ) -> Result<String, anyhow::Error> {
         let env = self.get_active_env()?;
-        if !force_recache && let Some(chain_id) = &env.chain_id {
-            info!("Found cached chain ID for env {}: {}", env.alias, chain_id);
-            return Ok(chain_id.clone());
+        if !force_recache {
+            if let Some(chain_id) = &env.chain_id {
+                info!("Found cached chain ID for env {}: {}", env.alias, chain_id);
+                return Ok(chain_id.clone());
+            }
         }
         let chain_id = client.get_chain_identifier().await?;
         let path = self.config.path();
@@ -250,8 +252,10 @@ impl WalletContext {
             object_refs.push(object.compute_object_reference());
 
             // Stop if we've reached the limit
-            if let Some(limit) = limit && object_refs.len() >= limit {
-                break;
+            if let Some(limit) = limit {
+                if object_refs.len() >= limit {
+                    break;
+                }
             }
         }
 
@@ -340,8 +344,10 @@ impl WalletContext {
             return Ok(&self.config.keystore);
         }
 
-        if let Some(external_keys) = self.config.external_keys.as_ref() && external_keys.get_by_identity(key_identity).is_ok() {
-            return Ok(external_keys);
+        if let Some(external_keys) = self.config.external_keys.as_ref() {
+            if external_keys.get_by_identity(key_identity).is_ok() {
+                return Ok(external_keys);
+            }
         }
 
         Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))
@@ -356,8 +362,10 @@ impl WalletContext {
             return Ok(&mut self.config.keystore);
         }
 
-        if let Some(external_keys) = self.config.external_keys.as_mut() && external_keys.get_by_identity(key_identity).is_ok() {
-            return Ok(external_keys);
+        if let Some(external_keys) = self.config.external_keys.as_mut() {
+            if external_keys.get_by_identity(key_identity).is_ok() {
+                return Ok(external_keys);
+            }
         }
 
         Err(anyhow!("No keystore found for the provided key identity: {key_identity}"))

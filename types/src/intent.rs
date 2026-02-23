@@ -49,13 +49,13 @@ impl TryFrom<u8> for AppId {
 #[derive(Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[repr(u8)]
 pub enum IntentScope {
-    TransactionData = 0, // Used for a user signature on a transaction data.
-    ConsensusBlock = 1, // Used for consensus authority signature on block's digest
+    TransactionData = 0,         // Used for a user signature on a transaction data.
+    ConsensusBlock = 1,          // Used for consensus authority signature on block's digest
     SenderSignedTransaction = 2, // Used for an authority signature on a user signed transaction.
-    TransactionEffects = 3, // Used for an authority signature on transaction effects.
-    DiscoveryPeers = 4, // Used for a signature on a discovery message.
-    CommitSummary = 5,  // Used for a signature on a commit summary.
-    ValidatorSet = 6,   // Used for a signature on a validator set.
+    TransactionEffects = 3,      // Used for an authority signature on transaction effects.
+    DiscoveryPeers = 4,          // Used for a signature on a discovery message.
+    CommitSummary = 5,           // Used for a signature on a commit summary.
+    ValidatorSet = 6,            // Used for a signature on a validator set.
     CheckpointSummary = 7,
     ProofOfPossession = 8, // Used for validator proof of possession of protocol key.
 }

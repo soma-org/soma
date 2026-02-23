@@ -76,12 +76,7 @@ fn test_intent_scope_variants() {
     let mut seen = std::collections::HashSet::new();
     for scope in &scopes {
         let val = *scope as u8;
-        assert!(
-            seen.insert(val),
-            "IntentScope variant {:?} has duplicate u8 value {}",
-            scope,
-            val
-        );
+        assert!(seen.insert(val), "IntentScope variant {:?} has duplicate u8 value {}", scope, val);
     }
 
     // Verify we tested all variants (update count if new variants are added).

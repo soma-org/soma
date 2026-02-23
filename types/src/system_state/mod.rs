@@ -5,6 +5,7 @@ use std::{
 
 use crate::{checksum::Checksum, crypto::DefaultHash, metadata::ManifestAPI as _};
 use emission::EmissionPool;
+use enum_dispatch::enum_dispatch;
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfoV1};
 use fastcrypto::{
     bls12381::{self, min_sig::BLS12381PublicKey},
@@ -14,7 +15,6 @@ use fastcrypto::{
 };
 use model_registry::ModelRegistry;
 use protocol_config::{ProtocolConfig, SomaTensor, SystemParameters};
-use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use staking::{StakedSomaV1, StakingPool};
 use target_state::TargetState;
@@ -34,7 +34,7 @@ use crate::{
     digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError, SomaResult},
-    model::{ArchitectureVersion, ModelV1, ModelId, ModelWeightsManifest, PendingModelUpdate},
+    model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest, PendingModelUpdate},
     multiaddr::Multiaddr,
     object::ObjectID,
     parameters,
@@ -202,9 +202,7 @@ impl SystemStateV1 {
         }
 
         // Initialize target state with initial thresholds from parameters
-        let target_state = TargetState::new(
-            parameters.target_initial_distance_threshold.clone(),
-        );
+        let target_state = TargetState::new(parameters.target_initial_distance_threshold.clone());
 
         Self {
             epoch: 0,
@@ -260,27 +258,27 @@ impl SystemStateV1 {
         );
 
         // Parse and verify proof of possession
-        let pop = crypto::AuthoritySignature::from_bytes(&proof_of_possession_bytes).map_err(
-            |e| ExecutionFailureStatus::InvalidProofOfPossession {
-                reason: format!("Invalid PoP signature bytes: {}", e),
-            },
-        )?;
+        let pop =
+            crypto::AuthoritySignature::from_bytes(&proof_of_possession_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidProofOfPossession {
+                    reason: format!("Invalid PoP signature bytes: {}", e),
+                }
+            })?;
         crypto::verify_proof_of_possession(&pop, &protocol_pubkey, signer).map_err(|e| {
             ExecutionFailureStatus::InvalidProofOfPossession {
                 reason: format!("PoP verification failed: {}", e),
             }
         })?;
 
-        let parse_address = |bytes: &[u8], field: &str| -> Result<Multiaddr, ExecutionFailureStatus> {
-            let addr_str: String = bcs::from_bytes(bytes).map_err(|_| {
-                ExecutionFailureStatus::InvalidArguments {
+        let parse_address = |bytes: &[u8],
+                             field: &str|
+         -> Result<Multiaddr, ExecutionFailureStatus> {
+            let addr_str: String =
+                bcs::from_bytes(bytes).map_err(|_| ExecutionFailureStatus::InvalidArguments {
                     reason: format!("Failed to BCS deserialize {} string", field),
-                }
-            })?;
-            Multiaddr::from_str(&addr_str).map_err(|e| {
-                ExecutionFailureStatus::InvalidArguments {
-                    reason: format!("Invalid {} multiaddr format: {}", field, e),
-                }
+                })?;
+            Multiaddr::from_str(&addr_str).map_err(|e| ExecutionFailureStatus::InvalidArguments {
+                reason: format!("Invalid {} multiaddr format: {}", field, e),
             })
         };
 
@@ -546,10 +544,7 @@ impl SystemStateV1 {
         }
 
         // Add report to records
-        self.validator_report_records
-            .entry(reportee)
-            .or_default()
-            .insert(reporter);
+        self.validator_report_records.entry(reportee).or_default().insert(reporter);
 
         Ok(())
     }
@@ -923,11 +918,7 @@ impl SystemStateV1 {
             return Err(ExecutionFailureStatus::ModelNotActive);
         }
 
-        self.model_registry
-            .model_report_records
-            .entry(*model_id)
-            .or_default()
-            .insert(reporter);
+        self.model_registry.model_report_records.entry(*model_id).or_default().insert(reporter);
 
         Ok(())
     }
@@ -1003,14 +994,11 @@ impl SystemStateV1 {
                 // Slash stake: reduce soma_balance by tally_slash_rate_bps
                 let slash_amount = (original_balance as u128 * tally_slash_rate as u128
                     / BPS_DENOMINATOR as u128) as u64;
-                model.staking_pool.soma_balance =
-                    original_balance.saturating_sub(slash_amount);
+                model.staking_pool.soma_balance = original_balance.saturating_sub(slash_amount);
 
                 // Remove the model's full original stake from the total
-                self.model_registry.total_model_stake = self
-                    .model_registry
-                    .total_model_stake
-                    .saturating_sub(original_balance);
+                self.model_registry.total_model_stake =
+                    self.model_registry.total_model_stake.saturating_sub(original_balance);
 
                 model.staking_pool.deactivation_epoch = Some(new_epoch);
                 self.model_registry.inactive_models.insert(*model_id, model);
@@ -1062,14 +1050,14 @@ impl SystemStateV1 {
         // Updates committed in epoch N must be revealed by the end of epoch N+1.
         // Cancel any expired pending updates (no slash).
         for model in self.model_registry.active_models.values_mut() {
-            if let Some(pending) = &model.pending_update
-                && pending.commit_epoch < prev_epoch
-            {
-                info!(
-                    "Model pending update cancelled (unrevealed, committed epoch {})",
-                    pending.commit_epoch
-                );
-                model.pending_update = None;
+            if let Some(pending) = &model.pending_update {
+                if pending.commit_epoch < prev_epoch {
+                    info!(
+                        "Model pending update cancelled (unrevealed, committed epoch {})",
+                        pending.commit_epoch
+                    );
+                    model.pending_update = None;
+                }
             }
         }
 
@@ -1143,7 +1131,8 @@ impl SystemStateV1 {
         let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
         // 2. Calculate total rewards (emissions + fees + safe mode accumulators)
-        let mut total_rewards = epoch_total_transaction_fees.saturating_add(safe_mode_extra_rewards);
+        let mut total_rewards =
+            epoch_total_transaction_fees.saturating_add(safe_mode_extra_rewards);
         if epoch_start_timestamp_ms
             >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
         {
@@ -1160,9 +1149,8 @@ impl SystemStateV1 {
         // so we only allocate validator rewards here.
         let validator_allocation_bps = self.parameters.validator_reward_allocation_bps;
         // Use u128 intermediate to avoid overflow
-        let validator_allocation =
-            (total_rewards as u128 * validator_allocation_bps as u128 / BPS_DENOMINATOR as u128)
-                as u64;
+        let validator_allocation = (total_rewards as u128 * validator_allocation_bps as u128
+            / BPS_DENOMINATOR as u128) as u64;
         let remainder = total_rewards - validator_allocation;
         // Target rewards are pre-allocated from the emission pool at target creation time,
         // so the non-validator portion of epoch rewards is returned to the emission pool
@@ -1219,19 +1207,15 @@ impl SystemStateV1 {
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
         // Accumulate fees — will be distributed on recovery
-        self.safe_mode_accumulated_fees = self
-            .safe_mode_accumulated_fees
-            .saturating_add(epoch_total_transaction_fees);
+        self.safe_mode_accumulated_fees =
+            self.safe_mode_accumulated_fees.saturating_add(epoch_total_transaction_fees);
 
         // Accumulate emissions if the emission pool has balance
-        let emission = std::cmp::min(
-            self.emission_pool.emission_per_epoch,
-            self.emission_pool.balance,
-        );
+        let emission =
+            std::cmp::min(self.emission_pool.emission_per_epoch, self.emission_pool.balance);
         self.emission_pool.balance = self.emission_pool.balance.saturating_sub(emission);
-        self.safe_mode_accumulated_emissions = self
-            .safe_mode_accumulated_emissions
-            .saturating_add(emission);
+        self.safe_mode_accumulated_emissions =
+            self.safe_mode_accumulated_emissions.saturating_add(emission);
 
         // No validator rewards, no model processing, no target generation,
         // no difficulty adjustment, no staking pool processing.
@@ -1256,9 +1240,8 @@ impl SystemStateV1 {
         let epoch_emissions = self.emission_pool.emission_per_epoch;
         let target_allocation_bps = self.parameters.target_reward_allocation_bps;
         // Use u128 intermediate to avoid overflow when epoch_emissions is large
-        let target_emissions =
-            (epoch_emissions as u128 * target_allocation_bps as u128 / BPS_DENOMINATOR as u128)
-                as u64;
+        let target_emissions = (epoch_emissions as u128 * target_allocation_bps as u128
+            / BPS_DENOMINATOR as u128) as u64;
 
         // Use initial targets per epoch as the estimate
         let estimated_targets = self.parameters.target_initial_targets_per_epoch.max(1);
@@ -1298,8 +1281,7 @@ impl SystemStateV1 {
         let adjustment_factor: f32 = if ema_hits > target_hits {
             // Too easy - make harder (decrease thresholds)
             // factor < 1.0
-            (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
-                / BPS_DENOMINATOR as f32
+            (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32 / BPS_DENOMINATOR as f32
         } else if ema_hits < target_hits {
             // Too hard - make easier (increase thresholds)
             // factor > 1.0
@@ -1342,8 +1324,7 @@ impl SystemStateV1 {
 
         info!(
             "Target state advanced: reward_per_target={}, distance_threshold={}",
-            self.target_state.reward_per_target,
-            self.target_state.distance_threshold
+            self.target_state.reward_per_target, self.target_state.distance_threshold
         );
     }
 
@@ -1512,225 +1493,414 @@ impl SystemState {
     // --- Field accessors ---
 
     pub fn parameters(&self) -> &SystemParameters {
-        match self { Self::V1(v1) => &v1.parameters }
+        match self {
+            Self::V1(v1) => &v1.parameters,
+        }
     }
     pub fn parameters_mut(&mut self) -> &mut SystemParameters {
-        match self { Self::V1(v1) => &mut v1.parameters }
+        match self {
+            Self::V1(v1) => &mut v1.parameters,
+        }
     }
     pub fn validators(&self) -> &ValidatorSet {
-        match self { Self::V1(v1) => &v1.validators }
+        match self {
+            Self::V1(v1) => &v1.validators,
+        }
     }
     pub fn validators_mut(&mut self) -> &mut ValidatorSet {
-        match self { Self::V1(v1) => &mut v1.validators }
+        match self {
+            Self::V1(v1) => &mut v1.validators,
+        }
     }
     pub fn model_registry(&self) -> &ModelRegistry {
-        match self { Self::V1(v1) => &v1.model_registry }
+        match self {
+            Self::V1(v1) => &v1.model_registry,
+        }
     }
     pub fn model_registry_mut(&mut self) -> &mut ModelRegistry {
-        match self { Self::V1(v1) => &mut v1.model_registry }
+        match self {
+            Self::V1(v1) => &mut v1.model_registry,
+        }
     }
     pub fn target_state(&self) -> &TargetState {
-        match self { Self::V1(v1) => &v1.target_state }
+        match self {
+            Self::V1(v1) => &v1.target_state,
+        }
     }
     pub fn target_state_mut(&mut self) -> &mut TargetState {
-        match self { Self::V1(v1) => &mut v1.target_state }
+        match self {
+            Self::V1(v1) => &mut v1.target_state,
+        }
     }
     pub fn emission_pool(&self) -> &EmissionPool {
-        match self { Self::V1(v1) => &v1.emission_pool }
+        match self {
+            Self::V1(v1) => &v1.emission_pool,
+        }
     }
     pub fn emission_pool_mut(&mut self) -> &mut EmissionPool {
-        match self { Self::V1(v1) => &mut v1.emission_pool }
+        match self {
+            Self::V1(v1) => &mut v1.emission_pool,
+        }
     }
     pub fn safe_mode(&self) -> bool {
-        match self { Self::V1(v1) => v1.safe_mode }
+        match self {
+            Self::V1(v1) => v1.safe_mode,
+        }
     }
     pub fn safe_mode_accumulated_fees(&self) -> u64 {
-        match self { Self::V1(v1) => v1.safe_mode_accumulated_fees }
+        match self {
+            Self::V1(v1) => v1.safe_mode_accumulated_fees,
+        }
     }
     pub fn safe_mode_accumulated_emissions(&self) -> u64 {
-        match self { Self::V1(v1) => v1.safe_mode_accumulated_emissions }
+        match self {
+            Self::V1(v1) => v1.safe_mode_accumulated_emissions,
+        }
     }
     pub fn validator_report_records(&self) -> &BTreeMap<SomaAddress, BTreeSet<SomaAddress>> {
-        match self { Self::V1(v1) => &v1.validator_report_records }
+        match self {
+            Self::V1(v1) => &v1.validator_report_records,
+        }
     }
 
     // --- Forwarding for all public non-trait methods ---
 
     pub fn request_add_validator(
-        &mut self, signer: SomaAddress, pubkey_bytes: Vec<u8>,
-        network_pubkey_bytes: Vec<u8>, worker_pubkey_bytes: Vec<u8>,
-        proof_of_possession_bytes: Vec<u8>, net_address: Vec<u8>,
-        p2p_address: Vec<u8>, primary_address: Vec<u8>, proxy_address: Vec<u8>,
+        &mut self,
+        signer: SomaAddress,
+        pubkey_bytes: Vec<u8>,
+        network_pubkey_bytes: Vec<u8>,
+        worker_pubkey_bytes: Vec<u8>,
+        proof_of_possession_bytes: Vec<u8>,
+        net_address: Vec<u8>,
+        p2p_address: Vec<u8>,
+        primary_address: Vec<u8>,
+        proxy_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         match self {
             Self::V1(v1) => v1.request_add_validator(
-                signer, pubkey_bytes, network_pubkey_bytes, worker_pubkey_bytes,
-                proof_of_possession_bytes, net_address, p2p_address, primary_address,
-                proxy_address, staking_pool_id,
+                signer,
+                pubkey_bytes,
+                network_pubkey_bytes,
+                worker_pubkey_bytes,
+                proof_of_possession_bytes,
+                net_address,
+                p2p_address,
+                primary_address,
+                proxy_address,
+                staking_pool_id,
             ),
         }
     }
 
-    pub fn request_remove_validator(&mut self, signer: SomaAddress, pubkey_bytes: Vec<u8>) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_remove_validator(signer, pubkey_bytes) }
+    pub fn request_remove_validator(
+        &mut self,
+        signer: SomaAddress,
+        pubkey_bytes: Vec<u8>,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.request_remove_validator(signer, pubkey_bytes),
+        }
     }
 
-    pub fn request_update_validator_metadata(&mut self, signer: SomaAddress, args: &UpdateValidatorMetadataArgs) -> ExecutionResult<()> {
-        match self { Self::V1(v1) => v1.request_update_validator_metadata(signer, args) }
+    pub fn request_update_validator_metadata(
+        &mut self,
+        signer: SomaAddress,
+        args: &UpdateValidatorMetadataArgs,
+    ) -> ExecutionResult<()> {
+        match self {
+            Self::V1(v1) => v1.request_update_validator_metadata(signer, args),
+        }
     }
 
-    pub fn request_add_stake(&mut self, signer: SomaAddress, address: SomaAddress, amount: u64) -> ExecutionResult<StakedSomaV1> {
-        match self { Self::V1(v1) => v1.request_add_stake(signer, address, amount) }
+    pub fn request_add_stake(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSomaV1> {
+        match self {
+            Self::V1(v1) => v1.request_add_stake(signer, address, amount),
+        }
     }
 
-    pub fn request_add_stake_at_genesis(&mut self, signer: SomaAddress, address: SomaAddress, amount: u64) -> ExecutionResult<StakedSomaV1> {
-        match self { Self::V1(v1) => v1.request_add_stake_at_genesis(signer, address, amount) }
+    pub fn request_add_stake_at_genesis(
+        &mut self,
+        signer: SomaAddress,
+        address: SomaAddress,
+        amount: u64,
+    ) -> ExecutionResult<StakedSomaV1> {
+        match self {
+            Self::V1(v1) => v1.request_add_stake_at_genesis(signer, address, amount),
+        }
     }
 
     pub fn add_model_at_genesis(
-        &mut self, model_id: ModelId, owner: SomaAddress,
-        weights_manifest: ModelWeightsManifest, weights_url_commitment: ModelWeightsUrlCommitment,
-        weights_commitment: ModelWeightsCommitment, architecture_version: ArchitectureVersion,
+        &mut self,
+        model_id: ModelId,
+        owner: SomaAddress,
+        weights_manifest: ModelWeightsManifest,
+        weights_url_commitment: ModelWeightsUrlCommitment,
+        weights_commitment: ModelWeightsCommitment,
+        architecture_version: ArchitectureVersion,
         commission_rate: u64,
     ) {
         match self {
             Self::V1(v1) => v1.add_model_at_genesis(
-                model_id, owner, weights_manifest, weights_url_commitment,
-                weights_commitment, architecture_version, commission_rate,
+                model_id,
+                owner,
+                weights_manifest,
+                weights_url_commitment,
+                weights_commitment,
+                architecture_version,
+                commission_rate,
             ),
         }
     }
 
-    pub fn request_add_stake_to_model_at_genesis(&mut self, model_id: &ModelId, amount: u64) -> ExecutionResult<StakedSomaV1> {
-        match self { Self::V1(v1) => v1.request_add_stake_to_model_at_genesis(model_id, amount) }
+    pub fn request_add_stake_to_model_at_genesis(
+        &mut self,
+        model_id: &ModelId,
+        amount: u64,
+    ) -> ExecutionResult<StakedSomaV1> {
+        match self {
+            Self::V1(v1) => v1.request_add_stake_to_model_at_genesis(model_id, amount),
+        }
     }
 
     pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1) -> ExecutionResult<u64> {
-        match self { Self::V1(v1) => v1.request_withdraw_stake(staked_soma) }
+        match self {
+            Self::V1(v1) => v1.request_withdraw_stake(staked_soma),
+        }
     }
 
-    pub fn report_validator(&mut self, reporter: SomaAddress, reportee: SomaAddress) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.report_validator(reporter, reportee) }
+    pub fn report_validator(
+        &mut self,
+        reporter: SomaAddress,
+        reportee: SomaAddress,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.report_validator(reporter, reportee),
+        }
     }
 
-    pub fn undo_report_validator(&mut self, reporter: SomaAddress, reportee: SomaAddress) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.undo_report_validator(reporter, reportee) }
+    pub fn undo_report_validator(
+        &mut self,
+        reporter: SomaAddress,
+        reportee: SomaAddress,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.undo_report_validator(reporter, reportee),
+        }
     }
 
-    pub fn request_set_commission_rate(&mut self, signer: SomaAddress, new_rate: u64) -> Result<(), ExecutionFailureStatus> {
-        match self { Self::V1(v1) => v1.request_set_commission_rate(signer, new_rate) }
+    pub fn request_set_commission_rate(
+        &mut self,
+        signer: SomaAddress,
+        new_rate: u64,
+    ) -> Result<(), ExecutionFailureStatus> {
+        match self {
+            Self::V1(v1) => v1.request_set_commission_rate(signer, new_rate),
+        }
     }
 
     pub fn find_model(&self, model_id: &ModelId) -> Option<&ModelV1> {
-        match self { Self::V1(v1) => v1.find_model(model_id) }
+        match self {
+            Self::V1(v1) => v1.find_model(model_id),
+        }
     }
 
     pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut ModelV1> {
-        match self { Self::V1(v1) => v1.find_model_mut(model_id) }
+        match self {
+            Self::V1(v1) => v1.find_model_mut(model_id),
+        }
     }
 
     pub fn request_commit_model(
-        &mut self, owner: SomaAddress, model_id: ModelId,
+        &mut self,
+        owner: SomaAddress,
+        model_id: ModelId,
         weights_url_commitment: ModelWeightsUrlCommitment,
         weights_commitment: ModelWeightsCommitment,
-        architecture_version: ArchitectureVersion, stake_amount: u64,
-        commission_rate: u64, staking_pool_id: ObjectID,
+        architecture_version: ArchitectureVersion,
+        stake_amount: u64,
+        commission_rate: u64,
+        staking_pool_id: ObjectID,
     ) -> ExecutionResult<StakedSomaV1> {
         match self {
             Self::V1(v1) => v1.request_commit_model(
-                owner, model_id, weights_url_commitment, weights_commitment,
-                architecture_version, stake_amount, commission_rate, staking_pool_id,
+                owner,
+                model_id,
+                weights_url_commitment,
+                weights_commitment,
+                architecture_version,
+                stake_amount,
+                commission_rate,
+                staking_pool_id,
             ),
         }
     }
 
     pub fn request_reveal_model(
-        &mut self, signer: SomaAddress, model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest, embedding: SomaTensor,
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
+        weights_manifest: ModelWeightsManifest,
+        embedding: SomaTensor,
     ) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_reveal_model(signer, model_id, weights_manifest, embedding) }
+        match self {
+            Self::V1(v1) => v1.request_reveal_model(signer, model_id, weights_manifest, embedding),
+        }
     }
 
     pub fn request_commit_model_update(
-        &mut self, signer: SomaAddress, model_id: &ModelId,
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
         weights_url_commitment: ModelWeightsUrlCommitment,
         weights_commitment: ModelWeightsCommitment,
     ) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_commit_model_update(signer, model_id, weights_url_commitment, weights_commitment) }
-    }
-
-    pub fn request_reveal_model_update(
-        &mut self, signer: SomaAddress, model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest, embedding: SomaTensor,
-    ) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_reveal_model_update(signer, model_id, weights_manifest, embedding) }
-    }
-
-    pub fn request_add_stake_to_model(&mut self, model_id: &ModelId, amount: u64) -> ExecutionResult<StakedSomaV1> {
-        match self { Self::V1(v1) => v1.request_add_stake_to_model(model_id, amount) }
-    }
-
-    pub fn request_set_model_commission_rate(&mut self, signer: SomaAddress, model_id: &ModelId, new_rate: u64) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_set_model_commission_rate(signer, model_id, new_rate) }
-    }
-
-    pub fn request_deactivate_model(&mut self, signer: SomaAddress, model_id: &ModelId) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.request_deactivate_model(signer, model_id) }
-    }
-
-    pub fn report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.report_model(reporter, model_id) }
-    }
-
-    pub fn undo_report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
-        match self { Self::V1(v1) => v1.undo_report_model(reporter, model_id) }
-    }
-
-    pub fn advance_epoch(
-        &mut self, new_epoch: u64, next_protocol_config: &ProtocolConfig,
-        epoch_total_transaction_fees: u64, epoch_start_timestamp_ms: u64,
-        epoch_randomness: Vec<u8>,
-    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
         match self {
-            Self::V1(v1) => v1.advance_epoch(
-                new_epoch, next_protocol_config, epoch_total_transaction_fees,
-                epoch_start_timestamp_ms, epoch_randomness,
+            Self::V1(v1) => v1.request_commit_model_update(
+                signer,
+                model_id,
+                weights_url_commitment,
+                weights_commitment,
             ),
         }
     }
 
-    pub fn advance_epoch_safe_mode(&mut self, new_epoch: u64, epoch_total_transaction_fees: u64, epoch_start_timestamp_ms: u64) {
-        match self { Self::V1(v1) => v1.advance_epoch_safe_mode(new_epoch, epoch_total_transaction_fees, epoch_start_timestamp_ms) }
+    pub fn request_reveal_model_update(
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
+        weights_manifest: ModelWeightsManifest,
+        embedding: SomaTensor,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => {
+                v1.request_reveal_model_update(signer, model_id, weights_manifest, embedding)
+            }
+        }
+    }
+
+    pub fn request_add_stake_to_model(
+        &mut self,
+        model_id: &ModelId,
+        amount: u64,
+    ) -> ExecutionResult<StakedSomaV1> {
+        match self {
+            Self::V1(v1) => v1.request_add_stake_to_model(model_id, amount),
+        }
+    }
+
+    pub fn request_set_model_commission_rate(
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
+        new_rate: u64,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.request_set_model_commission_rate(signer, model_id, new_rate),
+        }
+    }
+
+    pub fn request_deactivate_model(
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.request_deactivate_model(signer, model_id),
+        }
+    }
+
+    pub fn report_model(&mut self, reporter: SomaAddress, model_id: &ModelId) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.report_model(reporter, model_id),
+        }
+    }
+
+    pub fn undo_report_model(
+        &mut self,
+        reporter: SomaAddress,
+        model_id: &ModelId,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.undo_report_model(reporter, model_id),
+        }
+    }
+
+    pub fn advance_epoch(
+        &mut self,
+        new_epoch: u64,
+        next_protocol_config: &ProtocolConfig,
+        epoch_total_transaction_fees: u64,
+        epoch_start_timestamp_ms: u64,
+        epoch_randomness: Vec<u8>,
+    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
+        match self {
+            Self::V1(v1) => v1.advance_epoch(
+                new_epoch,
+                next_protocol_config,
+                epoch_total_transaction_fees,
+                epoch_start_timestamp_ms,
+                epoch_randomness,
+            ),
+        }
+    }
+
+    pub fn advance_epoch_safe_mode(
+        &mut self,
+        new_epoch: u64,
+        epoch_total_transaction_fees: u64,
+        epoch_start_timestamp_ms: u64,
+    ) {
+        match self {
+            Self::V1(v1) => v1.advance_epoch_safe_mode(
+                new_epoch,
+                epoch_total_transaction_fees,
+                epoch_start_timestamp_ms,
+            ),
+        }
     }
 
     pub fn return_to_emissions_pool(&mut self, amount: u64) {
-        match self { Self::V1(v1) => v1.return_to_emissions_pool(amount) }
+        match self {
+            Self::V1(v1) => v1.return_to_emissions_pool(amount),
+        }
     }
 
     pub fn calculate_reward_per_target(&self) -> u64 {
-        match self { Self::V1(v1) => v1.calculate_reward_per_target() }
+        match self {
+            Self::V1(v1) => v1.calculate_reward_per_target(),
+        }
     }
 
     pub fn adjust_difficulty(&mut self) {
-        match self { Self::V1(v1) => v1.adjust_difficulty() }
+        match self {
+            Self::V1(v1) => v1.adjust_difficulty(),
+        }
     }
 
     pub fn advance_epoch_targets(&mut self) {
-        match self { Self::V1(v1) => v1.advance_epoch_targets() }
+        match self {
+            Self::V1(v1) => v1.advance_epoch_targets(),
+        }
     }
 
     pub fn fee_parameters(&self) -> FeeParameters {
-        match self { Self::V1(v1) => v1.fee_parameters() }
+        match self {
+            Self::V1(v1) => v1.fee_parameters(),
+        }
     }
 }
 
 pub fn get_system_state(object_store: &dyn ObjectStore) -> Result<SystemState, SomaError> {
-    let object = object_store
-        .get_object(&SYSTEM_STATE_OBJECT_ID)
-        .ok_or_else(|| {
-            SomaError::SystemStateReadError("SystemState object not found".to_owned())
-        })?;
+    let object = object_store.get_object(&SYSTEM_STATE_OBJECT_ID).ok_or_else(|| {
+        SomaError::SystemStateReadError("SystemState object not found".to_owned())
+    })?;
 
     SystemState::deserialize(object.as_inner().data.contents())
         .map_err(|err| SomaError::SystemStateReadError(err.to_string()))

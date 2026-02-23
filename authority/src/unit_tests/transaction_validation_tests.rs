@@ -96,11 +96,7 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
     // ConsensusCommitPrologueV1 doesn't need shared objects in current impl
     let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
     // Currently succeeds — system transaction rejection is at the network/consensus layer
-    assert!(
-        result.is_ok(),
-        "ConsensusCommitPrologueV1 should reach execution: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "ConsensusCommitPrologueV1 should reach execution: {:?}", result.err());
 }
 
 // =============================================================================
@@ -153,10 +149,7 @@ async fn test_nonexistent_gas_object_rejected() {
     let tx = to_sender_signed_transaction(data, &key);
 
     let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
-    assert!(
-        result.is_err(),
-        "Non-existent gas object should be rejected"
-    );
+    assert!(result.is_err(), "Non-existent gas object should be rejected");
 }
 
 // =============================================================================

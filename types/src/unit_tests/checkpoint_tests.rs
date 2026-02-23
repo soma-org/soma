@@ -4,7 +4,8 @@ use crate::tx_fee::TransactionFee;
 
 /// Helper to create a CheckpointContents with the given number of random execution digests.
 fn make_checkpoint_contents(num_txns: usize) -> CheckpointContents {
-    let digests: Vec<ExecutionDigests> = (0..num_txns).map(|_| ExecutionDigests::random()).collect();
+    let digests: Vec<ExecutionDigests> =
+        (0..num_txns).map(|_| ExecutionDigests::random()).collect();
     CheckpointContents::new_with_digests_only_for_tests(digests)
 }
 
@@ -65,14 +66,8 @@ fn test_checkpoint_sequence_ordering() {
     let s2 = make_checkpoint_summary(0, 5, &contents);
     let s3 = make_checkpoint_summary(0, 10, &contents);
 
-    assert!(
-        s1.sequence_number < s2.sequence_number,
-        "Sequence numbers should be orderable"
-    );
-    assert!(
-        s2.sequence_number < s3.sequence_number,
-        "Sequence numbers should be orderable"
-    );
+    assert!(s1.sequence_number < s2.sequence_number, "Sequence numbers should be orderable");
+    assert!(s2.sequence_number < s3.sequence_number, "Sequence numbers should be orderable");
     assert_eq!(*s1.sequence_number(), 1);
     assert_eq!(*s2.sequence_number(), 5);
     assert_eq!(*s3.sequence_number(), 10);
@@ -84,17 +79,11 @@ fn test_checkpoint_contents_digest() {
 
     let digest1 = *contents.digest();
     let digest2 = *contents.digest();
-    assert_eq!(
-        digest1, digest2,
-        "Contents digest should be deterministic across calls"
-    );
+    assert_eq!(digest1, digest2, "Contents digest should be deterministic across calls");
 
     // Also verify compute_digest matches the cached digest
     let computed = contents.compute_digest().expect("compute_digest should succeed");
-    assert_eq!(
-        digest1, computed,
-        "Cached digest and computed digest should match"
-    );
+    assert_eq!(digest1, computed, "Cached digest and computed digest should match");
 }
 
 #[test]
@@ -136,18 +125,12 @@ fn test_checkpoint_different_content_different_digest() {
     // (probability of collision is negligible)
     let digest_a = *contents_a.digest();
     let digest_b = *contents_b.digest();
-    assert_ne!(
-        digest_a, digest_b,
-        "Different contents should produce different digests"
-    );
+    assert_ne!(digest_a, digest_b, "Different contents should produce different digests");
 
     // Also verify empty contents have a consistent digest
     let empty1 = make_checkpoint_contents(0);
     let empty2 = make_checkpoint_contents(0);
     let empty_digest1 = *empty1.digest();
     let empty_digest2 = *empty2.digest();
-    assert_eq!(
-        empty_digest1, empty_digest2,
-        "Two empty contents should produce the same digest"
-    );
+    assert_eq!(empty_digest1, empty_digest2, "Two empty contents should produce the same digest");
 }

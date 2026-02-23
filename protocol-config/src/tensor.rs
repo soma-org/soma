@@ -103,10 +103,11 @@ impl std::str::FromStr for BcsF32 {
 ///
 /// Stored in the BCS serialization format to enable future dtype extensibility
 /// (e.g., f16 support) without breaking the wire format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Dtype {
     /// 32-bit IEEE 754 floating point (4 bytes per element)
+    #[default]
     F32 = 0,
     // F16 = 1,  // Reserved for future use
 }
@@ -117,12 +118,6 @@ impl Dtype {
         match self {
             Dtype::F32 => 4,
         }
-    }
-}
-
-impl Default for Dtype {
-    fn default() -> Self {
-        Dtype::F32
     }
 }
 
@@ -163,11 +158,8 @@ impl Serialize for SomaTensor {
     {
         let values = self.to_vec();
         let bytes: Vec<u8> = values.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let bcs_format = SomaTensorBcs {
-            dtype: Dtype::F32 as u8,
-            bytes,
-            shape: self.0.shape.clone(),
-        };
+        let bcs_format =
+            SomaTensorBcs { dtype: Dtype::F32 as u8, bytes, shape: self.0.shape.clone() };
         bcs_format.serialize(serializer)
     }
 }
@@ -191,10 +183,9 @@ impl<'de> Deserialize<'de> for SomaTensor {
                     .collect();
                 Ok(SomaTensor::new(values, bcs_format.shape))
             }
-            other => Err(serde::de::Error::custom(format!(
-                "Unsupported SomaTensor dtype: {}",
-                other
-            ))),
+            other => {
+                Err(serde::de::Error::custom(format!("Unsupported SomaTensor dtype: {}", other)))
+            }
         }
     }
 }
@@ -312,7 +303,13 @@ impl std::fmt::Display for SomaTensor {
             let first: Vec<_> = values.iter().take(3).map(|v| format!("{:.6}", v)).collect();
             let last: Vec<_> =
                 values.iter().rev().take(3).rev().map(|v| format!("{:.6}", v)).collect();
-            write!(f, "[{}, ..., {}] (shape: {:?})", first.join(", "), last.join(", "), self.shape())
+            write!(
+                f,
+                "[{}, ..., {}] (shape: {:?})",
+                first.join(", "),
+                last.join(", "),
+                self.shape()
+            )
         }
     }
 }
@@ -419,11 +416,7 @@ mod tests {
     #[test]
     fn test_soma_tensor_unknown_dtype_errors() {
         // Manually construct BCS bytes with an unknown dtype (255)
-        let fake_bcs = SomaTensorBcs {
-            dtype: 255,
-            bytes: vec![0; 4],
-            shape: vec![1],
-        };
+        let fake_bcs = SomaTensorBcs { dtype: 255, bytes: vec![0; 4], shape: vec![1] };
         let serialized = bcs::to_bytes(&fake_bcs).unwrap();
         let result = bcs::from_bytes::<SomaTensor>(&serialized);
         assert!(result.is_err());

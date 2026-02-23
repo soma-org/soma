@@ -112,8 +112,7 @@ impl TargetState {
             // EMA update: decay * old + (1-decay) * new
             let weight_old = decay_bps;
             let weight_new = 10000 - decay_bps;
-            self.hits_ema =
-                (weight_old * self.hits_ema + weight_new * current_hits) / 10000;
+            self.hits_ema = (weight_old * self.hits_ema + weight_new * current_hits) / 10000;
         }
         self.hits_ema
     }

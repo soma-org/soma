@@ -66,8 +66,11 @@ fn test_update_known_peers_invalid_signature() {
     let peer_id = PeerId::from(peer_kp.public());
 
     // Create NodeInfo with peer_kp's peer_id but sign with wrong_kp
-    let node_info =
-        NodeInfo { peer_id, address: "/ip4/10.0.0.1/tcp/9090".parse().unwrap(), timestamp_ms: now_unix() };
+    let node_info = NodeInfo {
+        peer_id,
+        address: "/ip4/10.0.0.1/tcp/9090".parse().unwrap(),
+        timestamp_ms: now_unix(),
+    };
     let signed = node_info.sign(&wrong_kp);
 
     // Override the peer_id to be peer_kp's (so sig won't match)

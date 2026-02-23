@@ -101,7 +101,7 @@ impl SubmitCommand {
 // Helpers
 // =============================================================================
 
-use super::parse_helpers::{parse_hex_digest_32, parse_embedding};
+use super::parse_helpers::{parse_embedding, parse_hex_digest_32};
 
 fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<SubmissionManifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;

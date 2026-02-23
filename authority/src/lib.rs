@@ -8,8 +8,6 @@
 
 pub mod audit_service;
 pub mod authority;
-pub mod fullnode_proxy;
-pub mod proxy_server;
 pub mod authority_aggregator;
 pub mod authority_client;
 pub mod authority_per_epoch_store;
@@ -34,8 +32,10 @@ pub mod execution;
 pub mod execution_driver;
 pub mod execution_scheduler;
 pub mod fallback_fetch;
+pub mod fullnode_proxy;
 pub mod global_state_hasher;
 pub mod mysticeti_adapter;
+pub mod proxy_server;
 pub mod reconfiguration;
 pub mod rpc_index;
 pub mod safe_client;

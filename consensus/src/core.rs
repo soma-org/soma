@@ -378,13 +378,13 @@ impl Core {
             .collect::<Vec<_>>();
 
         // Make sure that the first commit we find is the next one in line and there is no gap.
-        if let Some(commit) = commits.first()
-            && commit.index() != last_commit_index + 1
-        {
-            return Err(ConsensusError::UnexpectedCertifiedCommitIndex {
-                expected_commit_index: last_commit_index + 1,
-                commit_index: commit.index(),
-            });
+        if let Some(commit) = commits.first() {
+            if commit.index() != last_commit_index + 1 {
+                return Err(ConsensusError::UnexpectedCertifiedCommitIndex {
+                    expected_commit_index: last_commit_index + 1,
+                    commit_index: commit.index(),
+                });
+            }
         }
 
         Ok(commits)
@@ -487,8 +487,8 @@ impl Core {
         ancestors.iter().for_each(|block| {
             if block.timestamp_ms() > now {
                 trace!("Ancestor block {:?} has timestamp {}, greater than current timestamp {now}. Proposing for round {}.", block, block.timestamp_ms(), clock_round);
-                
-                
+
+
             }
         });
 
@@ -842,9 +842,10 @@ impl Core {
                         }
                         if let Some(last_block_ref) =
                             self.last_included_ancestors[ancestor.author()]
-                            && last_block_ref.round >= ancestor.round()
                         {
-                            return None;
+                            if last_block_ref.round >= ancestor.round() {
+                                return None;
+                            }
                         }
 
                         // We will never include equivocating ancestors so add them immediately
@@ -1230,7 +1231,7 @@ mod tests {
     use types::committee::AuthorityIndex;
     use types::consensus::{
         block::{BlockAPI, BlockRef, TestBlock, VerifiedBlock, genesis_blocks},
-        commit::{CommitDigest, TrustedCommit, CertifiedCommit},
+        commit::{CertifiedCommit, CommitDigest, TrustedCommit},
         context::Context,
     };
 
@@ -1255,9 +1256,7 @@ mod tests {
             .iter()
             .map(|&author| {
                 VerifiedBlock::new_for_test(
-                    TestBlock::new(1, author)
-                        .set_ancestors(genesis_refs.clone())
-                        .build(),
+                    TestBlock::new(1, author).set_ancestors(genesis_refs.clone()).build(),
                 )
             })
             .collect()
@@ -1270,7 +1269,11 @@ mod tests {
 
         // After recovery, core[0] should have proposed its own block at round 1.
         let last_proposed = fixture.core.last_proposed_block();
-        assert_eq!(last_proposed.round(), 1, "Core should have proposed at round 1 during recovery");
+        assert_eq!(
+            last_proposed.round(),
+            1,
+            "Core should have proposed at round 1 during recovery"
+        );
         assert_eq!(last_proposed.author(), AuthorityIndex::new_for_test(0));
 
         // Build round-1 blocks from authorities 1, 2, 3 and add them.
@@ -1360,14 +1363,10 @@ mod tests {
         };
 
         let block_r2_auth1 = VerifiedBlock::new_for_test(
-            TestBlock::new(2, 1)
-                .set_ancestors(round_1_refs.clone())
-                .build(),
+            TestBlock::new(2, 1).set_ancestors(round_1_refs.clone()).build(),
         );
         let block_r2_auth2 = VerifiedBlock::new_for_test(
-            TestBlock::new(2, 2)
-                .set_ancestors(round_1_refs.clone())
-                .build(),
+            TestBlock::new(2, 2).set_ancestors(round_1_refs.clone()).build(),
         );
         // Add both round-2 blocks (auth 0 own + auth 1 + auth 2 = 3*2500 = 7500 >= 6667).
         // This should advance the threshold clock to round 3.
@@ -1451,10 +1450,7 @@ mod tests {
                 break;
             }
         }
-        assert!(
-            found_round_2,
-            "Block broadcast should contain the round-2 block"
-        );
+        assert!(found_round_2, "Block broadcast should contain the round-2 block");
     }
 
     /// Test that filter_new_commits correctly filters out already committed commits
@@ -1478,11 +1474,8 @@ mod tests {
 
         // Initially no commits have been processed (last_commit_index = 0).
         // Filtering commits [1, 2, 3] should return all of them.
-        let commits = vec![
-            make_certified_commit(1),
-            make_certified_commit(2),
-            make_certified_commit(3),
-        ];
+        let commits =
+            vec![make_certified_commit(1), make_certified_commit(2), make_certified_commit(3)];
         let filtered = fixture.core.filter_new_commits(commits).unwrap();
         assert_eq!(filtered.len(), 3, "All commits should pass filter initially");
         assert_eq!(filtered[0].index(), 1);
@@ -1494,10 +1487,7 @@ mod tests {
         // If last_commit_index is 0, commits starting at 1 are fine.
         // But if we pass commits [0, 1, 2], index 0 should be filtered out
         // (0 is not > 0, so it's filtered).
-        let commits = vec![
-            make_certified_commit(1),
-            make_certified_commit(2),
-        ];
+        let commits = vec![make_certified_commit(1), make_certified_commit(2)];
         let filtered = fixture.core.filter_new_commits(commits).unwrap();
         assert_eq!(filtered.len(), 2);
 
@@ -1529,9 +1519,7 @@ mod tests {
             .iter()
             .map(|&author| {
                 VerifiedBlock::new_for_test(
-                    TestBlock::new(round, author)
-                        .set_ancestors(ancestor_refs.clone())
-                        .build(),
+                    TestBlock::new(round, author).set_ancestors(ancestor_refs.clone()).build(),
                 )
             })
             .collect()
@@ -1593,9 +1581,7 @@ mod tests {
 
         // Write these blocks to the store so a new Core can recover from them.
         let store = fixture.store.clone();
-        store
-            .write(WriteBatch::new(all_blocks, vec![], vec![], vec![]))
-            .unwrap();
+        store.write(WriteBatch::new(all_blocks, vec![], vec![], vec![])).unwrap();
 
         // Create a NEW CoreTextFixture using the same context/authorities but
         // fresh store. However, Core recovery depends on DagState which reads
@@ -1659,10 +1645,7 @@ mod tests {
 
         // After 10 rounds, some commits should have happened.
         let last_commit_index = fixture.dag_state.read().last_commit_index();
-        assert!(
-            last_commit_index > 0,
-            "At least one commit should have occurred after 10 rounds"
-        );
+        assert!(last_commit_index > 0, "At least one commit should have occurred after 10 rounds");
 
         // Drain the block broadcast channel and collect all blocks we were notified about.
         let mut broadcast_rounds = Vec::new();
@@ -1771,18 +1754,12 @@ mod tests {
 
         // Threshold clock should advance to round 3 (own auth 0 + auth 1 + auth 3 = 3 * 2500 = 7500).
         let clock = fixture.dag_state.read().threshold_clock_round();
-        assert!(
-            clock >= 3,
-            "Threshold clock should be at least 3 after quorum of round-2 blocks"
-        );
+        assert!(clock >= 3, "Threshold clock should be at least 3 after quorum of round-2 blocks");
 
         // Without force, proposal may not happen since leader (authority 2) is missing.
         // Force propose via leader timeout.
         let proposed = fixture.core.new_block(3, true).unwrap();
-        assert!(
-            proposed.is_some(),
-            "Force proposal should succeed even without leader"
-        );
+        assert!(proposed.is_some(), "Force proposal should succeed even without leader");
         assert_eq!(fixture.core.last_proposed_round(), 3);
     }
 
@@ -1821,15 +1798,8 @@ mod tests {
 
         // The round-3 proposal's ancestors should include blocks from round 2.
         let last_proposed = fixture.core.last_proposed_block();
-        let ancestor_rounds: Vec<u32> = last_proposed
-            .ancestors()
-            .iter()
-            .map(|a| a.round)
-            .collect();
-        assert!(
-            ancestor_rounds.contains(&2),
-            "Round-3 block should include round-2 ancestors"
-        );
+        let ancestor_rounds: Vec<u32> = last_proposed.ancestors().iter().map(|a| a.round).collect();
+        assert!(ancestor_rounds.contains(&2), "Round-3 block should include round-2 ancestors");
     }
 
     /// Test 7: Excluded ancestor limit is enforced.
@@ -2031,9 +2001,7 @@ mod tests {
         // Create a context with multiple leaders per round.
         let (mut context, _keys) = Context::new_for_test(4);
         context.parameters.min_round_delay = Duration::ZERO;
-        context
-            .protocol_config
-            .set_mysticeti_num_leaders_per_round_for_testing(2);
+        context.protocol_config.set_mysticeti_num_leaders_per_round_for_testing(2);
         let authorities = vec![2500; 4];
         let mut fixture =
             CoreTextFixture::new(context, authorities, AuthorityIndex::new_for_test(0), false)

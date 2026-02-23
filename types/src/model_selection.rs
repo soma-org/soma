@@ -119,10 +119,8 @@ fn compute_normalized_voting_power<B: Backend>(stakes: &[u64], device: &B::Devic
     }
 
     // Convert to f64 for precision, then to f32
-    let weights: Vec<f32> = stakes
-        .iter()
-        .map(|&s| (s as f64 / total_stake as f64) as f32)
-        .collect();
+    let weights: Vec<f32> =
+        stakes.iter().map(|&s| (s as f64 / total_stake as f64) as f32).collect();
 
     Tensor::<B, 1>::from_floats(weights.as_slice(), device)
 }
@@ -179,11 +177,8 @@ pub fn select_models<B: Backend>(
     let sorted_indices = weighted_scores.clone().argsort(0);
 
     // Extract top-k indices and gather values
-    let topk_indices: Vec<i64> = sorted_indices
-        .slice(0..k)
-        .into_data()
-        .to_vec::<i64>()
-        .expect("indices should be i64");
+    let topk_indices: Vec<i64> =
+        sorted_indices.slice(0..k).into_data().to_vec::<i64>().expect("indices should be i64");
 
     let dist_sq_data: Vec<f32> = dist_sq.into_data().to_vec::<f32>().expect("f32");
     let weighted_data: Vec<f32> = weighted_scores.into_data().to_vec::<f32>().expect("f32");

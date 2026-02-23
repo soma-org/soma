@@ -46,10 +46,8 @@ pub fn read_network_keypair_from_file<P: AsRef<std::path::Path>>(
     path: P,
 ) -> anyhow::Result<NetworkKeyPair> {
     let kp = read_keypair_from_file(path)?;
-    if let SomaKeyPair::Ed25519(kp) = kp {
-        Ok(NetworkKeyPair::new(kp))
-    } else {
-        Err(anyhow!("Invalid scheme for network keypair"))
+    match kp {
+        SomaKeyPair::Ed25519(kp) => Ok(NetworkKeyPair::new(kp)),
     }
 }
 

@@ -3,7 +3,7 @@ use crate::crypto::*;
 use crate::intent::*;
 use fastcrypto::ed25519::Ed25519KeyPair;
 use fastcrypto::traits::{EncodeDecodeBase64, KeyPair, ToFromBytes};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 
 #[test]
 fn test_keypair_generation() {
@@ -38,9 +38,7 @@ fn test_keypair_sign_verify() {
     let (_addr2, kp2): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let soma_kp2 = SomaKeyPair::Ed25519(kp2);
     let wrong_author = SomaAddress::from(&soma_kp2.public());
-    assert!(sig
-        .verify_secure(&msg, wrong_author, SignatureScheme::ED25519)
-        .is_err());
+    assert!(sig.verify_secure(&msg, wrong_author, SignatureScheme::ED25519).is_err());
 }
 
 #[test]
@@ -105,8 +103,7 @@ fn test_authority_sign_info() {
     let data = PersonalMessage { message: b"authority message".to_vec() };
     let intent = Intent::soma_app(IntentScope::TransactionEffects);
 
-    let sign_info =
-        AuthoritySignInfo::new(epoch, &data, intent, authority_name, &authority_kp);
+    let sign_info = AuthoritySignInfo::new(epoch, &data, intent, authority_name, &authority_kp);
 
     // Verify fields.
     assert_eq!(sign_info.epoch, epoch);
@@ -135,8 +132,7 @@ fn test_authority_keypair_sign_verify_via_trait() {
     assert!(result.is_ok());
 
     // Verify with wrong key should fail.
-    let (_addr2, authority_kp2): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (_addr2, authority_kp2): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
     let wrong_name = AuthorityPublicKeyBytes::from(authority_kp2.public());
     let result2 = sig.verify_secure(&intent_msg, epoch, wrong_name);
     assert!(result2.is_err());
@@ -178,18 +174,9 @@ fn test_signature_scheme_flags() {
     assert_ne!(bls_flag, multisig_flag);
 
     // Roundtrip from flag byte back to scheme.
-    assert_eq!(
-        SignatureScheme::from_flag_byte(&ed25519_flag).unwrap(),
-        SignatureScheme::ED25519
-    );
-    assert_eq!(
-        SignatureScheme::from_flag_byte(&bls_flag).unwrap(),
-        SignatureScheme::BLS12381
-    );
-    assert_eq!(
-        SignatureScheme::from_flag_byte(&multisig_flag).unwrap(),
-        SignatureScheme::MultiSig
-    );
+    assert_eq!(SignatureScheme::from_flag_byte(&ed25519_flag).unwrap(), SignatureScheme::ED25519);
+    assert_eq!(SignatureScheme::from_flag_byte(&bls_flag).unwrap(), SignatureScheme::BLS12381);
+    assert_eq!(SignatureScheme::from_flag_byte(&multisig_flag).unwrap(), SignatureScheme::MultiSig);
 
     // Invalid flag byte should error.
     assert!(SignatureScheme::from_flag_byte(&0xFF).is_err());
@@ -228,8 +215,7 @@ fn test_soma_keypair_bech32_roundtrip() {
 fn test_proof_of_possession_roundtrip() {
     // Generate a PoP and verify it succeeds with the correct key and address.
     let mut rng = StdRng::from_seed([0; 32]);
-    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
 
     let pop = generate_proof_of_possession(&authority_kp, address);
     assert!(
@@ -242,8 +228,7 @@ fn test_proof_of_possession_roundtrip() {
 fn test_proof_of_possession_wrong_address() {
     // PoP generated for one address should NOT verify with a different address.
     let mut rng = StdRng::from_seed([1; 32]);
-    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
     let (wrong_address, _): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
     assert_ne!(address, wrong_address);
 
@@ -258,8 +243,7 @@ fn test_proof_of_possession_wrong_address() {
 fn test_proof_of_possession_wrong_key() {
     // PoP generated with one key should NOT verify against a different public key.
     let mut rng = StdRng::from_seed([2; 32]);
-    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
     let (_, wrong_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
 
     let pop = generate_proof_of_possession(&authority_kp, address);
@@ -273,8 +257,7 @@ fn test_proof_of_possession_wrong_key() {
 fn test_proof_of_possession_deterministic() {
     // Same key + same address should produce the same PoP.
     let mut rng = StdRng::from_seed([3; 32]);
-    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
 
     let pop1 = generate_proof_of_possession(&authority_kp, address);
     let pop2 = generate_proof_of_possession(&authority_kp, address);
@@ -285,15 +268,14 @@ fn test_proof_of_possession_deterministic() {
 fn test_proof_of_possession_bytes_roundtrip() {
     // Verify PoP survives serialization to/from bytes (as would happen in transactions).
     let mut rng = StdRng::from_seed([4; 32]);
-    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) =
-        get_key_pair_from_rng(&mut rng);
+    let (address, authority_kp): (SomaAddress, AuthorityKeyPair) = get_key_pair_from_rng(&mut rng);
 
     let pop = generate_proof_of_possession(&authority_kp, address);
     let pop_bytes = pop.as_ref().to_vec();
 
     // Reconstruct from bytes and verify
-    let pop_restored = AuthoritySignature::from_bytes(&pop_bytes)
-        .expect("Should parse PoP from valid bytes");
+    let pop_restored =
+        AuthoritySignature::from_bytes(&pop_bytes).expect("Should parse PoP from valid bytes");
     assert!(
         verify_proof_of_possession(&pop_restored, authority_kp.public(), address).is_ok(),
         "PoP should verify after bytes roundtrip"

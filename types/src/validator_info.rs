@@ -102,9 +102,8 @@ impl GenesisValidatorInfo {
         // Verify proof of possession
         let protocol_pubkey = AuthorityPublicKey::from_bytes(self.info.protocol_key.as_ref())
             .map_err(|e| anyhow::anyhow!("Invalid protocol public key: {}", e))?;
-        let pop_sig =
-            crate::crypto::AuthoritySignature::from_bytes(&self.info.proof_of_possession)
-                .map_err(|e| anyhow::anyhow!("Invalid proof of possession bytes: {}", e))?;
+        let pop_sig = crate::crypto::AuthoritySignature::from_bytes(&self.info.proof_of_possession)
+            .map_err(|e| anyhow::anyhow!("Invalid proof of possession bytes: {}", e))?;
         verify_proof_of_possession(&pop_sig, &protocol_pubkey, self.info.account_address)
             .map_err(|e| anyhow::anyhow!("Proof of possession verification failed: {}", e))?;
 

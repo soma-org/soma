@@ -12,7 +12,7 @@ use tabled::{
 use sdk::wallet_context::WalletContext;
 use types::{
     object::ObjectID,
-    target::{TargetV1, TargetId, TargetStatus},
+    target::{TargetId, TargetStatus, TargetV1},
 };
 
 #[derive(Parser)]
@@ -203,10 +203,14 @@ impl Display for TargetInfoOutput {
         builder.push_record(["Embedding Dimension", &t.embedding.len().to_string()]);
         builder.push_record(["Model Count", &t.model_ids.len().to_string()]);
         builder.push_record(["Distance Threshold", &t.distance_threshold.to_string()]);
-        builder.push_record(["Reward Pool", &format!(
-            "{} shannons ({})", t.reward_pool,
-            crate::response::format_soma(t.reward_pool as u128),
-        )]);
+        builder.push_record([
+            "Reward Pool",
+            &format!(
+                "{} shannons ({})",
+                t.reward_pool,
+                crate::response::format_soma(t.reward_pool as u128),
+            ),
+        ]);
 
         if let Some(miner) = &t.miner {
             builder.push_record(["Miner", &miner.to_string()]);
@@ -218,10 +222,14 @@ impl Display for TargetInfoOutput {
             builder.push_record(["Model Owner", &owner.to_string()]);
         }
         if t.bond_amount > 0 {
-            builder.push_record(["Bond Amount", &format!(
-                "{} shannons ({})", t.bond_amount,
-                crate::response::format_soma(t.bond_amount as u128),
-            )]);
+            builder.push_record([
+                "Bond Amount",
+                &format!(
+                    "{} shannons ({})",
+                    t.bond_amount,
+                    crate::response::format_soma(t.bond_amount as u128),
+                ),
+            ]);
         }
 
         let mut table = builder.build();

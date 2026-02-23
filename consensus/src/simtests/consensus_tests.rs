@@ -35,9 +35,9 @@ use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use types::parameters::Parameters;
 
 use crate::commit_consumer::CommitConsumerArgs;
+use crate::network::tonic_network::to_socket_addr;
 use crate::transaction::NoopTransactionVerifier;
 use crate::{CommitConsumerMonitor, ConsensusAuthority, NetworkType, TransactionClient};
-use crate::network::tonic_network::to_socket_addr;
 
 // ---------------------------------------------------------------------------
 // AuthorityNode wrapper — manages a ConsensusAuthority inside an msim node
@@ -84,11 +84,7 @@ impl Drop for AuthorityNodeInner {
 
 impl AuthorityNode {
     fn new(config: SimtestConfig) -> Self {
-        Self {
-            inner: Mutex::new(None),
-            config,
-            commit_receiver: Mutex::new(None),
-        }
+        Self { inner: Mutex::new(None), config, commit_receiver: Mutex::new(None) }
     }
 
     fn index(&self) -> AuthorityIndex {
@@ -108,8 +104,8 @@ impl AuthorityNode {
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             *self.commit_receiver.lock() = Some(rx);
 
-            let mut commit_receiver = inner.commit_receiver.take()
-                .expect("commit receiver already taken");
+            let mut commit_receiver =
+                inner.commit_receiver.take().expect("commit receiver already taken");
             let commit_consumer_monitor = inner.commit_consumer_monitor.clone();
 
             tokio::spawn(async move {
@@ -119,8 +115,7 @@ impl AuthorityNode {
                         commit_index = %subdag.commit_ref.index,
                         "Received committed subdag"
                     );
-                    commit_consumer_monitor
-                        .set_highest_handled_commit(subdag.commit_ref.index);
+                    commit_consumer_monitor.set_highest_handled_commit(subdag.commit_ref.index);
                     let _ = tx.send(subdag);
                 }
             });
@@ -156,7 +151,8 @@ impl AuthorityNodeInner {
         let handle = msim::runtime::Handle::current();
         let builder = handle.create_node();
 
-        let authority = config.committee
+        let authority = config
+            .committee
             .authority_by_authority_index(config.authority_index)
             .expect("Authority index not in committee");
         let socket_addr = to_socket_addr(&authority.address).unwrap();
@@ -166,8 +162,15 @@ impl AuthorityNodeInner {
         };
 
         // Transfer authority + receiver out of the msim node closure via shared slot.
-        let result_slot: Arc<Mutex<Option<(ConsensusAuthority, UnboundedReceiver<CommittedSubDag>, Arc<CommitConsumerMonitor>)>>> =
-            Arc::new(Mutex::new(None));
+        let result_slot: Arc<
+            Mutex<
+                Option<(
+                    ConsensusAuthority,
+                    UnboundedReceiver<CommittedSubDag>,
+                    Arc<CommitConsumerMonitor>,
+                )>,
+            >,
+        > = Arc::new(Mutex::new(None));
         let result_slot_clone = result_slot.clone();
 
         let node = builder
@@ -291,13 +294,9 @@ fn simtest_committee_and_keys(
 
         // Get an available port from the OS to avoid bind conflicts.
         let local_addr = get_available_local_address();
-        let port = types::multiaddr::Multiaddr::to_socket_addr(&local_addr)
-            .unwrap()
-            .port();
+        let port = types::multiaddr::Multiaddr::to_socket_addr(&local_addr).unwrap().port();
         // Unique IP per authority for msim node identity.
-        let addr: Multiaddr = format!("/ip4/10.10.0.{}/tcp/{}", i + 1, port)
-            .parse()
-            .unwrap();
+        let addr: Multiaddr = format!("/ip4/10.10.0.{}/tcp/{}", i + 1, port).parse().unwrap();
 
         authorities.insert(
             name,
@@ -323,9 +322,7 @@ fn simtest_committee_and_keys(
         .authorities()
         .map(|(_index, authority)| {
             let name = AuthorityName::from(&authority.authority_key);
-            key_pairs_by_name
-                .remove(&name)
-                .expect("keypair must exist for every authority")
+            key_pairs_by_name.remove(&name).expect("keypair must exist for every authority")
         })
         .collect();
 
@@ -344,8 +341,7 @@ async fn test_committee_start_simple() {
 
     const NUM_OF_AUTHORITIES: usize = 10;
     let (committee, keypairs) = simtest_committee_and_keys(NUM_OF_AUTHORITIES);
-    let protocol_config =
-        ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
+    let protocol_config = ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
 
     let mut authorities = Vec::with_capacity(committee.size());
     let mut transaction_clients = Vec::with_capacity(committee.size());
@@ -403,18 +399,13 @@ async fn test_committee_start_simple() {
         "Starting authority and waiting for it to catch up"
     );
     authorities[NUM_OF_AUTHORITIES - 1].start().await;
-    authorities[NUM_OF_AUTHORITIES - 1]
-        .spawn_committed_subdag_consumer();
+    authorities[NUM_OF_AUTHORITIES - 1].spawn_committed_subdag_consumer();
 
     // Wait for it to catch up via commit sync.
     sleep(Duration::from_secs(230)).await;
-    let commit_consumer_monitor =
-        authorities[NUM_OF_AUTHORITIES - 1].commit_consumer_monitor();
+    let commit_consumer_monitor = authorities[NUM_OF_AUTHORITIES - 1].commit_consumer_monitor();
     let highest_committed_index = commit_consumer_monitor.highest_handled_commit();
-    assert!(
-        highest_committed_index >= 80,
-        "Highest handled commit {highest_committed_index} < 80"
-    );
+    assert!(highest_committed_index >= 80, "Highest handled commit {highest_committed_index} < 80");
 }
 
 /// Test: Start a 4-node committee, submit transactions, verify all committed,
@@ -425,12 +416,10 @@ async fn test_authority_committee_simtest() {
 
     const NUM_OF_AUTHORITIES: usize = 4;
     let (committee, keypairs) = simtest_committee_and_keys(NUM_OF_AUTHORITIES);
-    let protocol_config =
-        ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
+    let protocol_config = ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
 
-    let temp_dirs: Vec<_> = (0..NUM_OF_AUTHORITIES)
-        .map(|_| Arc::new(TempDir::new().unwrap()))
-        .collect();
+    let temp_dirs: Vec<_> =
+        (0..NUM_OF_AUTHORITIES).map(|_| Arc::new(TempDir::new().unwrap())).collect();
 
     let mut commit_receivers = Vec::with_capacity(committee.size());
     let mut authorities = Vec::with_capacity(committee.size());
@@ -471,11 +460,10 @@ async fn test_authority_committee_simtest() {
     for receiver in &mut commit_receivers {
         let mut expected_transactions = submitted_transactions.clone();
         loop {
-            let committed_subdag =
-                timeout(Duration::from_secs(30), receiver.recv())
-                    .await
-                    .expect("Timed out waiting for committed subdag")
-                    .unwrap();
+            let committed_subdag = timeout(Duration::from_secs(30), receiver.recv())
+                .await
+                .expect("Timed out waiting for committed subdag")
+                .unwrap();
             for b in committed_subdag.blocks {
                 for txn in b.transactions().iter().map(|t| t.data().to_vec()) {
                     expected_transactions.remove(&txn);
@@ -525,8 +513,7 @@ async fn test_amnesia_recovery_simtest() {
 
     const NUM_OF_AUTHORITIES: usize = 4;
     let (committee, keypairs) = simtest_committee_and_keys(NUM_OF_AUTHORITIES);
-    let protocol_config =
-        ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
+    let protocol_config = ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
 
     let mut commit_receivers = vec![];
     let mut authorities = BTreeMap::new();
@@ -614,10 +601,9 @@ async fn test_amnesia_recovery_simtest() {
     sleep(Duration::from_secs(5)).await;
 
     // Wait until we see at least one committed block authored by authority 1 (recovery).
-    'outer2: while let Some(result) =
-        timeout(Duration::from_secs(60), commit_receiver_1.recv())
-            .await
-            .expect("Timed out waiting for amnesia recovery of authority 1")
+    'outer2: while let Some(result) = timeout(Duration::from_secs(60), commit_receiver_1.recv())
+        .await
+        .expect("Timed out waiting for amnesia recovery of authority 1")
     {
         for block in result.blocks {
             if block.round() > GENESIS_ROUND && block.author() == index_1 {

@@ -52,10 +52,8 @@ fn dict_to_ns<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'
         }
         ns_cls.call((), Some(&kwargs))
     } else if let Ok(list) = obj.cast::<pyo3::types::PyList>() {
-        let items: Vec<Bound<'py, PyAny>> = list
-            .iter()
-            .map(|item| dict_to_ns(py, &item))
-            .collect::<PyResult<_>>()?;
+        let items: Vec<Bound<'py, PyAny>> =
+            list.iter().map(|item| dict_to_ns(py, &item)).collect::<PyResult<_>>()?;
         Ok(pyo3::types::PyList::new(py, &items)?.into_any())
     } else {
         Ok(obj.clone())
@@ -73,8 +71,7 @@ fn parse_object_id(s: &str) -> PyResult<ObjectID> {
 /// Get a field from a Python object (supports both SimpleNamespace and dict).
 fn get_field<'py>(obj: &Bound<'py, PyAny>, name: &str) -> PyResult<Bound<'py, PyAny>> {
     obj.getattr(name).or_else(|_| {
-        obj.get_item(name)
-            .map_err(|_| PyValueError::new_err(format!("missing '{name}'")))
+        obj.get_item(name).map_err(|_| PyValueError::new_err(format!("missing '{name}'")))
     })
 }
 
@@ -92,9 +89,9 @@ fn parse_hex_32(hex_str: &str, field_name: &str) -> PyResult<[u8; 32]> {
     let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     let bytes = hex::decode(stripped)
         .map_err(|e| PyValueError::new_err(format!("Invalid hex for {}: {}", field_name, e)))?;
-    let arr: [u8; 32] = bytes.try_into().map_err(|_| {
-        PyValueError::new_err(format!("{} must be exactly 32 bytes", field_name))
-    })?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| PyValueError::new_err(format!("{} must be exactly 32 bytes", field_name)))?;
     Ok(arr)
 }
 
@@ -211,13 +208,10 @@ impl PyKeypair {
             b
         } else if let Ok(s) = secret.extract::<String>() {
             let stripped = s.strip_prefix("0x").unwrap_or(&s);
-            hex::decode(stripped).map_err(|e| {
-                PyValueError::new_err(format!("Invalid hex string: {}", e))
-            })?
+            hex::decode(stripped)
+                .map_err(|e| PyValueError::new_err(format!("Invalid hex string: {}", e)))?
         } else {
-            return Err(PyValueError::new_err(
-                "secret_key must be bytes or a hex string",
-            ));
+            return Err(PyValueError::new_err("secret_key must be bytes or a hex string"));
         };
 
         if secret_bytes.len() != 32 {
@@ -246,8 +240,7 @@ impl PyKeypair {
     /// Sign BCS-encoded TransactionData bytes.
     /// Returns BCS-encoded signed Transaction bytes.
     fn sign<'py>(&self, py: Python<'py>, tx_data_bytes: &[u8]) -> PyResult<Bound<'py, PyBytes>> {
-        let tx_data: TransactionData =
-            bcs::from_bytes(tx_data_bytes).map_err(to_py_val_err)?;
+        let tx_data: TransactionData = bcs::from_bytes(tx_data_bytes).map_err(to_py_val_err)?;
         let tx = self.inner.sign_transaction(tx_data);
         let bytes = bcs::to_bytes(&tx).map_err(to_py_err)?;
         Ok(PyBytes::new(py, &bytes))
@@ -309,11 +302,7 @@ impl PySomaClient {
             let proxy_client =
                 sdk::proxy_client::ProxyClient::from_url(&rpc_url).map_err(to_py_err)?;
 
-            Ok(PySomaClient {
-                inner,
-                faucet_client,
-                proxy_client,
-            })
+            Ok(PySomaClient { inner, faucet_client, proxy_client })
         })
     }
 
@@ -332,12 +321,10 @@ impl PySomaClient {
     ) -> PyResult<(Bound<'py, PyBytes>, String)> {
         let key_arr: Option<[u8; 32]> = key
             .map(|k| {
-                k.try_into()
-                    .map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))
+                k.try_into().map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))
             })
             .transpose()?;
-        let (encrypted, key_bytes) =
-            sdk::crypto_utils::encrypt_weights(data, key_arr.as_ref());
+        let (encrypted, key_bytes) = sdk::crypto_utils::encrypt_weights(data, key_arr.as_ref());
         Ok((PyBytes::new(py, &encrypted), hex::encode(key_bytes)))
     }
 
@@ -350,15 +337,12 @@ impl PySomaClient {
         key: &Bound<'py, pyo3::types::PyAny>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let key_bytes: [u8; 32] = if let Ok(b) = key.extract::<Vec<u8>>() {
-            b.try_into()
-                .map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
+            b.try_into().map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
         } else if let Ok(s) = key.extract::<String>() {
             let stripped = s.strip_prefix("0x").unwrap_or(&s);
             let decoded = hex::decode(stripped)
                 .map_err(|e| PyValueError::new_err(format!("Invalid hex key: {}", e)))?;
-            decoded
-                .try_into()
-                .map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
+            decoded.try_into().map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
         } else {
             return Err(PyValueError::new_err("key must be bytes or a hex string"));
         };
@@ -445,11 +429,7 @@ impl PySomaClient {
     }
 
     /// Get epoch info as a Python object. Pass None for latest epoch.
-    fn get_epoch<'py>(
-        &self,
-        py: Python<'py>,
-        epoch: Option<u64>,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn get_epoch<'py>(&self, py: Python<'py>, epoch: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let response = client.get_epoch(epoch).await.map_err(to_py_err)?;
@@ -481,11 +461,7 @@ impl PySomaClient {
     }
 
     /// Get a transaction by its digest string. Returns effects as a Python object.
-    fn get_transaction<'py>(
-        &self,
-        py: Python<'py>,
-        digest: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn get_transaction<'py>(&self, py: Python<'py>, digest: String) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let d = digest.parse().map_err(to_py_val_err)?;
@@ -526,10 +502,7 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let ckpt = client
-                .get_checkpoint_summary(sequence_number)
-                .await
-                .map_err(to_py_err)?;
+            let ckpt = client.get_checkpoint_summary(sequence_number).await.map_err(to_py_err)?;
             to_py_obj(&ckpt)
         })
     }
@@ -573,9 +546,7 @@ impl PySomaClient {
             if let Some(ot) = object_type {
                 let parsed = match ot.to_lowercase().as_str() {
                     "coin" => rpc::types::ObjectType::Coin,
-                    "stakedsoma" | "staked_soma" => {
-                        rpc::types::ObjectType::StakedSoma
-                    }
+                    "stakedsoma" | "staked_soma" => rpc::types::ObjectType::StakedSoma,
                     "target" => rpc::types::ObjectType::Target,
                     "challenge" => rpc::types::ObjectType::Challenge,
                     "systemstate" | "system_state" => rpc::types::ObjectType::SystemState,
@@ -699,16 +670,15 @@ impl PySomaClient {
         py: Python<'py>,
         model_ids_or_target: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let model_ids: Vec<String> =
-            if let Ok(ids) = model_ids_or_target.extract::<Vec<String>>() {
-                ids
-            } else if let Ok(field) = get_field(model_ids_or_target, "model_ids") {
-                field.extract::<Vec<String>>()?
-            } else {
-                return Err(PyValueError::new_err(
-                    "Expected a list of model ID strings or an object with .model_ids",
-                ));
-            };
+        let model_ids: Vec<String> = if let Ok(ids) = model_ids_or_target.extract::<Vec<String>>() {
+            ids
+        } else if let Ok(field) = get_field(model_ids_or_target, "model_ids") {
+            field.extract::<Vec<String>>()?
+        } else {
+            return Err(PyValueError::new_err(
+                "Expected a list of model ID strings or an object with .model_ids",
+            ));
+        };
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             use types::metadata::ManifestAPI as _;
@@ -720,10 +690,8 @@ impl PySomaClient {
             let mut results: Vec<Py<PyAny>> = Vec::new();
             for id_str in &model_ids {
                 let id = id_str.parse::<ObjectID>().map_err(to_py_val_err)?;
-                let model = registry
-                    .active_models
-                    .get(&id)
-                    .or_else(|| registry.inactive_models.get(&id));
+                let model =
+                    registry.active_models.get(&id).or_else(|| registry.inactive_models.get(&id));
                 if let Some(model) = model {
                     if let Some(wm) = &model.weights_manifest {
                         let obj = ManifestObj {
@@ -819,8 +787,7 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let state = client.get_latest_system_state().await.map_err(to_py_err)?;
             let start_epoch = state.epoch();
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs_f64(timeout);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f64(timeout);
             loop {
                 if std::time::Instant::now() > deadline {
                     return Err(PyRuntimeError::new_err(format!(
@@ -854,11 +821,7 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Request funds from the faucet.
-    fn request_faucet<'py>(
-        &self,
-        py: Python<'py>,
-        address: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn request_faucet<'py>(&self, py: Python<'py>, address: String) -> PyResult<Bound<'py, PyAny>> {
         let fc = self
             .faucet_client
             .as_ref()
@@ -882,11 +845,7 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Fetch model weights via the fullnode proxy.
-    fn fetch_model<'py>(
-        &self,
-        py: Python<'py>,
-        model_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
+    fn fetch_model<'py>(&self, py: Python<'py>, model_id: String) -> PyResult<Bound<'py, PyAny>> {
         let proxy = self.proxy_client.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let mid = model_id.parse::<types::model::ModelId>().map_err(to_py_val_err)?;
@@ -928,8 +887,7 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let (final_checksum, final_size) = match (data, data_checksum, data_size) {
             (Some(d), cs, sz) => {
-                let checksum =
-                    cs.unwrap_or_else(|| sdk::crypto_utils::commitment_hex(d));
+                let checksum = cs.unwrap_or_else(|| sdk::crypto_utils::commitment_hex(d));
                 let size = sz.unwrap_or(d.len());
                 (checksum, size)
             }
@@ -937,14 +895,12 @@ impl PySomaClient {
             _ => {
                 return Err(PyValueError::new_err(
                     "Either data or both data_checksum and data_size are required",
-                ))
+                ));
             }
         };
 
-        let manifests: Vec<sdk::scoring_types::ManifestInput> = models
-            .iter()
-            .map(|m| extract_manifest(m))
-            .collect::<PyResult<_>>()?;
+        let manifests: Vec<sdk::scoring_types::ManifestInput> =
+            models.iter().map(|m| extract_manifest(m)).collect::<PyResult<_>>()?;
 
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -1003,11 +959,8 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::TransferCoin {
-                coin: coin_ref,
-                amount,
-                recipient: recipient_addr,
-            };
+            let kind =
+                TransactionKind::TransferCoin { coin: coin_ref, amount, recipient: recipient_addr };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1034,10 +987,8 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::TransferObjects {
-                objects: obj_refs,
-                recipient: recipient_addr,
-            };
+            let kind =
+                TransactionKind::TransferObjects { objects: obj_refs, recipient: recipient_addr };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1059,10 +1010,8 @@ impl PySomaClient {
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
-        let recipient_addrs: Vec<SomaAddress> = recipients
-            .iter()
-            .map(|r| parse_address(r))
-            .collect::<PyResult<_>>()?;
+        let recipient_addrs: Vec<SomaAddress> =
+            recipients.iter().map(|r| parse_address(r)).collect::<PyResult<_>>()?;
         let coin_refs: Vec<ObjectRef> =
             coins.iter().map(parse_object_ref).collect::<PyResult<_>>()?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
@@ -1103,11 +1052,7 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::AddStake {
-                address: validator_addr,
-                coin_ref,
-                amount,
-            };
+            let kind = TransactionKind::AddStake { address: validator_addr, coin_ref, amount };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1158,11 +1103,7 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::AddStakeToModel {
-                model_id: model,
-                coin_ref,
-                amount,
-            };
+            let kind = TransactionKind::AddStakeToModel { model_id: model, coin_ref, amount };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1198,10 +1139,8 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let architecture_version = client
-                .get_architecture_version()
-                .await
-                .map_err(to_py_err)?;
+            let architecture_version =
+                client.get_architecture_version().await.map_err(to_py_err)?;
             let kind = TransactionKind::CommitModel(CommitModelArgs {
                 model_id: model,
                 weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
@@ -1236,9 +1175,8 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let manifest = build_weights_manifest(
-            &weights_url, &weights_checksum, weights_size, &decryption_key,
-        )?;
+        let manifest =
+            build_weights_manifest(&weights_url, &weights_checksum, weights_size, &decryption_key)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
@@ -1305,9 +1243,8 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let manifest = build_weights_manifest(
-            &weights_url, &weights_checksum, weights_size, &decryption_key,
-        )?;
+        let manifest =
+            build_weights_manifest(&weights_url, &weights_checksum, weights_size, &decryption_key)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
@@ -1365,10 +1302,7 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::SetModelCommissionRate {
-                model_id: model,
-                new_rate,
-            };
+            let kind = TransactionKind::SetModelCommissionRate { model_id: model, new_rate };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1754,17 +1688,16 @@ impl PySomaClient {
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind =
-                TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs {
-                    next_epoch_network_address,
-                    next_epoch_p2p_address,
-                    next_epoch_primary_address,
-                    next_epoch_proxy_address,
-                    next_epoch_protocol_pubkey,
-                    next_epoch_worker_pubkey,
-                    next_epoch_network_pubkey,
-                    next_epoch_proof_of_possession,
-                });
+            let kind = TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs {
+                next_epoch_network_address,
+                next_epoch_p2p_address,
+                next_epoch_primary_address,
+                next_epoch_proxy_address,
+                next_epoch_protocol_pubkey,
+                next_epoch_worker_pubkey,
+                next_epoch_network_pubkey,
+                next_epoch_proof_of_possession,
+            });
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1874,10 +1807,8 @@ impl PySomaClient {
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
-            let architecture_version = client
-                .get_architecture_version()
-                .await
-                .map_err(to_py_err)?;
+            let architecture_version =
+                client.get_architecture_version().await.map_err(to_py_err)?;
 
             let final_stake = match stake_amount {
                 Some(s) => s,
@@ -1896,14 +1827,9 @@ impl PySomaClient {
                 commission_rate,
                 staking_pool_id,
             });
-            let tx_data = client
-                .build_transaction_data(sender, kind, None)
-                .await
-                .map_err(to_py_err)?;
-            client
-                .sign_and_execute(&kp, tx_data, "CommitModel")
-                .await
-                .map_err(to_py_err)?;
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "CommitModel").await.map_err(to_py_err)?;
             Ok(model_id_str)
         })
     }
@@ -1928,9 +1854,8 @@ impl PySomaClient {
         let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
         let weights_size = encrypted_weights.len();
 
-        let manifest = build_weights_manifest(
-            &weights_url, &checksum_hex, weights_size, &decryption_key,
-        )?;
+        let manifest =
+            build_weights_manifest(&weights_url, &checksum_hex, weights_size, &decryption_key)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -1940,14 +1865,9 @@ impl PySomaClient {
                 weights_manifest: manifest,
                 embedding: embedding_tensor,
             });
-            let tx_data = client
-                .build_transaction_data(sender, kind, None)
-                .await
-                .map_err(to_py_err)?;
-            client
-                .sign_and_execute(&kp, tx_data, "RevealModel")
-                .await
-                .map_err(to_py_err)?;
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "RevealModel").await.map_err(to_py_err)?;
             Ok(())
         })
     }
@@ -1990,16 +1910,9 @@ impl PySomaClient {
                 request.object_type = Some(rpc::types::ObjectType::Coin.into());
                 let stream = client.list_owned_objects(request).await;
                 tokio::pin!(stream);
-                let obj = stream
-                    .try_next()
-                    .await
-                    .map_err(to_py_err)?
-                    .ok_or_else(|| {
-                        PyRuntimeError::new_err(format!(
-                            "No bond coin found for address {}",
-                            sender
-                        ))
-                    })?;
+                let obj = stream.try_next().await.map_err(to_py_err)?.ok_or_else(|| {
+                    PyRuntimeError::new_err(format!("No bond coin found for address {}", sender))
+                })?;
                 obj.compute_object_reference()
             };
 
@@ -2012,14 +1925,9 @@ impl PySomaClient {
                 distance_score: SomaTensor::scalar(distance_score),
                 bond_coin,
             });
-            let tx_data = client
-                .build_transaction_data(sender, kind, None)
-                .await
-                .map_err(to_py_err)?;
-            client
-                .sign_and_execute(&kp, tx_data, "SubmitData")
-                .await
-                .map_err(to_py_err)?;
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "SubmitData").await.map_err(to_py_err)?;
             Ok(())
         })
     }
@@ -2037,14 +1945,9 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: target });
-            let tx_data = client
-                .build_transaction_data(sender, kind, None)
-                .await
-                .map_err(to_py_err)?;
-            client
-                .sign_and_execute(&kp, tx_data, "ClaimRewards")
-                .await
-                .map_err(to_py_err)?;
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ClaimRewards").await.map_err(to_py_err)?;
             Ok(())
         })
     }

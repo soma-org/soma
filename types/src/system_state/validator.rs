@@ -323,17 +323,17 @@ impl Validator {
                 .as_ref()
                 .ok_or(ExecutionFailureStatus::MissingProofOfPossession)?;
 
-            let pop =
-                crypto::AuthoritySignature::from_bytes(pop_bytes).map_err(|e| {
-                    ExecutionFailureStatus::InvalidProofOfPossession {
-                        reason: format!("Invalid PoP signature bytes: {}", e),
-                    }
-                })?;
+            let pop = crypto::AuthoritySignature::from_bytes(pop_bytes).map_err(|e| {
+                ExecutionFailureStatus::InvalidProofOfPossession {
+                    reason: format!("Invalid PoP signature bytes: {}", e),
+                }
+            })?;
 
-            crypto::verify_proof_of_possession(&pop, &pubkey, self.metadata.soma_address)
-                .map_err(|e| ExecutionFailureStatus::InvalidProofOfPossession {
+            crypto::verify_proof_of_possession(&pop, &pubkey, self.metadata.soma_address).map_err(
+                |e| ExecutionFailureStatus::InvalidProofOfPossession {
                     reason: format!("PoP verification failed: {}", e),
-                })?;
+                },
+            )?;
 
             self.metadata.next_epoch_protocol_pubkey = Some(pubkey);
             self.metadata.next_epoch_proof_of_possession = Some(pop);
@@ -424,14 +424,8 @@ impl Validator {
                 .next_epoch_worker_pubkey
                 .clone()
                 .unwrap_or_else(|| m.worker_pubkey.clone()),
-            net_address: m
-                .next_epoch_net_address
-                .clone()
-                .unwrap_or_else(|| m.net_address.clone()),
-            p2p_address: m
-                .next_epoch_p2p_address
-                .clone()
-                .unwrap_or_else(|| m.p2p_address.clone()),
+            net_address: m.next_epoch_net_address.clone().unwrap_or_else(|| m.net_address.clone()),
+            p2p_address: m.next_epoch_p2p_address.clone().unwrap_or_else(|| m.p2p_address.clone()),
             primary_address: m
                 .next_epoch_primary_address
                 .clone()
@@ -474,27 +468,19 @@ impl Validator {
         let other_effective = other.effective_next_epoch_metadata();
 
         // Check current vs current
-        if let Some(field) =
-            check_metadata_fields_duplicate(&self.metadata, &other.metadata)
-        {
+        if let Some(field) = check_metadata_fields_duplicate(&self.metadata, &other.metadata) {
             return Some(field);
         }
         // Check current vs other's effective (includes staged)
-        if let Some(field) =
-            check_metadata_fields_duplicate(&self.metadata, &other_effective)
-        {
+        if let Some(field) = check_metadata_fields_duplicate(&self.metadata, &other_effective) {
             return Some(field);
         }
         // Check self's effective vs other's current
-        if let Some(field) =
-            check_metadata_fields_duplicate(&self_effective, &other.metadata)
-        {
+        if let Some(field) = check_metadata_fields_duplicate(&self_effective, &other.metadata) {
             return Some(field);
         }
         // Check effective vs effective (staged vs staged)
-        if let Some(field) =
-            check_metadata_fields_duplicate(&self_effective, &other_effective)
-        {
+        if let Some(field) = check_metadata_fields_duplicate(&self_effective, &other_effective) {
             return Some(field);
         }
         None
@@ -739,11 +725,8 @@ impl ValidatorSet {
     /// If it would, the offending validator's staged metadata is cleared instead (skip + log).
     fn effectuate_staged_metadata(&mut self) {
         // Build effective (post-effectuation) metadata for each validator to check for duplicates.
-        let effective_metas: Vec<ValidatorMetadata> = self
-            .validators
-            .iter()
-            .map(|v| v.effective_next_epoch_metadata())
-            .collect();
+        let effective_metas: Vec<ValidatorMetadata> =
+            self.validators.iter().map(|v| v.effective_next_epoch_metadata()).collect();
 
         // Pairwise duplicate check on effective metadata
         let mut skip_indices: HashSet<usize> = HashSet::new();
@@ -1085,8 +1068,7 @@ impl ValidatorSet {
         } else {
             TOTAL_VOTING_POWER
         };
-        let threshold =
-            min_threshold.clamp(MAX_VOTING_POWER, TOTAL_VOTING_POWER);
+        let threshold = min_threshold.clamp(MAX_VOTING_POWER, TOTAL_VOTING_POWER);
 
         // Sort validators by stake in descending order for consistent processing
         all_validators.sort_by(|a, b| {
@@ -1360,10 +1342,7 @@ impl ValidatorSet {
 
 /// Compare two `ValidatorMetadata` instances for duplicate fields.
 /// Returns `Some(field_name)` if any uniqueness-critical field matches.
-fn check_metadata_fields_duplicate(
-    a: &ValidatorMetadata,
-    b: &ValidatorMetadata,
-) -> Option<String> {
+fn check_metadata_fields_duplicate(a: &ValidatorMetadata, b: &ValidatorMetadata) -> Option<String> {
     // Same address means same validator — skip
     if a.soma_address == b.soma_address {
         return None;

@@ -52,7 +52,7 @@ pub enum FieldType {
     Scalar(ScalarType),
     Enum(TypePath),
     Message(TypePath),
-    Map(ScalarType, Box<FieldType>),
+    Map(ScalarType, Box<Self>),
 }
 
 #[derive(Debug, Clone, Copy)]

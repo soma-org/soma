@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     base::SomaAddress,
-    model::{ModelV1, ModelId},
+    model::{ModelId, ModelV1},
     object::ObjectID,
 };
 

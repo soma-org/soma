@@ -299,14 +299,12 @@ fn test_new_address_output_display() {
         alias: "my-wallet".to_string(),
         address: types::base::SomaAddress::ZERO,
         key_scheme: SignatureScheme::ED25519,
-        recovery_phrase: "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12".to_string(),
+        recovery_phrase:
+            "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12".to_string(),
     };
 
     let display = format!("{}", output);
     assert!(display.contains("New Address Created"), "Should show creation success: {display}");
     assert!(display.contains("my-wallet"), "Should show alias: {display}");
-    assert!(
-        display.contains("recovery phrase"),
-        "Should warn about recovery phrase: {display}"
-    );
+    assert!(display.contains("recovery phrase"), "Should warn about recovery phrase: {display}");
 }

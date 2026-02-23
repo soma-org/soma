@@ -453,9 +453,7 @@ mod tests {
     use types::storage::consensus::mem_store::MemStore;
 
     use crate::{
-        block_manager::BlockManager,
-        dag_state::DagState,
-        test_dag_builder::DagBuilder,
+        block_manager::BlockManager, dag_state::DagState, test_dag_builder::DagBuilder,
         test_dag_parser::parse_dag,
     };
 
@@ -473,10 +471,7 @@ mod tests {
         let mut dag_builder = DagBuilder::new(context.clone());
         dag_builder
             .layers(1..=2) // 2 rounds
-            .authorities(vec![
-                AuthorityIndex::new_for_test(0),
-                AuthorityIndex::new_for_test(2),
-            ]) // Create equivocating blocks for 2 authorities
+            .authorities(vec![AuthorityIndex::new_for_test(0), AuthorityIndex::new_for_test(2)]) // Create equivocating blocks for 2 authorities
             .equivocate(3)
             .build();
 
@@ -504,10 +499,7 @@ mod tests {
         // AND suspended blocks should return the round_2_blocks
         assert_eq!(
             block_manager.suspended_blocks(),
-            round_2_blocks
-                .into_iter()
-                .map(|block| block.reference())
-                .collect::<Vec<_>>()
+            round_2_blocks.into_iter().map(|block| block.reference()).collect::<Vec<_>>()
         );
     }
 
@@ -524,20 +516,14 @@ mod tests {
         let mut dag_builder = DagBuilder::new(context.clone());
         dag_builder
             .layers(1..=4) // 4 rounds
-            .authorities(vec![
-                AuthorityIndex::new_for_test(0),
-                AuthorityIndex::new_for_test(2),
-            ]) // Create equivocating blocks for 2 authorities
+            .authorities(vec![AuthorityIndex::new_for_test(0), AuthorityIndex::new_for_test(2)]) // Create equivocating blocks for 2 authorities
             .equivocate(3) // Use 3 equivocations blocks per authority
             .build();
 
         // Take the blocks from round 4 down to 2 (included). Only the first block of each round should return missing
         // ancestors when try to accept
-        for (_, block) in dag_builder
-            .blocks
-            .into_iter()
-            .rev()
-            .take_while(|(_, block)| block.round() >= 2)
+        for (_, block) in
+            dag_builder.blocks.into_iter().rev().take_while(|(_, block)| block.round() >= 2)
         {
             // WHEN
             let (accepted_blocks, missing) = block_manager.try_accept_blocks(vec![block.clone()]);
@@ -594,9 +580,7 @@ mod tests {
         let (mut context, _key_pairs) = Context::new_for_test(4);
 
         // We set the gc depth to 4
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(4);
+        context.protocol_config.set_consensus_gc_depth_for_testing(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
@@ -610,11 +594,7 @@ mod tests {
             vec![],
         );
         dag_state.write().set_last_commit(last_commit);
-        assert_eq!(
-            dag_state.read().gc_round(),
-            6,
-            "GC round should have moved to round 6"
-        );
+        assert_eq!(dag_state.read().gc_round(), 6, "GC round should have moved to round 6");
 
         let mut block_manager = BlockManager::new(context.clone(), dag_state);
 
@@ -682,9 +662,7 @@ mod tests {
         // GIVEN
         let (mut context, _key_pairs) = Context::new_for_test(4);
         // We set the gc depth to 4
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(4);
+        context.protocol_config.set_consensus_gc_depth_for_testing(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
@@ -698,11 +676,7 @@ mod tests {
             vec![],
         );
         dag_state.write().set_last_commit(last_commit);
-        assert_eq!(
-            dag_state.read().gc_round(),
-            6,
-            "GC round should have moved to round 6"
-        );
+        assert_eq!(dag_state.read().gc_round(), 6, "GC round should have moved to round 6");
 
         let mut block_manager = BlockManager::new(context.clone(), dag_state);
 
@@ -728,9 +702,7 @@ mod tests {
     async fn accept_blocks_unsuspend_children_blocks() {
         // GIVEN
         let (mut context, _key_pairs) = Context::new_for_test(4);
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(10);
+        context.protocol_config.set_consensus_gc_depth_for_testing(10);
 
         let context = Arc::new(context);
 
@@ -777,9 +749,7 @@ mod tests {
         for gc_depth in [5u32, 10, 14] {
             // GIVEN
             let (mut context, _key_pairs) = Context::new_for_test(4);
-            context
-                .protocol_config
-                .set_consensus_gc_depth_for_testing(gc_depth);
+            context.protocol_config.set_consensus_gc_depth_for_testing(gc_depth);
 
             let context = Arc::new(context);
 
@@ -808,8 +778,7 @@ mod tests {
 
                 // WHEN
                 for block in &all_blocks {
-                    let (accepted_blocks, _) =
-                        block_manager.try_accept_blocks(vec![block.clone()]);
+                    let (accepted_blocks, _) = block_manager.try_accept_blocks(vec![block.clone()]);
                     assert!(accepted_blocks.is_empty());
                 }
                 assert!(!block_manager.is_empty());
@@ -818,11 +787,7 @@ mod tests {
                 // Those should be cleaned up as well once GC kicks in.
                 let non_existing_refs = (1..=3)
                     .map(|round| {
-                        BlockRef::new(
-                            round,
-                            AuthorityIndex::new_for_test(0),
-                            BlockDigest::MIN,
-                        )
+                        BlockRef::new(round, AuthorityIndex::new_for_test(0), BlockDigest::MIN)
                     })
                     .collect::<Vec<_>>();
                 assert_eq!(block_manager.try_find_blocks(non_existing_refs).len(), 3);
@@ -833,11 +798,7 @@ mod tests {
                     gc_depth * 2,
                     CommitDigest::MIN,
                     context.clock.timestamp_utc_ms(),
-                    BlockRef::new(
-                        gc_depth * 2,
-                        AuthorityIndex::new_for_test(0),
-                        BlockDigest::MIN,
-                    ),
+                    BlockRef::new(gc_depth * 2, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
                     vec![],
                 );
                 dag_state.write().set_last_commit(last_commit);
@@ -861,9 +822,7 @@ mod tests {
         // GIVEN
         let (mut context, _key_pairs) = Context::new_for_test(4);
         // We set the gc depth to 4
-        context
-            .protocol_config
-            .set_consensus_gc_depth_for_testing(4);
+        context.protocol_config.set_consensus_gc_depth_for_testing(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));
@@ -877,11 +836,7 @@ mod tests {
             vec![],
         );
         dag_state.write().set_last_commit(last_commit);
-        assert_eq!(
-            dag_state.read().gc_round(),
-            2,
-            "GC round should have moved to round 2"
-        );
+        assert_eq!(dag_state.read().gc_round(), 2, "GC round should have moved to round 2");
 
         let mut block_manager = BlockManager::new(context.clone(), dag_state);
 
@@ -926,10 +881,7 @@ mod tests {
         let mut dag_builder = DagBuilder::new(context.clone());
         dag_builder
             .layers(1..=2) // 2 rounds
-            .authorities(vec![
-                AuthorityIndex::new_for_test(0),
-                AuthorityIndex::new_for_test(2),
-            ]) // Create equivocating blocks for 2 authorities
+            .authorities(vec![AuthorityIndex::new_for_test(0), AuthorityIndex::new_for_test(2)]) // Create equivocating blocks for 2 authorities
             .equivocate(3)
             .build();
 
@@ -944,11 +896,7 @@ mod tests {
         let missing_block_refs_from_find =
             block_manager.try_find_blocks(round_2_blocks.iter().map(|b| b.reference()).collect());
         assert_eq!(missing_block_refs_from_find.len(), 10);
-        assert!(
-            missing_block_refs_from_find
-                .iter()
-                .all(|block_ref| block_ref.round == 2)
-        );
+        assert!(missing_block_refs_from_find.iter().all(|block_ref| block_ref.round == 2));
 
         // Try accept blocks which will cause blocks to be suspended and added to missing
         // in block manager.
@@ -959,10 +907,7 @@ mod tests {
         let missing_block_refs_from_accept =
             missing_block_refs.iter().cloned().collect::<BTreeSet<_>>();
         assert_eq!(missing, missing_block_refs_from_accept);
-        assert_eq!(
-            block_manager.missing_blocks(),
-            missing_block_refs_from_accept
-        );
+        assert_eq!(block_manager.missing_blocks(), missing_block_refs_from_accept);
 
         // No blocks should be accepted and block manager should have made note
         // of the missing & suspended blocks.
@@ -985,11 +930,7 @@ mod tests {
         );
 
         assert_eq!(missing_block_refs_from_find.len(), 4);
-        assert!(
-            missing_block_refs_from_find
-                .iter()
-                .all(|block_ref| block_ref.round == 3)
-        );
+        assert!(missing_block_refs_from_find.iter().all(|block_ref| block_ref.round == 3));
         assert_eq!(
             block_manager.missing_blocks(),
             missing_block_refs_from_accept
@@ -1011,11 +952,8 @@ mod tests {
 
         // create a DAG where authority 0 timestamp is always higher than the others.
         let mut dag_builder = DagBuilder::new(context.clone());
-        let authorities = context
-            .committee
-            .authorities()
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
+        let authorities =
+            context.committee.authorities().map(|(index, _)| index).collect::<Vec<_>>();
         dag_builder
             .layers(1..=1)
             .authorities(authorities.clone())

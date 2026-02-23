@@ -21,16 +21,14 @@ use tracing::info;
 use types::{
     SYSTEM_STATE_OBJECT_ID,
     base::SomaAddress,
-    challenge::{
-        ChallengeV1, ChallengeStatus,
-    },
+    challenge::{ChallengeStatus, ChallengeV1},
     digests::TransactionDigest,
     effects::ExecutionFailureStatus,
     error::{ExecutionResult, SomaError},
     metadata::{ManifestAPI, MetadataAPI},
     object::{Object, ObjectID, ObjectType, Owner},
     system_state::{SystemState, SystemStateTrait},
-    target::{TargetV1, TargetStatus},
+    target::{TargetStatus, TargetV1},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
 };
@@ -88,19 +86,16 @@ impl ChallengeExecutor {
         store: &TemporaryStore,
         target_id: &ObjectID,
     ) -> ExecutionResult<(Object, TargetV1)> {
-        let target_object = store
-            .read_object(target_id)
-            .ok_or(ExecutionFailureStatus::TargetNotFound)?
-            .clone();
+        let target_object =
+            store.read_object(target_id).ok_or(ExecutionFailureStatus::TargetNotFound)?.clone();
 
-        let target = bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents()).map_err(
-            |e| {
+        let target = bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents())
+            .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize target: {}",
                     e
                 )))
-            },
-        )?;
+            })?;
 
         Ok((target_object, target))
     }
@@ -130,20 +125,16 @@ impl ChallengeExecutor {
         challenge_id: &ObjectID,
     ) -> ExecutionResult<(Object, ChallengeV1)> {
         let challenge_object = store.read_object(challenge_id).ok_or_else(|| {
-            ExecutionFailureStatus::ChallengeNotFound {
-                challenge_id: *challenge_id,
-            }
+            ExecutionFailureStatus::ChallengeNotFound { challenge_id: *challenge_id }
         })?;
 
-        let challenge =
-            bcs::from_bytes::<ChallengeV1>(challenge_object.as_inner().data.contents()).map_err(
-                |e| {
-                    ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                        "Failed to deserialize challenge: {}",
-                        e
-                    )))
-                },
-            )?;
+        let challenge = bcs::from_bytes::<ChallengeV1>(challenge_object.as_inner().data.contents())
+            .map_err(|e| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Failed to deserialize challenge: {}",
+                    e
+                )))
+            })?;
 
         Ok((challenge_object.clone(), challenge))
     }
@@ -181,10 +172,7 @@ impl ChallengeExecutor {
             return Err(ExecutionFailureStatus::InvalidTransactionType);
         };
 
-        info!(
-            "InitiateChallenge: tx_digest={:?}, target_id={:?}",
-            tx_digest, args.target_id
-        );
+        info!("InitiateChallenge: tx_digest={:?}, target_id={:?}", tx_digest, args.target_id);
 
         // Load system state for epoch and protocol config
         let (state_object, state) = Self::load_system_state(store)?;
@@ -245,19 +233,16 @@ impl ChallengeExecutor {
         let bond_coin_id = args.bond_coin.0;
         let bond_object = store
             .read_object(&bond_coin_id)
-            .ok_or(ExecutionFailureStatus::ObjectNotFound {
-                object_id: bond_coin_id,
-            })?;
+            .ok_or(ExecutionFailureStatus::ObjectNotFound { object_id: bond_coin_id })?;
 
         check_ownership(&bond_object, signer)?;
 
-        let bond_balance = bond_object.as_coin().ok_or_else(|| {
-            ExecutionFailureStatus::InvalidObjectType {
+        let bond_balance =
+            bond_object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
                 object_id: bond_coin_id,
                 expected_type: ObjectType::Coin,
                 actual_type: bond_object.type_().clone(),
-            }
-        })?;
+            })?;
 
         if bond_balance < required_bond {
             return Err(ExecutionFailureStatus::InsufficientChallengerBond {
@@ -557,11 +542,7 @@ impl ChallengeExecutor {
 
         for (i, validator_addr) in validators.iter().enumerate() {
             // First validator gets the remainder (rounding dust)
-            let amount = if i == 0 {
-                per_validator + remainder
-            } else {
-                per_validator
-            };
+            let amount = if i == 0 { per_validator + remainder } else { per_validator };
 
             if amount > 0 {
                 // Create a coin for this validator
@@ -755,7 +736,8 @@ mod tests {
         let num_validators = 3usize;
 
         // Challenger bond distributed to validators who reported
-        let (per_validator, remainder) = calculate_per_validator_reward(challenger_bond, num_validators);
+        let (per_validator, remainder) =
+            calculate_per_validator_reward(challenger_bond, num_validators);
         assert_eq!(per_validator, 166);
         assert_eq!(remainder, 2);
 
@@ -773,7 +755,8 @@ mod tests {
         let challenger_bond = 1000u64;
         let quorum_voters = 3usize;
 
-        let (per_validator, remainder) = calculate_per_validator_reward(challenger_bond, quorum_voters);
+        let (per_validator, remainder) =
+            calculate_per_validator_reward(challenger_bond, quorum_voters);
         assert_eq!(per_validator, 333);
         assert_eq!(remainder, 1);
     }

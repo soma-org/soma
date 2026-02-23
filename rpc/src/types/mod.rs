@@ -77,8 +77,8 @@ pub use transaction::TransactionKind;
 pub use transaction::UpdateValidatorMetadataArgs;
 pub use transaction::{
     ClaimRewardsArgs, CommitModelArgs, CommitModelUpdateArgs, InitiateChallengeArgs, Manifest,
-    ManifestV1, Metadata, MetadataV1, ModelWeightsManifest, RevealModelArgs,
-    RevealModelUpdateArgs, SubmissionManifest, SubmitDataArgs,
+    ManifestV1, Metadata, MetadataV1, ModelWeightsManifest, RevealModelArgs, RevealModelUpdateArgs,
+    SubmissionManifest, SubmitDataArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

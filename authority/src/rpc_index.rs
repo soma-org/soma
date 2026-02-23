@@ -611,9 +611,9 @@ impl IndexStoreTables {
                         batch.delete_batch(&self.targets, [old_key])?;
                     }
                 } else if removed_object.type_() == &ObjectType::Challenge {
-                    if let Ok(old_challenge) =
-                        bcs::from_bytes::<types::challenge::ChallengeV1>(removed_object.data.contents())
-                    {
+                    if let Ok(old_challenge) = bcs::from_bytes::<types::challenge::ChallengeV1>(
+                        removed_object.data.contents(),
+                    ) {
                         let old_key = ChallengeIndexKey {
                             status: challenge_status_string(&old_challenge.status),
                             challenge_epoch: old_challenge.challenge_epoch,
@@ -663,9 +663,9 @@ impl IndexStoreTables {
                 if object.type_() == &ObjectType::Challenge {
                     // Remove old challenge index entry if this is an update
                     if let Some(old_obj) = old_object {
-                        if let Ok(old_challenge) =
-                            bcs::from_bytes::<types::challenge::ChallengeV1>(old_obj.data.contents())
-                        {
+                        if let Ok(old_challenge) = bcs::from_bytes::<types::challenge::ChallengeV1>(
+                            old_obj.data.contents(),
+                        ) {
                             let old_status = challenge_status_string(&old_challenge.status);
                             let old_key = ChallengeIndexKey {
                                 status: old_status,
@@ -688,9 +688,7 @@ impl IndexStoreTables {
                             target_id: challenge.target_id,
                             challenge_id: object.id(),
                         };
-                        let info = ChallengeIndexInfo {
-                            version: object.version(),
-                        };
+                        let info = ChallengeIndexInfo { version: object.version() };
                         batch.insert_batch(&self.challenges, [(key, info)])?;
                     }
                 }
@@ -877,10 +875,8 @@ impl IndexStoreTables {
         });
 
         let status_filter_clone = status_filter.clone();
-        let iter = self
-            .challenges
-            .safe_iter_with_bounds(lower_bound, None)
-            .filter_map(move |item| {
+        let iter =
+            self.challenges.safe_iter_with_bounds(lower_bound, None).filter_map(move |item| {
                 match item {
                     Ok((key, info)) => {
                         // Apply status filter if specified
@@ -948,9 +944,9 @@ impl IndexStoreTables {
 
                         // Clean up target/challenge index entries for deleted shared objects
                         if old_object.type_() == &ObjectType::Target {
-                            if let Ok(old_target) =
-                                bcs::from_bytes::<types::target::TargetV1>(old_object.data.contents())
-                            {
+                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
+                                old_object.data.contents(),
+                            ) {
                                 let old_key = TargetIndexKey {
                                     status: target_status_string(&old_target.status),
                                     generation_epoch: old_target.generation_epoch,
@@ -960,7 +956,9 @@ impl IndexStoreTables {
                             }
                         } else if old_object.type_() == &ObjectType::Challenge {
                             if let Ok(old_challenge) =
-                                bcs::from_bytes::<types::challenge::ChallengeV1>(old_object.data.contents())
+                                bcs::from_bytes::<types::challenge::ChallengeV1>(
+                                    old_object.data.contents(),
+                                )
                             {
                                 let old_key = ChallengeIndexKey {
                                     status: challenge_status_string(&old_challenge.status),
@@ -986,9 +984,9 @@ impl IndexStoreTables {
                     // Remove old target index entry if this is an update
                     if matches!(kind, WriteKind::Mutate) {
                         if let Some(old_object) = input_objects.get(id) {
-                            if let Ok(old_target) =
-                                bcs::from_bytes::<types::target::TargetV1>(old_object.data.contents())
-                            {
+                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
+                                old_object.data.contents(),
+                            ) {
                                 let old_status = target_status_string(&old_target.status);
                                 let old_key = TargetIndexKey {
                                     status: old_status,
@@ -1021,7 +1019,9 @@ impl IndexStoreTables {
                     if matches!(kind, WriteKind::Mutate) {
                         if let Some(old_object) = input_objects.get(id) {
                             if let Ok(old_challenge) =
-                                bcs::from_bytes::<types::challenge::ChallengeV1>(old_object.data.contents())
+                                bcs::from_bytes::<types::challenge::ChallengeV1>(
+                                    old_object.data.contents(),
+                                )
                             {
                                 let old_status = challenge_status_string(&old_challenge.status);
                                 let old_key = ChallengeIndexKey {
@@ -1046,9 +1046,7 @@ impl IndexStoreTables {
                             target_id: challenge.target_id,
                             challenge_id: *id,
                         };
-                        let info = ChallengeIndexInfo {
-                            version: new_object.version(),
-                        };
+                        let info = ChallengeIndexInfo { version: new_object.version() };
                         batch.insert_batch(&self.challenges, [(key, info)])?;
                     }
                 }
@@ -1567,11 +1565,8 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
                         target_id: challenge.target_id,
                         challenge_id: object.id(),
                     };
-                    let info = ChallengeIndexInfo {
-                        version: object.version(),
-                    };
-                    self.batch
-                        .insert_batch(&self.tables.challenges, [(key, info)])?;
+                    let info = ChallengeIndexInfo { version: object.version() };
+                    self.batch.insert_batch(&self.tables.challenges, [(key, info)])?;
                 }
             }
         }

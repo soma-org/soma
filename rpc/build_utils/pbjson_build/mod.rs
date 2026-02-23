@@ -110,6 +110,7 @@ pub struct Builder {
     preserve_proto_field_names: bool,
 }
 
+#[allow(dead_code)]
 impl Builder {
     /// Create a new `Builder`
     pub fn new() -> Self {
@@ -203,9 +204,7 @@ impl Builder {
     pub fn build<S: AsRef<str>>(&mut self, prefixes: &[S]) -> Result<()> {
         let mut output: PathBuf = self.out_dir.clone().map(Ok).unwrap_or_else(|| {
             std::env::var_os("OUT_DIR")
-                .ok_or_else(|| {
-                    std::io::Error::other("OUT_DIR environment variable is not set")
-                })
+                .ok_or_else(|| std::io::Error::other("OUT_DIR environment variable is not set"))
                 .map(Into::into)
         })?;
         output.push("FILENAME");

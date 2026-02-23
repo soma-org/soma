@@ -22,8 +22,7 @@ use types::{
 };
 
 use crate::{
-    authority::AuthorityState,
-    authority_test_utils::send_and_confirm_transaction_,
+    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
     test_authority_builder::TestAuthorityBuilder,
 };
 
@@ -55,7 +54,8 @@ async fn execute_commit_model(
 
     // Get architecture version from system state if not overridden
     let system_state = authority_state.get_system_state_object_for_testing().unwrap();
-    let arch_version = architecture_version.unwrap_or(system_state.parameters().model_architecture_version);
+    let arch_version =
+        architecture_version.unwrap_or(system_state.parameters().model_architecture_version);
     let comm_rate = commission_rate.unwrap_or(1000); // 10% default
 
     let data = TransactionData::new(
@@ -73,10 +73,9 @@ async fn execute_commit_model(
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     // CommitModel modifies SystemState (shared object)
-    let txn_result =
-        send_and_confirm_transaction_(&authority_state, None, tx, true)
-            .await
-            .map(|(_, effects)| effects);
+    let txn_result = send_and_confirm_transaction_(&authority_state, None, tx, true)
+        .await
+        .map(|(_, effects)| effects);
 
     TransactionResult { authority_state, txn_result, coin_id }
 }
@@ -89,11 +88,7 @@ async fn execute_commit_model(
 async fn test_commit_model_success() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     // Need enough for min stake (1 SOMA = 1_000_000_000) + fees
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        2_000_000_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
     let res = execute_commit_model(
         coin,
@@ -109,13 +104,10 @@ async fn test_commit_model_success() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Should create a StakedSoma object (for the model's staking pool)
-    assert!(
-        !effects.created().is_empty(),
-        "Should create at least one object (StakedSoma)"
-    );
+    assert!(!effects.created().is_empty(), "Should create at least one object (StakedSoma)");
 
     // SystemState should be mutated (model added to pending)
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
     assert!(
         mutated_ids.contains(&SYSTEM_STATE_OBJECT_ID),
         "SystemState should be mutated during CommitModel"
@@ -147,11 +139,7 @@ async fn test_commit_model_success() {
 #[tokio::test]
 async fn test_commit_model_bad_architecture_version() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        2_000_000_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
     let res = execute_commit_model(
         coin,
@@ -164,20 +152,13 @@ async fn test_commit_model_bad_architecture_version() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: architecture version mismatch"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: architecture version mismatch");
 }
 
 #[tokio::test]
 async fn test_commit_model_min_stake_not_met() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        50_000_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 50_000_000);
 
     let res = execute_commit_model(
         coin,
@@ -190,20 +171,13 @@ async fn test_commit_model_min_stake_not_met() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: stake amount below minimum"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: stake amount below minimum");
 }
 
 #[tokio::test]
 async fn test_commit_model_commission_rate_too_high() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        2_000_000_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
     let res = execute_commit_model(
         coin,
@@ -216,10 +190,7 @@ async fn test_commit_model_commission_rate_too_high() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: commission rate exceeds BPS_DENOMINATOR"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: commission rate exceeds BPS_DENOMINATOR");
 }
 
 #[tokio::test]
@@ -243,10 +214,7 @@ async fn test_commit_model_insufficient_gas() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: balance insufficient for gas"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: balance insufficient for gas");
 }
 
 #[tokio::test]
@@ -256,11 +224,7 @@ async fn test_commit_model_insufficient_balance_for_stake() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     // 1_000_010_000 > min_stake (1B) but after base fee (1000), remaining = 1_000_009_000
     // which is < stake (1B) + value_fee + write_fees
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        1_000_010_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1_000_010_000);
 
     let res = execute_commit_model(
         coin,
@@ -273,10 +237,7 @@ async fn test_commit_model_insufficient_balance_for_stake() {
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: balance insufficient for stake_amount + fees"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: balance insufficient for stake_amount + fees");
 }
 
 // =============================================================================
@@ -287,11 +248,7 @@ async fn test_commit_model_insufficient_balance_for_stake() {
 async fn test_commit_model_half_value_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 1_000_000_000u64;
-    let coin = Object::with_id_owner_coin_for_testing(
-        ObjectID::random(),
-        sender,
-        2_000_000_000,
-    );
+    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
     let res = execute_commit_model(
         coin,
@@ -341,10 +298,7 @@ async fn test_report_model_not_a_validator() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Non-validator should not be able to report model"
-            );
+            assert!(!effects.status().is_ok(), "Non-validator should not be able to report model");
         }
         Err(_) => {
             // Also acceptable
@@ -367,10 +321,7 @@ async fn test_set_model_commission_rate_nonexistent_model() {
     authority_state.insert_genesis_object(gas).await;
 
     let data = TransactionData::new(
-        TransactionKind::SetModelCommissionRate {
-            model_id: ObjectID::random(),
-            new_rate: 500,
-        },
+        TransactionKind::SetModelCommissionRate { model_id: ObjectID::random(), new_rate: 500 },
         sender,
         vec![gas_ref],
     );
@@ -379,10 +330,7 @@ async fn test_set_model_commission_rate_nonexistent_model() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Should fail: model doesn't exist"
-            );
+            assert!(!effects.status().is_ok(), "Should fail: model doesn't exist");
         }
         Err(_) => {
             // Also acceptable
@@ -414,10 +362,7 @@ async fn test_deactivate_model_nonexistent() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(
-                !effects.status().is_ok(),
-                "Should fail: model doesn't exist"
-            );
+            assert!(!effects.status().is_ok(), "Should fail: model doesn't exist");
         }
         Err(_) => {
             // Also acceptable

@@ -169,7 +169,7 @@ fn test_bond_scales_with_data_size() {
 // =============================================================================
 
 use super::test_utils::{create_test_system_state, create_validators_with_stakes};
-use crate::target::{TargetV1, TargetStatus};
+use crate::target::{TargetStatus, TargetV1};
 use std::collections::BTreeMap;
 
 /// Helper to create a test system state with voting power properly set.

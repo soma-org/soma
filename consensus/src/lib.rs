@@ -32,17 +32,17 @@ mod transaction;
 mod transaction_certifier;
 mod universal_committer;
 
+#[cfg(test)]
+pub(crate) mod commit_test_fixture;
+#[cfg(test)]
+#[path = "tests/randomized_tests.rs"]
+mod randomized_tests;
 /// Consensus test utilities.
 #[cfg(test)]
 mod test_dag;
 mod test_dag_builder;
 #[cfg(test)]
 mod test_dag_parser;
-#[cfg(test)]
-pub(crate) mod commit_test_fixture;
-#[cfg(test)]
-#[path = "tests/randomized_tests.rs"]
-mod randomized_tests;
 
 pub use authority_node::{ConsensusAuthority, NetworkType};
 pub use commit_consumer::{CommitConsumerArgs, CommitConsumerMonitor};

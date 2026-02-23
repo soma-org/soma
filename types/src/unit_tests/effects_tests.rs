@@ -69,9 +69,9 @@ fn test_effects_created_objects() {
     let created = effects.created();
 
     assert_eq!(created.len(), 1);
-    assert_eq!(created[0].0 .0, obj_id);
-    assert_eq!(created[0].0 .1, effects.version());
-    assert_eq!(created[0].0 .2, obj_digest);
+    assert_eq!(created[0].0.0, obj_id);
+    assert_eq!(created[0].0.1, effects.version());
+    assert_eq!(created[0].0.2, obj_digest);
     assert_eq!(created[0].1, owner);
 }
 
@@ -92,9 +92,9 @@ fn test_effects_mutated_objects() {
     let mutated = effects.mutated();
 
     assert_eq!(mutated.len(), 1);
-    assert_eq!(mutated[0].0 .0, obj_id);
-    assert_eq!(mutated[0].0 .1, effects.version());
-    assert_eq!(mutated[0].0 .2, new_digest);
+    assert_eq!(mutated[0].0.0, obj_id);
+    assert_eq!(mutated[0].0.1, effects.version());
+    assert_eq!(mutated[0].0.2, new_digest);
     assert_eq!(mutated[0].1, owner);
 }
 
@@ -297,19 +297,13 @@ fn test_execution_status_failure() {
 
     // Test other failure variants.
     let status2 = ExecutionStatus::Failure {
-        error: ExecutionFailureStatus::ObjectNotFound {
-            object_id: ObjectID::random(),
-        },
+        error: ExecutionFailureStatus::ObjectNotFound { object_id: ObjectID::random() },
     };
     assert!(status2.is_err());
 
-    let status3 =
-        ExecutionStatus::new_failure(ExecutionFailureStatus::InsufficientCoinBalance);
+    let status3 = ExecutionStatus::new_failure(ExecutionFailureStatus::InsufficientCoinBalance);
     assert!(status3.is_err());
-    assert_eq!(
-        status3.unwrap_err(),
-        ExecutionFailureStatus::InsufficientCoinBalance
-    );
+    assert_eq!(status3.unwrap_err(), ExecutionFailureStatus::InsufficientCoinBalance);
 }
 
 #[test]

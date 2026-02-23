@@ -50,11 +50,7 @@ impl EncoderConfig {
     }
 }
 impl<B: Backend> Encoder<B> {
-    pub fn forward(
-        &self,
-        context: Tensor<B, 3>,
-        positions: Tensor<B, 2, Int>,
-    ) -> Tensor<B, 3> {
+    pub fn forward(&self, context: Tensor<B, 3>, positions: Tensor<B, 2, Int>) -> Tensor<B, 3> {
         let mut x = context;
         for layer in self.layers.iter() {
             x = layer.forward(x, positions.clone());

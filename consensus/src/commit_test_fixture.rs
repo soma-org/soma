@@ -10,12 +10,12 @@ use std::ops::Bound::Included;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{seq::SliceRandom, Rng, SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 use types::committee::{AuthorityIndex, VotingPower};
 use types::consensus::{
     block::{
-        BlockAPI, BlockDigest, BlockRef, BlockTransactionVotes, Round, Slot,
-        TestBlock, Transaction, TransactionIndex, VerifiedBlock, genesis_blocks,
+        BlockAPI, BlockDigest, BlockRef, BlockTransactionVotes, Round, Slot, TestBlock,
+        Transaction, TransactionIndex, VerifiedBlock, genesis_blocks,
     },
     commit::CommittedSubDag,
     context::Context,
@@ -29,8 +29,7 @@ use crate::{
     linearizer::Linearizer,
     test_dag_builder::DagBuilder,
     universal_committer::{
-        UniversalCommitter,
-        universal_committer_builder::UniversalCommitterBuilder,
+        UniversalCommitter, universal_committer_builder::UniversalCommitterBuilder,
     },
 };
 
@@ -46,30 +45,18 @@ pub(crate) struct CommitTestFixture {
 impl CommitTestFixture {
     /// Create a new test fixture from a given context.
     pub fn new(context: Arc<Context>) -> Self {
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
-        let leader_schedule = Arc::new(LeaderSchedule::new(
-            context.clone(),
-            LeaderSwapTable::default(),
-        ));
-        let committer = UniversalCommitterBuilder::new(
-            context.clone(),
-            leader_schedule,
-            dag_state.clone(),
-        )
-        .with_pipeline(true)
-        .build();
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
+        let leader_schedule =
+            Arc::new(LeaderSchedule::new(context.clone(), LeaderSwapTable::default()));
+        let committer =
+            UniversalCommitterBuilder::new(context.clone(), leader_schedule, dag_state.clone())
+                .with_pipeline(true)
+                .build();
         let linearizer = Linearizer::new(context.clone(), dag_state.clone());
         let block_manager = BlockManager::new(context.clone(), dag_state.clone());
 
-        Self {
-            dag_state,
-            committer,
-            linearizer,
-            block_manager,
-        }
+        Self { dag_state, committer, linearizer, block_manager }
     }
 
     /// Create a Context configured for testing with the given parameters.
@@ -111,15 +98,10 @@ impl CommitTestFixture {
     /// Run try_decide on the committer, returning both the committed sub-dags and
     /// the updated last_decided slot. This is useful for incremental commit tracking
     /// where blocks are delivered one at a time.
-    pub fn try_commit_tracking(
-        &mut self,
-        last_decided: Slot,
-    ) -> (Vec<CommittedSubDag>, Slot) {
+    pub fn try_commit_tracking(&mut self, last_decided: Slot) -> (Vec<CommittedSubDag>, Slot) {
         let decided_leaders = self.committer.try_decide(last_decided);
-        let new_last_decided = decided_leaders
-            .last()
-            .map(|leader| leader.slot())
-            .unwrap_or(last_decided);
+        let new_last_decided =
+            decided_leaders.last().map(|leader| leader.slot()).unwrap_or(last_decided);
         let committed_blocks: Vec<VerifiedBlock> = decided_leaders
             .into_iter()
             .filter_map(|leader| leader.into_committed_block())
@@ -142,9 +124,7 @@ pub(crate) struct RandomDag {
 impl RandomDag {
     /// Create a new RandomDag from a DagBuilder's blocks.
     pub fn new(dag_builder: &DagBuilder) -> Self {
-        Self {
-            blocks: dag_builder.all_blocks(),
-        }
+        Self { blocks: dag_builder.all_blocks() }
     }
 
     /// Create an iterator that delivers blocks in a random order determined by the seed.
@@ -172,21 +152,14 @@ impl Iterator for RandomDagIterator {
     type Item = VerifiedBlock;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.blocks.is_empty() {
-            None
-        } else {
-            Some(self.blocks.remove(0))
-        }
+        if self.blocks.is_empty() { None } else { Some(self.blocks.remove(0)) }
     }
 }
 
 /// Assert that multiple commit sequences contain the same committed leaders
 /// in the same order. Compares by slot (round + authority).
 pub(crate) fn assert_commit_sequences_match(sequences: &[Vec<CommittedSubDag>]) {
-    assert!(
-        sequences.len() >= 2,
-        "Need at least 2 sequences to compare"
-    );
+    assert!(sequences.len() >= 2, "Need at least 2 sequences to compare");
 
     let reference = &sequences[0];
     for (i, sequence) in sequences.iter().enumerate().skip(1) {
@@ -198,9 +171,7 @@ pub(crate) fn assert_commit_sequences_match(sequences: &[Vec<CommittedSubDag>]) 
             i,
             sequence.len()
         );
-        for (j, (ref_subdag, cmp_subdag)) in
-            reference.iter().zip(sequence.iter()).enumerate()
-        {
+        for (j, (ref_subdag, cmp_subdag)) in reference.iter().zip(sequence.iter()).enumerate() {
             assert_eq!(
                 ref_subdag.leader, cmp_subdag.leader,
                 "Commit sequence mismatch at position {}: reference leader {:?} != sequence {} leader {:?}",
@@ -257,9 +228,8 @@ impl EquivocatingRandomDag {
         let total_stake: VotingPower = committee.total_votes();
 
         // Create instance ID for each authority and equivocators.
-        let mut instances: Vec<InstanceID> = (0..committee.size())
-            .map(|i| (AuthorityIndex::new_for_test(i as u32), 0u16))
-            .collect();
+        let mut instances: Vec<InstanceID> =
+            (0..committee.size()).map(|i| (AuthorityIndex::new_for_test(i as u32), 0u16)).collect();
         for (authority, num_equivocators) in equivocators {
             for i in 1..=num_equivocators {
                 instances.push((authority, i));
@@ -267,10 +237,8 @@ impl EquivocatingRandomDag {
         }
 
         let genesis = genesis_blocks(&context);
-        let genesis_by_author: BTreeMap<AuthorityIndex, VerifiedBlock> = genesis
-            .iter()
-            .map(|b| (b.author(), b.clone()))
-            .collect();
+        let genesis_by_author: BTreeMap<AuthorityIndex, VerifiedBlock> =
+            genesis.iter().map(|b| (b.author(), b.clone())).collect();
 
         // Store all blocks for lookup and range search.
         let mut all_blocks: BTreeMap<BlockRef, VerifiedBlock> = BTreeMap::new();
@@ -358,6 +326,7 @@ impl EquivocatingRandomDag {
 }
 
 /// Builds a single block for the given consensus instance at the specified round.
+#[allow(clippy::too_many_arguments)]
 fn build_block_for_instance(
     context: &Arc<Context>,
     instances: &[InstanceID],
@@ -449,17 +418,10 @@ fn build_block_for_instance(
         if block_ref.round == 0 {
             continue;
         }
-        if included_refs
-            .entry(own_instance)
-            .or_default()
-            .contains(&block_ref)
-        {
+        if included_refs.entry(own_instance).or_default().contains(&block_ref) {
             continue;
         }
-        included_refs
-            .entry(own_instance)
-            .or_default()
-            .insert(block_ref);
+        included_refs.entry(own_instance).or_default().insert(block_ref);
         newly_connected.push(block_ref);
         if let Some(block) = all_blocks.get(&block_ref) {
             queue.extend(block.ancestors().iter().copied());
@@ -483,9 +445,8 @@ fn build_block_for_instance(
         })
         .collect();
 
-    let transactions: Vec<_> = (0..num_transactions)
-        .map(|_| Transaction::new(vec![1_u8; 16]))
-        .collect();
+    let transactions: Vec<_> =
+        (0..num_transactions).map(|_| Transaction::new(vec![1_u8; 16])).collect();
 
     let timestamp =
         (round as u64) * 1000 + (own_authority.value() as u64) + rng.gen_range(0u64..100);
@@ -537,7 +498,7 @@ impl<'a> ConstrainedRandomDagIterator<'a> {
 
         for (idx, block) in dag.blocks.iter().enumerate() {
             let round = block.round() as usize;
-            if round > 0 && round <= num_rounds as usize {
+            if round > 0 && round <= num_rounds {
                 round_states[round].unvisited.push(idx);
             }
         }
@@ -576,10 +537,8 @@ impl Iterator for ConstrainedRandomDagIterator<'_> {
 
         let eligible_rounds = min_round..=max_round;
 
-        let total_candidates: usize = eligible_rounds
-            .clone()
-            .map(|r| self.round_states[r].unvisited.len())
-            .sum();
+        let total_candidates: usize =
+            eligible_rounds.clone().map(|r| self.round_states[r].unvisited.len()).sum();
 
         if total_candidates == 0 {
             return None;
@@ -601,9 +560,7 @@ impl Iterator for ConstrainedRandomDagIterator<'_> {
         }
 
         // Get block index and remove from unvisited.
-        let block_idx = self.round_states[selected_round]
-            .unvisited
-            .swap_remove(selected_pos);
+        let block_idx = self.round_states[selected_round].unvisited.swap_remove(selected_pos);
         let block = self.dag.blocks[block_idx].clone();
 
         // Update visited stake for this round.

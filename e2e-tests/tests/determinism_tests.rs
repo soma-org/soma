@@ -36,11 +36,7 @@ async fn execute_stake_tx(
 ) -> types::digests::TransactionDigest {
     let sender = test_cluster.get_addresses()[0];
     let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state()
-            .get_system_state_object_for_testing()
-            .unwrap()
-            .validators()
-            .validators[0]
+        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
             .metadata
             .soma_address
     });
@@ -73,18 +69,14 @@ async fn wait_for_tx_in_checkpoint(
     digest: &types::digests::TransactionDigest,
 ) {
     for _ in 0..600 {
-        let all_included = test_cluster
-            .swarm
-            .validator_node_handles()
-            .into_iter()
-            .all(|handle| {
-                handle.with(|node| {
-                    node.state()
-                        .epoch_store_for_testing()
-                        .is_transaction_executed_in_checkpoint(digest)
-                        .unwrap()
-                })
-            });
+        let all_included = test_cluster.swarm.validator_node_handles().into_iter().all(|handle| {
+            handle.with(|node| {
+                node.state()
+                    .epoch_store_for_testing()
+                    .is_transaction_executed_in_checkpoint(digest)
+                    .unwrap()
+            })
+        });
         if all_included {
             return;
         }
@@ -105,10 +97,7 @@ async fn wait_for_tx_in_checkpoint(
 async fn test_epoch_state_commitments_all_validators_agree() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     // Execute several transactions to mutate state within epoch 0.
     for _ in 0..3 {
@@ -171,10 +160,7 @@ async fn test_epoch_state_commitments_all_validators_agree() {
         );
     }
 
-    info!(
-        "All {} validators + fullnode agree on epoch 0 state root",
-        validator_commitments.len()
-    );
+    info!("All {} validators + fullnode agree on epoch 0 state root", validator_commitments.len());
 }
 
 // ---------------------------------------------------------------------------
@@ -189,10 +175,7 @@ async fn test_epoch_state_commitments_all_validators_agree() {
 async fn test_checkpoint_digests_consistent_across_validators() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     // Execute transactions to create checkpoints.
     let digest = execute_stake_tx(&test_cluster).await;
@@ -251,10 +234,7 @@ async fn test_checkpoint_digests_consistent_across_validators() {
         }
     }
 
-    info!(
-        "All validators agree on checkpoint digests for sequences 0..={}",
-        min_highest_seq
-    );
+    info!("All validators agree on checkpoint digests for sequences 0..={}", min_highest_seq);
 }
 
 // ---------------------------------------------------------------------------
@@ -269,10 +249,7 @@ async fn test_checkpoint_digests_consistent_across_validators() {
 async fn test_transaction_effects_deterministic_across_validators() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     // Execute several transactions and collect their digests.
     let mut tx_digests = Vec::new();
@@ -316,10 +293,7 @@ async fn test_transaction_effects_deterministic_across_validators() {
         }
     }
 
-    info!(
-        "All validators agree on effects digests for {} transactions",
-        tx_digests.len()
-    );
+    info!("All validators agree on effects digests for {} transactions", tx_digests.len());
 }
 
 // ---------------------------------------------------------------------------
@@ -334,10 +308,7 @@ async fn test_transaction_effects_deterministic_across_validators() {
 async fn test_state_root_consistency_across_epochs() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .build()
-        .await;
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
     let num_epochs = 3u64;
     let mut epoch_ecmh_digests = Vec::new();
@@ -398,10 +369,7 @@ async fn test_state_root_consistency_across_epochs() {
         );
     }
 
-    info!(
-        "State root consistency verified across {} epochs with distinct digests",
-        num_epochs
-    );
+    info!("State root consistency verified across {} epochs with distinct digests", num_epochs);
 }
 
 // ---------------------------------------------------------------------------
@@ -417,30 +385,30 @@ async fn test_state_root_consistency_across_epochs() {
 async fn test_passive_epoch_with_transactions_smoke() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     // Debug: print epoch duration and timestamps
-    let (epoch_dur, epoch_start, chain_start) = test_cluster.fullnode_handle.soma_node.with(|node| {
-        let state = node.state();
-        let epoch_store = state.epoch_store_for_testing();
-        let start_state = epoch_store.epoch_start_state();
-        (
-            start_state.epoch_duration_ms(),
-            start_state.epoch_start_timestamp_ms(),
-            0u64, // placeholder
-        )
-    });
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let (epoch_dur, epoch_start, chain_start) =
+        test_cluster.fullnode_handle.soma_node.with(|node| {
+            let state = node.state();
+            let epoch_store = state.epoch_store_for_testing();
+            let start_state = epoch_store.epoch_start_state();
+            (
+                start_state.epoch_duration_ms(),
+                start_state.epoch_start_timestamp_ms(),
+                0u64, // placeholder
+            )
+        });
+    let now_ms =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+            as u64;
     eprintln!(
         "DEBUG TIMING: epoch_duration_ms={}, epoch_start_timestamp_ms={}, now_ms={}, diff={}",
-        epoch_dur, epoch_start, now_ms, now_ms.saturating_sub(epoch_start)
+        epoch_dur,
+        epoch_start,
+        now_ms,
+        now_ms.saturating_sub(epoch_start)
     );
 
     info!("Cluster built, waiting for epoch 1 via passive timer (epoch_duration_ms=5000)...");
@@ -458,11 +426,8 @@ async fn test_passive_epoch_with_transactions_smoke() {
 async fn test_deterministic_execution_with_check_determinism() {
     init_tracing();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_num_validators(4)
-        .with_epoch_duration_ms(5000)
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(4).with_epoch_duration_ms(5000).build().await;
 
     // Wait for epoch transition (passive via timer).
     test_cluster.wait_for_epoch(Some(1)).await;

@@ -28,10 +28,8 @@ pub async fn execute(
     println!("Requesting tokens from faucet at {url} for address {address}...");
 
     let mut client = FaucetClient::connect(url).await?;
-    let response = client
-        .request_gas(GasRequest { recipient: address.to_string() })
-        .await?
-        .into_inner();
+    let response =
+        client.request_gas(GasRequest { recipient: address.to_string() }).await?.into_inner();
 
     if response.status == "Success" {
         println!("Successfully received {} coins:", response.coins_sent.len());
@@ -103,8 +101,7 @@ mod tests {
 
     #[test]
     fn test_find_faucet_url_devnet() {
-        let result =
-            faucet_url_for_rpc("https://fullnode.devnet.soma.org:443", "devnet").unwrap();
+        let result = faucet_url_for_rpc("https://fullnode.devnet.soma.org:443", "devnet").unwrap();
         assert_eq!(result, "https://faucet.devnet.soma.network");
     }
 

@@ -58,13 +58,17 @@ fn error_hint(msg: &str) -> Option<&'static str> {
         return Some("Use `soma faucet` to request test tokens.");
     }
     if msg_lower.contains("force-regenesis") {
-        return Some("Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.");
+        return Some(
+            "Use --force-regenesis for an ephemeral network, or remove ~/.soma/ to start fresh.",
+        );
     }
     if msg_lower.contains("not found in active, pending, or inactive") {
         return Some("Check the model ID with `soma model list`.");
     }
     if msg_lower.contains("must be exactly 32 bytes") {
-        return Some("Hex values should be 64 hex characters (32 bytes). Include the 0x prefix or omit it.");
+        return Some(
+            "Hex values should be 64 hex characters (32 bytes). Include the 0x prefix or omit it.",
+        );
     }
     None
 }

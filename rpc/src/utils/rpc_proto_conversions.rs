@@ -38,20 +38,15 @@ impl From<types::tx_fee::TransactionFee> for TransactionFee {
 impl From<types::effects::ExecutionStatus> for ExecutionStatus {
     fn from(value: types::effects::ExecutionStatus) -> Self {
         match value {
-            types::effects::ExecutionStatus::Success => Self {
-                success: Some(true),
-                ..Default::default()
-            },
+            types::effects::ExecutionStatus::Success => {
+                Self { success: Some(true), ..Default::default() }
+            }
             types::effects::ExecutionStatus::Failure { error } => {
                 let description = format!("{error:?}");
                 let mut error_message = ExecutionError::from(error);
                 error_message.description = Some(description);
 
-                Self {
-                    success: Some(false),
-                    error: Some(error_message),
-                    ..Default::default()
-                }
+                Self { success: Some(false), error: Some(error_message), ..Default::default() }
             }
         }
     }
@@ -123,13 +118,21 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
             // Submission errors
             E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
-            E::EmbeddingDimensionMismatch { .. } => (ExecutionErrorKind::EmbeddingDimensionMismatch, None),
-            E::DistanceExceedsThreshold { .. } => (ExecutionErrorKind::DistanceExceedsThreshold, None),
+            E::EmbeddingDimensionMismatch { .. } => {
+                (ExecutionErrorKind::EmbeddingDimensionMismatch, None)
+            }
+            E::DistanceExceedsThreshold { .. } => {
+                (ExecutionErrorKind::DistanceExceedsThreshold, None)
+            }
             E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
-            E::InsufficientEmissionBalance => (ExecutionErrorKind::InsufficientEmissionBalance, None),
+            E::InsufficientEmissionBalance => {
+                (ExecutionErrorKind::InsufficientEmissionBalance, None)
+            }
             // Challenge errors
             E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
-            E::InsufficientChallengerBond { .. } => (ExecutionErrorKind::InsufficientChallengerBond, None),
+            E::InsufficientChallengerBond { .. } => {
+                (ExecutionErrorKind::InsufficientChallengerBond, None)
+            }
             E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
             E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
             E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
@@ -195,11 +198,7 @@ impl From<types::committee::Committee> for ValidatorCommittee {
             })
             .collect();
 
-        Self {
-            epoch: Some(value.epoch),
-            members,
-            ..Default::default()
-        }
+        Self { epoch: Some(value.epoch), members, ..Default::default() }
     }
 }
 
@@ -273,11 +272,7 @@ impl From<&types::multisig::MultiSigPublicKey> for MultisigCommittee {
             })
             .collect();
 
-        Self {
-            members,
-            threshold: Some((*value.threshold()).into()),
-            ..Default::default()
-        }
+        Self { members, threshold: Some((*value.threshold()).into()), ..Default::default() }
     }
 }
 
@@ -511,7 +506,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::Genesis(genesis) => Kind::Genesis(GenesisTransaction {
                 objects: genesis.objects.into_iter().map(Into::into).collect(),
             }),
-            K::ConsensusCommitPrologueV1(prologue) => Kind::ConsensusCommitPrologue(prologue.into()),
+            K::ConsensusCommitPrologueV1(prologue) => {
+                Kind::ConsensusCommitPrologue(prologue.into())
+            }
             K::ChangeEpoch(change_epoch) => Kind::ChangeEpoch(change_epoch.into()),
             K::AddValidator(args) => Kind::AddValidator(args.into()),
             K::RemoveValidator(args) => Kind::RemoveValidator(args.into()),
@@ -613,16 +610,20 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 distance_score: Some(args.distance_score.as_scalar()),
                 bond_coin: Some(object_ref_to_proto(args.bond_coin)),
             }),
-            K::ClaimRewards(args) => Kind::ClaimRewards(ClaimRewards {
-                target_id: Some(args.target_id.to_string()),
-            }),
-            K::ReportSubmission { target_id, challenger } => Kind::ReportSubmission(ReportSubmission {
-                target_id: Some(target_id.to_string()),
-                challenger: challenger.map(|c| c.to_string()),
-            }),
-            K::UndoReportSubmission { target_id } => Kind::UndoReportSubmission(UndoReportSubmission {
-                target_id: Some(target_id.to_string()),
-            }),
+            K::ClaimRewards(args) => {
+                Kind::ClaimRewards(ClaimRewards { target_id: Some(args.target_id.to_string()) })
+            }
+            K::ReportSubmission { target_id, challenger } => {
+                Kind::ReportSubmission(ReportSubmission {
+                    target_id: Some(target_id.to_string()),
+                    challenger: challenger.map(|c| c.to_string()),
+                })
+            }
+            K::UndoReportSubmission { target_id } => {
+                Kind::UndoReportSubmission(UndoReportSubmission {
+                    target_id: Some(target_id.to_string()),
+                })
+            }
             // Challenge transactions
             // All challenges are fraud challenges now (simplified design v2)
             K::InitiateChallenge(args) => Kind::InitiateChallenge(InitiateChallenge {
@@ -635,18 +636,19 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::ReportChallenge { challenge_id } => Kind::ReportChallenge(ReportChallenge {
                 challenge_id: Some(challenge_id.to_string()),
             }),
-            K::UndoReportChallenge { challenge_id } => Kind::UndoReportChallenge(UndoReportChallenge {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
-            K::ClaimChallengeBond { challenge_id } => Kind::ClaimChallengeBond(ClaimChallengeBond {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
+            K::UndoReportChallenge { challenge_id } => {
+                Kind::UndoReportChallenge(UndoReportChallenge {
+                    challenge_id: Some(challenge_id.to_string()),
+                })
+            }
+            K::ClaimChallengeBond { challenge_id } => {
+                Kind::ClaimChallengeBond(ClaimChallengeBond {
+                    challenge_id: Some(challenge_id.to_string()),
+                })
+            }
         };
 
-        Self {
-            kind: Some(kind),
-            ..Default::default()
-        }
+        Self { kind: Some(kind), ..Default::default() }
     }
 }
 
@@ -710,9 +712,7 @@ impl From<types::consensus::ConsensusCommitPrologueV1> for ConsensusCommitProlog
 
 impl From<types::transaction::GenesisTransaction> for GenesisTransaction {
     fn from(value: types::transaction::GenesisTransaction) -> Self {
-        Self {
-            objects: value.objects.into_iter().map(Into::into).collect(),
-        }
+        Self { objects: value.objects.into_iter().map(Into::into).collect() }
     }
 }
 
@@ -935,27 +935,28 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
             proto_state.target_state.map(|ts| ts.try_into()).transpose()?.unwrap_or_default();
 
         // Build initial committees
-        let system_state = types::system_state::SystemState::V1(types::system_state::SystemStateV1 {
-            epoch,
-            protocol_version,
-            epoch_start_timestamp_ms,
-            parameters,
-            validators,
+        let system_state =
+            types::system_state::SystemState::V1(types::system_state::SystemStateV1 {
+                epoch,
+                protocol_version,
+                epoch_start_timestamp_ms,
+                parameters,
+                validators,
 
-            validator_report_records,
+                validator_report_records,
 
-            emission_pool,
+                emission_pool,
 
-            model_registry,
+                model_registry,
 
-            target_state,
+                target_state,
 
-            safe_mode: proto_state.safe_mode.unwrap_or(false),
-            safe_mode_accumulated_fees: proto_state.safe_mode_accumulated_fees.unwrap_or(0),
-            safe_mode_accumulated_emissions: proto_state
-                .safe_mode_accumulated_emissions
-                .unwrap_or(0),
-        });
+                safe_mode: proto_state.safe_mode.unwrap_or(false),
+                safe_mode_accumulated_fees: proto_state.safe_mode_accumulated_fees.unwrap_or(0),
+                safe_mode_accumulated_emissions: proto_state
+                    .safe_mode_accumulated_emissions
+                    .unwrap_or(0),
+            });
 
         Ok(system_state)
     }
@@ -1594,13 +1595,11 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
 
         let next_epoch_p2p_address = metadata.next_epoch_p2p_address.map(|addr| addr.to_string());
 
-        let next_epoch_primary_address = metadata
-            .next_epoch_primary_address
-            .map(|addr| addr.to_string());
+        let next_epoch_primary_address =
+            metadata.next_epoch_primary_address.map(|addr| addr.to_string());
 
-        let next_epoch_proxy_address = metadata
-            .next_epoch_proxy_address
-            .map(|addr| addr.to_string());
+        let next_epoch_proxy_address =
+            metadata.next_epoch_proxy_address.map(|addr| addr.to_string());
 
         // Convert proxy address (empty Multiaddr becomes None in proto)
         let proxy_address = if metadata.proxy_address.is_empty() {

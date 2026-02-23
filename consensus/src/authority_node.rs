@@ -374,9 +374,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::sync::mpsc::UnboundedReceiver;
     use tokio::time::sleep;
-    use types::committee::{
-        AuthorityIndex, Committee, local_committee_and_keys_with_test_options,
-    };
+    use types::committee::{AuthorityIndex, Committee, local_committee_and_keys_with_test_options};
     use types::consensus::block::BlockAPI;
     use types::consensus::commit::CommittedSubDag;
     use types::consensus::context::Clock;
@@ -393,14 +391,11 @@ mod tests {
     async fn test_authority_start_and_stop(
         #[values(NetworkType::Tonic)] network_type: NetworkType,
     ) {
-        let (committee, keypairs) =
-            local_committee_and_keys_with_test_options(0, vec![1], true);
+        let (committee, keypairs) = local_committee_and_keys_with_test_options(0, vec![1], true);
 
         let temp_dir = TempDir::new().unwrap();
-        let parameters = Parameters {
-            db_path: temp_dir.path().to_path_buf(),
-            ..Default::default()
-        };
+        let parameters =
+            Parameters { db_path: temp_dir.path().to_path_buf(), ..Default::default() };
         let txn_verifier = NoopTransactionVerifier {};
 
         let own_index = AuthorityIndex::new_for_test(0);
@@ -448,11 +443,10 @@ mod tests {
     ) {
         let (committee, keypairs) =
             local_committee_and_keys_with_test_options(0, vec![1; num_authorities], true);
-        let protocol_config = ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
+        let protocol_config =
+            ProtocolConfig::get_for_version(ProtocolVersion::max(), Chain::Unknown);
 
-        let temp_dirs: Vec<_> = (0..num_authorities)
-            .map(|_| TempDir::new().unwrap())
-            .collect();
+        let temp_dirs: Vec<_> = (0..num_authorities).map(|_| TempDir::new().unwrap()).collect();
 
         let mut output_receivers = Vec::with_capacity(committee.size());
         let mut authorities: Vec<ConsensusAuthority> = Vec::with_capacity(committee.size());

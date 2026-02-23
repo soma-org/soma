@@ -444,10 +444,7 @@ impl AuthorityKeyPairWithPath {
         let arc_kp = Arc::new(kp);
         // OK to unwrap panic because authority should not start without all keypairs loaded.
         cell.set(arc_kp.clone()).expect("Failed to set authority keypair");
-        Self {
-            location: AuthorityKeyPairLocation::InPlace { value: arc_kp },
-            keypair: cell,
-        }
+        Self { location: AuthorityKeyPairLocation::InPlace { value: arc_kp }, keypair: cell }
     }
 
     pub fn authority_keypair(&self) -> &AuthorityKeyPair {
@@ -455,11 +452,9 @@ impl AuthorityKeyPairWithPath {
             .get_or_init(|| match &self.location {
                 AuthorityKeyPairLocation::InPlace { value } => value.clone(),
                 AuthorityKeyPairLocation::File { path } => {
-                    Arc::new(
-                        read_authority_keypair_from_file(path).unwrap_or_else(|e| {
-                            panic!("Invalid authority keypair file at path {:?}: {e}", path)
-                        }),
-                    )
+                    Arc::new(read_authority_keypair_from_file(path).unwrap_or_else(|e| {
+                        panic!("Invalid authority keypair file at path {:?}: {e}", path)
+                    }))
                 }
             })
             .as_ref()

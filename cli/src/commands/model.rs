@@ -18,7 +18,7 @@ use types::{
     crypto::DecryptionKey,
     digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
     metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ArchitectureVersion, ModelV1, ModelId, ModelWeightsManifest},
+    model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest},
     object::ObjectID,
     system_state::{SystemState, SystemStateTrait as _},
     tensor::SomaTensor,
@@ -38,13 +38,16 @@ pub enum ModelCommand {
     ///
     /// Registers a new model by committing its weight hashes. The model enters
     /// "pending" state and must be revealed in the next epoch or the stake is slashed.
-    #[clap(name = "commit", after_help = "\
+    #[clap(
+        name = "commit",
+        after_help = "\
 EXAMPLES:
     soma model commit 0xMODEL_ID \\
         --weights-url-commitment 0xABC...DEF \\
         --weights-commitment 0x123...456 \\
         --stake-amount 100 \\
-        --staking-pool-id 0xPOOL_ID")]
+        --staking-pool-id 0xPOOL_ID"
+    )]
     Commit {
         /// Pre-assigned model ID (ObjectID)
         model_id: ObjectID,
@@ -75,14 +78,17 @@ EXAMPLES:
     ///
     /// Must be called in the epoch following the commit. Provides the actual
     /// weights URL, checksum, and decryption key. The model becomes active.
-    #[clap(name = "reveal", after_help = "\
+    #[clap(
+        name = "reveal",
+        after_help = "\
 EXAMPLES:
     soma model reveal 0xMODEL_ID \\
         --weights-url https://storage.example.com/weights.bin \\
         --weights-checksum 0xABC...DEF \\
         --weights-size 1048576 \\
         --decryption-key 0x123...456 \\
-        --embedding 0.1,0.2,0.3,0.4")]
+        --embedding 0.1,0.2,0.3,0.4"
+    )]
     Reveal {
         /// Model ID to reveal
         model_id: ObjectID,
@@ -106,11 +112,14 @@ EXAMPLES:
     },
 
     /// Commit updated weights for an active model
-    #[clap(name = "update-commit", after_help = "\
+    #[clap(
+        name = "update-commit",
+        after_help = "\
 EXAMPLES:
     soma model update-commit 0xMODEL_ID \\
         --weights-url-commitment 0xABC...DEF \\
-        --weights-commitment 0x123...456")]
+        --weights-commitment 0x123...456"
+    )]
     UpdateCommit {
         /// Model ID to update
         model_id: ObjectID,
@@ -125,14 +134,17 @@ EXAMPLES:
     },
 
     /// Reveal updated weights for an active model
-    #[clap(name = "update-reveal", after_help = "\
+    #[clap(
+        name = "update-reveal",
+        after_help = "\
 EXAMPLES:
     soma model update-reveal 0xMODEL_ID \\
         --weights-url https://storage.example.com/weights-v2.bin \\
         --weights-checksum 0xABC...DEF \\
         --weights-size 2097152 \\
         --decryption-key 0x123...456 \\
-        --embedding 0.1,0.2,0.3,0.4")]
+        --embedding 0.1,0.2,0.3,0.4"
+    )]
     UpdateReveal {
         /// Model ID to update
         model_id: ObjectID,
@@ -159,9 +171,12 @@ EXAMPLES:
     ///
     /// Voluntarily deactivates the model. No slash is applied.
     /// Delegators can withdraw their stake after deactivation.
-    #[clap(name = "deactivate", after_help = "\
+    #[clap(
+        name = "deactivate",
+        after_help = "\
 EXAMPLES:
-    soma model deactivate 0xMODEL_ID")]
+    soma model deactivate 0xMODEL_ID"
+    )]
     Deactivate {
         /// Model ID to deactivate
         model_id: ObjectID,
@@ -170,24 +185,33 @@ EXAMPLES:
     },
 
     /// Display model information
-    #[clap(name = "info", after_help = "\
+    #[clap(
+        name = "info",
+        after_help = "\
 EXAMPLES:
-    soma model info 0xMODEL_ID")]
+    soma model info 0xMODEL_ID"
+    )]
     Info {
         /// Model ID to query
         model_id: ObjectID,
     },
 
     /// List all registered models
-    #[clap(name = "list", after_help = "\
+    #[clap(
+        name = "list",
+        after_help = "\
 EXAMPLES:
-    soma model list")]
+    soma model list"
+    )]
     List,
 
     /// Set commission rate for the next epoch (owner only)
-    #[clap(name = "set-commission-rate", after_help = "\
+    #[clap(
+        name = "set-commission-rate",
+        after_help = "\
 EXAMPLES:
-    soma model set-commission-rate 0xMODEL_ID --commission-rate 500")]
+    soma model set-commission-rate 0xMODEL_ID --commission-rate 500"
+    )]
     SetCommissionRate {
         /// Model ID
         model_id: ObjectID,
@@ -202,10 +226,13 @@ EXAMPLES:
     ///
     /// Fetches model weights via the validator proxy network. The weights are
     /// downloaded from any available validator that serves them.
-    #[clap(name = "download", after_help = "\
+    #[clap(
+        name = "download",
+        after_help = "\
 EXAMPLES:
     soma model download 0xMODEL_ID
-    soma model download 0xMODEL_ID --output ./weights.bin")]
+    soma model download 0xMODEL_ID --output ./weights.bin"
+    )]
     Download {
         /// Model ID to download weights for
         model_id: ObjectID,
@@ -256,10 +283,12 @@ impl ModelCommand {
                     Some(v) => v,
                     None => {
                         let client = context.get_client().await?;
-                        client
-                            .get_architecture_version()
-                            .await
-                            .map_err(|e| anyhow!("Failed to fetch architecture version from chain: {}", e.message()))?
+                        client.get_architecture_version().await.map_err(|e| {
+                            anyhow!(
+                                "Failed to fetch architecture version from chain: {}",
+                                e.message()
+                            )
+                        })?
                     }
                 };
 
@@ -274,10 +303,7 @@ impl ModelCommand {
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::CommitSuccess {
-                    model_id,
-                    inner: Box::new(result),
-                })
+                Ok(ModelCommandResponse::CommitSuccess { model_id, inner: Box::new(result) })
             }
 
             ModelCommand::Reveal {
@@ -304,10 +330,7 @@ impl ModelCommand {
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::RevealSuccess {
-                    model_id,
-                    inner: Box::new(result),
-                })
+                Ok(ModelCommandResponse::RevealSuccess { model_id, inner: Box::new(result) })
             }
 
             ModelCommand::UpdateCommit {
@@ -426,13 +449,15 @@ impl ModelCommand {
                 }
 
                 // Determine output path
-                let output_path = output.unwrap_or_else(|| {
-                    PathBuf::from(format!("{}.weights", model_id))
-                });
+                let output_path =
+                    output.unwrap_or_else(|| PathBuf::from(format!("{}.weights", model_id)));
 
                 // Download model weights
-                eprintln!("Downloading model {} from {} validators...",
-                    model_id, proxy_client.validator_count());
+                eprintln!(
+                    "Downloading model {} from {} validators...",
+                    model_id,
+                    proxy_client.validator_count()
+                );
 
                 let data = proxy_client
                     .fetch_model(&model_id)
@@ -650,12 +675,7 @@ impl Display for ModelCommandResponse {
                 writeln!(f, "  {}", "Next step: Reveal your model weights.".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
-                writeln!(
-                    f,
-                    "  {} {} \\",
-                    "soma model reveal".bold(),
-                    model_id
-                )?;
+                writeln!(f, "  {} {} \\", "soma model reveal".bold(), model_id)?;
                 writeln!(f, "    --weights-url <url> \\")?;
                 writeln!(f, "    --weights-checksum <hex> \\")?;
                 writeln!(f, "    --weights-size <bytes> \\")?;
@@ -717,10 +737,14 @@ impl Display for ModelInfoOutput {
         builder
             .push_record(["Commission Rate", &format!("{:.2}%", s.commission_rate as f64 / 100.0)]);
         builder.push_record(["Commit Epoch", &s.commit_epoch.to_string()]);
-        builder.push_record(["Stake Balance", &format!(
-            "{} shannons ({})", s.stake_balance,
-            crate::response::format_soma(s.stake_balance as u128),
-        )]);
+        builder.push_record([
+            "Stake Balance",
+            &format!(
+                "{} shannons ({})",
+                s.stake_balance,
+                crate::response::format_soma(s.stake_balance as u128),
+            ),
+        ]);
         if s.has_pending_update {
             builder.push_record(["Pending Update", "Yes"]);
         }

@@ -13,7 +13,6 @@ use rustls::pki_types::TrustAnchor;
 use rustls::pki_types::UnixTime;
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use tracing::info;
 
 static SUPPORTED_SIG_ALGS: &[&dyn SignatureVerificationAlgorithm] = &[webpki::ring::ED25519];
 
@@ -304,6 +303,7 @@ fn pki_error(error: webpki::Error) -> rustls::Error {
         BadDer | BadDerTime => {
             rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
         }
+        #[allow(deprecated)]
         InvalidSignatureForPublicKey
         | UnsupportedSignatureAlgorithm
         | UnsupportedSignatureAlgorithmForPublicKey => {

@@ -30,18 +30,21 @@ impl FeeCalculator for ChangeEpochExecutor {}
 #[cfg(msim)]
 fn maybe_inject_advance_epoch_failure(
     result: ExecutionResult<
-        std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSomaV1>,
+        std::collections::BTreeMap<
+            types::base::SomaAddress,
+            types::system_state::staking::StakedSomaV1,
+        >,
     >,
     new_epoch: u64,
 ) -> ExecutionResult<
-    std::collections::BTreeMap<types::base::SomaAddress, types::system_state::staking::StakedSomaV1>,
+    std::collections::BTreeMap<
+        types::base::SomaAddress,
+        types::system_state::staking::StakedSomaV1,
+    >,
 > {
     let should_fail = utils::fp::handle_fail_point_if("advance_epoch_result_injection");
     if should_fail {
-        tracing::warn!(
-            "Failpoint: injecting advance_epoch failure for epoch {}",
-            new_epoch
-        );
+        tracing::warn!("Failpoint: injecting advance_epoch failure for epoch {}", new_epoch);
         return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
             "Injected advance_epoch failure for epoch {}",
             new_epoch

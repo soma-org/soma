@@ -161,12 +161,8 @@ async fn test_net_determinism() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },

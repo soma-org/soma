@@ -331,9 +331,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_all_ancestor_state_using_accepted_rounds() {
         let (mut context, _key_pairs) = Context::new_for_test(5);
-        context
-            .protocol_config
-            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        context.protocol_config.set_consensus_bad_nodes_stake_threshold_for_testing(33);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store.clone())));

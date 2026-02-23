@@ -407,9 +407,7 @@ impl Object {
 
         // Targets are shared objects - use OBJECT_START_VERSION (1) directly
         // so TemporaryStore won't update it (it only updates Version::new() = 0)
-        let owner = Owner::Shared {
-            initial_shared_version: OBJECT_START_VERSION,
-        };
+        let owner = Owner::Shared { initial_shared_version: OBJECT_START_VERSION };
 
         Object::new(data, owner, previous_transaction)
     }
@@ -439,18 +437,12 @@ impl Object {
         let challenge_bytes = bcs::to_bytes(&challenge).unwrap();
 
         // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Challenge,
-            Version::MIN,
-            challenge_bytes,
-        );
+        let data =
+            ObjectData::new_with_id(id, ObjectType::Challenge, Version::MIN, challenge_bytes);
 
         // Challenges are shared objects - use OBJECT_START_VERSION (1) directly
         // so TemporaryStore won't update it (it only updates Version::new() = 0)
-        let owner = Owner::Shared {
-            initial_shared_version: OBJECT_START_VERSION,
-        };
+        let owner = Owner::Shared { initial_shared_version: OBJECT_START_VERSION };
 
         Object::new(data, owner, previous_transaction)
     }

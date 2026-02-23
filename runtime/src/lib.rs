@@ -4,11 +4,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use blobs::BlobPath;
 use blobs::downloader::HttpBlobDownloader;
-use burn::backend::{NdArray, Wgpu};
 #[cfg(feature = "cuda")]
 use burn::backend::Cuda;
 #[cfg(feature = "rocm")]
 use burn::backend::Rocm;
+use burn::backend::{NdArray, Wgpu};
 use burn::tensor::TensorData;
 use models::v1::ModelRunner;
 use object_store::local::LocalFileSystem;
@@ -179,39 +179,18 @@ pub fn build_runtime(
 
     match device {
         DeviceConfig::Cpu => {
-            let model =
-                Arc::new(ModelRunner::<NdArray>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(
-                store,
-                downloader,
-                0,
-                Default::default(),
-                model,
-            )))
+            let model = Arc::new(ModelRunner::<NdArray>::new(model_config, Default::default(), 4));
+            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
         }
         DeviceConfig::Wgpu => {
-            let model =
-                Arc::new(ModelRunner::<Wgpu>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(
-                store,
-                downloader,
-                0,
-                Default::default(),
-                model,
-            )))
+            let model = Arc::new(ModelRunner::<Wgpu>::new(model_config, Default::default(), 4));
+            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
         }
         DeviceConfig::Cuda => {
             #[cfg(feature = "cuda")]
             {
-                let model =
-                    Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
-                Ok(Arc::new(v1::RuntimeV1::new(
-                    store,
-                    downloader,
-                    0,
-                    Default::default(),
-                    model,
-                )))
+                let model = Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
+                Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
             }
             #[cfg(not(feature = "cuda"))]
             anyhow::bail!("CUDA support not compiled in. Rebuild with `--features runtime/cuda`.")
@@ -219,15 +198,8 @@ pub fn build_runtime(
         DeviceConfig::Rocm => {
             #[cfg(feature = "rocm")]
             {
-                let model =
-                    Arc::new(ModelRunner::<Rocm>::new(model_config, Default::default(), 4));
-                Ok(Arc::new(v1::RuntimeV1::new(
-                    store,
-                    downloader,
-                    0,
-                    Default::default(),
-                    model,
-                )))
+                let model = Arc::new(ModelRunner::<Rocm>::new(model_config, Default::default(), 4));
+                Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
             }
             #[cfg(not(feature = "rocm"))]
             anyhow::bail!(

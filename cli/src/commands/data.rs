@@ -35,10 +35,7 @@ pub struct DataCommand {
 // =============================================================================
 
 impl DataCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<DataCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<DataCommandResponse> {
         let client = context.get_client().await?;
 
         // Get system state to create proxy client
@@ -56,13 +53,15 @@ impl DataCommand {
         }
 
         // Determine output path
-        let output_path = self.output.unwrap_or_else(|| {
-            PathBuf::from(format!("{}.data", self.target_id))
-        });
+        let output_path =
+            self.output.unwrap_or_else(|| PathBuf::from(format!("{}.data", self.target_id)));
 
         // Download submission data
-        eprintln!("Downloading submission data for target {} from {} validators...",
-            self.target_id, proxy_client.validator_count());
+        eprintln!(
+            "Downloading submission data for target {} from {} validators...",
+            self.target_id,
+            proxy_client.validator_count()
+        );
 
         let data = proxy_client
             .fetch_submission_data(&self.target_id)
@@ -73,9 +72,7 @@ impl DataCommand {
         let mut file = tokio::fs::File::create(&output_path)
             .await
             .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
-        file.write_all(&data)
-            .await
-            .map_err(|e| anyhow!("Failed to write to file: {}", e))?;
+        file.write_all(&data).await.map_err(|e| anyhow!("Failed to write to file: {}", e))?;
 
         Ok(DataCommandResponse::Downloaded(DataDownloadOutput {
             target_id: self.target_id,

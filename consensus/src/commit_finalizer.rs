@@ -698,9 +698,7 @@ mod tests {
     use types::storage::consensus::mem_store::MemStore;
 
     use crate::{
-        block_verifier::NoopBlockVerifier,
-        dag_state::DagState,
-        test_dag_builder::DagBuilder,
+        block_verifier::NoopBlockVerifier, dag_state::DagState, test_dag_builder::DagBuilder,
         transaction_certifier::TransactionCertifier,
     };
 
@@ -715,10 +713,7 @@ mod tests {
         let context = Arc::new(context);
 
         let mem_store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            mem_store.clone(),
-        )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
 
         let (blocks_sender, _blocks_receiver) = unbounded_channel();
         let transaction_certifier = TransactionCertifier::new(
@@ -748,19 +743,12 @@ mod tests {
         // Feed all blocks to the transaction certifier with no own-reject-votes.
         // This ensures get_reject_votes() will return Some for each block.
         transaction_certifier.add_voted_blocks(
-            dag_builder
-                .all_blocks()
-                .iter()
-                .map(|b| (b.clone(), vec![]))
-                .collect(),
+            dag_builder.all_blocks().iter().map(|b| (b.clone(), vec![])).collect(),
         );
 
         // Get committed sub-dags from the DAG builder.
         let committed = dag_builder.get_sub_dag_and_commits(1..=num_rounds);
-        assert!(
-            !committed.is_empty(),
-            "Expected at least one committed sub-dag"
-        );
+        assert!(!committed.is_empty(), "Expected at least one committed sub-dag");
 
         // Process each committed sub-dag through the finalizer.
         let mut all_finalized = vec![];
@@ -770,10 +758,7 @@ mod tests {
         }
 
         // Verify that commits were finalized.
-        assert!(
-            !all_finalized.is_empty(),
-            "Expected at least one finalized commit"
-        );
+        assert!(!all_finalized.is_empty(), "Expected at least one finalized commit");
 
         // Verify that no transactions were rejected in any finalized commit.
         for commit in &all_finalized {
@@ -822,10 +807,7 @@ mod tests {
         let context = Arc::new(context);
 
         let mem_store = Arc::new(MemStore::new());
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            mem_store.clone(),
-        )));
+        let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), mem_store.clone())));
 
         let (blocks_sender, _blocks_receiver) = unbounded_channel();
         let transaction_certifier = TransactionCertifier::new(
@@ -860,19 +842,12 @@ mod tests {
         // Feed all blocks with no own-reject-votes (the reject votes are encoded
         // in the blocks' transaction_votes fields via the DagBuilder).
         transaction_certifier.add_voted_blocks(
-            dag_builder
-                .all_blocks()
-                .iter()
-                .map(|b| (b.clone(), vec![]))
-                .collect(),
+            dag_builder.all_blocks().iter().map(|b| (b.clone(), vec![])).collect(),
         );
 
         // Get committed sub-dags.
         let committed = dag_builder.get_sub_dag_and_commits(1..=num_rounds);
-        assert!(
-            !committed.is_empty(),
-            "Expected at least one committed sub-dag"
-        );
+        assert!(!committed.is_empty(), "Expected at least one committed sub-dag");
 
         // Process each committed sub-dag through the finalizer.
         let mut all_finalized = vec![];
@@ -881,10 +856,7 @@ mod tests {
             all_finalized.extend(finalized);
         }
 
-        assert!(
-            !all_finalized.is_empty(),
-            "Expected at least one finalized commit"
-        );
+        assert!(!all_finalized.is_empty(), "Expected at least one finalized commit");
 
         // Verify that some transactions were rejected. With 100% rejection rate
         // and 4 authorities (quorum = 3 stake), blocks that have a subsequent
@@ -893,7 +865,7 @@ mod tests {
         // rounds voting on them yet, so they might not have reached quorum.
         let mut total_rejected_transactions = 0usize;
         for commit in &all_finalized {
-            for (_block_ref, rejected_indices) in &commit.rejected_transactions_by_block {
+            for rejected_indices in commit.rejected_transactions_by_block.values() {
                 total_rejected_transactions += rejected_indices.len();
             }
         }
@@ -910,10 +882,7 @@ mod tests {
         for commit in &all_finalized {
             for (block_ref, rejected_indices) in &commit.rejected_transactions_by_block {
                 // Find the block in the commit's blocks.
-                let block = commit
-                    .blocks
-                    .iter()
-                    .find(|b| b.reference() == *block_ref);
+                let block = commit.blocks.iter().find(|b| b.reference() == *block_ref);
                 if let Some(block) = block {
                     let num_txns = block.transactions().len() as TransactionIndex;
                     for &idx in rejected_indices {

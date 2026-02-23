@@ -91,11 +91,7 @@ fn test_committee_weight_lookup() {
     let unknown = crate::base::AuthorityName::default();
     // The default may or may not be in the committee; check by membership
     if !committee.authority_exists(&unknown) {
-        assert_eq!(
-            committee.weight(&unknown),
-            0,
-            "Unknown authority should have zero weight"
-        );
+        assert_eq!(committee.weight(&unknown), 0, "Unknown authority should have zero weight");
     }
 }
 
@@ -107,8 +103,8 @@ fn test_committee_epoch() {
 
     // Verify with a specific epoch via the normalized constructor
     use crate::committee::Authority;
-    use crate::crypto::{AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair};
     use crate::committee::get_available_local_address;
+    use crate::crypto::{AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair};
     use fastcrypto::traits::KeyPair;
     use rand::SeedableRng;
     use rand::rngs::StdRng;

@@ -5,15 +5,15 @@
 use std::sync::Arc;
 
 use tempfile::tempdir;
+use types::base::dbg_addr;
 use types::object::{Object, ObjectID, Owner, Version};
 use types::storage::ObjectKey;
-use types::base::dbg_addr;
 
 use crate::{
     authority_store::AuthorityStore,
     authority_store_tables::AuthorityPerpetualTables,
-    cache::{ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead},
     cache::writeback_cache::WritebackCache,
+    cache::{ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead},
 };
 
 use super::cache_types::CachedVersionMap;
@@ -205,17 +205,11 @@ async fn test_cache_object_exists_by_key() {
     let obj_id = ObjectID::random();
     let obj = Object::with_id_owner_for_testing(obj_id, sender);
 
-    assert!(
-        !cache.object_exists_by_key(&obj_id, obj.version()),
-        "Should not exist before write"
-    );
+    assert!(!cache.object_exists_by_key(&obj_id, obj.version()), "Should not exist before write");
 
     cache.write_object_entry_for_test(obj.clone());
 
-    assert!(
-        cache.object_exists_by_key(&obj_id, obj.version()),
-        "Should exist after write"
-    );
+    assert!(cache.object_exists_by_key(&obj_id, obj.version()), "Should exist after write");
 
     assert!(
         !cache.object_exists_by_key(&obj_id, Version::from(999)),
@@ -258,10 +252,7 @@ async fn test_cache_multi_object_exists_by_key() {
     let id2 = ObjectID::random();
     // id2 is never written
 
-    let keys = vec![
-        ObjectKey(id1, obj1.version()),
-        ObjectKey(id2, Version::from(1)),
-    ];
+    let keys = vec![ObjectKey(id1, obj1.version()), ObjectKey(id2, Version::from(1))];
 
     let results = cache.multi_object_exists_by_key(&keys);
     assert_eq!(results.len(), 2);

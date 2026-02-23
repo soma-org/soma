@@ -43,13 +43,11 @@ impl<B: Backend> LayerNormModule<B> {
 fn test_layer_norm_ones() {
     let seed = 42u64;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
-    tensors.insert(
-        "layer_norm.gamma".to_string(),
-        ArrayWrapper(normal_array(seed,&[4], 0.0, 1.0)),
-    );
+    tensors
+        .insert("layer_norm.gamma".to_string(), ArrayWrapper(normal_array(seed, &[4], 0.0, 1.0)));
     tensors.insert(
         "layer_norm.beta".to_string(),
-        ArrayWrapper(normal_array(seed + 1,&[4], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 1, &[4], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -71,13 +69,11 @@ fn test_layer_norm_ones() {
 fn test_layer_norm_uniform() {
     let seed = 44u64;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
-    tensors.insert(
-        "layer_norm.gamma".to_string(),
-        ArrayWrapper(normal_array(seed,&[4], 0.0, 1.0)),
-    );
+    tensors
+        .insert("layer_norm.gamma".to_string(), ArrayWrapper(normal_array(seed, &[4], 0.0, 1.0)));
     tensors.insert(
         "layer_norm.beta".to_string(),
-        ArrayWrapper(normal_array(seed + 1,&[4], 0.0, 1.0)),
+        ArrayWrapper(normal_array(seed + 1, &[4], 0.0, 1.0)),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -85,7 +81,7 @@ fn test_layer_norm_uniform() {
     let mut model = LayerNormModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2,&[4], 0.0, 1.0).to_tensor_data().unwrap();
+    let input_data = uniform_array(seed + 2, &[4], 0.0, 1.0).to_tensor_data().unwrap();
     let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(

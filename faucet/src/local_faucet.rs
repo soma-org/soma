@@ -250,17 +250,14 @@ mod tests {
         let wallet = cluster.wallet;
 
         let config = FaucetConfig::default();
-        let faucet = Arc::new(
-            LocalFaucet::new(wallet, config).await.expect("Failed to create faucet"),
-        );
+        let faucet =
+            Arc::new(LocalFaucet::new(wallet, config).await.expect("Failed to create faucet"));
 
         let mut handles = Vec::new();
         for _ in 0..5 {
             let f = faucet.clone();
             let recipient = SomaAddress::random();
-            handles.push(tokio::spawn(async move {
-                f.local_request_execute_tx(recipient).await
-            }));
+            handles.push(tokio::spawn(async move { f.local_request_execute_tx(recipient).await }));
         }
 
         let results: Vec<_> = futures::future::join_all(handles).await;

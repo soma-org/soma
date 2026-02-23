@@ -93,10 +93,10 @@ pub fn get_epoch(service: &RpcService, request: GetEpochRequest) -> Result<GetEp
         }
     }
 
-    if let Some(system_state) = system_state
-        && read_mask.contains(Epoch::SYSTEM_STATE_FIELD.name)
-    {
-        message.system_state = system_state.try_into().ok().map(Box::new);
+    if let Some(system_state) = system_state {
+        if read_mask.contains(Epoch::SYSTEM_STATE_FIELD.name) {
+            message.system_state = system_state.try_into().ok().map(Box::new);
+        }
     }
 
     if read_mask.contains(Epoch::COMMITTEE_FIELD.name) {

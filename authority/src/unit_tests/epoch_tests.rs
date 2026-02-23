@@ -38,20 +38,17 @@ async fn test_advance_epoch_basic() {
     );
 
     let result = state.advance_epoch(
-        1,              // new_epoch
+        1, // new_epoch
         &protocol_config,
-        1000,           // fees collected
-        1_000_000,      // epoch_start_timestamp_ms
-        vec![],         // epoch_randomness
+        1000,      // fees collected
+        1_000_000, // epoch_start_timestamp_ms
+        vec![],    // epoch_randomness
     );
 
     assert!(result.is_ok(), "advance_epoch should succeed: {:?}", result.err());
 
     assert_eq!(state.epoch(), 1, "Epoch should be incremented to 1");
-    assert!(
-        state.epoch_start_timestamp_ms() >= 1_000_000,
-        "Timestamp should be updated"
-    );
+    assert!(state.epoch_start_timestamp_ms() >= 1_000_000, "Timestamp should be updated");
     assert!(!state.safe_mode(), "Should not be in safe mode after successful advance");
 }
 
@@ -121,7 +118,8 @@ async fn test_advance_epoch_emission_pool_decreases() {
     );
 
     // Timestamp must be >= prev_epoch_start + epoch_duration_ms to trigger emissions
-    let future_timestamp = state.epoch_start_timestamp_ms() + state.parameters().epoch_duration_ms + 1;
+    let future_timestamp =
+        state.epoch_start_timestamp_ms() + state.parameters().epoch_duration_ms + 1;
     let _ = state.advance_epoch(1, &protocol_config, 0, future_timestamp, vec![]);
 
     // Emission pool should decrease by approximately emission_per_epoch
@@ -150,16 +148,14 @@ async fn test_advance_epoch_safe_mode_basic() {
 
     assert_eq!(state.epoch(), initial_epoch + 1, "Epoch should still advance in safe mode");
     assert!(state.safe_mode(), "Should be in safe mode");
-    assert_eq!(
-        state.safe_mode_accumulated_fees(), fees,
-        "Fees should accumulate in safe mode"
-    );
+    assert_eq!(state.safe_mode_accumulated_fees(), fees, "Fees should accumulate in safe mode");
     assert!(
         state.safe_mode_accumulated_emissions() > 0,
         "Emissions should accumulate in safe mode (emission_per_epoch > 0)"
     );
     assert_eq!(
-        state.epoch_start_timestamp_ms(), timestamp,
+        state.epoch_start_timestamp_ms(),
+        timestamp,
         "Timestamp should be updated in safe mode"
     );
 }
@@ -207,11 +203,13 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
 
     assert!(!state.safe_mode(), "Should exit safe mode after successful advance");
     assert_eq!(
-        state.safe_mode_accumulated_fees(), 0,
+        state.safe_mode_accumulated_fees(),
+        0,
         "Safe mode fees should be drained on recovery"
     );
     assert_eq!(
-        state.safe_mode_accumulated_emissions(), 0,
+        state.safe_mode_accumulated_emissions(),
+        0,
         "Safe mode emissions should be drained on recovery"
     );
 }
@@ -242,12 +240,10 @@ async fn test_advance_epoch_hit_counter_tracking() {
     let _ = state.advance_epoch(1, &protocol_config, 0, 1_000_000, vec![]);
 
     // After epoch advance, hit rate counters should be reset for the new epoch
+    assert_eq!(state.target_state().hits_this_epoch, 0, "Hits should be reset after epoch advance");
     assert_eq!(
-        state.target_state().hits_this_epoch, 0,
-        "Hits should be reset after epoch advance"
-    );
-    assert_eq!(
-        state.target_state().targets_generated_this_epoch, 0,
+        state.target_state().targets_generated_this_epoch,
+        0,
         "Targets generated should be reset after epoch advance"
     );
 }
@@ -272,9 +268,5 @@ async fn test_advance_epoch_u128_overflow_protection() {
     let result = state.advance_epoch(1, &protocol_config, large_fees, 1_000_000, vec![]);
 
     // Should not panic due to overflow
-    assert!(
-        result.is_ok(),
-        "Large fees should not cause overflow: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Large fees should not cause overflow: {:?}", result.err());
 }

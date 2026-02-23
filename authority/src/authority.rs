@@ -1268,10 +1268,10 @@ impl AuthorityState {
         &self,
         request: ObjectInfoRequest,
     ) -> SomaResult<ObjectInfoResponse> {
-        let (_, requested_object_seq, _) =
-            self.get_object_or_tombstone(request.object_id).await.ok_or(
-                SomaError::ObjectNotFound { object_id: request.object_id, version: None }
-            )?;
+        let (_, requested_object_seq, _) = self
+            .get_object_or_tombstone(request.object_id)
+            .await
+            .ok_or(SomaError::ObjectNotFound { object_id: request.object_id, version: None })?;
 
         let object = self
             .get_object_store()
@@ -1612,10 +1612,7 @@ impl AuthorityState {
         // Gated behind enable_state_consistency_check (enabled in debug/test builds via
         // cfg!(debug_assertions)).
         if expensive_safety_check_config.enable_state_consistency_check() {
-            info!(
-                "Performing supply conservation check for epoch {}",
-                cur_epoch_store.epoch()
-            );
+            info!("Performing supply conservation check for epoch {}", cur_epoch_store.epoch());
             self.check_soma_conservation(state_hasher, cur_epoch_store);
         }
     }

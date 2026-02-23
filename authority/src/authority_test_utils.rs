@@ -453,19 +453,14 @@ where
     let commit =
         TestConsensusCommit::new(consensus_transactions, round, timestamp_ms, sub_dag_index);
 
-    consensus_handler
-        .handle_consensus_commit_for_test(commit)
-        .await;
+    consensus_handler.handle_consensus_commit_for_test(commit).await;
 
     // Wait for captured transactions to be available
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let (scheduled_txns, assigned_tx_and_versions) = {
         let mut captured = captured_transactions.lock();
-        assert!(
-            !captured.is_empty(),
-            "Expected transactions to be scheduled"
-        );
+        assert!(!captured.is_empty(), "Expected transactions to be scheduled");
         let (scheduled_txns, assigned_tx_and_versions, _) = captured.remove(0);
         (scheduled_txns, assigned_tx_and_versions)
     };

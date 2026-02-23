@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::BTreeMap;
 
+#[cfg(feature = "ml")]
+use crate::model_selection::{ModelSelectionData, select_models};
 use crate::{
     base::SomaAddress,
     challenge::ChallengeId,
@@ -31,8 +33,6 @@ use crate::{
     system_state::validator::ValidatorSet,
     tensor::SomaTensor,
 };
-#[cfg(feature = "ml")]
-use crate::model_selection::{ModelSelectionData, select_models};
 #[cfg(feature = "ml")]
 use burn::backend::NdArray;
 use fastcrypto::hash::HashFunction as _;

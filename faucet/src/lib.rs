@@ -7,11 +7,11 @@
 // Server-only modules (need sdk, types, clap, etc.)
 #[cfg(feature = "server")]
 pub mod app_state;
+pub mod codec;
 #[cfg(feature = "server")]
 pub mod errors;
 #[cfg(feature = "server")]
 pub mod faucet_config;
-pub mod codec;
 pub mod faucet_types;
 #[cfg(feature = "server")]
 pub mod local_faucet;

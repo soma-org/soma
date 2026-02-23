@@ -5,12 +5,12 @@
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::{
+    SYSTEM_STATE_OBJECT_ID,
     base::dbg_addr,
     crypto::{SomaKeyPair, get_key_pair},
     effects::{ExecutionStatus, TransactionEffectsAPI},
     object::{Object, ObjectID, Owner},
     system_state::SystemStateTrait as _,
-    SYSTEM_STATE_OBJECT_ID,
     transaction::{
         SenderSignedData, TransactionData, TransactionKind,
         verify_sender_signed_data_message_signatures,
@@ -38,11 +38,7 @@ async fn test_handle_transfer_transaction_ok() {
     let object_id = ObjectID::random();
     let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![
-        (sender, object_id),
-        (sender, gas_id),
-    ])
-    .await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
     let gas = authority_state.get_object(&gas_id).await.unwrap();
@@ -69,11 +65,7 @@ async fn test_handle_transfer_receiver_equal_sender() {
     let object_id = ObjectID::random();
     let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![
-        (sender, object_id),
-        (sender, gas_id),
-    ])
-    .await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
     let gas = authority_state.get_object(&gas_id).await.unwrap();
@@ -105,11 +97,7 @@ async fn test_handle_transfer_double_spend() {
     let object_id = ObjectID::random();
     let gas_id = ObjectID::random();
 
-    let authority_state = init_state_with_ids(vec![
-        (sender, object_id),
-        (sender, gas_id),
-    ])
-    .await;
+    let authority_state = init_state_with_ids(vec![(sender, object_id), (sender, gas_id)]).await;
 
     let obj = authority_state.get_object(&object_id).await.unwrap();
     let gas = authority_state.get_object(&gas_id).await.unwrap();
@@ -175,8 +163,8 @@ async fn test_effects_internal_consistency() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Verify no object appears in multiple sets
-    let created_ids: Vec<ObjectID> = effects.created().iter().map(|c| c.0 .0).collect();
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
+    let created_ids: Vec<ObjectID> = effects.created().iter().map(|c| c.0.0).collect();
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
     let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
 
     for id in &created_ids {
@@ -217,10 +205,7 @@ async fn test_effects_retrievable_after_execution() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Effects should be readable via notify_read_effects
-    let read_effects = authority_state
-        .notify_read_effects(*cert.digest())
-        .await
-        .unwrap();
+    let read_effects = authority_state.notify_read_effects(*cert.digest()).await.unwrap();
     assert_eq!(
         effects.transaction_digest(),
         read_effects.transaction_digest(),
@@ -351,10 +336,7 @@ async fn test_system_state_has_protocol_version() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     let state = authority_state.get_system_state_object_for_testing().unwrap();
 
-    assert!(
-        state.protocol_version() >= 1,
-        "Protocol version should be at least 1"
-    );
+    assert!(state.protocol_version() >= 1, "Protocol version should be at least 1");
 }
 
 // =============================================================================
@@ -454,10 +436,7 @@ async fn test_transfer_multiple_objects() {
 
     let data = TransactionData::new(
         TransactionKind::TransferObjects {
-            objects: vec![
-                obj1.compute_object_reference(),
-                obj2.compute_object_reference(),
-            ],
+            objects: vec![obj1.compute_object_reference(), obj2.compute_object_reference()],
             recipient,
         },
         sender,
@@ -511,7 +490,7 @@ async fn test_staking_creates_shared_object_mutation() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // SystemState should be in the mutated set (shared object was modified)
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
     assert!(
         mutated_ids.iter().any(|id| *id == SYSTEM_STATE_OBJECT_ID),
         "SystemState should be mutated during staking"

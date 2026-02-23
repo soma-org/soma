@@ -201,11 +201,7 @@ impl FullnodeProxy {
             .await
             .map_err(|e| FullnodeProxyError::FetchFailed(e.to_string()))?;
 
-        info!(
-            "Forwarded {} bytes for target {} through fullnode proxy",
-            data.len(),
-            target_id
-        );
+        info!("Forwarded {} bytes for target {} through fullnode proxy", data.len(), target_id);
 
         Ok((StatusCode::OK, data))
     }
@@ -225,11 +221,7 @@ impl FullnodeProxy {
             .await
             .map_err(|e| FullnodeProxyError::FetchFailed(e.to_string()))?;
 
-        info!(
-            "Forwarded {} bytes for model {} through fullnode proxy",
-            data.len(),
-            model_id
-        );
+        info!("Forwarded {} bytes for model {} through fullnode proxy", data.len(), model_id);
 
         Ok((StatusCode::OK, data))
     }

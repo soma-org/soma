@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 
 /// An iterator over all key-value pairs in a data map.
 pub struct SafeIter<'a, K, V> {
-    cf_name: String,
+    _cf_name: String,
     db_iter: rocksdb::DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,
     _phantom: PhantomData<(K, V)>,
     direction: Direction,
@@ -21,7 +21,7 @@ impl<'a, K: DeserializeOwned, V: DeserializeOwned> SafeIter<'a, K, V> {
         db_iter: rocksdb::DBRawIteratorWithThreadMode<'a, DBWithThreadMode<MultiThreaded>>,
     ) -> Self {
         Self {
-            cf_name,
+            _cf_name: cf_name,
             db_iter,
             _phantom: PhantomData,
             direction: Direction::Forward,

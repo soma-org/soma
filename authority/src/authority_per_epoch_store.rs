@@ -67,9 +67,9 @@ use types::{
     },
     committee::{Authority, Committee, EpochId},
     consensus::{
-        AuthorityCapabilitiesV1, ConsensusCommitPrologueV1, ConsensusPosition, ConsensusTransaction,
-        ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI, block::BlockRef,
-        validator_set::ValidatorSet,
+        AuthorityCapabilitiesV1, ConsensusCommitPrologueV1, ConsensusPosition,
+        ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind, EndOfEpochAPI,
+        block::BlockRef, validator_set::ValidatorSet,
     },
     crypto::{
         AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
@@ -504,10 +504,7 @@ impl AuthorityEpochTables {
         locks_to_write: impl Iterator<Item = (ObjectRef, LockDetails)>,
     ) -> SomaResult {
         let mut batch = self.object_locked_transactions.batch();
-        batch.insert_batch(
-            &self.object_locked_transactions,
-            locks_to_write,
-        )?;
+        batch.insert_batch(&self.object_locked_transactions, locks_to_write)?;
         if let Some(signed_transaction) = signed_transaction {
             batch.insert_batch(
                 &self.signed_transactions,
@@ -991,7 +988,7 @@ impl AuthorityPerEpochStore {
                             version: *version,
                         }
                     }
-                    
+
                     InputObjectKind::ImmOrOwnedObject(objref) => InputKey::VersionedObject {
                         id: FullObjectID::new(objref.0, None),
                         version: objref.1,

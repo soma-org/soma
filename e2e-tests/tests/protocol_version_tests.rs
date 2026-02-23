@@ -68,10 +68,7 @@ async fn test_protocol_version_upgrade() {
         target.as_u64()
     );
 
-    info!(
-        "Protocol version upgraded to {} successfully",
-        system_state.protocol_version()
-    );
+    info!("Protocol version upgraded to {} successfully", system_state.protocol_version());
 }
 
 /// Validators 0,1 support only v1; validators 2,3 support v1-v2.
@@ -89,10 +86,7 @@ async fn test_protocol_version_upgrade_no_quorum() {
                 SupportedProtocolVersions::new_for_testing(1, 1)
             } else {
                 // Validators 2, 3: support v1-v2
-                SupportedProtocolVersions::new_for_testing(
-                    1,
-                    ProtocolVersion::MAX_ALLOWED.as_u64(),
-                )
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             }
         }))
         .build()
@@ -103,11 +97,7 @@ async fn test_protocol_version_upgrade_no_quorum() {
 
     // Protocol version should remain at 1
     let version = test_cluster.highest_protocol_version();
-    assert_eq!(
-        version.as_u64(),
-        1,
-        "Protocol version should remain at 1 without quorum"
-    );
+    assert_eq!(version.as_u64(), 1, "Protocol version should remain at 1 without quorum");
 
     info!("Protocol version correctly stayed at 1 without upgrade quorum");
 }
@@ -125,10 +115,7 @@ async fn test_protocol_version_upgrade_one_laggard() {
         .with_supported_protocol_version_callback(Arc::new(|idx, _name| {
             if idx < 3 {
                 // Validators 0, 1, 2: support v1-v2
-                SupportedProtocolVersions::new_for_testing(
-                    1,
-                    ProtocolVersion::MAX_ALLOWED.as_u64(),
-                )
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             } else {
                 // Validator 3: only supports v1 (laggard)
                 SupportedProtocolVersions::new_for_testing(1, 1)
@@ -145,10 +132,7 @@ async fn test_protocol_version_upgrade_one_laggard() {
         "Protocol version should have upgraded with 75% quorum"
     );
 
-    info!(
-        "Protocol version upgraded to {} with one laggard",
-        system_state.protocol_version()
-    );
+    info!("Protocol version upgraded to {} with one laggard", system_state.protocol_version());
 }
 
 /// All 4 validators support v1-v2. Stop validator 0.
@@ -190,9 +174,8 @@ async fn test_protocol_version_upgrade_with_shutdown_validator() {
     sleep(Duration::from_secs(5)).await;
 
     let handle = test_cluster.swarm.node(&validators[0]).unwrap().get_node_handle().unwrap();
-    let caught_up_version = handle.with(|node| {
-        node.state().epoch_store_for_testing().epoch_start_state().protocol_version()
-    });
+    let caught_up_version = handle
+        .with(|node| node.state().epoch_store_for_testing().epoch_start_state().protocol_version());
     assert_eq!(
         caught_up_version.as_u64(),
         target.as_u64(),
@@ -214,10 +197,7 @@ async fn test_protocol_version_upgrade_insufficient_support() {
         .with_supported_protocol_version_callback(Arc::new(|idx, _name| {
             if idx == 0 {
                 // Only validator 0 supports v2
-                SupportedProtocolVersions::new_for_testing(
-                    1,
-                    ProtocolVersion::MAX_ALLOWED.as_u64(),
-                )
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             } else {
                 SupportedProtocolVersions::new_for_testing(1, 1)
             }
@@ -230,11 +210,7 @@ async fn test_protocol_version_upgrade_insufficient_support() {
 
     // Protocol version should remain at 1 — 25% is well below 2/3 quorum
     let version = test_cluster.highest_protocol_version();
-    assert_eq!(
-        version.as_u64(),
-        1,
-        "Protocol version should remain at 1 with only 25% support"
-    );
+    assert_eq!(version.as_u64(), 1, "Protocol version should remain at 1 with only 25% support");
 
     info!("Protocol version correctly stayed at 1 with insufficient support");
 }

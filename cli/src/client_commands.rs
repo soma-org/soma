@@ -75,7 +75,6 @@ pub enum SomaClientCommands {
         #[clap(long)]
         signed_tx_bytes: String,
     },
-
 }
 
 impl SomaClientCommands {
@@ -142,7 +141,6 @@ impl SomaClientCommands {
                     &response,
                 )))
             }
-
         }
     }
 }

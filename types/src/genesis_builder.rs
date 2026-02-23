@@ -584,7 +584,8 @@ impl GenesisBuilder {
             // Bootstrap: estimate 2x initial targets (initial batch + 1x hits)
             let initial_target_count = system_state.parameters().target_initial_targets_per_epoch;
             let estimated_targets = initial_target_count.saturating_mul(2).max(1);
-            system_state.target_state_mut().reward_per_target = target_allocation / estimated_targets;
+            system_state.target_state_mut().reward_per_target =
+                target_allocation / estimated_targets;
 
             let genesis_digest = TransactionDigest::default();
             let models_per_target = system_state.parameters().target_models_per_target;

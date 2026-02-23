@@ -42,7 +42,6 @@ use types::checkpoints::{
     CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
 };
 use types::config::node_config::{CheckpointExecutorConfig, RunWithRange};
-use types::object::ObjectType;
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, TransactionEffects, TransactionEffectsAPI as _,
@@ -50,6 +49,7 @@ use types::effects::{
 use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
 use types::full_checkpoint_content::Checkpoint;
+use types::object::ObjectType;
 use types::object::{ObjectRef, Version};
 use types::system_state::SystemStateTrait as _;
 use types::transaction::{
@@ -868,9 +868,7 @@ impl CheckpointExecutor {
                     if let Some(challenge) = obj.as_challenge() {
                         debug!(
                             "Observed new Challenge {:?} for target {:?} in checkpoint {}",
-                            challenge.id,
-                            challenge.target_id,
-                            checkpoint.summary.sequence_number
+                            challenge.id, challenge.target_id, checkpoint.summary.sequence_number
                         );
                         // Use try_send to avoid blocking - if the channel is full,
                         // the AuditService is backed up and we should not block

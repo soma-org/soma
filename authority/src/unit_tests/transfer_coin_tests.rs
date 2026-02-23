@@ -31,21 +31,18 @@ async fn test_transfer_coin_specific_amount() {
     let recipient = dbg_addr(1);
     let amount = 500_000u64;
 
-    let res = execute_transfer(coin, recipient, Some(amount), sender, SomaKeyPair::Ed25519(key))
-        .await;
+    let res =
+        execute_transfer(coin, recipient, Some(amount), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Should create one new coin for recipient
     assert_eq!(effects.created().len(), 1);
-    let created_id = effects.created()[0].0 .0;
+    let created_id = effects.created()[0].0.0;
     let created_obj = res.authority_state.get_object(&created_id).await.unwrap();
     assert_eq!(created_obj.as_coin().unwrap(), amount);
-    assert_eq!(
-        effects.created()[0].1.get_address_owner_address().unwrap(),
-        recipient
-    );
+    assert_eq!(effects.created()[0].1.get_address_owner_address().unwrap(), recipient);
 
     // Source coin should still belong to sender with reduced balance
     let gas_used = effects.transaction_fee().total_fee;
@@ -82,11 +79,8 @@ async fn test_transfer_coin_full_amount_non_gas() {
     // When full balance is transferred from a non-gas coin, ownership changes
     // (the coin is mutated to be owned by recipient, no new coin created)
     // Verify recipient now owns the original coin
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0 .0).collect();
-    assert!(
-        mutated_ids.contains(&coin_id),
-        "Source coin should be mutated (ownership transfer)"
-    );
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
+    assert!(mutated_ids.contains(&coin_id), "Source coin should be mutated (ownership transfer)");
 }
 
 #[tokio::test]
@@ -99,24 +93,20 @@ async fn test_transfer_coin_pay_all_gas_coin() {
 
     let recipient = dbg_addr(1);
 
-    let res =
-        execute_transfer(coin, recipient, None, sender, SomaKeyPair::Ed25519(key)).await;
+    let res = execute_transfer(coin, recipient, None, sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Should create one new coin for recipient
     assert_eq!(effects.created().len(), 1);
-    let created_id = effects.created()[0].0 .0;
+    let created_id = effects.created()[0].0.0;
     let created_obj = res.authority_state.get_object(&created_id).await.unwrap();
 
     // Recipient gets balance minus all fees
     let gas_used = effects.transaction_fee().total_fee;
     assert_eq!(created_obj.as_coin().unwrap(), balance - gas_used);
-    assert_eq!(
-        effects.created()[0].1.get_address_owner_address().unwrap(),
-        recipient
-    );
+    assert_eq!(effects.created()[0].1.get_address_owner_address().unwrap(), recipient);
 }
 
 // =============================================================================
@@ -132,8 +122,8 @@ async fn test_transfer_coin_insufficient_balance() {
     // Try to transfer more than balance (even before fees)
     let amount = 20_000_000u64;
 
-    let res = execute_transfer(coin, recipient, Some(amount), sender, SomaKeyPair::Ed25519(key))
-        .await;
+    let res =
+        execute_transfer(coin, recipient, Some(amount), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(
@@ -151,14 +141,8 @@ async fn test_transfer_coin_wrong_owner() {
 
     let recipient = dbg_addr(1);
 
-    let res = execute_transfer(
-        coin,
-        recipient,
-        Some(1000),
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
+    let res =
+        execute_transfer(coin, recipient, Some(1000), sender, SomaKeyPair::Ed25519(key)).await;
 
     // Should fail at the pre-certification ownership check
     match res.txn_result {
@@ -200,7 +184,7 @@ async fn test_transfer_gas_coin_is_transfer_coin_specific_amount() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     // Recipient gets the exact amount
-    let created_id = effects.created()[0].0 .0;
+    let created_id = effects.created()[0].0.0;
     let created_obj = res.authority_state.get_object(&created_id).await.unwrap();
     assert_eq!(created_obj.as_coin().unwrap(), amount);
 
@@ -226,10 +210,7 @@ async fn test_transfer_gas_coin_insufficient_for_amount_plus_fees() {
         execute_transfer(coin, recipient, Some(amount), sender, SomaKeyPair::Ed25519(key)).await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: balance - amount < total_fees"
-    );
+    assert!(!effects.status().is_ok(), "Should fail: balance - amount < total_fees");
 }
 
 // =============================================================================
@@ -276,11 +257,7 @@ async fn execute_transfer_with_separate_gas(
 
     // Use the gas object for gas payment, transfer the coin
     let data = TransactionData::new(
-        types::transaction::TransactionKind::TransferCoin {
-            coin: coin_ref,
-            amount,
-            recipient,
-        },
+        types::transaction::TransactionKind::TransferCoin { coin: coin_ref, amount, recipient },
         sender,
         vec![gas_ref],
     );

@@ -20,8 +20,8 @@ use protocol_config::ProtocolConfig;
 use tokio::sync::mpsc;
 use types::base::AuthorityName;
 use types::committee::AuthorityIndex;
-use types::consensus::block::BlockRef;
 use types::consensus::ConsensusTransaction;
+use types::consensus::block::BlockRef;
 use types::digests::ConsensusCommitDigest;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 
@@ -211,8 +211,10 @@ impl ConsensusClient for NoopConsensusClient {
         &self,
         _transactions: &[ConsensusTransaction],
         _epoch_store: &Arc<crate::authority_per_epoch_store::AuthorityPerEpochStore>,
-    ) -> types::error::SomaResult<(Vec<types::consensus::ConsensusPosition>, crate::consensus_adapter::BlockStatusReceiver)>
-    {
+    ) -> types::error::SomaResult<(
+        Vec<types::consensus::ConsensusPosition>,
+        crate::consensus_adapter::BlockStatusReceiver,
+    )> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         tx.send(consensus::BlockStatus::Sequenced(BlockRef::MIN)).ok();
         Ok((vec![], rx))

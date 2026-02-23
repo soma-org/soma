@@ -17,10 +17,9 @@ use types::checkpoints::{
 use types::crypto::AuthoritySignInfoTrait;
 use types::intent::Intent;
 use types::messages_grpc::{
-    ExecutedData, ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest,
-    SubmitTxResponse, SystemStateRequest, TransactionInfoRequest, ValidatorHealthRequest,
-    ValidatorHealthResponse, VerifiedObjectInfoResponse, WaitForEffectsRequest,
-    WaitForEffectsResponse,
+    ExecutedData, ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse,
+    SystemStateRequest, TransactionInfoRequest, ValidatorHealthRequest, ValidatorHealthResponse,
+    VerifiedObjectInfoResponse, WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::object::{Object, ObjectID, ObjectRef};
 use types::storage::committee_store::CommitteeStore;

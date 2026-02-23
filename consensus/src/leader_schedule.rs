@@ -411,14 +411,14 @@ impl Debug for LeaderSwapTable {
 // SPDX-License-Identifier: Apache-2.0
 #[cfg(test)]
 mod tests {
+    use types::committee::AuthorityIndex;
     use types::consensus::{
         block::{BlockDigest, BlockRef, BlockTimestampMs, TestBlock, VerifiedBlock},
         commit::{CommitDigest, CommitInfo, CommitRef, CommittedSubDag, TrustedCommit},
         context::Context,
         leader_scoring::ReputationScores,
     };
-    use types::committee::AuthorityIndex;
-    use types::storage::consensus::{mem_store::MemStore, Store, WriteBatch};
+    use types::storage::consensus::{Store, WriteBatch, mem_store::MemStore};
 
     use super::*;
     use crate::test_dag_builder::DagBuilder;
@@ -428,18 +428,9 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
         let leader_schedule = LeaderSchedule::new(context, LeaderSwapTable::default());
 
-        assert_eq!(
-            leader_schedule.elect_leader(0, 0),
-            AuthorityIndex::new_for_test(0)
-        );
-        assert_eq!(
-            leader_schedule.elect_leader(1, 0),
-            AuthorityIndex::new_for_test(1)
-        );
-        assert_eq!(
-            leader_schedule.elect_leader(5, 0),
-            AuthorityIndex::new_for_test(1)
-        );
+        assert_eq!(leader_schedule.elect_leader(0, 0), AuthorityIndex::new_for_test(0));
+        assert_eq!(leader_schedule.elect_leader(1, 0), AuthorityIndex::new_for_test(1));
+        assert_eq!(leader_schedule.elect_leader(5, 0), AuthorityIndex::new_for_test(1));
         // ensure we elect different leaders for the same round for the multi-leader case
         assert_ne!(
             leader_schedule.elect_leader_stake_based(1, 1),
@@ -452,18 +443,9 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
         let leader_schedule = LeaderSchedule::new(context, LeaderSwapTable::default());
 
-        assert_eq!(
-            leader_schedule.elect_leader_stake_based(0, 0),
-            AuthorityIndex::new_for_test(1)
-        );
-        assert_eq!(
-            leader_schedule.elect_leader_stake_based(1, 0),
-            AuthorityIndex::new_for_test(1)
-        );
-        assert_eq!(
-            leader_schedule.elect_leader_stake_based(5, 0),
-            AuthorityIndex::new_for_test(3)
-        );
+        assert_eq!(leader_schedule.elect_leader_stake_based(0, 0), AuthorityIndex::new_for_test(1));
+        assert_eq!(leader_schedule.elect_leader_stake_based(1, 0), AuthorityIndex::new_for_test(1));
+        assert_eq!(leader_schedule.elect_leader_stake_based(5, 0), AuthorityIndex::new_for_test(3));
         // ensure we elect different leaders for the same round for the multi-leader case
         assert_ne!(
             leader_schedule.elect_leader_stake_based(1, 1),
@@ -474,9 +456,7 @@ mod tests {
     #[tokio::test]
     async fn test_leader_schedule_from_store() {
         let mut context = Context::new_for_test(4).0;
-        context
-            .protocol_config
-            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        context.protocol_config.set_consensus_bad_nodes_stake_threshold_for_testing(33);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
 
@@ -501,10 +481,7 @@ mod tests {
         let reputation_scores = ReputationScores::new(commit_range, vec![4, 1, 1, 3]);
         let committed_rounds = vec![9, 9, 10, 9];
         let commit_ref = expected_commits[9].reference();
-        let commit_info = CommitInfo {
-            reputation_scores,
-            committed_rounds,
-        };
+        let commit_info = CommitInfo { reputation_scores, committed_rounds };
 
         // CommitIndex '11' will be written to store. This should result in the cached
         // last_committed_rounds & unscored subdags in DagState to be updated with the
@@ -535,15 +512,10 @@ mod tests {
         // Check that LeaderSchedule recovery from stored CommitInfo worked correctly
         let leader_swap_table = leader_schedule.leader_swap_table.read();
         assert_eq!(leader_swap_table.good_nodes.len(), 1);
-        assert_eq!(
-            leader_swap_table.good_nodes[0].0,
-            AuthorityIndex::new_for_test(0)
-        );
+        assert_eq!(leader_swap_table.good_nodes[0].0, AuthorityIndex::new_for_test(0));
         assert_eq!(leader_swap_table.bad_nodes.len(), 1);
         assert!(
-            leader_swap_table
-                .bad_nodes
-                .contains_key(&AuthorityIndex::new_for_test(2)),
+            leader_swap_table.bad_nodes.contains_key(&AuthorityIndex::new_for_test(2)),
             "{:?}",
             leader_swap_table.bad_nodes
         );
@@ -552,9 +524,7 @@ mod tests {
     #[tokio::test]
     async fn test_leader_schedule_from_store_no_commits() {
         let mut context = Context::new_for_test(4).0;
-        context
-            .protocol_config
-            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        context.protocol_config.set_consensus_bad_nodes_stake_threshold_for_testing(33);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
 
@@ -563,10 +533,7 @@ mod tests {
         let expected_last_committed_rounds = vec![0, 0, 0, 0];
 
         // Check that DagState recovery from stored CommitInfo worked correctly
-        assert_eq!(
-            expected_last_committed_rounds,
-            dag_state.read().last_committed_rounds()
-        );
+        assert_eq!(expected_last_committed_rounds, dag_state.read().last_committed_rounds());
         assert_eq!(0, dag_state.read().scoring_subdags_count());
 
         let leader_schedule = LeaderSchedule::from_store(context.clone(), dag_state.clone());
@@ -580,9 +547,7 @@ mod tests {
     #[tokio::test]
     async fn test_leader_schedule_from_store_no_commit_info() {
         let mut context = Context::new_for_test(4).0;
-        context
-            .protocol_config
-            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        context.protocol_config.set_consensus_bad_nodes_stake_threshold_for_testing(33);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
 
@@ -607,16 +572,7 @@ mod tests {
         // no commit info should have been persisted and no leader schedule should
         // be recovered. However dag state should have properly recovered the
         // unscored subdags & last committed rounds.
-        store
-            .write(
-                WriteBatch::new(
-                    blocks_to_write,
-                    expected_commits,
-                    vec![],
-                    vec![],
-                ),
-            )
-            .unwrap();
+        store.write(WriteBatch::new(blocks_to_write, expected_commits, vec![], vec![])).unwrap();
 
         let dag_state = Arc::new(RwLock::new(DagState::new(context.clone(), store)));
 
@@ -625,10 +581,7 @@ mod tests {
             dag_builder.last_committed_rounds.clone(),
             dag_state.read().last_committed_rounds()
         );
-        assert_eq!(
-            expected_scored_subdags.len(),
-            dag_state.read().scoring_subdags_count()
-        );
+        assert_eq!(expected_scored_subdags.len(), dag_state.read().scoring_subdags_count());
         let recovered_scores = dag_state.read().calculate_scoring_subdag_scores();
         let expected_scores = ReputationScores::new((1..=2).into(), vec![0, 0, 0, 0]);
         assert_eq!(recovered_scores, expected_scores);
@@ -646,10 +599,8 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
         let leader_schedule = LeaderSchedule::new(context.clone(), LeaderSwapTable::default());
 
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
         let unscored_subdags = vec![CommittedSubDag::new(
             BlockRef::new(1, AuthorityIndex::ZERO, BlockDigest::MIN),
             vec![],
@@ -666,18 +617,12 @@ mod tests {
     #[tokio::test]
     async fn test_leader_schedule_update_leader_schedule() {
         let mut context = Context::new_for_test(4).0;
-        context
-            .protocol_config
-            .set_consensus_bad_nodes_stake_threshold_for_testing(33);
+        context.protocol_config.set_consensus_bad_nodes_stake_threshold_for_testing(33);
         let context = Arc::new(context);
-        let leader_schedule = Arc::new(LeaderSchedule::new(
-            context.clone(),
-            LeaderSwapTable::default(),
-        ));
-        let dag_state = Arc::new(RwLock::new(DagState::new(
-            context.clone(),
-            Arc::new(MemStore::new()),
-        )));
+        let leader_schedule =
+            Arc::new(LeaderSchedule::new(context.clone(), LeaderSwapTable::default()));
+        let dag_state =
+            Arc::new(RwLock::new(DagState::new(context.clone(), Arc::new(MemStore::new()))));
 
         // Populate fully connected test blocks for round 0 ~ 4, authorities 0 ~ 3.
         let max_round: u32 = 4;
@@ -738,10 +683,7 @@ mod tests {
             CommitDigest::MIN,
             context.clock.timestamp_utc_ms(),
             leader_ref,
-            blocks
-                .iter()
-                .map(|block| block.reference())
-                .collect::<Vec<_>>(),
+            blocks.iter().map(|block| block.reference()).collect::<Vec<_>>(),
         );
 
         let unscored_subdags = vec![CommittedSubDag::new(
@@ -756,29 +698,16 @@ mod tests {
         dag_state_write.add_scoring_subdags(unscored_subdags);
         drop(dag_state_write);
 
-        assert_eq!(
-            leader_schedule.elect_leader(4, 0),
-            AuthorityIndex::new_for_test(0)
-        );
+        assert_eq!(leader_schedule.elect_leader(4, 0), AuthorityIndex::new_for_test(0));
 
         leader_schedule.update_leader_schedule_v2(&dag_state);
 
         let leader_swap_table = leader_schedule.leader_swap_table.read();
         assert_eq!(leader_swap_table.good_nodes.len(), 1);
-        assert_eq!(
-            leader_swap_table.good_nodes[0].0,
-            AuthorityIndex::new_for_test(2)
-        );
+        assert_eq!(leader_swap_table.good_nodes[0].0, AuthorityIndex::new_for_test(2));
         assert_eq!(leader_swap_table.bad_nodes.len(), 1);
-        assert!(
-            leader_swap_table
-                .bad_nodes
-                .contains_key(&AuthorityIndex::new_for_test(0))
-        );
-        assert_eq!(
-            leader_schedule.elect_leader(4, 0),
-            AuthorityIndex::new_for_test(2)
-        );
+        assert!(leader_swap_table.bad_nodes.contains_key(&AuthorityIndex::new_for_test(0)));
+        assert_eq!(leader_schedule.elect_leader(4, 0), AuthorityIndex::new_for_test(2));
     }
 
     #[tokio::test]
@@ -786,24 +715,15 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
 
         let swap_stake_threshold = 33;
-        let reputation_scores = ReputationScores::new(
-            (0..=10).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((0..=10).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context, swap_stake_threshold, 0, reputation_scores);
 
         assert_eq!(leader_swap_table.good_nodes.len(), 1);
-        assert_eq!(
-            leader_swap_table.good_nodes[0].0,
-            AuthorityIndex::new_for_test(3)
-        );
+        assert_eq!(leader_swap_table.good_nodes[0].0, AuthorityIndex::new_for_test(3));
         assert_eq!(leader_swap_table.bad_nodes.len(), 1);
-        assert!(
-            leader_swap_table
-                .bad_nodes
-                .contains_key(&AuthorityIndex::new_for_test(0))
-        );
+        assert!(leader_swap_table.bad_nodes.contains_key(&AuthorityIndex::new_for_test(0)));
     }
 
     #[tokio::test]
@@ -811,10 +731,8 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
 
         let swap_stake_threshold = 33;
-        let reputation_scores = ReputationScores::new(
-            (0..=10).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((0..=10).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 
@@ -884,10 +802,8 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
 
         let swap_stake_threshold = 34;
-        let reputation_scores = ReputationScores::new(
-            (0..=10).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((0..=10).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         LeaderSwapTable::new_inner(context, swap_stake_threshold, 0, reputation_scores);
     }
 
@@ -896,10 +812,8 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
 
         let swap_stake_threshold = 33;
-        let reputation_scores = ReputationScores::new(
-            (1..=10).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((1..=10).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 
@@ -908,10 +822,8 @@ mod tests {
         // Update leader from brand new schedule to first real schedule
         leader_schedule.update_leader_swap_table(leader_swap_table.clone());
 
-        let reputation_scores = ReputationScores::new(
-            (11..=20).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((11..=20).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 
@@ -927,10 +839,8 @@ mod tests {
         let context = Arc::new(Context::new_for_test(4).0);
 
         let swap_stake_threshold = 33;
-        let reputation_scores = ReputationScores::new(
-            (1..=10).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((1..=10).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 
@@ -939,20 +849,16 @@ mod tests {
         // Update leader from brand new schedule to first real schedule
         leader_schedule.update_leader_swap_table(leader_swap_table.clone());
 
-        let reputation_scores = ReputationScores::new(
-            (11..=20).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((11..=20).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 
         // Update leader from old swap table to new valid swap table
         leader_schedule.update_leader_swap_table(leader_swap_table.clone());
 
-        let reputation_scores = ReputationScores::new(
-            (21..=25).into(),
-            (0..4).map(|i| i as u64).collect::<Vec<_>>(),
-        );
+        let reputation_scores =
+            ReputationScores::new((21..=25).into(), (0..4).map(|i| i as u64).collect::<Vec<_>>());
         let leader_swap_table =
             LeaderSwapTable::new_inner(context.clone(), swap_stake_threshold, 0, reputation_scores);
 

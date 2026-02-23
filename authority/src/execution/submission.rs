@@ -14,7 +14,7 @@ use types::{
     metadata::{ManifestAPI, MetadataAPI},
     object::{Object, ObjectID, ObjectType, Owner},
     system_state::{SystemState, SystemStateTrait},
-    target::{TargetV1, TargetStatus, generate_target, make_target_seed},
+    target::{TargetStatus, TargetV1, generate_target, make_target_seed},
     temporary_store::TemporaryStore,
     transaction::TransactionKind,
 };
@@ -79,8 +79,8 @@ impl SubmissionExecutor {
         let target_object =
             store.read_object(target_id).ok_or(ExecutionFailureStatus::TargetNotFound)?.clone();
 
-        let target =
-            bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents()).map_err(|e| {
+        let target = bcs::from_bytes::<TargetV1>(target_object.as_inner().data.contents())
+            .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "Failed to deserialize target: {}",
                     e
@@ -133,7 +133,9 @@ impl SubmissionExecutor {
 
         info!(
             "SubmitData: loaded state epoch={}, emission_pool={}, target_status={:?}",
-            state.epoch(), state.emission_pool().balance, target.status
+            state.epoch(),
+            state.emission_pool().balance,
+            target.status
         );
 
         // Get current epoch from system state
@@ -440,7 +442,8 @@ impl SubmissionExecutor {
             state.emission_pool_mut().balance += reward;
 
             // Pay claimer incentive for triggering the cleanup
-            let claimer_share = (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
+            let claimer_share =
+                (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
             if claimer_share > 0 {
                 let claimer_coin = Object::new_coin(
                     ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -734,10 +737,12 @@ impl FeeCalculator for SubmissionExecutor {
                 // Value fee on the reward amount
                 // Load target to get reward_pool - if not found, return 0
                 let target = match store.read_object(&args.target_id) {
-                    Some(obj) => match bcs::from_bytes::<TargetV1>(obj.as_inner().data.contents()) {
-                        Ok(t) => t,
-                        Err(_) => return 0,
-                    },
+                    Some(obj) => {
+                        match bcs::from_bytes::<TargetV1>(obj.as_inner().data.contents()) {
+                            Ok(t) => t,
+                            Err(_) => return 0,
+                        }
+                    }
                     None => return 0,
                 };
 

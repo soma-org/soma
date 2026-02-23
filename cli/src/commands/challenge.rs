@@ -5,16 +5,13 @@ use serde::Serialize;
 use std::fmt::{self, Display, Formatter};
 use tabled::{
     builder::Builder as TableBuilder,
-    settings::{
-        Panel as TablePanel, Style as TableStyle,
-        style::HorizontalLine,
-    },
+    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
 };
 
 use sdk::wallet_context::WalletContext;
 use types::{
     base::SomaAddress,
-    challenge::{ChallengeV1, ChallengeId, ChallengeStatus},
+    challenge::{ChallengeId, ChallengeStatus, ChallengeV1},
     object::ObjectID,
     target::TargetId,
     transaction::{InitiateChallengeArgs, TransactionKind},
@@ -71,10 +68,7 @@ pub enum ChallengeCommand {
 // =============================================================================
 
 impl ChallengeCommand {
-    pub async fn execute(
-        self,
-        context: &mut WalletContext,
-    ) -> Result<ChallengeCommandResponse> {
+    pub async fn execute(self, context: &mut WalletContext) -> Result<ChallengeCommandResponse> {
         match self {
             ChallengeCommand::Initiate {
                 target_id,
@@ -144,17 +138,17 @@ async fn execute_tx(
     kind: TransactionKind,
     tx_args: TxProcessingArgs,
 ) -> Result<ChallengeCommandResponse> {
-    let result = crate::client_commands::execute_or_serialize(
-        context, sender, kind, None, tx_args,
-    )
-    .await?;
+    let result =
+        crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
 
     // Convert ClientCommandResponse to ChallengeCommandResponse
     match result {
         crate::response::ClientCommandResponse::Transaction(tx) => {
             // Extract challenge_id from created objects in effects
             // The Challenge is the shared object created by InitiateChallenge
-            let challenge_id = tx.created.first()
+            let challenge_id = tx
+                .created
+                .first()
                 .map(|obj| obj.object_id)
                 .ok_or_else(|| anyhow!("No challenge object created in transaction effects"))?;
             Ok(ChallengeCommandResponse::Initiated(ChallengeInitiatedOutput {
@@ -164,23 +158,16 @@ async fn execute_tx(
         }
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
             // When serializing, we don't know the challenge_id yet (it's derived from tx_digest)
-            Ok(ChallengeCommandResponse::SerializedTransaction {
-                serialized_transaction: s,
-            })
+            Ok(ChallengeCommandResponse::SerializedTransaction { serialized_transaction: s })
         }
         crate::response::ClientCommandResponse::SerializedSignedTransaction(s) => {
-            Ok(ChallengeCommandResponse::SerializedTransaction {
-                serialized_transaction: s,
-            })
+            Ok(ChallengeCommandResponse::SerializedTransaction { serialized_transaction: s })
         }
         crate::response::ClientCommandResponse::TransactionDigest(d) => {
             // When only digest is returned, we can derive the challenge_id
             // ChallengeId = ObjectID::derive_id(tx_digest, 0) for the first created object
             let challenge_id = ObjectID::derive_id(d, 0);
-            Ok(ChallengeCommandResponse::TransactionDigest {
-                challenge_id,
-                digest: d,
-            })
+            Ok(ChallengeCommandResponse::TransactionDigest { challenge_id, digest: d })
         }
         crate::response::ClientCommandResponse::Simulation(sim) => {
             Ok(ChallengeCommandResponse::Simulation(sim))
@@ -250,9 +237,7 @@ impl Display for ChallengeCommandResponse {
             ChallengeCommandResponse::Initiated(output) => write!(f, "{}", output),
             ChallengeCommandResponse::Info(info) => write!(f, "{}", info),
             ChallengeCommandResponse::List(list) => write!(f, "{}", list),
-            ChallengeCommandResponse::SerializedTransaction {
-                serialized_transaction,
-            } => {
+            ChallengeCommandResponse::SerializedTransaction { serialized_transaction } => {
                 writeln!(f, "{}", "Serialized Transaction".cyan().bold())?;
                 writeln!(f)?;
                 writeln!(f, "{}", serialized_transaction)?;
@@ -297,10 +282,14 @@ impl Display for ChallengeInfoOutput {
         builder.push_record(["Challenger", &c.challenger.to_string()]);
         builder.push_record(["Status", &format_status(&c.status)]);
         builder.push_record(["Challenge Epoch", &c.challenge_epoch.to_string()]);
-        builder.push_record(["Challenger Bond", &format!(
-            "{} shannons ({})", c.challenger_bond,
-            crate::response::format_soma(c.challenger_bond as u128),
-        )]);
+        builder.push_record([
+            "Challenger Bond",
+            &format!(
+                "{} shannons ({})",
+                c.challenger_bond,
+                crate::response::format_soma(c.challenger_bond as u128),
+            ),
+        ]);
         builder.push_record(["Distance Threshold", &c.distance_threshold.to_string()]);
         builder.push_record(["Claimed Distance", &c.winning_distance_score.to_string()]);
         builder.push_record(["Winning Model", &c.winning_model_id.to_string()]);
@@ -308,10 +297,7 @@ impl Display for ChallengeInfoOutput {
         let mut table = builder.build();
         table.with(TableStyle::rounded());
         table.with(TablePanel::header("Challenge Information"));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
 
         writeln!(f, "{}", table)?;
@@ -355,18 +341,9 @@ impl Display for ChallengeListOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!(
-            "Challenges ({} total)",
-            self.challenges.len()
-        )));
-        table.with(HorizontalLine::new(
-            1,
-            TableStyle::modern().get_horizontal(),
-        ));
-        table.with(HorizontalLine::new(
-            2,
-            TableStyle::modern().get_horizontal(),
-        ));
+        table.with(TablePanel::header(format!("Challenges ({} total)", self.challenges.len())));
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }

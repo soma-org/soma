@@ -458,35 +458,37 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 bond_coin: args.bond_coin.into(),
             }),
 
-            TK::ClaimRewards(args) => TransactionKind::ClaimRewards(ClaimRewardsArgs {
-                target_id: args.target_id.into(),
-            }),
+            TK::ClaimRewards(args) => {
+                TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: args.target_id.into() })
+            }
 
             TK::ReportSubmission { target_id, challenger } => TransactionKind::ReportSubmission {
                 target_id: target_id.into(),
                 challenger: challenger.map(|c| c.into()),
             },
-            TK::UndoReportSubmission { target_id } => TransactionKind::UndoReportSubmission {
-                target_id: target_id.into(),
-            },
+            TK::UndoReportSubmission { target_id } => {
+                TransactionKind::UndoReportSubmission { target_id: target_id.into() }
+            }
 
             // Challenge transactions
             // All challenges are fraud challenges now (simplified design v2)
             // ChallengeId is derived from tx_digest during execution, not client-provided
-            TK::InitiateChallenge(args) => TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-                target_id: args.target_id.into(),
-                bond_coin: args.bond_coin.into(),
-            }),
+            TK::InitiateChallenge(args) => {
+                TransactionKind::InitiateChallenge(InitiateChallengeArgs {
+                    target_id: args.target_id.into(),
+                    bond_coin: args.bond_coin.into(),
+                })
+            }
             // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            TK::ReportChallenge { challenge_id } => TransactionKind::ReportChallenge {
-                challenge_id: challenge_id.into(),
-            },
-            TK::UndoReportChallenge { challenge_id } => TransactionKind::UndoReportChallenge {
-                challenge_id: challenge_id.into(),
-            },
-            TK::ClaimChallengeBond { challenge_id } => TransactionKind::ClaimChallengeBond {
-                challenge_id: challenge_id.into(),
-            },
+            TK::ReportChallenge { challenge_id } => {
+                TransactionKind::ReportChallenge { challenge_id: challenge_id.into() }
+            }
+            TK::UndoReportChallenge { challenge_id } => {
+                TransactionKind::UndoReportChallenge { challenge_id: challenge_id.into() }
+            }
+            TK::ClaimChallengeBond { challenge_id } => {
+                TransactionKind::ClaimChallengeBond { challenge_id: challenge_id.into() }
+            }
         })
     }
 }
@@ -682,7 +684,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     args.data_manifest.manifest.try_into()?,
                 );
                 // Convert f32 embedding to SomaTensor
-                let embedding = types::tensor::SomaTensor::new(args.embedding.clone(), vec![args.embedding.len()]);
+                let embedding = types::tensor::SomaTensor::new(
+                    args.embedding.clone(),
+                    vec![args.embedding.len()],
+                );
                 let distance_score = types::tensor::SomaTensor::scalar(args.distance_score);
 
                 TK::SubmitData(types::transaction::SubmitDataArgs {
@@ -697,36 +702,40 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
-            TransactionKind::ClaimRewards(args) => TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
-                target_id: args.target_id.into(),
-                // target_initial_shared_version is ignored from proto - use protocol constant
-            }),
+            TransactionKind::ClaimRewards(args) => {
+                TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
+                    target_id: args.target_id.into(),
+                    // target_initial_shared_version is ignored from proto - use protocol constant
+                })
+            }
 
             TransactionKind::ReportSubmission { target_id, challenger } => TK::ReportSubmission {
                 target_id: target_id.into(),
                 challenger: challenger.map(|c| c.into()),
             },
-            TransactionKind::UndoReportSubmission { target_id } => TK::UndoReportSubmission {
-                target_id: target_id.into(),
-            },
+            TransactionKind::UndoReportSubmission { target_id } => {
+                TK::UndoReportSubmission { target_id: target_id.into() }
+            }
 
             // Challenge transactions
             // All challenges are fraud challenges now (simplified design v2)
             // ChallengeId is derived from tx_digest during execution, not client-provided
-            TransactionKind::InitiateChallenge(args) => TK::InitiateChallenge(types::transaction::InitiateChallengeArgs {
-                target_id: args.target_id.into(),
-                bond_coin: args.bond_coin.into(),
-            }),
+            TransactionKind::InitiateChallenge(args) => {
+                TK::InitiateChallenge(types::transaction::InitiateChallengeArgs {
+                    target_id: args.target_id.into(),
+                    bond_coin: args.bond_coin.into(),
+                })
+            }
             // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            TransactionKind::ReportChallenge { challenge_id } => TK::ReportChallenge {
-                challenge_id: challenge_id.into(),
-            },
-            TransactionKind::UndoReportChallenge { challenge_id } => TK::UndoReportChallenge {
-                challenge_id: challenge_id.into(),
-            },
-            TransactionKind::ClaimChallengeBond { challenge_id } => TK::ClaimChallengeBond {
-                challenge_id: challenge_id.into(),
-            },
+            TransactionKind::ReportChallenge { challenge_id } => {
+                TK::ReportChallenge { challenge_id: challenge_id.into() }
+            }
+            TransactionKind::UndoReportChallenge { challenge_id } => {
+                TK::UndoReportChallenge { challenge_id: challenge_id.into() }
+            }
+            TransactionKind::ClaimChallengeBond { challenge_id } => {
+                TK::ClaimChallengeBond { challenge_id: challenge_id.into() }
+            }
         })
     }
 }
@@ -771,36 +780,34 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
     type Error = SdkTypeConversionError;
 
     fn try_from(value: crate::types::TransactionEffects) -> Result<Self, Self::Error> {
-        Ok(types::effects::TransactionEffects::V1(
-            types::effects::TransactionEffectsV1 {
-                status: value.status.into(),
-                executed_epoch: value.epoch,
-                transaction_fee: value.fee.into(),
-                transaction_digest: value.transaction_digest.into(),
-                dependencies: value.dependencies.into_iter().map(Into::into).collect(),
-                version: types::object::Version::from_u64(value.lamport_version),
-                gas_object_index: value.gas_object_index,
-                changed_objects: value
-                    .changed_objects
-                    .into_iter()
-                    .map(|object| {
-                        (
-                            object.object_id.into(),
-                            types::effects::object_change::EffectsObjectChange {
-                                input_state: object.input_state.into(),
-                                output_state: object.output_state.into(),
-                                id_operation: object.id_operation.into(),
-                            },
-                        )
-                    })
-                    .collect(),
-                unchanged_shared_objects: value
-                    .unchanged_shared_objects
-                    .into_iter()
-                    .map(|object| (object.object_id.into(), object.kind.into()))
-                    .collect(),
-            },
-        ))
+        Ok(types::effects::TransactionEffects::V1(types::effects::TransactionEffectsV1 {
+            status: value.status.into(),
+            executed_epoch: value.epoch,
+            transaction_fee: value.fee.into(),
+            transaction_digest: value.transaction_digest.into(),
+            dependencies: value.dependencies.into_iter().map(Into::into).collect(),
+            version: types::object::Version::from_u64(value.lamport_version),
+            gas_object_index: value.gas_object_index,
+            changed_objects: value
+                .changed_objects
+                .into_iter()
+                .map(|object| {
+                    (
+                        object.object_id.into(),
+                        types::effects::object_change::EffectsObjectChange {
+                            input_state: object.input_state.into(),
+                            output_state: object.output_state.into(),
+                            id_operation: object.id_operation.into(),
+                        },
+                    )
+                })
+                .collect(),
+            unchanged_shared_objects: value
+                .unchanged_shared_objects
+                .into_iter()
+                .map(|object| (object.object_id.into(), object.kind.into()))
+                .collect(),
+        }))
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "protocol-config-macros"
-edition = "2024"
+edition = "2021"
 version.workspace = true
 
 [lib]

@@ -7,11 +7,11 @@ use arrgen::normal_array;
 use burn::backend::NdArray;
 use burn::store::SafetensorsStore;
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Tolerance, set_print_options, PrintOptions};
-use models::tensor_conversions::ArrayWrapper;
-use models::v1::modules::model::ModelConfig;
-use models::v1::ModelRunner;
+use burn::tensor::{PrintOptions, Tolerance, set_print_options};
 use models::ModelAPI;
+use models::tensor_conversions::ArrayWrapper;
+use models::v1::ModelRunner;
+use models::v1::modules::model::ModelConfig;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
@@ -141,9 +141,7 @@ fn build_weights(
 fn make_runner() -> ModelRunner<TestBackend> {
     let config = tiny_model_config();
     let device: <TestBackend as burn::prelude::Backend>::Device = Default::default();
-    ModelRunner::new(config, device, 1)
-        .with_max_seq_len(SEQ_LEN)
-        .with_batch_size(BATCH_SIZE)
+    ModelRunner::new(config, device, 1).with_max_seq_len(SEQ_LEN).with_batch_size(BATCH_SIZE)
 }
 
 fn make_input_buffer(size: usize) -> Arc<[u8]> {
@@ -189,10 +187,7 @@ async fn eval_is_deterministic() {
         .embedding
         .to_data()
         .assert_approx_eq::<FT>(&output2.embedding.to_data(), Tolerance::default());
-    output1
-        .loss
-        .to_data()
-        .assert_approx_eq::<FT>(&output2.loss.to_data(), Tolerance::default());
+    output1.loss.to_data().assert_approx_eq::<FT>(&output2.loss.to_data(), Tolerance::default());
 }
 
 #[tokio::test]
@@ -241,7 +236,11 @@ async fn different_data_produces_different_embeddings() {
     let emb1: Vec<f32> = output1.embedding.to_data().to_vec::<f32>().unwrap();
     let emb2: Vec<f32> = output2.embedding.to_data().to_vec::<f32>().unwrap();
     let diff: f32 = emb1.iter().zip(&emb2).map(|(a, b)| (a - b).abs()).sum();
-    assert!(diff > 1e-6, "different data should produce different embeddings, total diff = {}", diff);
+    assert!(
+        diff > 1e-6,
+        "different data should produce different embeddings, total diff = {}",
+        diff
+    );
 }
 
 #[tokio::test]
@@ -295,7 +294,11 @@ async fn multi_batch_data_accumulates_correctly() {
     assert_eq!(output.loss.dims(), [1]);
 
     let loss_val: Vec<f32> = output.loss.to_data().to_vec::<f32>().unwrap();
-    assert!(loss_val[0].is_finite(), "loss should be finite after multi-batch, got {}", loss_val[0]);
+    assert!(
+        loss_val[0].is_finite(),
+        "loss should be finite after multi-batch, got {}",
+        loss_val[0]
+    );
     assert!(loss_val[0] > 0.0, "loss should be positive after multi-batch, got {}", loss_val[0]);
 }
 
@@ -326,11 +329,7 @@ async fn loss_snapshot() {
 
     let output = runner.eval(data, weights, SEED).await.unwrap();
 
-    set_print_options(PrintOptions {
-        threshold: 1000,
-        edge_items: 3,
-        precision: Some(8),
-    });
+    set_print_options(PrintOptions { threshold: 1000, edge_items: 3, precision: Some(8) });
     println!("embedding: {}", output.embedding);
     println!("loss: {}", output.loss);
 

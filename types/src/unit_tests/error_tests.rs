@@ -21,9 +21,7 @@ fn test_soma_error_display() {
         SomaError::EpochEnded(5),
         SomaError::AdvanceEpochError { error: "advance failed".into() },
         SomaError::TimeoutError,
-        SomaError::TransactionOrchestratorLocalExecutionError {
-            error: "orchestrator fail".into(),
-        },
+        SomaError::TransactionOrchestratorLocalExecutionError { error: "orchestrator fail".into() },
         SomaError::FailedToSubmitToConsensus("submit fail".into()),
         SomaError::GenericAuthorityError { error: "authority err".into() },
         SomaError::MissingCommitteeAtEpoch(10),
@@ -95,11 +93,7 @@ fn test_soma_error_display() {
 
     for variant in &variants {
         let display = format!("{}", variant);
-        assert!(
-            !display.is_empty(),
-            "Display for {:?} should be non-empty",
-            variant
-        );
+        assert!(!display.is_empty(), "Display for {:?} should be non-empty", variant);
     }
 }
 
@@ -173,11 +167,7 @@ fn test_execution_failure_status_variants() {
 
     for variant in &variants {
         let display = format!("{}", variant);
-        assert!(
-            !display.is_empty(),
-            "Display for {:?} should be non-empty",
-            variant
-        );
+        assert!(!display.is_empty(), "Display for {:?} should be non-empty", variant);
     }
 }
 
@@ -197,16 +187,8 @@ fn test_soma_error_is_retryable() {
 
     for err in &retryable_errors {
         let (retryable, categorized) = err.is_retryable();
-        assert!(
-            retryable,
-            "Expected {:?} to be retryable",
-            err
-        );
-        assert!(
-            categorized,
-            "Expected {:?} to be categorized",
-            err
-        );
+        assert!(retryable, "Expected {:?} to be retryable", err);
+        assert!(categorized, "Expected {:?} to be categorized", err);
     }
 
     // Non-retryable errors (retryable=false, categorized=true)
@@ -222,16 +204,8 @@ fn test_soma_error_is_retryable() {
 
     for err in &non_retryable_errors {
         let (retryable, categorized) = err.is_retryable();
-        assert!(
-            !retryable,
-            "Expected {:?} to NOT be retryable",
-            err
-        );
-        assert!(
-            categorized,
-            "Expected {:?} to be categorized",
-            err
-        );
+        assert!(!retryable, "Expected {:?} to NOT be retryable", err);
+        assert!(categorized, "Expected {:?} to be categorized", err);
     }
 
     // Uncategorized errors (retryable=false, categorized=false)
@@ -244,16 +218,8 @@ fn test_soma_error_is_retryable() {
 
     for err in &uncategorized_errors {
         let (retryable, categorized) = err.is_retryable();
-        assert!(
-            !retryable,
-            "Expected {:?} to NOT be retryable (uncategorized)",
-            err
-        );
-        assert!(
-            !categorized,
-            "Expected {:?} to NOT be categorized",
-            err
-        );
+        assert!(!retryable, "Expected {:?} to NOT be retryable (uncategorized)", err);
+        assert!(!categorized, "Expected {:?} to NOT be categorized", err);
     }
 }
 
@@ -287,20 +253,14 @@ fn test_soma_error_categorize() {
     );
 
     // Internal category
-    assert_eq!(
-        SomaError::Unknown("test".into()).categorize(),
-        ErrorCategory::Internal,
-    );
+    assert_eq!(SomaError::Unknown("test".into()).categorize(), ErrorCategory::Internal,);
     assert_eq!(
         SomaError::UnsupportedFeatureError { error: "disabled".into() }.categorize(),
         ErrorCategory::Internal,
     );
 
     // Unavailable category
-    assert_eq!(
-        SomaError::TimeoutError.categorize(),
-        ErrorCategory::Unavailable,
-    );
+    assert_eq!(SomaError::TimeoutError.categorize(), ErrorCategory::Unavailable,);
 
     // Submission retriability based on category
     assert!(ErrorCategory::Aborted.is_submission_retriable());
