@@ -23,7 +23,7 @@ use crate::response::TransactionResponse;
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum ChallengeCommand {
-    /// Initiate a fraud challenge against a filled target
+    /// Submit a fraud challenge against a filled target
     ///
     /// Challenges a submission for a filled target. The challenger must pay a bond
     /// proportional to the submission's data size. If the challenge succeeds (fraud
@@ -32,10 +32,10 @@ pub enum ChallengeCommand {
     ///
     /// Requirements:
     /// - Target must be filled (have a winning submission)
-    /// - Challenge must be initiated during the fill epoch (before epoch boundary)
+    /// - Challenge must be submitted during the fill epoch (before epoch boundary)
     /// - Bond coin must cover challenger_bond_per_byte * data_size
-    #[clap(name = "initiate")]
-    Initiate {
+    #[clap(name = "submit")]
+    Submit {
         /// Target ID to challenge
         #[clap(long)]
         target_id: ObjectID,
@@ -70,7 +70,7 @@ pub enum ChallengeCommand {
 impl ChallengeCommand {
     pub async fn execute(self, context: &mut WalletContext) -> Result<ChallengeCommandResponse> {
         match self {
-            ChallengeCommand::Initiate {
+            ChallengeCommand::Submit {
                 target_id,
                 bond_coin,
                 tx_args,
@@ -250,7 +250,7 @@ impl Display for ChallengeCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "Use 'soma client execute-signed-tx' to submit after signing.".yellow()
+                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
                 )
             }
             ChallengeCommandResponse::TransactionDigest { challenge_id, digest } => {

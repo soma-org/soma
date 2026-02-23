@@ -21,8 +21,8 @@ use types::{
 };
 use utils::logging::init_tracing;
 
-const MAX_DELEGATION_AMOUNT: u64 = 1_000_000_000_000_000; // 1M SOMA
-const MIN_DELEGATION_AMOUNT: u64 = 500_000_000_000_000; // 0.5M SOMA
+const MAX_DELEGATION_AMOUNT: u64 = 1_000_000_000_000; // 1K SOMA
+const MIN_DELEGATION_AMOUNT: u64 = 500_000_000_000; // 0.5K SOMA
 
 trait GenStateChange {
     type StateChange: StatePredicate;

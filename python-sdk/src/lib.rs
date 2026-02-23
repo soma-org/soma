@@ -372,7 +372,7 @@ impl PySomaClient {
     // Read-only RPCs
     // -------------------------------------------------------------------
 
-    /// Get the human-readable chain name (e.g. "mainnet", "testnet", "localnet").
+    /// Get the human-readable chain name (e.g. "testnet", "localnet").
     fn get_chain_identifier<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {

@@ -1,61 +1,23 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 45
 expression: stdout
 ---
-Start a local Soma network for development and testing
+Start a long-running service (localnet, validator, faucet, scoring)
 
-Launches a local validator, fullnode, and optionally a faucet.
-State is persisted in ~/.soma/ by default, or use --force-regenesis
-for an ephemeral network that starts fresh each time.
+Usage: soma start <COMMAND>
 
-Usage: soma start [OPTIONS]
+Commands:
+  localnet   Start a local Soma network for development and testing
+  validator  Start a validator node from a config file
+  faucet     Start a standalone faucet gRPC server
+  scoring    Start the scoring service for computing embeddings and distances
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
-      --network.config <CONFIG_DIR>
-          Config directory that will be used to store network config, node db, keystore
-
-      --force-regenesis
-          A new genesis is created each time this flag is set, and state is not persisted between runs
-
-      --fullnode-rpc-port <FULLNODE_RPC_PORT>
-          Port to start the Fullnode RPC server on. Default port is 9000
-          
-          [default: 9000]
-
-      --epoch-duration-ms <EPOCH_DURATION_MS>
-          Set the epoch duration. Can only be used when `--force-regenesis` flag is passed
-
-      --data-ingestion-dir <DATA_INGESTION_DIR>
-          Directory for data ingestion
-
-      --no-full-node
-          Start the network without a fullnode
-
-      --committee-size <COMMITTEE_SIZE>
-          Set the number of validators in the network
-
-      --log-level <LOG_LEVEL>
-          Log level for CLI output (trace, debug, info, warn, error)
-          
-          [default: info]
-
-      --with-faucet[=<FAUCET_HOST_PORT>]
-          Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable
-
-      --no-faucet
-          Disable the faucet server
-
-      --no-scoring
-          Disable the scoring server
-
-      --small-model
-          Use small model config for the scoring server (embedding_dim=16, num_layers=2)
-
-  -h, --help
-          Print help (see a summary with '-h')
+  -h, --help  Print help
 
 EXAMPLES:
-    soma start --force-regenesis --small-model  # Fresh network, small models
-    soma start --force-regenesis                # Fresh network, full-size models
-    soma start --no-faucet --no-scoring         # Persistent network, no services
+    soma start localnet --force-regenesis --small-model
+    soma start validator --config validator.yaml
+    soma start faucet --port 9123
+    soma start scoring --port 9124

@@ -23,7 +23,7 @@ use types::{
 };
 use utils::logging::init_tracing;
 
-const VALIDATOR_STARTING_STAKE: u64 = 1_000_000_000_000_000; // 1M SOMA
+const VALIDATOR_STARTING_STAKE: u64 = 1_000_000_000_000; // 1K SOMA
 
 #[cfg(msim)]
 #[msim::sim_test]

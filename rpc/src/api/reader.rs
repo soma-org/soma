@@ -118,7 +118,7 @@ impl StateReader {
         };
 
         Ok(TransactionRead {
-            digest: transaction.digest(),
+            digest,
             transaction,
             signatures,
             effects,

@@ -171,7 +171,7 @@ impl Display for SubmitCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "Use 'soma client execute-signed-tx' to submit after signing.".yellow()
+                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
                 )
             }
             SubmitCommandResponse::TransactionDigest(digest) => {

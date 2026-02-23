@@ -14,7 +14,7 @@ use types::{
 };
 
 use crate::{
-    SOMA_DEVNET_URL, SOMA_LOCAL_NETWORK_URL, SOMA_MAINNET_URL, SOMA_TESTNET_URL, SomaClient,
+    SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient,
     SomaClientBuilder,
 };
 
@@ -119,23 +119,14 @@ impl SomaEnv {
         Ok(builder.build(&self.rpc).await?)
     }
 
-    pub fn mainnet() -> Self {
-        Self {
-            alias: "mainnet".to_string(),
-            rpc: SOMA_MAINNET_URL.into(),
-            basic_auth: None,
-            chain_id: None,
-        }
-    }
-
-    pub fn devnet() -> Self {
-        Self {
-            alias: "devnet".to_string(),
-            rpc: SOMA_DEVNET_URL.into(),
-            basic_auth: None,
-            chain_id: None,
-        }
-    }
+    // pub fn mainnet() -> Self {
+    //     Self {
+    //         alias: "mainnet".to_string(),
+    //         rpc: SOMA_MAINNET_URL.into(),
+    //         basic_auth: None,
+    //         chain_id: None,
+    //     }
+    // }
 
     pub fn testnet() -> Self {
         Self {

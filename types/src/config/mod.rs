@@ -34,8 +34,6 @@ pub const SOMA_KEYSTORE_FILENAME: &str = "soma.keystore";
 pub const SOMA_KEYSTORE_ALIASES_FILENAME: &str = "soma.aliases";
 pub const SOMA_BENCHMARK_GENESIS_GAS_KEYSTORE_FILENAME: &str = "benchmark.keystore";
 pub const SOMA_GENESIS_FILENAME: &str = "genesis.blob";
-pub const SOMA_DEV_NET_URL: &str = "https://fullnode.devnet.soma.io:443";
-
 pub const AUTHORITIES_DB_NAME: &str = "authorities_db";
 pub const CONSENSUS_DB_NAME: &str = "consensus_db";
 pub const FULL_NODE_DB_PATH: &str = "full_node_db";

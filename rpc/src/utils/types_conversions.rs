@@ -1526,6 +1526,13 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::CannotReportOneself => Self::CannotReportOneself,
             ExecutionError::ReportRecordNotFound => Self::ReportRecordNotFound,
 
+            // Input/execution errors
+            ExecutionError::InputObjectDeleted => Self::InputObjectDeleted,
+            ExecutionError::CertificateDenied => Self::CertificateDenied,
+            ExecutionError::SharedObjectCongestion => {
+                Self::ExecutionCancelledDueToSharedObjectCongestion
+            }
+
             // Generic error for cases not covered by specific variants
             ExecutionError::OtherError(string) => {
                 Self::SomaError(types::error::SomaError::from(string))

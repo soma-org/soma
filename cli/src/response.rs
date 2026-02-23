@@ -101,7 +101,7 @@ impl Display for ValidatorCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "→ Use 'soma client execute-signed-tx' to submit after signing.".yellow()
+                    "→ Use 'soma tx execute-signed' to submit after signing.".yellow()
                 )?;
             }
             ValidatorCommandResponse::TransactionDigest(digest) => {
@@ -507,7 +507,7 @@ impl Display for ClientCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "→ Use 'soma client execute-signed-tx --tx-bytes <bytes> --signatures <sigs>' to execute."
+                    "→ Use 'soma tx execute-signed --tx-bytes <bytes> --signatures <sigs>' to execute."
                         .yellow()
                 )
             }
@@ -519,7 +519,7 @@ impl Display for ClientCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "→ Use 'soma client execute-combined-signed-tx --signed-tx-bytes <bytes>' to execute."
+                    "→ Use 'soma tx execute-combined-signed --signed-tx-bytes <bytes>' to execute."
                         .yellow()
                 )
             }

@@ -49,10 +49,10 @@ fn error_hint(msg: &str) -> Option<&'static str> {
         return Some("Commission rates are in basis points. Use 500 for 5%.");
     }
     if msg_lower.contains("no soma config found") || msg_lower.contains("cannot open soma") {
-        return Some("Run `soma start` to launch a local network first.");
+        return Some("Run `soma start localnet` to launch a local network first.");
     }
     if msg_lower.contains("connection refused") || msg_lower.contains("status: unavailable") {
-        return Some("Is the network running? Try `soma start` to launch a local network.");
+        return Some("Is the network running? Try `soma start localnet` to launch a local network.");
     }
     if msg_lower.contains("insufficient fund") || msg_lower.contains("insufficient gas") {
         return Some("Use `soma faucet` to request test tokens.");
@@ -114,7 +114,7 @@ mod tests {
     fn test_error_hints() {
         assert!(error_hint("Commission rate cannot exceed 10000").is_some());
         assert!(error_hint("Connection refused (os error 61)").is_some());
-        assert!(error_hint("No soma config found in `/Users/...`").is_some());
+        assert!(error_hint("No soma config found in `/Users/foo`").is_some());
         assert!(error_hint("some random error").is_none());
     }
 

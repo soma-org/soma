@@ -7,34 +7,27 @@ A game of infinitely evolving machine intelligence
 Usage: soma <COMMAND>
 
 Commands:
-  balance           Check SOMA balance for an address
-  send              Send SOMA to a recipient
-  transfer          Transfer an object to a recipient
-  pay               Pay SOMA to multiple recipients
-  stake             Stake SOMA with a validator or model
-  unstake           Withdraw staked SOMA
-  faucet            Request test tokens from the faucet
-  status            Show network connection status, version info, and active address
-  objects           Query on-chain objects by owner or ID
-  tx                Get transaction details by digest
-  wallet            Manage wallet addresses and keys
-  env               Manage network environments (switch, add, list)
-  model             Manage models (commit, reveal, update, deactivate, query)
-  target            Query and inspect targets in the mining competition
-  data              Download submission data for a filled target
-  submit            Submit data to fill a target
-  claim             Claim rewards from a filled target
-  challenge         Challenge a filled target's submission
-  score             Start the scoring service for computing embeddings and distances
-  validator         Manage validators (register, set gas price, commission)
-  client            Advanced operations (execute serialized transactions)
-  start             Start a local Soma network for development and testing
-  network           Inspect local network configuration and validator addresses
-  genesis           Bootstrap and initialize a new Soma network
-  genesis-ceremony  Coordinate multi-validator genesis for network launches
-  keytool           Low-level keystore operations (generate, import, export keys)
-  completions       Generate shell completion scripts
-  help              Print this message or the help of the given subcommand(s)
+  balance    Check SOMA balance for an address
+  send       Send SOMA to a recipient
+  transfer   Transfer an object to a recipient
+  pay        Pay SOMA to multiple recipients
+  stake      Stake SOMA with a validator or model
+  unstake    Withdraw staked SOMA
+  faucet     Request test tokens from a faucet server
+  status     Show network connection status, version info, and active address
+  objects    Query on-chain objects by owner or ID
+  tx         Get transaction details or execute serialized transactions
+  wallet     Manage wallet addresses and keys
+  env        Manage network environments (switch, add, list)
+  model      Manage models (commit, reveal, update, deactivate, query)
+  target     Manage targets: query, submit data, claim rewards, download data
+  challenge  Challenge a filled target's submission
+  validator  Manage validators (register, set gas price, commission)
+  start      Start a long-running service (localnet, validator, faucet, scoring)
+  network    Inspect local network configuration and validator addresses
+  genesis    Bootstrap and initialize a new Soma network
+  keytool    Low-level keystore operations (generate, import, export keys)
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help

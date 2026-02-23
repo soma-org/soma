@@ -73,7 +73,7 @@ impl std::ops::Add<u64> for ProtocolVersion {
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq, Copy, PartialOrd, Ord, Eq)]
 pub enum Chain {
-    Mainnet,
+    // Mainnet,
     Testnet,
     #[default]
     Unknown,
@@ -82,7 +82,7 @@ pub enum Chain {
 impl Chain {
     pub fn as_str(self) -> &'static str {
         match self {
-            Chain::Mainnet => "mainnet",
+            // Chain::Mainnet => "mainnet",
             Chain::Testnet => "testnet",
             Chain::Unknown => "localnet",
         }
@@ -631,7 +631,7 @@ mod snapshot_tests {
         println!("! IMPORTANT: never update snapshots from this test. only add new versions! !");
         println!("!                                                                          !");
         println!("============================================================================\n");
-        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+        for chain in &[Chain::Unknown, /* Chain::Mainnet, */ Chain::Testnet] {
             // Chain::Unknown uses empty prefix for backward compat with pre-chain snapshots.
             let chain_str = match chain {
                 Chain::Unknown => String::new(),
@@ -651,7 +651,7 @@ mod snapshot_tests {
     /// A None field in the latest version likely means a new field was added but not initialized.
     #[test]
     fn all_fields_set_in_latest_version() {
-        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+        for chain in &[Chain::Unknown, /* Chain::Mainnet, */ Chain::Testnet] {
             let config = ProtocolConfig::get_for_version(ProtocolVersion::MAX, *chain);
             let attr_map = config.attr_map();
             for (name, value) in &attr_map {
@@ -680,7 +680,7 @@ mod snapshot_tests {
     /// Verify that feature_map returns a consistent set of flags for each version.
     #[test]
     fn feature_flags_snapshot() {
-        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+        for chain in &[Chain::Unknown, /* Chain::Mainnet, */ Chain::Testnet] {
             let chain_str = match chain {
                 Chain::Unknown => String::new(),
                 _ => format!("{:?}_", chain),
@@ -699,7 +699,7 @@ mod snapshot_tests {
     /// Verify that attr_map returns a consistent set of attributes for each version.
     #[test]
     fn attr_map_snapshot() {
-        for chain in &[Chain::Unknown, Chain::Mainnet, Chain::Testnet] {
+        for chain in &[Chain::Unknown, /* Chain::Mainnet, */ Chain::Testnet] {
             let chain_str = match chain {
                 Chain::Unknown => String::new(),
                 _ => format!("{:?}_", chain),

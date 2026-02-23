@@ -4,7 +4,11 @@ expression: stdout
 ---
 Bootstrap and initialize a new Soma network
 
-Usage: soma genesis [OPTIONS]
+Usage: soma genesis [OPTIONS] [COMMAND]
+
+Commands:
+  ceremony  Coordinate multi-validator genesis for network launches
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
       --from-config <FROM_CONFIG>

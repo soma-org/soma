@@ -1,6 +1,6 @@
 //! CLI commands for downloading submission data from the validator network.
 //!
-//! This module provides the `soma data` command for fetching data associated
+//! This module provides the `soma target download` command for fetching data associated
 //! with filled targets from the validator proxy network.
 
 use anyhow::{Result, anyhow, bail};

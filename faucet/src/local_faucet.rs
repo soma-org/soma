@@ -147,6 +147,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::faucet_config::{DEFAULT_AMOUNT, DEFAULT_NUM_COINS};
     use test_cluster::TestClusterBuilder;
 
     #[tokio::test]
@@ -162,9 +163,14 @@ mod tests {
         let coins =
             faucet.local_request_execute_tx(recipient).await.expect("Faucet request failed");
 
-        assert_eq!(coins.len(), 5, "Expected 5 coins, got {}", coins.len());
+        assert_eq!(
+            coins.len(),
+            DEFAULT_NUM_COINS,
+            "Expected {DEFAULT_NUM_COINS} coin(s), got {}",
+            coins.len()
+        );
         for coin in &coins {
-            assert_eq!(coin.amount, 200_000_000_000);
+            assert_eq!(coin.amount, DEFAULT_AMOUNT);
             assert!(!coin.id.is_empty());
             assert!(!coin.transfer_tx_digest.is_empty());
         }
@@ -182,11 +188,11 @@ mod tests {
 
         let coins1 =
             faucet.local_request_execute_tx(recipient).await.expect("First faucet request failed");
-        assert_eq!(coins1.len(), 5);
+        assert_eq!(coins1.len(), DEFAULT_NUM_COINS);
 
         let coins2 =
             faucet.local_request_execute_tx(recipient).await.expect("Second faucet request failed");
-        assert_eq!(coins2.len(), 5);
+        assert_eq!(coins2.len(), DEFAULT_NUM_COINS);
 
         // All coin IDs should be unique
         let mut all_ids: Vec<String> =
@@ -225,7 +231,7 @@ mod tests {
             .await
             .expect("Faucet request to zero address should succeed");
 
-        assert_eq!(coins.len(), 5);
+        assert_eq!(coins.len(), DEFAULT_NUM_COINS);
     }
 
     /// §8.1: Test that find_gas_coins_and_address fails with insufficient balance

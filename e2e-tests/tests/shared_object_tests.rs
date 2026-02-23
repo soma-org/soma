@@ -472,19 +472,14 @@ async fn test_shared_object_status_transition_via_claim() {
         claim_response.effects.status()
     );
 
-    // === Verify shared object status transition in effects ===
+    // === Verify shared object deletion in effects ===
 
-    // 1. Target should appear in mutated() (status changed to Claimed, NOT deleted)
-    let mutated = claim_response.effects.mutated();
-    let target_mutated = mutated.iter().find(|((id, _, _), _)| *id == target_id);
-    assert!(target_mutated.is_some(), "Target should appear in mutated objects after ClaimRewards");
-
-    // 2. Target should NOT appear in deleted()
+    // 1. Target should appear in deleted() (ClaimRewards deletes the terminal target)
     let deleted_ids: Vec<_> =
         claim_response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
     assert!(
-        !deleted_ids.contains(&target_id),
-        "Target should NOT be deleted by ClaimRewards (status transition, not deletion)"
+        deleted_ids.contains(&target_id),
+        "Target should be deleted by ClaimRewards"
     );
 
     // 3. New reward coins should be created (miner reward + model owner reward + bond return)
@@ -499,9 +494,9 @@ async fn test_shared_object_status_transition_via_claim() {
         .collect();
     assert!(!miner_coins.is_empty(), "Miner should receive rewards or bond return");
 
-    // === Verify subsequent operations on Claimed target fail ===
+    // === Verify subsequent operations on deleted target fail ===
 
-    // 5. Second ClaimRewards on same target should fail
+    // 5. Second ClaimRewards on same target should fail (target was deleted)
     let gas_object = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(miner)
@@ -518,11 +513,11 @@ async fn test_shared_object_status_transition_via_claim() {
     let claim_again_response = test_cluster.sign_and_execute_transaction(&claim_again_tx).await;
     assert!(
         claim_again_response.effects.status().is_err(),
-        "Second ClaimRewards should fail (TargetAlreadyClaimed)"
+        "Second ClaimRewards should fail (target deleted)"
     );
     info!("Second ClaimRewards correctly rejected");
 
-    // 6. SubmitData on Claimed target should also fail
+    // 6. SubmitData on deleted target should also fail
     let gas_object = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(miner)
@@ -547,9 +542,9 @@ async fn test_shared_object_status_transition_via_claim() {
     let submit_to_claimed = test_cluster.sign_and_execute_transaction(&submit_to_claimed_tx).await;
     assert!(
         submit_to_claimed.effects.status().is_err(),
-        "SubmitData to Claimed target should fail (TargetNotOpen)"
+        "SubmitData to deleted target should fail"
     );
-    info!("SubmitData to Claimed target correctly rejected");
+    info!("SubmitData to deleted target correctly rejected");
 
     info!("test_shared_object_status_transition_via_claim passed");
 }

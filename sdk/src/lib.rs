@@ -36,9 +36,8 @@ type AdminGrpcClient =
 // TODO: define these when public rpcs are finalized
 pub const SOMA_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
 pub const SOMA_LOCAL_NETWORK_URL_0: &str = "http://0.0.0.0:9000";
-pub const SOMA_DEVNET_URL: &str = "https://fullnode.devnet.soma.org:443";
 pub const SOMA_TESTNET_URL: &str = "https://fullnode.testnet.soma.org:443";
-pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
+// pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
 
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
@@ -121,11 +120,6 @@ impl SomaClientBuilder {
     /// Build a client for the local network with default addresses
     pub async fn build_localnet(self) -> Result<SomaClient, error::Error> {
         self.build(SOMA_LOCAL_NETWORK_URL).await
-    }
-
-    /// Build a client for devnet with default addresses
-    pub async fn build_devnet(self) -> Result<SomaClient, error::Error> {
-        self.build(SOMA_DEVNET_URL).await
     }
 
     /// Build a client for testnet with default addresses
@@ -237,7 +231,7 @@ impl SomaClient {
         client.get_chain_identifier().await
     }
 
-    /// Get the human-readable chain name (e.g. "mainnet", "testnet", "localnet")
+    /// Get the human-readable chain name (e.g. "testnet", "localnet")
     pub async fn get_chain_name(&self) -> Result<String, tonic::Status> {
         let mut client = self.inner.write().await;
         client.get_chain_name().await

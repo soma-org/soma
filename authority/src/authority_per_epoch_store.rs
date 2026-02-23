@@ -560,7 +560,7 @@ impl AuthorityPerEpochStore {
         let protocol_version = epoch_start_configuration.epoch_start_state().protocol_version();
 
         let chain_from_id = chain.0.chain();
-        if chain_from_id == Chain::Mainnet || chain_from_id == Chain::Testnet {
+        if /* chain_from_id == Chain::Mainnet || */ chain_from_id == Chain::Testnet {
             assert_eq!(chain_from_id, chain.1, "cannot override chain on production networks!");
         }
         info!(

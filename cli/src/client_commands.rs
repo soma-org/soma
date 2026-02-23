@@ -34,12 +34,12 @@ pub struct TxProcessingArgs {
     pub simulate: bool,
 
     /// Serialize the unsigned transaction data (base64) instead of executing.
-    /// Use with `soma client execute-signed-tx --tx-bytes <TX_BYTES>`.
+    /// Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`.
     #[arg(long)]
     pub serialize_unsigned_transaction: bool,
 
     /// Serialize the signed transaction data (base64) instead of executing.
-    /// Use with `soma client execute-combined-signed-tx --signed-tx-bytes <SIGNED_TX_BYTES>`.
+    /// Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`.
     #[arg(long)]
     pub serialize_signed_transaction: bool,
 }

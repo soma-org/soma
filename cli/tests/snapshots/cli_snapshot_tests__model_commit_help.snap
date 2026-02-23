@@ -1,6 +1,5 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
-assertion_line: 87
 expression: stdout
 ---
 Commit a new model (phase 1 of commit-reveal)
@@ -41,13 +40,13 @@ Options:
           Perform a dry run (simulation) of the transaction, without executing it
 
       --serialize-unsigned-transaction
-          Serialize the unsigned transaction data (base64) instead of executing. Use with `soma client execute-signed-tx --tx-bytes <TX_BYTES>`
+          Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
 
       --json
           Output as JSON
 
       --serialize-signed-transaction
-          Serialize the signed transaction data (base64) instead of executing. Use with `soma client execute-combined-signed-tx --signed-tx-bytes <SIGNED_TX_BYTES>`
+          Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
 
   -h, --help
           Print help (see a summary with '-h')

@@ -1,8 +1,8 @@
 use crate::{
     client_commands::SomaClientCommands,
     commands::{
-        ChallengeCommand, ClaimCommand, DataCommand, EnvCommand, ModelCommand, ObjectsCommand,
-        SomaValidatorCommand, SubmitCommand, TargetCommand, WalletCommand,
+        ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand,
+        SomaValidatorCommand, TargetCommand, WalletCommand,
     },
     keytool::KeyToolCommand,
     soma_amount::SomaAmount,
@@ -270,19 +270,19 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Request test tokens from the faucet
+    /// Request test tokens from a faucet server
     #[clap(
         name = "faucet",
         after_help = "\
 EXAMPLES:
     soma faucet
     soma faucet --address 0x1234...5678
-    soma faucet --url http://127.0.0.1:9123/gas"
+    soma faucet --url http://127.0.0.1:9123"
     )]
     Faucet {
         /// Address to receive tokens (defaults to active address)
         #[clap(long)]
-        address: Option<KeyIdentity>,
+        address: Option<soma_keys::key_identity::KeyIdentity>,
         /// The URL of the faucet server
         #[clap(long)]
         url: Option<String>,
@@ -321,16 +321,20 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Get transaction details by digest
+    /// Get transaction details or execute serialized transactions
     #[clap(
         name = "tx",
         after_help = "\
 EXAMPLES:
-    soma tx DIGEST_BASE58"
+    soma tx DIGEST_BASE58
+    soma tx execute-serialized <TX_BYTES>
+    soma tx execute-signed --tx-bytes <BYTES> --signatures <SIGS>"
     )]
     Tx {
-        /// Transaction digest
-        digest: TransactionDigest,
+        #[clap(flatten)]
+        config: SomaEnvConfig,
+        #[clap(subcommand)]
+        cmd: Option<TxCommand>,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -396,14 +400,17 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Query and inspect targets in the mining competition
+    /// Manage targets: query, submit data, claim rewards, download data
     #[clap(
         name = "target",
         after_help = "\
 EXAMPLES:
     soma target list
     soma target list --status open
-    soma target info 0xTARGET_ID"
+    soma target info 0xTARGET_ID
+    soma target submit --target-id 0xTARGET... --data-commitment 0xHEX... ...
+    soma target claim 0xTARGET_ID
+    soma target download 0xTARGET_ID"
     )]
     Target {
         #[clap(subcommand)]
@@ -412,66 +419,15 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Download submission data for a filled target
-    ///
-    /// Fetches the winning submission's data via the validator proxy network.
-    #[clap(
-        name = "data",
-        after_help = "\
-EXAMPLES:
-    soma data 0xTARGET_ID
-    soma data 0xTARGET_ID --output ./my-data.bin"
-    )]
-    Data {
-        #[clap(flatten)]
-        cmd: DataCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Submit data to fill a target
-    #[clap(
-        name = "submit",
-        after_help = "\
-EXAMPLES:
-    soma submit --target-id 0xTARGET... --data-commitment 0xHEX... \\
-        --data-url https://... --data-checksum 0xHEX... --data-size 1024 \\
-        --model-id 0xMODEL... --embedding 0.1,0.2,0.3 \\
-        --distance-score 0.5 --bond-coin 0xCOIN..."
-    )]
-    Submit {
-        #[clap(flatten)]
-        cmd: SubmitCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Claim rewards from a filled target
-    ///
-    /// Claims the reward pool from a target that was successfully filled.
-    /// The challenge window (one full epoch after the target was filled) must have closed.
-    #[clap(
-        name = "claim",
-        after_help = "\
-EXAMPLES:
-    soma claim 0xTARGET_ID"
-    )]
-    Claim {
-        #[clap(flatten)]
-        cmd: ClaimCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
     /// Challenge a filled target's submission
     ///
-    /// Initiates a fraud challenge against a miner's submission for a filled target.
+    /// Submit a fraud challenge against a miner's submission for a filled target.
     /// Requires a bond proportional to the data size.
     #[clap(
         name = "challenge",
         after_help = "\
 EXAMPLES:
-    soma challenge initiate --target-id 0xTARGET... --bond-coin 0xCOIN...
+    soma challenge submit --target-id 0xTARGET... --bond-coin 0xCOIN...
     soma challenge info 0xCHALLENGE_ID"
     )]
     Challenge {
@@ -479,45 +435,6 @@ EXAMPLES:
         cmd: ChallengeCommand,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
-    },
-
-    // =========================================================================
-    // SERVICES
-    // =========================================================================
-    /// Start the scoring service for computing embeddings and distances
-    ///
-    /// Runs an HTTP server that accepts scoring requests via POST /score.
-    /// A Python mining program can POST data/model URLs and get back
-    /// embeddings and distance scores for on-chain submission.
-    #[clap(
-        name = "score",
-        after_help = "\
-EXAMPLES:
-    soma score
-    soma score --host 127.0.0.1 --port 8080
-    soma score --device wgpu --small-model
-    soma score --data-dir /tmp/soma-data"
-    )]
-    Score {
-        /// Host to bind the scoring service to
-        #[clap(long, default_value = "0.0.0.0")]
-        host: String,
-
-        /// Port to listen on
-        #[clap(long, default_value_t = 9124)]
-        port: u16,
-
-        /// Directory for cached blob storage (data and model weights)
-        #[clap(long)]
-        data_dir: Option<PathBuf>,
-
-        /// Use a small model for testing (embedding_dim=16, num_layers=2)
-        #[clap(long)]
-        small_model: bool,
-
-        /// Compute device: cpu, wgpu, cuda, rocm
-        #[clap(long, default_value = "cpu")]
-        device: String,
     },
 
     // =========================================================================
@@ -541,37 +458,99 @@ EXAMPLES:
     },
 
     // =========================================================================
-    // ADVANCED CLIENT OPERATIONS (backward compatibility)
-    // =========================================================================
-    /// Advanced operations (execute serialized transactions)
-    #[clap(name = "client")]
-    Client {
-        #[clap(flatten)]
-        config: SomaEnvConfig,
-        #[clap(subcommand)]
-        cmd: Option<SomaClientCommands>,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
+    /// Start a long-running service (localnet, validator, faucet, scoring)
+    #[clap(
+        name = "start",
+        after_help = "\
+EXAMPLES:
+    soma start localnet --force-regenesis --small-model
+    soma start validator --config validator.yaml
+    soma start faucet --port 9123
+    soma start scoring --port 9124"
+    )]
+    Start {
+        #[clap(subcommand)]
+        cmd: StartCommand,
+    },
+
+    /// Inspect local network configuration and validator addresses
+    #[clap(name = "network")]
+    Network {
+        #[clap(long = "network.config")]
+        config: Option<PathBuf>,
+        #[clap(short, long, help = "Dump the public keys of all authorities")]
+        dump_addresses: bool,
+    },
+
+    /// Bootstrap and initialize a new Soma network
+    #[clap(name = "genesis")]
+    Genesis {
+        #[clap(subcommand)]
+        cmd: Option<GenesisCommand>,
+        #[clap(long, help = "Start genesis with a given config file")]
+        from_config: Option<PathBuf>,
+        #[clap(long, help = "Build a genesis config, write it to the specified path, and exit")]
+        write_config: Option<PathBuf>,
+        #[clap(long)]
+        working_dir: Option<PathBuf>,
+        #[clap(short, long, help = "Forces overwriting existing configuration")]
+        force: bool,
+        #[clap(long = "epoch-duration-ms")]
+        epoch_duration_ms: Option<u64>,
+        #[clap(long, help = "Creates an extra faucet configuration for soma persisted runs.")]
+        with_faucet: bool,
+        /// Set number of validators in the network.
+        #[clap(long)]
+        committee_size: Option<usize>,
+    },
+
+    /// Low-level keystore operations (generate, import, export keys)
+    #[clap(name = "keytool")]
+    KeyTool {
+        #[clap(long)]
+        keystore_path: Option<PathBuf>,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+        #[clap(subcommand)]
+        cmd: KeyToolCommand,
+    },
+
+    /// Generate shell completion scripts
+    #[clap(
+        name = "completions",
+        hide = true,
+        after_help = "\
+EXAMPLES:
+    soma completions bash > /usr/local/etc/bash_completion.d/soma
+    soma completions zsh > ~/.zfunc/_soma
+    soma completions fish > ~/.config/fish/completions/soma.fish"
+    )]
+    Completions {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
+    },
+}
+
+/// Subcommands for `soma start` — all long-running services.
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum StartCommand {
     /// Start a local Soma network for development and testing
     ///
-    /// Launches a local validator, fullnode, and optionally a faucet.
+    /// Launches local validators, a fullnode, and optionally a faucet and scoring service.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
     /// for an ephemeral network that starts fresh each time.
     #[clap(
-        name = "start",
-        verbatim_doc_comment,
+        name = "localnet",
         after_help = "\
 EXAMPLES:
-    soma start --force-regenesis --small-model  # Fresh network, small models
-    soma start --force-regenesis                # Fresh network, full-size models
-    soma start --no-faucet --no-scoring         # Persistent network, no services"
+    soma start localnet --force-regenesis --small-model
+    soma start localnet --force-regenesis
+    soma start localnet --no-faucet --no-scoring"
     )]
-    Start {
+    Localnet {
         /// Config directory that will be used to store network config, node db, keystore.
         #[clap(long = "network.config")]
         config_dir: Option<std::path::PathBuf>,
@@ -628,71 +607,137 @@ EXAMPLES:
         small_model: bool,
     },
 
-    /// Inspect local network configuration and validator addresses
-    #[clap(name = "network")]
-    Network {
-        #[clap(long = "network.config")]
-        config: Option<PathBuf>,
-        #[clap(short, long, help = "Dump the public keys of all authorities")]
-        dump_addresses: bool,
-    },
-
-    /// Bootstrap and initialize a new Soma network
-    #[clap(name = "genesis")]
-    Genesis {
-        #[clap(long, help = "Start genesis with a given config file")]
-        from_config: Option<PathBuf>,
-        #[clap(long, help = "Build a genesis config, write it to the specified path, and exit")]
-        write_config: Option<PathBuf>,
-        #[clap(long)]
-        working_dir: Option<PathBuf>,
-        #[clap(short, long, help = "Forces overwriting existing configuration")]
-        force: bool,
-        #[clap(long = "epoch-duration-ms")]
-        epoch_duration_ms: Option<u64>,
-        #[clap(long, help = "Creates an extra faucet configuration for soma persisted runs.")]
-        with_faucet: bool,
-        /// Set number of validators in the network.
-        #[clap(long)]
-        committee_size: Option<usize>,
-    },
-
-    /// Coordinate multi-validator genesis for network launches
-    GenesisCeremony(crate::genesis_ceremony::Ceremony),
-
-    /// Low-level keystore operations (generate, import, export keys)
-    #[clap(name = "keytool")]
-    KeyTool {
-        #[clap(long)]
-        keystore_path: Option<PathBuf>,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-        #[clap(subcommand)]
-        cmd: KeyToolCommand,
-    },
-
-    /// Generate shell completion scripts
+    /// Start a validator node from a config file
     #[clap(
-        name = "completions",
+        name = "validator",
         after_help = "\
 EXAMPLES:
-    soma completions bash > /usr/local/etc/bash_completion.d/soma
-    soma completions zsh > ~/.zfunc/_soma
-    soma completions fish > ~/.config/fish/completions/soma.fish"
+    soma start validator --config validator.yaml"
     )]
-    Completions {
-        /// Shell to generate completions for
-        shell: clap_complete::Shell,
+    Validator {
+        /// Path to the validator config file (YAML)
+        #[clap(long = "config", short = 'c')]
+        config: PathBuf,
     },
+
+    /// Start a standalone faucet gRPC server
+    #[clap(
+        name = "faucet",
+        after_help = "\
+EXAMPLES:
+    soma start faucet
+    soma start faucet --port 9999 --host 0.0.0.0
+    soma start faucet --amount 5000000000 --num-coins 2"
+    )]
+    Faucet {
+        /// Port to listen on
+        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_FAUCET_PORT)]
+        port: u16,
+        /// Host IP to bind to
+        #[clap(long, default_value = "0.0.0.0")]
+        host: String,
+        /// Amount of shannons to send per coin
+        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_AMOUNT)]
+        amount: u64,
+        /// Number of coins to send per request
+        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_NUM_COINS)]
+        num_coins: usize,
+        /// Path to the client config directory
+        #[clap(long)]
+        config_dir: Option<PathBuf>,
+    },
+
+    /// Start the scoring service for computing embeddings and distances
+    ///
+    /// Runs an HTTP server that accepts scoring requests via POST /score.
+    #[clap(
+        name = "scoring",
+        after_help = "\
+EXAMPLES:
+    soma start scoring
+    soma start scoring --host 127.0.0.1 --port 8080
+    soma start scoring --small-model
+    soma start scoring --data-dir /tmp/soma-data"
+    )]
+    Scoring {
+        /// Host to bind the scoring service to
+        #[clap(long, default_value = "0.0.0.0")]
+        host: String,
+
+        /// Port to listen on
+        #[clap(long, default_value_t = 9124)]
+        port: u16,
+
+        /// Directory for cached blob storage (data and model weights)
+        #[clap(long)]
+        data_dir: Option<PathBuf>,
+
+        /// Use a small model for testing (embedding_dim=16, num_layers=2)
+        #[clap(long)]
+        small_model: bool,
+    },
+}
+
+/// Subcommands for `soma tx` — transaction queries and raw execution.
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum TxCommand {
+    /// Get transaction details by digest
+    #[clap(name = "info")]
+    Info {
+        /// Transaction digest
+        digest: TransactionDigest,
+    },
+
+    /// Execute from serialized transaction bytes
+    #[clap(name = "execute-serialized")]
+    ExecuteSerialized {
+        /// Base64-encoded BCS-serialized TransactionData
+        tx_bytes: String,
+        #[clap(flatten)]
+        processing: crate::client_commands::TxProcessingArgs,
+    },
+
+    /// Execute using pre-signed transaction bytes and signatures
+    #[clap(name = "execute-signed")]
+    ExecuteSigned {
+        /// Base64-encoded unsigned transaction data
+        #[clap(long)]
+        tx_bytes: String,
+        /// Base64-encoded signatures (flag || signature || pubkey)
+        #[clap(long)]
+        signatures: Vec<String>,
+    },
+
+    /// Execute a combined sender-signed transaction
+    #[clap(name = "execute-combined-signed")]
+    ExecuteCombinedSigned {
+        /// Base64-encoded SenderSignedData
+        #[clap(long)]
+        signed_tx_bytes: String,
+    },
+}
+
+/// Subcommands for `soma genesis`.
+#[derive(Parser)]
+#[clap(rename_all = "kebab-case")]
+pub enum GenesisCommand {
+    /// Coordinate multi-validator genesis for network launches
+    #[clap(name = "ceremony")]
+    Ceremony(crate::genesis_ceremony::Ceremony),
 }
 
 impl SomaCommand {
     pub fn log_level(&self) -> tracing::Level {
         match self {
-            SomaCommand::Start { log_level, .. } => {
-                log_level.parse().unwrap_or(tracing::Level::INFO)
-            }
-            SomaCommand::Score { .. } => tracing::Level::INFO,
+            SomaCommand::Start { cmd } => match cmd {
+                StartCommand::Localnet { log_level, .. } => {
+                    log_level.parse().unwrap_or(tracing::Level::INFO)
+                }
+                StartCommand::Scoring { .. } => tracing::Level::INFO,
+                StartCommand::Validator { .. } => tracing::Level::INFO,
+                StartCommand::Faucet { .. } => tracing::Level::INFO,
+            },
             _ => tracing::Level::ERROR,
         }
     }
@@ -791,7 +836,7 @@ impl SomaCommand {
 
             SomaCommand::Faucet { address, url, json: _ } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                commands::faucet::execute(&mut context, address, url).await?;
+                commands::faucet::execute_request(&mut context, address, url).await?;
                 Ok(())
             }
 
@@ -845,10 +890,55 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Tx { digest, json } => {
-                let context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result = commands::tx::execute(&context, digest).await?;
-                result.print(json);
+            SomaCommand::Tx { config, cmd, json } => {
+                match cmd {
+                    Some(TxCommand::Info { digest }) => {
+                        let context = get_wallet_context(&config).await?;
+                        let result = commands::tx::execute(&context, digest).await?;
+                        result.print(json);
+                    }
+                    Some(TxCommand::ExecuteSerialized { tx_bytes, processing }) => {
+                        let mut context = get_wallet_context(&config).await?;
+                        if let Ok(client) = context.get_client().await {
+                            if let Err(e) = client.check_api_version().await {
+                                eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                            }
+                        }
+                        SomaClientCommands::ExecuteSerialized { tx_bytes, processing }
+                            .execute(&mut context)
+                            .await?
+                            .print(json);
+                    }
+                    Some(TxCommand::ExecuteSigned { tx_bytes, signatures }) => {
+                        let mut context = get_wallet_context(&config).await?;
+                        if let Ok(client) = context.get_client().await {
+                            if let Err(e) = client.check_api_version().await {
+                                eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                            }
+                        }
+                        SomaClientCommands::ExecuteSignedTx { tx_bytes, signatures }
+                            .execute(&mut context)
+                            .await?
+                            .print(json);
+                    }
+                    Some(TxCommand::ExecuteCombinedSigned { signed_tx_bytes }) => {
+                        let mut context = get_wallet_context(&config).await?;
+                        if let Ok(client) = context.get_client().await {
+                            if let Err(e) = client.check_api_version().await {
+                                eprintln!("{}", format!("[warning] {e}").yellow().bold());
+                            }
+                        }
+                        SomaClientCommands::ExecuteCombinedSignedTx { signed_tx_bytes }
+                            .execute(&mut context)
+                            .await?
+                            .print(json);
+                    }
+                    None => {
+                        let mut app: Command = SomaCommand::command();
+                        app.build();
+                        app.find_subcommand_mut("tx").unwrap().print_help()?;
+                    }
+                }
                 Ok(())
             }
 
@@ -901,103 +991,9 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Data { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
-            SomaCommand::Submit { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
-            SomaCommand::Claim { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
             SomaCommand::Challenge { cmd, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
-            // =================================================================
-            // SERVICES
-            // =================================================================
-            SomaCommand::Score { host, port, data_dir, small_model, device } => {
-                use types::config::node_config::DeviceConfig;
-
-                let device = match device.to_lowercase().as_str() {
-                    "cpu" => DeviceConfig::Cpu,
-                    "wgpu" | "gpu" => DeviceConfig::Wgpu,
-                    "cuda" => DeviceConfig::Cuda,
-                    "rocm" | "amd" => DeviceConfig::Rocm,
-                    other => {
-                        anyhow::bail!("Unknown device '{other}'. Options: cpu, wgpu, cuda, rocm")
-                    }
-                };
-
-                let data_dir = data_dir.unwrap_or_else(|| {
-                    soma_config_dir().unwrap_or_else(|_| PathBuf::from(".")).join("scoring-data")
-                });
-                fs::create_dir_all(&data_dir)?;
-
-                let model_config = if small_model {
-                    scoring::model_config_small()
-                } else {
-                    runtime::ModelConfig::new()
-                };
-
-                let engine = std::sync::Arc::new(
-                    scoring::scoring::ScoringEngine::new(&data_dir, model_config, &device)
-                        .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-                );
-
-                print_banner("Scoring Service");
-
-                let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
-                let device_str = device.to_string();
-                let url = format!("http://{display_host}:{port}");
-                let score_ep = format!("POST {url}/score");
-                let data_display = data_dir.display().to_string();
-                print_info_panel(&[
-                    ("URL", &url),
-                    ("Score endpoint", &score_ep),
-                    ("Device", &device_str),
-                    ("Data dir", &data_display),
-                ]);
-                eprintln!();
-                eprintln!("  Press {} to stop.", "Ctrl+C".bold());
-
-                scoring::server::start_scoring_server(&host, port, engine)
-                    .await
-                    .map_err(|e| anyhow!("Scoring server error: {e}"))?;
-
-                Ok(())
-            }
-
-            // =================================================================
-            // ADVANCED CLIENT OPERATIONS
-            // =================================================================
-            SomaCommand::Client { config, cmd, json } => {
-                if let Some(cmd) = cmd {
-                    let mut context = get_wallet_context(&config).await?;
-
-                    if let Ok(client) = context.get_client().await {
-                        if let Err(e) = client.check_api_version().await {
-                            eprintln!("{}", format!("[warning] {e}").yellow().bold());
-                        }
-                    }
-                    cmd.execute(&mut context).await?.print(json);
-                } else {
-                    let mut app: Command = SomaCommand::command();
-                    app.build();
-                    app.find_subcommand_mut("client").unwrap().print_help()?;
-                }
                 Ok(())
             }
 
@@ -1025,45 +1021,106 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Start {
-                config_dir,
-                force_regenesis,
-                fullnode_rpc_port,
-                data_ingestion_dir,
-                no_full_node,
-                epoch_duration_ms,
-                committee_size,
-                log_level: _,
-                with_faucet,
-                no_faucet,
-                no_scoring,
-                small_model,
-            } => {
-                // Faucet: on by default unless --no-faucet
-                let faucet = if no_faucet {
-                    None
-                } else {
-                    Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
-                };
-                // Scoring: on by default unless --no-scoring
-                let scoring = !no_scoring;
-                start(
-                    config_dir.clone(),
-                    force_regenesis,
-                    epoch_duration_ms,
-                    fullnode_rpc_port,
-                    data_ingestion_dir,
-                    no_full_node,
-                    committee_size,
-                    faucet,
-                    scoring,
-                    small_model,
-                )
-                .await?;
+            SomaCommand::Start { cmd } => {
+                match cmd {
+                    StartCommand::Localnet {
+                        config_dir,
+                        force_regenesis,
+                        fullnode_rpc_port,
+                        data_ingestion_dir,
+                        no_full_node,
+                        epoch_duration_ms,
+                        committee_size,
+                        log_level: _,
+                        with_faucet,
+                        no_faucet,
+                        no_scoring,
+                        small_model,
+                    } => {
+                        // Faucet: on by default unless --no-faucet
+                        let faucet = if no_faucet {
+                            None
+                        } else {
+                            Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
+                        };
+                        // Scoring: on by default unless --no-scoring
+                        let scoring = !no_scoring;
+                        start(
+                            config_dir.clone(),
+                            force_regenesis,
+                            epoch_duration_ms,
+                            fullnode_rpc_port,
+                            data_ingestion_dir,
+                            no_full_node,
+                            committee_size,
+                            faucet,
+                            scoring,
+                            small_model,
+                        )
+                        .await?;
+                    }
+                    StartCommand::Validator { config } => {
+                        commands::validator::start_validator_node(config).await?;
+                    }
+                    StartCommand::Faucet { port, host, amount, num_coins, config_dir } => {
+                        commands::faucet::execute_start(port, host, amount, num_coins, config_dir)
+                            .await?;
+                    }
+                    StartCommand::Scoring { host, port, data_dir, small_model } => {
+                        use types::config::node_config::DeviceConfig;
+
+                        #[cfg(feature = "cuda")]
+                        let device = DeviceConfig::Cuda;
+                        #[cfg(feature = "rocm")]
+                        let device = DeviceConfig::Rocm;
+                        #[cfg(not(any(feature = "cuda", feature = "rocm")))]
+                        let device = DeviceConfig::Wgpu;
+
+                        let data_dir = data_dir.unwrap_or_else(|| {
+                            soma_config_dir()
+                                .unwrap_or_else(|_| PathBuf::from("."))
+                                .join("scoring-data")
+                        });
+                        fs::create_dir_all(&data_dir)?;
+
+                        let model_config = if small_model {
+                            scoring::model_config_small()
+                        } else {
+                            runtime::ModelConfig::new()
+                        };
+
+                        let engine = std::sync::Arc::new(
+                            scoring::scoring::ScoringEngine::new(&data_dir, model_config, &device)
+                                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+                        );
+
+                        print_banner("Scoring Service");
+
+                        let display_host =
+                            if host == "0.0.0.0" { "127.0.0.1" } else { &host };
+                        let device_str = device.to_string();
+                        let url = format!("http://{display_host}:{port}");
+                        let score_ep = format!("POST {url}/score");
+                        let data_display = data_dir.display().to_string();
+                        print_info_panel(&[
+                            ("URL", &url),
+                            ("Score endpoint", &score_ep),
+                            ("Device", &device_str),
+                            ("Data dir", &data_display),
+                        ]);
+                        eprintln!();
+                        eprintln!("  Press {} to stop.", "Ctrl+C".bold());
+
+                        scoring::server::start_scoring_server(&host, port, engine)
+                            .await
+                            .map_err(|e| anyhow!("Scoring server error: {e}"))?;
+                    }
+                }
                 Ok(())
             }
 
             SomaCommand::Genesis {
+                cmd,
                 working_dir,
                 force,
                 from_config,
@@ -1072,6 +1129,9 @@ impl SomaCommand {
                 with_faucet,
                 committee_size,
             } => {
+                if let Some(GenesisCommand::Ceremony(ceremony)) = cmd {
+                    return crate::genesis_ceremony::run(ceremony);
+                }
                 genesis(
                     from_config,
                     write_config,
@@ -1083,8 +1143,6 @@ impl SomaCommand {
                 )
                 .await
             }
-
-            SomaCommand::GenesisCeremony(cmd) => crate::genesis_ceremony::run(cmd),
 
             SomaCommand::KeyTool { keystore_path, json, cmd } => {
                 let keystore_path =
@@ -1273,11 +1331,18 @@ async fn start(
 
         let scoring_data_dir = config_dir.join("scoring-data");
         fs::create_dir_all(&scoring_data_dir)?;
+        #[cfg(feature = "cuda")]
+        let device = DeviceConfig::Cuda;
+        #[cfg(feature = "rocm")]
+        let device = DeviceConfig::Rocm;
+        #[cfg(not(any(feature = "cuda", feature = "rocm")))]
+        let device = DeviceConfig::Wgpu;
+
         let engine = std::sync::Arc::new(
             scoring::scoring::ScoringEngine::new(
                 &scoring_data_dir,
                 model_config,
-                &DeviceConfig::Cpu,
+                &device,
             )
             .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
         );
@@ -1448,15 +1513,10 @@ async fn start(
 
     // -- Main loop ------------------------------------------------------------
     let mut interval = interval(Duration::from_secs(3));
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .expect("failed to register SIGTERM handler");
 
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                break;
-            }
-            _ = sigterm.recv() => {
                 break;
             }
             _ = interval.tick() => {}
@@ -1791,7 +1851,7 @@ async fn genesis(
         basic_auth: None,
         chain_id: None,
     });
-    client_config.add_env(SomaEnv::devnet());
+    // client_config.add_env(SomaEnv::devnet());  // devnet removed
 
     if client_config.active_env.is_none() {
         client_config.active_env = client_config.envs.first().map(|env| env.alias.clone());
@@ -1834,7 +1894,7 @@ async fn prompt_if_no_config(
     let default_env_name = default_env.alias.clone();
     SomaClientConfig {
         keystore,
-        envs: vec![default_env, SomaEnv::mainnet(), SomaEnv::devnet(), SomaEnv::localnet()],
+        envs: vec![default_env, /* SomaEnv::mainnet(), */ SomaEnv::localnet()],
         external_keys: None,
         active_address: Some(address),
         active_env: Some(default_env_name.clone()),

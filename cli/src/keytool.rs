@@ -79,7 +79,7 @@ pub enum KeyToolCommand {
     /// The keypair file is output to the current directory. The content of the file is
     /// a Base64 encoded string of 33-byte `flag || privkey`.
     ///
-    /// Use `soma client new-address` if you want to generate and save the key into soma.keystore.
+    /// Use `soma wallet new` if you want to generate and save the key into soma.keystore.
     Generate {
         key_scheme: SignatureScheme,
         derivation_path: Option<DerivationPath>,
@@ -130,7 +130,7 @@ pub enum KeyToolCommand {
     /// Provides a list of participating signatures (`flag || sig || pk` encoded in Base64),
     /// threshold, a list of all public keys and a list of their weights that define the
     /// MultiSig address. Returns a valid MultiSig signature and its sender address. The
-    /// result can be used as signature field for `soma client execute-signed-tx`. The sum
+    /// result can be used as signature field for `soma tx execute-signed`. The sum
     /// of weights of all signatures must be >= the threshold.
     ///
     /// The order of `sigs` must be the same as the order of `pks`.

@@ -15,6 +15,10 @@ use types::{
     target::{TargetId, TargetStatus, TargetV1},
 };
 
+use super::claim::ClaimCommand;
+use super::data::DataCommand;
+use super::submit::SubmitCommand;
+
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum TargetCommand {
@@ -41,6 +45,51 @@ pub enum TargetCommand {
     Info {
         /// Target ID to query
         target_id: ObjectID,
+    },
+
+    /// Submit data to fill a target
+    #[clap(
+        name = "submit",
+        after_help = "\
+EXAMPLES:
+    soma target submit --target-id 0xTARGET... --data-commitment 0xHEX... \\
+        --data-url https://... --data-checksum 0xHEX... --data-size 1024 \\
+        --model-id 0xMODEL... --embedding 0.1,0.2,0.3 \\
+        --distance-score 0.5 --bond-coin 0xCOIN..."
+    )]
+    Submit {
+        #[clap(flatten)]
+        cmd: SubmitCommand,
+    },
+
+    /// Claim rewards from a filled target
+    ///
+    /// Claims the reward pool from a target that was successfully filled.
+    /// The challenge window (one full epoch after the target was filled) must have closed.
+    #[clap(
+        name = "claim",
+        after_help = "\
+EXAMPLES:
+    soma target claim 0xTARGET_ID"
+    )]
+    Claim {
+        #[clap(flatten)]
+        cmd: ClaimCommand,
+    },
+
+    /// Download submission data for a filled target
+    ///
+    /// Fetches the winning submission's data via the validator proxy network.
+    #[clap(
+        name = "download",
+        after_help = "\
+EXAMPLES:
+    soma target download 0xTARGET_ID
+    soma target download 0xTARGET_ID --output ./my-data.bin"
+    )]
+    Download {
+        #[clap(flatten)]
+        cmd: DataCommand,
     },
 }
 
@@ -99,6 +148,21 @@ impl TargetCommand {
 
                 Ok(TargetCommandResponse::Info(TargetInfoOutput { target_id, target }))
             }
+
+            TargetCommand::Submit { cmd } => {
+                let result = cmd.execute(context).await?;
+                Ok(TargetCommandResponse::Submit(result))
+            }
+
+            TargetCommand::Claim { cmd } => {
+                let result = cmd.execute(context).await?;
+                Ok(TargetCommandResponse::Claim(result))
+            }
+
+            TargetCommand::Download { cmd } => {
+                let result = cmd.execute(context).await?;
+                Ok(TargetCommandResponse::Download(result))
+            }
         }
     }
 }
@@ -113,6 +177,9 @@ impl TargetCommand {
 pub enum TargetCommandResponse {
     List(TargetListOutput),
     Info(TargetInfoOutput),
+    Submit(super::submit::SubmitCommandResponse),
+    Claim(super::claim::ClaimCommandResponse),
+    Download(super::data::DataCommandResponse),
 }
 
 #[derive(Debug, Serialize)]
@@ -147,6 +214,9 @@ impl Display for TargetCommandResponse {
         match self {
             TargetCommandResponse::List(list) => write!(f, "{}", list),
             TargetCommandResponse::Info(info) => write!(f, "{}", info),
+            TargetCommandResponse::Submit(resp) => write!(f, "{}", resp),
+            TargetCommandResponse::Claim(resp) => write!(f, "{}", resp),
+            TargetCommandResponse::Download(resp) => write!(f, "{}", resp),
         }
     }
 }

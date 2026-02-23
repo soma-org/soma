@@ -1,4 +1,4 @@
-//! Top-level claim command for claiming rewards from filled targets.
+//! Claim command for claiming rewards from filled targets (`soma target claim`).
 
 use anyhow::{Result, bail};
 use clap::*;
@@ -87,7 +87,7 @@ impl Display for ClaimCommandResponse {
                 writeln!(
                     f,
                     "{}",
-                    "Use 'soma client execute-signed-tx' to submit after signing.".yellow()
+                    "Use 'soma tx execute-signed' to submit after signing.".yellow()
                 )
             }
             ClaimCommandResponse::TransactionDigest(digest) => {

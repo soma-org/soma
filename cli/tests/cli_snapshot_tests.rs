@@ -44,6 +44,17 @@ fn test_start_help() {
 }
 
 #[test]
+fn test_start_localnet_help() {
+    let output = soma_cmd()
+        .args(["start", "localnet", "--help"])
+        .output()
+        .expect("failed to run soma start localnet --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("start_localnet_help", stdout);
+}
+
+#[test]
 fn test_balance_help() {
     let output =
         soma_cmd().args(["balance", "--help"]).output().expect("failed to run soma balance --help");
@@ -79,15 +90,6 @@ fn test_model_commit_help() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     insta::assert_snapshot!("model_commit_help", stdout);
-}
-
-#[test]
-fn test_claim_help() {
-    let output =
-        soma_cmd().args(["claim", "--help"]).output().expect("failed to run soma claim --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("claim_help", stdout);
 }
 
 #[test]
@@ -184,21 +186,12 @@ fn test_tx_help() {
 }
 
 #[test]
-fn test_data_help() {
+fn test_target_help() {
     let output =
-        soma_cmd().args(["data", "--help"]).output().expect("failed to run soma data --help");
+        soma_cmd().args(["target", "--help"]).output().expect("failed to run soma target --help");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    insta::assert_snapshot!("data_help", stdout);
-}
-
-#[test]
-fn test_submit_help() {
-    let output =
-        soma_cmd().args(["submit", "--help"]).output().expect("failed to run soma submit --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("submit_help", stdout);
+    insta::assert_snapshot!("target_help", stdout);
 }
 
 #[test]
@@ -210,24 +203,6 @@ fn test_challenge_help() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     insta::assert_snapshot!("challenge_help", stdout);
-}
-
-#[test]
-fn test_target_help() {
-    let output =
-        soma_cmd().args(["target", "--help"]).output().expect("failed to run soma target --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("target_help", stdout);
-}
-
-#[test]
-fn test_client_help() {
-    let output =
-        soma_cmd().args(["client", "--help"]).output().expect("failed to run soma client --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("client_help", stdout);
 }
 
 #[test]

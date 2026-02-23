@@ -2,16 +2,25 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Get transaction details by digest
+Get transaction details or execute serialized transactions
 
-Usage: soma tx [OPTIONS] <DIGEST>
+Usage: soma tx [OPTIONS] [COMMAND]
 
-Arguments:
-  <DIGEST>  Transaction digest
+Commands:
+  info                     Get transaction details by digest
+  execute-serialized       Execute from serialized transaction bytes
+  execute-signed           Execute using pre-signed transaction bytes and signatures
+  execute-combined-signed  Execute a combined sender-signed transaction
+  help                     Print this message or the help of the given subcommand(s)
 
 Options:
-      --json  Output as JSON
-  -h, --help  Print help
+      --client.config <CONFIG>  Sets the file storing the state of our user accounts (an empty one will be created if missing)
+      --client.env <ENV>        The Soma environment to use. This must be present in the current config file
+  -y, --yes                     Create a new soma config without prompting if none exists
+      --json                    Output as JSON
+  -h, --help                    Print help
 
 EXAMPLES:
     soma tx DIGEST_BASE58
+    soma tx execute-serialized <TX_BYTES>
+    soma tx execute-signed --tx-bytes <BYTES> --signatures <SIGS>

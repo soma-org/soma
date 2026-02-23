@@ -61,14 +61,6 @@ use crate::client_commands::TxProcessingArgs;
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum SomaValidatorCommand {
-    /// Start a validator node from a config file
-    #[clap(name = "start")]
-    Start {
-        /// Path to the validator config file (YAML)
-        #[clap(long = "config", short = 'c')]
-        config: PathBuf,
-    },
-
     /// Generate validator key files and info
     #[clap(name = "make-validator-info")]
     MakeValidatorInfo {
@@ -191,11 +183,6 @@ impl SomaValidatorCommand {
         let sender = context.active_address()?;
 
         match self {
-            SomaValidatorCommand::Start { config } => {
-                start_validator_node(config).await?;
-                Ok(ValidatorCommandResponse::Started)
-            }
-
             SomaValidatorCommand::MakeValidatorInfo { host_name, commission_rate } => {
                 let output = make_validator_info(context, &host_name, commission_rate)?;
                 Ok(ValidatorCommandResponse::MakeValidatorInfo(output))
@@ -296,7 +283,7 @@ impl SomaValidatorCommand {
 }
 
 /// Start a validator node from a config file
-async fn start_validator_node(config_path: PathBuf) -> Result<()> {
+pub async fn start_validator_node(config_path: PathBuf) -> Result<()> {
     crate::soma_commands::print_banner("Validator");
 
     info!("Loading validator config from {:?}", config_path);

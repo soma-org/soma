@@ -582,16 +582,47 @@ impl TestClusterBuilder {
         let scoring_port = local_ip_utils::get_available_port(&scoring_host);
         let scoring_addr: SocketAddr = format!("{scoring_host}:{scoring_port}").parse().unwrap();
 
-        let listener = tokio::net::TcpListener::bind(scoring_addr).await?;
-        tokio::spawn(async move {
-            scoring::tonic::transport::Server::builder()
-                .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
-                    MockScoringService,
-                ))
-                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
-                .await
-                .expect("mock scoring server");
-        });
+        // In msim, services must run inside a simulated node with an assigned IP.
+        // Spawn the scoring server on its own node, matching the pattern used by
+        // validator containers in container-sim.rs.
+        #[cfg(msim)]
+        {
+            let ip: std::net::IpAddr = scoring_host.parse().unwrap();
+            let handle = msim::runtime::Handle::current();
+            handle
+                .create_node()
+                .ip(ip)
+                .name("mock-scoring")
+                .init(move || async move {
+                    let listener = tokio::net::TcpListener::bind(scoring_addr).await.unwrap();
+                    scoring::tonic::transport::Server::builder()
+                        .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
+                            MockScoringService,
+                        ))
+                        .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
+                            listener,
+                        ))
+                        .await
+                        .expect("mock scoring server");
+                })
+                .build();
+        }
+
+        #[cfg(not(msim))]
+        {
+            let std_listener = std::net::TcpListener::bind(scoring_addr)?;
+            std_listener.set_nonblocking(true)?;
+            let listener = tokio::net::TcpListener::from_std(std_listener)?;
+            tokio::spawn(async move {
+                scoring::tonic::transport::Server::builder()
+                    .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
+                        MockScoringService,
+                    ))
+                    .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                    .await
+                    .expect("mock scoring server");
+            });
+        }
 
         let scoring_url = format!("http://{scoring_addr}");
         info!("Mock scoring server started at {scoring_url}");

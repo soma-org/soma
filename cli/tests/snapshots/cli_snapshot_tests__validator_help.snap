@@ -7,7 +7,6 @@ Manage validators (register, set gas price, commission)
 Usage: soma validator [OPTIONS] [COMMAND]
 
 Commands:
-  start                Start a validator node from a config file
   make-validator-info  Generate validator key files and info
   join-committee       Request to join the validator committee
   leave-committee      Request to leave the validator committee

@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Request test tokens from the faucet
+Request test tokens from a faucet server
 
 Usage: soma faucet [OPTIONS]
 
@@ -15,4 +15,4 @@ Options:
 EXAMPLES:
     soma faucet
     soma faucet --address 0x1234...5678
-    soma faucet --url http://127.0.0.1:9123/gas
+    soma faucet --url http://127.0.0.1:9123
