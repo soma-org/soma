@@ -34,6 +34,7 @@ jobs:
               - '**/Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
 
   rustfmt:
     needs: diff
