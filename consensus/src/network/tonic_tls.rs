@@ -1,6 +1,5 @@
-// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/network/tonic_tls.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 use types::consensus::context::Context;

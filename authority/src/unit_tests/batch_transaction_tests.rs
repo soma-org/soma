@@ -1,9 +1,5 @@
-// Tests for executing multiple sequential transactions and verifying
-// effects accumulation, rollback behavior, and state consistency.
-//
-// Portions of this file are derived from Sui (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/unit_tests/batch_transaction_tests.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;

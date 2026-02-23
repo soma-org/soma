@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use fastcrypto::{error::FastCryptoError, hash::Digest, traits::ToFromBytes};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{

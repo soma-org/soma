@@ -1,5 +1,7 @@
-// Portions Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
+
 //
 // This file is derived from the Sui project (https://github.com/MystenLabs/sui),
 // specifically crates/sui-faucet/src/errors.rs

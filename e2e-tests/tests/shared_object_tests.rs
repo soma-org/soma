@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tier 3: Shared object E2E tests.
 //!
 //! Rewrites of Sui's shared_objects_tests.rs and shared_objects_version_tests.rs

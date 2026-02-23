@@ -1,5 +1,6 @@
-// Faucet client logic derived from MystenLabs/sui (Apache-2.0)
-// See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/client_commands.rs
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
 
 use std::path::PathBuf;
 use std::sync::Arc;

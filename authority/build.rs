@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use tonic_build::manual::{Method, Service};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

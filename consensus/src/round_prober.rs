@@ -1,6 +1,5 @@
-// Portions of this file are derived from Mysticeti consensus (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/consensus/core/src/round_prober.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 //! RoundProber periodically checks each peer for the latest rounds they received and accepted

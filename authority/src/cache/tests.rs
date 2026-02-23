@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 // Tests for the WritebackCache and CachedVersionMap.
 // These exercise the cache's object read/write paths, versioned lookups,
 // negative caching, genesis insertion, and flush-to-store behavior.

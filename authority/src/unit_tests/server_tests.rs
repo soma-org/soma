@@ -1,10 +1,5 @@
-// Tests for the AuthorityServer / ValidatorService layer.
-// These exercise the server's methods directly (not via gRPC transport),
-// verifying that the server correctly delegates to AuthorityState.
-//
-// Portions of this file are derived from Sui (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/unit_tests/server_tests.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;

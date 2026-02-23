@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use parking_lot::{RwLock, RwLockWriteGuard};
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use tokio::sync::watch;
