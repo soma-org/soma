@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - soma-v*
+      - testnet-v*
 
 permissions:
   contents: write
