@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use burn::{Tensor, prelude::Backend, store::SafetensorsStore};
 use std::sync::Arc;
 use types::error::ModelResult;
-pub mod consine_distance;
+pub mod cosine_distance;
 pub mod running_mean;
 pub mod select_best;
 pub mod tensor_conversions;

@@ -1,4 +1,4 @@
-# Contributing to This Project
+# Contributing to Soma
 
 Thanks for considering making a contribution to the Soma network or its documentation. Before you get started, please take a moment to read these guidelines.
 
@@ -6,53 +6,125 @@ Thanks for considering making a contribution to the Soma network or its document
 
 We appreciate contributions, but **simple typo fixes (e.g., minor spelling errors, punctuation changes, or trivial rewording) will be ignored** unless they significantly improve clarity or fix a critical issue. If you are unsure whether your change is substantial enough, consider opening an issue first to discuss it.
 
-# How to Contribute
+## Prerequisites
 
+- [Rust 1.92+](https://rustup.rs/) (see `rust-toolchain.toml`)
+- [Python 3.10+](https://www.python.org/) (for the Python SDK and build system)
+- [protoc](https://grpc.io/docs/protoc-installation/) (for gRPC codegen)
+- [cargo-nextest](https://nexte.st/) (for running tests)
 
-## Documentation
+## Building
 
-Found a small error or typo in the main documentation? Each page on the [docs.soma.org](https://docs.soma.org/) site includes an **Edit this page** link at the bottom that you can use to edit the page in GitHub. The content is located in the docs/content directory of the Soma repo, so you can make a PR if you prefer. 
+The workspace includes a Python SDK crate, so `PYO3_PYTHON` must be set:
+
+```bash
+# Build the full workspace
+PYO3_PYTHON=python3 cargo build
+
+# Build just the CLI
+PYO3_PYTHON=python3 cargo build -p cli
+
+# Build with CUDA support
+PYO3_PYTHON=python3 cargo build -p cli --features cuda
+
+# Build with ROCm support
+PYO3_PYTHON=python3 cargo build -p cli --features rocm
+```
+
+## Running Tests
+
+```bash
+# Unit tests (excludes simulation tests)
+PYO3_PYTHON=python3 cargo nextest run --workspace --exclude e2e-tests --exclude test-cluster
+
+# Simulation tests (requires msim cfg flag)
+PYO3_PYTHON=python3 RUSTFLAGS="--cfg msim" cargo nextest run -p e2e-tests -p consensus
+
+# Run a specific e2e test
+PYO3_PYTHON=python3 RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test <test_name>
+```
+
+## Formatting and Linting
+
+```bash
+cargo fmt --check       # check formatting
+cargo fmt               # auto-format
+cargo clippy --workspace --all-targets
+```
+
+All of these are enforced in CI and must pass before merge.
+
+## Project Structure
+
+```
+soma/
+├── authority/        # Validator authority implementation
+├── consensus/        # Mysticeti BFT consensus
+├── sync/             # Block synchronization
+├── node/             # Full node orchestration
+├── runtime/          # Byte-level transformer scoring runtime (CUDA/ROCm/Wgpu)
+├── scoring/          # Model scoring service
+├── types/            # Core data types and transaction definitions
+├── protocol-config/  # Protocol configuration and feature flags
+├── sdk/              # Rust SDK for building transactions
+├── cli/              # Command-line interface
+├── rpc/              # gRPC protocol definitions and client
+├── store/            # Persistent storage layer
+├── blobs/            # Blob storage service
+├── faucet/           # Test token faucet
+├── utils/            # Shared utilities (failpoints, crypto helpers)
+├── e2e-tests/        # End-to-end simulation tests
+├── test-cluster/     # Local test cluster harness
+├── python-sdk/       # Python bindings (PyO3/Maturin)
+├── python-models/    # Model implementations (PyTorch/Flax)
+├── python-examples/  # Example scripts
+├── models/           # Rust model definitions and architecture specs
+└── arrgen/           # Deterministic array generation (Rust + Python)
+```
+
+## How to Contribute
+
+### Documentation
+
+Found a small error or typo in the main documentation? Each page on the [docs.soma.org](https://docs.soma.org/) site includes an **Edit this page** link at the bottom that you can use to edit the page in GitHub. The content is located in the docs/content directory of the Soma repo, so you can make a PR if you prefer.
 
 For larger documentation issues, you can [create an issue](https://github.com/soma-org/docs/issues/new/choose) in GitHub.
 
-If you change functionality, update the relevant documentation.
+If you change functionality, update the relevant documentation. Include examples where applicable.
 
-Include examples where applicable.
+### Reporting Issues
 
-## Reporting Issues
-
-Found a bug or security vulnerability? Please check the existing issues before opening a new one.
+Found a bug? Please check the existing issues before opening a new one.
 
 Provide as much detail as possible, including steps to reproduce the issue, expected behavior, and actual behavior.
 
-## New Soma features
+For security vulnerabilities, see [SECURITY.md](SECURITY.md).
+
+### New Soma Features
 
 If you want to contribute code that creates a feature on Soma, start with a [Soma Improvement Proposal](https://github.com/soma-org/sips/tree/main) before developing the logic.
 
-## Proposing Code Changes
+### Proposing Code Changes
 
-Fork the repository and create a new branch for your changes. Ensure your branch is based on the latest main
+Fork the repository and create a new branch for your changes. Ensure your branch is based on the latest `main`.
 
 Follow the coding style and conventions used in the project.
 
 If your change is significant, please open an issue first to discuss it.
 
-## Submitting a Pull Request
+### Submitting a Pull Request
 
 Ensure your changes are well-tested. Provide a clear description of your changes in the pull request.
 
 Reference any relevant issue numbers in your pull request. Be responsive to feedback from maintainers.
 
-## Code Standards
+### Code Standards
 
-Follow existing code structure and formatting.
+- Follow existing code structure and formatting
+- Write meaningful commit messages
+- Ensure all tests pass before submitting a pull request
+- Run `cargo fmt` and `cargo clippy` before pushing
 
-Write meaningful commit messages.
+## License
 
-Ensure all tests pass before submitting a pull request.
-
-# License
-
-By contributing, you agree that your contributions will be licensed under the same license as this project.
-
-Thank you for contributing!
+By contributing, you agree that your contributions will be licensed under the [Apache 2.0](LICENSE) license.

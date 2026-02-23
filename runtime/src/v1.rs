@@ -8,7 +8,7 @@ use burn::{Tensor, prelude::Backend};
 use ctr::Ctr128BE;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use models::{
-    ModelAPI, ModelOutput, consine_distance::cosine_distance, select_best::select_best_model,
+    ModelAPI, ModelOutput, cosine_distance::cosine_distance, select_best::select_best_model,
 };
 use object_store::{ObjectStore, PutPayload};
 use tokio::task::JoinSet;

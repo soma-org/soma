@@ -315,9 +315,12 @@ fdlimit = "0.2.1"
 uint = "0.9.5"
 
 [patch.crates-io]
-tokio = { path = "mysten-sim/msim-tokio" }
+# Temporary: patch tokio/msim to fix Linux clock_gettime transmute panic on Rust 1.92+
+# See https://github.com/soma-org/mysten-sim/tree/fix/clock-gettime-rust-1.92
+# Remove this patch section once MystenLabs/mysten-sim merges the fix upstream.
+tokio = { git = "https://github.com/soma-org/mysten-sim.git", rev = "19d4574584d22a42c288ca3b75859ad30ee0cfae" }
 
 [patch.'https://github.com/MystenLabs/mysten-sim.git']
-msim = { path = "mysten-sim/msim" }
-msim-macros = { path = "mysten-sim/msim-macros" }
+msim = { git = "https://github.com/soma-org/mysten-sim.git", rev = "19d4574584d22a42c288ca3b75859ad30ee0cfae", package = "msim" }
+msim-macros = { git = "https://github.com/soma-org/mysten-sim.git", rev = "19d4574584d22a42c288ca3b75859ad30ee0cfae", package = "msim-macros" }
 # SHARED DEPENDENCIES
