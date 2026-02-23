@@ -42,7 +42,7 @@ The Internet has more compute, more data, and more minds than any single organiz
 
 ## Installation
 
-### sup (recommended)
+### sup
 
 [sup](https://github.com/soma-org/sup) is the Soma toolchain installer. It manages binaries across networks, versions, and hardware backends.
 
@@ -51,7 +51,7 @@ curl -sSfL https://sup.soma.org | sh
 ```
 
 ```bash
-sup install soma                    # latest testnet, default backend (WGPU)
+sup install soma                    # latest testnet (WGPU)
 sup install soma --backend cuda     # NVIDIA GPU (CUDA)
 sup install soma --backend rocm     # AMD GPU (ROCm)
 ```

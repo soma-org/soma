@@ -15,33 +15,31 @@ We appreciate contributions, but **simple typo fixes (e.g., minor spelling error
 
 ## Building
 
-The workspace includes a Python SDK crate, so `PYO3_PYTHON` must be set:
-
 ```bash
 # Build the full workspace
-PYO3_PYTHON=python3 cargo build
+cargo build
 
 # Build just the CLI
-PYO3_PYTHON=python3 cargo build -p cli
+cargo build -p cli
 
 # Build with CUDA support
-PYO3_PYTHON=python3 cargo build -p cli --features cuda
+cargo build -p cli --features cuda
 
 # Build with ROCm support
-PYO3_PYTHON=python3 cargo build -p cli --features rocm
+cargo build -p cli --features rocm
 ```
 
 ## Running Tests
 
 ```bash
 # Unit tests (excludes simulation tests)
-PYO3_PYTHON=python3 cargo nextest run --workspace --exclude e2e-tests --exclude test-cluster
+cargo nextest run --workspace --exclude e2e-tests --exclude test-cluster
 
 # Simulation tests (requires msim cfg flag)
-PYO3_PYTHON=python3 RUSTFLAGS="--cfg msim" cargo nextest run -p e2e-tests -p consensus
+RUSTFLAGS="--cfg msim" cargo nextest run -p e2e-tests -p consensus
 
 # Run a specific e2e test
-PYO3_PYTHON=python3 RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test <test_name>
+RUSTFLAGS="--cfg msim" cargo test -p e2e-tests --test <test_name>
 ```
 
 ## Formatting and Linting
