@@ -118,7 +118,7 @@ jobs:
   # Release builds — only run on tag pushes, after CI passes
   # ===========================================================================
   build:
-    needs: [test, simtest]
+    needs: [rustfmt, clippy, test, simtest]
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
@@ -155,7 +155,7 @@ jobs:
           path: artifacts/${{ matrix.artifact }}
 
   build-cuda:
-    needs: [test, simtest]
+    needs: [rustfmt, clippy, test, simtest]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -185,7 +185,7 @@ jobs:
           path: artifacts/soma-cuda-linux-x86_64
 
   build-rocm:
-    needs: [test, simtest]
+    needs: [rustfmt, clippy, test, simtest]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
     container:
