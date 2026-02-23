@@ -103,7 +103,7 @@ pub struct GenesisConfig {
     pub genesis_models: Vec<GenesisModelConfig>,
 }
 
-pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000_000_000_000;
+pub const DEFAULT_GAS_AMOUNT: u64 = 30_000_000_000_000;
 const DEFAULT_COMMISSION_RATE: u64 = 200;
 const DEFAULT_NUMBER_OF_ACCOUNTS: usize = 5;
 const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
@@ -112,7 +112,7 @@ const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
 pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
 /// Total supply denominated in Soma
-pub const TOTAL_SUPPLY_SOMA: u64 = 10_000_000_000;
+pub const TOTAL_SUPPLY_SOMA: u64 = 10_000_000;
 
 // Note: cannot use checked arithmetic here since `const unwrap` is still unstable.
 /// Total supply denominated in Shannons
@@ -347,8 +347,8 @@ impl GenesisCeremonyParameters {
     }
 
     fn default_emission_per_epoch() -> u64 {
-        // 1M SOMA
-        1_000_000 * SHANNONS_PER_SOMA // TODO: set the emission slope here!
+        // 1,370 SOMA/epoch — 20-year linear emission (10M SOMA / 7,300 epochs)
+        1_370 * SHANNONS_PER_SOMA
     }
 }
 
@@ -424,7 +424,7 @@ impl TokenDistributionSchedule {
     /// allocation to the emission fund. It must be in the following format:
     /// `0x0000000000000000000000000000000000000000000000000000000000000000,<amount to emission fund>,,`
     ///
-    /// All entries in a token distribution schedule must add up to 10B Soma.
+    /// All entries in a token distribution schedule must add up to 10M Soma.
     pub fn from_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Self> {
         let mut reader = csv::Reader::from_reader(reader);
         let mut allocations: Vec<TokenAllocation> =
@@ -433,7 +433,7 @@ impl TokenDistributionSchedule {
         assert_eq!(
             TOTAL_SUPPLY_SHANNONS,
             allocations.iter().map(|a| a.amount_shannons).sum::<u64>(),
-            "Token Distribution Schedule must add up to {} SHANNONS (10B SOMA)",
+            "Token Distribution Schedule must add up to {} SHANNONS (10M SOMA)",
             TOTAL_SUPPLY_SHANNONS,
         );
 
@@ -507,5 +507,5 @@ impl TokenDistributionScheduleBuilder {
 }
 
 fn default_stake() -> u64 {
-    20_000_000_000_000_000
+    20_000_000_000_000
 }

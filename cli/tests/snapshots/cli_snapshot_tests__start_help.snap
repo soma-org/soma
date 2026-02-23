@@ -1,5 +1,6 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 45
 expression: stdout
 ---
 Start a local Soma network for development and testing
@@ -40,13 +41,21 @@ Options:
           [default: info]
 
       --with-faucet[=<FAUCET_HOST_PORT>]
-          Start a faucet server alongside the local network. Optionally specify host:port (default: 0.0.0.0:9123)
+          Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable
+
+      --no-faucet
+          Disable the faucet server
+
+      --no-scoring
+          Disable the scoring server
+
+      --small-model
+          Use small model config for the scoring server (embedding_dim=16, num_layers=2)
 
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLES:
-    soma start                           # Persistent local network
-    soma start --force-regenesis         # Fresh ephemeral network
-    soma start --with-faucet             # With faucet at 0.0.0.0:9123
-    soma start --force-regenesis --with-faucet --epoch-duration-ms 10000
+    soma start --force-regenesis --small-model  # Fresh network, small models
+    soma start --force-regenesis                # Fresh network, full-size models
+    soma start --no-faucet --no-scoring         # Persistent network, no services

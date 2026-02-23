@@ -9,11 +9,11 @@ use clap::Parser;
 /// Default faucet port
 pub const DEFAULT_FAUCET_PORT: u16 = 9123;
 
-/// Default amount per coin (200 SOMA in shannons)
-pub const DEFAULT_AMOUNT: u64 = 200_000_000_000;
+/// Default amount per coin (2 SOMA in shannons — enough for model_min_stake + gas)
+pub const DEFAULT_AMOUNT: u64 = 2_000_000_000;
 
 /// Default number of coins to send per request
-pub const DEFAULT_NUM_COINS: usize = 5;
+pub const DEFAULT_NUM_COINS: usize = 1;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(name = "soma-faucet", about = "Soma Faucet Server")]

@@ -1,12 +1,13 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 87
 expression: stdout
 ---
 Commit a new model (phase 1 of commit-reveal)
 
 Registers a new model by committing its weight hashes. The model enters "pending" state and must be revealed in the next epoch or the stake is slashed.
 
-Usage: soma model commit [OPTIONS] --weights-url-commitment <WEIGHTS_URL_COMMITMENT> --weights-commitment <WEIGHTS_COMMITMENT> --architecture-version <ARCHITECTURE_VERSION> --stake-amount <STAKE_AMOUNT> --staking-pool-id <STAKING_POOL_ID> <MODEL_ID>
+Usage: soma model commit [OPTIONS] --weights-url-commitment <WEIGHTS_URL_COMMITMENT> --weights-commitment <WEIGHTS_COMMITMENT> --stake-amount <STAKE_AMOUNT> --staking-pool-id <STAKING_POOL_ID> <MODEL_ID>
 
 Arguments:
   <MODEL_ID>
@@ -20,7 +21,7 @@ Options:
           Hex-encoded commitment to the decrypted model weights (32 bytes)
 
       --architecture-version <ARCHITECTURE_VERSION>
-          Model architecture version
+          Model architecture version (auto-fetched from chain if omitted)
 
       --stake-amount <STAKE_AMOUNT>
           Amount of SOMA to stake (e.g., 100 or 0.5)
@@ -55,6 +56,5 @@ EXAMPLES:
     soma model commit 0xMODEL_ID \
         --weights-url-commitment 0xABC...DEF \
         --weights-commitment 0x123...456 \
-        --architecture-version 1 \
         --stake-amount 100 \
         --staking-pool-id 0xPOOL_ID

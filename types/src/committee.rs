@@ -68,24 +68,20 @@ pub const QUORUM_THRESHOLD: VotingPower = 6_667;
 pub const VALIDITY_THRESHOLD: VotingPower = 3_334;
 
 // Cap voting power of an individual validator at 10%.
-// TODO: determine what this should be
 pub const MAX_VOTING_POWER: u64 = 1_000;
 
 /// Minimum amount of voting power required to become a validator
 /// .12% of voting power
-// TODO: consider making this .06 or .03
 pub const VALIDATOR_CONSENSUS_MIN_POWER: u64 = 12;
 
 /// Low voting power threshold for validators
 /// Validators below this threshold fall into the "at risk" group.
 /// .08% of voting power
-// TODO: consider making this .04 or .02
 pub const VALIDATOR_CONSENSUS_LOW_POWER: u64 = 8;
 
 /// Very low voting power threshold for validators
 /// Validators below this threshold will be removed immediately at epoch change.
 /// .04% of voting power
-// TODO: consider making this .02 or .01
 pub const VALIDATOR_CONSENSUS_VERY_LOW_POWER: u64 = 4;
 
 /// A validator can have stake below `validator_low_stake_threshold`

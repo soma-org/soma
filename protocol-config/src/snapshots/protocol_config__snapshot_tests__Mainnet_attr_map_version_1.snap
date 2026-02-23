@@ -21,7 +21,7 @@ consensus_max_transaction_size_bytes:
 consensus_max_transactions_in_block_bytes:
   u64: 524288
 epoch_duration_ms:
-  u64: 86400
+  u64: 86400000
 execution_version:
   u64: 0
 fee_adjustment_rate_bps:
@@ -31,11 +31,11 @@ initial_value_fee_bps:
 max_checkpoint_size_bytes:
   u64: 31457280
 max_submission_data_size:
-  u64: 1073741824
+  u64: 268435456
 max_transactions_per_checkpoint:
   u64: 20000
 max_value_fee_bps:
-  u64: 100
+  u64: 50
 min_checkpoint_interval_ms:
   u64: 200
 min_value_fee_bps:
@@ -57,25 +57,25 @@ submission_bond_per_byte:
 target_claimer_incentive_bps:
   u64: 100
 target_difficulty_adjustment_rate_bps:
-  u64: 500
+  u64: 1000
 target_embedding_dim:
   u64: 768
 target_epoch_fee_collection:
   u64: 1000000000
 target_hits_ema_decay_bps:
-  u64: 9000
+  u64: 7000
 target_hits_per_epoch:
   u64: 16
 target_initial_distance_threshold:
-  BcsF32: 1
+  BcsF32: 2
 target_initial_targets_per_epoch:
   u64: 20
 target_max_distance_threshold:
-  BcsF32: 1
+  BcsF32: 2
 target_min_distance_threshold:
   BcsF32: 0.1
 target_miner_reward_share_bps:
-  u64: 5000
+  u64: 6900
 target_model_reward_share_bps:
   u64: 3000
 target_models_per_target:

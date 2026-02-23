@@ -350,7 +350,7 @@ impl ProtocolConfig {
 
             buffer_stake_for_protocol_upgrade_bps: Some(5000),
 
-            epoch_duration_ms: Some(24 * 60 * 60), // 1 day
+            epoch_duration_ms: Some(24 * 60 * 60 * 1000), // 1 day (ms)
 
             // Reward parameters
             validator_reward_allocation_bps: Some(7000), // 70% of validator rewards
@@ -368,7 +368,7 @@ impl ProtocolConfig {
             write_object_fee: Some(300),
             initial_value_fee_bps: Some(10),     // 0.1%
             min_value_fee_bps: Some(1),          // 0.01%
-            max_value_fee_bps: Some(100),        // 1%
+            max_value_fee_bps: Some(50),         // 0.5%
             fee_adjustment_rate_bps: Some(1250), // 12.5%
 
             // Target/Mining parameters
@@ -377,14 +377,14 @@ impl ProtocolConfig {
             target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
             target_reward_allocation_bps: Some(8000), // 80% of emissions to targets
             target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
-            target_hits_ema_decay_bps: Some(9000), // 90% decay (10% weight on new data)
-            target_difficulty_adjustment_rate_bps: Some(500), // 5% max adjustment per epoch
+            target_hits_ema_decay_bps: Some(7000), // 70% decay (30% weight on new data)
+            target_difficulty_adjustment_rate_bps: Some(1000), // 10% max adjustment per epoch
             target_max_distance_threshold: Some(BcsF32(2.0)), // Max distance (easiest, max cosine distance)
             target_min_distance_threshold: Some(BcsF32(0.1)), // Min distance (hardest)
             target_initial_targets_per_epoch: Some(20), // 20 targets at genesis and each epoch start
 
             // Reward distribution parameters
-            target_miner_reward_share_bps: Some(5000), // 50% to miner
+            target_miner_reward_share_bps: Some(6900), // 69% to miner
             target_model_reward_share_bps: Some(3000), // 30% to model owner
             target_claimer_incentive_bps: Some(100),   // 1% to claimer as incentive
 
@@ -395,7 +395,7 @@ impl ProtocolConfig {
             challenger_bond_per_byte: Some(5), // 5 shannons per byte (half of submission bond)
 
             // Data size limits
-            max_submission_data_size: Some(1024 * 1024 * 1024), // 1 GiB max data size
+            max_submission_data_size: Some(256 * 1024 * 1024), // 256 MiB max data size
 
             // Execution versioning
             execution_version: Some(0), // Initial execution version
