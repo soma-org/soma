@@ -4,7 +4,7 @@ edition = "2024"
 version.workspace = true
 
 [dependencies]
-types.workspace = true
+types = { path = "../types", default-features = false }
 futures.workspace = true
 tokio.workspace = true
 parking_lot.workspace = true

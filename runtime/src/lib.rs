@@ -9,8 +9,6 @@ use burn::backend::{NdArray, Wgpu};
 use burn::backend::Cuda;
 #[cfg(feature = "rocm")]
 use burn::backend::Rocm;
-#[cfg(feature = "tch")]
-use burn::backend::LibTorch;
 use burn::tensor::TensorData;
 use models::v1::ModelRunner;
 use object_store::local::LocalFileSystem;
@@ -157,8 +155,8 @@ pub trait RuntimeAPI: Send + Sync + 'static {
 
 /// Create a `RuntimeV1` with the specified burn backend, returned as `Arc<dyn RuntimeAPI>`.
 ///
-/// CPU and Wgpu backends are always available. CUDA, ROCm, and LibTorch require
-/// the corresponding cargo feature (`cuda`, `rocm`, `tch`) to be enabled.
+/// CPU and Wgpu backends are always available. CUDA and ROCm require
+/// the corresponding cargo feature (`cuda`, `rocm`) to be enabled.
 pub fn build_runtime(
     device: &DeviceConfig,
     data_dir: &Path,
@@ -234,24 +232,6 @@ pub fn build_runtime(
             #[cfg(not(feature = "rocm"))]
             anyhow::bail!(
                 "ROCm/AMD GPU support not compiled in. Rebuild with `--features runtime/rocm`."
-            )
-        }
-        DeviceConfig::LibTorch => {
-            #[cfg(feature = "tch")]
-            {
-                let model =
-                    Arc::new(ModelRunner::<LibTorch>::new(model_config, Default::default(), 4));
-                Ok(Arc::new(v1::RuntimeV1::new(
-                    store,
-                    downloader,
-                    0,
-                    Default::default(),
-                    model,
-                )))
-            }
-            #[cfg(not(feature = "tch"))]
-            anyhow::bail!(
-                "LibTorch support not compiled in. Rebuild with `--features runtime/tch`."
             )
         }
     }

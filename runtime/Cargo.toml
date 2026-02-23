@@ -27,7 +27,6 @@ url.workspace = true
 default = []
 cuda = ["burn/cuda"]
 rocm = ["burn/rocm"]
-tch = ["burn/tch"]
 
 [lints]
 workspace = true

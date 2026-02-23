@@ -201,6 +201,29 @@ impl ProxyClient {
         Self::new(validators, ProxyClientConfig::default())
     }
 
+    /// Create a proxy client that fetches from a single fullnode proxy URL.
+    ///
+    /// The fullnode exposes `/data/{target_id}` and `/model/{model_id}` routes
+    /// on the same HTTP server as its RPC endpoint. This is the simplest way
+    /// to create a proxy client — just pass the fullnode URL.
+    pub fn from_url(url: impl AsRef<str>) -> Result<Self, ProxyError> {
+        Self::from_url_with_config(url, ProxyClientConfig::default())
+    }
+
+    /// Create a proxy client from a fullnode proxy URL with custom config.
+    pub fn from_url_with_config(
+        url: impl AsRef<str>,
+        config: ProxyClientConfig,
+    ) -> Result<Self, ProxyError> {
+        let proxy_url = Url::parse(url.as_ref())
+            .map_err(|e| ProxyError::InvalidProxyAddress(format!("{}: {}", url.as_ref(), e)))?;
+        let validators = vec![ValidatorProxyInfo {
+            name: AuthorityName::default(),
+            proxy_url,
+        }];
+        Self::new(validators, config)
+    }
+
     /// Create a proxy client with custom config from SystemState.
     pub fn from_system_state_with_config(
         state: &SystemState,

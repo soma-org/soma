@@ -1,0 +1,15 @@
+[package]
+name = "admin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+utils = { path = "../utils" }
+tonic = { version = "0.14.3", default-features = false, features = ["transport"] }
+serde.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[lints]
+workspace = true

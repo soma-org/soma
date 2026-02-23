@@ -27,4 +27,12 @@ pub enum Error {
     CustomHeadersError(String),
     #[error("Error initializing RPC client: {0}")]
     ClientInitError(String),
+    #[error("Key error: {0}")]
+    KeyError(String),
+    #[error("Service not configured: {0}")]
+    ServiceNotConfigured(String),
+    #[error("gRPC error: {0}")]
+    GrpcError(String),
+    #[error("Transaction failed: {0}")]
+    TransactionFailed(String),
 }

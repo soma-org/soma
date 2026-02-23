@@ -366,6 +366,7 @@ impl Config {
         connect_lazy_with_config(addr, tls_config, self)
     }
 
+    #[cfg(feature = "server")]
     pub fn http_config(&self) -> soma_http::Config {
         soma_http::Config::default()
             .initial_stream_window_size(self.http2_initial_stream_window_size)

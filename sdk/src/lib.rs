@@ -1,30 +1,38 @@
-use bytes::Bytes;
 use futures::Stream;
-use rpc::api::ServerVersion;
 use rpc::proto::soma::ListOwnedObjectsRequest;
-use rpc::{api::client::Client, proto::soma::ledger_service_client::LedgerServiceClient};
+use rpc::api::client::Client;
 use std::pin::Pin;
 use std::{sync::Arc, time::Duration};
-use tokio::io::{AsyncRead, AsyncSeek};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use types::base::SomaAddress;
-use types::effects::TransactionEffects;
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::object::{Object, ObjectID, Version};
-use types::transaction::Transaction;
-use url::Url;
-use uuid::Uuid;
+use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 use crate::error::SomaRpcResult;
 
 pub mod client_config;
+pub mod crypto_utils;
 pub mod error;
-#[cfg(feature = "tls")]
-pub mod faucet_client;
-#[cfg(feature = "tls")]
+pub mod keypair;
+#[cfg(feature = "proxy")]
 pub mod proxy_client;
 pub mod transaction_builder;
 pub mod wallet_context;
 
+// Re-export types for downstream crates
+#[cfg(feature = "grpc-services")]
+pub use scoring::types as scoring_types;
+#[cfg(feature = "grpc-services")]
+pub use admin::admin_types;
+
+// gRPC client type aliases (tonic 0.14.3 channels, separate from core ledger)
+#[cfg(feature = "grpc-services")]
+type ScoringGrpcClient =
+    scoring::tonic_gen::scoring_client::ScoringClient<scoring::tonic::transport::Channel>;
+#[cfg(feature = "grpc-services")]
+type AdminGrpcClient =
+    admin::admin_gen::admin_client::AdminClient<admin::tonic::transport::Channel>;
 // TODO: define these when public rpcs are finalized
 pub const SOMA_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
 pub const SOMA_LOCAL_NETWORK_URL_0: &str = "http://0.0.0.0:9000";
@@ -35,11 +43,21 @@ pub const SOMA_MAINNET_URL: &str = "https://fullnode.mainnet.soma.org:443";
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
     request_timeout: Duration,
+    #[cfg(feature = "grpc-services")]
+    scoring_url: Option<String>,
+    #[cfg(feature = "grpc-services")]
+    admin_url: Option<String>,
 }
 
 impl Default for SomaClientBuilder {
     fn default() -> Self {
-        Self { request_timeout: Duration::from_secs(60) }
+        Self {
+            request_timeout: Duration::from_secs(60),
+            #[cfg(feature = "grpc-services")]
+            scoring_url: None,
+            #[cfg(feature = "grpc-services")]
+            admin_url: None,
+        }
     }
 }
 
@@ -49,13 +67,55 @@ impl SomaClientBuilder {
         self.request_timeout = timeout;
         self
     }
+
+    /// Set the scoring service URL (e.g. `http://127.0.0.1:9124`).
+    #[cfg(feature = "grpc-services")]
+    pub fn scoring_url(mut self, url: impl Into<String>) -> Self {
+        self.scoring_url = Some(url.into());
+        self
+    }
+
+    /// Set the admin service URL (e.g. `http://127.0.0.1:9125`).
+    #[cfg(feature = "grpc-services")]
+    pub fn admin_url(mut self, url: impl Into<String>) -> Self {
+        self.admin_url = Some(url.into());
+        self
+    }
+
     /// Build the client with RPC and object storage URLs
     pub async fn build(self, rpc_url: impl AsRef<str>) -> Result<SomaClient, error::Error> {
-        // Create gRPC client
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
 
-        Ok(SomaClient { inner: Arc::new(RwLock::new(client)) })
+        #[cfg(feature = "grpc-services")]
+        let scoring_client = match self.scoring_url {
+            Some(url) => {
+                let sc = ScoringGrpcClient::connect(url)
+                    .await
+                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
+                Some(Arc::new(Mutex::new(sc)))
+            }
+            None => None,
+        };
+
+        #[cfg(feature = "grpc-services")]
+        let admin_client = match self.admin_url {
+            Some(url) => {
+                let ac = AdminGrpcClient::connect(url)
+                    .await
+                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
+                Some(Arc::new(Mutex::new(ac)))
+            }
+            None => None,
+        };
+
+        Ok(SomaClient {
+            inner: Arc::new(RwLock::new(client)),
+            #[cfg(feature = "grpc-services")]
+            scoring_client,
+            #[cfg(feature = "grpc-services")]
+            admin_client,
+        })
     }
 
     /// Build a client for the local network with default addresses
@@ -78,6 +138,10 @@ impl SomaClientBuilder {
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
+    #[cfg(feature = "grpc-services")]
+    scoring_client: Option<Arc<Mutex<ScoringGrpcClient>>>,
+    #[cfg(feature = "grpc-services")]
+    admin_client: Option<Arc<Mutex<AdminGrpcClient>>>,
 }
 
 impl SomaClient {
@@ -284,4 +348,142 @@ impl SomaClient {
         let mut client = self.inner.write().await;
         client.get_transaction(digest).await
     }
+
+    // -------------------------------------------------------------------
+    // Transaction helpers
+    // -------------------------------------------------------------------
+
+    /// Build [`TransactionData`] with automatic gas selection.
+    ///
+    /// If `gas` is `None`, queries the chain for the sender's first coin object.
+    pub async fn build_transaction_data(
+        &self,
+        sender: SomaAddress,
+        kind: TransactionKind,
+        gas: Option<types::object::ObjectRef>,
+    ) -> Result<TransactionData, error::Error> {
+        let gas_payment = match gas {
+            Some(gas_ref) => vec![gas_ref],
+            None => {
+                use futures::TryStreamExt as _;
+
+                let mut request = ListOwnedObjectsRequest::default();
+                request.owner = Some(sender.to_string());
+                request.page_size = Some(1);
+                request.object_type = Some(rpc::types::ObjectType::Coin.into());
+
+                let stream = self.list_owned_objects(request).await;
+                tokio::pin!(stream);
+
+                let obj = stream
+                    .try_next()
+                    .await
+                    .map_err(|e| error::Error::DataError(e.to_string()))?
+                    .ok_or_else(|| {
+                        error::Error::DataError(format!(
+                            "No gas object found for address {sender}. \
+                             Please ensure the address has coins."
+                        ))
+                    })?;
+                vec![obj.compute_object_reference()]
+            }
+        };
+        Ok(TransactionData::new(kind, sender, gas_payment))
+    }
+
+    /// Sign and execute a transaction, returning the effects.
+    ///
+    /// Waits for the transaction to be included in a checkpoint (i.e. indexed)
+    /// so that subsequent reads (e.g. `get_balance`) reflect the new state.
+    /// Returns an error if the transaction effects indicate failure.
+    pub async fn sign_and_execute(
+        &self,
+        keypair: &keypair::Keypair,
+        tx_data: TransactionData,
+        label: &str,
+    ) -> Result<TransactionEffects, error::Error> {
+        let tx = keypair.sign_transaction(tx_data);
+        let response = self
+            .execute_transaction_and_wait_for_checkpoint(&tx, Duration::from_secs(30))
+            .await
+            .map_err(|e| error::Error::GrpcError(e.to_string()))?;
+        if !response.effects.status().is_ok() {
+            return Err(error::Error::TransactionFailed(format!(
+                "{label} failed: {:?}",
+                response.effects.status()
+            )));
+        }
+        Ok(response.effects)
+    }
+
+    // -------------------------------------------------------------------
+    // gRPC service methods (behind grpc-services feature)
+    // -------------------------------------------------------------------
+
+    /// Score model manifests against a data submission.
+    #[cfg(feature = "grpc-services")]
+    pub async fn score(
+        &self,
+        request: scoring::types::ScoreRequest,
+    ) -> Result<scoring::types::ScoreResponse, error::Error> {
+        let sc = self
+            .scoring_client
+            .as_ref()
+            .ok_or_else(|| {
+                error::Error::ServiceNotConfigured(
+                    "No scoring_url was provided when creating SomaClient".into(),
+                )
+            })?
+            .clone();
+        let mut client = sc.lock().await;
+        let response = client
+            .score(request)
+            .await
+            .map_err(|e| error::Error::GrpcError(e.to_string()))?
+            .into_inner();
+        Ok(response)
+    }
+
+    /// Health check against the scoring service.
+    #[cfg(feature = "grpc-services")]
+    pub async fn scoring_health(&self) -> Result<bool, error::Error> {
+        let sc = self
+            .scoring_client
+            .as_ref()
+            .ok_or_else(|| {
+                error::Error::ServiceNotConfigured(
+                    "No scoring_url was provided when creating SomaClient".into(),
+                )
+            })?
+            .clone();
+        let mut client = sc.lock().await;
+        let response = client
+            .health(scoring::types::HealthRequest {})
+            .await
+            .map_err(|e| error::Error::GrpcError(e.to_string()))?
+            .into_inner();
+        Ok(response.ok)
+    }
+
+    /// Trigger epoch advancement on localnet. Returns the new epoch number.
+    #[cfg(feature = "grpc-services")]
+    pub async fn advance_epoch(&self) -> Result<u64, error::Error> {
+        let ac = self
+            .admin_client
+            .as_ref()
+            .ok_or_else(|| {
+                error::Error::ServiceNotConfigured(
+                    "No admin_url was provided when creating SomaClient".into(),
+                )
+            })?
+            .clone();
+        let mut client = ac.lock().await;
+        let response = client
+            .advance_epoch(admin::admin_types::AdvanceEpochRequest {})
+            .await
+            .map_err(|e| error::Error::GrpcError(e.to_string()))?
+            .into_inner();
+        Ok(response.epoch)
+    }
+
 }

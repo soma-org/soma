@@ -1,7 +1,6 @@
 """Example: connect to a Soma node and query basic chain state."""
 
 import asyncio
-import json
 
 from soma_sdk import SomaClient
 
@@ -16,14 +15,14 @@ async def run():
     print(f"Server version: {version}")
     print(f"Protocol version: {protocol}")
 
-    state = json.loads(await client.get_latest_system_state())
-    print(f"Epoch: {state.get('epoch')}")
+    state = await client.get_latest_system_state()
+    print(f"Epoch: {state.epoch}")
 
-    cp = json.loads(await client.get_latest_checkpoint())
-    print(f"Latest checkpoint: {cp['data']['sequence_number']}")
+    cp = await client.get_latest_checkpoint()
+    print(f"Latest checkpoint: {cp.data.sequence_number}")
 
-    targets = json.loads(await client.list_targets(status="open", limit=5))
-    print(f"Open targets: {len(targets.get('targets', []))}")
+    targets = await client.get_targets(status="open", limit=5)
+    print(f"Open targets: {len(targets)}")
 
 
 def main():

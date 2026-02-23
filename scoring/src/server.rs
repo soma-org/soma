@@ -1,18 +1,55 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::{get, post};
-use axum::{Json, Router};
-use tower_http::cors::{Any, CorsLayer};
+use tonic::{Request, Response, Status};
 use tracing::info;
 
 use crate::scoring::ScoringEngine;
-use crate::types::ScoreRequest;
+use crate::tonic_gen::scoring_server::{Scoring, ScoringServer};
+use crate::types::{HealthRequest, HealthResponse, ScoreRequest, ScoreResponse};
 
-pub struct AppState {
-    pub engine: Arc<ScoringEngine>,
+pub struct ScoringService {
+    engine: Arc<ScoringEngine>,
+}
+
+impl ScoringService {
+    pub fn new(engine: Arc<ScoringEngine>) -> Self {
+        Self { engine }
+    }
+}
+
+#[tonic::async_trait]
+impl Scoring for ScoringService {
+    async fn score(
+        &self,
+        request: Request<ScoreRequest>,
+    ) -> Result<Response<ScoreResponse>, Status> {
+        let request = request.into_inner();
+        match self.engine.score(request).await {
+            Ok(response) => Ok(Response::new(response)),
+            Err(e) => {
+                let error_msg = e.to_string();
+                let code = if error_msg.contains("must be")
+                    || error_msg.contains("required")
+                    || error_msg.contains("must not")
+                    || error_msg.contains("Checksum")
+                    || error_msg.contains("Invalid")
+                {
+                    tonic::Code::InvalidArgument
+                } else {
+                    tonic::Code::Internal
+                };
+                Err(Status::new(code, error_msg))
+            }
+        }
+    }
+
+    async fn health(
+        &self,
+        _request: Request<HealthRequest>,
+    ) -> Result<Response<HealthResponse>, Status> {
+        Ok(Response::new(HealthResponse { ok: true }))
+    }
 }
 
 pub async fn start_scoring_server(
@@ -24,58 +61,16 @@ pub async fn start_scoring_server(
         .parse()
         .map_err(|e| format!("Invalid scoring service address: {e}"))?;
 
-    let cors = CorsLayer::new()
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .allow_origin(Any);
-
-    let state = Arc::new(AppState { engine });
-
-    let app = Router::new()
-        .route("/health", get(health))
-        .route("/score", post(score))
-        .layer(cors)
-        .with_state(state);
+    let svc = ScoringService::new(engine);
 
     info!("Scoring service listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    tonic::transport::Server::builder()
+        .add_service(ScoringServer::new(svc))
+        .serve(addr)
+        .await?;
 
     Ok(())
-}
-
-async fn health() -> &'static str {
-    "OK"
-}
-
-async fn score(
-    State(state): State<Arc<AppState>>,
-    Json(request): Json<ScoreRequest>,
-) -> (StatusCode, Json<serde_json::Value>) {
-    match state.engine.score(request).await {
-        Ok(response) => match serde_json::to_value(response) {
-            Ok(val) => (StatusCode::OK, Json(val)),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("Serialization error: {e}") })),
-            ),
-        },
-        Err(e) => {
-            let error_msg = e.to_string();
-            let status = if error_msg.contains("must be")
-                || error_msg.contains("required")
-                || error_msg.contains("must not")
-                || error_msg.contains("Checksum")
-                || error_msg.contains("Invalid")
-            {
-                StatusCode::BAD_REQUEST
-            } else {
-                StatusCode::INTERNAL_SERVER_ERROR
-            };
-            (status, Json(serde_json::json!({ "error": error_msg })))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -87,18 +82,7 @@ mod tests {
         let config = runtime::ModelConfig::new();
         let device = types::config::node_config::DeviceConfig::Cpu;
         let engine = Arc::new(ScoringEngine::new(dir.path(), config, &device).expect("engine"));
-        let state = Arc::new(AppState { engine });
-
-        let cors = CorsLayer::new()
-            .allow_methods(Any)
-            .allow_headers(Any)
-            .allow_origin(Any);
-
-        let app = Router::new()
-            .route("/health", get(health))
-            .route("/score", post(score))
-            .layer(cors)
-            .with_state(state);
+        let svc = ScoringService::new(engine);
 
         let listener =
             tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
@@ -108,7 +92,11 @@ mod tests {
         std::mem::forget(dir);
 
         tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("server");
+            tonic::transport::Server::builder()
+                .add_service(ScoringServer::new(svc))
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .expect("server");
         });
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -116,62 +104,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_health_endpoint() {
+    async fn test_health() {
         let port = start_test_server().await;
-        let resp =
-            reqwest::get(format!("http://127.0.0.1:{port}/health")).await.expect("health request");
-        assert_eq!(resp.status(), 200);
-        assert_eq!(resp.text().await.expect("body"), "OK");
-    }
-
-    #[tokio::test]
-    async fn test_score_bad_json() {
-        let port = start_test_server().await;
-        let resp = reqwest::Client::new()
-            .post(format!("http://127.0.0.1:{port}/score"))
-            .json(&serde_json::json!({"invalid": "request"}))
-            .send()
-            .await
-            .expect("request");
-        assert_eq!(resp.status(), 422);
-    }
-
-    #[tokio::test]
-    async fn test_cors_headers() {
-        let port = start_test_server().await;
-        let resp = reqwest::Client::new()
-            .get(format!("http://127.0.0.1:{port}/health"))
-            .header("Origin", "http://example.com")
-            .send()
-            .await
-            .expect("cors request");
-        assert_eq!(resp.status(), 200);
-        let allow_origin = resp
-            .headers()
-            .get("access-control-allow-origin")
-            .expect("missing CORS header");
-        assert_eq!(allow_origin.to_str().expect("header value"), "*");
+        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(
+            format!("http://127.0.0.1:{port}"),
+        )
+        .await
+        .expect("connect");
+        let resp = client.health(HealthRequest {}).await.expect("health");
+        assert!(resp.into_inner().ok);
     }
 
     #[tokio::test]
     async fn test_score_empty_models() {
         let port = start_test_server().await;
-        let body = serde_json::json!({
-            "data_url": "https://example.com/data.bin",
-            "data_checksum": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-            "data_size": 1024,
-            "model_manifests": [],
-            "target_embedding": [0.1, 0.2],
-            "seed": 42,
-        });
-        let resp = reqwest::Client::new()
-            .post(format!("http://127.0.0.1:{port}/score"))
-            .json(&body)
-            .send()
-            .await
-            .expect("request");
-        assert_eq!(resp.status(), 400);
-        let body: serde_json::Value = resp.json().await.expect("json");
-        assert!(body["error"].as_str().expect("error field").contains("required"));
+        let mut client = crate::tonic_gen::scoring_client::ScoringClient::connect(
+            format!("http://127.0.0.1:{port}"),
+        )
+        .await
+        .expect("connect");
+        let request = ScoreRequest {
+            data_url: "https://example.com/data.bin".to_string(),
+            data_checksum: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                .to_string(),
+            data_size: 1024,
+            model_manifests: vec![],
+            target_embedding: vec![0.1, 0.2],
+            seed: 42,
+        };
+        let resp = client.score(request).await;
+        assert!(resp.is_err());
+        let status = resp.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("required"));
     }
 }

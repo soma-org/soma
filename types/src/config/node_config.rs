@@ -46,7 +46,7 @@ pub const DEFAULT_COMMISSION_RATE: u64 = 200;
 
 /// Compute backend for ML inference (scoring service and audit service).
 ///
-/// CPU and Wgpu are always available. CUDA, ROCm, and LibTorch require
+/// CPU and Wgpu are always available. CUDA and ROCm require
 /// the corresponding cargo feature to be enabled at compile time.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -60,9 +60,6 @@ pub enum DeviceConfig {
     Cuda,
     /// AMD GPU via ROCm/HIP. Requires `--features rocm`.
     Rocm,
-    /// PyTorch LibTorch backend (CPU/CUDA/MPS). Requires `--features tch`.
-    #[serde(alias = "torch")]
-    LibTorch,
 }
 
 impl std::fmt::Display for DeviceConfig {
@@ -72,7 +69,6 @@ impl std::fmt::Display for DeviceConfig {
             DeviceConfig::Wgpu => write!(f, "wgpu"),
             DeviceConfig::Cuda => write!(f, "cuda"),
             DeviceConfig::Rocm => write!(f, "rocm"),
-            DeviceConfig::LibTorch => write!(f, "libtorch"),
         }
     }
 }

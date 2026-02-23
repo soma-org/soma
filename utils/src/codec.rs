@@ -25,16 +25,18 @@ impl<U: serde::de::DeserializeOwned> Decoder for BcsDecoder<U> {
     type Error = Status;
 
     fn decode(&mut self, buf: &mut DecodeBuf<'_>) -> Result<Option<Self::Item>, Self::Error> {
-        if !buf.has_remaining() {
-            return Ok(None);
+        let remaining = buf.remaining();
+        if remaining == 0 {
+            // BCS empty-struct support: try to deserialize from zero bytes.
+            // Returns Ok(Some(..)) for unit/empty structs, Ok(None) for others.
+            match bcs::from_bytes::<Self::Item>(&[]) {
+                Ok(item) => return Ok(Some(item)),
+                Err(_) => return Ok(None),
+            }
         }
-
-        let chunk = buf.chunk();
-
+        let bytes = buf.copy_to_bytes(remaining);
         let item: Self::Item =
-            bcs::from_bytes(chunk).map_err(|e| Status::internal(e.to_string()))?;
-        buf.advance(chunk.len());
-
+            bcs::from_bytes(&bytes).map_err(|e| Status::internal(e.to_string()))?;
         Ok(Some(item))
     }
 }

@@ -1,17 +1,17 @@
 // Faucet client logic derived from MystenLabs/sui (Apache-2.0)
 // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/client_commands.rs
 
-use anyhow::{Result, bail};
-use sdk::faucet_client::{self, RequestStatus};
+use anyhow::Result;
+use faucet::faucet_gen::faucet_client::FaucetClient;
+use faucet::faucet_types::GasRequest;
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
-use types::base::SomaAddress;
 
 use crate::response::format_soma_public;
 
 /// Execute the `soma client faucet` command.
 ///
-/// Requests test tokens from a faucet server for the given address.
+/// Requests test tokens from a faucet gRPC server for the given address.
 /// If no address is provided, uses the active address. If no URL is
 /// provided, derives it from the active network environment.
 pub async fn execute(
@@ -27,27 +27,24 @@ pub async fn execute(
 
     println!("Requesting tokens from faucet at {url} for address {address}...");
 
-    let response = faucet_client::request_from_faucet(address, &url).await?;
+    let mut client = FaucetClient::connect(url).await?;
+    let response = client
+        .request_gas(GasRequest { recipient: address.to_string() })
+        .await?
+        .into_inner();
 
-    match response.status {
-        RequestStatus::Success => {
-            if let Some(coins) = response.coins_sent {
-                println!("Successfully received {} coins:", coins.len());
-                for coin in &coins {
-                    println!(
-                        "  - {} (id: {}, tx: {})",
-                        format_soma_public(coin.amount as u128),
-                        coin.id,
-                        coin.transfer_tx_digest
-                    );
-                }
-            } else {
-                println!("Request succeeded (no coin details returned).");
-            }
+    if response.status == "Success" {
+        println!("Successfully received {} coins:", response.coins_sent.len());
+        for coin in &response.coins_sent {
+            println!(
+                "  - {} (id: {}, tx: {})",
+                format_soma_public(coin.amount as u128),
+                coin.id,
+                coin.transfer_tx_digest
+            );
         }
-        RequestStatus::Failure(msg) => {
-            bail!("Faucet request failed: {msg}");
-        }
+    } else {
+        anyhow::bail!("Faucet request failed: {}", response.status);
     }
 
     Ok(())
@@ -65,24 +62,24 @@ fn find_faucet_url(context: &WalletContext) -> Result<String> {
     faucet_url_for_rpc(&env.rpc, &env.alias)
 }
 
-/// Derive the faucet URL from a known network RPC URL.
+/// Derive the faucet gRPC URL from a known network RPC URL.
 fn faucet_url_for_rpc(rpc: &str, alias: &str) -> Result<String> {
     // Local network
     if rpc.contains("127.0.0.1") || rpc.contains("0.0.0.0") || rpc.contains("localhost") {
-        return Ok("http://127.0.0.1:9123/gas".to_string());
+        return Ok("http://127.0.0.1:9123".to_string());
     }
 
     // Devnet
     if rpc.contains("devnet") {
-        return Ok("https://faucet.devnet.soma.network/gas".to_string());
+        return Ok("https://faucet.devnet.soma.network".to_string());
     }
 
     // Testnet
     if rpc.contains("testnet") {
-        return Ok("https://faucet.testnet.soma.network/gas".to_string());
+        return Ok("https://faucet.testnet.soma.network".to_string());
     }
 
-    bail!(
+    anyhow::bail!(
         "Could not determine faucet URL for network environment '{alias}' (RPC: {rpc}). \
          Please provide a faucet URL explicitly with --url."
     )
@@ -92,36 +89,32 @@ fn faucet_url_for_rpc(rpc: &str, alias: &str) -> Result<String> {
 mod tests {
     use super::*;
 
-    /// §8.5: Test find_faucet_url mapping for localnet
     #[test]
     fn test_find_faucet_url_localnet() {
         let result = faucet_url_for_rpc("http://127.0.0.1:9000", "local").unwrap();
-        assert_eq!(result, "http://127.0.0.1:9123/gas");
+        assert_eq!(result, "http://127.0.0.1:9123");
 
         let result = faucet_url_for_rpc("http://0.0.0.0:9000", "local").unwrap();
-        assert_eq!(result, "http://127.0.0.1:9123/gas");
+        assert_eq!(result, "http://127.0.0.1:9123");
 
         let result = faucet_url_for_rpc("http://localhost:9000", "local").unwrap();
-        assert_eq!(result, "http://127.0.0.1:9123/gas");
+        assert_eq!(result, "http://127.0.0.1:9123");
     }
 
-    /// §8.5: Test find_faucet_url mapping for devnet
     #[test]
     fn test_find_faucet_url_devnet() {
         let result =
             faucet_url_for_rpc("https://fullnode.devnet.soma.org:443", "devnet").unwrap();
-        assert_eq!(result, "https://faucet.devnet.soma.network/gas");
+        assert_eq!(result, "https://faucet.devnet.soma.network");
     }
 
-    /// §8.5: Test find_faucet_url mapping for testnet
     #[test]
     fn test_find_faucet_url_testnet() {
         let result =
             faucet_url_for_rpc("https://fullnode.testnet.soma.org:443", "testnet").unwrap();
-        assert_eq!(result, "https://faucet.testnet.soma.network/gas");
+        assert_eq!(result, "https://faucet.testnet.soma.network");
     }
 
-    /// §8.5: Test that mainnet/unknown RPC returns error
     #[test]
     fn test_find_faucet_url_unknown() {
         let result = faucet_url_for_rpc("https://fullnode.mainnet.soma.org:443", "mainnet");

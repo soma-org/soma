@@ -4,13 +4,36 @@ use types::checksum::Checksum;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use url::Url;
 
+/// Serde module for `Vec<f32>` that serializes each f32 as its u32 bit
+/// representation, making the type compatible with BCS (which does not
+/// natively support floating-point types).
+mod vec_f32_as_u32_bits {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(vals: &Vec<f32>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bits: Vec<u32> = vals.iter().map(|f| f.to_bits()).collect();
+        bits.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bits = Vec::<u32>::deserialize(deserializer)?;
+        Ok(bits.into_iter().map(f32::from_bits).collect())
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ManifestInput {
     pub url: String,
     pub checksum: String,
     pub size: usize,
     /// Optional hex-encoded AES-256 decryption key (64 hex chars = 32 bytes).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub decryption_key: Option<String>,
 }
 
@@ -20,6 +43,7 @@ pub struct ScoreRequest {
     pub data_checksum: String,
     pub data_size: usize,
     pub model_manifests: Vec<ManifestInput>,
+    #[serde(with = "vec_f32_as_u32_bits")]
     pub target_embedding: Vec<f32>,
     pub seed: u64,
 }
@@ -27,14 +51,25 @@ pub struct ScoreRequest {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScoreResponse {
     pub winner: usize,
+    #[serde(with = "vec_f32_as_u32_bits")]
     pub loss_score: Vec<f32>,
+    #[serde(with = "vec_f32_as_u32_bits")]
     pub embedding: Vec<f32>,
+    #[serde(with = "vec_f32_as_u32_bits")]
     pub distance: Vec<f32>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct HealthRequest {}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct HealthResponse {
+    pub ok: bool,
 }
 
 pub fn parse_hex_checksum(hex_str: &str) -> Result<Checksum> {

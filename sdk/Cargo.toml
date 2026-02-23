@@ -27,13 +27,23 @@ tonic = { version = "0.13", default-features = false, features = [
 ] }
 bytes.workspace = true
 rand.workspace = true
+aes.workspace = true
+ctr.workspace = true
+hex.workspace = true
+tiny-bip39.workspace = true
 
-# Optional TLS deps
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "json"], optional = true }
+# Optional gRPC service deps
+scoring = { path = "../scoring", default-features = false, optional = true }
+admin = { path = "../admin", optional = true }
+
+# Optional proxy/TLS deps
+reqwest = { version = "0.12", default-features = false, features = ["http2", "json"], optional = true }
 
 [features]
 default = ["tls"]
-tls = ["rpc/tls", "dep:reqwest"]
+proxy = ["dep:reqwest"]
+tls = ["rpc/tls", "proxy", "reqwest/rustls-tls"]
+grpc-services = ["dep:scoring", "dep:admin"]
 
 [lints]
 workspace = true

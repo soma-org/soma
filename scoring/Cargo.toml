@@ -4,11 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-runtime.workspace = true
-types.workspace = true
-burn.workspace = true
-axum.workspace = true
-tower-http.workspace = true
+types = { path = "../types", default-features = false }
+tonic = { version = "0.14.3", default-features = false, features = ["transport"] }
+utils = { path = "../utils" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,11 +15,21 @@ anyhow.workspace = true
 hex.workspace = true
 url.workspace = true
 
+# Server-only deps (heavy — burn, runtime, ML inference)
+runtime = { workspace = true, optional = true }
+burn = { workspace = true, optional = true }
+[features]
+default = ["server"]
+server = ["dep:runtime", "dep:burn", "types/cloud-storage"]
+
+[build-dependencies]
+tonic-build.workspace = true
+
 [dev-dependencies]
-reqwest.workspace = true
-wiremock.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-stream.workspace = true
 tempfile.workspace = true
+
 
 [lints]
 workspace = true

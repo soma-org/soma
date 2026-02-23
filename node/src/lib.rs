@@ -1063,12 +1063,13 @@ impl SomaNode {
                     // no need to send digests of versions less than the current version
                     .truncate_below(config.version);
 
-                let transaction =
-                    ConsensusTransaction::new_capability_notification(AuthorityCapabilitiesV1::new(
+                let transaction = ConsensusTransaction::new_capability_notification(
+                    AuthorityCapabilitiesV1::new(
                         self.state.name,
                         cur_epoch_store.get_chain_identifier().chain(),
                         supported_protocol_versions,
-                    ));
+                    ),
+                );
                 info!(?transaction, "submitting capabilities to consensus");
                 components.consensus_adapter.submit(
                     transaction,
@@ -1526,15 +1527,6 @@ impl SomaNode {
         &self.config
     }
 
-    /// Create and spawn the AuditService with MockEvaluationService.
-    /// Returns the audit service if successfully created, None otherwise.
-    ///
-    /// The AuditService uses a tally-based approach for challenge resolution:
-    /// validators submit individual report transactions that accumulate on-chain
-    /// rather than aggregating votes off-chain.
-    ///
-    /// TODO: Replace MockEvaluationService with real EvaluationService from
-    /// inference-engine crate (Phase 6) once it's implemented.
     async fn create_audit_service(
         config: &NodeConfig,
         state: &Arc<AuthorityState>,
@@ -1554,7 +1546,10 @@ impl SomaNode {
             match runtime::build_runtime(&config.device, &runtime_data_dir, model_config) {
                 Ok(rt) => rt,
                 Err(e) => {
-                    warn!("Failed to create runtime for audit service (device: {}): {e}", config.device);
+                    warn!(
+                        "Failed to create runtime for audit service (device: {}): {e}",
+                        config.device
+                    );
                     return None;
                 }
             };

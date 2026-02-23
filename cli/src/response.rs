@@ -335,7 +335,7 @@ impl TransactionResponse {
         table.with(TableStyle::rounded());
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
-        table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
+        table.with(TableModify::new(TableCols::last()).with(TableAlignment::left()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 
@@ -1334,7 +1334,7 @@ impl TransactionQueryResponse {
         table.with(TableStyle::rounded());
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(TableModify::new(TableRows::first()).with(TableAlignment::center()));
-        table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
+        table.with(TableModify::new(TableCols::last()).with(TableAlignment::left()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
 

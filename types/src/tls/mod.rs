@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use tokio_rustls::rustls::ServerConfig;
 use verifier::{Allower, ClientCertVerifier, ServerCertVerifier};
 
+#[cfg(feature = "server")]
 mod acceptor;
 mod certgen;
 pub mod verifier;
@@ -105,6 +106,7 @@ mod tests {
     const VALIDATOR_SERVER_NAME: &str = "soma";
 
     use super::*;
+    #[cfg(feature = "server")]
     use acceptor::{TlsAcceptor, TlsConnectionInfo};
     use fastcrypto::ed25519::Ed25519KeyPair;
     use fastcrypto::traits::KeyPair;
@@ -255,6 +257,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "server")]
     #[tokio::test]
     async fn axum_acceptor() {
         use fastcrypto::ed25519::Ed25519KeyPair;
