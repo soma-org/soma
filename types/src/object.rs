@@ -613,7 +613,7 @@ pub enum ObjectType {
     Coin,
     /// Represents an owned Staked Soma object
     StakedSoma,
-    /// Represents a mining target object
+    /// Represents a data submission target object
     Target,
     /// Represents a challenge against a submission
     Challenge,

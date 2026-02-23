@@ -147,7 +147,7 @@ pub enum TransactionKind {
     ReportSubmission {
         target_id: TargetId,
         /// Optional challenger to attribute fraud to.
-        /// If 2f+1 reports agree on this challenger, they get the miner's bond.
+        /// If 2f+1 reports agree on this challenger, they get the submitter's bond.
         /// If None (availability case), reporting validators split the bond.
         challenger: Option<SomaAddress>,
     },
@@ -173,7 +173,7 @@ pub enum TransactionKind {
     /// Distributes the challenger's bond based on report quorum:
     /// - 2f+1 reports: challenger bond → reporting validators (challenger loses)
     /// - No quorum: challenger bond → challenger (benefit of doubt)
-    ///   Note: The miner's bond is handled separately by ClaimRewards based on submission reports.
+    ///   Note: The submitter's bond is handled separately by ClaimRewards based on submission reports.
     ClaimChallengeBond {
         challenge_id: ChallengeId,
     },
@@ -294,7 +294,7 @@ pub struct RevealModelUpdateArgs {
 
 /// Arguments for a data submission to a target.
 ///
-/// This is a single-transaction submission (no commit-reveal) where the miner
+/// This is a single-transaction submission (no commit-reveal) where the submitter
 /// provides all required data upfront. Front-running mitigation is deferred to
 /// future versions.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -308,7 +308,7 @@ pub struct SubmitDataArgs {
     /// Manifest for submitted data (URL + checksum + size)
     pub data_manifest: SubmissionManifest,
 
-    /// Which model the miner chose from the target's model_ids
+    /// Which model the submitter chose from the target's model_ids
     pub model_id: ModelId,
 
     /// Pre-computed embedding as SomaTensor (f32 values)
@@ -331,7 +331,7 @@ pub struct ClaimRewardsArgs {
 /// Arguments for initiating a fraud challenge against a filled target's submission.
 ///
 /// The challenger must provide a bond (challenger_bond_per_byte * data_size).
-/// If the challenge succeeds (fraud proven), the miner's bond is slashed and the challenger is rewarded.
+/// If the challenge succeeds (fraud proven), the submitter's bond is slashed and the challenger is rewarded.
 /// If the challenge fails (no fraud), the challenger's bond is slashed.
 ///
 /// **Note**: All challenges are fraud challenges. Availability issues are handled via

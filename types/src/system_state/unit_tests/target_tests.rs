@@ -377,7 +377,7 @@ fn test_target_status_transitions() {
         reward_pool: 1000,
         generation_epoch: 0,
         status: TargetStatus::Open,
-        miner: None,
+        submitter: None,
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0,
@@ -397,7 +397,7 @@ fn test_target_status_transitions() {
 
     // Transition to Filled
     target.status = TargetStatus::Filled { fill_epoch: 5 };
-    target.miner = Some(SomaAddress::random());
+    target.submitter = Some(SomaAddress::random());
     target.winning_model_id = Some(crate::model::ModelId::random());
     target.winning_model_owner = Some(SomaAddress::random());
     target.bond_amount = 5000;

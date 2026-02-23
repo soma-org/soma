@@ -2,7 +2,7 @@
 //!
 //! When a Challenge object is created, validators:
 //! 1. Call CompetitionAPI to download data, verify hash, and run inference
-//! 2. Compare results against miner's claims using Burn's tolerance checks
+//! 2. Compare results against submitter's claims using Burn's tolerance checks
 //! 3. Submit ReportSubmission and/or ReportChallenge transactions via consensus
 //!
 //! # Tally-Based Design
@@ -50,7 +50,7 @@ use crate::{
 
 /// Mock competition API for testing - returns matching results (no fraud).
 ///
-/// This service returns a result that matches the miner's claimed values,
+/// This service returns a result that matches the submitter's claimed values,
 /// so no fraud will be detected. Use for testing the "challenger loses" path.
 pub struct MockRuntimeAPI;
 
@@ -82,7 +82,7 @@ impl RuntimeAPI for MockRuntimeAPI {
 
 /// Mock competition API that always returns an error (fraud detection).
 ///
-/// Use this to test the "miner loses" path where data cannot be downloaded.
+/// Use this to test the "submitter loses" path where data cannot be downloaded.
 pub struct MockFraudCompetitionAPI;
 
 #[async_trait::async_trait]
@@ -99,7 +99,7 @@ impl RuntimeAPI for MockFraudCompetitionAPI {
         &self,
         input: ManifestCompetitionInput,
     ) -> RuntimeResult<CompetitionOutput> {
-        // Simulate data unavailable - miner is responsible for data availability
+        // Simulate data unavailable - submitter is responsible for data availability
         Err(types::error::RuntimeError::DataNotAvailable(
             "Mock: data unavailable for testing fraud detection".to_string(),
         ))
@@ -314,7 +314,7 @@ impl AuditService {
     /// Based on the result, submit appropriate report transactions.
     ///
     /// **Report semantics:**
-    /// - `ReportSubmission`: "This submission is fraudulent" → miner loses bond
+    /// - `ReportSubmission`: "This submission is fraudulent" → submitter loses bond
     /// - `ReportChallenge`: "This challenge is invalid" → challenger loses bond
     async fn handle_new_challenge(&self, challenge: ChallengeV1) {
         info!("Auditing challenge {:?} for target {:?}", challenge.id, challenge.target_id);
@@ -411,14 +411,14 @@ impl AuditService {
     /// # Fraud Detection Logic
     ///
     /// The CompetitionAPI is trusted to determine the correct winning model and distance.
-    /// We simply compare the service's results against the miner's claims:
+    /// We simply compare the service's results against the submitter's claims:
     ///
-    /// 1. **Data unavailable**: Miner is responsible for data availability → FRAUD
-    /// 2. **Data hash mismatch**: Miner submitted wrong data → FRAUD
-    /// 3. **Wrong model**: Miner didn't use the winning model → FRAUD
+    /// 1. **Data unavailable**: Submitter is responsible for data availability → FRAUD
+    /// 2. **Data hash mismatch**: Submitter submitted wrong data → FRAUD
+    /// 3. **Wrong model**: Submitter didn't use the winning model → FRAUD
     /// 4. **Distance mismatch**: Distance differs beyond tolerance → FRAUD
-    /// 5. **Model unavailable**: System issue, not miner's fault → NO FRAUD
-    /// 6. **Computation failed**: Validator issue, not miner's fault → NO FRAUD
+    /// 5. **Model unavailable**: System issue, not submitter's fault → NO FRAUD
+    /// 6. **Computation failed**: Validator issue, not submitter's fault → NO FRAUD
     async fn audit_fraud(&self, challenge: &ChallengeV1) -> bool {
         let data_manifest = &challenge.winning_data_manifest.manifest;
 
@@ -459,18 +459,18 @@ impl AuditService {
         let output = match self.runtime_api.manifest_competition(input).await {
             Ok(result) => result,
             Err(types::error::RuntimeError::DataNotAvailable(msg)) => {
-                // Miner is responsible for keeping data available during challenge window
+                // Submitter is responsible for keeping data available during challenge window
                 info!("FRAUD: data unavailable for challenge {:?}: {}", challenge.id, msg);
                 return true;
             }
             Err(types::error::RuntimeError::DataHashMismatch) => {
-                // Miner submitted data that doesn't match their commitment
+                // Submitter submitted data that doesn't match their commitment
                 info!("FRAUD: data hash mismatch for challenge {:?}", challenge.id);
                 return true;
             }
             Err(types::error::RuntimeError::ModelNotAvailable(model_id)) => {
                 // Model weights couldn't be downloaded. This is a system/model-owner issue,
-                // not the miner's fault. Cannot determine fraud.
+                // not the submitter's fault. Cannot determine fraud.
                 warn!("Model {:?} unavailable during evaluation, cannot determine fraud", model_id);
                 return false;
             }
@@ -482,12 +482,12 @@ impl AuditService {
             }
         };
 
-        // Trust the CompetitionAPI's results and compare against miner's claims
+        // Trust the CompetitionAPI's results and compare against submitter's claims
         let claimed_model_id = challenge.winning_model_id;
         let claimed_distance = &challenge.winning_distance_score;
 
         let winner = challenge.model_ids[output.winner()];
-        // Check 1: Did the miner use the correct winning model?
+        // Check 1: Did the submitter use the correct winning model?
         if winner != claimed_model_id {
             info!(
                 "FRAUD: wrong model for challenge {:?}. Claimed: {:?}, Actual winner: {:?}",
@@ -508,7 +508,7 @@ impl AuditService {
             return true;
         }
 
-        // No fraud detected - miner's claims are valid
+        // No fraud detected - submitter's claims are valid
         false
     }
 
@@ -580,7 +580,7 @@ mod tests {
     #[test]
     fn test_wrong_model_is_always_fraud() {
         // When the CompetitionAPI returns a different winning model,
-        // it's always fraud - the miner should have used the correct model
+        // it's always fraud - the submitter should have used the correct model
         let claimed_model = ObjectID::random();
         let actual_winner = ObjectID::random();
 

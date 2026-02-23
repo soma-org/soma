@@ -27,7 +27,7 @@ pub enum ChallengeCommand {
     ///
     /// Challenges a submission for a filled target. The challenger must pay a bond
     /// proportional to the submission's data size. If the challenge succeeds (fraud
-    /// detected), the challenger receives the miner's bond. If it fails, the challenger
+    /// detected), the challenger receives the submitter's bond. If it fails, the challenger
     /// loses their bond to validators.
     ///
     /// Requirements:

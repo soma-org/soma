@@ -51,8 +51,8 @@ impl Merge<&DomainTarget> for Target {
             }
         }
 
-        if mask.contains(Self::MINER_FIELD.name) {
-            self.miner = source.miner.map(|addr| addr.to_string());
+        if mask.contains(Self::SUBMITTER_FIELD.name) {
+            self.submitter = source.submitter.map(|addr| addr.to_string());
         }
 
         if mask.contains(Self::WINNING_MODEL_ID_FIELD.name) {
@@ -105,8 +105,8 @@ impl Merge<&Target> for Target {
             self.fill_epoch = source.fill_epoch;
         }
 
-        if mask.contains(Self::MINER_FIELD.name) {
-            self.miner = source.miner.clone();
+        if mask.contains(Self::SUBMITTER_FIELD.name) {
+            self.submitter = source.submitter.clone();
         }
 
         if mask.contains(Self::WINNING_MODEL_ID_FIELD.name) {

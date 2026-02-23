@@ -153,7 +153,7 @@ struct TargetObj {
     reward_pool: u64,
     generation_epoch: u64,
     bond_amount: u64,
-    miner: Option<String>,
+    submitter: Option<String>,
     winning_model_id: Option<String>,
 }
 
@@ -596,7 +596,7 @@ impl PySomaClient {
             }
             let effective_mask = read_mask.unwrap_or_else(|| {
                 "id,status,generation_epoch,reward_pool,embedding,model_ids,\
-                 distance_threshold,miner,winning_model_id,bond_amount"
+                 distance_threshold,submitter,winning_model_id,bond_amount"
                     .to_string()
             });
             request.read_mask = Some(rpc::utils::field::FieldMask {
@@ -740,7 +740,7 @@ impl PySomaClient {
             }
             request.read_mask = Some(rpc::utils::field::FieldMask {
                 paths: "id,status,generation_epoch,reward_pool,embedding,model_ids,\
-                        distance_threshold,miner,winning_model_id,bond_amount"
+                        distance_threshold,submitter,winning_model_id,bond_amount"
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .collect(),
@@ -766,7 +766,7 @@ impl PySomaClient {
                         reward_pool: t.reward_pool.unwrap_or(0),
                         generation_epoch: t.generation_epoch.unwrap_or(0),
                         bond_amount: t.bond_amount.unwrap_or(0),
-                        miner: hex_id(t.miner),
+                        submitter: hex_id(t.submitter),
                         winning_model_id: hex_id(t.winning_model_id),
                     })
                 })

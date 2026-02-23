@@ -444,7 +444,7 @@ impl ChallengeExecutor {
     /// - 2f+1 reports: challenger loses, bond → reporting validators
     /// - No quorum: challenger wins (benefit of doubt), bond returned
     ///
-    /// Note: The miner's bond and target rewards are handled separately by ClaimRewards
+    /// Note: The submitter's bond and target rewards are handled separately by ClaimRewards
     /// based on submission reports (ReportSubmission).
     fn execute_claim_challenge_bond(
         &self,

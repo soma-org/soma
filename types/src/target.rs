@@ -1,7 +1,7 @@
-//! Target generation for the Soma mining competition.
+//! Target generation for the Soma data submission competition.
 //!
-//! Targets are shared objects that miners compete to fill. Each target has an embedding
-//! (center point) and a distance threshold. Miners submit data that embeds within the
+//! Targets are shared objects that submitters compete to fill. Each target has an embedding
+//! (center point) and a distance threshold. Submitters submit data that embeds within the
 //! target's radius.
 //!
 //! Key design decisions:
@@ -40,19 +40,19 @@ use fastcrypto::hash::HashFunction as _;
 /// Type alias: targets are identified by their ObjectID.
 pub type TargetId = ObjectID;
 
-/// A target in the Soma mining competition.
+/// A target in the Soma data submission competition.
 ///
 /// Targets are shared objects — not fields inside SystemState. This prevents
 /// SystemState from becoming a contention bottleneck at high TPS, since each
 /// target can be mutated independently by consensus.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct TargetV1 {
-    /// Center embedding point miners must get close to.
+    /// Center embedding point submitters must get close to.
     /// Stored as SomaTensor (wraps Burn's TensorData) for f32 embeddings.
     pub embedding: SomaTensor,
 
     /// Multiple models assigned to this target (uniformly random selection).
-    /// Miners choose which model to use.
+    /// Submitters choose which model to use.
     pub model_ids: Vec<ModelId>,
 
     /// Distance threshold (cosine distance).
@@ -71,11 +71,11 @@ pub struct TargetV1 {
     /// Current status
     pub status: TargetStatus,
 
-    /// The miner who filled this target (set when status transitions to Filled).
+    /// The submitter who filled this target (set when status transitions to Filled).
     /// Used by ClaimRewards for reward distribution.
-    pub miner: Option<SomaAddress>,
+    pub submitter: Option<SomaAddress>,
 
-    /// The model used by the miner (set when status transitions to Filled).
+    /// The model used by the submitter (set when status transitions to Filled).
     pub winning_model_id: Option<ModelId>,
 
     /// The owner of the winning model (set when status transitions to Filled).
@@ -84,7 +84,7 @@ pub struct TargetV1 {
 
     /// Bond amount held for the submission (in shannons).
     /// Set when the target is filled. On successful claim (no challenge),
-    /// the bond is returned to the miner. On successful challenge,
+    /// the bond is returned to the submitter. On successful challenge,
     /// the bond is forfeited to the emission pool.
     pub bond_amount: u64,
 
@@ -270,7 +270,7 @@ pub fn generate_target(
         reward_pool: target_state.reward_per_target,
         generation_epoch: current_epoch,
         status: TargetStatus::Open,
-        miner: None,
+        submitter: None,
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0, // Set when target is filled by a submission
@@ -455,7 +455,7 @@ mod tests {
             reward_pool: 1000,
             generation_epoch: 0,
             status: TargetStatus::Open,
-            miner: None,
+            submitter: None,
             winning_model_id: None,
             winning_model_owner: None,
             bond_amount: 0,

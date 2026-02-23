@@ -1,6 +1,5 @@
 ---
 source: protocol-config/src/lib.rs
-assertion_line: 646
 expression: "ProtocolConfig::get_for_version(version, *chain)"
 ---
 version: 1
@@ -40,7 +39,7 @@ target_difficulty_adjustment_rate_bps: 1000
 target_max_distance_threshold: 2
 target_min_distance_threshold: 0.1
 target_initial_targets_per_epoch: 20
-target_miner_reward_share_bps: 6900
+target_submitter_reward_share_bps: 6900
 target_model_reward_share_bps: 3000
 target_claimer_incentive_bps: 100
 submission_bond_per_byte: 10

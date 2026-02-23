@@ -300,7 +300,7 @@ message ConsensusCommitPrologue {
   optional string additional_state_digest = 6;
 }
 
-// Submit data to a target in the mining competition.
+// Submit data to a target in the data submission competition.
 message SubmitData {
   // Target ID (ObjectID hex string)
   optional string target_id = 1;

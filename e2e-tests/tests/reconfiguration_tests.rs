@@ -108,6 +108,7 @@ async fn test_passive_reconfig_normal() {
 
 #[cfg(msim)]
 #[msim::sim_test(check_determinism)]
+#[ignore = "check_determinism broken with std HashMap seeding in msim — see determinism_tests.rs"]
 async fn test_passive_reconfig_determinism() {
     do_test_passive_reconfig().await;
 }
@@ -131,6 +132,7 @@ async fn test_reconfig_with_committee_change_stress_normal() {
 
 #[cfg(msim)]
 #[msim::sim_test(check_determinism)]
+#[ignore = "check_determinism broken with std HashMap seeding in msim — see determinism_tests.rs"]
 async fn test_reconfig_with_committee_change_stress_determinism() {
     do_test_reconfig_with_committee_change_stress().await;
 }

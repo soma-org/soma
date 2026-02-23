@@ -220,7 +220,7 @@ pub struct ProtocolConfig {
     max_value_fee_bps: Option<u64>,
     fee_adjustment_rate_bps: Option<u64>,
 
-    // === Target/Mining Parameters ===
+    // === Target/Submission Parameters ===
     /// Number of models assigned to each target (uniformly random selection)
     target_models_per_target: Option<u64>,
     /// Dimension of target embedding vectors
@@ -245,8 +245,8 @@ pub struct ProtocolConfig {
     target_initial_targets_per_epoch: Option<u64>,
 
     // === Reward Distribution Parameters ===
-    /// Percentage of target reward allocated to the miner (bps, e.g. 5000 = 50%)
-    target_miner_reward_share_bps: Option<u64>,
+    /// Percentage of target reward allocated to the submitter (bps, e.g. 5000 = 50%)
+    target_submitter_reward_share_bps: Option<u64>,
     /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
     target_model_reward_share_bps: Option<u64>,
     /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
@@ -254,14 +254,14 @@ pub struct ProtocolConfig {
 
     // === Submission Parameters ===
     /// Bond per byte of submitted data (in shannons)
-    /// Bond is held on the Target and returned to miner on successful claim,
+    /// Bond is held on the Target and returned to submitter on successful claim,
     /// or forfeited to emission pool on successful challenge.
     submission_bond_per_byte: Option<u64>,
 
     // === Challenge Parameters ===
     /// Bond per byte for challengers (in shannons)
     /// Challenger must post challenger_bond_per_byte * data_size as bond.
-    /// If challenger wins: miner's bond is slashed, challenger gets reward.
+    /// If challenger wins: submitter's bond is slashed, challenger gets reward.
     /// If challenger loses: challenger's bond is slashed.
     challenger_bond_per_byte: Option<u64>,
 
@@ -371,7 +371,7 @@ impl ProtocolConfig {
             max_value_fee_bps: Some(50),         // 0.5%
             fee_adjustment_rate_bps: Some(1250), // 12.5%
 
-            // Target/Mining parameters
+            // Target/Submission parameters
             target_models_per_target: Some(3), // 3 models per target
             target_embedding_dim: Some(768),   // Standard transformer embedding dim
             target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
@@ -384,7 +384,7 @@ impl ProtocolConfig {
             target_initial_targets_per_epoch: Some(20), // 20 targets at genesis and each epoch start
 
             // Reward distribution parameters
-            target_miner_reward_share_bps: Some(6900), // 69% to miner
+            target_submitter_reward_share_bps: Some(6900), // 69% to submitter
             target_model_reward_share_bps: Some(3000), // 30% to model owner
             target_claimer_incentive_bps: Some(100),   // 1% to claimer as incentive
 
@@ -487,7 +487,7 @@ impl ProtocolConfig {
             min_value_fee_bps: self.min_value_fee_bps(),
             max_value_fee_bps: self.max_value_fee_bps(),
             fee_adjustment_rate_bps: self.fee_adjustment_rate_bps(),
-            // Target/Mining parameters
+            // Target/Submission parameters
             target_models_per_target: self.target_models_per_target(),
             target_embedding_dim: self.target_embedding_dim(),
             target_initial_distance_threshold: SomaTensor::scalar(
@@ -504,7 +504,7 @@ impl ProtocolConfig {
                 self.target_min_distance_threshold().value(),
             ),
             target_initial_targets_per_epoch: self.target_initial_targets_per_epoch(),
-            target_miner_reward_share_bps: self.target_miner_reward_share_bps(),
+            target_submitter_reward_share_bps: self.target_submitter_reward_share_bps(),
             target_model_reward_share_bps: self.target_model_reward_share_bps(),
             target_claimer_incentive_bps: self.target_claimer_incentive_bps(),
             submission_bond_per_byte: self.submission_bond_per_byte(),
@@ -556,7 +556,7 @@ pub struct SystemParameters {
     /// Max adjustment per epoch in basis points (e.g., 1250 = 12.5% max change)
     pub fee_adjustment_rate_bps: u64,
 
-    // === Target/Mining Parameters ===
+    // === Target/Submission Parameters ===
     /// Number of models assigned to each target
     pub target_models_per_target: u64,
     /// Dimension of target embedding vectors
@@ -580,8 +580,8 @@ pub struct SystemParameters {
     pub target_initial_targets_per_epoch: u64,
 
     // === Reward Distribution Parameters ===
-    /// Percentage of target reward allocated to the miner (bps, e.g. 5000 = 50%)
-    pub target_miner_reward_share_bps: u64,
+    /// Percentage of target reward allocated to the submitter (bps, e.g. 5000 = 50%)
+    pub target_submitter_reward_share_bps: u64,
     /// Percentage of target reward allocated to the model owner (bps, e.g. 3000 = 30%)
     pub target_model_reward_share_bps: u64,
     /// Percentage of target reward given to the claimer as incentive (bps, e.g. 100 = 1%)
@@ -589,14 +589,14 @@ pub struct SystemParameters {
 
     // === Submission Parameters ===
     /// Bond per byte of submitted data (in shannons)
-    /// Bond is held on the Target and returned to miner on successful claim,
+    /// Bond is held on the Target and returned to submitter on successful claim,
     /// or forfeited to emission pool on successful challenge.
     pub submission_bond_per_byte: u64,
 
     // === Challenge Parameters ===
     /// Bond per byte for challengers (in shannons)
     /// Challenger must post challenger_bond_per_byte * data_size as bond.
-    /// If challenger wins: miner's bond is slashed, challenger gets reward.
+    /// If challenger wins: submitter's bond is slashed, challenger gets reward.
     /// If challenger loses: challenger's bond is slashed.
     pub challenger_bond_per_byte: u64,
 

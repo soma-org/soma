@@ -22,7 +22,7 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter, Write};
 use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
@@ -101,13 +101,13 @@ pub struct Committee {
     pub voting_rights: Vec<(AuthorityName, VotingPower)>,
 
     /// Cached mapping from authority names to their public keys
-    expanded_keys: HashMap<AuthorityName, AuthorityPublicKey>,
+    expanded_keys: BTreeMap<AuthorityName, AuthorityPublicKey>,
 
     /// Cached mapping from authority names to their index in voting_rights
-    index_map: HashMap<AuthorityName, usize>,
+    index_map: BTreeMap<AuthorityName, usize>,
 
     /// Detailed information about each authority
-    pub authorities: HashMap<AuthorityName, Authority>,
+    pub authorities: BTreeMap<AuthorityName, Authority>,
 }
 
 impl Committee {
@@ -209,15 +209,15 @@ impl Committee {
     // We call this if these have not yet been computed
     pub fn load_inner(
         voting_rights: &[(AuthorityName, VotingPower)],
-    ) -> (HashMap<AuthorityName, AuthorityPublicKey>, HashMap<AuthorityName, usize>) {
-        let expanded_keys: HashMap<AuthorityName, AuthorityPublicKey> = voting_rights
+    ) -> (BTreeMap<AuthorityName, AuthorityPublicKey>, BTreeMap<AuthorityName, usize>) {
+        let expanded_keys: BTreeMap<AuthorityName, AuthorityPublicKey> = voting_rights
             .iter()
             .map(|(addr, _)| {
                 (*addr, (*addr).try_into().expect("Validator pubkey is always verified on-chain"))
             })
             .collect();
 
-        let index_map: HashMap<AuthorityName, usize> =
+        let index_map: BTreeMap<AuthorityName, usize> =
             voting_rights.iter().enumerate().map(|(index, (addr, _))| (*addr, index)).collect();
         (expanded_keys, index_map)
     }

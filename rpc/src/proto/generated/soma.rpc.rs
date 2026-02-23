@@ -3428,7 +3428,7 @@ pub struct SystemParameters {
     pub max_value_fee_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "13")]
     pub fee_adjustment_rate_bps: ::core::option::Option<u64>,
-    /// Target/Mining parameters
+    /// Target/Submission parameters
     #[prost(uint64, optional, tag = "14")]
     pub target_models_per_target: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "15")]
@@ -3451,7 +3451,7 @@ pub struct SystemParameters {
     pub target_initial_targets_per_epoch: ::core::option::Option<u64>,
     /// Reward distribution parameters
     #[prost(uint64, optional, tag = "24")]
-    pub target_miner_reward_share_bps: ::core::option::Option<u64>,
+    pub target_submitter_reward_share_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "25")]
     pub target_model_reward_share_bps: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "26")]
@@ -3596,7 +3596,7 @@ pub struct PoolTokenExchangeRate {
     #[prost(uint64, optional, tag = "2")]
     pub pool_token_amount: ::core::option::Option<u64>,
 }
-/// A registered model in the mining system.
+/// A registered model in the data submission system.
 /// Status derived from fields (same pattern as validators):
 ///    Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
 ///    Active:    weights_manifest present, staking_pool.deactivation_epoch absent
@@ -3633,7 +3633,7 @@ pub struct Model {
     #[prost(message, optional, tag = "11")]
     pub pending_update: ::core::option::Option<PendingModelUpdate>,
 }
-/// Registry of all models in the mining system.
+/// Registry of all models in the data submission system.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModelRegistry {
@@ -3692,8 +3692,8 @@ pub struct TargetState {
     #[prost(uint64, optional, tag = "5")]
     pub reward_per_target: ::core::option::Option<u64>,
 }
-/// A target in the Soma mining competition.
-/// Targets are shared objects that miners compete to fill.
+/// A target in the Soma data submission competition.
+/// Targets are shared objects that submitters compete to fill.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Target {
@@ -3721,10 +3721,10 @@ pub struct Target {
     /// Fill epoch (only present if status is "filled")
     #[prost(uint64, optional, tag = "8")]
     pub fill_epoch: ::core::option::Option<u64>,
-    /// Miner address who filled (only present if filled)
+    /// Submitter address who filled (only present if filled)
     #[prost(string, optional, tag = "9")]
-    pub miner: ::core::option::Option<::prost::alloc::string::String>,
-    /// Model used by the miner (only present if filled)
+    pub submitter: ::core::option::Option<::prost::alloc::string::String>,
+    /// Model used by the submitter (only present if filled)
     #[prost(string, optional, tag = "10")]
     pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
     /// Model owner address at fill time (only present if filled)
@@ -3738,9 +3738,9 @@ pub struct Target {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Submission {
-    /// Miner address
+    /// Submitter address
     #[prost(string, optional, tag = "1")]
-    pub miner: ::core::option::Option<::prost::alloc::string::String>,
+    pub submitter: ::core::option::Option<::prost::alloc::string::String>,
     /// Commitment to raw data: hash(data_bytes), 32-byte digest
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub data_commitment: ::core::option::Option<::prost::bytes::Bytes>,
@@ -3795,10 +3795,10 @@ pub struct Challenge {
     /// Distance threshold of target (f32 cosine distance)
     #[prost(float, optional, tag = "9")]
     pub distance_threshold: ::core::option::Option<f32>,
-    /// Claimed distance score by miner (f32 cosine distance)
+    /// Claimed distance score by submitter (f32 cosine distance)
     #[prost(float, optional, tag = "10")]
     pub winning_distance_score: ::core::option::Option<f32>,
-    /// Winning model ID used by miner
+    /// Winning model ID used by submitter
     #[prost(string, optional, tag = "11")]
     pub winning_model_id: ::core::option::Option<::prost::alloc::string::String>,
 }
@@ -4241,7 +4241,7 @@ pub struct ConsensusCommitPrologue {
     #[prost(string, optional, tag = "6")]
     pub additional_state_digest: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Submit data to a target in the mining competition.
+/// Submit data to a target in the data submission competition.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubmitData {

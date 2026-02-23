@@ -18,7 +18,7 @@ class Target:
     reward_pool: int
     generation_epoch: int
     bond_amount: int
-    miner: Optional[str]
+    submitter: Optional[str]
     winning_model_id: Optional[str]
 
 class ModelManifest:
@@ -172,7 +172,7 @@ class SystemParameters:
     target_max_distance_threshold: object
     target_min_distance_threshold: object
     target_initial_targets_per_epoch: int
-    target_miner_reward_share_bps: int
+    target_submitter_reward_share_bps: int
     target_model_reward_share_bps: int
     target_claimer_incentive_bps: int
     submission_bond_per_byte: int

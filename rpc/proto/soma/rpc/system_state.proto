@@ -62,7 +62,7 @@ message SystemParameters {
   optional uint64 max_value_fee_bps = 12;
   optional uint64 fee_adjustment_rate_bps = 13;
 
-  // Target/Mining parameters
+  // Target/Submission parameters
   optional uint64 target_models_per_target = 14;
   optional uint64 target_embedding_dim = 15;
   optional float target_initial_distance_threshold = 16;
@@ -75,7 +75,7 @@ message SystemParameters {
   optional uint64 target_initial_targets_per_epoch = 23;
 
   // Reward distribution parameters
-  optional uint64 target_miner_reward_share_bps = 24;
+  optional uint64 target_submitter_reward_share_bps = 24;
   optional uint64 target_model_reward_share_bps = 25;
   optional uint64 target_claimer_incentive_bps = 26;
 
@@ -155,7 +155,7 @@ message PoolTokenExchangeRate {
   optional uint64 pool_token_amount = 2;
 }
 
-// A registered model in the mining system.
+// A registered model in the data submission system.
 // Status derived from fields (same pattern as validators):
 //   Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
 //   Active:    weights_manifest present, staking_pool.deactivation_epoch absent
@@ -174,7 +174,7 @@ message Model {
   optional PendingModelUpdate pending_update = 11;        // absent if no update in flight
 }
 
-// Registry of all models in the mining system.
+// Registry of all models in the data submission system.
 message ModelRegistry {
   map<string, Model> active_models = 1;              // ModelId (ObjectID hex) -> Model
   map<string, Model> pending_models = 2;             // ModelId (ObjectID hex) -> Model
@@ -204,8 +204,8 @@ message TargetState {
   optional uint64 reward_per_target = 5;
 }
 
-// A target in the Soma mining competition.
-// Targets are shared objects that miners compete to fill.
+// A target in the Soma data submission competition.
+// Targets are shared objects that submitters compete to fill.
 message Target {
   // Target ID (ObjectID hex)
   optional string id = 1;
@@ -231,10 +231,10 @@ message Target {
   // Fill epoch (only present if status is "filled")
   optional uint64 fill_epoch = 8;
 
-  // Miner address who filled (only present if filled)
-  optional string miner = 9;
+  // Submitter address who filled (only present if filled)
+  optional string submitter = 9;
 
-  // Model used by the miner (only present if filled)
+  // Model used by the submitter (only present if filled)
   optional string winning_model_id = 10;
 
   // Model owner address at fill time (only present if filled)
@@ -246,8 +246,8 @@ message Target {
 
 // A data submission to a target.
 message Submission {
-  // Miner address
-  optional string miner = 1;
+  // Submitter address
+  optional string submitter = 1;
 
   // Commitment to raw data: hash(data_bytes), 32-byte digest
   optional bytes data_commitment = 2;
@@ -301,10 +301,10 @@ message Challenge {
   // Distance threshold of target (f32 cosine distance)
   optional float distance_threshold = 9;
 
-  // Claimed distance score by miner (f32 cosine distance)
+  // Claimed distance score by submitter (f32 cosine distance)
   optional float winning_distance_score = 10;
 
-  // Winning model ID used by miner
+  // Winning model ID used by submitter
   optional string winning_model_id = 11;
 }
 

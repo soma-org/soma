@@ -152,7 +152,7 @@ async fn test_genesis_target_bootstrap() {
 //
 // Verifies that a valid SubmitData transaction:
 // - Fills the target (status -> Filled)
-// - Records miner and model info on the target
+// - Records submitter and model info on the target
 // - Spawns a replacement target
 // ===================================================================
 
@@ -170,7 +170,7 @@ async fn test_submit_data_fills_target() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state to find thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -215,10 +215,10 @@ async fn test_submit_data_fills_target() {
     // Get gas object
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     // Create and execute SubmitData transaction
     let submit_tx = TransactionData::new(
@@ -231,7 +231,7 @@ async fn test_submit_data_fills_target() {
             distance_score,
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -285,7 +285,7 @@ async fn test_claim_rewards_after_challenge_window() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -313,10 +313,10 @@ async fn test_claim_rewards_after_challenge_window() {
     // Submit data to fill the target (epoch 0)
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
@@ -328,7 +328,7 @@ async fn test_claim_rewards_after_challenge_window() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -347,14 +347,14 @@ async fn test_claim_rewards_after_challenge_window() {
     // Claim rewards
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let claim_tx = TransactionData::new(
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -548,7 +548,7 @@ async fn test_submit_data_validation_errors() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -577,10 +577,10 @@ async fn test_submit_data_validation_errors() {
     {
         let gas_object = test_cluster
             .wallet
-            .get_one_gas_object_owned_by_address(miner)
+            .get_one_gas_object_owned_by_address(submitter)
             .await
             .unwrap()
-            .expect("Miner should have a gas object");
+            .expect("Submitter should have a gas object");
 
         let bad_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
@@ -592,7 +592,7 @@ async fn test_submit_data_validation_errors() {
                 distance_score: SomaTensor::scalar(distance_threshold + 0.1), // Exceeds threshold
                 bond_coin: gas_object,
             }),
-            miner,
+            submitter,
             vec![gas_object],
         );
 
@@ -608,10 +608,10 @@ async fn test_submit_data_validation_errors() {
     {
         let gas_object = test_cluster
             .wallet
-            .get_one_gas_object_owned_by_address(miner)
+            .get_one_gas_object_owned_by_address(submitter)
             .await
             .unwrap()
-            .expect("Miner should have a gas object");
+            .expect("Submitter should have a gas object");
 
         let wrong_dim = if embedding_dim > 10 { embedding_dim - 10 } else { embedding_dim + 10 };
 
@@ -625,7 +625,7 @@ async fn test_submit_data_validation_errors() {
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
                 bond_coin: gas_object,
             }),
-            miner,
+            submitter,
             vec![gas_object],
         );
 
@@ -641,10 +641,10 @@ async fn test_submit_data_validation_errors() {
     {
         let gas_object = test_cluster
             .wallet
-            .get_one_gas_object_owned_by_address(miner)
+            .get_one_gas_object_owned_by_address(submitter)
             .await
             .unwrap()
-            .expect("Miner should have a gas object");
+            .expect("Submitter should have a gas object");
 
         let wrong_model_id = ObjectID::from_bytes([0x99; 32]).unwrap();
 
@@ -658,7 +658,7 @@ async fn test_submit_data_validation_errors() {
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
                 bond_coin: gas_object,
             }),
-            miner,
+            submitter,
             vec![gas_object],
         );
 

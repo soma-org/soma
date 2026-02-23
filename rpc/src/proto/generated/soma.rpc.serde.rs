@@ -13363,7 +13363,7 @@ impl serde::Serialize for Submission {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.miner.is_some() {
+        if self.submitter.is_some() {
             len += 1;
         }
         if self.data_commitment.is_some() {
@@ -13388,8 +13388,8 @@ impl serde::Serialize for Submission {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Submission", len)?;
-        if let Some(v) = self.miner.as_ref() {
-            struct_ser.serialize_field("miner", v)?;
+        if let Some(v) = self.submitter.as_ref() {
+            struct_ser.serialize_field("submitter", v)?;
         }
         if let Some(v) = self.data_commitment.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -13428,7 +13428,7 @@ impl<'de> serde::Deserialize<'de> for Submission {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "miner",
+            "submitter",
             "data_commitment",
             "dataCommitment",
             "data_manifest",
@@ -13446,7 +13446,7 @@ impl<'de> serde::Deserialize<'de> for Submission {
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Miner,
+            Submitter,
             DataCommitment,
             DataManifest,
             ModelId,
@@ -13476,7 +13476,7 @@ impl<'de> serde::Deserialize<'de> for Submission {
                         E: serde::de::Error,
                     {
                         match value {
-                            "miner" => Ok(GeneratedField::Miner),
+                            "submitter" => Ok(GeneratedField::Submitter),
                             "dataCommitment" | "data_commitment" => Ok(GeneratedField::DataCommitment),
                             "dataManifest" | "data_manifest" => Ok(GeneratedField::DataManifest),
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
@@ -13505,7 +13505,7 @@ impl<'de> serde::Deserialize<'de> for Submission {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut miner__ = None;
+                let mut submitter__ = None;
                 let mut data_commitment__ = None;
                 let mut data_manifest__ = None;
                 let mut model_id__ = None;
@@ -13515,11 +13515,11 @@ impl<'de> serde::Deserialize<'de> for Submission {
                 let mut submit_epoch__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Miner => {
-                            if miner__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("miner"));
+                        GeneratedField::Submitter => {
+                            if submitter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("submitter"));
                             }
-                            miner__ = map_.next_value()?;
+                            submitter__ = map_.next_value()?;
                         }
                         GeneratedField::DataCommitment => {
                             if data_commitment__.is_some() {
@@ -13580,7 +13580,7 @@ impl<'de> serde::Deserialize<'de> for Submission {
                     }
                 }
                 Ok(Submission {
-                    miner: miner__,
+                    submitter: submitter__,
                     data_commitment: data_commitment__,
                     data_manifest: data_manifest__,
                     model_id: model_id__,
@@ -14198,7 +14198,7 @@ impl serde::Serialize for SystemParameters {
         if self.target_initial_targets_per_epoch.is_some() {
             len += 1;
         }
-        if self.target_miner_reward_share_bps.is_some() {
+        if self.target_submitter_reward_share_bps.is_some() {
             len += 1;
         }
         if self.target_model_reward_share_bps.is_some() {
@@ -14326,10 +14326,10 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("targetInitialTargetsPerEpoch", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.target_miner_reward_share_bps.as_ref() {
+        if let Some(v) = self.target_submitter_reward_share_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetMinerRewardShareBps", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("targetSubmitterRewardShareBps", ToString::to_string(&v).as_str())?;
         }
         if let Some(v) = self.target_model_reward_share_bps.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -14412,8 +14412,8 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             "targetMinDistanceThreshold",
             "target_initial_targets_per_epoch",
             "targetInitialTargetsPerEpoch",
-            "target_miner_reward_share_bps",
-            "targetMinerRewardShareBps",
+            "target_submitter_reward_share_bps",
+            "targetSubmitterRewardShareBps",
             "target_model_reward_share_bps",
             "targetModelRewardShareBps",
             "target_claimer_incentive_bps",
@@ -14451,7 +14451,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
             TargetMaxDistanceThreshold,
             TargetMinDistanceThreshold,
             TargetInitialTargetsPerEpoch,
-            TargetMinerRewardShareBps,
+            TargetSubmitterRewardShareBps,
             TargetModelRewardShareBps,
             TargetClaimerIncentiveBps,
             SubmissionBondPerByte,
@@ -14502,7 +14502,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                             "targetMaxDistanceThreshold" | "target_max_distance_threshold" => Ok(GeneratedField::TargetMaxDistanceThreshold),
                             "targetMinDistanceThreshold" | "target_min_distance_threshold" => Ok(GeneratedField::TargetMinDistanceThreshold),
                             "targetInitialTargetsPerEpoch" | "target_initial_targets_per_epoch" => Ok(GeneratedField::TargetInitialTargetsPerEpoch),
-                            "targetMinerRewardShareBps" | "target_miner_reward_share_bps" => Ok(GeneratedField::TargetMinerRewardShareBps),
+                            "targetSubmitterRewardShareBps" | "target_submitter_reward_share_bps" => Ok(GeneratedField::TargetSubmitterRewardShareBps),
                             "targetModelRewardShareBps" | "target_model_reward_share_bps" => Ok(GeneratedField::TargetModelRewardShareBps),
                             "targetClaimerIncentiveBps" | "target_claimer_incentive_bps" => Ok(GeneratedField::TargetClaimerIncentiveBps),
                             "submissionBondPerByte" | "submission_bond_per_byte" => Ok(GeneratedField::SubmissionBondPerByte),
@@ -14552,7 +14552,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 let mut target_max_distance_threshold__ = None;
                 let mut target_min_distance_threshold__ = None;
                 let mut target_initial_targets_per_epoch__ = None;
-                let mut target_miner_reward_share_bps__ = None;
+                let mut target_submitter_reward_share_bps__ = None;
                 let mut target_model_reward_share_bps__ = None;
                 let mut target_claimer_incentive_bps__ = None;
                 let mut submission_bond_per_byte__ = None;
@@ -14744,11 +14744,11 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::TargetMinerRewardShareBps => {
-                            if target_miner_reward_share_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetMinerRewardShareBps"));
+                        GeneratedField::TargetSubmitterRewardShareBps => {
+                            if target_submitter_reward_share_bps__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("targetSubmitterRewardShareBps"));
                             }
-                            target_miner_reward_share_bps__ = 
+                            target_submitter_reward_share_bps__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -14821,7 +14821,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     target_max_distance_threshold: target_max_distance_threshold__,
                     target_min_distance_threshold: target_min_distance_threshold__,
                     target_initial_targets_per_epoch: target_initial_targets_per_epoch__,
-                    target_miner_reward_share_bps: target_miner_reward_share_bps__,
+                    target_submitter_reward_share_bps: target_submitter_reward_share_bps__,
                     target_model_reward_share_bps: target_model_reward_share_bps__,
                     target_claimer_incentive_bps: target_claimer_incentive_bps__,
                     submission_bond_per_byte: submission_bond_per_byte__,
@@ -15200,7 +15200,7 @@ impl serde::Serialize for Target {
         if self.fill_epoch.is_some() {
             len += 1;
         }
-        if self.miner.is_some() {
+        if self.submitter.is_some() {
             len += 1;
         }
         if self.winning_model_id.is_some() {
@@ -15243,8 +15243,8 @@ impl serde::Serialize for Target {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("fillEpoch", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.miner.as_ref() {
-            struct_ser.serialize_field("miner", v)?;
+        if let Some(v) = self.submitter.as_ref() {
+            struct_ser.serialize_field("submitter", v)?;
         }
         if let Some(v) = self.winning_model_id.as_ref() {
             struct_ser.serialize_field("winningModelId", v)?;
@@ -15280,7 +15280,7 @@ impl<'de> serde::Deserialize<'de> for Target {
             "status",
             "fill_epoch",
             "fillEpoch",
-            "miner",
+            "submitter",
             "winning_model_id",
             "winningModelId",
             "winning_model_owner",
@@ -15299,7 +15299,7 @@ impl<'de> serde::Deserialize<'de> for Target {
             GenerationEpoch,
             Status,
             FillEpoch,
-            Miner,
+            Submitter,
             WinningModelId,
             WinningModelOwner,
             BondAmount,
@@ -15333,7 +15333,7 @@ impl<'de> serde::Deserialize<'de> for Target {
                             "generationEpoch" | "generation_epoch" => Ok(GeneratedField::GenerationEpoch),
                             "status" => Ok(GeneratedField::Status),
                             "fillEpoch" | "fill_epoch" => Ok(GeneratedField::FillEpoch),
-                            "miner" => Ok(GeneratedField::Miner),
+                            "submitter" => Ok(GeneratedField::Submitter),
                             "winningModelId" | "winning_model_id" => Ok(GeneratedField::WinningModelId),
                             "winningModelOwner" | "winning_model_owner" => Ok(GeneratedField::WinningModelOwner),
                             "bondAmount" | "bond_amount" => Ok(GeneratedField::BondAmount),
@@ -15366,7 +15366,7 @@ impl<'de> serde::Deserialize<'de> for Target {
                 let mut generation_epoch__ = None;
                 let mut status__ = None;
                 let mut fill_epoch__ = None;
-                let mut miner__ = None;
+                let mut submitter__ = None;
                 let mut winning_model_id__ = None;
                 let mut winning_model_owner__ = None;
                 let mut bond_amount__ = None;
@@ -15431,11 +15431,11 @@ impl<'de> serde::Deserialize<'de> for Target {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::Miner => {
-                            if miner__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("miner"));
+                        GeneratedField::Submitter => {
+                            if submitter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("submitter"));
                             }
-                            miner__ = map_.next_value()?;
+                            submitter__ = map_.next_value()?;
                         }
                         GeneratedField::WinningModelId => {
                             if winning_model_id__.is_some() {
@@ -15471,7 +15471,7 @@ impl<'de> serde::Deserialize<'de> for Target {
                     generation_epoch: generation_epoch__,
                     status: status__,
                     fill_epoch: fill_epoch__,
-                    miner: miner__,
+                    submitter: submitter__,
                     winning_model_id: winning_model_id__,
                     winning_model_owner: winning_model_owner__,
                     bond_amount: bond_amount__,

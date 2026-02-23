@@ -192,7 +192,7 @@ fn create_test_target() -> TargetV1 {
         reward_pool: 1000,
         generation_epoch: 0,
         status: TargetStatus::Filled { fill_epoch: 1 },
-        miner: Some(SomaAddress::random()),
+        submitter: Some(SomaAddress::random()),
         winning_model_id: Some(ModelId::random()),
         winning_model_owner: Some(SomaAddress::random()),
         bond_amount: 5000,
@@ -448,7 +448,7 @@ fn test_target_with_no_model_owner() {
     // Create a filled target but with winning_model_owner = None
     // This tests the edge case in ClaimRewards
     let mut target = create_test_target();
-    target.miner = Some(SomaAddress::random());
+    target.submitter = Some(SomaAddress::random());
     target.winning_model_id = Some(ModelId::random());
     target.winning_model_owner = None; // Edge case: no model owner
     target.bond_amount = 5000;
@@ -456,7 +456,7 @@ fn test_target_with_no_model_owner() {
     target.status = TargetStatus::Filled { fill_epoch: 0 };
 
     // Verify the state is as expected
-    assert!(target.miner.is_some());
+    assert!(target.submitter.is_some());
     assert!(target.winning_model_owner.is_none());
 }
 

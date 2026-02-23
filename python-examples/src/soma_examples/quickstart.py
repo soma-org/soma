@@ -1,4 +1,4 @@
-"""Quickstart: Complete Soma mining lifecycle on localnet.
+"""Quickstart: Complete Soma data submission lifecycle on localnet.
 
 Start a local network (one command):
 
@@ -87,7 +87,7 @@ async def run():
         target = next(t for t in targets if model_id in t.model_ids)
         print(f"Target: {target.id}  threshold={target.distance_threshold}")
 
-        # Fetch model manifests from on-chain state (as a real miner would)
+        # Fetch model manifests from on-chain state (as a real submitter would)
         manifests = await client.get_model_manifests(target)
         print(f"Fetched {len(manifests)} model manifest(s) from chain")
 

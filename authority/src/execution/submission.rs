@@ -231,9 +231,9 @@ impl SubmissionExecutor {
             store.mutate_input_object(updated_bond);
         }
 
-        // 10. Update target status to Filled and record miner/model/bond for rewards
+        // 10. Update target status to Filled and record submitter/model/bond for rewards
         target.status = TargetStatus::Filled { fill_epoch: current_epoch };
-        target.miner = Some(signer);
+        target.submitter = Some(signer);
         target.winning_model_id = Some(args.model_id);
         // Capture model owner at fill time - model must be active
         let model = state
@@ -313,7 +313,7 @@ impl SubmissionExecutor {
     ///
     /// Handles three cases:
     /// 1. **Filled target (no challenge)**: After challenge window closes, distribute rewards
-    ///    to miner/model/claimer and return bond to miner.
+    ///    to submitter/model/claimer and return bond to submitter.
     /// 2. **Filled target (successful challenge)**: When challenges are implemented, this will
     ///    forfeit the bond to the emission pool and return rewards to emission pool.
     /// 3. **Expired unfilled target**: Return reward pool to emissions, pay claimer incentive.
@@ -376,9 +376,9 @@ impl SubmissionExecutor {
     ///
     /// Handles tally-based fraud detection:
     /// - Check Target.submission_reports for 2f+1 quorum
-    /// - If quorum WITH challenger: miner bond → challenger
-    /// - If quorum WITHOUT challenger: miner bond → reporting validators (split evenly)
-    /// - No quorum: normal distribution (miner gets rewards + bond)
+    /// - If quorum WITH challenger: submitter bond → challenger
+    /// - If quorum WITHOUT challenger: submitter bond → reporting validators (split evenly)
+    /// - No quorum: normal distribution (submitter gets rewards + bond)
     fn claim_filled_target(
         &self,
         store: &mut TemporaryStore,
@@ -401,7 +401,7 @@ impl SubmissionExecutor {
         // Get reward amount and recipient info
         let reward = target.reward_pool;
         let bond = target.bond_amount;
-        let miner = target.miner.ok_or(ExecutionFailureStatus::TargetNotFilled)?;
+        let submitter = target.submitter.ok_or(ExecutionFailureStatus::TargetNotFilled)?;
         // Model owner was captured at fill time, so rewards work even if model is now inactive
         let model_owner = target.winning_model_owner;
 
@@ -423,7 +423,7 @@ impl SubmissionExecutor {
             );
 
             if let Some(challenger) = winning_challenger {
-                // FRAUD WITH CHALLENGER: miner bond → challenger
+                // FRAUD WITH CHALLENGER: submitter bond → challenger
                 if bond > 0 {
                     let challenger_coin = Object::new_coin(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -434,7 +434,7 @@ impl SubmissionExecutor {
                     store.create_object(challenger_coin);
                 }
             } else {
-                // AVAILABILITY (no challenger): miner bond → reporting validators (split evenly)
+                // AVAILABILITY (no challenger): submitter bond → reporting validators (split evenly)
                 Self::distribute_bond_to_validators(store, bond, &reporters, tx_digest);
             }
 
@@ -458,25 +458,25 @@ impl SubmissionExecutor {
         }
 
         // No quorum - distribute rewards normally
-        // Full reward goes to miner, model owner, and claimer (100% distributed)
+        // Full reward goes to submitter, model owner, and claimer (100% distributed)
         if reward > 0 {
             let params = state.parameters();
-            let miner_share = (reward * params.target_miner_reward_share_bps) / BPS_DENOMINATOR;
+            let submitter_share = (reward * params.target_submitter_reward_share_bps) / BPS_DENOMINATOR;
             let model_share = (reward * params.target_model_reward_share_bps) / BPS_DENOMINATOR;
             let claimer_share = (reward * params.target_claimer_incentive_bps) / BPS_DENOMINATOR;
-            // Remainder after rounding goes to miner (ensures 100% distribution)
-            let remainder = reward - miner_share - model_share - claimer_share;
-            let miner_total = miner_share + remainder;
+            // Remainder after rounding goes to submitter (ensures 100% distribution)
+            let remainder = reward - submitter_share - model_share - claimer_share;
+            let submitter_total = submitter_share + remainder;
 
-            // Miner reward (includes any rounding remainder)
-            if miner_total > 0 {
-                let miner_coin = Object::new_coin(
+            // Submitter reward (includes any rounding remainder)
+            if submitter_total > 0 {
+                let submitter_coin = Object::new_coin(
                     ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                    miner_total,
-                    Owner::AddressOwner(miner),
+                    submitter_total,
+                    Owner::AddressOwner(submitter),
                     tx_digest,
                 );
-                store.create_object(miner_coin);
+                store.create_object(submitter_coin);
             }
 
             // Model owner reward (captured at fill time)
@@ -505,12 +505,12 @@ impl SubmissionExecutor {
             }
         }
 
-        // Return bond to miner (no fraud detected)
+        // Return bond to submitter (no fraud detected)
         if bond > 0 {
             let bond_return_coin = Object::new_coin(
                 ObjectID::derive_id(tx_digest, store.next_creation_num()),
                 bond,
-                Owner::AddressOwner(miner),
+                Owner::AddressOwner(submitter),
                 tx_digest,
             );
             store.create_object(bond_return_coin);

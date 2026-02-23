@@ -8,7 +8,7 @@
 //! 5. test_claim_rewards_succeeds_without_quorum - Insufficient reports don't affect rewards
 //!
 //! **Tally-Based Flow Tests:**
-//! 6. test_challenge_flow_fraud_with_challenger - InitiateChallenge → ReportSubmission(challenger) → ClaimRewards → challenger gets miner's bond
+//! 6. test_challenge_flow_fraud_with_challenger - InitiateChallenge → ReportSubmission(challenger) → ClaimRewards → challenger gets submitter's bond
 //! 7. test_challenge_flow_availability_no_challenger - ReportSubmission(None) → ClaimRewards → validators get bond
 //! 8. test_challenge_flow_challenger_loses - InitiateChallenge → ReportChallenge(Loses) → ClaimChallengeBond → validators get challenger bond
 //! 9. test_challenge_flow_no_quorum - InitiateChallenge → partial reports → ClaimChallengeBond → challenger gets bond back
@@ -153,7 +153,7 @@ fn make_submission_manifest(size: usize) -> SubmissionManifest {
     SubmissionManifest::new(manifest)
 }
 
-/// Helper to fill a target and return the target_id and miner address.
+/// Helper to fill a target and return the target_id and submitter address.
 /// Uses a default distance score (threshold - 100).
 async fn fill_target(
     test_cluster: &test_cluster::TestCluster,
@@ -170,13 +170,13 @@ async fn fill_target(
 /// * `distance_score` - Optional custom distance score. If None, uses threshold - 0.1.
 ///
 /// # Returns
-/// The target_id and miner address.
+/// The target_id and submitter address.
 async fn fill_target_with_distance(
     test_cluster: &test_cluster::TestCluster,
     model_id: ModelId,
     distance_score: Option<f32>,
 ) -> (ObjectID, SomaAddress) {
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -214,10 +214,10 @@ async fn fill_target_with_distance(
     // Get gas object
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     // Create and execute SubmitData transaction
     let submit_tx = TransactionData::new(
@@ -230,7 +230,7 @@ async fn fill_target_with_distance(
             distance_score,
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -241,7 +241,7 @@ async fn fill_target_with_distance(
         response.effects.status()
     );
 
-    (target_id, miner)
+    (target_id, submitter)
 }
 
 // ===================================================================
@@ -268,7 +268,7 @@ async fn test_initiate_challenge_creates_challenge_object() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target (this stays in epoch 0)
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled in epoch 0", target_id);
 
     // Challenger is a different address
@@ -337,7 +337,7 @@ async fn test_initiate_challenge_locks_bond() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
 
     // Challenger
     let challenger = test_cluster.get_addresses()[1];
@@ -417,7 +417,7 @@ async fn test_initiate_challenge_window_closed() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target in epoch 0
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled in epoch 0", target_id);
 
     // Advance to epoch 1 - challenge window closes
@@ -473,7 +473,7 @@ async fn test_report_submission_transaction() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled", target_id);
 
     // Get a validator address (from the committee)
@@ -509,7 +509,7 @@ async fn test_report_submission_transaction() {
 // Test 5: ClaimRewards forfeits bond on quorum reports
 //
 // Verifies that when 2f+1 validators report a submission,
-// ClaimRewards forfeits the miner's bond and returns rewards to pool.
+// ClaimRewards forfeits the submitter's bond and returns rewards to pool.
 // ===================================================================
 
 #[cfg(msim)]
@@ -531,8 +531,8 @@ async fn test_claim_rewards_forfeits_on_quorum_reports() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, miner) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by miner {}", target_id, miner);
+    let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
+    info!("Target {} filled by submitter {}", target_id, submitter);
 
     // Get system state to check report mechanism exists
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -554,14 +554,14 @@ async fn test_claim_rewards_forfeits_on_quorum_reports() {
     // Claim rewards (without quorum reports, should succeed)
     let gas_coin = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have gas object");
+        .expect("Submitter should have gas object");
 
     let claim_tx = TransactionData::new(
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        miner,
+        submitter,
         vec![gas_coin],
     );
 
@@ -597,8 +597,8 @@ async fn test_claim_rewards_succeeds_without_quorum() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, miner) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by miner {}", target_id, miner);
+    let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
+    info!("Target {} filled by submitter {}", target_id, submitter);
 
     // Advance epochs to close challenge window
     test_cluster.trigger_reconfiguration().await;
@@ -608,14 +608,14 @@ async fn test_claim_rewards_succeeds_without_quorum() {
     // Claim rewards
     let gas_coin = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have gas object");
+        .expect("Submitter should have gas object");
 
     let claim_tx = TransactionData::new(
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        miner,
+        submitter,
         vec![gas_coin],
     );
 
@@ -626,18 +626,18 @@ async fn test_claim_rewards_succeeds_without_quorum() {
         response.effects.status()
     );
 
-    // Check that miner received rewards (new coins created)
+    // Check that submitter received rewards (new coins created)
     let created_coins = response.effects.created();
-    let miner_received: u64 = created_coins
+    let submitter_received: u64 = created_coins
         .iter()
-        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner))
+        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter))
         .count() as u64;
 
-    assert!(miner_received > 0, "Miner should receive at least one coin (bond return or reward)");
+    assert!(submitter_received > 0, "Submitter should receive at least one coin (bond return or reward)");
 
     info!(
-        "test_claim_rewards_succeeds_without_quorum passed: miner received {} coins",
-        miner_received
+        "test_claim_rewards_succeeds_without_quorum passed: submitter received {} coins",
+        submitter_received
     );
 }
 
@@ -649,7 +649,7 @@ async fn test_claim_rewards_succeeds_without_quorum() {
 // 2. InitiateChallenge (challenger locks bond)
 // 3. All 4 validators submit ReportSubmission with challenger attribution
 // 4. Advance epochs
-// 5. ClaimRewards -> miner's bond goes to challenger, rewards to pool
+// 5. ClaimRewards -> submitter's bond goes to challenger, rewards to pool
 // ===================================================================
 
 #[cfg(msim)]
@@ -667,8 +667,8 @@ async fn test_challenge_flow_fraud_with_challenger() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, miner) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by miner {}", target_id, miner);
+    let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
+    info!("Target {} filled by submitter {}", target_id, submitter);
 
     // Challenger initiates challenge
     let challenger = test_cluster.get_addresses()[1];
@@ -726,7 +726,7 @@ async fn test_challenge_flow_fraud_with_challenger() {
     test_cluster.trigger_reconfiguration().await;
     info!("Advanced to epoch 2 - challenge window closed");
 
-    // Claim rewards - with quorum reports, miner's bond should go to challenger
+    // Claim rewards - with quorum reports, submitter's bond should go to challenger
     let claimer = test_cluster.get_addresses()[3];
     let gas_coin = test_cluster
         .wallet
@@ -748,7 +748,7 @@ async fn test_challenge_flow_fraud_with_challenger() {
         response.effects.status()
     );
 
-    // Check that challenger received a coin (the miner's forfeited bond)
+    // Check that challenger received a coin (the submitter's forfeited bond)
     let created_coins = response.effects.created();
     let challenger_coins: Vec<_> = created_coins
         .iter()
@@ -762,14 +762,14 @@ async fn test_challenge_flow_fraud_with_challenger() {
         challenger_coins.len()
     );
 
-    // Miner should NOT receive the bond back
-    let miner_coins: Vec<_> = created_coins
+    // Submitter should NOT receive the bond back
+    let submitter_coins: Vec<_> = created_coins
         .iter()
-        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner))
+        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter))
         .collect();
 
-    // With fraud quorum, miner's bond goes to challenger, so miner gets 0 coins
-    info!("Miner received {} coins (expected 0 due to fraud)", miner_coins.len());
+    // With fraud quorum, submitter's bond goes to challenger, so submitter gets 0 coins
+    info!("Submitter received {} coins (expected 0 due to fraud)", submitter_coins.len());
 
     info!("test_challenge_flow_fraud_with_challenger passed");
 }
@@ -782,7 +782,7 @@ async fn test_challenge_flow_fraud_with_challenger() {
 // 2. Skip InitiateChallenge (availability issue, no active challenger)
 // 3. All validators submit ReportSubmission without challenger
 // 4. Advance epochs
-// 5. ClaimRewards -> miner's bond split among reporting validators
+// 5. ClaimRewards -> submitter's bond split among reporting validators
 // ===================================================================
 
 #[cfg(msim)]
@@ -800,8 +800,8 @@ async fn test_challenge_flow_availability_no_challenger() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, miner) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by miner {}", target_id, miner);
+    let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
+    info!("Target {} filled by submitter {}", target_id, submitter);
 
     // Note: No InitiateChallenge - this simulates availability reporting without a challenger
 
@@ -861,17 +861,17 @@ async fn test_challenge_flow_availability_no_challenger() {
         response.effects.status()
     );
 
-    // Check that validators received coins (the miner's forfeited bond split)
+    // Check that validators received coins (the submitter's forfeited bond split)
     let created_coins = response.effects.created();
     info!("Total coins created on claim: {}", created_coins.len());
 
-    // Miner should NOT receive the bond back
-    let miner_coins: Vec<_> = created_coins
+    // Submitter should NOT receive the bond back
+    let submitter_coins: Vec<_> = created_coins
         .iter()
-        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner))
+        .filter(|(_, owner)| matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter))
         .collect();
 
-    info!("Miner received {} coins (expected 0 due to availability quorum)", miner_coins.len());
+    info!("Submitter received {} coins (expected 0 due to availability quorum)", submitter_coins.len());
 
     // Validators should have received coins
     let mut validator_coins = 0;
@@ -886,7 +886,7 @@ async fn test_challenge_flow_availability_no_challenger() {
         validator_coins += count;
     }
 
-    info!("Validators received {} coins total (miner bond split)", validator_coins);
+    info!("Validators received {} coins total (submitter bond split)", validator_coins);
 
     info!("test_challenge_flow_availability_no_challenger passed");
 }
@@ -916,7 +916,7 @@ async fn test_challenge_flow_challenger_loses() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled", target_id);
 
     // Challenger initiates challenge
@@ -1052,7 +1052,7 @@ async fn test_challenge_flow_no_quorum() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled", target_id);
 
     // Challenger initiates challenge
@@ -1163,7 +1163,7 @@ async fn test_duplicate_challenge_rejected() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
     info!("Target {} filled", target_id);
 
     // First challenger initiates challenge
@@ -1236,7 +1236,7 @@ async fn test_report_challenge_validator_only() {
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     // Fill a target
-    let (target_id, _miner) = fill_target(&test_cluster, model_id).await;
+    let (target_id, _submitter) = fill_target(&test_cluster, model_id).await;
 
     // Create a challenge
     let challenger = test_cluster.get_addresses()[1];
@@ -1286,7 +1286,7 @@ async fn test_report_challenge_validator_only() {
 }
 
 // ===================================================================
-// Test 13: Audit service fraud flow - miner lies, challenger wins
+// Test 13: Audit service fraud flow - submitter lies, challenger wins
 //
 // This test verifies the full E2E fraud detection flow:
 // 1. Fill a target with claimed distance = threshold - 0.1 (a large value)
@@ -1295,10 +1295,10 @@ async fn test_report_challenge_validator_only() {
 // 4. MockCompetitionAPI returns distance=0.0 (mismatch with claimed)
 // 5. AuditService detects fraud (mismatch > tolerance) and submits ReportSubmission
 // 6. Advance epochs to close challenge window
-// 7. ClaimRewards → challenger receives miner's bond, miner gets nothing
+// 7. ClaimRewards → challenger receives submitter's bond, submitter gets nothing
 //
 // **Fraud Detection Logic:**
-// - Miner claims distance_threshold - 0.1
+// - Submitter claims distance_threshold - 0.1
 // - MockCompetitionAPI returns distance = 0.0
 // - Mismatch detected via Tolerance::permissive() (1% relative, 0.01 absolute)
 // - All 4 validators detect fraud → quorum reached
@@ -1306,7 +1306,7 @@ async fn test_report_challenge_validator_only() {
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn test_audit_service_fraud_flow_miner_lies() {
+async fn test_audit_service_fraud_flow_submitter_lies() {
     init_tracing();
 
     // Create a genesis model
@@ -1320,8 +1320,8 @@ async fn test_audit_service_fraud_flow_miner_lies() {
 
     // Fill a target with default distance (threshold - 0.1, a large value)
     // MockCompetitionAPI returns 0.0, so this will be detected as fraud
-    let (target_id, miner) = fill_target(&test_cluster, model_id).await;
-    info!("Target {} filled by DISHONEST miner {} with high claimed distance", target_id, miner);
+    let (target_id, submitter) = fill_target(&test_cluster, model_id).await;
+    info!("Target {} filled by DISHONEST submitter {} with high claimed distance", target_id, submitter);
 
     // Challenger initiates challenge
     let challenger = test_cluster.get_addresses()[1];
@@ -1374,7 +1374,7 @@ async fn test_audit_service_fraud_flow_miner_lies() {
     test_cluster.trigger_reconfiguration().await;
     info!("Advanced to epoch 2 - challenge window closed");
 
-    // Claim rewards - with fraud quorum, miner's bond goes to challenger
+    // Claim rewards - with fraud quorum, submitter's bond goes to challenger
     let claimer = test_cluster.get_addresses()[3];
     let gas_coin = test_cluster
         .wallet
@@ -1405,10 +1405,10 @@ async fn test_audit_service_fraud_flow_miner_lies() {
         })
         .collect();
 
-    let miner_coins: Vec<_> = created_coins
+    let submitter_coins: Vec<_> = created_coins
         .iter()
         .filter(|(_, owner)| {
-            matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner)
+            matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter)
         })
         .collect();
 
@@ -1418,50 +1418,50 @@ async fn test_audit_service_fraud_flow_miner_lies() {
     }
 
     info!(
-        "FRAUD CASE: challenger received {} coins, miner received {} coins",
+        "FRAUD CASE: challenger received {} coins, submitter received {} coins",
         challenger_coins.len(),
-        miner_coins.len()
+        submitter_coins.len()
     );
 
     // The AuditService is running asynchronously. If it hasn't completed processing
     // and submitting ReportSubmission transactions by the time we claim rewards,
-    // there won't be quorum and the miner keeps their bond.
+    // there won't be quorum and the submitter keeps their bond.
     //
     // This test verifies the infrastructure works end-to-end. The actual behavior
     // depends on timing in the simulator.
     //
     // Expected with working AuditService (fraud detected):
-    // - Challenger receives miner's forfeited bond (at least 1 coin)
-    // - Miner receives nothing (bond forfeited)
+    // - Challenger receives submitter's forfeited bond (at least 1 coin)
+    // - Submitter receives nothing (bond forfeited)
     //
     // Fallback if AuditService didn't complete in time:
-    // - Miner receives their bond back + rewards
+    // - Submitter receives their bond back + rewards
     // - Challenger receives nothing
 
     if !challenger_coins.is_empty() {
         assert!(
-            miner_coins.is_empty(),
-            "Miner should receive nothing when fraud is detected (bond forfeited)"
+            submitter_coins.is_empty(),
+            "Submitter should receive nothing when fraud is detected (bond forfeited)"
         );
-        info!("test_audit_service_fraud_flow_miner_lies PASSED: challenger got miner's bond");
+        info!("test_audit_service_fraud_flow_submitter_lies PASSED: challenger got submitter's bond");
     } else {
         // AuditService may not have completed in time - this is acceptable for now
         // The manual tests (test_challenge_flow_fraud_with_challenger) verify the
         // core logic works correctly.
         info!(
             "WARNING: AuditService may not have completed in time. \
-            Miner received {} coins (expected 0 with fraud quorum). \
+            Submitter received {} coins (expected 0 with fraud quorum). \
             This can happen due to simulator timing.",
-            miner_coins.len()
+            submitter_coins.len()
         );
         // Don't fail - just log the warning
     }
 }
 
 // ===================================================================
-// Test 14: Audit service success flow - miner is honest, challenger loses
+// Test 14: Audit service success flow - submitter is honest, challenger loses
 //
-// This test verifies the E2E flow when miner is honest:
+// This test verifies the E2E flow when submitter is honest:
 // 1. Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
 // 2. InitiateChallenge creates a Challenge object
 // 3. AuditService picks up the challenge via channel from CheckpointExecutor
@@ -1469,10 +1469,10 @@ async fn test_audit_service_fraud_flow_miner_lies() {
 // 5. AuditService detects NO fraud and submits ReportChallenge (challenger wrong)
 // 6. Advance epochs to close challenge window
 // 7. ClaimChallengeBond → challenger's bond goes to validators
-// 8. ClaimRewards → miner gets rewards + bond back
+// 8. ClaimRewards → submitter gets rewards + bond back
 //
 // **Fraud Detection Logic:**
-// - Miner claims distance = 0.0
+// - Submitter claims distance = 0.0
 // - MockCompetitionAPI returns distance = 0.0
 // - Values match within Tolerance::permissive() (1% relative, 0.01 absolute)
 // - All 4 validators detect NO fraud → report challenger instead
@@ -1480,7 +1480,7 @@ async fn test_audit_service_fraud_flow_miner_lies() {
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn test_audit_service_success_flow_miner_honest() {
+async fn test_audit_service_success_flow_submitter_honest() {
     init_tracing();
 
     // Create a genesis model
@@ -1494,10 +1494,10 @@ async fn test_audit_service_success_flow_miner_honest() {
 
     // Fill a target with claimed distance = 0.0 (matches MockCompetitionAPI)
     // This will NOT be detected as fraud
-    let (target_id, miner) = fill_target_with_distance(&test_cluster, model_id, Some(0.0)).await;
-    info!("Target {} filled by HONEST miner {} with claimed distance=0", target_id, miner);
+    let (target_id, submitter) = fill_target_with_distance(&test_cluster, model_id, Some(0.0)).await;
+    info!("Target {} filled by HONEST submitter {} with claimed distance=0", target_id, submitter);
 
-    // Challenger initiates challenge (incorrectly - miner is honest)
+    // Challenger initiates challenge (incorrectly - submitter is honest)
     let challenger = test_cluster.get_addresses()[1];
     let bond_coin = test_cluster
         .wallet
@@ -1612,7 +1612,7 @@ async fn test_audit_service_success_flow_miner_honest() {
         );
     }
 
-    // Now claim the miner's rewards
+    // Now claim the submitter's rewards
     let gas_coin2 = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(claimer)
@@ -1629,25 +1629,25 @@ async fn test_audit_service_success_flow_miner_honest() {
     let response = test_cluster.sign_and_execute_transaction(&claim_rewards_tx).await;
     assert!(
         response.effects.status().is_ok(),
-        "ClaimRewards should succeed for honest miner: {:?}",
+        "ClaimRewards should succeed for honest submitter: {:?}",
         response.effects.status()
     );
 
-    // Check miner received their rewards
+    // Check submitter received their rewards
     let created_coins = response.effects.created();
-    let miner_coins: Vec<_> = created_coins
+    let submitter_coins: Vec<_> = created_coins
         .iter()
         .filter(|(_, owner)| {
-            matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == miner)
+            matches!(owner, types::object::Owner::AddressOwner(addr) if *addr == submitter)
         })
         .collect();
 
-    info!("REWARDS: miner received {} coins (bond return + rewards)", miner_coins.len());
+    info!("REWARDS: submitter received {} coins (bond return + rewards)", submitter_coins.len());
 
-    // Honest miner should receive:
+    // Honest submitter should receive:
     // - Their original bond back
-    // - Any mining rewards
-    assert!(!miner_coins.is_empty(), "Honest miner should receive bond + rewards");
+    // - Any data submission rewards
+    assert!(!submitter_coins.is_empty(), "Honest submitter should receive bond + rewards");
 
-    info!("test_audit_service_success_flow_miner_honest PASSED: miner rewarded");
+    info!("test_audit_service_success_flow_submitter_honest PASSED: submitter rewarded");
 }

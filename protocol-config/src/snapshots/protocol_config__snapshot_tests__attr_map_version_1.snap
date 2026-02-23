@@ -1,6 +1,5 @@
 ---
 source: protocol-config/src/lib.rs
-assertion_line: 714
 expression: config.attr_map()
 ---
 base_fee:
@@ -75,14 +74,14 @@ target_max_distance_threshold:
   BcsF32: 2
 target_min_distance_threshold:
   BcsF32: 0.1
-target_miner_reward_share_bps:
-  u64: 6900
 target_model_reward_share_bps:
   u64: 3000
 target_models_per_target:
   u64: 3
 target_reward_allocation_bps:
   u64: 8000
+target_submitter_reward_share_bps:
+  u64: 6900
 validator_reward_allocation_bps:
   u64: 7000
 write_object_fee:

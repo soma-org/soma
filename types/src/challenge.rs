@@ -1,6 +1,6 @@
-//! Challenge types for the Soma mining competition dispute resolution.
+//! Challenge types for the Soma data submission competition dispute resolution.
 //!
-//! Challenges enable anyone to dispute mining submissions. Validators audit
+//! Challenges enable anyone to dispute data submissions. Validators audit
 //! the submission and submit report transactions. A 2f+1 quorum determines the outcome.
 //!
 //! Key design decisions:
@@ -18,7 +18,7 @@
 //! **Simplified Design (v2)**:
 //! - Removed ChallengeVerdict enum - reports simply indicate "challenger is wrong"
 //! - If reported by 2f+1 validators, challenger loses; otherwise challenger wins (benefit of doubt)
-//! - Submission reports (ReportSubmission/UndoReportSubmission) handle the miner's bond
+//! - Submission reports (ReportSubmission/UndoReportSubmission) handle the submitter's bond
 
 use std::collections::BTreeSet;
 
@@ -40,7 +40,7 @@ pub type ChallengeId = ObjectID;
 ///
 /// **Self-contained for auditing**: Contains all necessary data for validators to audit
 /// without needing to load the Target object. This includes the target's embedding,
-/// model assignments, and the miner's claimed submission data.
+/// model assignments, and the submitter's claimed submission data.
 ///
 /// **Fraud-only**: All challenges are fraud challenges. Availability issues are handled
 /// separately via submission reports (ReportSubmission/UndoReportSubmission).
@@ -71,25 +71,25 @@ pub struct ChallengeV1 {
     /// All models assigned to the target (for multi-model fraud verification)
     pub model_ids: Vec<ModelId>,
 
-    /// Target's embedding - used to compute distance from miner's embedding
+    /// Target's embedding - used to compute distance from submitter's embedding
     pub target_embedding: SomaTensor,
 
     /// Target's distance threshold - submissions must be within this threshold
     pub distance_threshold: SomaTensor,
 
-    /// The model ID the miner claimed to use
+    /// The model ID the submitter claimed to use
     pub winning_model_id: ModelId,
 
-    /// Manifest for the miner's data (URL + checksum + size)
+    /// Manifest for the submitter's data (URL + checksum + size)
     pub winning_data_manifest: SubmissionManifest,
 
-    /// Hash commitment of the miner's raw data
+    /// Hash commitment of the submitter's raw data
     pub winning_data_commitment: DataCommitment,
 
-    /// The embedding the miner claimed to produce
+    /// The embedding the submitter claimed to produce
     pub winning_embedding: SomaTensor,
 
-    /// The distance score the miner claimed
+    /// The distance score the submitter claimed
     pub winning_distance_score: SomaTensor,
 
     // =========================================================================

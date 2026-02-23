@@ -69,7 +69,7 @@ fn make_open_target(
         reward_pool,
         generation_epoch,
         status: TargetStatus::Open,
-        miner: None,
+        submitter: None,
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0,
@@ -93,7 +93,7 @@ fn make_filled_target(
     reward_pool: u64,
     generation_epoch: u64,
     fill_epoch: u64,
-    miner: SomaAddress,
+    submitter: SomaAddress,
     bond_amount: u64,
 ) -> Object {
     let target = TargetV1 {
@@ -103,7 +103,7 @@ fn make_filled_target(
         reward_pool,
         generation_epoch,
         status: TargetStatus::Filled { fill_epoch },
-        miner: Some(miner),
+        submitter: Some(submitter),
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount,
@@ -127,7 +127,7 @@ fn make_claimed_target(target_id: ObjectID, embedding_dim: usize, reward_pool: u
         reward_pool,
         generation_epoch: 0,
         status: TargetStatus::Claimed,
-        miner: None,
+        submitter: None,
         winning_model_id: None,
         winning_model_owner: None,
         bond_amount: 0,
@@ -403,11 +403,11 @@ async fn test_submit_data_filled_target() {
     authority_state.insert_genesis_object(gas).await;
     authority_state.insert_genesis_object(bond).await;
 
-    let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let model_id = ObjectID::random();
     let target_id = ObjectID::random();
     let target_obj =
-        make_filled_target(target_id, vec![model_id], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+        make_filled_target(target_id, vec![model_id], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -644,7 +644,7 @@ async fn test_claim_rewards_too_early() {
     // fill_epoch = 0, current_epoch = 0, challenge_window_end = 1
     // current_epoch (0) <= challenge_window_end (1) → ChallengeWindowOpen
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let gas_id = ObjectID::random();
     let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 50_000_000);
     let gas_ref = gas.compute_object_reference();
@@ -653,7 +653,7 @@ async fn test_claim_rewards_too_early() {
     authority_state.insert_genesis_object(gas).await;
 
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -746,9 +746,9 @@ async fn test_report_submission_not_validator() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(gas).await;
 
-    let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -923,9 +923,9 @@ async fn test_undo_report_submission_not_validator() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(gas).await;
 
-    let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
@@ -963,9 +963,9 @@ async fn test_undo_report_submission_no_prior_report() {
     let gas_ref = gas.compute_object_reference();
     authority_state.insert_genesis_object(gas).await;
 
-    let miner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let target_id = ObjectID::random();
-    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, miner, 10_000);
+    let target_obj = make_filled_target(target_id, vec![], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(

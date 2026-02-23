@@ -419,7 +419,7 @@ pub fn create_test_system_state(
         None,
     );
     // Set validator_reward_allocation_bps to 100% so all fees go to validators.
-    // This decouples validator/delegation/reward tests from the mining reward split.
+    // This decouples validator/delegation/reward tests from the data submission reward split.
     state.parameters_mut().validator_reward_allocation_bps = 10000; // 100%
     state
 }

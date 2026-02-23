@@ -379,7 +379,7 @@ EXAMPLES:
     },
 
     // =========================================================================
-    // MINING COMMANDS
+    // SUBMISSION COMMANDS
     // =========================================================================
     /// Manage models (commit, reveal, update, deactivate, query)
     #[clap(
@@ -425,7 +425,7 @@ EXAMPLES:
 
     /// Challenge a filled target's submission
     ///
-    /// Submit a fraud challenge against a miner's submission for a filled target.
+    /// Submit a fraud challenge against a submitter's submission for a filled target.
     /// Requires a bond proportional to the data size.
     #[clap(
         name = "challenge",

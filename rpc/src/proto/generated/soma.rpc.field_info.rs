@@ -4021,9 +4021,9 @@ mod _field_impls {
             number: 23i32,
             message_fields: None,
         };
-        pub const TARGET_MINER_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_miner_reward_share_bps",
-            json_name: "targetMinerRewardShareBps",
+        pub const TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
+            name: "target_submitter_reward_share_bps",
+            json_name: "targetSubmitterRewardShareBps",
             number: 24i32,
             message_fields: None,
         };
@@ -4083,7 +4083,7 @@ mod _field_impls {
             Self::TARGET_MAX_DISTANCE_THRESHOLD_FIELD,
             Self::TARGET_MIN_DISTANCE_THRESHOLD_FIELD,
             Self::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD,
-            Self::TARGET_MINER_REWARD_SHARE_BPS_FIELD,
+            Self::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD,
             Self::TARGET_MODEL_REWARD_SHARE_BPS_FIELD,
             Self::TARGET_CLAIMER_INCENTIVE_BPS_FIELD,
             Self::SUBMISSION_BOND_PER_BYTE_FIELD,
@@ -4208,8 +4208,9 @@ mod _field_impls {
                 .push(SystemParameters::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn target_miner_reward_share_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MINER_REWARD_SHARE_BPS_FIELD.name);
+        pub fn target_submitter_reward_share_bps(mut self) -> String {
+            self.path
+                .push(SystemParameters::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD.name);
             self.finish()
         }
         pub fn target_model_reward_share_bps(mut self) -> String {
@@ -5213,9 +5214,9 @@ mod _field_impls {
             number: 8i32,
             message_fields: None,
         };
-        pub const MINER_FIELD: &'static MessageField = &MessageField {
-            name: "miner",
-            json_name: "miner",
+        pub const SUBMITTER_FIELD: &'static MessageField = &MessageField {
+            name: "submitter",
+            json_name: "submitter",
             number: 9i32,
             message_fields: None,
         };
@@ -5248,7 +5249,7 @@ mod _field_impls {
             Self::GENERATION_EPOCH_FIELD,
             Self::STATUS_FIELD,
             Self::FILL_EPOCH_FIELD,
-            Self::MINER_FIELD,
+            Self::SUBMITTER_FIELD,
             Self::WINNING_MODEL_ID_FIELD,
             Self::WINNING_MODEL_OWNER_FIELD,
             Self::BOND_AMOUNT_FIELD,
@@ -5306,8 +5307,8 @@ mod _field_impls {
             self.path.push(Target::FILL_EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn miner(mut self) -> String {
-            self.path.push(Target::MINER_FIELD.name);
+        pub fn submitter(mut self) -> String {
+            self.path.push(Target::SUBMITTER_FIELD.name);
             self.finish()
         }
         pub fn winning_model_id(mut self) -> String {
@@ -5324,9 +5325,9 @@ mod _field_impls {
         }
     }
     impl Submission {
-        pub const MINER_FIELD: &'static MessageField = &MessageField {
-            name: "miner",
-            json_name: "miner",
+        pub const SUBMITTER_FIELD: &'static MessageField = &MessageField {
+            name: "submitter",
+            json_name: "submitter",
             number: 1i32,
             message_fields: None,
         };
@@ -5375,7 +5376,7 @@ mod _field_impls {
     }
     impl MessageFields for Submission {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::MINER_FIELD,
+            Self::SUBMITTER_FIELD,
             Self::DATA_COMMITMENT_FIELD,
             Self::DATA_MANIFEST_FIELD,
             Self::MODEL_ID_FIELD,
@@ -5405,8 +5406,8 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn miner(mut self) -> String {
-            self.path.push(Submission::MINER_FIELD.name);
+        pub fn submitter(mut self) -> String {
+            self.path.push(Submission::SUBMITTER_FIELD.name);
             self.finish()
         }
         pub fn data_commitment(mut self) -> String {

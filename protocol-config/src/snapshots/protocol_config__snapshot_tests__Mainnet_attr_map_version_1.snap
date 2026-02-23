@@ -74,7 +74,7 @@ target_max_distance_threshold:
   BcsF32: 2
 target_min_distance_threshold:
   BcsF32: 0.1
-target_miner_reward_share_bps:
+target_submitter_reward_share_bps:
   u64: 6900
 target_model_reward_share_bps:
   u64: 3000

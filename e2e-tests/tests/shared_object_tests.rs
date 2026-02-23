@@ -13,7 +13,7 @@
 //! 3. test_shared_object_status_transition_via_claim — ClaimRewards transitions Target to Claimed
 //! 4. test_target_version_increments_on_mutations — Version strictly increases on each mutation
 //! 5. test_transaction_replay_idempotency — Resubmit same signed tx, get identical effects
-//! 6. test_racing_miners_concurrent_shared_mutations — Concurrent SubmitData to same Target
+//! 6. test_racing_submitters_concurrent_shared_mutations — Concurrent SubmitData to same Target
 //! 7. test_shared_object_dependency_tracking — Sequential mutations create dependency chain
 //! 8. test_concurrent_conflicting_owned_transactions — Concurrent spends of same coin via orchestrator
 
@@ -176,7 +176,7 @@ async fn test_shared_object_mutation_via_submit_data() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -204,10 +204,10 @@ async fn test_shared_object_mutation_via_submit_data() {
     // Get gas object
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     // Execute SubmitData
     let submit_tx = TransactionData::new(
@@ -220,7 +220,7 @@ async fn test_shared_object_mutation_via_submit_data() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -404,7 +404,7 @@ async fn test_shared_object_status_transition_via_claim() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -427,10 +427,10 @@ async fn test_shared_object_status_transition_via_claim() {
 
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
@@ -442,7 +442,7 @@ async fn test_shared_object_status_transition_via_claim() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -458,14 +458,14 @@ async fn test_shared_object_status_transition_via_claim() {
     // Execute ClaimRewards
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let claim_tx = TransactionData::new(
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -483,31 +483,31 @@ async fn test_shared_object_status_transition_via_claim() {
         claim_response.effects.deleted().iter().map(|(id, _, _)| *id).collect();
     assert!(deleted_ids.contains(&target_id), "Target should be deleted by ClaimRewards");
 
-    // 3. New reward coins should be created (miner reward + model owner reward + bond return)
+    // 3. New reward coins should be created (submitter reward + model owner reward + bond return)
     let created = claim_response.effects.created();
     assert!(!created.is_empty(), "ClaimRewards should create reward coins");
     info!("ClaimRewards created {} objects (rewards + bond return)", created.len());
 
-    // 4. Verify miner received at least one coin
-    let miner_coins: Vec<_> = created
+    // 4. Verify submitter received at least one coin
+    let submitter_coins: Vec<_> = created
         .iter()
-        .filter(|(_, owner)| matches!(owner, Owner::AddressOwner(addr) if *addr == miner))
+        .filter(|(_, owner)| matches!(owner, Owner::AddressOwner(addr) if *addr == submitter))
         .collect();
-    assert!(!miner_coins.is_empty(), "Miner should receive rewards or bond return");
+    assert!(!submitter_coins.is_empty(), "Submitter should receive rewards or bond return");
 
     // === Verify subsequent operations on deleted target fail ===
 
     // 5. Second ClaimRewards on same target should fail (target was deleted)
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let claim_again_tx = TransactionData::new(
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -521,10 +521,10 @@ async fn test_shared_object_status_transition_via_claim() {
     // 6. SubmitData on deleted target should also fail
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let submit_to_claimed_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
@@ -536,7 +536,7 @@ async fn test_shared_object_status_transition_via_claim() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -573,7 +573,7 @@ async fn test_target_version_increments_on_mutations() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -603,10 +603,10 @@ async fn test_target_version_increments_on_mutations() {
 
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
@@ -618,7 +618,7 @@ async fn test_target_version_increments_on_mutations() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -774,7 +774,7 @@ async fn test_transaction_replay_idempotency() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -797,10 +797,10 @@ async fn test_transaction_replay_idempotency() {
 
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     // Build and sign a SubmitData transaction
     let submit_tx_data = TransactionData::new(
@@ -813,7 +813,7 @@ async fn test_transaction_replay_idempotency() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 
@@ -918,9 +918,9 @@ async fn test_transaction_replay_idempotency() {
 }
 
 // ===================================================================
-// Test 6: Racing miners — concurrent shared object mutations
+// Test 6: Racing submitters — concurrent shared object mutations
 //
-// Multiple miners submit SubmitData for the same open Target concurrently.
+// Multiple submitters submit SubmitData for the same open Target concurrently.
 // Since Target is a shared object, consensus sequences these transactions.
 // Exactly one should succeed (target becomes Filled); the rest should fail
 // with TargetNotOpen (the target is no longer open by the time they execute).
@@ -929,7 +929,7 @@ async fn test_transaction_replay_idempotency() {
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn test_racing_miners_concurrent_shared_mutations() {
+async fn test_racing_submitters_concurrent_shared_mutations() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
@@ -959,7 +959,7 @@ async fn test_racing_miners_concurrent_shared_mutations() {
         .and_then(|id_str| id_str.parse().ok())
         .expect("Target should have valid ID");
 
-    info!("Racing miners targeting: {}", target_id);
+    info!("Racing submitters targeting: {}", target_id);
 
     // Create 3 signed SubmitData transactions from different senders
     let addresses = test_cluster.get_addresses();
@@ -967,13 +967,13 @@ async fn test_racing_miners_concurrent_shared_mutations() {
     let mut signed_txs = Vec::new();
 
     for i in 0..num_racers {
-        let miner = addresses[i];
+        let submitter = addresses[i];
         let gas_object = test_cluster
             .wallet
-            .get_one_gas_object_owned_by_address(miner)
+            .get_one_gas_object_owned_by_address(submitter)
             .await
             .unwrap()
-            .unwrap_or_else(|| panic!("Miner {} should have a gas object", i));
+            .unwrap_or_else(|| panic!("Submitter {} should have a gas object", i));
 
         let submit_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
@@ -985,7 +985,7 @@ async fn test_racing_miners_concurrent_shared_mutations() {
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
                 bond_coin: gas_object,
             }),
-            miner,
+            submitter,
             vec![gas_object],
         );
 
@@ -1030,15 +1030,15 @@ async fn test_racing_miners_concurrent_shared_mutations() {
                 let effects = &response.effects.effects;
                 if effects.status().is_ok() {
                     successes += 1;
-                    info!("Miner {} won the race (target filled)", i);
+                    info!("Submitter {} won the race (target filled)", i);
                 } else {
                     failures += 1;
-                    info!("Miner {} lost the race (execution failed): {:?}", i, effects.status());
+                    info!("Submitter {} lost the race (execution failed): {:?}", i, effects.status());
                 }
             }
             Err(e) => {
                 failures += 1;
-                info!("Miner {} failed at submission level: {:?}", i, e);
+                info!("Submitter {} failed at submission level: {:?}", i, e);
             }
         }
     }
@@ -1046,17 +1046,17 @@ async fn test_racing_miners_concurrent_shared_mutations() {
     // === Verify racing invariant ===
     assert_eq!(
         successes, 1,
-        "Exactly one miner should win the race (got {} successes, {} failures)",
+        "Exactly one submitter should win the race (got {} successes, {} failures)",
         successes, failures
     );
     assert_eq!(
         failures,
         num_racers - 1,
-        "All other miners should fail (got {} failures)",
+        "All other submitters should fail (got {} failures)",
         failures
     );
 
-    info!("test_racing_miners_concurrent_shared_mutations passed: 1 winner, {} losers", failures);
+    info!("test_racing_submitters_concurrent_shared_mutations passed: 1 winner, {} losers", failures);
 }
 
 // ===================================================================
@@ -1081,7 +1081,7 @@ async fn test_shared_object_dependency_tracking() {
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    let miner = test_cluster.get_addresses()[0];
+    let submitter = test_cluster.get_addresses()[0];
 
     // Get system state and thresholds
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
@@ -1107,10 +1107,10 @@ async fn test_shared_object_dependency_tracking() {
     // === Mutation 1: SubmitData (fills target) ===
     let gas_object = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(miner)
+        .get_one_gas_object_owned_by_address(submitter)
         .await
         .unwrap()
-        .expect("Miner should have a gas object");
+        .expect("Submitter should have a gas object");
 
     let submit_tx_data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
@@ -1122,7 +1122,7 @@ async fn test_shared_object_dependency_tracking() {
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
             bond_coin: gas_object,
         }),
-        miner,
+        submitter,
         vec![gas_object],
     );
 

@@ -996,7 +996,7 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             fee_adjustment_rate_bps: proto_params
                 .fee_adjustment_rate_bps
                 .ok_or("Missing fee_adjustment_rate_bps")?,
-            // Target/Mining parameters
+            // Target/Submission parameters
             target_models_per_target: proto_params
                 .target_models_per_target
                 .ok_or("Missing target_models_per_target")?,
@@ -1034,9 +1034,9 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
                 .target_initial_targets_per_epoch
                 .ok_or("Missing target_initial_targets_per_epoch")?,
             // Reward distribution parameters
-            target_miner_reward_share_bps: proto_params
-                .target_miner_reward_share_bps
-                .ok_or("Missing target_miner_reward_share_bps")?,
+            target_submitter_reward_share_bps: proto_params
+                .target_submitter_reward_share_bps
+                .ok_or("Missing target_submitter_reward_share_bps")?,
             target_model_reward_share_bps: proto_params
                 .target_model_reward_share_bps
                 .ok_or("Missing target_model_reward_share_bps")?,
@@ -1474,7 +1474,7 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             min_value_fee_bps: Some(domain_params.min_value_fee_bps),
             max_value_fee_bps: Some(domain_params.max_value_fee_bps),
             fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
-            // Target/Mining parameters
+            // Target/Submission parameters
             target_models_per_target: Some(domain_params.target_models_per_target),
             target_embedding_dim: Some(domain_params.target_embedding_dim),
             target_initial_distance_threshold: Some(
@@ -1494,7 +1494,7 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             ),
             target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
             // Reward distribution parameters
-            target_miner_reward_share_bps: Some(domain_params.target_miner_reward_share_bps),
+            target_submitter_reward_share_bps: Some(domain_params.target_submitter_reward_share_bps),
             target_model_reward_share_bps: Some(domain_params.target_model_reward_share_bps),
             target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
             // Submission parameters

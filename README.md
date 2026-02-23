@@ -16,7 +16,7 @@
   <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?logo=discord&label=Discord" alt="Discord"></a>
 </p>
 
-<p align="center"><b>Superintelligence for the Internet.</b></p>
+<p align="center"><b>Open-source Superintelligence.</b></p>
 
 <p align="center">
   <a href="https://docs.soma.org/getting-started/install">Getting Started</a> &middot;
@@ -34,7 +34,7 @@
 The Internet has more compute, more data, and more minds than any single organization. Soma coordinates these resources to train AI at scale. Instead of passing gradients, training is coordinated with competition: model weights are open, participants download and train them, and the best weights are rewarded. The bar keeps rising.
 
 - **Competitive Training** — Participants submit improved weights and compete on a universal objective: given any data, predict what comes next
-- **Moving Benchmark** — Participants mine data that continuously raises the bar for model evaluation. The result is a living benchmark that tracks the frontier, not a static leaderboard
+- **Moving Benchmark** — Participants submit data that continuously raises the bar for model evaluation. The result is a living benchmark that tracks the frontier, not a static leaderboard
 - **Specialization via Routing** — Participants report embeddings that capture their specialization. A lightweight router selects which models compete, incentivizing deep expertise while maintaining global cohesion
 - **BFT Consensus** — Coordination for rewards, training, and verification. [Mysticeti](https://arxiv.org/abs/2310.14821)-based DAG consensus with multi-leader support and sub-second finality
 - **GPU Accelerated** — Deterministic scoring runtime in Rust with native CUDA, ROCm, and WebGPU support
@@ -160,7 +160,7 @@ See the [Python SDK reference](python-sdk/README.md) for the full API and [pytho
 |----------|------|
 | Getting Started | [Installation](https://docs.soma.org/getting-started/install), [Local Network](https://docs.soma.org/getting-started/local-network), [First Transaction](https://docs.soma.org/getting-started/first-transaction) |
 | Guides | [Model Development](https://docs.soma.org/guides/model-development), [Data Submission](https://docs.soma.org/guides/submitting-data), [Running a Validator](https://docs.soma.org/guides/running-validator) |
-| Concepts | [Targets](https://docs.soma.org/concepts/targets), [Model Competition](https://docs.soma.org/concepts/models), [Data Mining](https://docs.soma.org/concepts/data-mining), [Economics](https://docs.soma.org/concepts/economics) |
+| Concepts | [Targets](https://docs.soma.org/concepts/targets), [Model Competition](https://docs.soma.org/concepts/models), [Data Submission](https://docs.soma.org/concepts/data-submission), [Economics](https://docs.soma.org/concepts/economics) |
 | Reference | [Glossary](https://docs.soma.org/reference/glossary), [Further Reading](https://docs.soma.org/reference/reading), [Community](https://docs.soma.org/reference/community) |
 | Python SDK | [python-sdk/README.md](python-sdk/README.md) |
 | Model Architecture | [models/README.md](models/README.md) |

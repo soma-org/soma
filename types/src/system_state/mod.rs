@@ -164,7 +164,7 @@ pub struct SystemStateV1 {
 
     pub validator_report_records: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
 
-    /// Registry of all models (active, pending, inactive) in the mining system
+    /// Registry of all models (active, pending, inactive) in the data submission system
     pub model_registry: ModelRegistry,
 
     pub emission_pool: EmissionPool,

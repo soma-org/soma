@@ -2489,7 +2489,7 @@ mod _getter_impls {
                 target_max_distance_threshold: None,
                 target_min_distance_threshold: None,
                 target_initial_targets_per_epoch: None,
-                target_miner_reward_share_bps: None,
+                target_submitter_reward_share_bps: None,
                 target_model_reward_share_bps: None,
                 target_claimer_incentive_bps: None,
                 submission_bond_per_byte: None,
@@ -2594,8 +2594,8 @@ mod _getter_impls {
             self.target_initial_targets_per_epoch = Some(field.into());
             self
         }
-        pub fn with_target_miner_reward_share_bps(mut self, field: u64) -> Self {
-            self.target_miner_reward_share_bps = Some(field.into());
+        pub fn with_target_submitter_reward_share_bps(mut self, field: u64) -> Self {
+            self.target_submitter_reward_share_bps = Some(field.into());
             self
         }
         pub fn with_target_model_reward_share_bps(mut self, field: u64) -> Self {
@@ -3106,7 +3106,7 @@ mod _getter_impls {
                 generation_epoch: None,
                 status: None,
                 fill_epoch: None,
-                miner: None,
+                submitter: None,
                 winning_model_id: None,
                 winning_model_owner: None,
                 bond_amount: None,
@@ -3161,8 +3161,8 @@ mod _getter_impls {
             self.fill_epoch = Some(field.into());
             self
         }
-        pub fn with_miner(mut self, field: String) -> Self {
-            self.miner = Some(field.into());
+        pub fn with_submitter(mut self, field: String) -> Self {
+            self.submitter = Some(field.into());
             self
         }
         pub fn with_winning_model_id(mut self, field: String) -> Self {
@@ -3181,7 +3181,7 @@ mod _getter_impls {
     impl Submission {
         pub const fn const_default() -> Self {
             Self {
-                miner: None,
+                submitter: None,
                 data_commitment: None,
                 data_manifest: None,
                 model_id: None,
@@ -3196,8 +3196,8 @@ mod _getter_impls {
             static DEFAULT: Submission = Submission::const_default();
             &DEFAULT
         }
-        pub fn with_miner(mut self, field: String) -> Self {
-            self.miner = Some(field.into());
+        pub fn with_submitter(mut self, field: String) -> Self {
+            self.submitter = Some(field.into());
             self
         }
         pub fn with_data_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {

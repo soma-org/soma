@@ -282,8 +282,8 @@ impl Display for TargetInfoOutput {
             ),
         ]);
 
-        if let Some(miner) = &t.miner {
-            builder.push_record(["Miner", &miner.to_string()]);
+        if let Some(submitter) = &t.submitter {
+            builder.push_record(["Submitter", &submitter.to_string()]);
         }
         if let Some(model_id) = &t.winning_model_id {
             builder.push_record(["Winning Model", &model_id.to_string()]);

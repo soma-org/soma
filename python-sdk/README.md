@@ -236,7 +236,7 @@ tx = await client.build_report_model(sender, model_id, gas=None)
 tx = await client.build_undo_report_model(sender, model_id, gas=None)
 ```
 
-### Mining Submissions
+### Data Submissions
 
 ```python
 # Submit data to fill a target

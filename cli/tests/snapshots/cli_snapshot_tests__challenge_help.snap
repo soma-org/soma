@@ -4,7 +4,7 @@ expression: stdout
 ---
 Challenge a filled target's submission
 
-Submit a fraud challenge against a miner's submission for a filled target. Requires a bond proportional to the data size.
+Submit a fraud challenge against a submitter's submission for a filled target. Requires a bond proportional to the data size.
 
 Usage: soma challenge [OPTIONS] <COMMAND>
 
