@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 /// Chain ID of the current chain
 pub const X_SOMA_CHAIN_ID: &str = "x-soma-chain-id";
 

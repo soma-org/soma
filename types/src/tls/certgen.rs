@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use ed25519::pkcs8::EncodePrivateKey;
 use fastcrypto::ed25519::Ed25519PrivateKey;
 use rcgen::{CertificateParams, KeyPair};

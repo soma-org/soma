@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Supply conservation E2E tests.
 //!
 //! These tests verify that the total SOMA supply is conserved across epoch

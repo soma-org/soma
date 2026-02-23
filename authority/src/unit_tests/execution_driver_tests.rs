@@ -1,6 +1,5 @@
-// Portions of this file are derived from Sui (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/unit_tests/execution_driver_tests.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 // Tests for execution scheduling and the execution driver.

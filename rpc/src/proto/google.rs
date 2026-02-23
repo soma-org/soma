@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 pub mod protobuf {
     /// Byte encoded FILE_DESCRIPTOR_SET.
     pub const FILE_DESCRIPTOR_SET: &[u8] = include_bytes!("generated/google.protobuf.fds.bin");

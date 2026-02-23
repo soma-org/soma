@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Failpoint-based E2E tests.
 //!
 //! These tests use the failpoint infrastructure (`utils::fp`) to inject faults

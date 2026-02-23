@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 #![allow(clippy::result_large_err)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::collapsible_if)]

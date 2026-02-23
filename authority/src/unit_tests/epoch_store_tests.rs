@@ -1,10 +1,5 @@
-// Tests for the per-epoch store (AuthorityPerEpochStore).
-// These verify that the epoch store correctly reports epoch metadata,
-// stores signed transactions, and manages effects signatures.
-//
-// Portions of this file are derived from Sui (MystenLabs/sui).
-// Original source: https://github.com/MystenLabs/sui/tree/main/crates/sui-core/src/unit_tests/authority_per_epoch_store_tests.rs
 // Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;

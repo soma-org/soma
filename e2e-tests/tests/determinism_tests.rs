@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Determinism verification E2E tests.
 //!
 //! These tests verify that the Soma network produces deterministic, consistent

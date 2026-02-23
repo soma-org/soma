@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! `pbjson-build` consumes the descriptor output of [`prost-build`][1] and generates
 //! [`serde::Serialize`][2] and [`serde::Deserialize`][3] implementations
 //! that are compliant with the [protobuf JSON mapping][4]

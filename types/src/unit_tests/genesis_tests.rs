@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tests for the genesis builder and genesis state construction.
 //!
 //! These tests verify that the `GenesisBuilder` correctly constructs the initial

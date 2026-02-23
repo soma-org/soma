@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! WritePathPendingTransactionLog is used in TransactionOrchestrator
 //! to deduplicate transaction submission processing. It helps to achieve:
 //! 1. At one time, a transaction is only processed once.

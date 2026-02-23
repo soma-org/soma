@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use futures::future::{Either, join_all};
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;

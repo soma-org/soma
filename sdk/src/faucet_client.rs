@@ -1,5 +1,6 @@
-// Faucet request protocol follows the convention established by MystenLabs/sui (Apache-2.0)
-// See: https://github.com/MystenLabs/sui/blob/main/crates/sui-faucet/src/types.rs
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
 
 use serde::{Deserialize, Serialize};
 use types::base::SomaAddress;

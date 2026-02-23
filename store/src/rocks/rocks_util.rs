@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 pub(crate) fn apply_range_bounds(
     mut read_options: rocksdb::ReadOptions,
     lower_bound: Option<Vec<u8>>,

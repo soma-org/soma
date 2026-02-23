@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::base::SomaAddress;
 use crate::crypto::{
     AuthenticatorTrait, GenericSignature, Signature, SomaKeyPair, get_key_pair_from_rng,

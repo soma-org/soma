@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! The raw descriptor format is not very easy to work with, a fact not aided
 //! by prost making almost all members of proto2 syntax message optional
 //!

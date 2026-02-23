@@ -1,3 +1,7 @@
+// Copyright (c) Mysten Labs, Inc.
+// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// SPDX-License-Identifier: Apache-2.0
+
 //! Contains code to escape strings to avoid collisions with reserved Rust keywords
 
 pub fn escape_ident(mut ident: String) -> String {
