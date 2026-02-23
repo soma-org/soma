@@ -50,7 +50,7 @@ broken_intra_doc_links = "deny"
 
 [workspace.package]
 # This version string will be inherited by sub crates.
-version = "1.0.0"
+version = "0.1.0"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -101,7 +101,7 @@ data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
 faucet = { path = "faucet" }
-scoring = { path = "scoring" }
+scoring = { path = "scoring", default-features = false }
 admin = { path = "admin" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }

@@ -158,9 +158,11 @@ pub struct NodeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_driver_config: Option<TransactionDriverConfig>,
 
-    /// Compute device for ML inference (audit service).
-    #[serde(default)]
-    pub device: DeviceConfig,
+    /// URL of the remote scoring service for fraud auditing (e.g. "http://gpu-host:9124").
+    /// If None, the audit service is disabled and the validator will not participate in
+    /// challenge resolution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scoring_url: Option<String>,
 }
 
 impl NodeConfig {
@@ -734,7 +736,7 @@ impl ValidatorConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            device: DeviceConfig::default(),
+            scoring_url: None,
         }
     }
 
@@ -880,7 +882,7 @@ impl FullnodeConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            device: DeviceConfig::default(),
+            scoring_url: None,
         }
     }
 }

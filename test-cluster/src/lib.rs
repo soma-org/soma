@@ -64,6 +64,36 @@ mod swarm_node;
 
 const NUM_VALIDATORS: usize = 4;
 
+/// Mock scoring gRPC service for e2e tests.
+/// Returns deterministic results (winner=0, all-zero scores) without real ML inference.
+struct MockScoringService;
+
+#[scoring::tonic::async_trait]
+impl scoring::tonic_gen::scoring_server::Scoring for MockScoringService {
+    async fn score(
+        &self,
+        request: scoring::tonic::Request<scoring::types::ScoreRequest>,
+    ) -> Result<scoring::tonic::Response<scoring::types::ScoreResponse>, scoring::tonic::Status>
+    {
+        let req = request.into_inner();
+        let num_models = req.model_manifests.len().max(1);
+        Ok(scoring::tonic::Response::new(scoring::types::ScoreResponse {
+            winner: 0,
+            loss_score: vec![0.0; num_models],
+            embedding: vec![0.0; req.target_embedding.len()],
+            distance: vec![0.0; num_models],
+        }))
+    }
+
+    async fn health(
+        &self,
+        _request: scoring::tonic::Request<scoring::types::HealthRequest>,
+    ) -> Result<scoring::tonic::Response<scoring::types::HealthResponse>, scoring::tonic::Status>
+    {
+        Ok(scoring::tonic::Response::new(scoring::types::HealthResponse { ok: true }))
+    }
+}
+
 pub struct FullNodeHandle {
     pub soma_node: SomaNodeHandle,
     pub soma_client: SomaClient,
@@ -547,7 +577,28 @@ impl TestClusterBuilder {
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
-        let mut builder: SwarmBuilder = Swarm::builder().with_fullnode_count(1);
+        // Start a mock scoring server so validators can run the audit service.
+        let scoring_host = local_ip_utils::get_new_ip();
+        let scoring_port = local_ip_utils::get_available_port(&scoring_host);
+        let scoring_addr: SocketAddr =
+            format!("{scoring_host}:{scoring_port}").parse().unwrap();
+
+        let listener = tokio::net::TcpListener::bind(scoring_addr).await?;
+        tokio::spawn(async move {
+            scoring::tonic::transport::Server::builder()
+                .add_service(
+                    scoring::tonic_gen::scoring_server::ScoringServer::new(MockScoringService),
+                )
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .expect("mock scoring server");
+        });
+
+        let scoring_url = format!("http://{scoring_addr}");
+        info!("Mock scoring server started at {scoring_url}");
+
+        let mut builder: SwarmBuilder =
+            Swarm::builder().with_fullnode_count(1).with_scoring_url(scoring_url);
 
         if let Some(validators) = self.validators.take() {
             builder = builder.with_validators(validators);

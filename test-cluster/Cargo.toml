@@ -19,6 +19,8 @@ rpc.workspace = true
 bytes.workspace = true
 object_store.workspace = true
 url.workspace = true
+scoring = { workspace = true, default-features = false }
+tokio-stream.workspace = true
 tempfile = "3.24.0"
 
 [lints]

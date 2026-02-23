@@ -61,6 +61,7 @@ axum.workspace = true
 hex = "0.4"
 sdk.workspace = true
 runtime.workspace = true
+scoring = { workspace = true, default-features = false }
 burn.workspace = true
 sysinfo = "0.35.2"
 diffy = { version = "0.3", default-features = false }

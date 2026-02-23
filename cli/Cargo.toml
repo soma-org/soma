@@ -34,7 +34,7 @@ futures.workspace = true
 chrono.workspace = true
 hex.workspace = true
 faucet.workspace = true
-scoring.workspace = true
+scoring = { workspace = true, features = ["server"] }
 admin.workspace = true
 runtime.workspace = true
 axum.workspace = true

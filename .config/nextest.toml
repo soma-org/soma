@@ -1,0 +1,15 @@
+[profile.ci]
+failure-output = "immediate"
+status-level = "skip"
+fail-fast = false
+retries = 2
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.ci.junit]
+path = "junit.xml"
+
+[profile.simtest]
+failure-output = "immediate"
+status-level = "fail"
+fail-fast = false
+slow-timeout = { period = "5m", terminate-after = 3 }

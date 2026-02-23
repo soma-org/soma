@@ -17,11 +17,13 @@
 use std::sync::Arc;
 
 use burn::tensor::{TensorData, Tolerance};
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 use tracing::{info, warn};
 
 use blobs::BlobPath;
 use runtime::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
+use scoring::tonic_gen::scoring_client::ScoringClient;
+use scoring::types::{ManifestInput, ScoreRequest};
 use types::{
     base::{AuthorityName, SomaAddress},
     challenge::{ChallengeV1, ChallengeId},
@@ -30,7 +32,7 @@ use types::{
     crypto::{Signature, SomaKeyPair},
     error::RuntimeResult,
     intent::{Intent, IntentMessage},
-    metadata::Manifest,
+    metadata::{Manifest, ManifestAPI, MetadataAPI},
     model::ModelId,
     object::ObjectID,
     target::TargetId,
@@ -100,6 +102,102 @@ impl RuntimeAPI for MockFraudCompetitionAPI {
         // Simulate data unavailable - miner is responsible for data availability
         Err(types::error::RuntimeError::DataNotAvailable(
             "Mock: data unavailable for testing fraud detection".to_string(),
+        ))
+    }
+}
+
+// ===========================================================================
+// Remote Scoring Runtime (gRPC client)
+// ===========================================================================
+
+/// Runtime implementation that calls a remote scoring gRPC service.
+///
+/// Validators use this to offload ML inference to a dedicated GPU machine
+/// running `soma score`. Multiple validators can share the same scoring service.
+pub struct RemoteScoringRuntime {
+    client: Mutex<ScoringClient<tonic::transport::Channel>>,
+}
+
+impl RemoteScoringRuntime {
+    /// Connect to a remote scoring service at the given URL (e.g. "http://gpu-host:9124").
+    pub async fn connect(url: &str) -> Result<Self, tonic::transport::Error> {
+        let client = ScoringClient::connect(url.to_string()).await?;
+        Ok(Self { client: Mutex::new(client) })
+    }
+}
+
+#[async_trait::async_trait]
+impl RuntimeAPI for RemoteScoringRuntime {
+    async fn competition(&self, _input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
+        // Not used by audit_service — it calls manifest_competition directly.
+        Err(types::error::RuntimeError::CoreProcessorError(
+            "RemoteScoringRuntime does not support competition(), use manifest_competition()"
+                .to_string(),
+        ))
+    }
+
+    async fn download_manifest(
+        &self,
+        _manifest: &Manifest,
+        _path: &BlobPath,
+    ) -> RuntimeResult<()> {
+        // The remote scoring service handles its own downloads.
+        Ok(())
+    }
+
+    async fn manifest_competition(
+        &self,
+        input: ManifestCompetitionInput,
+    ) -> RuntimeResult<CompetitionOutput> {
+        let data = input.data();
+        let data_checksum = hex::encode(data.metadata().checksum().0);
+
+        let model_manifests: Vec<ManifestInput> = input
+            .models()
+            .iter()
+            .zip(input.model_keys().iter())
+            .map(|(m, key)| ManifestInput {
+                url: m.url().to_string(),
+                checksum: hex::encode(m.metadata().checksum().0),
+                size: m.metadata().size(),
+                decryption_key: key.map(hex::encode),
+            })
+            .collect();
+
+        let target_embedding = input
+            .target()
+            .to_vec::<f32>()
+            .map_err(|e| types::error::RuntimeError::CoreProcessorError(format!("{e:?}")))?;
+
+        let request = ScoreRequest {
+            data_url: data.url().to_string(),
+            data_checksum,
+            data_size: data.metadata().size(),
+            model_manifests,
+            target_embedding,
+            seed: input.seed(),
+        };
+
+        let response = {
+            let mut client = self.client.lock().await;
+            client.score(request).await.map_err(|status| {
+                let msg = status.message().to_string();
+                if msg.contains("not available") || msg.contains("unavailable") {
+                    types::error::RuntimeError::DataNotAvailable(msg)
+                } else if msg.contains("hash mismatch") || msg.contains("Checksum") {
+                    types::error::RuntimeError::DataHashMismatch
+                } else {
+                    types::error::RuntimeError::CoreProcessorError(msg)
+                }
+            })?
+        };
+
+        let resp = response.into_inner();
+        Ok(CompetitionOutput::new(
+            resp.winner,
+            TensorData::new(resp.loss_score.clone(), [resp.loss_score.len()]),
+            TensorData::new(resp.embedding.clone(), [resp.embedding.len()]),
+            TensorData::new(resp.distance.clone(), [resp.distance.len()]),
         ))
     }
 }

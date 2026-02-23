@@ -157,6 +157,7 @@ pub struct SwarmBuilder<R = OsRng> {
     supported_protocol_versions_config: ProtocolVersionsConfig,
     data_ingestion_dir: Option<PathBuf>,
     fullnode_run_with_range: Option<types::config::node_config::RunWithRange>,
+    scoring_url: Option<String>,
 }
 
 impl Default for SwarmBuilder {
@@ -174,6 +175,7 @@ impl Default for SwarmBuilder {
             supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             data_ingestion_dir: None,
             fullnode_run_with_range: None,
+            scoring_url: None,
         }
     }
 }
@@ -199,6 +201,7 @@ impl<R> SwarmBuilder<R> {
             supported_protocol_versions_config: self.supported_protocol_versions_config,
             data_ingestion_dir: self.data_ingestion_dir,
             fullnode_run_with_range: self.fullnode_run_with_range,
+            scoring_url: self.scoring_url,
         }
     }
 
@@ -315,6 +318,11 @@ impl<R> SwarmBuilder<R> {
         self.fullnode_run_with_range = Some(run_with_range);
         self
     }
+
+    pub fn with_scoring_url(mut self, url: String) -> Self {
+        self.scoring_url = Some(url);
+        self
+    }
 }
 
 // TODO: modify this build to make use of fullnode configs and data ingestion urls
@@ -327,7 +335,7 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             SwarmDirectory::new_temporary()
         };
 
-        let network_config = self.network_config.unwrap_or_else(|| {
+        let mut network_config = self.network_config.unwrap_or_else(|| {
             let mut config_builder = ConfigBuilder::new(dir.as_ref());
 
             if let Some(genesis_config) = self.genesis_config {
@@ -342,6 +350,13 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                 .rng(self.rng)
                 .build()
         });
+
+        // Apply scoring_url to validator configs if set
+        if let Some(ref scoring_url) = self.scoring_url {
+            for config in &mut network_config.validator_configs {
+                config.scoring_url = Some(scoring_url.clone());
+            }
+        }
 
         // Create validator nodes
         let mut nodes: HashMap<_, _> = network_config

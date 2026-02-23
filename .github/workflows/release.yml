@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - soma-v*
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  PYO3_PYTHON: python3
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: soma-linux-x86_64
+          - os: macos-latest
+            artifact: soma-macos-aarch64
+          - os: windows-latest
+            artifact: soma-windows-x86_64.exe
+            binary: soma.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build
+        run: cargo build -p cli --release
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p artifacts
+          cp target/release/soma artifacts/${{ matrix.artifact }}
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          Copy-Item target/release/soma.exe artifacts/${{ matrix.artifact }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/${{ matrix.artifact }}
+
+  build-cuda:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.22
+        with:
+          cuda: '12.6.3'
+      - name: Build
+        run: cargo build -p cli --release --features cuda
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          cp target/release/soma artifacts/soma-cuda-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soma-cuda-linux-x86_64
+          path: artifacts/soma-cuda-linux-x86_64
+
+  build-rocm:
+    runs-on: ubuntu-22.04
+    container:
+      image: rocm/dev-ubuntu-22.04:6.3
+    timeout-minutes: 90
+    steps:
+      - name: Install system deps
+        run: |
+          apt-get update
+          apt-get install -y git curl python3 python3-dev pkg-config libssl-dev
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0 -c rustfmt -c clippy
+      - name: Build
+        run: |
+          . "$HOME/.cargo/env"
+          PYO3_PYTHON=python3 cargo build -p cli --release --features rocm
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          cp target/release/soma artifacts/soma-rocm-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soma-rocm-linux-x86_64
+          path: artifacts/soma-rocm-linux-x86_64
+
+  release:
+    needs: [build, build-cuda, build-rocm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

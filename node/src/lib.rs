@@ -1534,27 +1534,18 @@ impl SomaNode {
         consensus_adapter: Arc<ConsensusAdapter>,
         challenge_rx: tokio::sync::mpsc::Receiver<ChallengeV1>,
     ) -> Option<Arc<AuditService>> {
-        // Create real RuntimeV1 with the configured device backend
-        let runtime_data_dir = config.db_path().join("runtime-data");
-        if let Err(e) = std::fs::create_dir_all(&runtime_data_dir) {
-            warn!("Failed to create runtime data directory: {e}");
-            return None;
-        }
+        let scoring_url = config.scoring_url.as_ref()?;
 
-        let model_config = runtime::ModelConfig::new();
-        let runtime_api: Arc<dyn runtime::RuntimeAPI> =
-            match runtime::build_runtime(&config.device, &runtime_data_dir, model_config) {
+        let remote_runtime =
+            match authority::audit_service::RemoteScoringRuntime::connect(scoring_url).await {
                 Ok(rt) => rt,
                 Err(e) => {
-                    warn!(
-                        "Failed to create runtime for audit service (device: {}): {e}",
-                        config.device
-                    );
+                    warn!("Failed to connect to scoring service at {scoring_url}: {e}");
                     return None;
                 }
             };
 
-        info!("Audit service runtime initialized with device: {}", config.device);
+        info!("Audit service connected to scoring service at {scoring_url}");
 
         // Get validator's account address and keypair from config
         let validator_address = config.soma_address();
@@ -1565,7 +1556,7 @@ impl SomaNode {
             validator_address,
             account_keypair,
             state.clone(),
-            runtime_api,
+            Arc::new(remote_runtime),
             epoch_store.epoch(),
             consensus_adapter,
             epoch_store.clone(),

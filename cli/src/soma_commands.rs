@@ -1259,6 +1259,41 @@ async fn start(
     // -- Build & launch -------------------------------------------------------
     const STATUS_WIDTH: usize = 50;
     print_banner("Local Network");
+
+    // -- Scoring service (must start before validators so they can connect) ----
+    let mut scoring_url: Option<String> = None;
+    if with_scoring {
+        use types::config::node_config::DeviceConfig;
+
+        let msg = "Starting scoring service...";
+        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
+
+        let model_config =
+            if small_model { scoring::model_config_small() } else { runtime::ModelConfig::new() };
+
+        let scoring_data_dir = config_dir.join("scoring-data");
+        fs::create_dir_all(&scoring_data_dir)?;
+        let engine = std::sync::Arc::new(
+            scoring::scoring::ScoringEngine::new(
+                &scoring_data_dir,
+                model_config,
+                &DeviceConfig::Cpu,
+            )
+            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+        );
+
+        tokio::spawn(async move {
+            if let Err(e) = scoring::server::start_scoring_server("0.0.0.0", 9124, engine).await {
+                tracing::error!("Scoring server error: {}", e);
+            }
+        });
+
+        let url = "http://127.0.0.1:9124".to_string();
+        swarm_builder = swarm_builder.with_scoring_url(url.clone());
+        scoring_url = Some(url);
+        eprintln!("{}", "done".green());
+    }
+
     let msg = "Generating genesis...";
     eprint!("  {msg:<width$}", width = STATUS_WIDTH);
     let mut swarm = swarm_builder.build();
@@ -1365,38 +1400,6 @@ async fn start(
 
         let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
         faucet_url = Some(format!("http://{display_host}:{port}/gas"));
-        eprintln!("{}", "done".green());
-    }
-
-    // -- Scoring service ------------------------------------------------------
-    let mut scoring_url: Option<String> = None;
-    if with_scoring {
-        use types::config::node_config::DeviceConfig;
-
-        let msg = "Starting scoring service...";
-        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
-
-        let model_config =
-            if small_model { scoring::model_config_small() } else { runtime::ModelConfig::new() };
-
-        let scoring_data_dir = config_dir.join("scoring-data");
-        fs::create_dir_all(&scoring_data_dir)?;
-        let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(
-                &scoring_data_dir,
-                model_config,
-                &DeviceConfig::Cpu,
-            )
-            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-        );
-
-        tokio::spawn(async move {
-            if let Err(e) = scoring::server::start_scoring_server("0.0.0.0", 9124, engine).await {
-                tracing::error!("Scoring server error: {}", e);
-            }
-        });
-
-        scoring_url = Some("http://127.0.0.1:9124".to_string());
         eprintln!("{}", "done".green());
     }
 
