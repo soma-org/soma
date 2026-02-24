@@ -312,15 +312,23 @@ pub async fn start_validator_node(config_path: PathBuf) -> Result<()> {
 
     // Keep the node running until Ctrl+C or SIGTERM
     let mut interval = tokio::time::interval(Duration::from_secs(5));
+
+    #[cfg(unix)]
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .expect("failed to register SIGTERM handler");
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 info!("Received Ctrl+C, shutting down validator...");
                 break;
             }
-            _ = sigterm.recv() => {
+            _ = async {
+                #[cfg(unix)]
+                sigterm.recv().await;
+                #[cfg(not(unix))]
+                std::future::pending::<()>().await;
+            } => {
                 info!("Received SIGTERM, shutting down validator...");
                 break;
             }
