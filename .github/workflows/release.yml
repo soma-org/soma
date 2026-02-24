@@ -153,9 +153,6 @@ jobs:
           - os: ubuntu-22.04
             image: rocm/dev-ubuntu-22.04:6.3
             suffix: linux-x86_64-rocm
-          - os: ubuntu-22.04-arm
-            image: rocm/dev-ubuntu-22.04:6.3
-            suffix: linux-aarch64-rocm
     runs-on: ${{ matrix.os }}
     container:
       image: ${{ matrix.image }}
