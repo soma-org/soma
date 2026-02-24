@@ -7,10 +7,10 @@ import "soma/rpc/signature.proto";
 import "soma/rpc/transaction_fee.proto";
 import "soma/rpc/transaction.proto";
 
-// A header for a checkpoint on the Soma blockchain.
+// A header for a checkpoint on the SOMA blockchain.
 //
-// On the Soma network, checkpoints define the history of the blockchain. They are quite similar to
-// the concept of blocks used by other blockchains like Bitcoin or Ethereum. The Soma blockchain,
+// On the SOMA network, checkpoints define the history of the blockchain. They are quite similar to
+// the concept of blocks used by other blockchains like Bitcoin or Ethereum. The SOMA blockchain,
 // however, forms checkpoints after transaction execution has already happened to provide a
 // certified history of the chain, instead of being formed before execution.
 //
@@ -82,7 +82,7 @@ message CheckpointCommitment {
     CHECKPOINT_COMMITMENT_KIND_UNKNOWN = 0;
 
     // An elliptic curve multiset hash attesting to the set of objects that
-    // comprise the live state of the Soma blockchain.
+    // comprise the live state of the SOMA blockchain.
     ECMH_LIVE_OBJECT_SET = 1;
 
     // Digest of the checkpoint artifacts.

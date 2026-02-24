@@ -7,7 +7,7 @@
 // shared object version assignment, and dependency ordering.
 //
 // Adapted from Sui's execution_driver_tests.rs patterns, but simplified
-// because Soma lacks LocalAuthorityClient and multi-authority unit test
+// because SOMA lacks LocalAuthorityClient and multi-authority unit test
 // infrastructure. Multi-authority execution tests are covered by E2E tests.
 //
 // Portions of this file are derived from Sui (MystenLabs/sui).

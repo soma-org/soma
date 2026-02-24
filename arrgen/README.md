@@ -1,6 +1,6 @@
 # soma-arrgen
 
-Deterministic array generation for the Soma network. Produces identical arrays in both Rust and Python, ensuring numerical reproducibility across the on-chain runtime and Python training environments.
+Deterministic array generation for the SOMA network. Produces identical arrays in both Rust and Python, ensuring numerical reproducibility across the on-chain runtime and Python training environments.
 
 Used to generate deterministic model weights, inputs, and noise (e.g., SIGReg) so that the same seed always produces the same output regardless of language or platform.
 

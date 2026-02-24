@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Start a local Soma network for development and testing
+Start a local SOMA network for development and testing
 
 Launches local validators, a fullnode, and optionally a faucet and scoring service. State is persisted in ~/.soma/ by default, or use --force-regenesis for an ephemeral network that starts fresh each time.
 

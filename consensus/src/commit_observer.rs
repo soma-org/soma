@@ -262,7 +262,7 @@ impl CommitObserver {
 
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-// Adapted for Soma.
+// Adapted for SOMA.
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};

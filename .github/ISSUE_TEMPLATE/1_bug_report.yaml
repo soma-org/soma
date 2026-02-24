@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in Soma
+description: Report a bug in SOMA
 labels: ["bug"]
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Soma Version
+      label: SOMA Version
       description: Output of `soma --version` or SDK version
       placeholder: "e.g., 0.1.0"
     validations:

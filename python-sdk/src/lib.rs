@@ -187,7 +187,7 @@ fn extract_manifest(obj: &Bound<'_, PyAny>) -> PyResult<sdk::scoring_types::Mani
 // PyKeypair
 // ---------------------------------------------------------------------------
 
-/// Ed25519 keypair for signing Soma transactions.
+/// Ed25519 keypair for signing SOMA transactions.
 #[pyclass(name = "Keypair")]
 struct PyKeypair {
     inner: sdk::keypair::Keypair,
@@ -232,7 +232,7 @@ impl PyKeypair {
         Ok(Self { inner: kp })
     }
 
-    /// Return the Soma address (0x-prefixed hex) for this keypair.
+    /// Return the SOMA address (0x-prefixed hex) for this keypair.
     fn address(&self) -> String {
         self.inner.address().to_string()
     }
@@ -259,7 +259,7 @@ impl PyKeypair {
 type FaucetGrpcClient =
     faucet::faucet_gen::faucet_client::FaucetClient<faucet::tonic::transport::Channel>;
 
-/// A client for interacting with the Soma network via gRPC.
+/// A client for interacting with the SOMA network via gRPC.
 #[pyclass(name = "SomaClient")]
 struct PySomaClient {
     inner: sdk::SomaClient,
@@ -1957,7 +1957,7 @@ impl PySomaClient {
 // Module
 // ---------------------------------------------------------------------------
 
-/// Python SDK for the Soma network.
+/// Python SDK for the SOMA network.
 #[pymodule]
 fn soma_sdk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySomaClient>()?;

@@ -195,7 +195,7 @@ impl AuthorityCapabilitiesV1 {
     ) -> Self {
         let generation = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("Soma did not exist prior to 1970")
+            .expect("SOMA did not exist prior to 1970")
             .as_millis()
             .try_into()
             .expect("This build of soma is not supported in the year 500,000,000");

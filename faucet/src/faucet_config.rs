@@ -18,7 +18,7 @@ pub const DEFAULT_AMOUNT: u64 = 2_000_000_000;
 pub const DEFAULT_NUM_COINS: usize = 1;
 
 #[derive(Parser, Debug, Clone)]
-#[clap(name = "soma-faucet", about = "Soma Faucet Server")]
+#[clap(name = "soma-faucet", about = "SOMA Faucet Server")]
 pub struct FaucetConfig {
     /// Port to listen on
     #[clap(long, default_value_t = DEFAULT_FAUCET_PORT)]

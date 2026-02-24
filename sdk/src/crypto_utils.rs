@@ -1,4 +1,4 @@
-//! Cryptographic utilities for the Soma SDK.
+//! Cryptographic utilities for the SOMA SDK.
 //!
 //! Encryption uses AES-256-CTR with a zero IV, matching the workspace standard
 //! defined in `runtime/src/v1.rs`.

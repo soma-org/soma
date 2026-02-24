@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "soma-sdk"
-description = "Python SDK for the Soma network"
+description = "Python SDK for the SOMA network"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Soma Contributors" }]
+authors = [{ name = "SOMA Contributors" }]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",

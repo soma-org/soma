@@ -132,7 +132,7 @@ impl SomaClientBuilder {
     }
 }
 
-/// The main Soma client for interacting with the Soma network via gRPC and TUS
+/// The main SOMA client for interacting with the SOMA network via gRPC and TUS
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,

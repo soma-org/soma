@@ -1,11 +1,11 @@
-# Soma Models
+# SOMA Models
 
 <p>
   <a href="https://pypi.org/project/soma-models"><img src="https://img.shields.io/pypi/v/soma-models.svg" alt="PyPI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
 </p>
 
-Deterministic model architectures for the Soma network. The Rust runtime in this crate is the **canonical scoring implementation** — Python implementations in [`soma-models`](https://pypi.org/project/soma-models/) (PyTorch and Flax) are numerically identical.
+Deterministic model architectures for the SOMA network. The Rust runtime in this crate is the **canonical scoring implementation** — Python implementations in [`soma-models`](https://pypi.org/project/soma-models/) (PyTorch and Flax) are numerically identical.
 
 Weights are serialized in [safetensors](https://huggingface.co/docs/safetensors/) format, the canonical weight exchange format between Python and the Rust runtime.
 

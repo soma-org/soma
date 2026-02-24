@@ -51,7 +51,7 @@ use tap::Pipe;
 
 /// # TransactionKind
 ///
-/// Represents the different types of transactions supported by the Soma blockchain.
+/// Represents the different types of transactions supported by the SOMA blockchain.
 ///
 /// ## Purpose
 /// Categorizes transactions based on their function and lifecycle within the system,

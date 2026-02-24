@@ -1,4 +1,4 @@
-//! Target generation for the Soma data submission competition.
+//! Target generation for the SOMA data submission competition.
 //!
 //! Targets are shared objects that submitters compete to fill. Each target has an embedding
 //! (center point) and a distance threshold. Submitters submit data that embeds within the
@@ -40,7 +40,7 @@ use fastcrypto::hash::HashFunction as _;
 /// Type alias: targets are identified by their ObjectID.
 pub type TargetId = ObjectID;
 
-/// A target in the Soma data submission competition.
+/// A target in the SOMA data submission competition.
 ///
 /// Targets are shared objects — not fields inside SystemState. This prevents
 /// SystemState from becoming a contention bottleneck at high TPS, since each

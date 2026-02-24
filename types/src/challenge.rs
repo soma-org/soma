@@ -1,4 +1,4 @@
-//! Challenge types for the Soma data submission competition dispute resolution.
+//! Challenge types for the SOMA data submission competition dispute resolution.
 //!
 //! Challenges enable anyone to dispute data submissions. Validators audit
 //! the submission and submit report transactions. A 2f+1 quorum determines the outcome.

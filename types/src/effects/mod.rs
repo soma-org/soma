@@ -903,8 +903,8 @@ pub enum ExecutionFailureStatus {
     //
     // Post-execution errors
     //
-    /// Generic Soma error that wraps other error types
-    #[error("Soma Error {0}")]
+    /// Generic SOMA error that wraps other error types
+    #[error("SOMA Error {0}")]
     SomaError(SomaError),
 }
 

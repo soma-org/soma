@@ -1,4 +1,4 @@
-"""Shared model weight utilities for Soma examples.
+"""Shared model weight utilities for SOMA examples.
 
 Provides constants and ``build_model_weights()`` for generating valid safetensors
 weights that match the small-model config (embedding_dim=16, num_layers=2).

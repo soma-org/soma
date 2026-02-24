@@ -204,7 +204,7 @@ message TargetState {
   optional uint64 reward_per_target = 5;
 }
 
-// A target in the Soma data submission competition.
+// A target in the SOMA data submission competition.
 // Targets are shared objects that submitters compete to fill.
 message Target {
   // Target ID (ObjectID hex)

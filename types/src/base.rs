@@ -6,7 +6,7 @@
 //!
 //! ## Overview
 //! This module defines the fundamental types and data structures used throughout the
-//! Soma blockchain system. It serves as a foundation layer for all components.
+//! SOMA blockchain system. It serves as a foundation layer for all components.
 //!
 //! ## Responsibilities
 //! - Define primitive types for blockchain operations (timestamps, rounds, sequence numbers)
@@ -228,10 +228,10 @@ impl<T> TryFrom<Vec<T>> for SizeOneVec<T> {
     }
 }
 
-/// The length of a Soma address in bytes.
+/// The length of a SOMA address in bytes.
 pub const SOMA_ADDRESS_LENGTH: usize = 32;
 
-/// Represents an address in the Soma blockchain.
+/// Represents an address in the SOMA blockchain.
 ///
 /// A SomaAddress is a 32-byte identifier that can represent various entities
 /// in the blockchain, such as:
@@ -491,7 +491,7 @@ impl From<&MultiSigPublicKey> for SomaAddress {
 
 impl TryFrom<&GenericSignature> for SomaAddress {
     type Error = SomaError;
-    /// Derive a SomaAddress from a serialized signature in Soma [GenericSignature].
+    /// Derive a SomaAddress from a serialized signature in SOMA [GenericSignature].
     fn try_from(sig: &GenericSignature) -> SomaResult<Self> {
         match sig {
             GenericSignature::Signature(sig) => {

@@ -4,7 +4,7 @@
 
 //! Determinism verification E2E tests.
 //!
-//! These tests verify that the Soma network produces deterministic, consistent
+//! These tests verify that the SOMA network produces deterministic, consistent
 //! state across all validators. This is fundamental for blockchain correctness —
 //! if two validators process the same transactions and produce different states,
 //! consensus breaks.
@@ -422,7 +422,7 @@ async fn test_passive_epoch_with_transactions_smoke() {
 
 /// NOTE: Ignored — msim's `check_determinism` fails due to `std::collections::HashMap` not
 /// being deterministically seeded on Rust 1.93 / macOS aarch64. This is an msim plumbing issue,
-/// not a Soma consensus bug. The 4 tests above provide strong cross-validator agreement
+/// not a SOMA consensus bug. The 4 tests above provide strong cross-validator agreement
 /// guarantees. See TESTING_PLAN.md for details.
 #[cfg(msim)]
 #[msim::sim_test]

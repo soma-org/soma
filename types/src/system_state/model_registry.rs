@@ -8,7 +8,7 @@ use crate::{
     object::ObjectID,
 };
 
-/// Registry of all models in the Soma data submission system.
+/// Registry of all models in the SOMA data submission system.
 ///
 /// Tracks active, pending (committed but not yet revealed), and inactive models.
 /// Mirrors the `ValidatorSet` pattern: models are keyed by `ModelId` (an `ObjectID`),

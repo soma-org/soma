@@ -1117,7 +1117,7 @@ impl Display for StatusOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header("Soma Network Status"));
+        table.with(TablePanel::header("SOMA Network Status"));
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;

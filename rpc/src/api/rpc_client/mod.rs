@@ -43,16 +43,16 @@ pub struct Client {
 }
 
 impl Client {
-    // /// URL for the public-good, Soma Foundation provided fullnodes for mainnet.
+    // /// URL for the public-good, SOMA Foundation provided fullnodes for mainnet.
     // pub const MAINNET_FULLNODE: &str = "https://fullnode.mainnet.soma.org";
 
-    /// URL for the public-good, Soma Foundation provided fullnodes for testnet.
+    /// URL for the public-good, SOMA Foundation provided fullnodes for testnet.
     pub const TESTNET_FULLNODE: &str = "https://fullnode.testnet.soma.org";
 
-    // /// URL for the public-good, Soma Foundation provided archive for mainnet.
+    // /// URL for the public-good, SOMA Foundation provided archive for mainnet.
     // pub const MAINNET_ARCHIVE: &str = "https://archive.mainnet.soma.org";
 
-    /// URL for the public-good, Soma Foundation provided archive for testnet.
+    /// URL for the public-good, SOMA Foundation provided archive for testnet.
     pub const TESTNET_ARCHIVE: &str = "https://archive.testnet.soma.org";
 
     #[allow(clippy::result_large_err)]

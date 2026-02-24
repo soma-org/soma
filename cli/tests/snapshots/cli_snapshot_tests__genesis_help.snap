@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Bootstrap and initialize a new Soma network
+Bootstrap and initialize a new SOMA network
 
 Usage: soma genesis [OPTIONS] [COMMAND]
 

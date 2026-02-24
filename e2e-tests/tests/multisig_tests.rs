@@ -8,7 +8,7 @@
 //! 1. test_multisig_e2e — Multisig with Ed25519 keys, threshold, and invalid scenarios
 //!
 //! Ported from Sui's `multisig_tests.rs`.
-//! Adapted for Soma which only supports Ed25519 keys (no Secp256k1/Secp256r1/ZkLogin/Passkey).
+//! Adapted for SOMA which only supports Ed25519 keys (no Secp256k1/Secp256r1/ZkLogin/Passkey).
 //! This tests the core multisig functionality: weighted thresholds, bitmap validation,
 //! and signature verification.
 

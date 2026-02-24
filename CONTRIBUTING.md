@@ -1,6 +1,6 @@
-# Contributing to Soma
+# Contributing to SOMA
 
-Thanks for considering making a contribution to the Soma network or its documentation. Before you get started, please take a moment to read these guidelines.
+Thanks for considering making a contribution to the SOMA network or its documentation. Before you get started, please take a moment to read these guidelines.
 
 ## Important Note
 
@@ -84,7 +84,7 @@ soma/
 
 ### Documentation
 
-Found a small error or typo in the main documentation? Each page on the [docs.soma.org](https://docs.soma.org/) site includes an **Edit this page** link at the bottom that you can use to edit the page in GitHub. The content is located in the docs/content directory of the Soma repo, so you can make a PR if you prefer.
+Found a small error or typo in the main documentation? Each page on the [docs.soma.org](https://docs.soma.org/) site includes an **Edit this page** link at the bottom that you can use to edit the page in GitHub. The content is located in the docs/content directory of the SOMA repo, so you can make a PR if you prefer.
 
 For larger documentation issues, you can [create an issue](https://github.com/soma-org/docs/issues/new/choose) in GitHub.
 
@@ -98,9 +98,9 @@ Provide as much detail as possible, including steps to reproduce the issue, expe
 
 For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
-### New Soma Features
+### New SOMA Features
 
-If you want to contribute code that creates a feature on Soma, start with a [Soma Improvement Proposal](https://github.com/soma-org/sips/tree/main) before developing the logic.
+If you want to contribute code that creates a feature on SOMA, start with a [SOMA Improvement Proposal](https://github.com/soma-org/sips/tree/main) before developing the logic.
 
 ### Proposing Code Changes
 

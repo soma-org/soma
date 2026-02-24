@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         For major features, consider starting with a
-        [Soma Improvement Proposal](https://github.com/soma-org/sips) first.
+        [SOMA Improvement Proposal](https://github.com/soma-org/sips) first.
   - type: textarea
     id: description
     attributes:

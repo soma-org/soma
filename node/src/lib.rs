@@ -1099,7 +1099,7 @@ impl SomaNode {
                 .state
                 .get_object_cache_reader()
                 .get_system_state_object()
-                .expect("Read Soma System State object cannot fail");
+                .expect("Read SOMA System State object cannot fail");
 
             if let Err(err) = self.end_of_epoch_channel.send(latest_system_state.clone()) {
                 if self.state.is_fullnode(&cur_epoch_store) {

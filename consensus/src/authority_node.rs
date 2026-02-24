@@ -430,7 +430,7 @@ mod tests {
     // NOTE: This test hangs with 4-node committees because real tonic networking
     // cannot reliably establish all peer connections in a unit test environment.
     // NOTE: num_authorities=1 and num_authorities=2 pass; num_authorities=3 hangs because
-    // Soma's normalized voting power creates stakes [3333, 3333, 3334] where authorities 0+1
+    // SOMA's normalized voting power creates stakes [3333, 3333, 3334] where authorities 0+1
     // have 6666 < 6667 (QUORUM_THRESHOLD), and tonic networking in unit tests cannot reliably
     // establish the full mesh of connections needed for authority 2 to break the tie.
     // In Sui, equivalent tests use the msim simulator (consensus/simtests/).
@@ -540,7 +540,7 @@ mod tests {
             commit_sync_parallel_fetches: 2,
             commit_sync_batch_size: 3,
             // Disable sync_last_known_own_block for fresh-start tests.
-            // Soma's Committee hardcodes VALIDITY_THRESHOLD=3334 on normalized
+            // SOMA's Committee hardcodes VALIDITY_THRESHOLD=3334 on normalized
             // TOTAL_VOTING_POWER=10000, making the sync mechanism slow to converge
             // during startup and causing submit().await to block indefinitely.
             sync_last_known_own_block_timeout: Duration::ZERO,

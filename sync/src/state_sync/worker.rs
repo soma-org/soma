@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //
-// Modified for the Soma project.
+// Modified for the SOMA project.
 
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;

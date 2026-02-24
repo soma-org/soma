@@ -12,10 +12,10 @@ use types::system_state::{SystemStateTrait, get_system_state};
 
 const STR_ALL: &str = "All";
 const STR_EXIT: &str = "Exit";
-const STR_SOMA: &str = "Soma";
+const STR_SOMA: &str = "SOMA";
 const STR_STAKED_SOMA: &str = "StakedSoma";
 const STR_OTHER: &str = "Other";
-const STR_SOMA_DISTRIBUTION: &str = "Soma Distribution";
+const STR_SOMA_DISTRIBUTION: &str = "SOMA Distribution";
 const STR_OBJECTS: &str = "Objects";
 const STR_VALIDATORS: &str = "Validators";
 
@@ -34,7 +34,7 @@ pub fn examine_genesis_checkpoint(genesis: &UnsignedGenesis) {
     consensus_validator_options.push(STR_EXIT);
     println!("Total Number of Consensus Validators: {}", consensus_set.len());
 
-    // Prepare Soma distribution info
+    // Prepare SOMA distribution info
     let mut soma_distribution: BTreeMap<String, BTreeMap<String, (&str, u64)>> = BTreeMap::new();
 
     // Add emission pool
@@ -130,7 +130,7 @@ fn examine_objects(genesis: &UnsignedGenesis) {
                         println!();
                     }
                 }
-                print_divider("Soma");
+                print_divider("SOMA");
             }
             Ok(name) if name == STR_STAKED_SOMA => {
                 for object in genesis.objects() {
@@ -187,7 +187,7 @@ fn examine_soma_distribution(soma_distribution: &BTreeMap<String, BTreeMap<Strin
         total_soma,
         total_soma / SHANNONS_PER_SOMA
     );
-    print_divider("Soma Distribution");
+    print_divider("SOMA Distribution");
 }
 
 fn display_validator(validator: &Validator) {
@@ -202,7 +202,7 @@ fn display_validator(validator: &Validator) {
     println!("Voting Power: {}", validator.voting_power);
     println!("Commission Rate: {}", validator.commission_rate);
     println!("Staking Pool ID: {}", validator.staking_pool.id);
-    println!("Staking Pool Soma Balance: {}", validator.staking_pool.soma_balance);
+    println!("Staking Pool SOMA Balance: {}", validator.staking_pool.soma_balance);
     println!("Next Epoch Stake: {}", validator.next_epoch_stake);
     print_divider(&validator.metadata.soma_address.to_string());
 }

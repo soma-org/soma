@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
-    <img alt="Soma" src="assets/logo-light.svg" width="680">
+    <img alt="SOMA" src="assets/logo-light.svg" width="680">
   </picture>
 </p>
 
@@ -31,7 +31,7 @@
 
 ## Overview
 
-The Internet has more compute, more data, and more minds than any single organization. Soma coordinates these resources to train AI at scale. Instead of passing gradients, training is coordinated with competition: model weights are open, participants download and train them, and the best weights are rewarded. The bar keeps rising.
+The Internet has more compute, more data, and more minds than any single organization. SOMA coordinates these resources to train AI at scale. Instead of passing gradients, training is coordinated with competition: model weights are open, participants download and train them, and the best weights are rewarded. The bar keeps rising.
 
 - **Competitive Training** — Participants submit improved weights and compete on a universal objective: given any data, predict what comes next
 - **Moving Benchmark** — Participants submit data that continuously raises the bar for model evaluation. The result is a living benchmark that tracks the frontier, not a static leaderboard
@@ -44,7 +44,7 @@ The Internet has more compute, more data, and more minds than any single organiz
 
 ### sup
 
-[sup](https://github.com/soma-org/sup) is the Soma toolchain installer. It manages binaries across networks, versions, and hardware backends.
+[sup](https://github.com/soma-org/sup) is the SOMA toolchain installer. It manages binaries across networks, versions, and hardware backends.
 
 ```bash
 curl -sSfL https://sup.soma.org | sh
@@ -79,7 +79,7 @@ Releases are built and published automatically via CI when a tag is pushed:
 ## Getting Started
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="Soma in action" width="720">
+  <img src="assets/screenshot.png" alt="SOMA in action" width="720">
 </p>
 
 ### Start a Local Network
@@ -164,13 +164,13 @@ See the [Python SDK reference](python-sdk/README.md) for the full API and [pytho
 | Reference | [Glossary](https://docs.soma.org/reference/glossary), [Further Reading](https://docs.soma.org/reference/reading), [Community](https://docs.soma.org/reference/community) |
 | Python SDK | [python-sdk/README.md](python-sdk/README.md) |
 | Model Architecture | [models/README.md](models/README.md) |
-| Soma Improvement Proposals | [soma-org/sips](https://github.com/soma-org/sips) |
+| SOMA Improvement Proposals | [soma-org/sips](https://github.com/soma-org/sips) |
 
 ## Contributing
 
 We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before getting started.
 
-If you want to propose a new feature, start with a [Soma Improvement Proposal](https://github.com/soma-org/sips).
+If you want to propose a new feature, start with a [SOMA Improvement Proposal](https://github.com/soma-org/sips).
 
 ## Community
 
@@ -181,7 +181,7 @@ If you want to propose a new feature, start with a [Soma Improvement Proposal](h
 
 ## Acknowledgements
 
-Soma builds on the work of many open source projects, including:
+SOMA builds on the work of many open source projects, including:
 
 - [Sui](https://github.com/MystenLabs/sui) and [Mysticeti](https://github.com/MystenLabs/mysticeti) consensus (Mysten Labs)
 - [fastcrypto](https://github.com/MystenLabs/fastcrypto) cryptographic primitives (Mysten Labs)

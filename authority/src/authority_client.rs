@@ -49,7 +49,7 @@ pub trait AuthorityAPI {
         client_addr: Option<SocketAddr>,
     ) -> Result<WaitForEffectsResponse, SomaError>;
 
-    /// Initiate a new transaction to a Soma or Primary account.
+    /// Initiate a new transaction to a SOMA or Primary account.
     async fn handle_transaction(
         &self,
         transaction: Transaction,
@@ -146,7 +146,7 @@ impl NetworkAuthorityClient {
 
 #[async_trait]
 impl AuthorityAPI for NetworkAuthorityClient {
-    /// Submits a transaction to the Soma network for certification and execution.
+    /// Submits a transaction to the SOMA network for certification and execution.
     async fn submit_transaction(
         &self,
         request: SubmitTxRequest,
@@ -180,7 +180,7 @@ impl AuthorityAPI for NetworkAuthorityClient {
             .try_into()
     }
 
-    /// Initiate a new transfer to a Soma or Primary account.
+    /// Initiate a new transfer to a SOMA or Primary account.
     async fn handle_transaction(
         &self,
         transaction: Transaction,

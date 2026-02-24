@@ -71,7 +71,7 @@ pub fn read_key(path: &PathBuf) -> Result<SomaKeyPair, anyhow::Error> {
     }
 
     // Try Bech32 encoded 33-byte `flag || private key` starting with `somaprivkey`A prefix.
-    // This is the format of a private key exported from Soma Wallet or soma.keystore.
+    // This is the format of a private key exported from SOMA Wallet or soma.keystore.
     if let Ok(key) = SomaKeyPair::decode(contents) {
         return Ok(key);
     }

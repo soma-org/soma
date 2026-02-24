@@ -70,10 +70,10 @@ pub struct CheckpointedTransactionInfo {
     #[prost(message, repeated, tag = "3")]
     pub signatures: ::prost::alloc::vec::Vec<UserSignature>,
 }
-/// A header for a checkpoint on the Soma blockchain.
+/// A header for a checkpoint on the SOMA blockchain.
 ///
-/// On the Soma network, checkpoints define the history of the blockchain. They are quite similar to
-/// the concept of blocks used by other blockchains like Bitcoin or Ethereum. The Soma blockchain,
+/// On the SOMA network, checkpoints define the history of the blockchain. They are quite similar to
+/// the concept of blocks used by other blockchains like Bitcoin or Ethereum. The SOMA blockchain,
 /// however, forms checkpoints after transaction execution has already happened to provide a
 /// certified history of the chain, instead of being formed before execution.
 ///
@@ -174,7 +174,7 @@ pub mod checkpoint_commitment {
     pub enum CheckpointCommitmentKind {
         Unknown = 0,
         /// An elliptic curve multiset hash attesting to the set of objects that
-        /// comprise the live state of the Soma blockchain.
+        /// comprise the live state of the SOMA blockchain.
         EcmhLiveObjectSet = 1,
         /// Digest of the checkpoint artifacts.
         CheckpointArtifacts = 2,
@@ -2094,7 +2094,7 @@ pub struct ValidatorAggregatedSignature {
     #[prost(uint32, repeated, tag = "3")]
     pub bitmap: ::prost::alloc::vec::Vec<u32>,
 }
-/// Flag use to disambiguate the signature schemes supported by Soma.
+/// Flag use to disambiguate the signature schemes supported by SOMA.
 ///
 /// Note: the enum values defined by this proto message exactly match their
 /// expected BCS serialized values when serialized as a u8.
@@ -3692,7 +3692,7 @@ pub struct TargetState {
     #[prost(uint64, optional, tag = "5")]
     pub reward_per_target: ::core::option::Option<u64>,
 }
-/// A target in the Soma data submission competition.
+/// A target in the SOMA data submission competition.
 /// Targets are shared objects that submitters compete to fill.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

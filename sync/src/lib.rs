@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //
-// Modified for the Soma project.
+// Modified for the SOMA project.
 
 pub mod discovery;
 

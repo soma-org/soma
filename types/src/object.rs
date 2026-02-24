@@ -159,7 +159,7 @@ pub type ObjectRef = (ObjectID, Version, ObjectDigest);
 
 /// # ObjectInner
 ///
-/// The core implementation of an object in the Soma blockchain.
+/// The core implementation of an object in the SOMA blockchain.
 ///
 /// ## Purpose
 /// ObjectInner contains the actual data, ownership information, and transaction
@@ -609,9 +609,9 @@ impl ObjectData {
 pub enum ObjectType {
     /// Represents the global system state object
     SystemState,
-    /// Represents an owned Soma Token object
+    /// Represents an owned SOMA Token object
     Coin,
-    /// Represents an owned Staked Soma object
+    /// Represents an owned Staked SOMA object
     StakedSoma,
     /// Represents a data submission target object
     Target,
@@ -648,7 +648,7 @@ impl FromStr for ObjectType {
 
 /// # ObjectID
 ///
-/// A unique identifier for objects in the Soma blockchain.
+/// A unique identifier for objects in the SOMA blockchain.
 ///
 /// ## Purpose
 /// ObjectID provides a globally unique identifier for objects in the system,

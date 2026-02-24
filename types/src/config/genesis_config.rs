@@ -112,10 +112,10 @@ const DEFAULT_COMMISSION_RATE: u64 = 200;
 const DEFAULT_NUMBER_OF_ACCOUNTS: usize = 5;
 const DEFAULT_NUMBER_OF_OBJECT_PER_ACCOUNT: usize = 5;
 
-/// The number of Shannons per Soma token
+/// The number of Shannons per SOMA token
 pub const SHANNONS_PER_SOMA: u64 = 1_000_000_000;
 
-/// Total supply denominated in Soma
+/// Total supply denominated in SOMA
 pub const TOTAL_SUPPLY_SOMA: u64 = 10_000_000;
 
 // Note: cannot use checked arithmetic here since `const unwrap` is still unstable.
@@ -425,7 +425,7 @@ impl TokenDistributionSchedule {
     /// allocation to the emission fund. It must be in the following format:
     /// `0x0000000000000000000000000000000000000000000000000000000000000000,<amount to emission fund>,,`
     ///
-    /// All entries in a token distribution schedule must add up to 10M Soma.
+    /// All entries in a token distribution schedule must add up to 10M SOMA.
     pub fn from_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Self> {
         let mut reader = csv::Reader::from_reader(reader);
         let mut allocations: Vec<TokenAllocation> =

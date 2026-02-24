@@ -29,7 +29,7 @@ impl TryFrom<u8> for IntentVersion {
 }
 
 /// This enums specifies the application ID. Two intents in two different applications
-/// (i.e., Soma, Consensus, Encoder etc) should never collide, so that even when a signing
+/// (i.e., SOMA, Consensus, Encoder etc) should never collide, so that even when a signing
 /// key is reused, nobody can take a signature designated for app_1 and present it as a
 /// valid signature for an (any) intent in app_2.
 #[derive(Default, Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq, Debug, Hash)]

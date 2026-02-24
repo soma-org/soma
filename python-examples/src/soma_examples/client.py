@@ -1,4 +1,4 @@
-"""Example: connect to a Soma node and query basic chain state."""
+"""Example: connect to a SOMA node and query basic chain state."""
 
 import asyncio
 

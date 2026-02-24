@@ -5,7 +5,7 @@
 //! # Cryptography Module
 //!
 //! ## Overview
-//! This module provides the cryptographic primitives and utilities used throughout the Soma blockchain.
+//! This module provides the cryptographic primitives and utilities used throughout the SOMA blockchain.
 //! It implements signature schemes, key management, verification mechanisms, and cryptographic
 //! operations essential for blockchain security and consensus.
 //!
@@ -76,7 +76,7 @@ use std::str::FromStr;
 use strum::EnumString;
 use tracing::{instrument, warn};
 
-/// Default hash function used throughout the Soma blockchain
+/// Default hash function used throughout the SOMA blockchain
 ///
 /// Blake2b256 is chosen for its security properties and performance characteristics.
 /// It provides a good balance between security and efficiency for blockchain operations.
@@ -85,7 +85,7 @@ pub type DefaultHash = Blake2b256;
 /// Length of hash digests produced by the default hash function
 pub const DIGEST_LENGTH: usize = DefaultHash::OUTPUT_SIZE;
 
-/// Bech32 prefix for Soma private keys
+/// Bech32 prefix for SOMA private keys
 ///
 /// Used when encoding private keys to string format for storage or transmission
 pub const SOMA_PRIV_KEY_PREFIX: &str = "somaprivkey";
@@ -660,7 +660,7 @@ impl<const STRONG_THRESHOLD: bool> AuthorityQuorumSignInfo<STRONG_THRESHOLD> {
         committee.threshold::<STRONG_THRESHOLD>()
     }
 }
-/// Trait for authority signatures in the Soma blockchain
+/// Trait for authority signatures in the SOMA blockchain
 ///
 /// ## Purpose
 /// Defines the interface for creating and verifying authority signatures

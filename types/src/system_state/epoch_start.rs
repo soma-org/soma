@@ -225,7 +225,7 @@ pub trait EpochStartSystemStateTrait {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct EpochStartValidatorInfoV1 {
-    /// The Soma blockchain address of the validator
+    /// The SOMA blockchain address of the validator
     pub soma_address: SomaAddress,
 
     /// The BLS public key used for consensus protocol operations

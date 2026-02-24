@@ -5,7 +5,7 @@
 //! Tier 3: Shared object E2E tests.
 //!
 //! Rewrites of Sui's shared_objects_tests.rs and shared_objects_version_tests.rs
-//! using Soma's native shared objects (Target, SystemState) instead of Move counters.
+//! using SOMA's native shared objects (Target, SystemState) instead of Move counters.
 //!
 //! Tests:
 //! 1. test_shared_object_mutation_via_submit_data — SubmitData mutates Target shared object

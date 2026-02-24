@@ -4,7 +4,7 @@ Usage:
     1. Start scoring service:  soma score --small-model
     2. Run:                    uv run soma-example-scoring
 
-The scoring service is a standalone gRPC server that wraps the Soma runtime.
+The scoring service is a standalone gRPC server that wraps the SOMA runtime.
 It accepts data/model URLs and a target embedding, runs inference and distance
 computation, and returns the results. This script demonstrates the full flow:
 

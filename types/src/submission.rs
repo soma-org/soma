@@ -1,4 +1,4 @@
-//! Data submission types for the Soma data submission competition.
+//! Data submission types for the SOMA data submission competition.
 //!
 //! Contains `SubmissionManifest` — the manifest describing submitted data
 //! (URL, checksum, size). Used on Target and Challenge objects for challenge

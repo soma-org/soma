@@ -89,7 +89,7 @@ pub enum KeyToolCommand {
         derivation_path: Option<DerivationPath>,
         word_length: Option<String>,
     },
-    /// Add a new key to Soma CLI Keystore using either the input mnemonic phrase or a Bech32 encoded 33-byte
+    /// Add a new key to SOMA CLI Keystore using either the input mnemonic phrase or a Bech32 encoded 33-byte
     /// `flag || privkey` starting with "somaprivkey", the key scheme flag {ed25519 | secp256k1 | secp256r1}
     /// and an optional derivation path, default to m/44'/784'/0'/0'/0' for ed25519 or m/54'/784'/0'/0/0
     /// for secp256k1 or m/74'/784'/0'/0/0 for secp256r1. Supports mnemonic phrase of word length 12, 15,
@@ -103,13 +103,13 @@ pub enum KeyToolCommand {
         key_scheme: SignatureScheme,
         derivation_path: Option<DerivationPath>,
     },
-    /// Output the private key of the given key identity in Soma CLI Keystore as Bech32
+    /// Output the private key of the given key identity in SOMA CLI Keystore as Bech32
     /// encoded string starting with `somaprivkey`.
     Export {
         #[clap(long)]
         key_identity: KeyIdentity,
     },
-    /// List all keys by its Soma address, Base64 encoded public key, key scheme name in
+    /// List all keys by its SOMA address, Base64 encoded public key, key scheme name in
     /// soma.keystore.
     List {
         /// Sort by alias
@@ -121,7 +121,7 @@ pub enum KeyToolCommand {
     /// (Base64 encoded `privkey`). This prints out the account keypair as Base64 encoded `flag || privkey`,
     /// the network keypair, worker keypair, protocol keypair as Base64 encoded `privkey`.
     LoadKeypair { file: PathBuf },
-    /// To MultiSig Soma Address. Pass in a list of all public keys `flag || pk` in Base64.
+    /// To MultiSig SOMA Address. Pass in a list of all public keys `flag || pk` in Base64.
     /// See `keytool list` for example public keys.
     MultiSigAddress {
         #[clap(long)]
@@ -168,7 +168,7 @@ pub enum KeyToolCommand {
     },
     /// This takes [enum SomaKeyPair] of Base64 encoded of 33-byte `flag || privkey`). It
     /// outputs the keypair into a file at the current directory where the address is the filename,
-    /// and prints out its Soma address, Base64 encoded public key, the key scheme, and the key scheme flag.
+    /// and prints out its SOMA address, Base64 encoded public key, the key scheme, and the key scheme flag.
     Unpack { keypair: String },
 }
 
@@ -282,7 +282,7 @@ pub struct SignData {
     // Base64 encoded blake2b hash of the intent message, this is what the signature commits to.
     digest: String,
     // Base64 encoded `flag || signature || pubkey` for a complete
-    // serialized Soma signature to be send for executing the transaction.
+    // serialized SOMA signature to be send for executing the transaction.
     soma_signature: String,
 }
 

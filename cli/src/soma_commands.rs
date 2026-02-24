@@ -76,7 +76,7 @@ pub(crate) const SOMA_BANNER: &str =
   █████  █████    ████      ██████    ██   ██████   ██   ███       ████
     █████████        ███████████      ██    ████    ██  ███         ███";
 
-/// Print the Soma ASCII banner with a subtitle line underneath.
+/// Print the SOMA ASCII banner with a subtitle line underneath.
 pub(crate) fn print_banner(subtitle: &str) {
     let banner_width = SOMA_BANNER.lines().map(|l| l.chars().count()).max().unwrap_or(68);
     eprintln!();
@@ -117,7 +117,7 @@ pub struct SomaEnvConfig {
     /// Sets the file storing the state of our user accounts (an empty one will be created if missing)
     #[clap(long = "client.config")]
     config: Option<PathBuf>,
-    /// The Soma environment to use. This must be present in the current config file.
+    /// The SOMA environment to use. This must be present in the current config file.
     #[clap(long = "client.env")]
     env: Option<String>,
     /// Create a new soma config without prompting if none exists
@@ -488,7 +488,7 @@ EXAMPLES:
         dump_addresses: bool,
     },
 
-    /// Bootstrap and initialize a new Soma network
+    /// Bootstrap and initialize a new SOMA network
     #[clap(name = "genesis")]
     Genesis {
         #[clap(subcommand)]
@@ -541,7 +541,7 @@ EXAMPLES:
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum StartCommand {
-    /// Start a local Soma network for development and testing
+    /// Start a local SOMA network for development and testing
     ///
     /// Launches local validators, a fullnode, and optionally a faucet and scoring service.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
@@ -1008,7 +1008,7 @@ impl SomaCommand {
                 let config_path = config.unwrap_or(soma_config_dir()?.join(SOMA_NETWORK_CONFIG));
                 let config: NetworkConfig = PersistedConfig::read(&config_path).map_err(|err| {
                     err.context(format!(
-                        "Cannot open Soma network config file at {:?}",
+                        "Cannot open SOMA network config file at {:?}",
                         config_path
                     ))
                 })?;
@@ -1193,7 +1193,7 @@ async fn start(
     if epoch_duration_ms.is_some() && genesis_blob_exists(config.clone()) && !force_regenesis {
         bail!(
             "Epoch duration can only be set when passing the `--force-regenesis` flag, or when \
-            there is no genesis configuration in the default Soma configuration folder or the given \
+            there is no genesis configuration in the default SOMA configuration folder or the given \
             network.config argument.",
         );
     }
@@ -1260,7 +1260,7 @@ async fn start(
                         .await
                         .map_err(|_| {
                             anyhow!(
-                                "Cannot run genesis with non-empty Soma config directory: {}.\n\n\
+                                "Cannot run genesis with non-empty SOMA config directory: {}.\n\n\
                                 If you are trying to run a local network without persisting the \
                                 data, use --force-regenesis flag.",
                                 soma_config.display(),
@@ -1283,7 +1283,7 @@ async fn start(
         let network_config: NetworkConfig =
             PersistedConfig::read(&network_config_path).map_err(|err| {
                 err.context(format!(
-                    "Cannot open Soma network config file at {:?}",
+                    "Cannot open SOMA network config file at {:?}",
                     network_config_path
                 ))
             })?;
@@ -1698,7 +1698,7 @@ async fn genesis(
     };
 
     let dir = soma_config_dir.read_dir().map_err(|err| {
-        anyhow!(err).context(format!("Cannot open Soma config dir {:?}", soma_config_dir))
+        anyhow!(err).context(format!("Cannot open SOMA config dir {:?}", soma_config_dir))
     })?;
     let files = dir.collect::<Result<Vec<_>, _>>()?;
 
@@ -1726,16 +1726,16 @@ async fn genesis(
             } else {
                 fs::remove_dir_all(soma_config_dir).map_err(|err| {
                     anyhow!(err)
-                        .context(format!("Cannot remove Soma config dir {:?}", soma_config_dir))
+                        .context(format!("Cannot remove SOMA config dir {:?}", soma_config_dir))
                 })?;
                 fs::create_dir(soma_config_dir).map_err(|err| {
                     anyhow!(err)
-                        .context(format!("Cannot create Soma config dir {:?}", soma_config_dir))
+                        .context(format!("Cannot create SOMA config dir {:?}", soma_config_dir))
                 })?;
             }
         } else if files.len() != 2 || !client_path.exists() || !keystore_path.exists() {
             bail!(
-                "Cannot run genesis with non-empty Soma config directory {}, please use the --force/-f option to remove the existing configuration",
+                "Cannot run genesis with non-empty SOMA config directory {}, please use the --force/-f option to remove the existing configuration",
                 soma_config_dir.to_str().unwrap()
             );
         }

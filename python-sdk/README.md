@@ -1,6 +1,6 @@
 # soma-sdk
 
-Python SDK for interacting with the Soma network. Built with [PyO3](https://pyo3.rs) and [Maturin](https://www.maturin.rs), providing native-speed bindings to the Rust SDK.
+Python SDK for interacting with the SOMA network. Built with [PyO3](https://pyo3.rs) and [Maturin](https://www.maturin.rs), providing native-speed bindings to the Rust SDK.
 
 ## Install
 
@@ -49,7 +49,7 @@ asyncio.run(main())
 
 ### `Keypair`
 
-Ed25519 keypair for signing Soma transactions.
+Ed25519 keypair for signing SOMA transactions.
 
 ```python
 # Generate a new random keypair
@@ -61,7 +61,7 @@ keypair = Keypair.from_secret_key("0x...")
 # Restore from a BIP-39 mnemonic
 keypair = Keypair.from_mnemonic("word1 word2 ...")
 
-keypair.address()        # Soma address (hex string)
+keypair.address()        # SOMA address (hex string)
 keypair.to_secret_key()  # Export secret key (hex string)
 keypair.sign(tx_bytes)   # Sign raw transaction data bytes
 ```

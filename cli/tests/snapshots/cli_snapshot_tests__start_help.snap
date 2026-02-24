@@ -7,7 +7,7 @@ Start a long-running service (localnet, validator, faucet, scoring)
 Usage: soma start <COMMAND>
 
 Commands:
-  localnet   Start a local Soma network for development and testing
+  localnet   Start a local SOMA network for development and testing
   validator  Start a validator node from a config file
   faucet     Start a standalone faucet gRPC server
   scoring    Start the scoring service for computing embeddings and distances

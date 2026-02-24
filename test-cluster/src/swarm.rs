@@ -63,7 +63,7 @@ impl AsRef<Path> for SwarmDirectory {
     }
 }
 
-/// A handle to an in-memory Soma Network.
+/// A handle to an in-memory SOMA Network.
 #[derive(Debug)]
 pub struct Swarm {
     dir: SwarmDirectory,

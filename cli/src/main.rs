@@ -101,7 +101,7 @@ async fn main() {
         .with_max_level(log_level)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    debug!("Soma CLI version: {VERSION}");
+    debug!("SOMA CLI version: {VERSION}");
 
     if let Err(err) = args.command.execute().await {
         eprintln!("{}", format_error(&err));

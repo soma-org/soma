@@ -126,7 +126,7 @@ pub enum SomaValidatorCommand {
     /// Report or un-report a validator
     #[clap(name = "report-validator")]
     ReportValidator {
-        /// The Soma address of the validator being reported
+        /// The SOMA address of the validator being reported
         #[clap(name = "reportee-address")]
         reportee_address: SomaAddress,
         /// If true, undo an existing report

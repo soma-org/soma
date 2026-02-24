@@ -33,7 +33,7 @@ use super::{
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]
 pub struct ValidatorMetadata {
-    /// The Soma blockchain address of the validator
+    /// The SOMA blockchain address of the validator
     pub soma_address: SomaAddress,
 
     /// The BLS public key used for consensus protocol operations
@@ -540,7 +540,7 @@ impl Validator {
 
 /// # ValidatorSet
 ///
-/// Manages the set of validators in the Soma blockchain.
+/// Manages the set of validators in the SOMA blockchain.
 ///
 /// ## Purpose
 /// Maintains the current set of active validators, pending validators, and

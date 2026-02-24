@@ -129,7 +129,7 @@ impl ServerBuilder {
     }
 }
 
-/// TLS server name to use for the public Soma validator interface.
+/// TLS server name to use for the public SOMA validator interface.
 pub const TLS_SERVER_NAME: &str = "soma";
 
 pub struct Server {

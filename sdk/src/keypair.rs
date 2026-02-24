@@ -72,7 +72,7 @@ impl Keypair {
         Ok(Self { inner: kp })
     }
 
-    /// Return the Soma address derived from this keypair's public key.
+    /// Return the SOMA address derived from this keypair's public key.
     pub fn address(&self) -> SomaAddress {
         SomaAddress::from(&self.inner.public())
     }

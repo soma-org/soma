@@ -1,10 +1,10 @@
 [project]
 name = "soma-examples"
 version = "0.1.0"
-description = "Runnable examples demonstrating the Soma Python SDK"
+description = "Runnable examples demonstrating the SOMA Python SDK"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-authors = [{ name = "Soma Contributors" }]
+authors = [{ name = "SOMA Contributors" }]
 dependencies = ["soma-sdk", "boto3", "moto[server]", "soma-arrgen", "safetensors"]
 
 [project.urls]

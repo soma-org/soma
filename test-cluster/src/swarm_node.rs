@@ -13,7 +13,7 @@ use types::{
 
 use super::container::Container;
 
-/// A handle to an in-memory Soma Node.
+/// A handle to an in-memory SOMA Node.
 ///
 /// Each Node is attempted to run in isolation from each other by running them in their own tokio
 /// runtime in a separate thread. By doing this we can ensure that all asynchronous tasks

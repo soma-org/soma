@@ -1,6 +1,6 @@
-# Soma Models
+# SOMA Models
 
-Python implementations of Soma network models. These implementations are **numerically identical** to the Rust runtime — weights trained in Python produce the same outputs when evaluated on-chain.
+Python implementations of SOMA network models. These implementations are **numerically identical** to the Rust runtime — weights trained in Python produce the same outputs when evaluated on-chain.
 
 Both [PyTorch](https://pytorch.org/) and [Flax](https://flax.readthedocs.io/) (JAX) are supported as first-class frameworks. Models are serialized to [safetensors](https://huggingface.co/docs/safetensors/) format, which is the canonical weight exchange format between Python and the Rust runtime.
 

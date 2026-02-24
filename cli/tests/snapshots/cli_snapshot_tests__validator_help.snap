@@ -20,7 +20,7 @@ Commands:
 
 Options:
       --client.config <CONFIG>  Sets the file storing the state of our user accounts (an empty one will be created if missing)
-      --client.env <ENV>        The Soma environment to use. This must be present in the current config file
+      --client.env <ENV>        The SOMA environment to use. This must be present in the current config file
   -y, --yes                     Create a new soma config without prompting if none exists
       --json                    Output as JSON
   -h, --help                    Print help

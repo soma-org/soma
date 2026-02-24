@@ -244,7 +244,7 @@ class CheckpointSummary:
 # ---------------------------------------------------------------------------
 
 class Keypair:
-    """Ed25519 keypair for signing Soma transactions."""
+    """Ed25519 keypair for signing SOMA transactions."""
     @staticmethod
     def generate() -> "Keypair": ...
     @staticmethod
@@ -260,7 +260,7 @@ class Keypair:
 # ---------------------------------------------------------------------------
 
 class SomaClient:
-    """A client for interacting with the Soma network via gRPC."""
+    """A client for interacting with the SOMA network via gRPC."""
     def __init__(
         self,
         rpc_url: str,

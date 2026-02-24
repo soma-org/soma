@@ -1,4 +1,4 @@
-"""Quickstart: Complete Soma data submission lifecycle on localnet.
+"""Quickstart: Complete SOMA data submission lifecycle on localnet.
 
 Start a local network (one command):
 

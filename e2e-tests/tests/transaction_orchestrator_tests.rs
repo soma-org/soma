@@ -15,7 +15,7 @@
 //! 8. test_early_validation_with_old_object_version — Stale object version rejected
 //!
 //! Ported from Sui's `transaction_orchestrator_tests.rs`.
-//! Adapted to use Soma's native transaction types (coin transfers, staking)
+//! Adapted to use SOMA's native transaction types (coin transfers, staking)
 //! instead of Move transactions.
 
 use std::time::Duration;
@@ -109,9 +109,9 @@ async fn test_blocking_execution() {
 /// Test transaction behavior during quorum loss and recovery.
 ///
 /// Architecture note: Unlike Sui (which spawns inner execution via `spawn_monitored_task!`,
-/// keeping the WAL guard alive even after the caller times out), Soma runs execution inline.
+/// keeping the WAL guard alive even after the caller times out), SOMA runs execution inline.
 /// When a timeout drops the caller's future, the `TransactionSubmissionGuard` is also dropped,
-/// which cleans up the WAL entry. Soma's WAL serves crash recovery (entries replayed on restart),
+/// which cleans up the WAL entry. SOMA's WAL serves crash recovery (entries replayed on restart),
 /// not in-flight retry across timeouts.
 ///
 /// This test verifies:
@@ -183,7 +183,7 @@ async fn test_fullnode_wal_log() {
     // Should timeout since we don't have quorum
     assert!(result.is_err(), "Transaction should timeout without quorum");
 
-    // In Soma, the WAL is cleaned up when the future is dropped (guard cleanup on drop).
+    // In SOMA, the WAL is cleaned up when the future is dropped (guard cleanup on drop).
     // This is expected behavior — the WAL serves crash recovery, not in-flight retry.
     let pending_txes = orchestrator
         .load_all_pending_transactions_in_test()

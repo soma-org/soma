@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Soma, please report it responsibly.
+If you discover a security vulnerability in SOMA, please report it responsibly.
 
 **Do NOT open a public GitHub issue.**
 
@@ -14,14 +14,14 @@ We will acknowledge receipt within 48 hours and provide a timeline for a fix.
 
 This policy covers:
 
-- The Soma node (`soma` binary)
-- The Soma CLI
+- The SOMA node (`soma` binary)
+- The SOMA CLI
 - The Python SDK (`soma-sdk`)
 - Consensus and authority logic
 - Cryptographic operations and key management
 
 Third-party dependencies are out of scope, but we appreciate reports if a vulnerability
-in a dependency affects Soma.
+in a dependency affects SOMA.
 
 ## Disclosure
 

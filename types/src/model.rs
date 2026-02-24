@@ -35,7 +35,7 @@ pub struct PendingModelUpdate {
     pub commit_epoch: EpochId,
 }
 
-/// A registered model in the Soma data submission system.
+/// A registered model in the SOMA data submission system.
 ///
 /// Models go through a commit-reveal lifecycle:
 /// - **Committed**: `weights_manifest.is_none()` && `deactivation_epoch == None`
