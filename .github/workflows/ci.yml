@@ -146,8 +146,7 @@ jobs:
         with:
           python-version: '3.x'
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --all-packages --no-install-workspace
-      - run: uv run --no-sync ty check
+      - run: uv run ty check
 
   pytest:
     needs: diff
