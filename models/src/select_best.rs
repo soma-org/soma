@@ -2,7 +2,7 @@ use burn::{Tensor, prelude::Backend};
 
 use crate::ModelOutput;
 
-/// Returns the index of the model output with the lowest loss score.
+/// Returns the index of the model output with the lowest loss.
 pub fn select_best_model<B: Backend>(outputs: &[ModelOutput<B>]) -> Option<usize> {
     if outputs.is_empty() {
         return None;

@@ -48,6 +48,7 @@ def tokenize(
     batch_size: int = V1_BATCH_SIZE,
 ) -> list[ByteSequenceBatch]:
     """Tokenize raw bytes into batches matching the on-chain V1 data contract.
+
     Args:
         data: Raw byte data to tokenize.
         max_seq_len: Maximum sequence length per chunk.
