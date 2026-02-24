@@ -2,16 +2,8 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags:
-      - soma-v*
-      - testnet-v*
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+      - '*net-v*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,34 +14,16 @@ env:
   PYO3_PYTHON: python3
 
 jobs:
-  diff:
-    runs-on: ubuntu-latest
-    outputs:
-      isRust: ${{ steps.diff.outputs.isRust }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: diff
-        with:
-          filters: |
-            isRust:
-              - '**/*.rs'
-              - '**/Cargo.toml'
-              - 'Cargo.lock'
-              - 'rust-toolchain.toml'
-              - '.github/workflows/release.yml'
-
+  # ===========================================================================
+  # Gate — re-run checks to ensure the tagged commit is sound
+  # ===========================================================================
   rustfmt:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
 
   clippy:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Free disk space
@@ -63,8 +37,6 @@ jobs:
       - run: cargo clippy --workspace --all-targets
 
   test:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -88,8 +60,6 @@ jobs:
           SOMA_SKIP_SIMTESTS: 1
 
   simtest:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -115,21 +85,26 @@ jobs:
             -p consensus
 
   # ===========================================================================
-  # Release builds — only run on tag pushes, after all checks pass
+  # Release builds — after all checks pass
   # ===========================================================================
   build:
     needs: [rustfmt, clippy, test, simtest]
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         include:
           - os: ubuntu-22.04
-            artifact: soma-linux-x86_64
+            suffix: linux-x86_64
+          - os: ubuntu-22.04-arm
+            suffix: linux-aarch64
           - os: macos-latest
-            artifact: soma-macos-aarch64
+            suffix: macos-aarch64
+          - os: macos-13
+            suffix: macos-x86_64
           - os: windows-latest
-            artifact: soma-windows-x86_64.exe
-            binary: soma.exe
+            suffix: windows-x86_64
+          - os: windows-latest
+            suffix: windows-aarch64
+            target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
@@ -137,27 +112,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+      - name: Add Rust target
+        if: matrix.target
+        run: rustup target add ${{ matrix.target }}
       - name: Build
-        run: cargo build -p cli --release
+        run: cargo build -p cli --release ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p artifacts
-          cp target/release/soma artifacts/${{ matrix.artifact }}
+          cp target/${{ matrix.target && format('{0}/', matrix.target) || '' }}release/soma artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
-          Copy-Item target/release/soma.exe artifacts/${{ matrix.artifact }}
+          Copy-Item target/${{ matrix.target && (matrix.target + '/') || '' }}release/soma.exe artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: artifacts/${{ matrix.artifact }}
+          name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
+          path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}*
 
   build-cuda:
     needs: [rustfmt, clippy, test, simtest]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            suffix: linux-x86_64-cuda
+          - os: ubuntu-22.04-arm
+            suffix: linux-aarch64-cuda
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
       - name: Free disk space
@@ -178,18 +162,26 @@ jobs:
       - name: Package
         run: |
           mkdir -p artifacts
-          cp target/release/soma artifacts/soma-cuda-linux-x86_64
+          cp target/release/soma artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}
       - uses: actions/upload-artifact@v4
         with:
-          name: soma-cuda-linux-x86_64
-          path: artifacts/soma-cuda-linux-x86_64
+          name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
+          path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}
 
   build-rocm:
     needs: [rustfmt, clippy, test, simtest]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            image: rocm/dev-ubuntu-22.04:6.3
+            suffix: linux-x86_64-rocm
+          - os: ubuntu-22.04-arm
+            image: rocm/dev-ubuntu-22.04:6.3
+            suffix: linux-aarch64-rocm
+    runs-on: ${{ matrix.os }}
     container:
-      image: rocm/dev-ubuntu-22.04:6.3
+      image: ${{ matrix.image }}
     timeout-minutes: 90
     steps:
       - name: Install system deps
@@ -207,15 +199,14 @@ jobs:
       - name: Package
         run: |
           mkdir -p artifacts
-          cp target/release/soma artifacts/soma-rocm-linux-x86_64
+          cp target/release/soma artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}
       - uses: actions/upload-artifact@v4
         with:
-          name: soma-rocm-linux-x86_64
-          path: artifacts/soma-rocm-linux-x86_64
+          name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
+          path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}
 
   release:
     needs: [build, build-cuda, build-rocm]
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write

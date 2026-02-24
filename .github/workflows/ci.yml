@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUST_LOG: error
+  PYO3_PYTHON: python3
+
+jobs:
+  # ===========================================================================
+  # Change detection
+  # ===========================================================================
+  diff:
+    runs-on: ubuntu-latest
+    outputs:
+      isRust: ${{ steps.diff.outputs.isRust }}
+      isPython: ${{ steps.diff.outputs.isPython }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: diff
+        with:
+          filters: |
+            isRust:
+              - '**/*.rs'
+              - '**/Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+            isPython:
+              - '**/*.py'
+              - '**/pyproject.toml'
+              - 'uv.lock'
+              - 'ty.toml'
+              - '.github/workflows/ci.yml'
+
+  # ===========================================================================
+  # Rust checks
+  # ===========================================================================
+  rustfmt:
+    needs: diff
+    if: needs.diff.outputs.isRust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+
+  clippy:
+    needs: diff
+    if: needs.diff.outputs.isRust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: cargo clippy --workspace --all-targets
+
+  test:
+    needs: diff
+    if: needs.diff.outputs.isRust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: taiki-e/install-action@nextest
+      - name: Run unit tests
+        run: |
+          cargo nextest run \
+            --workspace \
+            --exclude e2e-tests \
+            --exclude test-cluster \
+            --profile ci
+        env:
+          SOMA_SKIP_SIMTESTS: 1
+
+  simtest:
+    needs: diff
+    if: needs.diff.outputs.isRust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RUSTFLAGS: "--cfg msim"
+      MSIM_WATCHDOG_TIMEOUT_MS: 300000
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt-get clean
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Derive deterministic seed
+        run: echo "MSIM_TEST_SEED=$(printf '%lu\n' 0x$(git rev-parse HEAD | cut -c1-16))" >> $GITHUB_ENV
+      - uses: taiki-e/install-action@nextest
+      - name: Run simtests
+        run: |
+          cargo nextest run \
+            --profile simtest \
+            -p e2e-tests \
+            -p consensus
+
+  # ===========================================================================
+  # Python checks
+  # ===========================================================================
+  ruff:
+    needs: diff
+    if: needs.diff.outputs.isPython == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv run ruff check
+
+  ty:
+    needs: diff
+    if: needs.diff.outputs.isPython == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv run ty check
+
+  pytest:
+    needs: diff
+    if: needs.diff.outputs.isPython == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: astral-sh/setup-uv@v7
+      - name: Run tests
+        run: uv run pytest
