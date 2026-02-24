@@ -104,88 +104,8 @@ jobs:
           name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
           path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz
 
-  build-cuda:
-    needs: [ci-gate]
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            suffix: linux-x86_64-cuda
-          - os: ubuntu-22.04-arm
-            suffix: linux-aarch64-cuda
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-          sudo apt-get clean
-          df -h /
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-${{ matrix.suffix }}
-          cache-on-failure: "true"
-      - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.22
-        with:
-          cuda: '12.6.3'
-      - name: Build
-        run: cargo build -p cli --release --features cuda
-      - name: Package
-        run: |
-          mkdir -p artifacts
-          tar -czf artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz \
-            -C target/release soma
-      - uses: actions/upload-artifact@v4
-        with:
-          name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
-          path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz
-
-  build-rocm:
-    needs: [ci-gate]
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            image: rocm/dev-ubuntu-22.04:6.3
-            suffix: linux-x86_64-rocm
-    runs-on: ${{ matrix.os }}
-    container:
-      image: ${{ matrix.image }}
-    timeout-minutes: 90
-    steps:
-      - name: Install system deps
-        run: |
-          apt-get update
-          apt-get install -y git curl python3 python3-dev pkg-config libssl-dev libclang-dev clang
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0 -c rustfmt -c clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-${{ matrix.suffix }}
-          cache-on-failure: "true"
-      - name: Build
-        run: |
-          . "$HOME/.cargo/env"
-          PYO3_PYTHON=python3 cargo build -p cli --release --features rocm
-      - name: Package
-        run: |
-          mkdir -p artifacts
-          tar -czf artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz \
-            -C target/release soma
-      - uses: actions/upload-artifact@v4
-        with:
-          name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
-          path: artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.tar.gz
-
   release:
-    needs: [build, build-cuda, build-rocm]
+    needs: [build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
