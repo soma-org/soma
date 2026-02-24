@@ -31,7 +31,7 @@ initial_value_fee_bps:
 max_checkpoint_size_bytes:
   u64: 31457280
 max_submission_data_size:
-  u64: 268435456
+  u64: 1048576
 max_transactions_per_checkpoint:
   u64: 20000
 max_value_fee_bps:

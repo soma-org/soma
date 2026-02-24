@@ -395,7 +395,7 @@ impl ProtocolConfig {
             challenger_bond_per_byte: Some(5), // 5 shannons per byte (half of submission bond)
 
             // Data size limits
-            max_submission_data_size: Some(256 * 1024 * 1024), // 256 MiB max data size
+            max_submission_data_size: Some(1024 * 1024), // 1 MiB max data size
 
             // Execution versioning
             execution_version: Some(0), // Initial execution version

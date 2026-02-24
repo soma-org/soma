@@ -44,5 +44,5 @@ target_model_reward_share_bps: 3000
 target_claimer_incentive_bps: 100
 submission_bond_per_byte: 10
 challenger_bond_per_byte: 5
-max_submission_data_size: 268435456
+max_submission_data_size: 1048576
 execution_version: 0
