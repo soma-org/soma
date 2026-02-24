@@ -25,8 +25,8 @@ pub mod modules;
 
 const V1_EMBEDDING_DIM: usize = 2048;
 const V1_NUM_HEADS: usize = 8;
-const V1_NUM_LAYERS: usize = 32;
-const V1_MAX_SEQ_LEN: usize = 8192;
+const V1_NUM_LAYERS: usize = 24;
+const V1_MAX_SEQ_LEN: usize = 1024;
 const V1_PWFF_HIDDEN_DIM: usize = V1_EMBEDDING_DIM * 4;
 const V1_MAX_WAVELENGTH: f32 = 10_000.0;
 const V1_SCALE_FACTOR: f32 = 1.0;
@@ -35,7 +35,7 @@ const V1_SIG_REG_T_MAX: f64 = 3.0;
 const V1_SIG_REG_SLICES: usize = 1024;
 const V1_SIG_REG_POINTS: usize = 17;
 const V1_SIG_REG_COEFFICIENT: f64 = 0.02;
-const V1_BATCH_SIZE: usize = 32;
+const V1_BATCH_SIZE: usize = 16;
 
 pub struct ModelRunner<B: Backend> {
     config: ModelConfig,
