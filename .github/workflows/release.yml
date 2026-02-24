@@ -126,7 +126,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           New-Item -ItemType Directory -Force -Path artifacts
-          Copy-Item target/${{ matrix.target && (matrix.target + '/') || '' }}release/soma.exe artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.exe
+          Copy-Item target/${{ matrix.target && format('{0}/', matrix.target) || '' }}release/soma.exe artifacts/soma-${{ github.ref_name }}-${{ matrix.suffix }}.exe
       - uses: actions/upload-artifact@v4
         with:
           name: soma-${{ github.ref_name }}-${{ matrix.suffix }}
