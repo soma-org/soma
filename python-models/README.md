@@ -69,13 +69,13 @@ Linear predictor → logits (used for cross-entropy loss)
 |-----------|-------|-------------|
 | `EMBEDDING_DIM` | 2048 | Dimension of token embeddings and hidden states |
 | `NUM_HEADS` | 8 | Number of attention heads (head_dim = 256) |
-| `NUM_LAYERS` | 32 | Number of transformer blocks |
-| `MAX_SEQ_LEN` | 8192 | Maximum sequence length during on-chain evaluation |
+| `NUM_LAYERS` | 24 | Number of transformer blocks |
+| `MAX_SEQ_LEN` | 1024 | Maximum sequence length during on-chain evaluation |
 | `PWFF_HIDDEN_DIM` | 8192 | Feed-forward inner dimension (4 × embedding_dim) |
 | `VOCAB_SIZE` | 264 | 256 byte tokens + 8 special tokens |
 | `MAX_WAVELENGTH` | 10,000 | RoPE positional encoding wavelength |
 | `SCALE_FACTOR` | 1.0 | RoPE scale factor |
-| `BATCH_SIZE` | 32 | Batch size during on-chain evaluation |
+| `BATCH_SIZE` | 16 | Batch size during on-chain evaluation |
 
 ### Data Contract
 
@@ -83,12 +83,12 @@ The model operates on **raw bytes**. During on-chain evaluation, data is process
 
 - Each byte (0–255) is its own token ID
 - Special tokens: **PAD = 256**, **EOS = 257**
-- Data is chunked into non-overlapping sequences of `MAX_SEQ_LEN` (8192) bytes
+- Data is chunked into non-overlapping sequences of `MAX_SEQ_LEN` (1024) bytes
 - EOS is only placed on the **final chunk** and only if it is shorter than `MAX_SEQ_LEN` — it occupies the position immediately after the last data byte. If data length is an exact multiple of `MAX_SEQ_LEN`, no EOS is appended
 - Any remaining positions after EOS (or after data if no EOS) are filled with PAD
 - **Targets** are the input token IDs shifted left by 1 (next-token prediction), with PAD appended as the final target
 - **Position IDs** are global byte offsets for data positions. PAD and EOS positions are clamped to the offset of the last data byte + 1 (they do not continue incrementing)
-- Sequences are batched in groups of `BATCH_SIZE` (32)
+- Sequences are batched in groups of `BATCH_SIZE` (16)
 
 You are free to prepare your training data however you want — different sequence lengths, different batching, different shuffling. But your model will be **scored** using the contract above, so your training should produce weights that perform well under these conditions.
 
@@ -109,7 +109,7 @@ The model with the **lowest loss** wins. Both components are:
 | SIGReg Parameter | Value |
 |------------------|-------|
 | `SIG_REG_T_MAX` | 3.0 |
-| `SIG_REG_SLICES` | 1024 |
+| `SIG_REG_SLICES` | 256 |
 | `SIG_REG_POINTS` | 17 |
 | `SIG_REG_COEFFICIENT` | 0.02 |
 
@@ -132,7 +132,7 @@ for batch in batches:
 The default `max_seq_len` and `batch_size` match the on-chain evaluation parameters. You can override them for training:
 
 ```python
-batches = tokenize(raw_bytes, max_seq_len=2048, batch_size=8)
+batches = tokenize(raw_bytes, max_seq_len=512, batch_size=32)
 ```
 
 The final batch may contain fewer than `batch_size` sequences (matching the Rust DataLoader behaviour).

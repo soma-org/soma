@@ -24,7 +24,7 @@ def test_v1_sig_reg_normal():
 
     output = sig_reg.compute(input, noise)
     expected = jnp.array(
-        [1.33955204],
+        [1.28620601],
     )
 
     assert jnp.allclose(output, expected), "Arrays are not close enough!"
@@ -70,7 +70,7 @@ def test_v1_sig_reg_single_batch():
 
     output = sig_reg.compute(input, noise)
     expected = jnp.array(
-        [17.77822685],
+        [3.18785000],
     )
 
     assert jnp.allclose(output, expected), "Arrays are not close enough!"
@@ -93,7 +93,7 @@ def test_v1_sig_reg_uniform():
 
     output = sig_reg.compute(input, noise)
     expected = jnp.array(
-        [121.57125092],
+        [29.08621025],
     )
 
     assert jnp.allclose(output, expected), "Arrays are not close enough!"

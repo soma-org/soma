@@ -40,7 +40,7 @@ fn test_v1_sig_reg_normal() {
         precision: Some(8), // High value for full precision.
     });
     println!("{}", output);
-    let expected_output = Tensor::<TestBackend, 1>::from_floats([1.33955204], &device);
+    let expected_output = Tensor::<TestBackend, 1>::from_floats([1.28620601], &device);
 
     output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
@@ -75,7 +75,7 @@ fn test_v1_sig_reg_uniform() {
         precision: Some(8), // High value for full precision.
     });
     println!("{}", output);
-    let expected_output = Tensor::<TestBackend, 1>::from_floats([121.57125092], &device);
+    let expected_output = Tensor::<TestBackend, 1>::from_floats([29.08621025], &device);
 
     output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
@@ -132,6 +132,12 @@ fn test_v1_sig_reg_single_batch() {
     );
 
     let output = sig_reg.forward(input, noise);
-    let expected_output = Tensor::<TestBackend, 1>::from_floats([17.77822685], &device);
+    set_print_options(PrintOptions {
+        threshold: 1000,    // Default or custom threshold for summarization.
+        edge_items: 3,      // Default or custom edge items to display.
+        precision: Some(8), // High value for full precision.
+    });
+    println!("{}", output);
+    let expected_output = Tensor::<TestBackend, 1>::from_floats([3.18785000], &device);
     output.to_data().assert_approx_eq::<FT>(&expected_output.to_data(), Tolerance::default());
 }
