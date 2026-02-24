@@ -69,13 +69,8 @@ jobs:
             suffix: linux-aarch64
           - os: macos-latest
             suffix: macos-aarch64
-          - os: macos-13
-            suffix: macos-x86_64
           - os: windows-latest
             suffix: windows-x86_64
-          - os: windows-latest
-            suffix: windows-aarch64
-            target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
