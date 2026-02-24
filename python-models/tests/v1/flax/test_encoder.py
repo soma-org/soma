@@ -1,7 +1,6 @@
 from jax import numpy as jnp
 from flax import nnx
 from arrgen import (
-    constant_array,
     normal_array,
 )
 from safetensors.numpy import save

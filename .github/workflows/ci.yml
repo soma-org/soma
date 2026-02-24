@@ -142,8 +142,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
       - uses: astral-sh/setup-uv@v7
-      - run: uvx ty check
+      - run: uv sync --all-packages --no-install-workspace
+      - run: uv run ty check
 
   pytest:
     needs: diff
@@ -156,6 +160,8 @@ jobs:
         with:
           python-version: '3.x'
       - uses: dtolnay/rust-toolchain@1.93.0
+        with:
+          components: rustfmt, clippy
       - uses: astral-sh/setup-uv@v7
       - name: Run tests
         run: uv run pytest

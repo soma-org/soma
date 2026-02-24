@@ -71,11 +71,9 @@ class Serde(Generic[M]):
         if to_flax:
             qkv_key = "weight"
             out_w_key = f"{name}.output.weight"
-            out_b_key = f"{name}.output.bias"
         else:
             qkv_key = "kernel"
             out_w_key = f"{name}.out.kernel"
-            out_b_key = f"{name}.out.bias"
 
         for component in ["query", "key", "value"]:
             w = f"{name}.{component}.{qkv_key}"

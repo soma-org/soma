@@ -27,7 +27,7 @@ def apply_rope(
     fraction = 2 * jnp.arange(0, head_dim // 2) / head_dim
     timescale = max_wavelength**fraction
     positions = positions[..., jnp.newaxis]
-    timescale = timescale[jnp.newaxis, jnp.newaxis, :]  # ty: ignore[non-subscriptable]
+    timescale = timescale[jnp.newaxis, jnp.newaxis, :]
 
     sinusoid_inp = positions / timescale
     sinusoid_inp = sinusoid_inp[..., jnp.newaxis, :]

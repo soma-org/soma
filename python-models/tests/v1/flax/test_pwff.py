@@ -1,7 +1,6 @@
 from jax import numpy as jnp
 from flax import nnx
 from arrgen import (
-    uniform_array,
     normal_array,
     constant_array,
 )

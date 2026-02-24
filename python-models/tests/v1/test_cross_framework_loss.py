@@ -45,8 +45,6 @@ def _build_shared_fixtures(cfg, weight_seed, token_ids_np, targets_np):
 
 def test_cross_framework_loss_identical():
     """Cross-entropy and embedding must match across frameworks given identical weights."""
-    import jax.numpy as jnp
-
     cfg = small_config()
     token_ids_np = np.array([
         [0, 1, 2, 3, 4, 5, 6, 7],
@@ -86,8 +84,6 @@ def test_cross_framework_loss_identical():
 
 def test_cross_framework_loss_with_padding():
     """Loss and embedding must match with varying padding amounts."""
-    import jax.numpy as jnp
-
     cfg = small_config()
     token_ids_np = np.array([
         [0, 1, 2, 3, 4, 5],
