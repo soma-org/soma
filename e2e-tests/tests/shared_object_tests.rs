@@ -1231,11 +1231,8 @@ async fn test_concurrent_conflicting_owned_transactions() {
     let recipient_b = addresses[2];
 
     // Get three coins: one contested coin + separate gas for each tx
-    let coins = test_cluster
-        .wallet
-        .get_gas_objects_owned_by_address(sender, Some(3))
-        .await
-        .unwrap();
+    let coins =
+        test_cluster.wallet.get_gas_objects_owned_by_address(sender, Some(3)).await.unwrap();
     assert!(coins.len() >= 3, "Sender needs at least 3 coins");
     let coin_ref = coins[0];
     let gas_ref1 = coins[1];
