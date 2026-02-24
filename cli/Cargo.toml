@@ -46,8 +46,6 @@ inquire = "0.6.2"
 
 [features]
 default = []
-cuda = ["runtime/cuda"]
-rocm = ["runtime/rocm"]
 
 [dev-dependencies]
 insta.workspace = true

@@ -660,6 +660,7 @@ EXAMPLES:
 EXAMPLES:
     soma start scoring
     soma start scoring --host 127.0.0.1 --port 8080
+    soma start scoring --device cuda
     soma start scoring --small-model
     soma start scoring --data-dir /tmp/soma-data"
     )]
@@ -679,6 +680,11 @@ EXAMPLES:
         /// Use a small model for testing (embedding_dim=16, num_layers=2)
         #[clap(long)]
         small_model: bool,
+
+        /// Compute device backend: cpu, wgpu, or cuda (default: wgpu).
+        /// CUDA requires the NVIDIA CUDA toolkit to be installed.
+        #[clap(long, default_value = "wgpu")]
+        device: String,
     },
 }
 
@@ -1070,15 +1076,17 @@ impl SomaCommand {
                         commands::faucet::execute_start(port, host, amount, num_coins, config_dir)
                             .await?;
                     }
-                    StartCommand::Scoring { host, port, data_dir, small_model } => {
+                    StartCommand::Scoring { host, port, data_dir, small_model, device } => {
                         use types::config::node_config::DeviceConfig;
 
-                        #[cfg(feature = "cuda")]
-                        let device = DeviceConfig::Cuda;
-                        #[cfg(feature = "rocm")]
-                        let device = DeviceConfig::Rocm;
-                        #[cfg(not(any(feature = "cuda", feature = "rocm")))]
-                        let device = DeviceConfig::Wgpu;
+                        let device = match device.as_str() {
+                            "cpu" => DeviceConfig::Cpu,
+                            "wgpu" => DeviceConfig::Wgpu,
+                            "cuda" => DeviceConfig::Cuda,
+                            other => {
+                                bail!("Unknown device: {other}. Valid options: cpu, wgpu, cuda")
+                            }
+                        };
 
                         let data_dir = data_dir.unwrap_or_else(|| {
                             soma_config_dir()
@@ -1334,11 +1342,6 @@ async fn start(
 
         let scoring_data_dir = config_dir.join("scoring-data");
         fs::create_dir_all(&scoring_data_dir)?;
-        #[cfg(feature = "cuda")]
-        let device = DeviceConfig::Cuda;
-        #[cfg(feature = "rocm")]
-        let device = DeviceConfig::Rocm;
-        #[cfg(not(any(feature = "cuda", feature = "rocm")))]
         let device = DeviceConfig::Wgpu;
 
         let engine = std::sync::Arc::new(

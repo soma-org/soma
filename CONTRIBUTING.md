@@ -19,14 +19,8 @@ We appreciate contributions, but **simple typo fixes (e.g., minor spelling error
 # Build the full workspace
 cargo build
 
-# Build just the CLI
+# Build just the CLI (includes CUDA + WGPU backends)
 cargo build -p cli
-
-# Build with CUDA support
-cargo build -p cli --features cuda
-
-# Build with ROCm support
-cargo build -p cli --features rocm
 ```
 
 ## Running Tests
@@ -60,7 +54,7 @@ soma/
 ├── consensus/        # Mysticeti BFT consensus
 ├── sync/             # Block synchronization
 ├── node/             # Full node orchestration
-├── runtime/          # Byte-level transformer scoring runtime (CUDA/ROCm/Wgpu)
+├── runtime/          # Byte-level transformer scoring runtime (CUDA/Wgpu)
 ├── scoring/          # Model scoring service
 ├── types/            # Core data types and transaction definitions
 ├── protocol-config/  # Protocol configuration and feature flags

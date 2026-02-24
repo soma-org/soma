@@ -50,20 +50,18 @@ pub const DEFAULT_COMMISSION_RATE: u64 = 200;
 
 /// Compute backend for ML inference (scoring service and audit service).
 ///
-/// CPU and Wgpu are always available. CUDA and ROCm require
-/// the corresponding cargo feature to be enabled at compile time.
+/// All backends are always compiled in. CUDA requires the NVIDIA CUDA toolkit
+/// to be installed at runtime.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DeviceConfig {
-    /// CPU backend (NdArray). Always available.
+    /// CPU backend (NdArray).
     #[default]
     Cpu,
-    /// GPU via WebGPU (auto-selects Metal/Vulkan/DX12). Always available.
+    /// GPU via WebGPU (auto-selects Metal/Vulkan/DX12).
     Wgpu,
-    /// NVIDIA GPU via CUDA. Requires `--features cuda`.
+    /// NVIDIA GPU via CUDA. Requires CUDA toolkit at runtime.
     Cuda,
-    /// AMD GPU via ROCm/HIP. Requires `--features rocm`.
-    Rocm,
 }
 
 impl std::fmt::Display for DeviceConfig {
@@ -72,7 +70,6 @@ impl std::fmt::Display for DeviceConfig {
             DeviceConfig::Cpu => write!(f, "cpu"),
             DeviceConfig::Wgpu => write!(f, "wgpu"),
             DeviceConfig::Cuda => write!(f, "cuda"),
-            DeviceConfig::Rocm => write!(f, "rocm"),
         }
     }
 }

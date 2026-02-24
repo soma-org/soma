@@ -4,11 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use blobs::BlobPath;
 use blobs::downloader::HttpBlobDownloader;
-#[cfg(feature = "cuda")]
-use burn::backend::Cuda;
-#[cfg(feature = "rocm")]
-use burn::backend::Rocm;
-use burn::backend::{NdArray, Wgpu};
+use burn::backend::{Cuda, NdArray, Wgpu};
 use burn::tensor::TensorData;
 use models::v1::ModelRunner;
 use object_store::local::LocalFileSystem;
@@ -155,8 +151,8 @@ pub trait RuntimeAPI: Send + Sync + 'static {
 
 /// Create a `RuntimeV1` with the specified burn backend, returned as `Arc<dyn RuntimeAPI>`.
 ///
-/// CPU and Wgpu backends are always available. CUDA and ROCm require
-/// the corresponding cargo feature (`cuda`, `rocm`) to be enabled.
+/// All backends are always compiled in. CUDA requires the NVIDIA CUDA toolkit
+/// to be installed at runtime; it will error when initializing if unavailable.
 pub fn build_runtime(
     device: &DeviceConfig,
     data_dir: &Path,
@@ -187,24 +183,8 @@ pub fn build_runtime(
             Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
         }
         DeviceConfig::Cuda => {
-            #[cfg(feature = "cuda")]
-            {
-                let model = Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
-                Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
-            }
-            #[cfg(not(feature = "cuda"))]
-            anyhow::bail!("CUDA support not compiled in. Rebuild with `--features runtime/cuda`.")
-        }
-        DeviceConfig::Rocm => {
-            #[cfg(feature = "rocm")]
-            {
-                let model = Arc::new(ModelRunner::<Rocm>::new(model_config, Default::default(), 4));
-                Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
-            }
-            #[cfg(not(feature = "rocm"))]
-            anyhow::bail!(
-                "ROCm/AMD GPU support not compiled in. Rebuild with `--features runtime/rocm`."
-            )
+            let model = Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
+            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
         }
     }
 }
