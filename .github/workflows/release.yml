@@ -76,15 +76,15 @@ jobs:
             target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    env:
-      SCCACHE_GHA_ENABLED: true
-      RUSTC_WRAPPER: sccache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - uses: mozilla-actions/sccache-action@v0.0.7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.suffix }}
+          cache-on-failure: "true"
       - name: Add Rust target
         if: matrix.target
         run: rustup target add ${{ matrix.target }}
@@ -118,9 +118,6 @@ jobs:
             suffix: linux-aarch64-cuda
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
-    env:
-      SCCACHE_GHA_ENABLED: true
-      RUSTC_WRAPPER: sccache
     steps:
       - name: Free disk space
         run: |
@@ -131,7 +128,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - uses: mozilla-actions/sccache-action@v0.0.7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.suffix }}
+          cache-on-failure: "true"
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.22
         with:
@@ -163,19 +163,19 @@ jobs:
     container:
       image: ${{ matrix.image }}
     timeout-minutes: 90
-    env:
-      SCCACHE_GHA_ENABLED: true
-      RUSTC_WRAPPER: sccache
     steps:
       - name: Install system deps
         run: |
           apt-get update
           apt-get install -y git curl python3 python3-dev pkg-config libssl-dev libclang-dev clang
       - uses: actions/checkout@v4
-      - uses: mozilla-actions/sccache-action@v0.0.7
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0 -c rustfmt -c clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.suffix }}
+          cache-on-failure: "true"
       - name: Build
         run: |
           . "$HOME/.cargo/env"
