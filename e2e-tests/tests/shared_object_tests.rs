@@ -1230,17 +1230,21 @@ async fn test_concurrent_conflicting_owned_transactions() {
     let recipient_a = addresses[1];
     let recipient_b = addresses[2];
 
-    // Get a coin that both transactions will try to spend
-    let coin_ref = test_cluster
+    // Get three coins: one contested coin + separate gas for each tx
+    let coins = test_cluster
         .wallet
-        .get_one_gas_object_owned_by_address(sender)
+        .get_gas_objects_owned_by_address(sender, Some(3))
         .await
-        .unwrap()
-        .expect("Sender should have a gas object");
+        .unwrap();
+    assert!(coins.len() >= 3, "Sender needs at least 3 coins");
+    let coin_ref = coins[0];
+    let gas_ref1 = coins[1];
+    let gas_ref2 = coins[2];
 
     info!("Concurrent spend of coin {} version {}", coin_ref.0, coin_ref.1.value());
 
     // Create and sign two conflicting TransferCoin transactions
+    // Each uses a separate gas coin so only the transfer coin conflicts
     let tx1_data = TransactionData::new(
         TransactionKind::TransferCoin {
             coin: coin_ref,
@@ -1248,7 +1252,7 @@ async fn test_concurrent_conflicting_owned_transactions() {
             recipient: recipient_a,
         },
         sender,
-        vec![coin_ref],
+        vec![gas_ref1],
     );
 
     let tx2_data = TransactionData::new(
@@ -1258,7 +1262,7 @@ async fn test_concurrent_conflicting_owned_transactions() {
             recipient: recipient_b,
         },
         sender,
-        vec![coin_ref],
+        vec![gas_ref2],
     );
 
     let signed_tx1 = test_cluster.wallet.sign_transaction(&tx1_data).await;
