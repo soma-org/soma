@@ -79,7 +79,7 @@ fn error_hint(msg: &str) -> Option<&'static str> {
 #[derive(Parser)]
 #[clap(
     name = env!("CARGO_BIN_NAME"),
-    about = "A game of infinitely evolving machine intelligence",
+    about = "Open-source Superintelligence",
     rename_all = "kebab-case",
     author,
     version = VERSION,

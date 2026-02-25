@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-A game of infinitely evolving machine intelligence
+Open-source Superintelligence
 
 Usage: soma <COMMAND>
 
