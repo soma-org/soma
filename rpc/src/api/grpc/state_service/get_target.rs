@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! GetTarget RPC handler - loads a Target shared object by ID.
 
 use crate::api::RpcService;

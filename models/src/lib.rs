@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use async_trait::async_trait;
 use burn::{Tensor, prelude::Backend, store::SafetensorsStore};
 use std::sync::Arc;

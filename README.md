@@ -37,7 +37,7 @@ The Internet has more compute, more data, and more minds than any single organiz
 - **Moving Benchmark** — Participants submit data that continuously raises the bar for model evaluation. The result is a living benchmark that tracks the frontier, not a static leaderboard
 - **Specialization via Routing** — Participants report embeddings that capture their specialization. A lightweight router selects which models compete, incentivizing deep expertise while maintaining global cohesion
 - **BFT Consensus** — Coordination for rewards, training, and verification. [Mysticeti](https://arxiv.org/abs/2310.14821)-based DAG consensus with multi-leader support and sub-second finality
-- **GPU Accelerated** — Deterministic scoring runtime in Rust with native CUDA, ROCm, and WebGPU support
+- **GPU Accelerated** — Deterministic scoring runtime in Rust with native CUDA and WebGPU support
 - **Python SDK** — Async Python bindings via PyO3 for training models and submitting data
 
 ## Installation
@@ -51,9 +51,7 @@ curl -sSfL https://sup.soma.org | sh
 ```
 
 ```bash
-sup install soma                    # latest testnet (WGPU)
-sup install soma --backend cuda     # NVIDIA GPU (CUDA)
-sup install soma --backend rocm     # AMD GPU (ROCm)
+sup install soma                    # latest testnet
 ```
 
 See `sup --help` or the [sup README](https://github.com/soma-org/sup) for version management, updates, and shell completions.
@@ -72,7 +70,7 @@ Releases are built and published automatically via CI when a tag is pushed:
 
 | Tag Pattern | Artifact |
 |-------------|----------|
-| `testnet-v*` | Node binaries (all platforms + CUDA + ROCm) |
+| `testnet-v*` | Node binaries (all platforms, includes CUDA + WGPU) |
 | `sdk-v*` | Python SDK &rarr; [PyPI](https://pypi.org/project/soma-sdk) |
 | `models-v*` | Model implementations &rarr; [PyPI](https://pypi.org/project/soma-models) |
 
@@ -113,10 +111,11 @@ soma status         # view network and validator info
 ### Start a Scoring Service
 
 ```bash
-soma start scoring
+soma start scoring                  # default: WGPU backend
+soma start scoring --device cuda    # NVIDIA CUDA (requires toolkit)
 ```
 
-The scoring service uses the GPU backend matching your binary — CUDA for `soma-cuda-*`, ROCm for `soma-rocm-*`, and WGPU for the default binary.
+The scoring service defaults to the WGPU backend (Metal/Vulkan/DX12). Use `--device cuda` on machines with an NVIDIA GPU and the CUDA toolkit installed.
 
 ### Python SDK
 

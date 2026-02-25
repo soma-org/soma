@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! End-to-end tests for Challenge System and Submission Reports (Tally-Based).
 //!
 //! **Basic Tests:**

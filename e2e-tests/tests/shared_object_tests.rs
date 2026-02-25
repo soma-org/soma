@@ -1,5 +1,5 @@
 // Copyright (c) Mysten Labs, Inc.
-// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tier 3: Shared object E2E tests.

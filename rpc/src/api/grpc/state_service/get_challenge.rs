@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! GetChallenge RPC handler - loads a Challenge shared object by ID.
 
 use crate::api::RpcService;

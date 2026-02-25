@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use super::*;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! ListChallenges RPC handler - lists challenges with optional filtering.
 //!
 //! This implementation uses an index-based approach for efficient challenge listing.

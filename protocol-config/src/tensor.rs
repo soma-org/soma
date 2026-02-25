@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! BCS-compatible wrappers for floating-point types.
 //!
 //! BCS (Binary Canonical Serialization) does not support floating-point types directly.

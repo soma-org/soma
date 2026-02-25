@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Cryptographic utilities for the SOMA SDK.
 //!
 //! Encryption uses AES-256-CTR with a zero IV, matching the workspace standard

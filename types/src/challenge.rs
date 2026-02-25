@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Challenge types for the SOMA data submission competition dispute resolution.
 //!
 //! Challenges enable anyone to dispute data submissions. Validators audit

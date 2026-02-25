@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use burn::tensor::TensorData;
 use ndarray::ArrayD;
 use std::borrow;

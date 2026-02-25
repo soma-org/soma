@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 pub mod admin_types;
 
 // Re-export tonic so downstream crates can use Channel

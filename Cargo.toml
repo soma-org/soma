@@ -246,7 +246,7 @@ wiremock = "0.6"
 quick_cache = "0.6.18"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { version = "0.19.1", features = ["ndarray", "store", "wgpu", "train"] }
+burn = { version = "0.19.1", features = ["ndarray", "store", "wgpu", "train", "cuda"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"

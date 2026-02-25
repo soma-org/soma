@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Tests for AuthorityAggregator: process_transaction quorum gathering,
 // error classification, conflicting transactions, and process_certificate.
 

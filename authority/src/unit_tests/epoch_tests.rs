@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tests for epoch transition logic:
 //! - SystemState::advance_epoch() arithmetic and state transitions
 //! - Safe mode fallback behavior

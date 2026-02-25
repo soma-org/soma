@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Validator Proxy Server for serving submission data and model weights.
 //!
 //! This HTTP server runs on validators to serve data/model downloads to clients:

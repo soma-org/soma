@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Target generation for the SOMA data submission competition.
 //!
 //! Targets are shared objects that submitters compete to fill. Each target has an embedding

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use burn::data::dataset::Dataset;
 use std::sync::Arc;
 

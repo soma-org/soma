@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Stake-weighted KNN model selection for target assignment.
 //!
 //! Models register with embeddings that describe their "expertise" in the shared embedding space.

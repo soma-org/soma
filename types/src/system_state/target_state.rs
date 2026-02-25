@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Target state management within SystemState.
 //!
 //! `TargetState` is a lightweight struct stored in SystemState that tracks:

@@ -1,12 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
-// Portions of this file are derived from Sui (https://github.com/MystenLabs/sui).
+// Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tests for transaction validation rules:
 //! - Users cannot send system transactions (Genesis, ChangeEpoch, ConsensusCommitPrologueV1)
 //! - Gas validation edge cases
 //! - Transaction data serialization
-//! SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::{

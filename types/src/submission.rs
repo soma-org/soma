@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Data submission types for the SOMA data submission competition.
 //!
 //! Contains `SubmissionManifest` — the manifest describing submitted data

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
