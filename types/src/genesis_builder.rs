@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 use anyhow::{Context, bail};
 use camino::Utf8Path;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
+use fastcrypto::hash::{Blake2b256, HashFunction};
 use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 use protocol_config::ProtocolVersion;
 use tracing::trace;
@@ -180,6 +181,9 @@ impl GenesisBuilder {
 
         self.validate().expect("Genesis validation failed");
 
+        // Sort validators by account address for deterministic genesis output
+        self.validators.sort_by_key(|v| v.info.account_address);
+
         let (system_state, objects) = self.create_genesis_state();
         let (transaction, effects, final_objects) =
             self.create_genesis_transaction(objects, &system_state);
@@ -301,15 +305,17 @@ impl GenesisBuilder {
             None
         };
 
-        // Load validators
+        // Load validators (sorted by account address for deterministic ordering)
         let mut validators = Vec::new();
         let committee_dir = path.join(GENESIS_BUILDER_COMMITTEE_DIR);
         if committee_dir.exists() {
-            for entry in committee_dir.read_dir_utf8()? {
-                let entry = entry?;
-                if entry.file_name().starts_with('.') {
-                    continue;
-                }
+            let mut entries: Vec<_> = committee_dir
+                .read_dir_utf8()?
+                .filter_map(|e| e.ok())
+                .filter(|e| !e.file_name().starts_with('.'))
+                .collect();
+            entries.sort_by_key(|e| e.file_name().to_string());
+            for entry in entries {
                 let validator_path = entry.path();
                 let validator_bytes = fs::read(validator_path)?;
                 let validator_info: GenesisValidatorInfo = serde_yaml::from_slice(&validator_bytes)
@@ -366,7 +372,9 @@ impl GenesisBuilder {
             built_genesis: None,
         };
 
-        // Load unsigned genesis if present and verify
+        // Load unsigned genesis if present and verify via BCS comparison
+        // (PartialEq comparison would fail due to OnceCell/OnceLock cached digest
+        // fields being Uninit after deserialization but populated after building)
         let unsigned_genesis_file = path.join(GENESIS_BUILDER_UNSIGNED_GENESIS_FILE);
         if unsigned_genesis_file.exists() {
             let unsigned_genesis_bytes = fs::read(&unsigned_genesis_file)?;
@@ -378,7 +386,14 @@ impl GenesisBuilder {
             );
 
             let built = builder.build_unsigned_genesis();
-            assert_eq!(built, loaded_genesis, "loaded genesis does not match built genesis");
+            let built_bytes = bcs::to_bytes(&built).expect("built genesis should serialize");
+            assert_eq!(
+                built_bytes, unsigned_genesis_bytes,
+                "loaded genesis does not match built genesis (BCS comparison)"
+            );
+
+            // Use the built version (which has cached digests populated)
+            // builder.built_genesis is already set by build_unsigned_genesis()
         }
 
         Ok(builder)
@@ -443,8 +458,20 @@ impl GenesisBuilder {
         Ok(())
     }
 
+    /// Generate a deterministic ObjectID for genesis object creation.
+    /// Uses Blake2b256(domain || counter) to produce reproducible IDs from the same inputs.
+    fn deterministic_object_id(counter: &mut u64) -> ObjectID {
+        let mut hasher = Blake2b256::default();
+        hasher.update(b"soma-genesis-object-id");
+        hasher.update(&counter.to_le_bytes());
+        *counter += 1;
+        let hash = hasher.finalize();
+        ObjectID::new(hash.digest[..ObjectID::LENGTH].try_into().unwrap())
+    }
+
     fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
         let mut objects = Vec::new();
+        let mut id_counter: u64 = 0;
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
             self.parameters.protocol_version,
@@ -483,7 +510,7 @@ impl GenesisBuilder {
                             next_epoch_proxy_address: None,
                         },
                         voting_power: 0, // Will be set by set_voting_power()
-                        staking_pool: StakingPool::new(ObjectID::random()),
+                        staking_pool: StakingPool::new(Self::deterministic_object_id(&mut id_counter)),
                         commission_rate: v.info.commission_rate,
                         next_epoch_stake: 0,
                         next_epoch_commission_rate: v.info.commission_rate,
@@ -537,7 +564,7 @@ impl GenesisBuilder {
                         .expect("Failed to stake with validator at genesis");
 
                     let staked_object = Object::new_staked_soma_object(
-                        ObjectID::random(),
+                        Self::deterministic_object_id(&mut id_counter),
                         staked_soma,
                         Owner::AddressOwner(allocation.recipient_address),
                         TransactionDigest::default(),
@@ -552,7 +579,7 @@ impl GenesisBuilder {
                         .expect("Failed to stake with model at genesis");
 
                     let staked_object = Object::new_staked_soma_object(
-                        ObjectID::random(),
+                        Self::deterministic_object_id(&mut id_counter),
                         staked_soma,
                         Owner::AddressOwner(allocation.recipient_address),
                         TransactionDigest::default(),
@@ -560,7 +587,7 @@ impl GenesisBuilder {
                     objects.push(staked_object);
                 } else {
                     let coin_object = Object::new_coin(
-                        ObjectID::random(),
+                        Self::deterministic_object_id(&mut id_counter),
                         allocation.amount_shannons,
                         Owner::AddressOwner(allocation.recipient_address),
                         TransactionDigest::default(),
@@ -626,7 +653,7 @@ impl GenesisBuilder {
                         system_state.emission_pool_mut().balance -= reward_per_target;
 
                         // Create target as shared object
-                        let target_id = ObjectID::random();
+                        let target_id = Self::deterministic_object_id(&mut id_counter);
                         let target_object = Object::new_target_object(target_id, t, genesis_digest);
                         objects.push(target_object);
                     }

@@ -114,7 +114,7 @@ fn faucet_url_for_rpc(rpc: &str, alias: &str) -> Result<String> {
 
     // Testnet
     if rpc.contains("testnet") {
-        return Ok("https://faucet.testnet.soma.network".to_string());
+        return Ok("https://faucet.testnet.soma.org".to_string());
     }
 
     anyhow::bail!(
@@ -143,6 +143,6 @@ mod tests {
     fn test_find_faucet_url_testnet() {
         let result =
             faucet_url_for_rpc("https://fullnode.testnet.soma.org:443", "testnet").unwrap();
-        assert_eq!(result, "https://faucet.testnet.soma.network");
+        assert_eq!(result, "https://faucet.testnet.soma.org");
     }
 }
