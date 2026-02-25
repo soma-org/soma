@@ -2,33 +2,33 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::base::HexAccountAddress;
-use crate::{
-    base::{FullObjectID, FullObjectRef, SOMA_ADDRESS_LENGTH, SomaAddress},
-    challenge::ChallengeV1,
-    committee::EpochId,
-    crypto::{DefaultHash, default_hash},
-    digests::{ObjectDigest, TransactionDigest},
-    error::{SomaError, SomaResult},
-    serde::Readable,
-    system_state::staking::StakedSomaV1,
-    target::TargetV1,
-};
+use std::cmp::max;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use std::sync::Arc;
+
 use anyhow::anyhow;
-use fastcrypto::{
-    encoding::{Encoding, Hex, decode_bytes_hex},
-    hash::HashFunction,
-    traits::AllowedRng,
-};
-use rand::{Rng, rngs::OsRng};
+use fastcrypto::encoding::{Encoding, Hex, decode_bytes_hex};
+use fastcrypto::hash::HashFunction;
+use fastcrypto::traits::AllowedRng;
+use rand::Rng;
+use rand::rngs::OsRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{Bytes, DeserializeAs, SerializeAs, serde_as};
-use std::{
-    cmp::max,
-    fmt::{Display, Formatter},
+
+use crate::base::{
+    FullObjectID, FullObjectRef, HexAccountAddress, SOMA_ADDRESS_LENGTH, SomaAddress,
 };
-use std::{fmt, str::FromStr, sync::Arc};
+use crate::challenge::ChallengeV1;
+use crate::committee::EpochId;
+use crate::crypto::{DefaultHash, default_hash};
+use crate::digests::{ObjectDigest, TransactionDigest};
+use crate::error::{SomaError, SomaResult};
+use crate::serde::Readable;
+use crate::system_state::staking::StakedSomaV1;
+use crate::target::TargetV1;
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);

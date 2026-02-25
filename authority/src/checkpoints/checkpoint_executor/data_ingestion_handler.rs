@@ -1,19 +1,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeSet, path::Path};
+use std::collections::BTreeSet;
+use std::path::Path;
 
-use types::{
-    effects::TransactionEffectsAPI as _,
-    error::{SomaError, SomaResult},
-    full_checkpoint_content::{Checkpoint, CheckpointData, ExecutedTransaction, ObjectSet},
-    storage::object_store::ObjectStore,
-};
+use types::effects::TransactionEffectsAPI as _;
+use types::error::{SomaError, SomaResult};
+use types::full_checkpoint_content::{Checkpoint, CheckpointData, ExecutedTransaction, ObjectSet};
+use types::storage::object_store::ObjectStore;
 
-use crate::{
-    cache::TransactionCacheRead,
-    checkpoints::checkpoint_executor::{CheckpointExecutionData, CheckpointTransactionData},
-};
+use crate::cache::TransactionCacheRead;
+use crate::checkpoints::checkpoint_executor::{CheckpointExecutionData, CheckpointTransactionData};
 
 pub(crate) fn store_checkpoint_locally(
     path: impl AsRef<Path>,

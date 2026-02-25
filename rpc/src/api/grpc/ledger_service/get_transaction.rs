@@ -5,21 +5,14 @@
 use crate::api::RpcService;
 use crate::api::error::RpcError;
 use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::BatchGetTransactionsRequest;
-use crate::proto::soma::BatchGetTransactionsResponse;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::ExecutedTransaction;
-use crate::proto::soma::GetTransactionRequest;
-use crate::proto::soma::GetTransactionResponse;
-use crate::proto::soma::GetTransactionResult;
-use crate::proto::soma::Transaction;
-use crate::proto::soma::TransactionEffects;
-use crate::proto::soma::UserSignature;
+use crate::proto::soma::{
+    BatchGetTransactionsRequest, BatchGetTransactionsResponse, ErrorReason, ExecutedTransaction,
+    GetTransactionRequest, GetTransactionResponse, GetTransactionResult, Transaction,
+    TransactionEffects, UserSignature,
+};
 use crate::proto::timestamp_ms_to_proto;
 use crate::types::{Address, Digest};
-use crate::utils::field::FieldMask;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::field::FieldMaskUtil;
+use crate::utils::field::{FieldMask, FieldMaskTree, FieldMaskUtil};
 use crate::utils::merge::Merge;
 
 pub const READ_MASK_DEFAULT: &str = "digest";

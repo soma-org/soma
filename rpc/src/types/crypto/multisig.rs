@@ -2,9 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Ed25519PublicKey;
-use super::Ed25519Signature;
-use super::SignatureScheme;
+use super::{Ed25519PublicKey, Ed25519Signature, SignatureScheme};
 
 pub type WeightUnit = u8;
 pub type ThresholdUnit = u16;
@@ -224,21 +222,15 @@ pub enum MultisigMemberSignature {
 }
 
 mod serialization {
-    use super::*;
-    use crate::types::Ed25519PublicKey;
-    use crate::types::SignatureScheme;
-    use crate::types::crypto::Base64Array33;
-    use crate::types::crypto::Base64Array34;
-    use base64ct::Base64;
-    use base64ct::Encoding;
-    use serde::Deserialize;
-    use serde::Deserializer;
-    use serde::Serialize;
-    use serde::Serializer;
-    use serde_with::Bytes;
-    use serde_with::DeserializeAs;
-    use serde_with::SerializeAs;
     use std::borrow::Cow;
+
+    use base64ct::{Base64, Encoding};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_with::{Bytes, DeserializeAs, SerializeAs};
+
+    use super::*;
+    use crate::types::crypto::{Base64Array33, Base64Array34};
+    use crate::types::{Ed25519PublicKey, SignatureScheme};
 
     pub struct Base64MultisigMemberPublicKey;
 

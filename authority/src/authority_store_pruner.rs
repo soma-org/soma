@@ -2,18 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
-use crate::checkpoints::{CheckpointStore, CheckpointWatermark};
-use crate::rpc_index::RpcIndexStore;
-use anyhow::anyhow;
-use bincode::Options;
-use once_cell::sync::Lazy;
 use std::cmp::{max, min};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::AtomicU64;
-use std::sync::{Mutex, Weak};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{sync::Arc, time::Duration};
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use anyhow::anyhow;
+use bincode::Options;
+use once_cell::sync::Lazy;
 use store::rocksdb::LiveFile;
 use store::rocksdb::compaction_filter::Decision;
 use store::{Map, TypedStoreError};
@@ -28,6 +25,10 @@ use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::envelope::Message as _;
 use types::object::{ObjectID, Version};
 use types::storage::ObjectKey;
+
+use crate::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables, StoreObject};
+use crate::checkpoints::{CheckpointStore, CheckpointWatermark};
+use crate::rpc_index::RpcIndexStore;
 
 static PERIODIC_PRUNING_TABLES: Lazy<BTreeSet<String>> = Lazy::new(|| {
     ["objects", "effects", "transactions", "executed_effects", "executed_transactions_to_commit"]

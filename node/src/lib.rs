@@ -2,104 +2,96 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::{BTreeSet, HashMap};
+use std::future::Future;
+use std::str::FromStr as _;
+use std::sync::{Arc, Weak};
+use std::time::{Duration, SystemTime};
+
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
-use authority::{
-    audit_service::AuditService,
-    authority::{AuthorityState, ExecutionEnv},
-    authority_aggregator::AuthorityAggregator,
-    authority_client::NetworkAuthorityClient,
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_server::ValidatorService,
-    authority_store::AuthorityStore,
-    authority_store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
-    authority_store_tables::{
-        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
-    },
-    backpressure_manager::BackpressureManager,
-    cache::build_execution_cache,
-    checkpoints::{
-        CheckpointService, CheckpointStore, SendCheckpointToStateSync, SubmitCheckpointToConsensus,
-        checkpoint_executor::{CheckpointExecutor, StopReason},
-    },
-    consensus_adapter::{ConsensusAdapter, ConsensusClient},
-    consensus_handler::ConsensusHandlerInitializer,
-    consensus_manager::{ConsensusManager, UpdatableConsensusClient},
-    consensus_store_pruner::ConsensusStorePruner,
-    consensus_validator::TxValidator,
-    execution_scheduler::SchedulingSource,
-    fullnode_proxy::FullnodeProxy,
-    global_state_hasher::GlobalStateHasher,
-    proxy_server::{ProxyConfig, ProxyServer, spawn_report_handler},
-    reconfiguration::ReconfigurationInitiator,
-    rpc_index::RpcIndexStore,
-    server::{ServerBuilder, TLS_SERVER_NAME},
-    shared_obj_version_manager::Schedulable,
-    start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-    storage::{RestReadStore, RocksDbStore},
-    tonic_gen::validator_server::ValidatorServer,
-    transaction_orchestrator::TransactionOrchestrator,
-    validator_tx_finalizer::ValidatorTxFinalizer,
+use authority::audit_service::AuditService;
+use authority::authority::{AuthorityState, ExecutionEnv};
+use authority::authority_aggregator::AuthorityAggregator;
+use authority::authority_client::NetworkAuthorityClient;
+use authority::authority_per_epoch_store::AuthorityPerEpochStore;
+use authority::authority_server::ValidatorService;
+use authority::authority_store::AuthorityStore;
+use authority::authority_store_pruner::{ObjectsCompactionFilter, PrunerWatermarks};
+use authority::authority_store_tables::{
+    AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
 };
-use futures::{TryFutureExt, future::BoxFuture};
-use parking_lot::RwLock;
-use rpc::api::{ServerVersion, subscription::SubscriptionService};
-
-use store::rocks::default_db_options;
-use sync::builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle};
-use tower::ServiceBuilder;
-
-use protocol_config::ProtocolConfig;
-use std::{
-    collections::{BTreeSet, HashMap},
-    future::Future,
-    str::FromStr as _,
-    sync::{Arc, Weak},
-    time::{Duration, SystemTime},
+use authority::backpressure_manager::BackpressureManager;
+use authority::cache::build_execution_cache;
+use authority::checkpoints::checkpoint_executor::{CheckpointExecutor, StopReason};
+use authority::checkpoints::{
+    CheckpointService, CheckpointStore, SendCheckpointToStateSync, SubmitCheckpointToConsensus,
 };
-use tokio::{
-    sync::{Mutex, broadcast, mpsc::Sender, oneshot},
-    task::JoinHandle,
-    time::sleep,
-};
-use tracing::{Instrument, debug, error, error_span, info, warn};
-use types::{
-    base::AuthorityName,
-    challenge::ChallengeV1,
-    client::Config,
-    committee::Committee,
-    config::node_config::{
-        ConsensusConfig, ForkCrashBehavior, ForkRecoveryConfig, NodeConfig, RunWithRange,
-    },
-    consensus::{AuthorityCapabilitiesV1, ConsensusTransaction, ConsensusTransactionKind},
-    crypto::KeypairTraits,
-    digests::{ChainIdentifier, CheckpointDigest, TransactionDigest, TransactionEffectsDigest},
-    error::{SomaError, SomaResult},
-    full_checkpoint_content::Checkpoint,
-    storage::committee_store::CommitteeStore,
-    supported_protocol_versions::SupportedProtocolVersions,
-    sync::{
-        active_peers::{self, ActivePeers},
-        channel_manager::{ChannelManager, ChannelManagerRequest},
-    },
-    system_state::{
-        SystemState, SystemStateTrait,
-        epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
-    },
-    transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
-};
-
+use authority::consensus_adapter::{ConsensusAdapter, ConsensusClient};
+use authority::consensus_handler::ConsensusHandlerInitializer;
+use authority::consensus_manager::{ConsensusManager, UpdatableConsensusClient};
+use authority::consensus_store_pruner::ConsensusStorePruner;
+use authority::consensus_validator::TxValidator;
+use authority::execution_scheduler::SchedulingSource;
+use authority::fullnode_proxy::FullnodeProxy;
+use authority::global_state_hasher::GlobalStateHasher;
+use authority::proxy_server::{ProxyConfig, ProxyServer, spawn_report_handler};
+use authority::reconfiguration::ReconfigurationInitiator;
+use authority::rpc_index::RpcIndexStore;
+use authority::server::{ServerBuilder, TLS_SERVER_NAME};
+use authority::shared_obj_version_manager::Schedulable;
+use authority::start_epoch::{EpochStartConfigTrait, EpochStartConfiguration};
+use authority::storage::{RestReadStore, RocksDbStore};
+use authority::tonic_gen::validator_server::ValidatorServer;
+use authority::transaction_orchestrator::TransactionOrchestrator;
+use authority::validator_tx_finalizer::ValidatorTxFinalizer;
+use futures::TryFutureExt;
+use futures::future::BoxFuture;
 #[cfg(msim)]
 use msim::task::NodeId;
+use parking_lot::RwLock;
+use protocol_config::ProtocolConfig;
+use rpc::api::ServerVersion;
+use rpc::api::subscription::SubscriptionService;
 #[cfg(msim)]
 use simulator::SimState;
+use store::rocks::default_db_options;
+use sync::builder::{DiscoveryHandle, P2pBuilder, StateSyncHandle};
+use tokio::sync::mpsc::Sender;
+use tokio::sync::{Mutex, broadcast, oneshot};
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tower::ServiceBuilder;
+use tracing::{Instrument, debug, error, error_span, info, warn};
+use types::base::AuthorityName;
+use types::challenge::ChallengeV1;
+use types::client::Config;
+use types::committee::Committee;
+use types::config::node_config::{
+    ConsensusConfig, ForkCrashBehavior, ForkRecoveryConfig, NodeConfig, RunWithRange,
+};
+use types::consensus::{AuthorityCapabilitiesV1, ConsensusTransaction, ConsensusTransactionKind};
+use types::crypto::KeypairTraits;
+use types::digests::{
+    ChainIdentifier, CheckpointDigest, TransactionDigest, TransactionEffectsDigest,
+};
+use types::error::{SomaError, SomaResult};
+use types::full_checkpoint_content::Checkpoint;
+use types::storage::committee_store::CommitteeStore;
+use types::supported_protocol_versions::SupportedProtocolVersions;
+use types::sync::active_peers::{self, ActivePeers};
+use types::sync::channel_manager::{ChannelManager, ChannelManagerRequest};
+use types::system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait};
+use types::system_state::{SystemState, SystemStateTrait};
+use types::transaction::{VerifiedCertificate, VerifiedExecutableTransaction};
 
 pub mod handle;
 
 #[cfg(msim)]
 mod simulator {
-    use super::*;
     use std::sync::atomic::AtomicBool;
+
+    use super::*;
     pub(super) struct SimState {
         pub sim_node: msim::runtime::NodeHandle,
     }

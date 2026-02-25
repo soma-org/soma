@@ -2,14 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
+
 use parking_lot::{RwLock, RwLockWriteGuard};
-use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use tokio::sync::watch;
 use tracing::debug;
-use types::{
-    consensus::{ConsensusPosition, block::Round},
-    error::{SomaError, SomaResult},
-};
+use types::consensus::ConsensusPosition;
+use types::consensus::block::Round;
+use types::error::{SomaError, SomaResult};
 use utils::notify_read::NotifyRead;
 
 /// The number of consensus rounds to retain transaction status information before garbage collection.

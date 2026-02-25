@@ -12,21 +12,19 @@ use protocol_config::ProtocolVersion;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use crate::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    config::genesis_config::{
-        GenesisCeremonyParameters, GenesisModelConfig, SHANNONS_PER_SOMA, TokenAllocation,
-        TokenDistributionSchedule, TokenDistributionScheduleBuilder, ValidatorGenesisConfigBuilder,
-    },
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    envelope::Message,
-    genesis_builder::GenesisBuilder,
-    object::{ObjectType, Owner},
-    system_state::epoch_start::EpochStartSystemStateTrait,
-    system_state::{SystemStateTrait, get_system_state},
-    transaction::TransactionKind,
+use crate::SYSTEM_STATE_OBJECT_ID;
+use crate::base::SomaAddress;
+use crate::config::genesis_config::{
+    GenesisCeremonyParameters, GenesisModelConfig, SHANNONS_PER_SOMA, TokenAllocation,
+    TokenDistributionSchedule, TokenDistributionScheduleBuilder, ValidatorGenesisConfigBuilder,
 };
+use crate::effects::{ExecutionStatus, TransactionEffectsAPI};
+use crate::envelope::Message;
+use crate::genesis_builder::GenesisBuilder;
+use crate::object::{ObjectType, Owner};
+use crate::system_state::epoch_start::EpochStartSystemStateTrait;
+use crate::system_state::{SystemStateTrait, get_system_state};
+use crate::transaction::TransactionKind;
 
 // ---------------------------------------------------------------------------
 // Helper: build N validator configs with a deterministic RNG
@@ -402,13 +400,14 @@ fn test_genesis_creates_initial_targets() {
     let schedule = sched_builder.build();
 
     // Create a genesis model config
+    use fastcrypto::hash::HashFunction as _;
+    use url::Url;
+
     use crate::checksum::Checksum;
     use crate::crypto::{DecryptionKey, DefaultHash};
     use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
     use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
     use crate::model::ModelWeightsManifest;
-    use fastcrypto::hash::HashFunction as _;
-    use url::Url;
 
     let url_str = "https://example.com/model/weights";
     let url = Url::parse(url_str).unwrap();

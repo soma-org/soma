@@ -7,31 +7,30 @@ use std::future::Future;
 use std::net::IpAddr;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use arc_swap::{ArcSwap, ArcSwapOption};
 use consensus::BlockStatus;
 use dashmap::DashMap;
 use dashmap::try_result::TryResult;
-use futures::FutureExt;
 use futures::future::{self, Either, select};
 use futures::stream::FuturesUnordered;
-use futures::{StreamExt, pin_mut};
+use futures::{FutureExt, StreamExt, pin_mut};
 use itertools::Itertools;
 use parking_lot::RwLockReadGuard;
 use protocol_config::ProtocolConfig;
 use tokio::sync::{Semaphore, SemaphorePermit, oneshot};
 use tokio::task::JoinHandle;
-use tokio::time::Duration;
-use tokio::time::{self};
+use tokio::time::{
+    Duration, {self},
+};
 use tracing::{Instrument, debug, debug_span, info, instrument, trace, warn};
 use types::base::AuthorityName;
 use types::committee::Committee;
-use types::consensus::ConsensusPosition;
-use types::consensus::ConsensusTransactionKind;
-use types::consensus::{ConsensusTransaction, ConsensusTransactionKey};
+use types::consensus::{
+    ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey, ConsensusTransactionKind,
+};
 use types::digests::TransactionDigest;
 use types::error::{SomaError, SomaResult};
 use types::peer_id::ConnectionStatus;

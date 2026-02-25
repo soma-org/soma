@@ -2,16 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-use crate::{base_committer::BaseCommitter, dag_state::DagState};
 use parking_lot::RwLock;
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{GENESIS_ROUND, Round, Slot},
-    commit::{DecidedLeader, Decision},
-    context::Context,
-};
+use types::consensus::block::{GENESIS_ROUND, Round, Slot};
+use types::consensus::commit::{DecidedLeader, Decision};
+use types::consensus::context::Context;
+
+use crate::base_committer::BaseCommitter;
+use crate::dag_state::DagState;
 
 #[cfg(test)]
 #[path = "tests/universal_committer_tests.rs"]
@@ -139,9 +140,11 @@ impl UniversalCommitter {
 /// A builder for a universal committer. By default, the builder creates a single
 /// base committer, that is, a single leader and no pipeline.
 pub(crate) mod universal_committer_builder {
-    use super::*;
-    use crate::{base_committer::BaseCommitterOptions, leader_schedule::LeaderSchedule};
     use types::consensus::commit::DEFAULT_WAVE_LENGTH;
+
+    use super::*;
+    use crate::base_committer::BaseCommitterOptions;
+    use crate::leader_schedule::LeaderSchedule;
 
     pub(crate) struct UniversalCommitterBuilder {
         context: Arc<Context>,

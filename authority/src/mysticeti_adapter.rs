@@ -2,23 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::{ArcSwapOption, Guard};
 use consensus::{ClientError, TransactionClient};
 use tap::prelude::*;
 use tokio::time::{Instant, sleep};
 use tracing::{error, info, warn};
-use types::{
-    consensus::{ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind},
-    error::{SomaError, SomaResult},
-};
+use types::consensus::{ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind};
+use types::error::{SomaError, SomaResult};
 
-use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    consensus_adapter::{BlockStatusReceiver, ConsensusClient},
-    consensus_handler::SequencedConsensusTransactionKey,
-};
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::consensus_adapter::{BlockStatusReceiver, ConsensusClient};
+use crate::consensus_handler::SequencedConsensusTransactionKey;
 
 /// Gets a client to submit transactions to Mysticeti, or waits for one to be available.
 /// This hides the complexities of async consensus initialization and submitting to different

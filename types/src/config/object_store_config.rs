@@ -2,16 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Context, Result, anyhow};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::{env, fs};
 
+use anyhow::{Context, Result, anyhow};
 use clap::*;
 use object_store::aws::AmazonS3Builder;
 use object_store::{ClientOptions, DynObjectStore};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{env, fs};
 use tracing::info;
 
 /// Object-store type.

@@ -2,15 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::transaction::TransactionVerifier;
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 use bytes::Bytes;
-use std::{collections::BTreeSet, sync::Arc};
-use types::consensus::block::{BlockRef, TransactionIndex};
-use types::consensus::{
-    block::{BlockAPI, GENESIS_ROUND, SignedBlock, VerifiedBlock, genesis_blocks},
-    context::Context,
+use types::consensus::block::{
+    BlockAPI, BlockRef, GENESIS_ROUND, SignedBlock, TransactionIndex, VerifiedBlock, genesis_blocks,
 };
+use types::consensus::context::Context;
 use types::error::{ConsensusError, ConsensusResult};
+
+use crate::transaction::TransactionVerifier;
 
 pub trait BlockVerifier: Send + Sync + 'static {
     /// Verifies a block and its transactions, checking signatures, size limits,

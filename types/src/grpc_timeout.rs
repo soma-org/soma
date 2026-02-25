@@ -6,14 +6,13 @@
 // Ported from `tonic` crate
 // SPDX-License-Identifier: MIT
 
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, ready};
+use std::time::Duration;
+
 use http::{HeaderMap, HeaderValue, Request, Response};
 use pin_project_lite::pin_project;
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll, ready},
-    time::Duration,
-};
 use tokio::time::Sleep;
 use tonic::Status;
 use tower::Service;

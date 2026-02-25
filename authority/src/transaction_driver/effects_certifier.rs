@@ -2,45 +2,38 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::BTreeMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use futures::{StreamExt as _, join, stream::FuturesUnordered};
+use futures::stream::FuturesUnordered;
+use futures::{StreamExt as _, join};
 use tokio::time::{sleep, timeout};
 use tracing::{debug, instrument};
-use types::{
-    base::{AuthorityName, ConciseableName as _},
-    committee::StakeUnit,
-    consensus::ConsensusPosition,
-    digests::{TransactionDigest, TransactionEffectsDigest},
-    effects::TransactionEffectsAPI as _,
-    error::SomaError,
-    messages_grpc::{
-        ExecutedData, PingType, RawWaitForEffectsRequest, SubmitTxResult, TxType,
-        WaitForEffectsRequest, WaitForEffectsResponse,
-    },
-    quorum_driver::{EffectsFinalityInfo, FinalizedEffects},
+use types::base::{AuthorityName, ConciseableName as _};
+use types::committee::StakeUnit;
+use types::consensus::ConsensusPosition;
+use types::digests::{TransactionDigest, TransactionEffectsDigest};
+use types::effects::TransactionEffectsAPI as _;
+use types::error::SomaError;
+use types::messages_grpc::{
+    ExecutedData, PingType, RawWaitForEffectsRequest, SubmitTxResult, TxType,
+    WaitForEffectsRequest, WaitForEffectsResponse,
 };
+use types::quorum_driver::{EffectsFinalityInfo, FinalizedEffects};
 
-use crate::{
-    authority_aggregator::AuthorityAggregator,
-    authority_client::AuthorityAPI,
-    safe_client::SafeClient,
-    status_aggregator::StatusAggregator,
-    transaction_driver::{
-        QuorumTransactionResponse, SubmitTransactionOptions,
-        backoff::ExponentialBackoff,
-        error::{
-            AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
-            aggregate_request_errors,
-        },
-        request_retrier::RequestRetrier,
-    },
-    validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
+use crate::authority_aggregator::AuthorityAggregator;
+use crate::authority_client::AuthorityAPI;
+use crate::safe_client::SafeClient;
+use crate::status_aggregator::StatusAggregator;
+use crate::transaction_driver::backoff::ExponentialBackoff;
+use crate::transaction_driver::error::{
+    AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+    aggregate_request_errors,
 };
+use crate::transaction_driver::request_retrier::RequestRetrier;
+use crate::transaction_driver::{QuorumTransactionResponse, SubmitTransactionOptions};
+use crate::validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor};
 
 #[cfg(test)]
 #[path = "unit_tests/effects_certifier_tests.rs"]

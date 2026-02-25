@@ -2,14 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Client;
-use super::Result;
-use crate::proto::soma::ListOwnedObjectsRequest;
-use crate::proto::soma::Object;
-use crate::utils::field::FieldMaskUtil as _;
 use futures::stream;
 use futures::stream::Stream;
 use prost_types::FieldMask;
+
+use super::{Client, Result};
+use crate::proto::soma::{ListOwnedObjectsRequest, Object};
+use crate::utils::field::FieldMaskUtil as _;
 
 impl Client {
     /// Creates a stream of objects based on the provided request.

@@ -18,33 +18,31 @@ use std::time::Duration;
 use futures::FutureExt;
 use futures::future::{Either, Future, select};
 use futures::stream::{FuturesUnordered, StreamExt};
-use types::envelope::Message as _;
-use types::finality::FinalityProof;
-use types::object::ObjectRef;
-use types::storage::write_path_pending_tx_log::WritePathPendingTransactionLog;
-use utils::notify_read::NotifyRead;
-
 use protocol_config::Chain;
 use rand::Rng;
-use types::config::node_config::NodeConfig;
-
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
 use tracing::{Instrument, debug, error, error_span, info, instrument, warn};
+use types::config::node_config::NodeConfig;
 use types::digests::TransactionDigest;
 use types::effects::TransactionEffectsAPI;
+use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
+use types::finality::FinalityProof;
 use types::messages_grpc::{SubmitTxRequest, TxType};
+use types::object::ObjectRef;
 use types::quorum_driver::{
     EffectsFinalityInfo, ExecuteTransactionRequest, ExecuteTransactionRequestType,
     ExecuteTransactionResponse, FinalizedEffects, IsTransactionExecutedLocally,
     QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResult,
 };
+use types::storage::write_path_pending_tx_log::WritePathPendingTransactionLog;
 use types::system_state::{SystemState, SystemStateTrait as _};
 use types::transaction::{Transaction, TransactionData, TransactionKind, VerifiedTransaction};
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
+use utils::notify_read::NotifyRead;
 
 use crate::authority::AuthorityState;
 use crate::authority_aggregator::AuthorityAggregator;

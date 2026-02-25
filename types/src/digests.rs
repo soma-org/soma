@@ -2,24 +2,22 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    crypto::DIGEST_LENGTH,
-    error::{SomaError, SomaResult},
-    serde::Readable,
-};
-use fastcrypto::{
-    encoding::{Base58, Encoding, Hex},
-    hash::{Blake2b256, HashFunction as _, MultisetHash},
-};
+use std::env;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::{Hash, Hasher};
+
+use fastcrypto::encoding::{Base58, Encoding, Hex};
+use fastcrypto::hash::{Blake2b256, HashFunction as _, MultisetHash};
 use once_cell::sync::{Lazy, OnceCell};
 use protocol_config::Chain;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::{Bytes, serde_as};
-use std::env;
-use std::fmt::{self, Debug, Display, Formatter};
-use std::hash::{Hash, Hasher};
 use tracing::info;
+
+use crate::crypto::DIGEST_LENGTH;
+use crate::error::{SomaError, SomaResult};
+use crate::serde::Readable;
 /// A representation of a 32 byte digest
 #[serde_as]
 #[derive(

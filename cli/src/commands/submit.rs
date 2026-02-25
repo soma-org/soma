@@ -1,23 +1,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::{self, Display, Formatter};
+
 use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-
 use sdk::wallet_context::WalletContext;
-use types::{
-    base::SomaAddress,
-    checksum::Checksum,
-    digests::DataCommitment,
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    object::ObjectID,
-    submission::SubmissionManifest,
-    tensor::SomaTensor,
-    transaction::{SubmitDataArgs, TransactionKind},
-};
+use serde::Serialize;
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::digests::DataCommitment;
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::object::ObjectID;
+use types::submission::SubmissionManifest;
+use types::tensor::SomaTensor;
+use types::transaction::{SubmitDataArgs, TransactionKind};
 
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;

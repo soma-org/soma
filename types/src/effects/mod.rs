@@ -2,37 +2,32 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt,
-};
+use std::collections::{BTreeMap, HashSet};
+use std::fmt;
 
-use crate::base::ExecutionDigests;
 use enum_dispatch::enum_dispatch;
 use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{
-    base::SomaAddress,
-    committee::{Committee, EpochId},
-    consensus::block::BlockRef,
-    crypto::{
-        AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo, EmptySignInfo,
-        default_hash,
-    },
-    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
-    envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
-    error::{SomaError, SomaResult},
-    intent::{Intent, IntentScope},
-    object::{
-        OBJECT_START_VERSION, ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest,
-    },
-    storage::WriteKind,
-    temporary_store::SharedInput,
-    tensor::SomaTensor,
-    tx_fee::TransactionFee,
+use crate::base::{ExecutionDigests, SomaAddress};
+use crate::committee::{Committee, EpochId};
+use crate::consensus::block::BlockRef;
+use crate::crypto::{
+    AuthoritySignInfo, AuthoritySignInfoTrait, AuthorityStrongQuorumSignInfo, EmptySignInfo,
+    default_hash,
 };
+use crate::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
+use crate::error::{SomaError, SomaResult};
+use crate::intent::{Intent, IntentScope};
+use crate::object::{
+    OBJECT_START_VERSION, ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest,
+};
+use crate::storage::WriteKind;
+use crate::temporary_store::SharedInput;
+use crate::tensor::SomaTensor;
+use crate::tx_fee::TransactionFee;
 
 pub mod object_change;
 

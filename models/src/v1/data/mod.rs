@@ -4,10 +4,8 @@
 use std::sync::Arc;
 
 use batcher::{ByteSequenceBatch, ByteSequenceBatcher};
-use burn::{
-    data::dataloader::{DataLoader, DataLoaderBuilder},
-    prelude::Backend,
-};
+use burn::data::dataloader::{DataLoader, DataLoaderBuilder};
+use burn::prelude::Backend;
 use dataset::ByteSequenceDataset;
 
 pub mod batcher;
@@ -27,8 +25,9 @@ pub fn build_data_loader<B: Backend>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use burn::backend::NdArray;
+
+    use super::*;
 
     type B = NdArray;
 

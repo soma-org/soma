@@ -8,25 +8,21 @@ use fastcrypto::encoding::Encoding as _;
 use rpc::TransactionExecutionResponseWithCheckpoint;
 use sdk::client_config::SomaEnv;
 use serde::Serialize;
-use tabled::{
-    builder::Builder as TableBuilder,
-    settings::{
-        Alignment as TableAlignment, Border as TableBorder, Modify as TableModify,
-        Panel as TablePanel, Style as TableStyle,
-        object::{Columns as TableCols, Rows as TableRows},
-        style::HorizontalLine,
-    },
+use tabled::builder::Builder as TableBuilder;
+use tabled::settings::object::{Columns as TableCols, Rows as TableRows};
+use tabled::settings::style::HorizontalLine;
+use tabled::settings::{
+    Alignment as TableAlignment, Border as TableBorder, Modify as TableModify, Panel as TablePanel,
+    Style as TableStyle,
 };
-use types::{
-    balance_change::BalanceChange,
-    base::SomaAddress,
-    crypto::SignatureScheme,
-    digests::{ObjectDigest, TransactionDigest},
-    effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI},
-    object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    system_state::staking::StakedSomaV1,
-    tx_fee::TransactionFee,
-};
+use types::balance_change::BalanceChange;
+use types::base::SomaAddress;
+use types::crypto::SignatureScheme;
+use types::digests::{ObjectDigest, TransactionDigest};
+use types::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI};
+use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
+use types::system_state::staking::StakedSomaV1;
+use types::tx_fee::TransactionFee;
 
 // =============================================================================
 // CONSTANTS

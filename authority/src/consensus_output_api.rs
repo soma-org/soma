@@ -2,12 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cmp::Ordering, fmt::Display};
+use std::cmp::Ordering;
+use std::fmt::Display;
 
 use protocol_config::ProtocolConfig;
 use types::committee::AuthorityIndex;
+use types::consensus::ConsensusTransaction;
 use types::consensus::block::{BlockAPI, BlockRef, TransactionIndex, VerifiedBlock};
-use types::{consensus::ConsensusTransaction, digests::ConsensusCommitDigest};
+use types::digests::ConsensusCommitDigest;
 
 pub(crate) struct ParsedTransaction {
     // Transaction from consensus output.

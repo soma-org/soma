@@ -24,17 +24,14 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use axum::{
-    Router,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-};
+use axum::Router;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use sdk::proxy_client::{ProxyClient, ProxyClientConfig};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-
-use sdk::proxy_client::{ProxyClient, ProxyClientConfig};
 
 use crate::authority::AuthorityState;
 

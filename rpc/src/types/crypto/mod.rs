@@ -9,27 +9,18 @@ mod multisig;
 mod signature;
 mod validator;
 
-pub use bls12381::Bls12381PublicKey;
-pub use bls12381::Bls12381Signature;
-pub use ed25519::Ed25519PublicKey;
-pub use ed25519::Ed25519Signature;
-pub use intent::Intent;
-pub use intent::IntentAppId;
-pub use intent::IntentScope;
-pub use intent::IntentVersion;
-pub use multisig::MultisigAggregatedSignature;
-pub use multisig::MultisigCommittee;
-pub use multisig::MultisigMember;
-pub use multisig::MultisigMemberPublicKey;
-pub use multisig::MultisigMemberSignature;
-pub use signature::SignatureScheme;
-pub use signature::SimpleSignature;
-pub use signature::UserSignature;
-pub use validator::ValidatorAggregatedSignature;
-pub use validator::ValidatorCommittee;
-pub use validator::ValidatorCommitteeMember;
-pub use validator::ValidatorNetworkMetadata;
-pub use validator::ValidatorSignature;
+pub use bls12381::{Bls12381PublicKey, Bls12381Signature};
+pub use ed25519::{Ed25519PublicKey, Ed25519Signature};
+pub use intent::{Intent, IntentAppId, IntentScope, IntentVersion};
+pub use multisig::{
+    MultisigAggregatedSignature, MultisigCommittee, MultisigMember, MultisigMemberPublicKey,
+    MultisigMemberSignature,
+};
+pub use signature::{SignatureScheme, SimpleSignature, UserSignature};
+pub use validator::{
+    ValidatorAggregatedSignature, ValidatorCommittee, ValidatorCommitteeMember,
+    ValidatorNetworkMetadata, ValidatorSignature,
+};
 
 //
 // Implement various base64 fixed-size array helpers

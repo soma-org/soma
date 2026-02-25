@@ -2,8 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;

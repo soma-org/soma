@@ -11,10 +11,8 @@
 //! (without going through the full execution pipeline) to verify
 //! arithmetic correctness in isolation.
 
-use types::{
-    effects::ExecutionFailureStatus,
-    system_state::{SystemState, SystemStateTrait as _},
-};
+use types::effects::ExecutionFailureStatus;
+use types::system_state::{SystemState, SystemStateTrait as _};
 
 // =============================================================================
 // Helper: get a default system state from a fresh authority

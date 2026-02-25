@@ -2,19 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::AuthorityAggregatorUpdatable;
-use crate::{
-    authority_client::{AuthorityAPI, NetworkAuthorityClient},
-    cache::ObjectCacheRead,
-};
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{info, warn};
 use types::storage::committee_store::CommitteeStore;
-use types::system_state::SystemState;
-use types::system_state::SystemStateTrait;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
+use types::system_state::{SystemState, SystemStateTrait};
+
+use super::AuthorityAggregatorUpdatable;
+use crate::authority_client::{AuthorityAPI, NetworkAuthorityClient};
+use crate::cache::ObjectCacheRead;
 
 #[async_trait]
 pub trait ReconfigObserver<A: Clone> {

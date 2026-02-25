@@ -38,59 +38,54 @@
 //!
 //! The above design is used for both objects and markers.
 
-use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_store::{
-        AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus,
-    },
-    backpressure_manager::BackpressureManager,
-    cache::{
-        Batch,
-        cache_types::{IsNewer, MonotonicCache, Ticket},
-        implement_passthrough_traits,
-    },
-    fallback_fetch::{do_fallback_lookup, do_fallback_lookup_fallible},
-    global_state_hasher::GlobalStateHashStore,
-    start_epoch::EpochStartConfiguration,
-};
 use core::hash::Hash;
-use dashmap::{DashMap, mapref::entry::Entry as DashMapEntry};
-use futures::{FutureExt, future::BoxFuture};
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+
+use dashmap::DashMap;
+use dashmap::mapref::entry::Entry as DashMapEntry;
+use futures::FutureExt;
+use futures::future::BoxFuture;
 use moka::sync::SegmentedCache as MokaCache;
 use parking_lot::Mutex;
 use protocol_config::ProtocolVersion;
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::{Arc, atomic::AtomicU64},
-};
 use tap::TapOptional;
 use tracing::{debug, info, instrument, trace, warn};
-use types::{
-    base::{FullObjectID, SomaAddress, VerifiedExecutionData},
-    checkpoints::{CheckpointSequenceNumber, GlobalStateHash},
-    committee::EpochId,
-    config::node_config::ExecutionCacheConfig,
-    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::TransactionEffects,
-    envelope::Message,
-    error::{SomaError, SomaResult},
-    object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Version},
-    storage::{
-        FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone,
-        object_store::ObjectStore,
-    },
-    system_state::{SystemState, get_system_state},
-    transaction::{VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction},
-    transaction_outputs::TransactionOutputs,
+use types::base::{FullObjectID, SomaAddress, VerifiedExecutionData};
+use types::checkpoints::{CheckpointSequenceNumber, GlobalStateHash};
+use types::committee::EpochId;
+use types::config::node_config::ExecutionCacheConfig;
+use types::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use types::effects::TransactionEffects;
+use types::envelope::Message;
+use types::error::{SomaError, SomaResult};
+use types::object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Version};
+use types::storage::object_store::ObjectStore;
+use types::storage::{FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone};
+use types::system_state::{SystemState, get_system_state};
+use types::transaction::{
+    VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction,
 };
+use types::transaction_outputs::TransactionOutputs;
 use utils::notify_read::NotifyRead;
 
+use super::cache_types::{CacheResult, CachedVersionMap};
+use super::object_locks::ObjectLocks;
 use super::{
     ExecutionCacheAPI, ExecutionCacheCommit, ExecutionCacheReconfigAPI, ExecutionCacheWrite,
     ObjectCacheRead, StateSyncAPI, TestingAPI, TransactionCacheRead,
-    cache_types::{CacheResult, CachedVersionMap},
-    object_locks::ObjectLocks,
 };
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store::{
+    AuthorityStore, ExecutionLockWriteGuard, LockDetails, LockResult, ObjectLockStatus,
+};
+use crate::backpressure_manager::BackpressureManager;
+use crate::cache::cache_types::{IsNewer, MonotonicCache, Ticket};
+use crate::cache::{Batch, implement_passthrough_traits};
+use crate::fallback_fetch::{do_fallback_lookup, do_fallback_lookup_fallible};
+use crate::global_state_hasher::GlobalStateHashStore;
+use crate::start_epoch::EpochStartConfiguration;
 #[derive(Clone, PartialEq, Eq)]
 enum ObjectEntry {
     Object(Object),

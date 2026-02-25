@@ -3,21 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    base::dbg_addr,
-    crypto::{SomaKeyPair, get_key_pair},
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    envelope::Message as _,
-    messages_grpc::{ObjectInfoRequest, TransactionInfoRequest},
-    object::{Object, ObjectID},
-    transaction::TransactionData,
-    unit_tests::utils::to_sender_signed_transaction,
-};
+use types::base::dbg_addr;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
+use types::envelope::Message as _;
+use types::messages_grpc::{ObjectInfoRequest, TransactionInfoRequest};
+use types::object::{Object, ObjectID};
+use types::transaction::TransactionData;
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority_server::AuthorityServer, authority_test_utils::send_and_confirm_transaction,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority_server::AuthorityServer;
+use crate::authority_test_utils::send_and_confirm_transaction;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // handle_transaction tests

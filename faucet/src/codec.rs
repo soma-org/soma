@@ -5,10 +5,8 @@
 use std::marker::PhantomData;
 
 use bytes::{Buf, BufMut};
-use tonic::{
-    Status,
-    codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder},
-};
+use tonic::Status;
+use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 
 #[derive(Debug)]
 pub struct BcsEncoder<T>(PhantomData<T>);

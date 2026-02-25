@@ -6,13 +6,15 @@
 // This file is derived from the Sui project (https://github.com/MystenLabs/sui),
 // specifically crates/sui-faucet/src/server.rs
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use tonic::{Request, Response, Status};
+use tracing::info;
+
 use crate::app_state::AppState;
 use crate::faucet_gen::faucet_server::{Faucet, FaucetServer};
 use crate::faucet_types::{GasCoinInfo, GasRequest, GasResponse};
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tonic::{Request, Response, Status};
-use tracing::info;
 
 pub struct FaucetService {
     state: Arc<AppState>,

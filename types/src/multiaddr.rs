@@ -2,14 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use eyre::{Result, eyre};
-
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use tracing::error;
 
-pub use ::multiaddr::Error;
-pub use ::multiaddr::Protocol;
+pub use ::multiaddr::{Error, Protocol};
+use eyre::{Result, eyre};
+use tracing::error;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Multiaddr(::multiaddr::Multiaddr);
@@ -342,8 +340,9 @@ impl std::net::ToSocketAddrs for Multiaddr {
 
 #[cfg(test)]
 mod test {
-    use super::Multiaddr;
     use multiaddr::multiaddr;
+
+    use super::Multiaddr;
 
     #[test]
     fn test_to_socket_addr_basic() {

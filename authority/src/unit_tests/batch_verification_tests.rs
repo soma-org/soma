@@ -13,18 +13,15 @@
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    base::dbg_addr,
-    crypto::{SomaKeyPair, get_key_pair},
-    object::{Object, ObjectID},
-    transaction::{CertifiedTransaction, TransactionData},
-    unit_tests::utils::to_sender_signed_transaction,
-};
+use types::base::dbg_addr;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::object::{Object, ObjectID};
+use types::transaction::{CertifiedTransaction, TransactionData};
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority_test_utils::certify_transaction, signature_verifier::SignatureVerifier,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority_test_utils::certify_transaction;
+use crate::signature_verifier::SignatureVerifier;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // Batch verification of certificates

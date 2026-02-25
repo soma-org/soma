@@ -2,22 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockAPI, TestBlock, Transaction, VerifiedBlock},
-    commit::LeaderStatus,
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, TestBlock, Transaction, VerifiedBlock};
+use types::consensus::commit::LeaderStatus;
+use types::consensus::context::Context;
 use types::storage::consensus::mem_store::MemStore;
 
-use crate::{
-    base_committer::base_committer_builder::BaseCommitterBuilder,
-    dag_state::DagState,
-    test_dag::{build_dag, build_dag_layer},
-};
+use crate::base_committer::base_committer_builder::BaseCommitterBuilder;
+use crate::dag_state::DagState;
+use crate::test_dag::{build_dag, build_dag_layer};
 
 /// Commit one leader.
 #[tokio::test]

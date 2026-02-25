@@ -2,16 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::transaction_driver::moving_window::MovingWindow;
-use crate::validator_client_monitor::{OperationFeedback, OperationType};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
+
 use tracing::debug;
 use types::base::AuthorityName;
 use types::committee::Committee;
 use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
 use types::messages_grpc::TxType;
+
+use crate::transaction_driver::moving_window::MovingWindow;
+use crate::validator_client_monitor::{OperationFeedback, OperationType};
 
 // TODO: A few optimization to consider:
 // 1. There may be times when the entire network is unstable, and in that case

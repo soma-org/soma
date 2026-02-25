@@ -24,17 +24,15 @@ use types::consensus::block::BlockRef;
 use types::digests::ConsensusCommitDigest;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 
+use crate::authority::AuthorityState;
+use crate::authority_per_epoch_store::{ConsensusStats, ExecutionIndicesWithStats};
 use crate::backpressure_manager::BackpressureManager;
-use crate::checkpoints::CheckpointServiceNoop;
+use crate::checkpoints::{CheckpointServiceNoop, CheckpointStore};
 use crate::consensus_adapter::{ConsensusAdapter, ConsensusClient};
 use crate::consensus_handler::{ConsensusHandler, ExecutionSchedulerSender};
 use crate::consensus_output_api::{ConsensusCommitAPI, ParsedTransaction};
 use crate::execution_scheduler::SchedulingSource;
 use crate::shared_obj_version_manager::{AssignedTxAndVersions, Schedulable};
-
-use crate::authority::AuthorityState;
-use crate::authority_per_epoch_store::{ConsensusStats, ExecutionIndicesWithStats};
-use crate::checkpoints::CheckpointStore;
 
 /// Thread-safe buffer capturing what the ConsensusHandler sends to the execution scheduler.
 pub(crate) type CapturedTransactions =

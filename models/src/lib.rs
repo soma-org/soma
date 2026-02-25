@@ -1,9 +1,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use async_trait::async_trait;
-use burn::{Tensor, prelude::Backend, store::SafetensorsStore};
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use burn::Tensor;
+use burn::prelude::Backend;
+use burn::store::SafetensorsStore;
 use types::error::ModelResult;
 pub mod cosine_distance;
 pub mod running_mean;

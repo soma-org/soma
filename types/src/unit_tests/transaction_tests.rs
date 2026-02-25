@@ -2,29 +2,28 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
-    base::SomaAddress,
-    challenge::ChallengeId,
-    checksum::Checksum,
-    consensus::ConsensusCommitPrologueV1,
-    crypto::{DecryptionKey, default_hash, get_key_pair},
-    digests::{
-        AdditionalConsensusStateDigest, ConsensusCommitDigest, DataCommitment,
-        ModelWeightsCommitment, ModelWeightsUrlCommitment, ObjectDigest,
-    },
-    envelope::Message,
-    intent::{Intent, IntentMessage},
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    object::{ObjectID, ObjectRef, Version},
-    submission::SubmissionManifest,
-    target::TargetId,
-    tensor::SomaTensor,
-    transaction::*,
-    unit_tests::utils::to_sender_signed_transaction,
-};
 use fastcrypto::ed25519::Ed25519KeyPair;
+
+use crate::base::SomaAddress;
+use crate::challenge::ChallengeId;
+use crate::checksum::Checksum;
+use crate::consensus::ConsensusCommitPrologueV1;
+use crate::crypto::{DecryptionKey, default_hash, get_key_pair};
+use crate::digests::{
+    AdditionalConsensusStateDigest, ConsensusCommitDigest, DataCommitment, ModelWeightsCommitment,
+    ModelWeightsUrlCommitment, ObjectDigest,
+};
+use crate::envelope::Message;
+use crate::intent::{Intent, IntentMessage};
+use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use crate::model::{ModelId, ModelWeightsManifest};
+use crate::object::{ObjectID, ObjectRef, Version};
+use crate::submission::SubmissionManifest;
+use crate::target::TargetId;
+use crate::tensor::SomaTensor;
+use crate::transaction::*;
+use crate::unit_tests::utils::to_sender_signed_transaction;
+use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
 
 // ---------------------------------------------------------------------------
 // Helpers

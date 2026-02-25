@@ -2,40 +2,34 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use store::{
-    DBMapUtils, TypedStoreError,
-    rocks::{
-        DBBatch, DBMap, DBMapTableConfigMap, DBOptions, default_db_options, read_size_from_env,
-    },
-    rocksdb::compaction_filter::Decision,
+use store::rocks::{
+    DBBatch, DBMap, DBMapTableConfigMap, DBOptions, default_db_options, read_size_from_env,
 };
-use store::{DbIterator, Map as _};
+use store::rocksdb::compaction_filter::Decision;
+use store::{DBMapUtils, DbIterator, Map as _, TypedStoreError};
 use tracing::{error, info};
-use types::{
-    base::SomaAddress,
-    checkpoints::{CheckpointSequenceNumber, GlobalStateHash},
-    committee::EpochId,
-    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::TransactionEffects,
-    error::{SomaError, SomaResult},
-    object::{LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version},
-    storage::{FullObjectKey, MarkerValue, ObjectKey, object_store::ObjectStore},
-    system_state::epoch_start::EpochStartSystemStateTrait,
-    transaction::TrustedTransaction,
+use types::base::SomaAddress;
+use types::checkpoints::{CheckpointSequenceNumber, GlobalStateHash};
+use types::committee::EpochId;
+use types::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use types::effects::TransactionEffects;
+use types::error::{SomaError, SomaResult};
+use types::object::{
+    LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version,
 };
+use types::storage::object_store::ObjectStore;
+use types::storage::{FullObjectKey, MarkerValue, ObjectKey};
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
+use types::transaction::TrustedTransaction;
 
-use crate::{
-    authority_store::LockDetails,
-    authority_store_pruner::ObjectsCompactionFilter,
-    start_epoch::{EpochStartConfigTrait, EpochStartConfiguration},
-};
+use crate::authority_store::LockDetails;
+use crate::authority_store_pruner::ObjectsCompactionFilter;
+use crate::start_epoch::{EpochStartConfigTrait, EpochStartConfiguration};
 
 const ENV_VAR_OBJECTS_BLOCK_CACHE_SIZE: &str = "OBJECTS_BLOCK_CACHE_MB";
 pub(crate) const ENV_VAR_LOCKS_BLOCK_CACHE_SIZE: &str = "LOCKS_BLOCK_CACHE_MB";

@@ -13,35 +13,30 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    checksum::Checksum,
-    config::{
-        genesis_config::{GenesisConfig, GenesisModelConfig},
-        network_config::ConfigBuilder,
-    },
-    crypto::{DIGEST_LENGTH, DecryptionKey, SomaKeyPair, get_key_pair},
-    digests::{
-        DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment, TransactionDigest,
-    },
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    error::SomaError,
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    submission::SubmissionManifest,
-    target::{TargetStatus, TargetV1},
-    tensor::SomaTensor,
-    transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind},
-    unit_tests::utils::to_sender_signed_transaction,
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::config::genesis_config::{GenesisConfig, GenesisModelConfig};
+use types::config::network_config::ConfigBuilder;
+use types::crypto::{DIGEST_LENGTH, DecryptionKey, SomaKeyPair, get_key_pair};
+use types::digests::{
+    DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment, TransactionDigest,
 };
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
+use types::error::SomaError;
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::model::{ModelId, ModelWeightsManifest};
+use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
+use types::submission::SubmissionManifest;
+use types::target::{TargetStatus, TargetV1};
+use types::tensor::SomaTensor;
+use types::transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind};
+use types::unit_tests::utils::to_sender_signed_transaction;
 use url::Url;
 
-use crate::{
-    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority::AuthorityState;
+use crate::authority_test_utils::send_and_confirm_transaction_;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // Helpers

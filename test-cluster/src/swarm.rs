@@ -2,34 +2,30 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::swarm_node::Node;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
+
 use anyhow::Result;
 use futures::future::try_join_all;
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-};
 use tempfile::TempDir;
 use tracing::info;
-use types::{
-    base::AuthorityName,
-    config::{
-        genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig},
-        network_config::{
-            CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
-            SupportedProtocolVersionsCallback,
-        },
-        node_config::{FullnodeConfigBuilder, NodeConfig},
-        p2p_config::SeedPeer,
-    },
-    multiaddr::Multiaddr,
-    peer_id::PeerId,
-    supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
+use types::base::AuthorityName;
+use types::config::genesis_config::{AccountConfig, GenesisConfig, ValidatorGenesisConfig};
+use types::config::network_config::{
+    CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
+    SupportedProtocolVersionsCallback,
 };
+use types::config::node_config::{FullnodeConfigBuilder, NodeConfig};
+use types::config::p2p_config::SeedPeer;
+use types::multiaddr::Multiaddr;
+use types::peer_id::PeerId;
+use types::supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions};
+
+use crate::swarm_node::Node;
 
 #[derive(Debug)]
 enum SwarmDirectory {

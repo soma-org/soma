@@ -9,7 +9,6 @@ use arrgen::{constant_array, normal_array};
 use burn::backend::NdArray;
 use burn::backend::ndarray::NdArrayTensor;
 use burn::module::Module;
-
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;

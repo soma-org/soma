@@ -2,12 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use fastcrypto::ed25519::Ed25519KeyPair;
+use fastcrypto::traits::{EncodeDecodeBase64, KeyPair, ToFromBytes};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
 use crate::base::SomaAddress;
 use crate::crypto::*;
 use crate::intent::*;
-use fastcrypto::ed25519::Ed25519KeyPair;
-use fastcrypto::traits::{EncodeDecodeBase64, KeyPair, ToFromBytes};
-use rand::{SeedableRng, rngs::StdRng};
 
 #[test]
 fn test_keypair_generation() {

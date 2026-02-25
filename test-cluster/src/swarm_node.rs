@@ -2,14 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::{Mutex, MutexGuard};
+
 use anyhow::Result;
 use node::handle::SomaNodeHandle;
-use std::sync::{Mutex, MutexGuard};
 use tracing::info;
-use types::{
-    base::{AuthorityName, ConciseableName},
-    config::node_config::NodeConfig,
-};
+use types::base::{AuthorityName, ConciseableName};
+use types::config::node_config::NodeConfig;
 
 use super::container::Container;
 

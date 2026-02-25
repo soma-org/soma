@@ -7,12 +7,10 @@ use std::time::Duration;
 
 use itertools::Itertools as _;
 use thiserror::Error;
-use types::{
-    base::{AuthorityName, ConciseableName},
-    committee::{EpochId, StakeUnit},
-    digests::TransactionEffectsDigest,
-    error::{ErrorCategory, SomaError},
-};
+use types::base::{AuthorityName, ConciseableName};
+use types::committee::{EpochId, StakeUnit};
+use types::digests::TransactionEffectsDigest;
+use types::error::{ErrorCategory, SomaError};
 
 /// Errors emitted from individual validators during transaction driver operations.
 ///

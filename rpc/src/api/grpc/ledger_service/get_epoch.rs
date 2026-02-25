@@ -2,22 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use prost_types::FieldMask;
+use protocol_config::ProtocolConfigValue;
+
 use crate::api::RpcService;
 use crate::api::error::Result;
 use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::Epoch;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::GetEpochRequest;
-use crate::proto::soma::GetEpochResponse;
-use crate::proto::soma::ProtocolConfig;
+use crate::proto::soma::{Epoch, ErrorReason, GetEpochRequest, GetEpochResponse, ProtocolConfig};
 // use crate::proto::soma::ProtocolConfig;
 use crate::proto::timestamp_ms_to_proto;
 use crate::types::EpochId;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::field::FieldMaskUtil;
+use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
 use crate::utils::merge::Merge;
-use prost_types::FieldMask;
-use protocol_config::ProtocolConfigValue;
 
 pub const READ_MASK_DEFAULT: &str =
     "epoch,committee,first_checkpoint,last_checkpoint,start,end,protocol_config.protocol_version";

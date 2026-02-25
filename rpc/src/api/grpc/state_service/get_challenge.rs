@@ -3,14 +3,15 @@
 
 //! GetChallenge RPC handler - loads a Challenge shared object by ID.
 
+use prost_types::FieldMask;
+use types::object::ObjectID;
+
 use crate::api::RpcService;
 use crate::api::error::{ObjectNotFoundError, Result, RpcError};
 use crate::proto::google::rpc::bad_request::FieldViolation;
 use crate::proto::soma::{Challenge, ErrorReason, GetChallengeRequest, GetChallengeResponse};
 use crate::types::Address;
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
-use prost_types::FieldMask;
-use types::object::ObjectID;
 
 /// Default fields to return if no read_mask is specified.
 pub const READ_MASK_DEFAULT: &str =

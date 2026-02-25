@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::sync::Arc;
+
 use tokio::sync::watch;
 use tracing::{debug, info};
 use types::checkpoints::CheckpointSequenceNumber;

@@ -2,58 +2,49 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    iter,
-    sync::Arc,
-    time::Duration,
-    vec,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+use std::time::Duration;
+use std::{iter, vec};
 
 use itertools::Itertools as _;
 use parking_lot::RwLock;
 #[cfg(test)]
 use tokio::sync::mpsc::UnboundedReceiver;
-use tokio::{
-    sync::{broadcast, watch},
-    time::Instant,
-};
+use tokio::sync::{broadcast, watch};
+use tokio::time::Instant;
 use tracing::{debug, info, trace, warn};
 use types::committee::AuthorityIndex;
 #[cfg(test)]
 use types::committee::{Stake, local_committee_and_keys};
-use types::consensus::{
-    block::{
-        Block, BlockAPI, BlockRef, BlockTimestampMs, BlockV1, ExtendedBlock, GENESIS_ROUND, Round,
-        SignedBlock, Slot, VerifiedBlock,
-    },
-    commit::{
-        CertifiedCommit, CertifiedCommits, CommitAPI, CommittedSubDag, DecidedLeader, Decision,
-    },
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-};
-use types::crypto::ProtocolKeyPair;
-use types::error::{ConsensusError, ConsensusResult};
-
-use crate::{CommitConsumerArgs, TransactionClient, block_verifier::NoopBlockVerifier};
-use crate::{
-    ancestor::{AncestorState, AncestorStateManager},
-    block_manager::BlockManager,
-    commit_observer::CommitObserver,
-    dag_state::DagState,
-    leader_schedule::LeaderSchedule,
-    round_tracker::PeerRoundTracker,
-    transaction::TransactionConsumer,
-    transaction_certifier::TransactionCertifier,
-    universal_committer::{
-        UniversalCommitter, universal_committer_builder::UniversalCommitterBuilder,
-    },
-};
 #[cfg(test)]
 use types::consensus::block::CertifiedBlocksOutput;
+use types::consensus::block::{
+    Block, BlockAPI, BlockRef, BlockTimestampMs, BlockV1, ExtendedBlock, GENESIS_ROUND, Round,
+    SignedBlock, Slot, VerifiedBlock,
+};
+use types::consensus::commit::{
+    CertifiedCommit, CertifiedCommits, CommitAPI, CommittedSubDag, DecidedLeader, Decision,
+};
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
+use types::crypto::ProtocolKeyPair;
+use types::error::{ConsensusError, ConsensusResult};
 #[cfg(test)]
 use types::storage::consensus::mem_store::MemStore;
+
+use crate::ancestor::{AncestorState, AncestorStateManager};
+use crate::block_manager::BlockManager;
+use crate::block_verifier::NoopBlockVerifier;
+use crate::commit_observer::CommitObserver;
+use crate::dag_state::DagState;
+use crate::leader_schedule::LeaderSchedule;
+use crate::round_tracker::PeerRoundTracker;
+use crate::transaction::TransactionConsumer;
+use crate::transaction_certifier::TransactionCertifier;
+use crate::universal_committer::UniversalCommitter;
+use crate::universal_committer::universal_committer_builder::UniversalCommitterBuilder;
+use crate::{CommitConsumerArgs, TransactionClient};
 
 // Maximum number of commit votes to include in a block.
 // TODO: Move to protocol config, and verify in BlockVerifier.
@@ -1228,11 +1219,9 @@ mod tests {
     use std::time::Duration;
 
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockAPI, BlockRef, TestBlock, VerifiedBlock, genesis_blocks},
-        commit::{CertifiedCommit, CommitDigest, TrustedCommit},
-        context::Context,
-    };
+    use types::consensus::block::{BlockAPI, BlockRef, TestBlock, VerifiedBlock, genesis_blocks};
+    use types::consensus::commit::{CertifiedCommit, CommitDigest, TrustedCommit};
+    use types::consensus::context::Context;
 
     use super::*;
 

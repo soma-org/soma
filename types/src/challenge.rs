@@ -27,11 +27,15 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    base::SomaAddress, committee::EpochId, digests::DataCommitment, model::ModelId,
-    object::ObjectID, submission::SubmissionManifest, system_state::validator::ValidatorSet,
-    target::TargetId, tensor::SomaTensor,
-};
+use crate::base::SomaAddress;
+use crate::committee::EpochId;
+use crate::digests::DataCommitment;
+use crate::model::ModelId;
+use crate::object::ObjectID;
+use crate::submission::SubmissionManifest;
+use crate::system_state::validator::ValidatorSet;
+use crate::target::TargetId;
+use crate::tensor::SomaTensor;
 
 /// Unique identifier for a challenge (same as ObjectID).
 pub type ChallengeId = ObjectID;
@@ -225,10 +229,8 @@ pub enum ChallengeStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        checksum::Checksum,
-        metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    };
+    use crate::checksum::Checksum;
+    use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 
     /// Helper to create a test challenge with dummy audit data.
     fn make_test_challenge(

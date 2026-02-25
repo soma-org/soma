@@ -4,12 +4,10 @@
 
 use anyhow::{Result, anyhow};
 use fastcrypto::encoding::Encoding as _;
-use types::{
-    base::SomaAddress,
-    crypto::SomaKeyPair,
-    object::ObjectRef,
-    transaction::{Transaction, TransactionData, TransactionKind},
-};
+use types::base::SomaAddress;
+use types::crypto::SomaKeyPair;
+use types::object::ObjectRef;
+use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 use crate::wallet_context::WalletContext;
 

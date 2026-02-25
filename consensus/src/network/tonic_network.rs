@@ -2,13 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::BTreeMap,
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
-    pin::Pin,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::collections::BTreeMap;
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -17,29 +15,23 @@ use parking_lot::RwLock;
 use soma_http::ServerHandle;
 use soma_tls::AllowPublicKeys;
 use tokio_stream::{Iter, iter};
-use tonic::{Request, Response, Streaming, codec::CompressionEncoding};
+use tonic::codec::CompressionEncoding;
+use tonic::{Request, Response, Streaming};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer};
 use tracing::{debug, error, info, trace, warn};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockRef, Round},
-    commit::{CommitIndex, CommitRange},
-    context::Context,
-};
+use types::consensus::block::{BlockRef, Round};
+use types::consensus::commit::{CommitIndex, CommitRange};
+use types::consensus::context::Context;
 use types::crypto::{NetworkKeyPair, NetworkPublicKey};
 use types::error::{ConsensusError, ConsensusResult};
 use types::multiaddr::{Multiaddr, Protocol};
 
-use super::{
-    BlockStream, ExtendedSerializedBlock, NetworkClient, NetworkManager, NetworkService,
-    tonic_gen::{
-        consensus_service_client::ConsensusServiceClient,
-        consensus_service_server::ConsensusService,
-    },
-};
-use crate::network::{
-    tonic_gen::consensus_service_server::ConsensusServiceServer, tonic_tls::certificate_server_name,
-};
+use super::tonic_gen::consensus_service_client::ConsensusServiceClient;
+use super::tonic_gen::consensus_service_server::ConsensusService;
+use super::{BlockStream, ExtendedSerializedBlock, NetworkClient, NetworkManager, NetworkService};
+use crate::network::tonic_gen::consensus_service_server::ConsensusServiceServer;
+use crate::network::tonic_tls::certificate_server_name;
 
 // Maximum bytes size in a single fetch_blocks()response.
 // TODO: put max RPC response size in protocol config.

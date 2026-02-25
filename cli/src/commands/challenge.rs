@@ -1,24 +1,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::{self, Display, Formatter};
+
 use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-use tabled::{
-    builder::Builder as TableBuilder,
-    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
-};
-
 use sdk::wallet_context::WalletContext;
-use types::{
-    base::SomaAddress,
-    challenge::{ChallengeId, ChallengeStatus, ChallengeV1},
-    object::ObjectID,
-    target::TargetId,
-    transaction::{InitiateChallengeArgs, TransactionKind},
-};
+use serde::Serialize;
+use tabled::builder::Builder as TableBuilder;
+use tabled::settings::style::HorizontalLine;
+use tabled::settings::{Panel as TablePanel, Style as TableStyle};
+use types::base::SomaAddress;
+use types::challenge::{ChallengeId, ChallengeStatus, ChallengeV1};
+use types::object::ObjectID;
+use types::target::TargetId;
+use types::transaction::{InitiateChallengeArgs, TransactionKind};
 
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;

@@ -2,8 +2,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use rand::{Rng, rngs::ThreadRng, thread_rng};
 use std::collections::HashSet;
+
+use rand::rngs::ThreadRng;
+use rand::{Rng, thread_rng};
 
 // This library provides two functions to generate
 // a random combination of an adjective

@@ -2,28 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
-
-use crate::{
-    committee::{AuthorityIndex, Epoch},
-    consensus::{commit::CommitVote, context::Context},
-    crypto::{
-        DIGEST_LENGTH, DefaultHash, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
-    },
-    error::{ConsensusError, ConsensusResult},
-    intent::{Intent, IntentMessage, IntentScope},
-};
-use fastcrypto::hash::Digest;
-use serde::{Deserialize, Serialize};
-use std::{ops::Deref, sync::Arc};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
-use fastcrypto::hash::HashFunction;
+use fastcrypto::hash::{Digest, HashFunction};
 use itertools::Itertools as _;
+use serde::{Deserialize, Serialize};
+
+use crate::committee::{AuthorityIndex, Epoch};
+use crate::consensus::commit::CommitVote;
+use crate::consensus::context::Context;
+use crate::crypto::{
+    DIGEST_LENGTH, DefaultHash, ProtocolKeyPair, ProtocolKeySignature, ProtocolPublicKey,
+};
+use crate::error::{ConsensusError, ConsensusResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
 
 /// Round number of a block.
 pub type Round = u32;

@@ -5,10 +5,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
-use crate::proto::{TryFromProtoError, soma::*};
-use crate::utils::field::FieldMaskTree;
-use crate::utils::merge::Merge;
-use crate::utils::types_conversions::SdkTypeConversionError;
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
 use fastcrypto::traits::ToFromBytes;
 use types::base::SomaAddress;
@@ -16,6 +12,12 @@ use types::crypto::SomaSignature;
 use types::envelope::Message as _;
 use types::metadata::{ManifestAPI, MetadataAPI};
 use url::Url;
+
+use crate::proto::TryFromProtoError;
+use crate::proto::soma::*;
+use crate::utils::field::FieldMaskTree;
+use crate::utils::merge::Merge;
+use crate::utils::types_conversions::SdkTypeConversionError;
 
 //
 // TransactionFee
@@ -58,8 +60,7 @@ impl From<types::effects::ExecutionStatus> for ExecutionStatus {
 
 impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
     fn from(value: types::effects::ExecutionFailureStatus) -> Self {
-        use execution_error::ErrorDetails;
-        use execution_error::ExecutionErrorKind;
+        use execution_error::{ErrorDetails, ExecutionErrorKind};
         use types::effects::ExecutionFailureStatus as E;
 
         let mut message = Self::default();
@@ -821,10 +822,8 @@ impl Merge<&types::effects::TransactionEffects> for TransactionEffects {
 
 impl From<types::effects::object_change::EffectsObjectChange> for ChangedObject {
     fn from(value: types::effects::object_change::EffectsObjectChange) -> Self {
-        use changed_object::InputObjectState;
-        use changed_object::OutputObjectState;
-        use types::effects::object_change::ObjectIn;
-        use types::effects::object_change::ObjectOut;
+        use changed_object::{InputObjectState, OutputObjectState};
+        use types::effects::object_change::{ObjectIn, ObjectOut};
 
         let mut message = Self::default();
 
@@ -1139,8 +1138,9 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
     type Error = String;
 
     fn try_from(proto_val: Validator) -> Result<Self, Self::Error> {
-        use fastcrypto::traits::ToFromBytes;
         use std::str::FromStr;
+
+        use fastcrypto::traits::ToFromBytes;
 
         let soma_address = proto_val
             .soma_address

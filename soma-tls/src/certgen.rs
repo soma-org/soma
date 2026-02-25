@@ -5,8 +5,7 @@
 use fastcrypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey};
 use pkcs8::EncodePrivateKey;
 use rcgen::{CertificateParams, KeyPair};
-use rustls::pki_types::CertificateDer;
-use rustls::pki_types::PrivateKeyDer;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 pub struct SelfSignedCertificate {
     inner: rcgen::Certificate,
@@ -65,7 +64,8 @@ pub(crate) fn public_key_from_certificate(
     certificate: &CertificateDer,
 ) -> Result<Ed25519PublicKey, anyhow::Error> {
     use fastcrypto::traits::ToFromBytes;
-    use x509_parser::{certificate::X509Certificate, prelude::FromDer};
+    use x509_parser::certificate::X509Certificate;
+    use x509_parser::prelude::FromDer;
 
     let cert = X509Certificate::from_der(certificate.as_ref())
         .map_err(|e| rustls::Error::General(e.to_string()))?;

@@ -1,26 +1,23 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use fastcrypto::hash::HashFunction as _;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    checksum::Checksum,
-    config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA},
-    crypto::{DecryptionKey, DefaultHash},
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::TransactionEffectsAPI,
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    object::ObjectID,
-    system_state::SystemStateTrait as _,
-    tensor::SomaTensor,
-    transaction::{CommitModelArgs, RevealModelArgs, TransactionData, TransactionKind},
-};
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
+use types::crypto::{DecryptionKey, DefaultHash};
+use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::effects::TransactionEffectsAPI;
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::model::{ModelId, ModelWeightsManifest};
+use types::object::ObjectID;
+use types::system_state::SystemStateTrait as _;
+use types::tensor::SomaTensor;
+use types::transaction::{CommitModelArgs, RevealModelArgs, TransactionData, TransactionKind};
 use url::Url;
 use utils::logging::init_tracing;
-
-use fastcrypto::hash::HashFunction as _;
 
 // ===== Helpers =====
 

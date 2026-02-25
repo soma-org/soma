@@ -2,29 +2,27 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    balance_change::{BalanceChange, derive_balance_changes},
-    base::SomaAddress,
-    checkpoints::{
-        CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
-    },
-    committee::{Committee, EpochId},
-    digests::{ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, TransactionDigest},
-    effects::TransactionEffects,
-    full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet},
-    object::{Object, ObjectID, ObjectRef, ObjectType, Version},
-    storage::ObjectKey,
-    transaction::VerifiedTransaction,
+use super::object_store::ObjectStore;
+use super::storage_error::Result;
+use crate::balance_change::{BalanceChange, derive_balance_changes};
+use crate::base::SomaAddress;
+use crate::checkpoints::{
+    CheckpointContents, CheckpointSequenceNumber, FullCheckpointContents, VerifiedCheckpoint,
 };
-
-use super::{object_store::ObjectStore, storage_error::Result};
+use crate::committee::{Committee, EpochId};
+use crate::digests::{
+    ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, TransactionDigest,
+};
+use crate::effects::TransactionEffects;
+use crate::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
+use crate::object::{Object, ObjectID, ObjectRef, ObjectType, Version};
+use crate::storage::ObjectKey;
+use crate::transaction::VerifiedTransaction;
 
 pub trait ReadStore: ObjectStore {
     //
@@ -134,9 +132,10 @@ pub trait ReadStore: ObjectStore {
         checkpoint: VerifiedCheckpoint,
         checkpoint_contents: CheckpointContents,
     ) -> Result<Checkpoint> {
+        use std::collections::HashMap;
+
         use crate::effects::TransactionEffectsAPI;
         use crate::storage::storage_error::Error;
-        use std::collections::HashMap;
 
         let transaction_digests = checkpoint_contents
             .iter()

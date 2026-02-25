@@ -2,24 +2,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use nom::IResult;
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_while_m_n, take_while1};
+use nom::character::complete::{char, digit1, multispace0, multispace1, space0, space1};
+use nom::combinator::{map_res, opt};
+use nom::multi::{many0, separated_list0};
+use nom::sequence::{delimited, preceded, terminated, tuple};
+use types::committee::AuthorityIndex;
+use types::consensus::block::{BlockRef, Round, Slot};
+use types::consensus::context::Context;
 
 use crate::test_dag_builder::DagBuilder;
-use types::committee::AuthorityIndex;
-
-use nom::{
-    IResult,
-    branch::alt,
-    bytes::complete::{tag, take_while_m_n, take_while1},
-    character::complete::{char, digit1, multispace0, multispace1, space0, space1},
-    combinator::{map_res, opt},
-    multi::{many0, separated_list0},
-    sequence::{delimited, preceded, terminated, tuple},
-};
-use types::consensus::{
-    block::{BlockRef, Round, Slot},
-    context::Context,
-};
 
 /// DagParser
 ///
@@ -267,8 +264,9 @@ fn str_to_authority_index(input: &str) -> Option<AuthorityIndex> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use types::consensus::block::BlockAPI;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_dag_parsing() {

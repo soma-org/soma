@@ -17,33 +17,30 @@
 //! 7. test_shared_object_dependency_tracking — Sequential mutations create dependency chain
 //! 8. test_concurrent_conflicting_owned_transactions — Concurrent spends of same coin via orchestrator
 
+use fastcrypto::hash::HashFunction as _;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    checksum::Checksum,
-    config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA},
-    crypto::{DecryptionKey, DefaultHash, Signature},
-    digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::{InputSharedObject, TransactionEffectsAPI},
-    intent::{Intent, IntentMessage},
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    object::{ObjectID, Owner},
-    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
-    submission::SubmissionManifest,
-    system_state::SystemStateTrait as _,
-    tensor::SomaTensor,
-    transaction::{
-        ClaimRewardsArgs, SubmitDataArgs, Transaction, TransactionData, TransactionKind,
-    },
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
+use types::crypto::{DecryptionKey, DefaultHash, Signature};
+use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::effects::{InputSharedObject, TransactionEffectsAPI};
+use types::intent::{Intent, IntentMessage};
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::model::{ModelId, ModelWeightsManifest};
+use types::object::{ObjectID, Owner};
+use types::quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType};
+use types::submission::SubmissionManifest;
+use types::system_state::SystemStateTrait as _;
+use types::tensor::SomaTensor;
+use types::transaction::{
+    ClaimRewardsArgs, SubmitDataArgs, Transaction, TransactionData, TransactionKind,
 };
 use url::Url;
 use utils::logging::init_tracing;
-
-use fastcrypto::hash::HashFunction as _;
 
 // ===== Helpers (shared with target_tests.rs / challenge_tests.rs) =====
 

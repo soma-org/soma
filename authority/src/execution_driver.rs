@@ -2,18 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    sync::{Arc, Weak},
-    time::Duration,
-};
-use tokio::{
-    sync::{Semaphore, mpsc::UnboundedReceiver, oneshot},
-    time::sleep,
-};
+use std::sync::{Arc, Weak};
+use std::time::Duration;
+
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::{Semaphore, oneshot};
+use tokio::time::sleep;
 use tracing::{Instrument, error, error_span, info, trace, warn};
 use types::execution::ExecutionOutput;
 
-use crate::{authority::AuthorityState, execution_scheduler::PendingCertificate};
+use crate::authority::AuthorityState;
+use crate::execution_scheduler::PendingCertificate;
 
 // Execution should not encounter permanent failures, so any failure can and needs
 // to be retried.

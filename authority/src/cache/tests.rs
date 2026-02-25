@@ -13,14 +13,11 @@ use types::base::dbg_addr;
 use types::object::{Object, ObjectID, Owner, Version};
 use types::storage::ObjectKey;
 
-use crate::{
-    authority_store::AuthorityStore,
-    authority_store_tables::AuthorityPerpetualTables,
-    cache::writeback_cache::WritebackCache,
-    cache::{ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead},
-};
-
 use super::cache_types::CachedVersionMap;
+use crate::authority_store::AuthorityStore;
+use crate::authority_store_tables::AuthorityPerpetualTables;
+use crate::cache::writeback_cache::WritebackCache;
+use crate::cache::{ExecutionCacheReconfigAPI, ExecutionCacheWrite, ObjectCacheRead};
 
 /// Helper: create a WritebackCache backed by a temporary RocksDB store.
 fn make_test_cache() -> WritebackCache {

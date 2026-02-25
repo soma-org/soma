@@ -1,6 +1,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use serde::{Deserialize, Serialize};
+
 use crate::checkpoints::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointInclusionProof,
     CheckpointSequenceNumber,
@@ -11,7 +13,6 @@ use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 use crate::envelope::Message as _;
 use crate::error::{SomaError, SomaResult};
 use crate::transaction::Transaction;
-use serde::{Deserialize, Serialize};
 
 /// Proof that a transaction has achieved finality through checkpoint inclusion.
 ///

@@ -5,10 +5,12 @@
 mod monitor;
 mod stats;
 
-pub use monitor::ValidatorClientMonitor;
 use std::time::Duration;
+
+pub use monitor::ValidatorClientMonitor;
 use strum::EnumIter;
-use types::{base::AuthorityName, messages_grpc::PingType};
+use types::base::AuthorityName;
+use types::messages_grpc::PingType;
 
 /// Operation types for validator performance tracking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]

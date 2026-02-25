@@ -1,13 +1,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{BlobPath, loader::BlobLoader};
 use async_trait::async_trait;
 use burn::store::SafetensorsStore;
 use memmap2::{Mmap, MmapOptions};
 use object_store::local::LocalFileSystem;
 use tokio::fs::File;
 use types::error::{BlobError, BlobResult};
+
+use crate::BlobPath;
+use crate::loader::BlobLoader;
 
 #[async_trait]
 impl BlobLoader for LocalFileSystem {

@@ -1,21 +1,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
-    object::{Object, ObjectID, ObjectRef, ObjectType, Owner},
-    system_state::SystemState,
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError};
+use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner};
+use types::system_state::SystemState;
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
+use super::object::check_ownership;
+use super::{FeeCalculator, TransactionExecutor};
 use crate::execution::BPS_DENOMINATOR;
-
-use super::{FeeCalculator, TransactionExecutor, object::check_ownership};
 
 pub struct ModelExecutor;
 

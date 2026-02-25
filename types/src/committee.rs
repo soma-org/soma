@@ -2,18 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::base::{AuthorityName, ConciseableName};
-use crate::checksum::Checksum;
+use std::cell::OnceCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter, Write};
+use std::hash::{Hash, Hasher};
+use std::net::{TcpListener, TcpStream};
+use std::ops::{Index, IndexMut};
 
-use crate::crypto::{
-    AuthorityKeyPair, AuthorityPublicKey, DIGEST_LENGTH, NetworkKeyPair, NetworkPublicKey,
-    ProtocolKeyPair, ProtocolPublicKey, get_key_pair_from_rng, random_committee_key_pairs_of_size,
-};
-use crate::crypto::{AuthoritySignature, DefaultHash as DefaultHashFunction};
-use crate::digests::TransactionDigest;
-use crate::error::{ConsensusError, ConsensusResult, SomaError, SomaResult};
-use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::multiaddr::Multiaddr;
 use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PublicKey};
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::{KeyPair, Signer, VerifyingKey};
@@ -21,14 +16,19 @@ use rand::rngs::{OsRng, StdRng, ThreadRng};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter, Write};
-use std::hash::{Hash, Hasher};
-use std::ops::{Index, IndexMut};
 use tracing::info;
 
-use std::net::{TcpListener, TcpStream};
+use crate::base::{AuthorityName, ConciseableName};
+use crate::checksum::Checksum;
+use crate::crypto::{
+    AuthorityKeyPair, AuthorityPublicKey, AuthoritySignature, DIGEST_LENGTH,
+    DefaultHash as DefaultHashFunction, NetworkKeyPair, NetworkPublicKey, ProtocolKeyPair,
+    ProtocolPublicKey, get_key_pair_from_rng, random_committee_key_pairs_of_size,
+};
+use crate::digests::TransactionDigest;
+use crate::error::{ConsensusError, ConsensusResult, SomaError, SomaResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::multiaddr::Multiaddr;
 
 /// Identifier for a specific epoch in the blockchain's history.
 ///

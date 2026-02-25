@@ -2,12 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use tap::Pipe;
+
 use crate::api::RpcService;
 use crate::api::error::RpcError;
 use crate::proto::soma::GetServiceInfoResponse;
 use crate::proto::timestamp_ms_to_proto;
 use crate::types::Digest;
-use tap::Pipe;
 
 #[tracing::instrument(skip(service))]
 pub fn get_service_info(service: &RpcService) -> Result<GetServiceInfoResponse, RpcError> {

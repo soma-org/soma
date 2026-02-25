@@ -2,13 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::authority::StableSyncAuthoritySigner;
-use crate::authority_per_epoch_store::AuthorityPerEpochStore;
-use crate::checkpoints::CheckpointStore;
-use crate::consensus_adapter::SubmitToConsensus;
-use crate::reconfiguration::ReconfigurationInitiator;
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use tracing::{debug, info, instrument, trace};
 use types::base::AuthorityName;
 use types::checkpoints::{
@@ -18,6 +14,12 @@ use types::checkpoints::{
 use types::consensus::ConsensusTransaction;
 use types::envelope::Message as _;
 use types::error::SomaResult;
+
+use crate::authority::StableSyncAuthoritySigner;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::checkpoints::CheckpointStore;
+use crate::consensus_adapter::SubmitToConsensus;
+use crate::reconfiguration::ReconfigurationInitiator;
 
 #[async_trait]
 pub trait CheckpointOutput: Sync + Send + 'static {

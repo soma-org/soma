@@ -2,30 +2,27 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::future::Future;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{self, Poll};
+use std::time::{Duration, Instant};
+use std::{fmt, io, vec};
 
-use crate::multiaddr::{Multiaddr, Protocol, parse_dns, parse_ip4, parse_ip6};
 use eyre::{Context, Result, eyre};
-use hyper_util::client::legacy::connect::{HttpConnector, dns::Name};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::dns::Name;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt,
-    future::Future,
-    io,
-    net::{SocketAddr, ToSocketAddrs},
-    pin::Pin,
-    sync::{Arc, Mutex},
-    task::{self, Poll},
-    time::Instant,
-    vec,
-};
 use tokio::task::JoinHandle;
 use tokio_rustls::rustls::ClientConfig;
 use tonic::transport::{Channel, Endpoint, Uri};
 use tower::Service;
 use tracing::{info, trace};
+
+use crate::multiaddr::{Multiaddr, Protocol, parse_dns, parse_ip4, parse_ip6};
 
 pub async fn connect(address: &Multiaddr, tls_config: ClientConfig) -> Result<Channel> {
     let channel = endpoint_from_multiaddr(address, tls_config)?.connect().await?;

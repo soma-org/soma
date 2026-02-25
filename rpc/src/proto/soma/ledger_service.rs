@@ -4,10 +4,8 @@
 
 use prost_types::FieldMask;
 
-use crate::types::Address;
-use crate::types::Digest;
-
 use super::*;
+use crate::types::{Address, Digest};
 
 impl GetObjectRequest {
     pub fn new(object_id: &Address) -> Self {

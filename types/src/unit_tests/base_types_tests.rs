@@ -2,15 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::base::*;
-use crate::crypto::{DefaultHash, SignatureScheme, get_key_pair};
-use crate::digests::*;
-use crate::object::*;
+use std::str::FromStr;
+
 use fastcrypto::ed25519::Ed25519KeyPair;
 use fastcrypto::encoding::{Base58, Encoding};
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::KeyPair as _;
-use std::str::FromStr;
+
+use crate::base::*;
+use crate::crypto::{DefaultHash, SignatureScheme, get_key_pair};
+use crate::digests::*;
+use crate::object::*;
 
 // ---------------------------------------------------------------------------
 // SomaAddress tests

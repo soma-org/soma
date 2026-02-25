@@ -1,45 +1,39 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::checksum::Checksum;
-use crate::{
-    base::SomaAddress,
-    committee::TOTAL_VOTING_POWER,
-    config::genesis_config::SHANNONS_PER_SOMA,
-    crypto::{
-        self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey,
-        ProtocolKeyPair,
-    },
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::ExecutionFailureStatus,
-    error::ExecutionResult,
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    multiaddr::Multiaddr,
-    object::ObjectID,
-    system_state::{
-        PublicKey, SystemParameters, SystemState, SystemStateTrait,
-        emission::EmissionPool,
-        staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool},
-        validator::{Validator, ValidatorSet},
-    },
-    tensor::SomaTensor,
-};
-use fastcrypto::{
-    bls12381,
-    ed25519::Ed25519PublicKey,
-    hash::HashFunction as _,
-    traits::{KeyPair, ToFromBytes},
-};
+use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
+
+use fastcrypto::bls12381;
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::hash::HashFunction as _;
+use fastcrypto::traits::{KeyPair, ToFromBytes};
 use protocol_config::ProtocolVersion;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::{
-    collections::{BTreeMap, HashMap},
-    str::FromStr,
-};
 use tracing_subscriber::fmt::init;
 use url::Url;
+
+use crate::base::SomaAddress;
+use crate::checksum::Checksum;
+use crate::committee::TOTAL_VOTING_POWER;
+use crate::config::genesis_config::SHANNONS_PER_SOMA;
+use crate::crypto::{
+    self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey,
+    ProtocolKeyPair,
+};
+use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::effects::ExecutionFailureStatus;
+use crate::error::ExecutionResult;
+use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use crate::model::{ModelId, ModelWeightsManifest};
+use crate::multiaddr::Multiaddr;
+use crate::object::ObjectID;
+use crate::system_state::emission::EmissionPool;
+use crate::system_state::staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool};
+use crate::system_state::validator::{Validator, ValidatorSet};
+use crate::system_state::{PublicKey, SystemParameters, SystemState, SystemStateTrait};
+use crate::tensor::SomaTensor;
 
 #[cfg(test)]
 #[derive(Clone)]

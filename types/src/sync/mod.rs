@@ -3,21 +3,21 @@
 
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
+use fastcrypto::ed25519::Ed25519Signature;
+use fastcrypto::traits::Signer;
 use multiaddr::Protocol;
-
-use fastcrypto::{ed25519::Ed25519Signature, traits::Signer};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    checkpoints::{CertifiedCheckpointSummary, CheckpointSequenceNumber, FullCheckpointContents},
-    crypto::NetworkKeyPair,
-    digests::{CheckpointContentsDigest, CheckpointDigest, Digest},
-    envelope::{Envelope, Message, VerifiedEnvelope},
-    full_checkpoint_content::Checkpoint,
-    intent::IntentScope,
-    multiaddr::Multiaddr,
-    peer_id::PeerId,
+use crate::checkpoints::{
+    CertifiedCheckpointSummary, CheckpointSequenceNumber, FullCheckpointContents,
 };
+use crate::crypto::NetworkKeyPair;
+use crate::digests::{CheckpointContentsDigest, CheckpointDigest, Digest};
+use crate::envelope::{Envelope, Message, VerifiedEnvelope};
+use crate::full_checkpoint_content::Checkpoint;
+use crate::intent::IntentScope;
+use crate::multiaddr::Multiaddr;
+use crate::peer_id::PeerId;
 
 // pub mod connection_manager;
 // pub mod network;

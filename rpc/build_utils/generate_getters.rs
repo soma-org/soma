@@ -2,19 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::str::FromStr;
 
-use heck::ToPascalCase;
-use heck::ToSnakeCase;
+use heck::{ToPascalCase, ToSnakeCase};
 use proc_macro2::TokenStream;
-use prost_types::DescriptorProto;
-use prost_types::FieldDescriptorProto;
-use prost_types::FileDescriptorSet;
 use prost_types::field_descriptor_proto::Type;
+use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorSet};
 use quote::quote;
 
 pub(crate) fn generate_getters(packages: &HashMap<String, FileDescriptorSet>, out_dir: &Path) {

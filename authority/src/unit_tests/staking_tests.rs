@@ -4,22 +4,19 @@
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    base::SomaAddress,
-    crypto::{SomaKeyPair, get_key_pair},
-    effects::{
-        ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
-    },
-    error::SomaError,
-    object::{Object, ObjectID, ObjectRef},
-    transaction::{TransactionData, TransactionKind},
-    unit_tests::utils::to_sender_signed_transaction,
+use types::base::SomaAddress;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::effects::{
+    ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
 };
+use types::error::SomaError;
+use types::object::{Object, ObjectID, ObjectRef};
+use types::transaction::{TransactionData, TransactionKind};
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority::AuthorityState;
+use crate::authority_test_utils::send_and_confirm_transaction_;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // Default fees from protocol config v1
 const BASE_FEE: u64 = 1000;

@@ -1,7 +1,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{Tensor, prelude::Backend, tensor::linalg::l2_norm};
+use burn::Tensor;
+use burn::prelude::Backend;
+use burn::tensor::linalg::l2_norm;
 
 pub fn cosine_distance<B: Backend>(a: Tensor<B, 1>, b: Tensor<B, 1>) -> Tensor<B, 1> {
     let a_norm = l2_norm(a.clone(), 0);
@@ -13,8 +15,9 @@ pub fn cosine_distance<B: Backend>(a: Tensor<B, 1>, b: Tensor<B, 1>) -> Tensor<B
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use burn::backend::NdArray;
+
+    use super::*;
 
     type B = NdArray;
 

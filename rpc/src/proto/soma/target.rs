@@ -3,9 +3,11 @@
 
 //! Target proto conversions and merge implementations.
 
-use super::*;
-use crate::utils::{field::FieldMaskTree, merge::Merge};
 use types::target::{TargetStatus, TargetV1 as DomainTarget};
+
+use super::*;
+use crate::utils::field::FieldMaskTree;
+use crate::utils::merge::Merge;
 
 //
 // Target

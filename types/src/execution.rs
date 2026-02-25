@@ -6,13 +6,11 @@ use std::collections::HashSet;
 
 use once_cell::sync::Lazy;
 
-use crate::{
-    digests::TransactionDigest,
-    effects::CongestedObjects,
-    error::{ExecutionErrorKind, SomaError},
-    object::Version,
-    transaction::CheckedInputObjects,
-};
+use crate::digests::TransactionDigest;
+use crate::effects::CongestedObjects;
+use crate::error::{ExecutionErrorKind, SomaError};
+use crate::object::Version;
+use crate::transaction::CheckedInputObjects;
 
 /// Captures the output of executing a transaction in the execution driver.
 pub enum ExecutionOutput<T> {

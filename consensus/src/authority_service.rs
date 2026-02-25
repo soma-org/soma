@@ -2,23 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    pin::Pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{
-    block_verifier::BlockVerifier,
-    commit_vote_monitor::CommitVoteMonitor,
-    core_thread::CoreThreadDispatcher,
-    dag_state::DagState,
-    network::{BlockStream, ExtendedSerializedBlock, NetworkService},
-    round_tracker::PeerRoundTracker,
-    synchronizer::SynchronizerHandle,
-    transaction_certifier::TransactionCertifier,
-};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{Stream, StreamExt, ready, stream, task};
@@ -29,16 +17,23 @@ use tokio::sync::broadcast;
 use tokio_util::sync::ReusableBoxFuture;
 use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{
-        BlockAPI as _, BlockRef, ExtendedBlock, GENESIS_ROUND, Round, SignedBlock, VerifiedBlock,
-    },
-    commit::{CommitAPI as _, CommitIndex, CommitRange, TrustedCommit},
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
+use types::consensus::block::{
+    BlockAPI as _, BlockRef, ExtendedBlock, GENESIS_ROUND, Round, SignedBlock, VerifiedBlock,
 };
+use types::consensus::commit::{CommitAPI as _, CommitIndex, CommitRange, TrustedCommit};
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::error::{ConsensusError, ConsensusResult};
 use types::storage::consensus::Store;
+
+use crate::block_verifier::BlockVerifier;
+use crate::commit_vote_monitor::CommitVoteMonitor;
+use crate::core_thread::CoreThreadDispatcher;
+use crate::dag_state::DagState;
+use crate::network::{BlockStream, ExtendedSerializedBlock, NetworkService};
+use crate::round_tracker::PeerRoundTracker;
+use crate::synchronizer::SynchronizerHandle;
+use crate::transaction_certifier::TransactionCertifier;
 
 pub(crate) const COMMIT_LAG_MULTIPLIER: u32 = 5;
 

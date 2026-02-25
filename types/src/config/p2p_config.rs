@@ -2,13 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{net::SocketAddr, num::NonZeroU32, time::Duration};
+use std::net::SocketAddr;
+use std::num::NonZeroU32;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{multiaddr::Multiaddr, peer_id::PeerId};
-
 use super::state_sync_config::StateSyncConfig;
+use crate::multiaddr::Multiaddr;
+use crate::peer_id::PeerId;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct P2pConfig {

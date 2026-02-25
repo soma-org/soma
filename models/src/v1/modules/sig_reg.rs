@@ -1,11 +1,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{
-    config::Config,
-    module::Module,
-    tensor::{Int, Tensor, backend::Backend, linalg::l2_norm, s},
-};
+use burn::config::Config;
+use burn::module::Module;
+use burn::tensor::backend::Backend;
+use burn::tensor::linalg::l2_norm;
+use burn::tensor::{Int, Tensor, s};
 
 use crate::v1::{V1_SIG_REG_POINTS, V1_SIG_REG_SLICES, V1_SIG_REG_T_MAX};
 

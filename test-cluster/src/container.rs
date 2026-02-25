@@ -2,12 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::{Arc, Weak};
+use std::thread;
+
 use fastcrypto::traits::KeyPair;
 use futures::FutureExt;
 use node::SomaNode;
 use node::handle::SomaNodeHandle;
-use std::sync::{Arc, Weak};
-use std::thread;
 use tracing::{info, trace};
 use types::base::ConciseableName;
 use types::config::node_config::NodeConfig;

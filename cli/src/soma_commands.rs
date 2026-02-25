@@ -2,66 +2,53 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    client_commands::SomaClientCommands,
-    commands::{
-        ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand,
-        TargetCommand, WalletCommand,
-    },
-    keytool::KeyToolCommand,
-    soma_amount::SomaAmount,
-};
+use std::fs;
+use std::io::{self, Write as _, stdout};
+use std::net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
 use anyhow::{Context as _, anyhow, bail, ensure};
 use clap::{Command, CommandFactory as _, Parser};
 use colored::Colorize;
 use fastcrypto::traits::KeyPair as _;
 use rand::rngs::OsRng;
-use sdk::{
-    SomaClient,
-    client_config::{SomaClientConfig, SomaEnv},
-    wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, WalletContext, create_wallet_context},
-};
-use soma_keys::{
-    key_derive::generate_new_key,
-    key_identity::KeyIdentity,
-    keystore::{AccountKeystore as _, FileBasedKeystore, Keystore},
-};
-use std::{
-    fs,
-    io::{self, Write as _, stdout},
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    path::{Path, PathBuf},
-};
-use std::{num::NonZeroUsize, time::Duration};
+use sdk::SomaClient;
+use sdk::client_config::{SomaClientConfig, SomaEnv};
+use sdk::wallet_context::{DEFAULT_WALLET_TIMEOUT_SEC, WalletContext, create_wallet_context};
+use soma_keys::key_derive::generate_new_key;
+use soma_keys::key_identity::KeyIdentity;
+use soma_keys::keystore::{AccountKeystore as _, FileBasedKeystore, Keystore};
 use test_cluster::swarm::Swarm;
 use tokio::time::interval;
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    config::{
-        FULL_NODE_DB_PATH, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_FULLNODE_CONFIG,
-        SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG, genesis_blob_exists,
-        genesis_config::{GenesisConfig, ValidatorGenesisConfigBuilder},
-        network_config::NetworkConfig,
-        node_config::{FullnodeConfigBuilder, Genesis, default_json_rpc_address},
-        p2p_config::SeedPeer,
-        soma_config_dir,
-    },
-    crypto::SignatureScheme,
-    digests::TransactionDigest,
-    object::ObjectID,
-    peer_id::PeerId,
+use types::base::SomaAddress;
+use types::committee::CommitteeTrait as _;
+use types::config::genesis_config::{GenesisConfig, ValidatorGenesisConfigBuilder};
+use types::config::network_config::{ConfigBuilder, NetworkConfig};
+use types::config::node_config::{FullnodeConfigBuilder, Genesis, default_json_rpc_address};
+use types::config::p2p_config::SeedPeer;
+use types::config::{
+    Config, FULL_NODE_DB_PATH, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_FULLNODE_CONFIG,
+    SOMA_GENESIS_FILENAME, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG, genesis_blob_exists,
+    soma_config_dir,
 };
-use types::{
-    committee::CommitteeTrait as _,
-    config::{Config, SOMA_GENESIS_FILENAME, network_config::ConfigBuilder},
-    crypto::SomaKeyPair,
-    system_state::SystemStateTrait as _,
-};
+use types::crypto::{SignatureScheme, SomaKeyPair};
+use types::digests::TransactionDigest;
+use types::object::ObjectID;
+use types::peer_id::PeerId;
+use types::system_state::SystemStateTrait as _;
 use url::Url;
 
-use crate::client_commands::TxProcessingArgs;
+use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
+use crate::commands::{
+    ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand,
+    TargetCommand, WalletCommand,
+};
+use crate::keytool::KeyToolCommand;
+use crate::soma_amount::SomaAmount;
 
 const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 

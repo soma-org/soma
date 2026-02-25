@@ -2,28 +2,26 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use arc_swap::ArcSwap;
+use parking_lot::RwLock;
+use rand::seq::SliceRandom;
+use strum::IntoEnumIterator;
+use tokio::task::JoinSet;
+use tokio::time::{interval, timeout};
+use tracing::{debug, info, warn};
+use types::base::AuthorityName;
+use types::committee::Committee;
+use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
+use types::messages_grpc::{TxType, ValidatorHealthRequest};
+
 use crate::authority_aggregator::AuthorityAggregator;
 use crate::authority_client::AuthorityAPI;
 use crate::validator_client_monitor::stats::ClientObservedStats;
 use crate::validator_client_monitor::{OperationFeedback, OperationType};
-use arc_swap::ArcSwap;
-use parking_lot::RwLock;
-use rand::seq::SliceRandom;
-use std::collections::HashMap;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use strum::IntoEnumIterator;
-use tokio::{
-    task::JoinSet,
-    time::{interval, timeout},
-};
-use tracing::{debug, info, warn};
-use types::committee::Committee;
-use types::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
-use types::messages_grpc::TxType;
-use types::{base::AuthorityName, messages_grpc::ValidatorHealthRequest};
 
 /// Monitors validator interactions from the client's perspective.
 ///

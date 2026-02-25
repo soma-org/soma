@@ -272,8 +272,10 @@ async fn make_authority(
 fn simtest_committee_and_keys(
     num_authorities: usize,
 ) -> (Committee, Vec<(NetworkKeyPair, ProtocolKeyPair)>) {
-    use rand::{SeedableRng, rngs::StdRng};
     use std::collections::BTreeMap;
+
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
     use types::base::AuthorityName;
     use types::committee::{Authority, Stake, get_available_local_address};
     use types::crypto::{AuthorityKeyPair, KeypairTraits};

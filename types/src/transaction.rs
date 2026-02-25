@@ -2,52 +2,42 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
-    iter,
-};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::iter;
 
-use crate::{
-    base::FullObjectID,
-    challenge::ChallengeId,
-    checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp},
-    digests::{
-        AdditionalConsensusStateDigest, DataCommitment, ModelWeightsCommitment,
-        ModelWeightsUrlCommitment, SenderSignedDataDigest,
-    },
-    model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
-    submission::SubmissionManifest,
-    target::TargetId,
-    tensor::SomaTensor,
-};
-use fastcrypto::{
-    hash::HashFunction,
-    traits::{Signer, ToFromBytes},
-};
+use fastcrypto::hash::HashFunction;
+use fastcrypto::traits::{Signer, ToFromBytes};
 use itertools::{Either, Itertools};
 use nonempty::{NonEmpty, nonempty};
 use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
+use tap::Pipe;
 use tracing::trace;
 
-use crate::{
-    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
-    base::{AuthorityName, SizeOneVec, SomaAddress},
-    committee::{Committee, EpochId},
-    consensus::ConsensusCommitPrologueV1,
-    crypto::{
-        AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature,
-        AuthorityStrongQuorumSignInfo, DefaultHash, Ed25519SomaSignature, EmptySignInfo,
-        GenericSignature, Signature, SomaSignatureInner, default_hash,
-    },
-    digests::{CertificateDigest, ConsensusCommitDigest, TransactionDigest},
-    envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
-    error::{SomaError, SomaResult},
-    intent::{Intent, IntentMessage, IntentScope},
-    object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
-    temporary_store::SharedInput,
+use crate::base::{AuthorityName, FullObjectID, SizeOneVec, SomaAddress};
+use crate::challenge::ChallengeId;
+use crate::checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp};
+use crate::committee::{Committee, EpochId};
+use crate::consensus::ConsensusCommitPrologueV1;
+use crate::crypto::{
+    AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature, AuthorityStrongQuorumSignInfo,
+    DefaultHash, Ed25519SomaSignature, EmptySignInfo, GenericSignature, Signature,
+    SomaSignatureInner, default_hash,
 };
-use tap::Pipe;
+use crate::digests::{
+    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest, DataCommitment,
+    ModelWeightsCommitment, ModelWeightsUrlCommitment, SenderSignedDataDigest, TransactionDigest,
+};
+use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
+use crate::error::{SomaError, SomaResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::model::{ArchitectureVersion, ModelId, ModelWeightsManifest};
+use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
+use crate::submission::SubmissionManifest;
+use crate::target::TargetId;
+use crate::temporary_store::SharedInput;
+use crate::tensor::SomaTensor;
+use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
 
 /// # TransactionKind
 ///

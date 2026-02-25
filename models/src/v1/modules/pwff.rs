@@ -1,12 +1,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{
-    config::Config,
-    module::Module,
-    nn::{Gelu, Initializer, Linear, LinearConfig},
-    tensor::{Tensor, backend::Backend},
-};
+use burn::config::Config;
+use burn::module::Module;
+use burn::nn::{Gelu, Initializer, Linear, LinearConfig};
+use burn::tensor::Tensor;
+use burn::tensor::backend::Backend;
 
 use crate::v1::{V1_EMBEDDING_DIM, V1_PWFF_HIDDEN_DIM};
 

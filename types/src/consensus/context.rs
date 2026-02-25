@@ -2,17 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::SystemTime};
+use std::sync::Arc;
+use std::time::SystemTime;
 
-use super::block::BlockTimestampMs;
-use crate::crypto::{NetworkKeyPair, ProtocolKeyPair};
-use crate::{
-    committee::{AuthorityIndex, Committee},
-    parameters::Parameters,
-};
 use protocol_config::{ProtocolConfig, ProtocolVersion};
 use tempfile::TempDir;
 use tokio::time::Instant;
+
+use super::block::BlockTimestampMs;
+use crate::committee::{AuthorityIndex, Committee};
+use crate::crypto::{NetworkKeyPair, ProtocolKeyPair};
+use crate::parameters::Parameters;
 
 /// Context contains per-epoch configuration and metrics shared by all components
 /// of this authority.

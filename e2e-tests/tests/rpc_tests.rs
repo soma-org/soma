@@ -19,10 +19,8 @@
 use futures::StreamExt;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    effects::TransactionEffectsAPI,
-    transaction::{TransactionData, TransactionKind},
-};
+use types::effects::TransactionEffectsAPI;
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 /// Query chain_id and server_version from the service info endpoint.

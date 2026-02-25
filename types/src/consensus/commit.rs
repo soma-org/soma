@@ -2,28 +2,26 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    cmp::Ordering,
-    collections::BTreeMap,
-    fmt::{self, Debug, Display, Formatter},
-    hash::{Hash, Hasher},
-    ops::{Deref, Range, RangeInclusive},
-    sync::Arc,
-};
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::{Hash, Hasher};
+use std::ops::{Deref, Range, RangeInclusive};
+use std::sync::Arc;
 
-use super::block::{BlockRef, BlockTimestampMs, Round, TransactionIndex};
-use super::{
-    block::{BlockAPI, Slot, VerifiedBlock},
-    leader_scoring::ReputationScores,
-};
-use crate::committee::AuthorityIndex;
-use crate::crypto::{DIGEST_LENGTH, DefaultHash};
-use crate::storage::consensus::Store;
 use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Digest, HashFunction as _};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
+
+use super::block::{
+    BlockAPI, BlockRef, BlockTimestampMs, Round, Slot, TransactionIndex, VerifiedBlock,
+};
+use super::leader_scoring::ReputationScores;
+use crate::committee::AuthorityIndex;
+use crate::crypto::{DIGEST_LENGTH, DefaultHash};
+use crate::storage::consensus::Store;
 
 /// Index of a commit among all consensus commits.
 pub type CommitIndex = u32;

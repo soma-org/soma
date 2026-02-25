@@ -4,24 +4,21 @@
 use std::sync::Arc;
 
 use arrgen::normal_array;
-use burn::{
-    data::dataloader::DataLoader,
-    nn::loss::CrossEntropyLossConfig,
-    prelude::Backend,
-    store::{ModuleSnapshot, SafetensorsStore},
-    tensor::Tensor,
-};
+use burn::data::dataloader::DataLoader;
+use burn::nn::loss::CrossEntropyLossConfig;
+use burn::prelude::Backend;
+use burn::store::{ModuleSnapshot, SafetensorsStore};
+use burn::tensor::Tensor;
 use types::error::ModelError;
 
-use crate::{
-    ModelAPI, ModelOutput,
-    running_mean::RunningMean,
-    tensor_conversions::IntoTensorData,
-    v1::{
-        data::{batcher::ByteSequenceBatch, build_data_loader, dataset::PAD_TOKEN_ID},
-        modules::{model::ModelConfig, sig_reg::SIGRegConfig},
-    },
-};
+use crate::running_mean::RunningMean;
+use crate::tensor_conversions::IntoTensorData;
+use crate::v1::data::batcher::ByteSequenceBatch;
+use crate::v1::data::build_data_loader;
+use crate::v1::data::dataset::PAD_TOKEN_ID;
+use crate::v1::modules::model::ModelConfig;
+use crate::v1::modules::sig_reg::SIGRegConfig;
+use crate::{ModelAPI, ModelOutput};
 
 pub mod data;
 pub mod modules;

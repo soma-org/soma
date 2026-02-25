@@ -2,67 +2,59 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    authority::{AuthorityState, ExecutionEnv},
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    checkpoints::CheckpointStore,
-    consensus_adapter::ConsensusAdapter,
-    consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult},
-    execution_scheduler::SchedulingSource,
-    mysticeti_adapter::LazyMysticetiClient,
-    server::TLS_SERVER_NAME,
-    shared_obj_version_manager::Schedulable,
-    tonic_gen::validator_server::{Validator, ValidatorServer},
-};
+use std::cmp::Ordering;
+use std::future::Future;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use fastcrypto::traits::KeyPair;
 use futures::{TryFutureExt, future};
 use itertools::Itertools as _;
 use nonempty::{NonEmpty, nonempty};
-use std::{
-    cmp::Ordering,
-    future::Future,
-    io,
-    net::{IpAddr, SocketAddr},
-    pin::Pin,
-    sync::Arc,
-    time::Duration,
-};
 use tap::TapFallible;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::server::TcpConnectInfo;
 use tracing::{Instrument, debug, error, error_span, info, instrument, warn};
+use types::checkpoints::{CheckpointRequest, CheckpointResponse};
+use types::config::local_ip_utils::new_local_tcp_address_for_testing;
+use types::consensus::{ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind};
+use types::digests::{TransactionDigest, TransactionEffectsDigest};
+use types::effects::TransactionEffects;
+use types::envelope::Message as _;
+use types::error::{SomaError, SomaResult};
+use types::messages_grpc::{
+    ExecutedData, HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse,
+    ObjectInfoRequest, ObjectInfoResponse, PingType, RawSubmitTxRequest, RawSubmitTxResponse,
+    RawWaitForEffectsRequest, RawWaitForEffectsResponse, SubmitTxResult, SubmitTxType,
+    SystemStateRequest, TransactionInfoRequest, TransactionInfoResponse, WaitForEffectsRequest,
+    WaitForEffectsResponse,
+};
+use types::multiaddr::Multiaddr;
+use types::object::Object;
+use types::system_state::SystemState;
 use types::traffic_control::{ClientIdSource, Weight};
-use types::{
-    checkpoints::{CheckpointRequest, CheckpointResponse},
-    config::local_ip_utils::new_local_tcp_address_for_testing,
-    consensus::{ConsensusPosition, ConsensusTransactionKind},
-    digests::{TransactionDigest, TransactionEffectsDigest},
-    effects::TransactionEffects,
-    error::SomaResult,
-    object::Object,
-    system_state::SystemState,
-    transaction::{VerifiedCertificate, VerifiedExecutableTransaction},
-    transaction_outputs::TransactionOutputs,
+use types::transaction::{
+    CertifiedTransaction, Transaction, VerifiedCertificate, VerifiedExecutableTransaction,
 };
-use types::{
-    consensus::ConsensusTransaction,
-    envelope::Message as _,
-    error::SomaError,
-    messages_grpc::{
-        ExecutedData, HandleCertificateRequest, HandleCertificateResponse,
-        HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, PingType,
-        RawSubmitTxRequest, RawSubmitTxResponse, RawWaitForEffectsRequest,
-        RawWaitForEffectsResponse, SubmitTxResult, SubmitTxType, SystemStateRequest,
-        TransactionInfoRequest, TransactionInfoResponse, WaitForEffectsRequest,
-        WaitForEffectsResponse,
-    },
-    multiaddr::Multiaddr,
-    transaction::{CertifiedTransaction, Transaction},
-};
+use types::transaction_outputs::TransactionOutputs;
+
+use crate::authority::{AuthorityState, ExecutionEnv};
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::checkpoints::CheckpointStore;
+use crate::consensus_adapter::ConsensusAdapter;
+use crate::consensus_tx_status_cache::{ConsensusTxStatus, NotifyReadConsensusTxStatusResult};
+use crate::execution_scheduler::SchedulingSource;
+use crate::mysticeti_adapter::LazyMysticetiClient;
+use crate::server::TLS_SERVER_NAME;
+use crate::shared_obj_version_manager::Schedulable;
+use crate::tonic_gen::validator_server::{Validator, ValidatorServer};
 
 pub struct AuthorityServerHandle {
     server_handle: crate::server::Server,

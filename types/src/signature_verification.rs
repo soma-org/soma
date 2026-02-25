@@ -2,10 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::error::SomaResult;
+use std::hash::Hash;
+
 use lru::LruCache;
 use parking_lot::RwLock;
-use std::hash::Hash;
+
+use crate::error::SomaResult;
 
 // Cache up to this many verified certs. We will need to tune this number in the future - a decent
 // guess to start with is that it should be 10-20 times larger than peak transactions per second,

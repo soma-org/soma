@@ -1,16 +1,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{
-    encoder::EncoderConfig,
-    pwff::{PositionWiseFeedForward, PositionWiseFeedForwardConfig},
-};
+use burn::module::Module;
+use burn::nn::{LayerNorm, LayerNormConfig};
+use burn::tensor::backend::Backend;
+use burn::tensor::{Int, Tensor};
+
+use super::encoder::EncoderConfig;
+use super::pwff::{PositionWiseFeedForward, PositionWiseFeedForwardConfig};
 use crate::v1::modules::attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig};
-use burn::{
-    module::Module,
-    nn::{LayerNorm, LayerNormConfig},
-    tensor::{Int, Tensor, backend::Backend},
-};
 
 #[derive(Module, Debug)]
 pub struct Layer<B: Backend> {

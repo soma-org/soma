@@ -2,26 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    authority::{AuthorityState, ExecutionEnv},
-    authority_per_epoch_store::{
-        AuthorityPerEpochStore, CancelConsensusCertificateReason, ConsensusStats,
-        ConsensusStatsAPI, ExecutionIndices, ExecutionIndicesWithStats,
-    },
-    backpressure_manager::{BackpressureManager, BackpressureSubscriber},
-    cache::ObjectCacheRead,
-    checkpoints::{
-        CheckpointService, CheckpointServiceNotify, PendingCheckpoint, PendingCheckpointInfo,
-    },
-    consensus_adapter::ConsensusAdapter,
-    consensus_output_api::{ConsensusCommitAPI, parse_block_transactions},
-    consensus_quarantine::ConsensusCommitOutput,
-    consensus_tx_status_cache::ConsensusTxStatus,
-    execution_scheduler::{ExecutionScheduler, SchedulingSource},
-    reconfiguration::ReconfigState,
-    shared_obj_version_manager::{AssignedTxAndVersions, Schedulable, SharedObjVerManager},
-    start_epoch::EpochStartConfigTrait,
-};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::hash::Hash;
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use arc_swap::ArcSwap;
 use consensus::CommitConsumerMonitor;
 use itertools::Itertools as _;
@@ -29,34 +15,43 @@ use lru::LruCache;
 use parking_lot::RwLockWriteGuard;
 use protocol_config::ProtocolConfig;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
-    hash::Hash,
-    num::NonZeroUsize,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use tokio::{
-    sync::{MutexGuard, mpsc},
-    task::JoinSet,
-};
+use tokio::sync::{MutexGuard, mpsc};
+use tokio::task::JoinSet;
 use tracing::{debug, error, info, instrument, trace, warn};
-use types::committee::Committee as ConsensusCommittee;
+use types::base::{AuthorityName, ConciseableName, ConsensusObjectSequenceKey, SequenceNumber};
+use types::checkpoints::CheckpointSignatureMessage;
+use types::committee::{AuthorityIndex, Committee as ConsensusCommittee};
 use types::consensus::block::{CertifiedBlocksOutput, TransactionIndex};
 use types::consensus::commit::CommitIndex;
-use types::{
-    base::{AuthorityName, ConciseableName, ConsensusObjectSequenceKey, SequenceNumber},
-    checkpoints::CheckpointSignatureMessage,
-    committee::AuthorityIndex,
-    consensus::{
-        AuthorityCapabilitiesV1, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey,
-        ConsensusTransactionKind,
-    },
-    digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest},
-    system_state::epoch_start::EpochStartSystemStateTrait,
-    transaction::{SenderSignedData, VerifiedCertificate, VerifiedTransaction},
-    transaction::{TrustedExecutableTransaction, VerifiedExecutableTransaction},
+use types::consensus::{
+    AuthorityCapabilitiesV1, ConsensusPosition, ConsensusTransaction, ConsensusTransactionKey,
+    ConsensusTransactionKind,
 };
+use types::digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest};
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
+use types::transaction::{
+    SenderSignedData, TrustedExecutableTransaction, VerifiedCertificate,
+    VerifiedExecutableTransaction, VerifiedTransaction,
+};
+
+use crate::authority::{AuthorityState, ExecutionEnv};
+use crate::authority_per_epoch_store::{
+    AuthorityPerEpochStore, CancelConsensusCertificateReason, ConsensusStats, ConsensusStatsAPI,
+    ExecutionIndices, ExecutionIndicesWithStats,
+};
+use crate::backpressure_manager::{BackpressureManager, BackpressureSubscriber};
+use crate::cache::ObjectCacheRead;
+use crate::checkpoints::{
+    CheckpointService, CheckpointServiceNotify, PendingCheckpoint, PendingCheckpointInfo,
+};
+use crate::consensus_adapter::ConsensusAdapter;
+use crate::consensus_output_api::{ConsensusCommitAPI, parse_block_transactions};
+use crate::consensus_quarantine::ConsensusCommitOutput;
+use crate::consensus_tx_status_cache::ConsensusTxStatus;
+use crate::execution_scheduler::{ExecutionScheduler, SchedulingSource};
+use crate::reconfiguration::ReconfigState;
+use crate::shared_obj_version_manager::{AssignedTxAndVersions, Schedulable, SharedObjVerManager};
+use crate::start_epoch::EpochStartConfigTrait;
 
 pub struct ConsensusHandlerInitializer {
     state: Arc<AuthorityState>,

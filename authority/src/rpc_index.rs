@@ -4,35 +4,32 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::authority_store::AuthorityStore;
-use crate::checkpoints::CheckpointStore;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
 use store::rocks::{DBMap, DBMapTableConfigMap};
-use store::rocksdb::{MergeOperands, WriteOptions, compaction_filter::Decision};
+use store::rocksdb::compaction_filter::Decision;
+use store::rocksdb::{MergeOperands, WriteOptions};
 use store::{DBMapUtils, Map as _, TypedStoreError};
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 use tracing::{debug, info};
+use types::base::SomaAddress;
 use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber};
-use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
-use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
-use types::storage::WriteKind;
-use types::transaction_outputs::WrittenObjects;
-
 use types::committee::EpochId;
 use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
-use types::object::{LiveObject, ObjectRef};
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+use types::object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
+use types::storage::WriteKind;
 use types::storage::read_store::{EpochInfo, TransactionInfo};
 use types::storage::storage_error::Error as StorageError;
 use types::system_state::SystemStateTrait;
-use types::{
-    base::SomaAddress,
-    object::{Object, ObjectID, ObjectType, Owner, Version},
-};
+use types::transaction_outputs::WrittenObjects;
+
+use crate::authority_store::AuthorityStore;
+use crate::checkpoints::CheckpointStore;
 
 const CURRENT_DB_VERSION: u64 = 4; // Bumped for terminal object pruning
 const BALANCE_FLUSH_THRESHOLD: usize = 10_000;

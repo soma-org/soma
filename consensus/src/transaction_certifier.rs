@@ -2,21 +2,23 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{block_verifier::BlockVerifier, dag_state::DagState};
 use parking_lot::RwLock;
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info};
 use types::committee::Stake;
-use types::consensus::{
-    block::{
-        BlockAPI as _, BlockRef, BlockTransactionVotes, CertifiedBlock, CertifiedBlocksOutput,
-        GENESIS_ROUND, Round, TransactionIndex, VerifiedBlock,
-    },
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
+use types::consensus::block::{
+    BlockAPI as _, BlockRef, BlockTransactionVotes, CertifiedBlock, CertifiedBlocksOutput,
+    GENESIS_ROUND, Round, TransactionIndex, VerifiedBlock,
 };
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
+
+use crate::block_verifier::BlockVerifier;
+use crate::dag_state::DagState;
 
 /// TransactionCertifier has the following purposes:
 /// 1. Certifies transactions and sends them to execute on the fastpath.

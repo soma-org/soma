@@ -2,13 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::crypto::NetworkKeyPair;
-use certgen::SelfSignedCertificate;
-use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
-use rustls::{ClientConfig, pki_types::CertificateDer};
 use std::collections::BTreeSet;
+
+use certgen::SelfSignedCertificate;
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::traits::ToFromBytes;
+use rustls::ClientConfig;
+use rustls::pki_types::CertificateDer;
 use tokio_rustls::rustls::ServerConfig;
 use verifier::{Allower, ClientCertVerifier, ServerCertVerifier};
+
+use crate::crypto::NetworkKeyPair;
 
 #[cfg(feature = "server")]
 mod acceptor;
@@ -89,7 +93,8 @@ pub fn create_rustls_client_config(
 pub fn public_key_from_certificate(
     certificate: &CertificateDer,
 ) -> Result<Ed25519PublicKey, rustls::Error> {
-    use x509_parser::{certificate::X509Certificate, prelude::FromDer};
+    use x509_parser::certificate::X509Certificate;
+    use x509_parser::prelude::FromDer;
 
     let cert = X509Certificate::from_der(certificate.as_ref())
         .map_err(|e| rustls::Error::General(e.to_string()))?;
@@ -109,16 +114,16 @@ pub fn public_key_from_certificate(
 mod tests {
     const VALIDATOR_SERVER_NAME: &str = "soma";
 
-    use super::*;
     #[cfg(feature = "server")]
     use acceptor::{TlsAcceptor, TlsConnectionInfo};
     use fastcrypto::ed25519::Ed25519KeyPair;
     use fastcrypto::traits::KeyPair;
     use rustls::client::danger::ServerCertVerifier as _;
-    use rustls::pki_types::ServerName;
-    use rustls::pki_types::UnixTime;
+    use rustls::pki_types::{ServerName, UnixTime};
     use rustls::server::danger::ClientCertVerifier as _;
     use verifier::{AllowAll, HashSetAllow};
+
+    use super::*;
 
     #[test]
     fn verify_allowall() {

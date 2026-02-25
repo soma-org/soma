@@ -2,65 +2,54 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow, bail};
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::{self, Debug, Display, Formatter, Write},
-    fs,
-    path::PathBuf,
-    sync::Arc,
-};
-use url::{ParseError, Url};
+use std::collections::{BTreeMap, HashSet};
+use std::fmt::{self, Debug, Display, Formatter, Write};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
 
+use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use fastcrypto::traits::ToFromBytes;
-use fastcrypto::{
-    encoding::{Base64, Encoding},
-    traits::KeyPair,
-};
-use serde::Serialize;
-use tap::tap::TapOptional;
-use tokio::time::Duration;
-use tracing::info;
-use types::{
-    base::SomaAddress,
-    config::node_config::DEFAULT_COMMISSION_RATE,
-    crypto::{AuthorityPublicKey, NetworkPublicKey, Signable},
-    model::ModelId,
-    multiaddr::Multiaddr,
-    object::{ObjectID, ObjectRef, Owner},
-    system_state::{SystemState, SystemStateTrait as _, validator::Validator},
-    transaction::{
-        AddValidatorArgs, RemoveValidatorArgs, TransactionKind, UpdateValidatorMetadataArgs,
-    },
-};
-use types::{
-    config::{PersistedConfig, node_config::NodeConfig},
-    intent::{Intent, IntentMessage, IntentScope},
-    validator_info::GenesisValidatorInfo,
-};
-
+use fastcrypto::encoding::{Base64, Encoding};
+use fastcrypto::traits::{KeyPair, ToFromBytes};
 use node::SomaNode;
 use sdk::SomaClient;
 use sdk::wallet_context::WalletContext;
-use soma_keys::{
-    key_derive::generate_new_key,
-    keypair_file::{
-        read_authority_keypair_from_file, read_keypair_from_file, read_network_keypair_from_file,
-        write_authority_keypair_to_file, write_keypair_to_file,
-    },
+use serde::Serialize;
+use soma_keys::key_derive::generate_new_key;
+use soma_keys::keypair_file::{
+    read_authority_keypair_from_file, read_key, read_keypair_from_file,
+    read_network_keypair_from_file, write_authority_keypair_to_file, write_keypair_to_file,
 };
-use soma_keys::{keypair_file::read_key, keystore::AccountKeystore};
-use types::crypto::{AuthorityKeyPair, NetworkKeyPair, SignatureScheme, SomaKeyPair};
-use types::crypto::{AuthorityPublicKeyBytes, get_authority_key_pair};
-use types::transaction::{Transaction, TransactionData};
+use soma_keys::keystore::AccountKeystore;
+use tap::tap::TapOptional;
+use tokio::time::Duration;
+use tracing::info;
+use types::base::SomaAddress;
+use types::config::PersistedConfig;
+use types::config::node_config::{DEFAULT_COMMISSION_RATE, NodeConfig};
+use types::crypto::{
+    AuthorityKeyPair, AuthorityPublicKey, AuthorityPublicKeyBytes, NetworkKeyPair,
+    NetworkPublicKey, Signable, SignatureScheme, SomaKeyPair, get_authority_key_pair,
+};
+use types::intent::{Intent, IntentMessage, IntentScope};
+use types::model::ModelId;
+use types::multiaddr::Multiaddr;
+use types::object::{ObjectID, ObjectRef, Owner};
+use types::system_state::validator::Validator;
+use types::system_state::{SystemState, SystemStateTrait as _};
+use types::transaction::{
+    AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
+    UpdateValidatorMetadataArgs,
+};
+use types::validator_info::GenesisValidatorInfo;
+use url::{ParseError, Url};
 
+use crate::client_commands::TxProcessingArgs;
 use crate::response::{
     TransactionResponse, ValidatorCommandResponse, ValidatorStatus, ValidatorSummary,
 };
-
-use crate::client_commands::TxProcessingArgs;
 
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]

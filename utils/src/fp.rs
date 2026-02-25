@@ -188,8 +188,9 @@ pub fn clear_fail_point(identifier: &'static str) {
 #[cfg(test)]
 #[cfg(any(msim, fail_points))]
 mod tests {
-    use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::*;
 
     #[test]
     fn test_sync_fail_point() {

@@ -6,9 +6,9 @@ use std::marker::PhantomData;
 
 use bincode::Options;
 use rocksdb::{DBWithThreadMode, Direction, MultiThreaded};
+use serde::de::DeserializeOwned;
 
 use super::TypedStoreError;
-use serde::de::DeserializeOwned;
 
 /// An iterator over all key-value pairs in a data map.
 pub struct SafeIter<'a, K, V> {

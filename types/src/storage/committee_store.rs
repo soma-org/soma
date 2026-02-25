@@ -2,23 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::{
-    committee::{Committee, EpochId},
-    error::{SomaError, SomaResult},
-    object::ObjectID,
-};
 use parking_lot::RwLock;
-use store::{
-    DBMapUtils, Map as _, nondeterministic,
-    rocks::{DBMap, DBOptions, default_db_options},
-    rocksdb::Options,
-};
+use store::rocks::{DBMap, DBOptions, default_db_options};
+use store::rocksdb::Options;
+use store::{DBMapUtils, Map as _, nondeterministic};
+
+use crate::committee::{Committee, EpochId};
+use crate::error::{SomaError, SomaResult};
+use crate::object::ObjectID;
 
 pub struct CommitteeStore {
     tables: CommitteeStoreTables,

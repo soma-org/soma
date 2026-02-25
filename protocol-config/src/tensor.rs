@@ -12,10 +12,11 @@
 //! - `SomaTensor`: TensorData wrapper for multi-dimensional arrays (used in transactions)
 //! - `Dtype`: Element data type enum for forward-compatible tensor serialization
 
+use std::hash::{Hash, Hasher};
+
 use burn::tensor::TensorData;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::hash::{Hash, Hasher};
 
 // ============================================================================
 // BcsF32 - Simple f32 wrapper for BCS serialization

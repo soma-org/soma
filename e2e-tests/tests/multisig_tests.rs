@@ -12,20 +12,17 @@
 //! This tests the core multisig functionality: weighted thresholds, bitmap validation,
 //! and signature verification.
 
-use test_cluster::TestClusterBuilder;
-use tracing::info;
-use types::{
-    base::SomaAddress,
-    crypto::{GenericSignature, Signature, SomaKeyPair, get_key_pair_from_rng},
-    effects::TransactionEffectsAPI,
-    intent::{Intent, IntentMessage},
-    multisig::{MultiSig, MultiSigPublicKey},
-    transaction::{Transaction, TransactionData, TransactionKind},
-};
-use utils::logging::init_tracing;
-
 use rand::SeedableRng;
 use rand::rngs::StdRng;
+use test_cluster::TestClusterBuilder;
+use tracing::info;
+use types::base::SomaAddress;
+use types::crypto::{GenericSignature, Signature, SomaKeyPair, get_key_pair_from_rng};
+use types::effects::TransactionEffectsAPI;
+use types::intent::{Intent, IntentMessage};
+use types::multisig::{MultiSig, MultiSigPublicKey};
+use types::transaction::{Transaction, TransactionData, TransactionKind};
+use utils::logging::init_tracing;
 
 /// Generate 3 deterministic Ed25519 keypairs for testing.
 fn test_keys() -> Vec<SomaKeyPair> {

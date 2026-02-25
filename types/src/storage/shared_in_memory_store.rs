@@ -2,6 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use tap::Pipe;
+use tracing::error;
+
 use super::storage_error::Result;
 use crate::base::ExecutionData;
 use crate::checkpoints::{
@@ -15,10 +21,6 @@ use crate::storage::object_store::ObjectStore;
 use crate::storage::read_store::ReadStore;
 use crate::storage::write_store::WriteStore;
 use crate::transaction::VerifiedTransaction;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tap::Pipe;
-use tracing::error;
 
 #[derive(Clone, Debug, Default)]
 pub struct SharedInMemoryStore(Arc<std::sync::RwLock<InMemoryStore>>);

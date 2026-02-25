@@ -2,21 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 
-use super::block::BlockRef;
-use crate::committee::AuthorityIndex;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    block::BlockAPI,
-    commit::{CommitRange, CommittedSubDag},
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-};
+use super::block::{BlockAPI, BlockRef};
+use super::commit::{CommitRange, CommittedSubDag};
+use super::context::Context;
+use super::stake_aggregator::{QuorumThreshold, StakeAggregator};
+use crate::committee::AuthorityIndex;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReputationScores {

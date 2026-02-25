@@ -2,10 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use itertools::Itertools;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
+
+use itertools::Itertools;
 use store::rocks::safe_drop_db;
 use tokio::sync::oneshot;
 use tracing::log::{info, warn};
@@ -76,8 +77,9 @@ impl AuthorityPerEpochStorePruner {
 
 #[cfg(test)]
 mod tests {
-    use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
     use std::fs;
+
+    use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
 
     #[tokio::test]
     async fn test_basic_epoch_pruner() {

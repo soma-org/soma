@@ -2,7 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::traits::ToFromBytes;
 
 use crate::crypto::NetworkPublicKey;
 

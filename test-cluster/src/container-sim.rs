@@ -2,15 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Weak};
+
 use msim::runtime::Handle;
-use node::{SomaNode, handle::SomaNodeHandle};
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::{Arc, Weak},
-};
+use node::SomaNode;
+use node::handle::SomaNodeHandle;
 use tokio::sync::watch;
 use tracing::{info, trace};
-use types::{base::ConciseableName, config::node_config::NodeConfig};
+use types::base::ConciseableName;
+use types::config::node_config::NodeConfig;
 
 #[derive(Debug)]
 pub(crate) struct Container {

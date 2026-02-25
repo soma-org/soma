@@ -9,6 +9,7 @@
 use bytes::Bytes;
 use prost::Message;
 use prost_types::FieldMask;
+use types::storage::read_store::TargetInfo;
 
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
@@ -16,7 +17,6 @@ use crate::proto::google::rpc::bad_request::FieldViolation;
 use crate::proto::soma::target::target_to_proto_with_id;
 use crate::proto::soma::{ErrorReason, ListTargetsRequest, ListTargetsResponse, Target};
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
-use types::storage::read_store::TargetInfo;
 
 const MAX_PAGE_SIZE: usize = 1000;
 const DEFAULT_PAGE_SIZE: usize = 50;

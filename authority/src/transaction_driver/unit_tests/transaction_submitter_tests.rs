@@ -18,13 +18,12 @@ use types::error::SomaError;
 use types::messages_grpc::{SubmitTxRequest, SubmitTxResponse, SubmitTxResult, TxType};
 use types::storage::committee_store::CommitteeStore;
 
+use super::TransactionSubmitter;
 use crate::authority_aggregator::AuthorityAggregator;
 use crate::test_authority_clients::MockAuthorityApi;
 use crate::transaction_driver::SubmitTransactionOptions;
 use crate::transaction_driver::error::TransactionDriverError;
 use crate::validator_client_monitor::ValidatorClientMonitor;
-
-use super::TransactionSubmitter;
 
 /// Create a test setup for transaction submitter tests.
 fn setup() -> (

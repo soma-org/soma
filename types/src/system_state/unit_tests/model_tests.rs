@@ -4,23 +4,17 @@
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod model_tests {
-    use crate::{
-        base::{SomaAddress, dbg_addr},
-        config::genesis_config::SHANNONS_PER_SOMA,
-        effects::ExecutionFailureStatus,
-        model::ModelId,
-        object::ObjectID,
-        system_state::{
-            SystemState,
-            staking::StakedSomaV1,
-            test_utils::{
-                self, ValidatorRewards, advance_epoch_with_reward_amounts,
-                advance_epoch_with_rewards, commit_model, commit_model_update,
-                commit_model_with_commission, create_test_system_state,
-                create_validator_for_testing, reveal_model, reveal_model_update, stake_with_model,
-                unstake,
-            },
-        },
+    use crate::base::{SomaAddress, dbg_addr};
+    use crate::config::genesis_config::SHANNONS_PER_SOMA;
+    use crate::effects::ExecutionFailureStatus;
+    use crate::model::ModelId;
+    use crate::object::ObjectID;
+    use crate::system_state::SystemState;
+    use crate::system_state::staking::StakedSomaV1;
+    use crate::system_state::test_utils::{
+        self, ValidatorRewards, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
+        commit_model, commit_model_update, commit_model_with_commission, create_test_system_state,
+        create_validator_for_testing, reveal_model, reveal_model_update, stake_with_model, unstake,
     };
 
     // Deterministic addresses

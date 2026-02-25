@@ -2,20 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    fmt::{Display, Formatter, Write},
-    path::Path,
-};
+use std::fmt::{Display, Formatter, Write};
+use std::path::Path;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
-use types::{
-    base::*,
-    config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME},
-};
+use types::base::*;
+use types::config::{Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME};
 
 use crate::{SOMA_LOCAL_NETWORK_URL, SOMA_TESTNET_URL, SomaClient, SomaClientBuilder};
 

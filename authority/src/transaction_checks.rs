@@ -2,23 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use protocol_config::ProtocolConfig;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
-use tracing::instrument;
-use tracing::{error, info};
+
+use protocol_config::ProtocolConfig;
+use tracing::{error, info, instrument};
+use types::base::{SequenceNumber, SomaAddress};
 use types::config::transaction_deny_config::TransactionDenyConfig;
 use types::crypto::GenericSignature;
 use types::error::{SomaError, SomaResult};
-use types::object::{ObjectID, ObjectRef};
-use types::transaction::VerifiedExecutableTransaction;
+use types::object::{Object, ObjectID, ObjectRef, Owner, Version};
 use types::transaction::{
     CheckedInputObjects, InputObjectKind, InputObjects, ObjectReadResult, ObjectReadResultKind,
     ReceivingObjectReadResult, ReceivingObjects, TransactionData, TransactionKind,
-};
-use types::{
-    base::{SequenceNumber, SomaAddress},
-    object::{Object, Owner, Version},
+    VerifiedExecutableTransaction,
 };
 
 trait IntoChecked {

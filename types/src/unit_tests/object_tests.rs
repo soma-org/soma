@@ -2,10 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::str::FromStr;
+
 use crate::base::SomaAddress;
 use crate::digests::TransactionDigest;
 use crate::object::*;
-use std::str::FromStr;
 
 /// Helper to create a simple ObjectData for testing.
 fn make_test_object_data(id: ObjectID) -> ObjectData {

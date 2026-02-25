@@ -8,6 +8,9 @@
 //! An enumeration should be decode-able from the full string variant name
 //! or its integer tag number, and should encode to the string representation
 
+use std::collections::HashSet;
+use std::io::{Result, Write};
+
 use super::{
     Indent, write_deserialize_end, write_deserialize_start, write_serialize_end,
     write_serialize_start,
@@ -15,8 +18,6 @@ use super::{
 use crate::build_utils::pbjson_build::descriptor::{EnumDescriptor, TypePath};
 use crate::build_utils::pbjson_build::generator::write_fields_array;
 use crate::build_utils::pbjson_build::resolver::Resolver;
-use std::collections::HashSet;
-use std::io::{Result, Write};
 
 pub fn generate_enum<W: Write>(
     resolver: &Resolver<'_>,

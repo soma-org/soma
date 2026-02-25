@@ -2,9 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use inquire::Select;
 use std::collections::BTreeMap;
 
+use inquire::Select;
 use types::config::genesis_config::SHANNONS_PER_SOMA;
 use types::genesis::UnsignedGenesis;
 use types::system_state::validator::Validator;

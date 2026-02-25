@@ -2,55 +2,47 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    iter,
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
+use std::iter;
+use std::sync::Arc;
 
 use fastcrypto::hash::{HashFunction, Sha3_256};
 use futures::future::Either;
 use itertools::izip;
 use parking_lot::RwLock;
+use protocol_config::ProtocolVersion;
 use serde::{Deserialize, Serialize};
-use store::{
-    Map as _, TypedStoreError,
-    rocks::{DBBatch, DBMap},
-};
+use store::rocks::{DBBatch, DBMap};
+use store::{Map as _, TypedStoreError};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
-use types::{
-    base::{FullObjectID, VerifiedExecutionData},
-    checkpoints::{CheckpointSequenceNumber, GlobalStateHash},
-    committee::{Committee, EpochId},
-    config::node_config::{AuthorityStorePruningConfig, NodeConfig},
-    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::{TransactionEffects, TransactionEffectsAPI},
-    envelope::Message,
-    error::{SomaError, SomaResult},
-    genesis::Genesis,
-    mutex_table::{Lock, MutexGuard, MutexTable, RwLockGuard, RwLockTable},
-    object::{self, LiveObject, Object, ObjectID, ObjectRef, Version},
-    storage::{
-        FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone, object_store::ObjectStore,
-    },
-    system_state::{SystemState, SystemStateTrait, get_system_state},
-    transaction::{VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction},
-    transaction_outputs::TransactionOutputs,
+use types::base::{FullObjectID, VerifiedExecutionData};
+use types::checkpoints::{CheckpointSequenceNumber, GlobalStateHash};
+use types::committee::{Committee, EpochId};
+use types::config::node_config::{AuthorityStorePruningConfig, NodeConfig};
+use types::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
+use types::effects::{TransactionEffects, TransactionEffectsAPI};
+use types::envelope::Message;
+use types::error::{SomaError, SomaResult};
+use types::genesis::Genesis;
+use types::mutex_table::{Lock, MutexGuard, MutexTable, RwLockGuard, RwLockTable};
+use types::object::{self, LiveObject, Object, ObjectID, ObjectRef, Version};
+use types::storage::object_store::ObjectStore;
+use types::storage::{FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone};
+use types::system_state::{SystemState, SystemStateTrait, get_system_state};
+use types::transaction::{
+    VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction,
 };
-
-use protocol_config::ProtocolVersion;
+use types::transaction_outputs::TransactionOutputs;
 use utils::notify_read::NotifyRead;
 
-use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_store_pruner::{AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING},
-    authority_store_tables::{AuthorityPerpetualTables, StoreObject, get_store_object},
-    checkpoints::CheckpointStore,
-    global_state_hasher::GlobalStateHashStore,
-    rpc_index::RpcIndexStore,
-    start_epoch::EpochStartConfiguration,
-};
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store_pruner::{AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING};
+use crate::authority_store_tables::{AuthorityPerpetualTables, StoreObject, get_store_object};
+use crate::checkpoints::CheckpointStore;
+use crate::global_state_hasher::GlobalStateHashStore;
+use crate::rpc_index::RpcIndexStore;
+use crate::start_epoch::EpochStartConfiguration;
 
 const NUM_SHARDS: usize = 4096;
 

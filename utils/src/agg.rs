@@ -2,15 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use futures::Future;
-use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
+
+use futures::future::BoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
+use tokio::time::timeout;
 use types::base::ConciseableName;
 use types::committee::{CommitteeTrait, VotingPower};
-
-use tokio::time::timeout;
 
 pub type AsyncResult<'a, T, E> = BoxFuture<'a, Result<T, E>>;
 

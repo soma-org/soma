@@ -2,21 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::{
-    hash::HashFunction,
-    traits::{Signer, VerifyingKey},
-};
+use fastcrypto::hash::HashFunction;
+use fastcrypto::traits::{Signer, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    committee::NetworkMetadata,
-    crypto::{
-        AuthorityKeyPair, AuthorityPublicKey, AuthorityPublicKeyBytes, AuthoritySignature,
-        DIGEST_LENGTH, DefaultHash as DefaultHashFunction,
-    },
-    error::{ConsensusError, ConsensusResult},
-    intent::{Intent, IntentMessage, IntentScope},
+use crate::committee::NetworkMetadata;
+use crate::crypto::{
+    AuthorityKeyPair, AuthorityPublicKey, AuthorityPublicKeyBytes, AuthoritySignature,
+    DIGEST_LENGTH, DefaultHash as DefaultHashFunction,
 };
+use crate::error::{ConsensusError, ConsensusResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
 
 /// Type for next epoch's validator set
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

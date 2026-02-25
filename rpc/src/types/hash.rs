@@ -2,10 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::types::Address;
-use crate::types::Digest;
-
 use blake2::Digest as DigestTrait;
+
+use crate::types::{Address, Digest};
 
 type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
 
@@ -243,15 +242,11 @@ mod type_digest {
 }
 
 mod signing_message {
-    use crate::types::Digest;
-    use crate::types::Intent;
-    use crate::types::IntentAppId;
-    use crate::types::IntentScope;
-    use crate::types::IntentVersion;
-    use crate::types::PersonalMessage;
-    use crate::types::SigningDigest;
-    use crate::types::Transaction;
     use crate::types::hash::Hasher;
+    use crate::types::{
+        Digest, Intent, IntentAppId, IntentScope, IntentVersion, PersonalMessage, SigningDigest,
+        Transaction,
+    };
 
     impl Transaction {
         pub fn signing_digest(&self) -> SigningDigest {

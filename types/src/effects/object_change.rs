@@ -20,10 +20,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    digests::ObjectDigest,
-    object::{Object, Owner, VersionDigest},
-};
+use crate::digests::ObjectDigest;
+use crate::object::{Object, Owner, VersionDigest};
 
 /// # IDOperation
 ///

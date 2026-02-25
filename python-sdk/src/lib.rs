@@ -7,7 +7,6 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use tokio::sync::Mutex;
-
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
@@ -684,8 +683,7 @@ impl PySomaClient {
         };
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            use types::metadata::ManifestAPI as _;
-            use types::metadata::MetadataAPI as _;
+            use types::metadata::{ManifestAPI as _, MetadataAPI as _};
 
             let state = client.get_latest_system_state().await.map_err(to_py_err)?;
             let registry = &state.model_registry();

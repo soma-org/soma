@@ -1,19 +1,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{
-    config::Config,
-    module::Module,
-    nn::{
-        Embedding, EmbeddingConfig, Initializer, LayerNorm, LayerNormConfig, Linear, LinearConfig,
-    },
-    tensor::{Int, Tensor, backend::Backend},
+use burn::config::Config;
+use burn::module::Module;
+use burn::nn::{
+    Embedding, EmbeddingConfig, Initializer, LayerNorm, LayerNormConfig, Linear, LinearConfig,
 };
+use burn::tensor::backend::Backend;
+use burn::tensor::{Int, Tensor};
 
+use crate::v1::modules::encoder::{Encoder, EncoderConfig};
 use crate::v1::{
     V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_NUM_LAYERS, V1_PWFF_HIDDEN_DIM,
     V1_SCALE_FACTOR, V1_VOCAB_SIZE,
-    modules::{encoder::Encoder, encoder::EncoderConfig},
 };
 
 #[derive(Config, Debug)]

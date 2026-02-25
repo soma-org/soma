@@ -9,28 +9,25 @@ use std::ops::Bound::Included;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
 use types::committee::{AuthorityIndex, VotingPower};
-use types::consensus::{
-    block::{
-        BlockAPI, BlockDigest, BlockRef, BlockTransactionVotes, Round, Slot, TestBlock,
-        Transaction, TransactionIndex, VerifiedBlock, genesis_blocks,
-    },
-    commit::CommittedSubDag,
-    context::Context,
+use types::consensus::block::{
+    BlockAPI, BlockDigest, BlockRef, BlockTransactionVotes, Round, Slot, TestBlock, Transaction,
+    TransactionIndex, VerifiedBlock, genesis_blocks,
 };
+use types::consensus::commit::CommittedSubDag;
+use types::consensus::context::Context;
 use types::storage::consensus::mem_store::MemStore;
 
-use crate::{
-    block_manager::BlockManager,
-    dag_state::DagState,
-    leader_schedule::{LeaderSchedule, LeaderSwapTable},
-    linearizer::Linearizer,
-    test_dag_builder::DagBuilder,
-    universal_committer::{
-        UniversalCommitter, universal_committer_builder::UniversalCommitterBuilder,
-    },
-};
+use crate::block_manager::BlockManager;
+use crate::dag_state::DagState;
+use crate::leader_schedule::{LeaderSchedule, LeaderSwapTable};
+use crate::linearizer::Linearizer;
+use crate::test_dag_builder::DagBuilder;
+use crate::universal_committer::UniversalCommitter;
+use crate::universal_committer::universal_committer_builder::UniversalCommitterBuilder;
 
 /// Test fixture that bundles all the consensus components needed for commit testing:
 /// DagState, UniversalCommitter, Linearizer, BlockManager.

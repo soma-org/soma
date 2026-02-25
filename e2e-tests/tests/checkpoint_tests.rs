@@ -14,13 +14,12 @@
 //! - test_checkpoint_contents_v2_alias_versions (Move/alias dependent)
 
 use std::time::Duration;
+
 use test_cluster::TestClusterBuilder;
 use tokio::time::sleep;
 use tracing::info;
-use types::{
-    effects::TransactionEffectsAPI,
-    transaction::{TransactionData, TransactionKind},
-};
+use types::effects::TransactionEffectsAPI;
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 /// Execute a coin transfer and verify it gets included in a checkpoint on all validators.

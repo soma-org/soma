@@ -2,15 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::SomaNode;
-use authority::authority::AuthorityState;
+use std::future::Future;
 use std::sync::Arc;
-use std::{future::Future, time::Duration};
+use std::time::Duration;
+
+use authority::authority::AuthorityState;
+use types::base::ConciseableName;
+use types::committee::{self, Committee, CommitteeTrait};
 use types::transaction::Transaction;
-use types::{
-    base::ConciseableName,
-    committee::{self, Committee, CommitteeTrait},
-};
+
+use super::SomaNode;
 
 /// Wrap SomaNode to allow correct access to SomaNode in simulator tests.
 pub struct SomaNodeHandle {

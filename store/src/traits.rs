@@ -2,10 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::TypedStoreError;
-use serde::{Serialize, de::DeserializeOwned};
+use std::borrow::Borrow;
+use std::error::Error;
 use std::ops::RangeBounds;
-use std::{borrow::Borrow, error::Error};
+
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+use crate::TypedStoreError;
 
 pub type DbIterator<'a, T> = Box<dyn Iterator<Item = Result<T, TypedStoreError>> + 'a>;
 

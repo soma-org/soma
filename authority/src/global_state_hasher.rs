@@ -2,9 +2,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use fastcrypto::hash::MultisetHash as _;
 use protocol_config::ProtocolConfig;
-use std::sync::Arc;
 use tracing::debug;
 use types::checkpoints::{CheckpointSequenceNumber, ECMHLiveObjectSetDigest, GlobalStateHash};
 use types::committee::EpochId;

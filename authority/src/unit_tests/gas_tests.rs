@@ -7,22 +7,19 @@ use std::sync::Arc;
 use fastcrypto::ed25519::Ed25519KeyPair;
 use futures::future::join_all;
 use tracing::info;
-use types::{
-    base::{SomaAddress, dbg_addr},
-    crypto::{SomaKeyPair, get_key_pair},
-    effects::{
-        ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
-    },
-    error::SomaError,
-    object::{Object, ObjectID, ObjectRef},
-    transaction::TransactionData,
-    unit_tests::utils::to_sender_signed_transaction,
+use types::base::{SomaAddress, dbg_addr};
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::effects::{
+    ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
 };
+use types::error::SomaError;
+use types::object::{Object, ObjectID, ObjectRef};
+use types::transaction::TransactionData;
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority::AuthorityState;
+use crate::authority_test_utils::send_and_confirm_transaction;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // Gas fee structure tests

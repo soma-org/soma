@@ -2,23 +2,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{
-    dag_state::DagState,
-    network::{NetworkClient, NetworkService},
-};
 use futures::StreamExt;
-
 use parking_lot::{Mutex, RwLock};
-use tokio::{task::JoinHandle, time::sleep};
+use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tracing::{debug, error, info};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockAPI as _, Round},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI as _, Round};
+use types::consensus::context::Context;
 use types::error::ConsensusError;
+
+use crate::dag_state::DagState;
+use crate::network::{NetworkClient, NetworkService};
 
 /// Subscriber manages the block stream subscriptions to other peers, taking care of retrying
 /// when subscription streams break. Blocks returned from the peer are sent to the authority

@@ -2,48 +2,40 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    base::SomaAddress,
-    checkpoints::CheckpointSequenceNumber,
-    committee::EpochId,
-    config::{
-        Config, certificate_deny_config::CertificateDenyConfig, local_ip_utils,
-        object_store_config::ObjectStoreConfig, rpc_config::RpcConfig,
-        transaction_deny_config::TransactionDenyConfig,
-        validator_client_monitor_config::ValidatorClientMonitorConfig,
-    },
-    crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair},
-    multiaddr::Multiaddr,
-    parameters::Parameters,
-    peer_id::PeerId,
-    supported_protocol_versions::SupportedProtocolVersions,
-};
-use anyhow::Result;
-use anyhow::anyhow;
-use fastcrypto::{
-    encoding::{Encoding, Hex},
-    traits::{EncodeDecodeBase64, KeyPair},
-};
+use std::collections::BTreeMap;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::ops::Mul;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+
+use anyhow::{Result, anyhow};
+use fastcrypto::encoding::{Encoding, Hex};
+use fastcrypto::traits::{EncodeDecodeBase64, KeyPair};
 use protocol_config::Chain;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use std::{
-    collections::BTreeMap,
-    net::SocketAddr,
-    num::NonZeroUsize,
-    ops::Mul,
-    path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
 use tracing::info;
 
-use super::{
-    genesis_config::{ValidatorGenesisConfig, ValidatorGenesisConfigBuilder},
-    network_config::NetworkConfig,
-    p2p_config::{P2pConfig, SeedPeer},
-    state_sync_config::StateSyncConfig,
-};
+use super::genesis_config::{ValidatorGenesisConfig, ValidatorGenesisConfigBuilder};
+use super::network_config::NetworkConfig;
+use super::p2p_config::{P2pConfig, SeedPeer};
+use super::state_sync_config::StateSyncConfig;
+use crate::base::SomaAddress;
+use crate::checkpoints::CheckpointSequenceNumber;
+use crate::committee::EpochId;
+use crate::config::certificate_deny_config::CertificateDenyConfig;
+use crate::config::object_store_config::ObjectStoreConfig;
+use crate::config::rpc_config::RpcConfig;
+use crate::config::transaction_deny_config::TransactionDenyConfig;
+use crate::config::validator_client_monitor_config::ValidatorClientMonitorConfig;
+use crate::config::{Config, local_ip_utils};
+use crate::crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, SomaKeyPair};
+use crate::multiaddr::Multiaddr;
+use crate::parameters::Parameters;
+use crate::peer_id::PeerId;
+use crate::supported_protocol_versions::SupportedProtocolVersions;
 
 /// Default commission rate of 2%
 pub const DEFAULT_COMMISSION_RATE: u64 = 200;
@@ -800,9 +792,10 @@ impl FullnodeConfigBuilder {
     }
 
     pub fn build(self, genesis: crate::genesis::Genesis, seed_peers: Vec<SeedPeer>) -> NodeConfig {
-        use crate::crypto::get_key_pair_from_rng;
         use fastcrypto::traits::KeyPair;
         use rand::rngs::OsRng;
+
+        use crate::crypto::get_key_pair_from_rng;
 
         let mut rng = OsRng;
 

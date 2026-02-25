@@ -1,15 +1,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Instant;
 
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use tonic_rustls::Channel;
 
-use crate::{crypto::NetworkPublicKey, multiaddr::Multiaddr, peer_id::PeerId};
-
 use super::{DisconnectReason, PeerEvent};
+use crate::crypto::NetworkPublicKey;
+use crate::multiaddr::Multiaddr;
+use crate::peer_id::PeerId;
 
 #[derive(Clone)]
 pub struct ActivePeers {

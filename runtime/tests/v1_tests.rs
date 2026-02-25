@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use blobs::{BlobPath, downloader::BlobDownloader};
+use blobs::BlobPath;
+use blobs::downloader::BlobDownloader;
 use burn::backend::NdArray;
 use burn::prelude::Backend;
 use burn::store::SafetensorsStore;

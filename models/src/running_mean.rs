@@ -1,7 +1,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{Tensor, prelude::Backend};
+use burn::Tensor;
+use burn::prelude::Backend;
 
 pub struct RunningMean<B: Backend, const D: usize> {
     running_mean: Option<Tensor<B, D>>,
@@ -34,8 +35,9 @@ impl<B: Backend, const D: usize> RunningMean<B, D> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use burn::backend::NdArray;
+
+    use super::*;
 
     type B = NdArray;
 

@@ -2,16 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use anyhow::bail;
+use fastcrypto::traits::ToFromBytes;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
 use crate::base::SomaAddress;
 use crate::crypto::{
     AuthorityPublicKey, AuthorityPublicKeyBytes, NetworkPublicKey, generate_proof_of_possession,
     verify_proof_of_possession,
 };
 use crate::multiaddr::Multiaddr;
-use anyhow::bail;
-use fastcrypto::traits::ToFromBytes;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 const MAX_VALIDATOR_METADATA_LENGTH: usize = 256;
 

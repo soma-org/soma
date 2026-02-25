@@ -5,14 +5,16 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockRef, BlockTimestampMs, Round, TestBlock, VerifiedBlock, genesis_blocks},
-    context::Context,
+use types::consensus::block::{
+    BlockRef, BlockTimestampMs, Round, TestBlock, VerifiedBlock, genesis_blocks,
 };
+use types::consensus::context::Context;
 
-use crate::{dag_state::DagState, test_dag_builder::DagBuilder};
+use crate::dag_state::DagState;
+use crate::test_dag_builder::DagBuilder;
 
 // todo: remove this once tests have been refactored to use DagBuilder/DagParser
 

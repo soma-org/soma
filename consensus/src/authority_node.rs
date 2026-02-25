@@ -2,30 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
-use crate::{
-    CommitConsumerArgs,
-    authority_service::AuthorityService,
-    block_manager::BlockManager,
-    block_verifier::SignedBlockVerifier,
-    commit_observer::CommitObserver,
-    commit_syncer::{CommitSyncer, CommitSyncerHandle},
-    commit_vote_monitor::CommitVoteMonitor,
-    core::{Core, CoreSignals},
-    core_thread::{ChannelCoreThreadDispatcher, CoreThreadHandle},
-    dag_state::DagState,
-    leader_schedule::LeaderSchedule,
-    leader_timeout::{LeaderTimeoutTask, LeaderTimeoutTaskHandle},
-    network::{NetworkManager, tonic_network::TonicManager},
-    proposed_block_handler::ProposedBlockHandler,
-    round_prober::{RoundProber, RoundProberHandle},
-    round_tracker::PeerRoundTracker,
-    subscriber::Subscriber,
-    synchronizer::{Synchronizer, SynchronizerHandle},
-    transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
-    transaction_certifier::TransactionCertifier,
-};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use protocol_config::ProtocolConfig;
@@ -36,6 +15,28 @@ use types::consensus::context::{Clock, Context};
 use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
 use types::parameters::Parameters;
 use types::storage::consensus::rocksdb_store::RocksDBStore;
+
+use crate::CommitConsumerArgs;
+use crate::authority_service::AuthorityService;
+use crate::block_manager::BlockManager;
+use crate::block_verifier::SignedBlockVerifier;
+use crate::commit_observer::CommitObserver;
+use crate::commit_syncer::{CommitSyncer, CommitSyncerHandle};
+use crate::commit_vote_monitor::CommitVoteMonitor;
+use crate::core::{Core, CoreSignals};
+use crate::core_thread::{ChannelCoreThreadDispatcher, CoreThreadHandle};
+use crate::dag_state::DagState;
+use crate::leader_schedule::LeaderSchedule;
+use crate::leader_timeout::{LeaderTimeoutTask, LeaderTimeoutTaskHandle};
+use crate::network::NetworkManager;
+use crate::network::tonic_network::TonicManager;
+use crate::proposed_block_handler::ProposedBlockHandler;
+use crate::round_prober::{RoundProber, RoundProberHandle};
+use crate::round_tracker::PeerRoundTracker;
+use crate::subscriber::Subscriber;
+use crate::synchronizer::{Synchronizer, SynchronizerHandle};
+use crate::transaction::{TransactionClient, TransactionConsumer, TransactionVerifier};
+use crate::transaction_certifier::TransactionCertifier;
 
 /// ConsensusAuthority is used by Sui to manage the lifetime of AuthorityNode.
 /// It hides the details of the implementation from the caller, MysticetiManager.

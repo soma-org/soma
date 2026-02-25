@@ -10,16 +10,14 @@ use std::sync::Arc;
 
 pub use acceptor::{TlsAcceptor, TlsConnectionInfo};
 pub use certgen::SelfSignedCertificate;
+use fastcrypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey};
+pub use rustls;
 use rustls::ClientConfig;
+use tokio_rustls::rustls::ServerConfig;
 pub use verifier::{
     AllowAll, AllowPublicKeys, Allower, ClientCertVerifier, ServerCertVerifier,
     public_key_from_certificate,
 };
-
-pub use rustls;
-
-use fastcrypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey};
-use tokio_rustls::rustls::ServerConfig;
 
 pub const SERVER_NAME: &str = "soma";
 
@@ -83,13 +81,13 @@ pub fn create_rustls_client_config(
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::*;
     use fastcrypto::ed25519::Ed25519KeyPair;
     use fastcrypto::traits::KeyPair;
     use rustls::client::danger::ServerCertVerifier as _;
-    use rustls::pki_types::ServerName;
-    use rustls::pki_types::UnixTime;
+    use rustls::pki_types::{ServerName, UnixTime};
     use rustls::server::danger::ClientCertVerifier as _;
+
+    use super::*;
 
     #[test]
     fn verify_allowall() {

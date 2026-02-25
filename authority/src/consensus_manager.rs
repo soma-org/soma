@@ -2,18 +2,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Instant;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use crate::consensus_adapter::{BlockStatusReceiver, ConsensusClient};
-use crate::consensus_handler::{ConsensusBlockHandler, MysticetiConsensusHandler};
-use crate::mysticeti_adapter::LazyMysticetiClient;
-use crate::{
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    consensus_adapter::{ConsensusAdapter, SubmitToConsensus},
-    consensus_handler::ConsensusHandlerInitializer,
-    consensus_validator::TxValidator,
-};
 use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
 use consensus::{CommitConsumerArgs, CommitConsumerMonitor, ConsensusAuthority};
@@ -22,20 +14,26 @@ use protocol_config::ProtocolVersion;
 use tokio::sync::{Mutex, broadcast};
 use tokio::time::{sleep, timeout};
 use tracing::{error, info};
-use types::committee::Committee;
-use types::consensus::ConsensusPosition;
+use types::committee::{Committee, EpochId};
+use types::config::node_config::{ConsensusConfig, NodeConfig};
 use types::consensus::commit::CommitIndex;
 use types::consensus::context::Clock;
+use types::consensus::{ConsensusPosition, ConsensusTransaction};
+use types::crypto::{NetworkKeyPair, ProtocolKeyPair};
+use types::error::SomaResult;
 use types::parameters::Parameters;
+use types::storage::consensus::Store;
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
-use types::{
-    committee::EpochId,
-    config::node_config::{ConsensusConfig, NodeConfig},
-    consensus::ConsensusTransaction,
-    crypto::{NetworkKeyPair, ProtocolKeyPair},
-    error::SomaResult,
-    storage::consensus::Store,
+
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::consensus_adapter::{
+    BlockStatusReceiver, ConsensusAdapter, ConsensusClient, SubmitToConsensus,
 };
+use crate::consensus_handler::{
+    ConsensusBlockHandler, ConsensusHandlerInitializer, MysticetiConsensusHandler,
+};
+use crate::consensus_validator::TxValidator;
+use crate::mysticeti_adapter::LazyMysticetiClient;
 #[derive(PartialEq)]
 enum Running {
     True(EpochId, ProtocolVersion),

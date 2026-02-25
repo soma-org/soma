@@ -1,16 +1,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use ndarray::ArrayD;
-use ndarray_rand::{RandomExt, rand_distr::Normal};
-use rand::{SeedableRng, distributions::Uniform, rngs::StdRng};
-
+use ndarray::{ArrayD, IxDyn};
+use ndarray_rand::RandomExt;
+use ndarray_rand::rand_distr::Normal;
 #[cfg(feature = "python")]
 use numpy::{PyArrayDyn, ToPyArray};
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
-
-use ndarray::IxDyn;
+use rand::SeedableRng;
+use rand::distributions::Uniform;
+use rand::rngs::StdRng;
 
 pub fn uniform_array(seed: u64, shape: &[usize], min: f32, max: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);

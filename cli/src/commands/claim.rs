@@ -3,17 +3,15 @@
 
 //! Claim command for claiming rewards from filled targets (`soma target claim`).
 
+use std::fmt::{self, Display, Formatter};
+
 use anyhow::{Result, bail};
 use clap::*;
 use colored::Colorize;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-
 use sdk::wallet_context::WalletContext;
-use types::{
-    object::ObjectID,
-    transaction::{ClaimRewardsArgs, TransactionKind},
-};
+use serde::Serialize;
+use types::object::ObjectID;
+use types::transaction::{ClaimRewardsArgs, TransactionKind};
 
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;

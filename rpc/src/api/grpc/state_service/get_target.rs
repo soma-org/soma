@@ -3,6 +3,9 @@
 
 //! GetTarget RPC handler - loads a Target shared object by ID.
 
+use prost_types::FieldMask;
+use types::object::ObjectID;
+
 use crate::api::RpcService;
 use crate::api::error::{ObjectNotFoundError, Result, RpcError};
 use crate::proto::google::rpc::bad_request::FieldViolation;
@@ -10,8 +13,6 @@ use crate::proto::soma::target::target_to_proto_with_id;
 use crate::proto::soma::{ErrorReason, GetTargetRequest, GetTargetResponse, Target};
 use crate::types::Address;
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
-use prost_types::FieldMask;
-use types::object::ObjectID;
 
 /// Default fields to return if no read_mask is specified.
 pub const READ_MASK_DEFAULT: &str = "id,status,generation_epoch,reward_pool,distance_threshold";

@@ -2,14 +2,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::BTreeSet,
-    fmt::Debug,
-    sync::{
-        Arc,
-        atomic::{AtomicU32, Ordering},
-    },
-};
+use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
@@ -17,14 +13,14 @@ use thiserror::Error;
 use tokio::sync::mpsc::{Receiver, Sender, WeakSender, channel};
 use tokio::sync::{oneshot, watch};
 use tracing::warn;
-use types::consensus::{
-    block::{BlockAPI as _, BlockRef, Round, VerifiedBlock},
-    commit::CertifiedCommits,
-    context::Context,
-};
+use types::consensus::block::{BlockAPI as _, BlockRef, Round, VerifiedBlock};
+use types::consensus::commit::CertifiedCommits;
+use types::consensus::context::Context;
 use types::error::{ConsensusError, ConsensusResult};
 
-use crate::{core::Core, core_thread::CoreError::Shutdown, dag_state::DagState};
+use crate::core::Core;
+use crate::core_thread::CoreError::Shutdown;
+use crate::dag_state::DagState;
 
 const CORE_THREAD_COMMANDS_CHANNEL_SIZE: usize = 2000;
 

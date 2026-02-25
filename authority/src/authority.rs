@@ -7,9 +7,10 @@ use std::fs::{self, File};
 use std::io::Write as _;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::str::FromStr as _;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{pin::Pin, sync::Arc};
 
 use arc_swap::{ArcSwap, Guard};
 use fastcrypto::encoding::{Base58, Encoding as _};
@@ -19,21 +20,23 @@ use parking_lot::Mutex;
 use protocol_config::{ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tap::TapFallible as _;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use tokio::sync::{mpsc::unbounded_channel, oneshot};
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::SYSTEM_STATE_OBJECT_ID;
-use types::base::{ConciseableName as _, FullObjectID};
+use types::base::{AuthorityName, ConciseableName as _, FullObjectID};
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
     CheckpointSequenceNumber, CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp,
     ECMHLiveObjectSetDigest, VerifiedCheckpoint,
 };
-use types::config::node_config::{ExpensiveSafetyCheckConfig, StateDebugDumpConfig};
+use types::committee::{Committee, EpochId};
+use types::config::node_config::{ExpensiveSafetyCheckConfig, NodeConfig, StateDebugDumpConfig};
 use types::consensus::AuthorityCapabilitiesV1;
+use types::crypto::{AuthoritySignInfo, AuthoritySignature, Signer};
 use types::digests::{
-    ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, ObjectDigest,
+    ChainIdentifier, CheckpointContentsDigest, CheckpointDigest, ObjectDigest, TransactionDigest,
     TransactionEffectsDigest,
 };
 use types::effects::{
@@ -41,43 +44,33 @@ use types::effects::{
     VerifiedSignedTransactionEffects,
 };
 use types::envelope::Message;
-use types::error::{ExecutionError, ExecutionResult};
+use types::error::{ExecutionError, ExecutionResult, SomaError, SomaResult};
 use types::execution::{ExecutionOrEarlyError, ExecutionOutput, get_early_execution_error};
 use types::full_checkpoint_content::ObjectSet;
-use types::messages_grpc::TransactionInfoRequest;
+use types::intent::{Intent, IntentScope};
+use types::messages_grpc::{
+    HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, TransactionInfoRequest,
+    TransactionInfoResponse, TransactionStatus,
+};
 use types::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
 use types::storage::InputKey;
+use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
 use types::supported_protocol_versions::SupportedProtocolVersions;
-use types::system_state::get_system_state;
-use types::system_state::{SystemState, epoch_start::EpochStartSystemStateTrait};
+use types::system_state::epoch_start::EpochStartSystemStateTrait;
+use types::system_state::{SystemState, get_system_state};
 use types::temporary_store::InnerTemporaryStore;
 use types::transaction::{
     CheckedInputObjects, InputObjects, ObjectReadResult, SenderSignedData, TransactionData,
-    TransactionKey,
+    TransactionKey, VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction,
+    VerifiedTransaction,
 };
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
 use types::transaction_outputs::{TransactionOutputs, WrittenObjects};
 use types::tx_fee::TransactionFee;
-use types::{
-    base::AuthorityName,
-    committee::{Committee, EpochId},
-    config::node_config::NodeConfig,
-    crypto::{AuthoritySignInfo, AuthoritySignature, Signer},
-    digests::TransactionDigest,
-    error::{SomaError, SomaResult},
-    intent::{Intent, IntentScope},
-    messages_grpc::{
-        HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, TransactionInfoResponse,
-        TransactionStatus,
-    },
-    transaction::{
-        VerifiedCertificate, VerifiedExecutableTransaction, VerifiedSignedTransaction,
-        VerifiedTransaction,
-    },
-};
 
-use crate::authority_per_epoch_store::{CertLockGuard, CertTxGuard};
+use crate::authority_client::NetworkAuthorityClient;
+use crate::authority_per_epoch_store::{AuthorityPerEpochStore, CertLockGuard, CertTxGuard};
 use crate::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
 use crate::authority_store::{AuthorityStore, ObjectLockStatus};
 use crate::authority_store_pruner::{
@@ -98,15 +91,10 @@ use crate::global_state_hasher::{GlobalStateHashStore, GlobalStateHasher};
 use crate::rpc_index::RpcIndexStore;
 use crate::shared_obj_version_manager::{AssignedVersions, Schedulable};
 use crate::stake_aggregator::StakeAggregator;
-use crate::start_epoch::EpochStartConfigTrait;
+use crate::start_epoch::{EpochStartConfigTrait, EpochStartConfiguration};
 use crate::transaction_input_loader::TransactionInputLoader;
 use crate::validator_tx_finalizer::ValidatorTxFinalizer;
-use crate::{
-    authority_client::NetworkAuthorityClient, authority_per_epoch_store::AuthorityPerEpochStore,
-    start_epoch::EpochStartConfiguration,
-};
 use crate::{consensus_quarantine, transaction_checks};
-use types::storage::committee_store::CommitteeStore;
 
 // #[cfg(test)]
 // #[path = "unit_tests/authority_tests.rs"]

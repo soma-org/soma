@@ -2,6 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::str::FromStr;
+
 use anyhow::{Result, anyhow, bail, ensure};
 use bip32::DerivationPath;
 use clap::{Parser, ValueEnum};
@@ -9,7 +11,6 @@ use sdk::wallet_context::WalletContext;
 use soma_keys::key_derive;
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::AccountKeystore;
-use std::str::FromStr;
 use types::base::SomaAddress;
 use types::crypto::SignatureScheme;
 

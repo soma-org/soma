@@ -6,23 +6,17 @@ use std::convert::Infallible;
 use std::time::Duration;
 
 use eyre::{Result, eyre};
-
 use http::HeaderName;
 use tokio_rustls::rustls::ServerConfig;
 use tonic::body::Body;
-use tonic::codegen::http::HeaderValue;
-use tonic::{
-    codegen::http::{Request, Response},
-    server::NamedService,
-};
+use tonic::codegen::http::{HeaderValue, Request, Response};
+use tonic::server::NamedService;
 use tower::{Service, ServiceBuilder, ServiceExt};
 use tower_http::propagate_header::PropagateHeaderLayer;
 use tower_http::set_header::SetRequestHeaderLayer;
+use types::client::Config;
 use types::grpc_timeout::GrpcTimeout;
-use types::{
-    client::Config,
-    multiaddr::{Multiaddr, Protocol},
-};
+use types::multiaddr::{Multiaddr, Protocol};
 
 pub const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 pub static GRPC_ENDPOINT_PATH_HEADER: HeaderName = HeaderName::from_static("grpc-path-req");

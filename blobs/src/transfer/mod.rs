@@ -78,15 +78,14 @@ impl<Src: ObjectStore, Dst: ObjectStore> BlobTransfer for StoreTransfer<Src, Dst
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::MIN_PART_SIZE;
     use fastcrypto::hash::HashFunction;
     use object_store::memory::InMemory;
-    use types::{
-        checksum::Checksum,
-        crypto::DefaultHash,
-        metadata::{Metadata, MetadataV1},
-    };
+    use types::checksum::Checksum;
+    use types::crypto::DefaultHash;
+    use types::metadata::{Metadata, MetadataV1};
+
+    use super::*;
+    use crate::MIN_PART_SIZE;
 
     fn setup_stores_and_data(data: &[u8]) -> (Arc<InMemory>, Arc<InMemory>, Checksum, Metadata) {
         let mut hasher = DefaultHash::new();

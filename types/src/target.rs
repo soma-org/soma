@@ -13,32 +13,32 @@
 //! - Epoch-scoped: all targets expire at epoch boundary
 //! - Spawn-on-fill: filling a target spawns 1 replacement
 
-use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom as _};
-use serde::{Deserialize, Serialize};
-
 use std::collections::BTreeMap;
 
 #[cfg(feature = "ml")]
-use crate::model_selection::{ModelSelectionData, select_models};
-use crate::{
-    base::SomaAddress,
-    challenge::ChallengeId,
-    committee::EpochId,
-    crypto::DefaultHash,
-    digests::{DataCommitment, TransactionDigest},
-    effects::ExecutionFailureStatus,
-    error::ExecutionResult,
-    model::ModelId,
-    object::ObjectID,
-    submission::SubmissionManifest,
-    system_state::model_registry::ModelRegistry,
-    system_state::target_state::TargetState,
-    system_state::validator::ValidatorSet,
-    tensor::SomaTensor,
-};
-#[cfg(feature = "ml")]
 use burn::backend::NdArray;
 use fastcrypto::hash::HashFunction as _;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom as _;
+use serde::{Deserialize, Serialize};
+
+use crate::base::SomaAddress;
+use crate::challenge::ChallengeId;
+use crate::committee::EpochId;
+use crate::crypto::DefaultHash;
+use crate::digests::{DataCommitment, TransactionDigest};
+use crate::effects::ExecutionFailureStatus;
+use crate::error::ExecutionResult;
+use crate::model::ModelId;
+#[cfg(feature = "ml")]
+use crate::model_selection::{ModelSelectionData, select_models};
+use crate::object::ObjectID;
+use crate::submission::SubmissionManifest;
+use crate::system_state::model_registry::ModelRegistry;
+use crate::system_state::target_state::TargetState;
+use crate::system_state::validator::ValidatorSet;
+use crate::tensor::SomaTensor;
 
 /// Type alias: targets are identified by their ObjectID.
 pub type TargetId = ObjectID;

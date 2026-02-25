@@ -7,20 +7,14 @@ use std::sync::Arc;
 use consensus::{TransactionVerifier, ValidationError};
 use tap::TapFallible;
 use tracing::{debug, info, instrument, warn};
-use types::error::SomaResult;
+use types::consensus::block::{BlockRef, TransactionIndex};
+use types::consensus::{ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind};
+use types::error::{SomaError, SomaResult};
 use types::transaction::Transaction;
-use types::{
-    consensus::{
-        ConsensusPosition, ConsensusTransaction, ConsensusTransactionKind,
-        block::{BlockRef, TransactionIndex},
-    },
-    error::SomaError,
-};
 
-use crate::{
-    authority::AuthorityState, authority_per_epoch_store::AuthorityPerEpochStore,
-    checkpoints::CheckpointServiceNotify,
-};
+use crate::authority::AuthorityState;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::checkpoints::CheckpointServiceNotify;
 
 /// Allows verifying the validity of transactions
 #[derive(Clone)]

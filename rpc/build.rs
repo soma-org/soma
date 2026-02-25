@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // build.rs
-use prost_types::FileDescriptorSet;
-use protox::prost::Message as _;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+use prost_types::FileDescriptorSet;
+use protox::prost::Message as _;
 
 // Include your build utilities as modules
 mod build_utils {

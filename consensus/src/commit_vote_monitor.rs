@@ -5,12 +5,9 @@
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-
-use types::consensus::{
-    block::{BlockAPI as _, VerifiedBlock},
-    commit::{CommitIndex, GENESIS_COMMIT_INDEX},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI as _, VerifiedBlock};
+use types::consensus::commit::{CommitIndex, GENESIS_COMMIT_INDEX};
+use types::consensus::context::Context;
 
 /// Monitors the progress of consensus commits across the network.
 pub(crate) struct CommitVoteMonitor {

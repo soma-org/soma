@@ -4,18 +4,18 @@
 
 use std::collections::BTreeMap;
 
-use crate::{proto::TryFromProtoError, types::*};
 use base64::Engine;
-use fastcrypto::{
-    bls12381::min_sig::BLS12381PublicKey, serde_helpers::BytesRepresentation, traits::ToFromBytes,
-};
+use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
+use fastcrypto::serde_helpers::BytesRepresentation;
+use fastcrypto::traits::ToFromBytes;
 use tap::Pipe;
 use tracing::info;
-use types::{
-    crypto::{DIGEST_LENGTH, SomaSignature},
-    metadata::{ManifestAPI, MetadataAPI as _},
-    multiaddr::Multiaddr,
-};
+use types::crypto::{DIGEST_LENGTH, SomaSignature};
+use types::metadata::{ManifestAPI, MetadataAPI as _};
+use types::multiaddr::Multiaddr;
+
+use crate::proto::TryFromProtoError;
+use crate::types::*;
 
 #[derive(Debug)]
 pub struct SdkTypeConversionError(String);

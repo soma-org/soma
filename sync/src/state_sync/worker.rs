@@ -8,15 +8,13 @@
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use data_ingestion::Worker;
-
-use types::{
-    checkpoints::{
-        CertifiedCheckpointSummary, FullCheckpointContents, VerifiedCheckpoint,
-        VerifiedCheckpointContents,
-    },
-    full_checkpoint_content::CheckpointData,
-    storage::{verify_checkpoint, write_store::WriteStore},
+use types::checkpoints::{
+    CertifiedCheckpointSummary, FullCheckpointContents, VerifiedCheckpoint,
+    VerifiedCheckpointContents,
 };
+use types::full_checkpoint_content::CheckpointData;
+use types::storage::verify_checkpoint;
+use types::storage::write_store::WriteStore;
 pub(crate) struct StateSyncWorker<S>(pub(crate) S);
 
 #[async_trait]

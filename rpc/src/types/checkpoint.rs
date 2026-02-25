@@ -2,16 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::types::TransactionFee;
-use crate::types::ValidatorNetworkMetadata;
-
-use super::Digest;
-use super::Object;
-use super::SignedTransaction;
-use super::TransactionEffects;
-use super::UserSignature;
-use super::ValidatorAggregatedSignature;
-use super::ValidatorCommittee;
+use super::{
+    Digest, Object, SignedTransaction, TransactionEffects, UserSignature,
+    ValidatorAggregatedSignature, ValidatorCommittee,
+};
+use crate::types::{TransactionFee, ValidatorNetworkMetadata};
 
 pub type CheckpointSequenceNumber = u64;
 pub type CheckpointTimestamp = u64;
@@ -150,20 +145,16 @@ pub struct CheckpointTransaction {
 }
 
 mod serialization {
-    use super::*;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    use serde::Deserialize;
-    use serde::Deserializer;
-    use serde::Serialize;
-    use serde::Serializer;
+    use super::*;
 
     impl Serialize for CheckpointContents {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
-            use serde::ser::SerializeSeq;
-            use serde::ser::SerializeTupleVariant;
+            use serde::ser::{SerializeSeq, SerializeTupleVariant};
 
             #[derive(serde_derive::Serialize)]
             struct Digests<'a> {

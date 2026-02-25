@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 #[cfg(feature = "ml")]
 use burn::store::SafetensorsStoreError;
 use fastcrypto::error;
-use fastcrypto::{error::FastCryptoError, hash::Digest};
+use fastcrypto::error::FastCryptoError;
+use fastcrypto::hash::Digest;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "storage")]
 use store::TypedStoreError;
@@ -15,24 +16,19 @@ use strum::IntoStaticStr;
 use thiserror::Error;
 use tonic::Status;
 
+use crate::base::AuthorityName;
 use crate::checkpoints::CheckpointSequenceNumber;
-use crate::committee::{AuthorityIndex, Epoch, Stake};
-use crate::consensus::{
-    block::{BlockRef, Round},
-    commit::{Commit, CommitIndex},
-};
-
+use crate::committee::{AuthorityIndex, Committee, Epoch, EpochId, Stake, VotingPower};
+use crate::consensus::block::{BlockRef, Round};
+use crate::consensus::commit::{Commit, CommitIndex};
 use crate::crypto::NetworkPublicKey;
-use crate::digests::CheckpointContentsDigest;
-use crate::transaction::TransactionKind;
-use crate::{
-    base::AuthorityName,
-    committee::{Committee, EpochId, VotingPower},
-    digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest},
-    effects::ExecutionFailureStatus,
-    object::{ObjectID, ObjectRef, Version},
-    peer_id::PeerId,
+use crate::digests::{
+    CheckpointContentsDigest, ObjectDigest, TransactionDigest, TransactionEffectsDigest,
 };
+use crate::effects::ExecutionFailureStatus;
+use crate::object::{ObjectID, ObjectRef, Version};
+use crate::peer_id::PeerId;
+use crate::transaction::TransactionKind;
 
 pub const TRANSACTION_NOT_FOUND_MSG_PREFIX: &str = "Could not find the referenced transaction";
 pub const TRANSACTIONS_NOT_FOUND_MSG_PREFIX: &str = "Could not find the referenced transactions";

@@ -19,12 +19,10 @@
 
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    config::node_config::RunWithRange,
-    effects::TransactionEffectsAPI,
-    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType},
-    transaction::{TransactionData, TransactionKind},
-};
+use types::config::node_config::RunWithRange;
+use types::effects::TransactionEffectsAPI;
+use types::quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType};
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 /// Iterate validator handles and assert that transaction_orchestrator() returns None.

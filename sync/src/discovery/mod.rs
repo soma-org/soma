@@ -5,31 +5,27 @@
 //
 // Modified for the SOMA project.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use fastcrypto::{ed25519::Ed25519PublicKey, traits::VerifyingKey};
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::traits::VerifyingKey;
 use futures::{StreamExt, channel};
 use parking_lot::RwLock;
-use tokio::{
-    sync::{mpsc, oneshot, watch},
-    task::{AbortHandle, JoinSet},
-};
+use tokio::sync::{mpsc, oneshot, watch};
+use tokio::task::{AbortHandle, JoinSet};
 use tonic::{Request, Response};
 use tracing::{debug, info};
-use types::{
-    config::p2p_config::{DiscoveryConfig, P2pConfig, SeedPeer},
-    crypto::NetworkKeyPair,
-    multiaddr::Multiaddr,
-    peer_id::PeerId,
-    sync::{
-        GetKnownPeersRequest, GetKnownPeersResponse, NodeInfo, SignedNodeInfo,
-        VerifiedSignedNodeInfo,
-    },
-    sync::{PeerEvent, active_peers::ActivePeers, channel_manager::ChannelManagerRequest},
+use types::config::p2p_config::{DiscoveryConfig, P2pConfig, SeedPeer};
+use types::crypto::NetworkKeyPair;
+use types::multiaddr::Multiaddr;
+use types::peer_id::PeerId;
+use types::sync::active_peers::ActivePeers;
+use types::sync::channel_manager::ChannelManagerRequest;
+use types::sync::{
+    GetKnownPeersRequest, GetKnownPeersResponse, NodeInfo, PeerEvent, SignedNodeInfo,
+    VerifiedSignedNodeInfo,
 };
 
 use crate::tonic_gen::p2p_client::P2pClient;

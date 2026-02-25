@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::convert::Infallible;
+
 use tonic::server::NamedService;
 use tower::Service;
 

@@ -5,19 +5,16 @@
 #![allow(dead_code)]
 
 mod well_known_types;
-pub use well_known_types::*;
+use std::borrow::Cow;
+use std::str::FromStr;
 
 /// Re-export base64
 pub use base64;
-
 use base64::Engine;
-use base64::engine::DecodePaddingMode;
-use base64::engine::GeneralPurpose;
-use base64::engine::GeneralPurposeConfig;
+use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use serde::Deserialize;
 use serde::de::Visitor;
-use std::borrow::Cow;
-use std::str::FromStr;
+pub use well_known_types::*;
 
 /// Used to parse a number from either a string or its raw representation
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Hash, Ord, Eq)]
@@ -104,12 +101,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use base64::Engine;
     use bytes::Bytes;
     use rand::prelude::*;
-    use serde::de::value::BorrowedStrDeserializer;
-    use serde::de::value::Error;
+    use serde::de::value::{BorrowedStrDeserializer, Error};
+
+    use super::*;
 
     #[test]
     fn test_bytes() {

@@ -4,10 +4,12 @@
 
 use std::ops::RangeInclusive;
 
-use crate::{crypto::DefaultHash, digests::Digest};
 use fastcrypto::hash::HashFunction;
 pub use protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
 use serde::{Deserialize, Serialize};
+
+use crate::crypto::DefaultHash;
+use crate::digests::Digest;
 
 /// Models the set of protocol versions supported by a validator.
 /// The `sui-node` binary will always use the SYSTEM_DEFAULT constant, but for testing we need

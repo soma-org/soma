@@ -9,11 +9,8 @@ pub mod rocksdb_store;
 use std::collections::BTreeMap;
 
 use crate::committee::AuthorityIndex;
-use crate::consensus::block::{BlockRef, Round, TransactionIndex};
-use crate::consensus::{
-    block::VerifiedBlock,
-    commit::{CommitIndex, CommitInfo, CommitRange, CommitRef, TrustedCommit},
-};
+use crate::consensus::block::{BlockRef, Round, TransactionIndex, VerifiedBlock};
+use crate::consensus::commit::{CommitIndex, CommitInfo, CommitRange, CommitRef, TrustedCommit};
 use crate::error::ConsensusResult;
 
 /// A common interface for consensus storage.

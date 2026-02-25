@@ -1,22 +1,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::{self, Display, Formatter};
+
 use anyhow::{Result, anyhow};
 use clap::*;
 use colored::Colorize;
 use rpc::proto::soma::ListTargetsRequest;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-use tabled::{
-    builder::Builder as TableBuilder,
-    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
-};
-
 use sdk::wallet_context::WalletContext;
-use types::{
-    object::ObjectID,
-    target::{TargetId, TargetStatus, TargetV1},
-};
+use serde::Serialize;
+use tabled::builder::Builder as TableBuilder;
+use tabled::settings::style::HorizontalLine;
+use tabled::settings::{Panel as TablePanel, Style as TableStyle};
+use types::object::ObjectID;
+use types::target::{TargetId, TargetStatus, TargetV1};
 
 use super::claim::ClaimCommand;
 use super::data::DataCommand;

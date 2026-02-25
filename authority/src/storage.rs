@@ -2,51 +2,35 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
+use parking_lot::Mutex;
+use store::TypedStoreError;
+use tap::{Pipe as _, TapFallible as _};
+use tracing::error;
+use types::base::SomaAddress;
+use types::checkpoints::{
+    CheckpointSequenceNumber, EndOfEpochData, FullCheckpointContents, VerifiedCheckpoint,
+    VerifiedCheckpointContents,
+};
+use types::committee::{Committee, EpochId};
+use types::digests::{CheckpointContentsDigest, CheckpointDigest, TransactionDigest};
+use types::effects::TransactionEffects;
+use types::object::{Object, ObjectID, ObjectType};
+use types::storage::ObjectKey;
+use types::storage::committee_store::CommitteeStore;
+use types::storage::object_store::ObjectStore;
+use types::storage::read_store::{
+    BalanceInfo, ChallengeInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader, TargetInfo,
+};
+use types::storage::storage_error::{Error as StorageError, Result};
+use types::storage::write_store::WriteStore;
+use types::transaction::VerifiedTransaction;
+
 use crate::authority::AuthorityState;
 use crate::cache::ExecutionCacheTraitPointers;
 use crate::checkpoints::CheckpointStore;
-use crate::rpc_index::OwnerIndexInfo;
-use crate::rpc_index::OwnerIndexKey;
-use crate::rpc_index::RpcIndexStore;
-use parking_lot::Mutex;
-use store::TypedStoreError;
-use tap::Pipe as _;
-use tap::TapFallible as _;
-use types::base::SomaAddress;
-use types::checkpoints::EndOfEpochData;
-use types::object::ObjectID;
-use types::object::ObjectType;
-use types::storage::read_store::BalanceInfo;
-use types::storage::read_store::ChallengeInfo;
-use types::storage::read_store::OwnedObjectInfo;
-use types::storage::read_store::RpcIndexes;
-use types::storage::read_store::RpcStateReader;
-use types::storage::read_store::TargetInfo;
-
-use std::sync::Arc;
-use tracing::error;
-use types::checkpoints::CheckpointSequenceNumber;
-use types::checkpoints::FullCheckpointContents;
-use types::checkpoints::VerifiedCheckpoint;
-use types::checkpoints::VerifiedCheckpointContents;
-
-use types::digests::CheckpointContentsDigest;
-use types::digests::CheckpointDigest;
-
-use types::storage::committee_store::CommitteeStore;
-
-use types::storage::storage_error::Error as StorageError;
-use types::storage::storage_error::Result;
-use types::{
-    committee::{Committee, EpochId},
-    digests::TransactionDigest,
-    effects::TransactionEffects,
-    object::Object,
-    storage::{
-        ObjectKey, object_store::ObjectStore, read_store::ReadStore, write_store::WriteStore,
-    },
-    transaction::VerifiedTransaction,
-};
+use crate::rpc_index::{OwnerIndexInfo, OwnerIndexKey, RpcIndexStore};
 #[derive(Clone)]
 pub struct RocksDbStore {
     cache_traits: ExecutionCacheTraitPointers,

@@ -14,25 +14,21 @@ use staking::StakingExecutor;
 use submission::SubmissionExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    committee::EpochId,
-    digests::TransactionDigest,
-    effects::{
-        ExecutionFailureStatus, ExecutionStatus, TransactionEffects,
-        object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut},
-    },
-    error::{ExecutionError, ExecutionResult, SomaError, SomaResult},
-    execution::ExecutionOrEarlyError,
-    object::{Object, ObjectID, ObjectRef, Version},
-    storage::object_store::ObjectStore,
-    system_state::FeeParameters,
-    temporary_store::{self, InnerTemporaryStore, SharedInput, TemporaryStore},
-    transaction::{
-        CheckedInputObjects, InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind,
-    },
-    tx_fee::TransactionFee,
+use types::base::SomaAddress;
+use types::committee::EpochId;
+use types::digests::TransactionDigest;
+use types::effects::object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
+use types::effects::{ExecutionFailureStatus, ExecutionStatus, TransactionEffects};
+use types::error::{ExecutionError, ExecutionResult, SomaError, SomaResult};
+use types::execution::ExecutionOrEarlyError;
+use types::object::{Object, ObjectID, ObjectRef, Version};
+use types::storage::object_store::ObjectStore;
+use types::system_state::FeeParameters;
+use types::temporary_store::{self, InnerTemporaryStore, SharedInput, TemporaryStore};
+use types::transaction::{
+    CheckedInputObjects, InputObjectKind, InputObjects, ObjectReadResultKind, TransactionKind,
 };
+use types::tx_fee::TransactionFee;
 use validator::ValidatorExecutor;
 
 mod challenge;

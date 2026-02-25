@@ -3,13 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use serde::{Deserialize, Serialize};
-use types::{
-    checkpoints::{CheckpointSummary, CheckpointTimestamp},
-    committee::EpochId,
-    digests::CheckpointDigest,
-    envelope::Message as _,
-    system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait},
-};
+use types::checkpoints::{CheckpointSummary, CheckpointTimestamp};
+use types::committee::EpochId;
+use types::digests::CheckpointDigest;
+use types::envelope::Message as _;
+use types::system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait};
 
 pub trait EpochStartConfigTrait {
     fn epoch_start_state(&self) -> &EpochStartSystemState;

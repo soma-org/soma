@@ -2,12 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::io::Read;
+use std::marker::PhantomData;
+
 use bytes::{Buf, BufMut};
-use std::{io::Read, marker::PhantomData};
-use tonic::{
-    Status,
-    codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder},
-};
+use tonic::Status;
+use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 
 #[derive(Debug)]
 pub struct BcsEncoder<T>(PhantomData<T>);

@@ -1,8 +1,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::data::dataset::Dataset;
 use std::sync::Arc;
+
+use burn::data::dataset::Dataset;
 
 pub const PAD_TOKEN_ID: u16 = 256;
 pub const EOS_TOKEN_ID: u16 = 257;

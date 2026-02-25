@@ -2,62 +2,53 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::AsRef;
+use std::net::SocketAddr;
+use std::string::ToString;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use futures::Future;
+// #[cfg(test)]
+// use crate::test_authority_clients::MockAuthorityApi;
+use futures::StreamExt;
+use futures::future::BoxFuture;
+use futures::stream::FuturesUnordered;
+use thiserror::Error;
+use tokio::time::{sleep, timeout};
+use tracing::{Instrument, debug, error, instrument, trace, trace_span, warn};
+use types::base::{ConciseableName, *};
+use types::client::Config;
+use types::committee::{
+    Committee, CommitteeTrait, CommitteeWithNetworkMetadata, EpochId, StakeUnit,
+};
+use types::config::network_config::NetworkConfig;
+use types::crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo};
+use types::digests::{TransactionDigest, TransactionEffectsDigest};
+use types::effects::{
+    CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects,
+    VerifiedCertifiedTransactionEffects,
+};
+use types::envelope::Message;
+use types::error::{SomaError, SomaResult};
+use types::genesis::Genesis;
+use types::messages_grpc::{
+    HandleCertificateRequest, HandleCertificateResponse, ObjectInfoRequest,
+};
+use types::object::{Object, ObjectID, ObjectRef};
+use types::quorum_driver::{GroupedErrors, PlainTransactionInfoResponse, QuorumDriverResponse};
+use types::storage::committee_store::CommitteeStore;
+use types::system_state::epoch_start::{EpochStartSystemState, EpochStartSystemStateTrait};
+use types::system_state::{SystemState, SystemStateTrait};
+use types::transaction::*;
+
 use crate::authority_client::{
     AuthorityAPI, NetworkAuthorityClient, make_authority_clients_with_timeout_config,
     make_network_authority_clients_with_network_config,
 };
 use crate::safe_client::SafeClient;
-// #[cfg(test)]
-// use crate::test_authority_clients::MockAuthorityApi;
-use futures::StreamExt;
-use std::convert::AsRef;
-use std::net::SocketAddr;
-use thiserror::Error;
-use tracing::{Instrument, debug, error, instrument, trace, trace_span, warn};
-use types::client::Config;
-use types::config::network_config::NetworkConfig;
-use types::crypto::{AuthorityPublicKeyBytes, AuthoritySignInfo};
-use types::digests::{TransactionDigest, TransactionEffectsDigest};
-use types::envelope::Message;
-use types::genesis::Genesis;
-use types::object::{Object, ObjectRef};
-use types::quorum_driver::{GroupedErrors, PlainTransactionInfoResponse, QuorumDriverResponse};
-use types::system_state::epoch_start::EpochStartSystemStateTrait;
-use types::system_state::{SystemState, SystemStateTrait};
-use types::{
-    base::*,
-    committee::Committee,
-    error::{SomaError, SomaResult},
-    transaction::*,
-};
-
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator, StakeAggregator};
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::string::ToString;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::sleep;
-use types::committee::{CommitteeWithNetworkMetadata, EpochId, StakeUnit};
-use types::effects::{
-    CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects,
-    VerifiedCertifiedTransactionEffects,
-};
-use types::messages_grpc::{
-    HandleCertificateRequest, HandleCertificateResponse, ObjectInfoRequest,
-};
-use types::object::ObjectID;
-use types::storage::committee_store::CommitteeStore;
-use types::system_state::epoch_start::EpochStartSystemState;
-
-use futures::Future;
-use futures::{future::BoxFuture, stream::FuturesUnordered};
-
-use std::collections::BTreeSet;
-use std::time::Instant;
-use types::base::ConciseableName;
-use types::committee::CommitteeTrait;
-
-use tokio::time::timeout;
 
 pub const DEFAULT_RETRIES: usize = 4;
 

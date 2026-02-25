@@ -1,12 +1,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{
-    Tensor,
-    data::dataloader::batcher::Batcher,
-    prelude::Backend,
-    tensor::{Int, TensorData},
-};
+use burn::Tensor;
+use burn::data::dataloader::batcher::Batcher;
+use burn::prelude::Backend;
+use burn::tensor::{Int, TensorData};
 
 use crate::v1::data::dataset::{ByteSequenceItem, PAD_TOKEN_ID};
 
@@ -64,11 +62,14 @@ impl<B: Backend> Batcher<B, ByteSequenceItem, ByteSequenceBatch<B>> for ByteSequ
 
 #[cfg(test)]
 mod tests {
-    use crate::v1::data::dataset::ByteSequenceDataset;
+    use std::sync::Arc;
+
+    use burn::backend::NdArray;
+    use burn::data::dataset::Dataset;
+    use burn::tensor::Device;
 
     use super::*;
-    use burn::{backend::NdArray, data::dataset::Dataset, tensor::Device};
-    use std::sync::Arc;
+    use crate::v1::data::dataset::ByteSequenceDataset;
 
     type TestBackend = NdArray<f32>;
 

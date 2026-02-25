@@ -1,18 +1,23 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE};
+use std::collections::HashMap;
+use std::ops::Range;
+use std::sync::Arc;
+use std::time::Duration;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use fastcrypto::hash::HashFunction;
 use object_store::{MultipartUpload, ObjectStore, PutPayload};
-use std::{collections::HashMap, ops::Range, sync::Arc, time::Duration};
-use tokio::{
-    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
-    task::{JoinHandle, JoinSet},
-};
-use types::{checksum::Checksum, crypto::DefaultHash, error::BlobError, metadata::Metadata};
-use types::{error::BlobResult, metadata::MetadataAPI};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::task::{JoinHandle, JoinSet};
+use types::checksum::Checksum;
+use types::crypto::DefaultHash;
+use types::error::{BlobError, BlobResult};
+use types::metadata::{Metadata, MetadataAPI};
+
+use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE};
 
 #[async_trait]
 pub(crate) trait BlobReader: Send + Sync {
@@ -299,15 +304,15 @@ impl BlobEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
     use fastcrypto::hash::HashFunction;
     use object_store::memory::InMemory;
-    use std::sync::Arc;
-    use types::{
-        checksum::Checksum,
-        crypto::DefaultHash,
-        metadata::{Metadata, MetadataV1},
-    };
+    use types::checksum::Checksum;
+    use types::crypto::DefaultHash;
+    use types::metadata::{Metadata, MetadataV1};
+
+    use super::*;
 
     #[test]
     fn compute_timeout_has_minimum_floor() {

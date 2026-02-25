@@ -2,13 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
 use crate::base::SomaAddress;
 use crate::crypto::{
     AuthenticatorTrait, GenericSignature, Signature, SomaKeyPair, get_key_pair_from_rng,
 };
 use crate::intent::{Intent, IntentMessage, PersonalMessage};
 use crate::multisig::{MultiSig, MultiSigPublicKey};
-use rand::{SeedableRng, rngs::StdRng};
 
 /// Helper: generate N Ed25519 key pairs from a deterministic seed.
 fn ed25519_keys(n: usize) -> Vec<SomaKeyPair> {

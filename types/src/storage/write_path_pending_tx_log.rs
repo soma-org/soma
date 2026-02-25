@@ -10,14 +10,16 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use parking_lot::Mutex;
+use store::DBMapUtils;
+use store::rocks::DBMap;
+use store::traits::Map;
+
 use crate::crypto::EmptySignInfo;
 use crate::digests::TransactionDigest;
 use crate::envelope::TrustedEnvelope;
 use crate::error::{SomaError, SomaResult};
 use crate::transaction::{SenderSignedData, VerifiedTransaction};
-use parking_lot::Mutex;
-use store::DBMapUtils;
-use store::{rocks::DBMap, traits::Map};
 
 #[derive(DBMapUtils)]
 struct WritePathPendingTransactionTable {

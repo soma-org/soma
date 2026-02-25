@@ -11,21 +11,18 @@
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    config::network_config::ConfigBuilder,
-    crypto::{SomaKeyPair, get_key_pair},
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    object::{Object, ObjectID},
-    transaction::{TransactionData, TransactionKind, UpdateValidatorMetadataArgs},
-    unit_tests::utils::to_sender_signed_transaction,
-};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::config::network_config::ConfigBuilder;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
+use types::object::{Object, ObjectID};
+use types::transaction::{TransactionData, TransactionKind, UpdateValidatorMetadataArgs};
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority::AuthorityState;
+use crate::authority_test_utils::send_and_confirm_transaction_;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // Helper: build authority state with access to validator keys

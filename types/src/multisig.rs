@@ -2,33 +2,31 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::intent::IntentMessage;
-use crate::{
-    crypto::{AuthenticatorTrait, GenericSignature},
-    crypto::{CompressedSignature, DefaultHash, SignatureScheme},
-    error::SomaError,
-};
+use std::hash::{Hash, Hasher};
+use std::str::FromStr;
+use std::sync::Arc;
+
 pub use enum_dispatch::enum_dispatch;
-use fastcrypto::{
-    ed25519::Ed25519PublicKey,
-    encoding::{Base64, Encoding},
-    error::FastCryptoError,
-    hash::HashFunction,
-    secp256k1::Secp256k1PublicKey,
-    secp256r1::Secp256r1PublicKey,
-    traits::{EncodeDecodeBase64, ToFromBytes, VerifyingKey},
-};
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::encoding::{Base64, Encoding};
+use fastcrypto::error::FastCryptoError;
+use fastcrypto::hash::HashFunction;
+use fastcrypto::secp256k1::Secp256k1PublicKey;
+use fastcrypto::secp256r1::Secp256r1PublicKey;
+use fastcrypto::traits::{EncodeDecodeBase64, ToFromBytes, VerifyingKey};
 use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use std::{
-    hash::{Hash, Hasher},
-    str::FromStr,
-    sync::Arc,
-};
 
-use crate::{base::SomaAddress, committee::EpochId, crypto::PublicKey};
+use crate::base::SomaAddress;
+use crate::committee::EpochId;
+use crate::crypto::{
+    AuthenticatorTrait, CompressedSignature, DefaultHash, GenericSignature, PublicKey,
+    SignatureScheme,
+};
+use crate::error::SomaError;
+use crate::intent::IntentMessage;
 
 #[cfg(test)]
 #[path = "unit_tests/multisig_tests.rs"]

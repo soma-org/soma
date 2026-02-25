@@ -2,12 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use lru::LruCache;
-use parking_lot::RwLock;
 use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+
+use lru::LruCache;
+use parking_lot::RwLock;
 use tracing::debug;
 use types::digests::TransactionDigest;
 use types::traffic_control::Weight;

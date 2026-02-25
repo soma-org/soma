@@ -34,15 +34,12 @@
 //! - Verification obligation pattern for efficient batch verification
 //! - Serialization/deserialization with safety checks
 
-use crate::base::{AuthorityName, ConciseableName, SomaAddress};
-use crate::committee::{Committee, CommitteeTrait, EpochId, VotingPower};
-use crate::error::{SomaError, SomaResult};
-use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::multisig::MultiSig;
-use crate::serde::Readable;
-use crate::serde::SomaBitmap;
-use anyhow::{Error, anyhow};
 use core::hash::Hash;
+use std::collections::BTreeMap;
+use std::fmt::{Debug, Display, Formatter};
+use std::str::FromStr;
+
+use anyhow::{Error, anyhow};
 use derive_more::{AsMut, AsRef, From};
 use enum_dispatch::enum_dispatch;
 use eyre::eyre;
@@ -54,27 +51,29 @@ use fastcrypto::ed25519::{
     self, Ed25519KeyPair, Ed25519PublicKey, Ed25519PublicKeyAsBytes, Ed25519Signature,
     Ed25519SignatureAsBytes,
 };
-use fastcrypto::encoding::{Base64, Bech32};
-use fastcrypto::encoding::{Encoding, Hex};
+use fastcrypto::encoding::{Base64, Bech32, Encoding, Hex};
 use fastcrypto::error::{FastCryptoError, FastCryptoResult};
 use fastcrypto::hash::{Blake2b256, HashFunction};
-pub use fastcrypto::traits::KeyPair as KeypairTraits;
-pub use fastcrypto::traits::Signer;
 pub use fastcrypto::traits::{
-    AggregateAuthenticator, Authenticator, EncodeDecodeBase64, SigningKey,
+    AggregateAuthenticator, Authenticator, EncodeDecodeBase64, KeyPair as KeypairTraits, Signer,
+    SigningKey,
 };
 use fastcrypto::traits::{ToFromBytes, VerifyingKey};
-use rand::rngs::OsRng;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::SeedableRng;
+use rand::rngs::{OsRng, StdRng};
 use roaring::RoaringBitmap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{Bytes, serde_as};
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Display, Formatter};
-use std::str::FromStr;
 use strum::EnumString;
 use tracing::{instrument, warn};
+
+use crate::base::{AuthorityName, ConciseableName, SomaAddress};
+use crate::committee::{Committee, CommitteeTrait, EpochId, VotingPower};
+use crate::error::{SomaError, SomaResult};
+use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::multisig::MultiSig;
+use crate::serde::{Readable, SomaBitmap};
 
 /// Default hash function used throughout the SOMA blockchain
 ///

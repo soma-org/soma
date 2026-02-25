@@ -1,9 +1,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::borrow;
+
 use burn::tensor::TensorData;
 use ndarray::ArrayD;
-use std::borrow;
 use types::error::ModelResult;
 
 pub trait IntoTensorData {

@@ -2,15 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use crate::{
-    base::SomaAddress,
-    object::{Object, ObjectID, ObjectRef, ObjectType, Version},
-    storage::WriteKind,
-};
-
-use super::{ObjectKey, storage_error::Result};
+use super::ObjectKey;
+use super::storage_error::Result;
+use crate::base::SomaAddress;
+use crate::object::{Object, ObjectID, ObjectRef, ObjectType, Version};
+use crate::storage::WriteKind;
 
 pub trait ObjectStore {
     fn get_object(&self, object_id: &ObjectID) -> Option<Object>;

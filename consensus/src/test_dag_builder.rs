@@ -2,29 +2,28 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    ops::{Bound::Included, RangeInclusive},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashSet};
+use std::ops::Bound::Included;
+use std::ops::RangeInclusive;
+use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom, thread_rng};
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng, thread_rng};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{
-        BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, BlockTransactionVotes, Round, Slot,
-        TestBlock, Transaction, TransactionIndex, VerifiedBlock, genesis_blocks,
-    },
-    commit::{CertifiedCommit, CommitDigest, CommitRef, CommittedSubDag, TrustedCommit},
-    context::Context,
+use types::consensus::block::{
+    BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, BlockTransactionVotes, Round, Slot,
+    TestBlock, Transaction, TransactionIndex, VerifiedBlock, genesis_blocks,
 };
+use types::consensus::commit::{
+    CertifiedCommit, CommitDigest, CommitRef, CommittedSubDag, TrustedCommit,
+};
+use types::consensus::context::Context;
 
-use crate::{
-    dag_state::DagState,
-    leader_schedule::{LeaderSchedule, LeaderSwapTable},
-    linearizer::{BlockStoreAPI, Linearizer},
-};
+use crate::dag_state::DagState;
+use crate::leader_schedule::{LeaderSchedule, LeaderSwapTable};
+use crate::linearizer::{BlockStoreAPI, Linearizer};
 
 /// DagBuilder API
 ///

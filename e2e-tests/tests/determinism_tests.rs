@@ -17,16 +17,16 @@
 //! 5. test_deterministic_execution_with_check_determinism — Bit-for-bit reproducible via msim
 
 use std::time::Duration;
+
 use test_cluster::TestClusterBuilder;
 use tokio::time::sleep;
 use tracing::info;
-use types::{
-    checkpoints::CheckpointCommitment,
-    effects::TransactionEffectsAPI,
-    envelope::Message,
-    system_state::{SystemStateTrait as _, epoch_start::EpochStartSystemStateTrait as _},
-    transaction::{TransactionData, TransactionKind},
-};
+use types::checkpoints::CheckpointCommitment;
+use types::effects::TransactionEffectsAPI;
+use types::envelope::Message;
+use types::system_state::SystemStateTrait as _;
+use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 // ---------------------------------------------------------------------------

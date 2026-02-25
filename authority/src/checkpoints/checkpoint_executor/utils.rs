@@ -2,17 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::cache::TransactionCacheRead;
-use crate::checkpoints::CheckpointStore;
-use futures::{Stream, future::Either};
-use std::time::Duration;
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use futures::Stream;
+use futures::future::Either;
 use strum::VariantNames;
 use tokio::sync::watch;
 use tracing::{debug, error, info, instrument, warn};
 use types::checkpoints::{CheckpointSequenceNumber, CheckpointSummary, VerifiedCheckpoint};
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::envelope::Message as _;
+
+use crate::cache::TransactionCacheRead;
+use crate::checkpoints::CheckpointStore;
 
 #[instrument(level = "debug", skip_all)]
 pub(super) fn stream_synced_checkpoints(

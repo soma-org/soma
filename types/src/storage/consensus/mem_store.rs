@@ -2,23 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    ops::Bound::Included,
-};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ops::Bound::Included;
+
+use parking_lot::RwLock;
 
 use super::{Store, WriteBatch};
 use crate::committee::AuthorityIndex;
-use crate::consensus::block::{BlockDigest, BlockRef, Round, TransactionIndex};
-use crate::consensus::{
-    block::{BlockAPI as _, VerifiedBlock},
-    commit::{
-        CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommitRange, CommitRef,
-        TrustedCommit,
-    },
+use crate::consensus::block::{
+    BlockAPI as _, BlockDigest, BlockRef, Round, TransactionIndex, VerifiedBlock,
+};
+use crate::consensus::commit::{
+    CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommitRange, CommitRef, TrustedCommit,
 };
 use crate::error::ConsensusResult;
-use parking_lot::RwLock;
 
 /// In-memory storage for testing.
 pub struct MemStore {

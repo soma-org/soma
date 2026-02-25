@@ -1,18 +1,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
-    object::{Object, ObjectID, Owner},
-    system_state::{SystemState, SystemStateTrait},
-    target::{generate_target, make_target_seed},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError};
+use types::object::{Object, ObjectID, Owner};
+use types::system_state::{SystemState, SystemStateTrait};
+use types::target::{generate_target, make_target_seed};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
 use super::{FeeCalculator, TransactionExecutor};
 

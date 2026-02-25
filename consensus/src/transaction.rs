@@ -2,21 +2,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use parking_lot::Mutex;
-use std::{collections::BTreeMap, sync::Arc};
 use tap::TapFallible;
 use thiserror::Error;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::oneshot;
 use tracing::{debug, error, warn};
 use types::committee::Epoch;
-use types::consensus::{
-    block::{
-        BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX, Round, Transaction,
-        TransactionIndex,
-    },
-    context::Context,
+use types::consensus::block::{
+    BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX, Round, Transaction,
+    TransactionIndex,
 };
+use types::consensus::context::Context;
 
 /// The maximum number of transactions pending to the queue to be pulled for block proposal
 const MAX_PENDING_TRANSACTIONS: usize = 2_000;
@@ -419,18 +419,18 @@ impl TransactionVerifier for NoopTransactionVerifier {
 // SPDX-License-Identifier: Apache-2.0
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    use futures::{StreamExt, stream::FuturesUnordered};
+    use futures::StreamExt;
+    use futures::stream::FuturesUnordered;
     use tokio::time::timeout;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{
-            BlockDigest, BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX,
-            TransactionIndex,
-        },
-        context::Context,
+    use types::consensus::block::{
+        BlockDigest, BlockRef, NUM_RESERVED_TRANSACTION_INDICES, PING_TRANSACTION_INDEX,
+        TransactionIndex,
     };
+    use types::consensus::context::Context;
 
     use super::{BlockStatus, LimitReached, TransactionClient, TransactionConsumer};
     use crate::block_verifier::SignedBlockVerifier;

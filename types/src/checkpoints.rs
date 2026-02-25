@@ -2,46 +2,42 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    base::{
-        AuthorityName, ExecutionData, ExecutionDigests, FullObjectRef, SequenceNumber,
-        VerifiedExecutionData,
-    },
-    committee::{Committee, EpochId, StakeUnit},
-    crypto::{
-        AggregateAuthoritySignature, AuthoritySignInfo, AuthoritySignInfoTrait as _,
-        AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair, default_hash, get_key_pair,
-    },
-    digests::{
-        CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest,
-        ObjectDigest, TransactionDigest, TransactionEffectsDigest,
-    },
-    effects::{TransactionEffects, TransactionEffectsAPI as _},
-    envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope},
-    error::{SomaError, SomaResult},
-    full_checkpoint_content::CheckpointData,
-    intent::{Intent, IntentScope},
-    object::{ObjectID, Version},
-    serde::Readable,
-    transaction::{Transaction, TransactionData},
-    tx_fee::TransactionFee,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter};
+use std::slice::Iter;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use anyhow::Result;
 use fastcrypto::hash::{Blake2b256, MultisetHash as _};
-use fastcrypto::merkle::MerkleProof;
-use fastcrypto::merkle::MerkleTree;
-use fastcrypto::merkle::Node;
+use fastcrypto::merkle::{MerkleProof, MerkleTree, Node};
 use once_cell::sync::OnceCell;
 use protocol_config::ProtocolVersion;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use std::slice::Iter;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::{Display, Formatter},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+
+use crate::base::{
+    AuthorityName, ExecutionData, ExecutionDigests, FullObjectRef, SequenceNumber,
+    VerifiedExecutionData,
 };
+use crate::committee::{Committee, EpochId, StakeUnit};
+use crate::crypto::{
+    AggregateAuthoritySignature, AuthoritySignInfo, AuthoritySignInfoTrait as _,
+    AuthorityStrongQuorumSignInfo, GenericSignature, SomaKeyPair, default_hash, get_key_pair,
+};
+use crate::digests::{
+    CheckpointArtifactsDigest, CheckpointContentsDigest, CheckpointDigest, Digest, ObjectDigest,
+    TransactionDigest, TransactionEffectsDigest,
+};
+use crate::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
+use crate::error::{SomaError, SomaResult};
+use crate::full_checkpoint_content::CheckpointData;
+use crate::intent::{Intent, IntentScope};
+use crate::object::{ObjectID, Version};
+use crate::serde::Readable;
+use crate::transaction::{Transaction, TransactionData};
+use crate::tx_fee::TransactionFee;
 
 pub type CheckpointSequenceNumber = u64;
 pub type CheckpointTimestamp = u64;

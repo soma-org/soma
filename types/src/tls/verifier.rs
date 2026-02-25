@@ -2,18 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashSet;
+use std::fmt::Debug;
+use std::sync::{Arc, RwLock};
+
 use fastcrypto::ed25519::Ed25519PublicKey;
 use rustls::crypto::WebPkiSupportedAlgorithms;
-use rustls::pki_types::CertificateDer;
-use rustls::pki_types::PrivateKeyDer;
-use rustls::pki_types::ServerName;
-use rustls::pki_types::SignatureVerificationAlgorithm;
-use rustls::pki_types::TrustAnchor;
-use rustls::pki_types::UnixTime;
-use std::fmt::Debug;
-use std::{
-    collections::HashSet,
-    sync::{Arc, RwLock},
+use rustls::pki_types::{
+    CertificateDer, PrivateKeyDer, ServerName, SignatureVerificationAlgorithm, TrustAnchor,
+    UnixTime,
 };
 
 use super::public_key_from_certificate;

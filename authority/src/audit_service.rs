@@ -19,33 +19,29 @@
 
 use std::sync::Arc;
 
-use burn::tensor::{TensorData, Tolerance};
-use tokio::sync::{Mutex, mpsc};
-use tracing::{info, warn};
-
 use blobs::BlobPath;
+use burn::tensor::{TensorData, Tolerance};
 use runtime::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use scoring::tonic_gen::scoring_client::ScoringClient;
 use scoring::types::{ManifestInput, ScoreRequest};
-use types::{
-    base::{AuthorityName, SomaAddress},
-    challenge::{ChallengeId, ChallengeV1},
-    committee::EpochId,
-    consensus::ConsensusTransaction,
-    crypto::{Signature, SomaKeyPair},
-    error::RuntimeResult,
-    intent::{Intent, IntentMessage},
-    metadata::{Manifest, ManifestAPI, MetadataAPI},
-    model::ModelId,
-    object::ObjectID,
-    target::TargetId,
-    tensor::SomaTensor,
-};
+use tokio::sync::{Mutex, mpsc};
+use tracing::{info, warn};
+use types::base::{AuthorityName, SomaAddress};
+use types::challenge::{ChallengeId, ChallengeV1};
+use types::committee::EpochId;
+use types::consensus::ConsensusTransaction;
+use types::crypto::{Signature, SomaKeyPair};
+use types::error::RuntimeResult;
+use types::intent::{Intent, IntentMessage};
+use types::metadata::{Manifest, ManifestAPI, MetadataAPI};
+use types::model::ModelId;
+use types::object::ObjectID;
+use types::target::TargetId;
+use types::tensor::SomaTensor;
 
-use crate::{
-    authority::AuthorityState, authority_per_epoch_store::AuthorityPerEpochStore,
-    consensus_adapter::ConsensusAdapter,
-};
+use crate::authority::AuthorityState;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::consensus_adapter::ConsensusAdapter;
 
 // ===========================================================================
 // Mock CompetitionAPI for Testing

@@ -2,18 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 use arc_swap::ArcSwap;
 use fastcrypto::ed25519::Ed25519PublicKey;
 use fastcrypto::traits::ToFromBytes;
 use rustls::crypto::WebPkiSupportedAlgorithms;
-use rustls::pki_types::CertificateDer;
-use rustls::pki_types::PrivateKeyDer;
-use rustls::pki_types::ServerName;
-use rustls::pki_types::SignatureVerificationAlgorithm;
-use rustls::pki_types::TrustAnchor;
-use rustls::pki_types::UnixTime;
-use std::collections::BTreeSet;
-use std::sync::Arc;
+use rustls::pki_types::{
+    CertificateDer, PrivateKeyDer, ServerName, SignatureVerificationAlgorithm, TrustAnchor,
+    UnixTime,
+};
 
 static SUPPORTED_SIG_ALGS: &[&dyn SignatureVerificationAlgorithm] = &[webpki::ring::ED25519];
 
@@ -321,7 +320,8 @@ fn pki_error(error: webpki::Error) -> rustls::Error {
 pub fn public_key_from_certificate(
     certificate: &CertificateDer,
 ) -> Result<Ed25519PublicKey, rustls::Error> {
-    use x509_parser::{certificate::X509Certificate, prelude::FromDer};
+    use x509_parser::certificate::X509Certificate;
+    use x509_parser::prelude::FromDer;
 
     let cert = X509Certificate::from_der(certificate.as_ref())
         .map_err(|e| rustls::Error::General(e.to_string()))?;

@@ -2,25 +2,23 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, VecDeque},
-    ops::Bound::Included,
-    time::Duration,
-};
+use std::collections::{BTreeMap, VecDeque};
+use std::ops::Bound::Included;
+use std::time::Duration;
+
+use bytes::Bytes;
+use store::rocks::{DBMap, DBMapTableConfigMap, default_db_options};
+use store::{DBMapUtils, Map as _};
 
 use super::{CommitInfo, Store, WriteBatch};
 use crate::committee::AuthorityIndex;
-use crate::consensus::block::{BlockDigest, BlockRef, Round, TransactionIndex};
-use crate::consensus::{
-    block::{BlockAPI as _, SignedBlock, VerifiedBlock},
-    commit::{CommitAPI as _, CommitDigest, CommitIndex, CommitRange, CommitRef, TrustedCommit},
+use crate::consensus::block::{
+    BlockAPI as _, BlockDigest, BlockRef, Round, SignedBlock, TransactionIndex, VerifiedBlock,
+};
+use crate::consensus::commit::{
+    CommitAPI as _, CommitDigest, CommitIndex, CommitRange, CommitRef, TrustedCommit,
 };
 use crate::error::{ConsensusError, ConsensusResult};
-use bytes::Bytes;
-use store::{
-    DBMapUtils, Map as _,
-    rocks::{DBMap, DBMapTableConfigMap, default_db_options},
-};
 
 /// Persistent storage with RocksDB.
 #[derive(DBMapUtils)]

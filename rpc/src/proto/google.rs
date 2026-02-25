@@ -8,8 +8,9 @@ pub mod protobuf {
 
     #[cfg(test)]
     mod tests {
-        use super::FILE_DESCRIPTOR_SET;
         use prost::Message as _;
+
+        use super::FILE_DESCRIPTOR_SET;
 
         #[test]
         fn file_descriptor_set_is_valid() {
@@ -211,8 +212,9 @@ pub mod rpc {
 
     #[cfg(test)]
     mod tests {
-        use super::FILE_DESCRIPTOR_SET;
         use prost::Message as _;
+
+        use super::FILE_DESCRIPTOR_SET;
 
         #[test]
         fn file_descriptor_set_is_valid() {

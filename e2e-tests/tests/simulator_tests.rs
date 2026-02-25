@@ -17,28 +17,23 @@
 //! 4. test_hash_collections — HashMap/HashSet iteration order is deterministic
 //! 5. test_net_determinism — Full network + transaction execution is deterministic
 
-use futures::{
-    StreamExt,
-    stream::{FuturesOrdered, FuturesUnordered},
-};
-use rand::{
-    Rng,
-    distributions::{Distribution, Uniform},
-    rngs::OsRng,
-};
+#[cfg(not(msim))]
+use std::collections::{HashMap, HashSet};
+
+use futures::StreamExt;
+use futures::stream::{FuturesOrdered, FuturesUnordered};
 // Use msim's deterministic HashMap/HashSet (seeded with fixed ahash keys)
 // std::collections versions use randomized hashing and would fail check_determinism.
 #[cfg(msim)]
 use msim::collections::{HashMap, HashSet};
-#[cfg(not(msim))]
-use std::collections::{HashMap, HashSet};
+use rand::Rng;
+use rand::distributions::{Distribution, Uniform};
+use rand::rngs::OsRng;
 use test_cluster::TestClusterBuilder;
 use tokio::time::{Duration, sleep};
 use tracing::{debug, trace};
-use types::{
-    effects::TransactionEffectsAPI,
-    transaction::{TransactionData, TransactionKind},
-};
+use types::effects::TransactionEffectsAPI;
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 async fn make_fut(i: usize) -> usize {

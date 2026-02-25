@@ -2,13 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use bincode::ErrorKind as BincodeErrorKind;
+use std::fmt;
+use std::fmt::Display;
 
-use crate::error::TypedStoreError;
+use bincode::ErrorKind as BincodeErrorKind;
 use rocksdb::Error as RocksError;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fmt::Display};
 use thiserror::Error;
+
+use crate::error::TypedStoreError;
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug, Error)]

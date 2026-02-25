@@ -12,24 +12,24 @@
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod validator_pop_tests {
-    use crate::{
-        base::SomaAddress,
-        config::genesis_config::SHANNONS_PER_SOMA,
-        crypto::{
-            AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair,
-            generate_proof_of_possession, get_key_pair_from_rng,
-        },
-        effects::ExecutionFailureStatus,
-        object::ObjectID,
-        system_state::test_utils::{
-            create_test_system_state, create_validator_for_testing,
-            create_validator_for_testing_with_seed, create_validators_with_stakes,
-        },
-        transaction::UpdateValidatorMetadataArgs,
-        validator_info::{GenesisValidatorInfo, ValidatorInfo},
-    };
     use fastcrypto::traits::{KeyPair, ToFromBytes};
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    use crate::base::SomaAddress;
+    use crate::config::genesis_config::SHANNONS_PER_SOMA;
+    use crate::crypto::{
+        AuthorityKeyPair, AuthorityPublicKeyBytes, NetworkKeyPair, generate_proof_of_possession,
+        get_key_pair_from_rng,
+    };
+    use crate::effects::ExecutionFailureStatus;
+    use crate::object::ObjectID;
+    use crate::system_state::test_utils::{
+        create_test_system_state, create_validator_for_testing,
+        create_validator_for_testing_with_seed, create_validators_with_stakes,
+    };
+    use crate::transaction::UpdateValidatorMetadataArgs;
+    use crate::validator_info::{GenesisValidatorInfo, ValidatorInfo};
 
     // =========================================================================
     // Genesis PoP validation

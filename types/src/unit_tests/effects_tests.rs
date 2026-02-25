@@ -2,6 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use std::collections::BTreeMap;
+
 use crate::base::SomaAddress;
 use crate::digests::*;
 use crate::effects::object_change::*;
@@ -9,8 +12,6 @@ use crate::effects::*;
 use crate::envelope::Message;
 use crate::object::*;
 use crate::tx_fee::TransactionFee;
-#[allow(unused_imports)]
-use std::collections::BTreeMap;
 
 /// Helper to build a simple TransactionEffects with specified changed_objects.
 fn make_effects(

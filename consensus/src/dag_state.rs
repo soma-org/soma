@@ -2,32 +2,27 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    cmp::max,
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    ops::Bound::{Excluded, Included, Unbounded},
-    panic,
-    sync::Arc,
-    time::Duration,
-    vec,
-};
+use std::cmp::max;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::sync::Arc;
+use std::time::Duration;
+use std::{panic, vec};
 
 use itertools::Itertools as _;
 use tokio::time::Instant;
 use tracing::{debug, error, info, trace};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{
-        BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, GENESIS_ROUND, Round, Slot,
-        TransactionIndex, VerifiedBlock, genesis_blocks,
-    },
-    commit::{
-        CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommitRef, CommitVote,
-        CommittedSubDag, GENESIS_COMMIT_INDEX, TrustedCommit, load_committed_subdag_from_store,
-    },
-    context::Context,
-    leader_scoring::{ReputationScores, ScoringSubdag},
+use types::consensus::block::{
+    BlockAPI, BlockDigest, BlockRef, BlockTimestampMs, GENESIS_ROUND, Round, Slot,
+    TransactionIndex, VerifiedBlock, genesis_blocks,
 };
+use types::consensus::commit::{
+    CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommitRef, CommitVote, CommittedSubDag,
+    GENESIS_COMMIT_INDEX, TrustedCommit, load_committed_subdag_from_store,
+};
+use types::consensus::context::Context;
+use types::consensus::leader_scoring::{ReputationScores, ScoringSubdag};
 use types::storage::consensus::{Store, WriteBatch};
 
 use crate::threshold_clock::ThresholdClock;

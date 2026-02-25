@@ -2,14 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use moka::sync::SegmentedCache as MokaCache;
-use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::hash::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+
+use moka::sync::SegmentedCache as MokaCache;
+use parking_lot::Mutex;
 use tracing::debug;
 use types::object::Version;
 pub enum CacheResult<T> {

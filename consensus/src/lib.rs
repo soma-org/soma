@@ -45,15 +45,14 @@ mod test_dag_parser;
 
 pub use authority_node::{ConsensusAuthority, NetworkType};
 pub use commit_consumer::{CommitConsumerArgs, CommitConsumerMonitor};
-pub use transaction::{
-    BlockStatus, ClientError, TransactionClient, TransactionVerifier, ValidationError,
-};
-
 // Exported API for simtests.
 #[cfg(any(test, msim))]
 pub use network::tonic_network::to_socket_addr;
 #[cfg(any(test, msim))]
 pub use transaction::NoopTransactionVerifier;
+pub use transaction::{
+    BlockStatus, ClientError, TransactionClient, TransactionVerifier, ValidationError,
+};
 
 /// Simtests: integration tests using the msim deterministic simulator.
 #[cfg(all(test, msim))]

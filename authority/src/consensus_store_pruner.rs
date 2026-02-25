@@ -5,8 +5,10 @@
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
+
 use store::rocks::safe_drop_db;
-use tokio::{sync::mpsc, time::Instant};
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 use tracing::{error, info, warn};
 use types::committee::Epoch;
 

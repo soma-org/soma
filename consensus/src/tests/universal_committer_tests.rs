@@ -6,21 +6,17 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockAPI, Slot, TestBlock, Transaction, VerifiedBlock},
-    commit::DecidedLeader,
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, Slot, TestBlock, Transaction, VerifiedBlock};
+use types::consensus::commit::DecidedLeader;
+use types::consensus::context::Context;
 use types::storage::consensus::mem_store::MemStore;
 
-use crate::{
-    dag_state::DagState,
-    leader_schedule::{LeaderSchedule, LeaderSwapTable},
-    test_dag::{build_dag, build_dag_layer},
-    test_dag_builder::DagBuilder,
-    test_dag_parser::parse_dag,
-    universal_committer::universal_committer_builder::UniversalCommitterBuilder,
-};
+use crate::dag_state::DagState;
+use crate::leader_schedule::{LeaderSchedule, LeaderSwapTable};
+use crate::test_dag::{build_dag, build_dag_layer};
+use crate::test_dag_builder::DagBuilder;
+use crate::test_dag_parser::parse_dag;
+use crate::universal_committer::universal_committer_builder::UniversalCommitterBuilder;
 
 /// Commit one leader.
 #[tokio::test]

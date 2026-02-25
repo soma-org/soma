@@ -1,55 +1,47 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
 use axum::http;
 use bytes::Bytes;
 use fastcrypto::ed25519::Ed25519PublicKey;
 use http::{Request, Response};
 use http_body::Body as HttpBody;
 use http_body_util::BodyExt as _;
-use hyper_util::{rt::TokioIo, service::TowerToHyperService};
+use hyper_util::rt::TokioIo;
+use hyper_util::service::TowerToHyperService;
 use parking_lot::RwLock;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::{
-    convert::Infallible,
-    net::SocketAddr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::sync::Mutex;
-use tokio::{
-    pin,
-    sync::oneshot,
-    sync::{broadcast, mpsc},
-    task::JoinSet,
-};
+use tokio::pin;
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
+use tokio::task::JoinSet;
 use tokio_rustls::TlsAcceptor;
-use tonic::{
-    Status,
-    codegen::{Service, StdError},
-};
-use tonic::{server::NamedService, transport::Server};
+use tonic::Status;
+use tonic::body::Body as TonicBody;
+use tonic::codegen::{Service, StdError};
+use tonic::server::NamedService;
+use tonic::transport::Server;
 use tonic_rustls::Channel;
 use tower::ServiceBuilder;
 use tower_http::ServiceBuilderExt;
 use tracing::{debug, error, info, trace, warn};
 
-use tonic::body::Body as TonicBody;
-
-use crate::{
-    crypto::{NetworkKeyPair, NetworkPublicKey},
-    error::{SomaError, SomaResult},
-    multiaddr::Multiaddr,
-    peer_id::PeerId,
-    sync::{to_host_port_str, to_socket_addr},
-    tls::{
-        create_rustls_client_config, create_rustls_server_config, public_key_from_certificate,
-        verifier::AllowAll,
-    },
+use super::active_peers::ActivePeers;
+use super::{DisconnectReason, PeerEvent};
+use crate::crypto::{NetworkKeyPair, NetworkPublicKey};
+use crate::error::{SomaError, SomaResult};
+use crate::multiaddr::Multiaddr;
+use crate::peer_id::PeerId;
+use crate::sync::{to_host_port_str, to_socket_addr};
+use crate::tls::verifier::AllowAll;
+use crate::tls::{
+    create_rustls_client_config, create_rustls_server_config, public_key_from_certificate,
 };
-
-use super::{DisconnectReason, PeerEvent, active_peers::ActivePeers};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CONNECTIONS_BACKLOG: u32 = 1024;

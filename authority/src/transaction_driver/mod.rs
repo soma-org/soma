@@ -10,39 +10,30 @@ pub(crate) mod reconfig_observer;
 mod request_retrier;
 mod transaction_submitter;
 
-/// Exports
-pub use error::TransactionDriverError;
-use reconfig_observer::ReconfigObserver;
-
-use std::{
-    net::SocketAddr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use effects_certifier::*;
+/// Exports
+pub use error::TransactionDriverError;
 use parking_lot::Mutex;
 use rand::Rng;
-use tokio::{
-    task::JoinSet,
-    time::{interval, sleep},
-};
+use reconfig_observer::ReconfigObserver;
+use tokio::task::JoinSet;
+use tokio::time::{interval, sleep};
 use tracing::instrument;
 use transaction_submitter::*;
-use types::{
-    committee::EpochId,
-    error::{ErrorCategory, SomaError},
-    messages_grpc::{PingType, SubmitTxRequest, SubmitTxResult, TxType},
-};
-
-use crate::{
-    authority_aggregator::AuthorityAggregator,
-    authority_client::AuthorityAPI,
-    transaction_driver::backoff::ExponentialBackoff,
-    validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
-};
+use types::committee::EpochId;
 use types::config::node_config::NodeConfig;
+use types::error::{ErrorCategory, SomaError};
+use types::messages_grpc::{PingType, SubmitTxRequest, SubmitTxResult, TxType};
+
+use crate::authority_aggregator::AuthorityAggregator;
+use crate::authority_client::AuthorityAPI;
+use crate::transaction_driver::backoff::ExponentialBackoff;
+use crate::validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor};
 /// Options for submitting a transaction.
 #[derive(Clone, Default, Debug)]
 pub struct SubmitTransactionOptions {

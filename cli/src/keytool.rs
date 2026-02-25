@@ -2,45 +2,37 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::{Debug, Display, Formatter};
+use std::path::{Path, PathBuf};
+
 use anyhow::anyhow;
 use bip32::DerivationPath;
 use clap::Subcommand;
-use fastcrypto::{
-    encoding::{Base64, Encoding, Hex},
-    hash::HashFunction as _,
-    traits::KeyPair as _,
-};
+use fastcrypto::encoding::{Base64, Encoding, Hex};
+use fastcrypto::hash::HashFunction as _;
+use fastcrypto::traits::KeyPair as _;
 use json_to_table::{Orientation, json_to_table};
 use serde::Serialize;
 use serde_json::json;
-use soma_keys::{
-    key_derive::generate_new_key,
-    key_identity::KeyIdentity,
-    keypair_file::{
-        read_authority_keypair_from_file, read_keypair_from_file, write_authority_keypair_to_file,
-        write_keypair_to_file,
-    },
-    keystore::{AccountKeystore, Keystore},
+use soma_keys::key_derive::generate_new_key;
+use soma_keys::key_identity::KeyIdentity;
+use soma_keys::keypair_file::{
+    read_authority_keypair_from_file, read_keypair_from_file, write_authority_keypair_to_file,
+    write_keypair_to_file,
 };
-use std::{
-    fmt::{Debug, Display, Formatter},
-    path::{Path, PathBuf},
-};
-use tabled::{
-    builder::Builder,
-    settings::{Modify, Rotate, Width, object::Rows},
-};
+use soma_keys::keystore::{AccountKeystore, Keystore};
+use tabled::builder::Builder;
+use tabled::settings::object::Rows;
+use tabled::settings::{Modify, Rotate, Width};
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    crypto::{
-        DefaultHash, EncodeDecodeBase64, GenericSignature, PublicKey, SignatureScheme, SomaKeyPair,
-    },
-    error::SomaResult,
-    intent::{Intent, IntentMessage},
-    multisig::{MultiSig, MultiSigPublicKey, ThresholdUnit, WeightUnit},
-    transaction::TransactionData,
+use types::base::SomaAddress;
+use types::crypto::{
+    DefaultHash, EncodeDecodeBase64, GenericSignature, PublicKey, SignatureScheme, SomaKeyPair,
 };
+use types::error::SomaResult;
+use types::intent::{Intent, IntentMessage};
+use types::multisig::{MultiSig, MultiSigPublicKey, ThresholdUnit, WeightUnit};
+use types::transaction::TransactionData;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]

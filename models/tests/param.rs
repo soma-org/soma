@@ -3,17 +3,18 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
+
 use arrgen::{constant_array, normal_array, uniform_array};
 use burn::backend::NdArray;
-use burn::module::Param;
+use burn::module::{Module, Param};
 use burn::nn::Initializer;
+use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use burn::{module::Module, prelude::Backend};
 use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use safetensors::serialize;
-use std::collections::HashMap;
 
 type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;

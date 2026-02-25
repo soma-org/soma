@@ -2,21 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    str::FromStr,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::str::FromStr;
 
-use crate::{checksum::Checksum, crypto::DefaultHash, metadata::ManifestAPI as _};
 use emission::EmissionPool;
 use enum_dispatch::enum_dispatch;
 use epoch_start::{EpochStartSystemState, EpochStartValidatorInfoV1};
-use fastcrypto::{
-    bls12381::{self, min_sig::BLS12381PublicKey},
-    ed25519::Ed25519PublicKey,
-    hash::HashFunction as _,
-    traits::ToFromBytes,
-};
+use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
+use fastcrypto::bls12381::{self};
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::hash::HashFunction as _;
+use fastcrypto::traits::ToFromBytes;
 use model_registry::ModelRegistry;
 use protocol_config::{ProtocolConfig, SomaTensor, SystemParameters};
 use serde::{Deserialize, Serialize};
@@ -26,29 +22,30 @@ use tracing::{error, info};
 use url::Url;
 use validator::{Validator, ValidatorSet};
 
-use crate::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::{AuthorityName, SomaAddress},
-    committee::{
-        Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata,
-        VALIDATOR_LOW_STAKE_GRACE_PERIOD, VotingPower,
-    },
-    config::genesis_config::{SHANNONS_PER_SOMA, TokenDistributionSchedule},
-    crypto::{self, DecryptionKey, NetworkPublicKey, ProtocolPublicKey},
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError, SomaResult},
-    model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest, PendingModelUpdate},
-    multiaddr::Multiaddr,
-    object::ObjectID,
-    parameters,
-    peer_id::PeerId,
-    transaction::UpdateValidatorMetadataArgs,
+use crate::base::{AuthorityName, SomaAddress};
+use crate::checksum::Checksum;
+use crate::committee::{
+    Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata,
+    VALIDATOR_LOW_STAKE_GRACE_PERIOD, VotingPower,
 };
-use crate::{
-    crypto::{AuthorityPublicKey, SomaKeyPair, SomaPublicKey},
-    storage::object_store::ObjectStore,
+use crate::config::genesis_config::{SHANNONS_PER_SOMA, TokenDistributionSchedule};
+use crate::crypto::{
+    self, AuthorityPublicKey, DecryptionKey, DefaultHash, NetworkPublicKey, ProtocolPublicKey,
+    SomaKeyPair, SomaPublicKey,
 };
+use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::effects::ExecutionFailureStatus;
+use crate::error::{ExecutionResult, SomaError, SomaResult};
+use crate::metadata::ManifestAPI as _;
+use crate::model::{
+    ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest, PendingModelUpdate,
+};
+use crate::multiaddr::Multiaddr;
+use crate::object::ObjectID;
+use crate::peer_id::PeerId;
+use crate::storage::object_store::ObjectStore;
+use crate::transaction::UpdateValidatorMetadataArgs;
+use crate::{SYSTEM_STATE_OBJECT_ID, parameters};
 
 pub mod emission;
 pub mod epoch_start;

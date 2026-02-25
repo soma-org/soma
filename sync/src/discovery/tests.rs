@@ -9,12 +9,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{SeedableRng, rngs::StdRng};
-use types::{
-    crypto::NetworkKeyPair,
-    peer_id::PeerId,
-    sync::{NodeInfo, SignedNodeInfo, VerifiedSignedNodeInfo},
-};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use types::crypto::NetworkKeyPair;
+use types::peer_id::PeerId;
+use types::sync::{NodeInfo, SignedNodeInfo, VerifiedSignedNodeInfo};
 
 use super::{DiscoveryState, ONE_DAY_MILLISECONDS, now_unix, update_known_peers};
 

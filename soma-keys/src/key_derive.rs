@@ -4,19 +4,13 @@
 
 use anyhow::anyhow;
 use bip32::{ChildNumber, DerivationPath};
-
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
-use fastcrypto::ed25519::Ed25519KeyPair;
-use fastcrypto::{
-    ed25519::Ed25519PrivateKey,
-    traits::{KeyPair, ToFromBytes},
-};
+use fastcrypto::ed25519::{Ed25519KeyPair, Ed25519PrivateKey};
+use fastcrypto::traits::{KeyPair, ToFromBytes};
 use slip10_ed25519::derive_ed25519_private_key;
-use types::{
-    base::SomaAddress,
-    crypto::{SignatureScheme, SomaKeyPair},
-    error::SomaError,
-};
+use types::base::SomaAddress;
+use types::crypto::{SignatureScheme, SomaKeyPair};
+use types::error::SomaError;
 
 pub const DERIVATION_PATH_COIN_TYPE: u32 = 784;
 pub const DERVIATION_PATH_PURPOSE_ED25519: u32 = 44;

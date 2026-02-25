@@ -2,19 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::Client;
-use crate::proto::TryFromProtoError;
-use crate::proto::soma::ExecuteTransactionRequest;
-use crate::proto::soma::ExecuteTransactionResponse;
-use crate::proto::soma::ExecutionError;
-use crate::proto::soma::GetEpochRequest;
-use crate::proto::soma::SubscribeCheckpointsRequest;
-use crate::utils::field::FieldMaskUtil;
-use futures::TryStreamExt;
-use prost_types::FieldMask;
 use std::fmt;
 use std::time::Duration;
+
+use futures::TryStreamExt;
+use prost_types::FieldMask;
 use tonic::Response;
+
+use super::Client;
+use crate::proto::TryFromProtoError;
+use crate::proto::soma::{
+    ExecuteTransactionRequest, ExecuteTransactionResponse, ExecutionError, GetEpochRequest,
+    SubscribeCheckpointsRequest,
+};
+use crate::utils::field::FieldMaskUtil;
 
 /// Response from execute_transaction_and_wait_for_checkpoint
 pub struct ExecuteAndWaitResponse {

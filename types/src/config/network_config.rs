@@ -2,65 +2,54 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    num::NonZeroUsize,
-    ops::Div,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::{Duration, Instant, SystemTime},
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
+use std::ops::Div;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 
-use crate::config::Config;
-use crate::{
-    SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION,
-    base::AuthorityName,
-    base::SomaAddress,
-    committee::{Committee, CommitteeWithNetworkMetadata},
-    config::{
-        node_config::{NodeConfig, get_key_path},
-        p2p_config::SeedPeer,
-    },
-    consensus::stake_aggregator::StakeAggregator,
-    crypto::{
-        AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo,
-        AuthorityStrongQuorumSignInfo, NetworkPublicKey, PublicKey, SomaKeyPair,
-        get_key_pair_from_rng,
-    },
-    digests::TransactionDigest,
-    effects::{ExecutionStatus, TransactionEffects},
-    error::{SomaError, SomaResult},
-    genesis::{self, Genesis},
-    genesis_builder::GenesisBuilder,
-    intent::Intent,
-    multiaddr::Multiaddr,
-    object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version},
-    peer_id::PeerId,
-    supported_protocol_versions::SupportedProtocolVersions,
-    system_state::{
-        SystemState, SystemStateTrait,
-        epoch_start::EpochStartSystemStateTrait,
-        validator::{self, Validator},
-    },
-    temporary_store::TemporaryStore,
-    transaction::{
-        CertifiedTransaction, InputObjects, SignedTransaction, Transaction, TransactionData,
-        VerifiedTransaction,
-    },
-};
-use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
+use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
+use fastcrypto::traits::KeyPair;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tempfile::tempfile;
 use tracing::info;
 
-use super::{
-    genesis_config::{
-        AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, TokenAllocation,
-        TokenDistributionScheduleBuilder, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
-    },
-    node_config::ValidatorConfigBuilder,
+use super::genesis_config::{
+    AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, TokenAllocation,
+    TokenDistributionScheduleBuilder, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
 };
+use super::node_config::ValidatorConfigBuilder;
+use crate::base::{AuthorityName, SomaAddress};
+use crate::committee::{Committee, CommitteeWithNetworkMetadata};
+use crate::config::Config;
+use crate::config::node_config::{NodeConfig, get_key_path};
+use crate::config::p2p_config::SeedPeer;
+use crate::consensus::stake_aggregator::StakeAggregator;
+use crate::crypto::{
+    AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo, AuthorityStrongQuorumSignInfo,
+    NetworkPublicKey, PublicKey, SomaKeyPair, get_key_pair_from_rng,
+};
+use crate::digests::TransactionDigest;
+use crate::effects::{ExecutionStatus, TransactionEffects};
+use crate::error::{SomaError, SomaResult};
+use crate::genesis::{self, Genesis};
+use crate::genesis_builder::GenesisBuilder;
+use crate::intent::Intent;
+use crate::multiaddr::Multiaddr;
+use crate::object::{self, Object, ObjectData, ObjectID, ObjectType, Owner, Version};
+use crate::peer_id::PeerId;
+use crate::supported_protocol_versions::SupportedProtocolVersions;
+use crate::system_state::epoch_start::EpochStartSystemStateTrait;
+use crate::system_state::validator::{self, Validator};
+use crate::system_state::{SystemState, SystemStateTrait};
+use crate::temporary_store::TemporaryStore;
+use crate::transaction::{
+    CertifiedTransaction, InputObjects, SignedTransaction, Transaction, TransactionData,
+    VerifiedTransaction,
+};
+use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
 
 #[derive(Debug)]
 pub enum CommitteeConfig {

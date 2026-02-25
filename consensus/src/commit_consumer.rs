@@ -7,11 +7,8 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::sync::watch;
 use tracing::debug;
-
-use types::consensus::{
-    block::CertifiedBlocksOutput,
-    commit::{CommitIndex, CommittedSubDag},
-};
+use types::consensus::block::CertifiedBlocksOutput;
+use types::consensus::commit::{CommitIndex, CommittedSubDag};
 
 /// Arguments from commit consumer to this consensus instance.
 /// This includes both parameters and components for communications.

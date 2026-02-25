@@ -2,14 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::FIELD_PATH_SEPARATOR;
-use super::FIELD_PATH_WILDCARD;
-use super::FIELD_SEPARATOR;
-use super::FieldMaskUtil;
-use super::is_valid_path;
+use std::collections::BTreeMap;
 
 use prost_types::FieldMask;
-use std::collections::BTreeMap;
+
+use super::{
+    FIELD_PATH_SEPARATOR, FIELD_PATH_WILDCARD, FIELD_SEPARATOR, FieldMaskUtil, is_valid_path,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct FieldMaskTree {

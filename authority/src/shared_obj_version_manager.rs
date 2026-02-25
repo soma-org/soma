@@ -6,22 +6,18 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use either::Either;
 use tracing::trace;
-use types::{
-    base::ConsensusObjectSequenceKey,
-    digests::TransactionDigest,
-    effects::{TransactionEffects, TransactionEffectsAPI as _},
-    error::SomaResult,
-    object::Version,
-    storage::{
-        ObjectKey, transaction_non_shared_input_object_keys, transaction_receiving_object_keys,
-    },
-    transaction::{SharedInputObject, TransactionKey, VerifiedExecutableTransaction},
+use types::base::ConsensusObjectSequenceKey;
+use types::digests::TransactionDigest;
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use types::error::SomaResult;
+use types::object::Version;
+use types::storage::{
+    ObjectKey, transaction_non_shared_input_object_keys, transaction_receiving_object_keys,
 };
+use types::transaction::{SharedInputObject, TransactionKey, VerifiedExecutableTransaction};
 
-use crate::{
-    authority_per_epoch_store::{AuthorityPerEpochStore, CancelConsensusCertificateReason},
-    cache::ObjectCacheRead,
-};
+use crate::authority_per_epoch_store::{AuthorityPerEpochStore, CancelConsensusCertificateReason};
+use crate::cache::ObjectCacheRead;
 
 pub struct SharedObjVerManager {}
 

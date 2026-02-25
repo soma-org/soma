@@ -25,40 +25,39 @@
 //! synchronization, including triggers and retries, should be chosen to favor throughput and
 //! efficient resource usage, over faster reactions.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{
-    CommitConsumerMonitor, block_verifier::BlockVerifier, commit_vote_monitor::CommitVoteMonitor,
-    core_thread::CoreThreadDispatcher, dag_state::DagState, network::NetworkClient,
-    transaction_certifier::TransactionCertifier,
-};
 use bytes::Bytes;
-use futures::{StreamExt as _, stream::FuturesOrdered};
+use futures::StreamExt as _;
+use futures::stream::FuturesOrdered;
 use itertools::Itertools as _;
 use parking_lot::RwLock;
-use rand::{prelude::SliceRandom as _, rngs::ThreadRng};
-use tokio::{
-    runtime::Handle,
-    sync::oneshot,
-    task::{JoinHandle, JoinSet},
-    time::{MissedTickBehavior, sleep},
-};
+use rand::prelude::SliceRandom as _;
+use rand::rngs::ThreadRng;
+use tokio::runtime::Handle;
+use tokio::sync::oneshot;
+use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::{MissedTickBehavior, sleep};
 use tracing::{debug, info, warn};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockAPI, BlockRef, SignedBlock, VerifiedBlock},
-    commit::{
-        CertifiedCommit, CertifiedCommits, Commit, CommitAPI as _, CommitDigest, CommitIndex,
-        CommitRange, CommitRef, TrustedCommit,
-    },
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
+use types::consensus::block::{BlockAPI, BlockRef, SignedBlock, VerifiedBlock};
+use types::consensus::commit::{
+    CertifiedCommit, CertifiedCommits, Commit, CommitAPI as _, CommitDigest, CommitIndex,
+    CommitRange, CommitRef, TrustedCommit,
 };
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::error::{ConsensusError, ConsensusResult};
+
+use crate::CommitConsumerMonitor;
+use crate::block_verifier::BlockVerifier;
+use crate::commit_vote_monitor::CommitVoteMonitor;
+use crate::core_thread::CoreThreadDispatcher;
+use crate::dag_state::DagState;
+use crate::network::NetworkClient;
+use crate::transaction_certifier::TransactionCertifier;
 
 // Handle to stop the CommitSyncer loop.
 pub(crate) struct CommitSyncerHandle {
@@ -681,31 +680,28 @@ impl<C: NetworkClient> Inner<C> {
 // Adapted for SOMA.
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use async_trait::async_trait;
     use bytes::Bytes;
     use parking_lot::RwLock;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockRef, Round, TestBlock, VerifiedBlock},
-        commit::{CommitDigest, CommitRange, CommitRef},
-        context::Context,
-    };
+    use types::consensus::block::{BlockRef, Round, TestBlock, VerifiedBlock};
+    use types::consensus::commit::{CommitDigest, CommitRange, CommitRef};
+    use types::consensus::context::Context;
     use types::error::ConsensusResult;
     use types::parameters::Parameters;
     use types::storage::consensus::mem_store::MemStore;
 
-    use crate::{
-        CommitConsumerMonitor,
-        block_verifier::NoopBlockVerifier,
-        commit_syncer::CommitSyncer,
-        commit_vote_monitor::CommitVoteMonitor,
-        core_thread::MockCoreThreadDispatcher,
-        dag_state::DagState,
-        network::{BlockStream, NetworkClient},
-        transaction_certifier::TransactionCertifier,
-    };
+    use crate::CommitConsumerMonitor;
+    use crate::block_verifier::NoopBlockVerifier;
+    use crate::commit_syncer::CommitSyncer;
+    use crate::commit_vote_monitor::CommitVoteMonitor;
+    use crate::core_thread::MockCoreThreadDispatcher;
+    use crate::dag_state::DagState;
+    use crate::network::{BlockStream, NetworkClient};
+    use crate::transaction_certifier::TransactionCertifier;
 
     #[derive(Default)]
     struct FakeNetworkClient {}

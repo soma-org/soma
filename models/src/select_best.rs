@@ -1,7 +1,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use burn::{Tensor, prelude::Backend};
+use burn::Tensor;
+use burn::prelude::Backend;
 
 use crate::ModelOutput;
 
@@ -18,8 +19,9 @@ pub fn select_best_model<B: Backend>(outputs: &[ModelOutput<B>]) -> Option<usize
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use burn::backend::NdArray;
+
+    use super::*;
 
     type B = NdArray;
 

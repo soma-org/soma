@@ -6,16 +6,14 @@ use std::collections::BTreeMap;
 
 use parking_lot::RwLock;
 use tracing::trace;
-use types::committee::AuthorityIndex;
-use types::committee::EpochId;
+use types::committee::{AuthorityIndex, EpochId};
 use types::consensus::ConsensusPosition;
+#[cfg(test)]
+use types::consensus::block::Round;
 use types::consensus::block::{BlockDigest, BlockRef, TransactionIndex};
 use types::error::SomaError;
 
 use crate::consensus_tx_status_cache::CONSENSUS_STATUS_RETENTION_ROUNDS;
-
-#[cfg(test)]
-use types::consensus::block::Round;
 
 /// A cache that maintains rejection reasons (SomaError) when validators cast reject votes for transactions
 /// during the Mysticeti consensus fast path voting process.

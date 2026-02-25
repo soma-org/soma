@@ -2,28 +2,27 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
+use std::time::Duration;
 
 use node::handle::SomaNodeHandle;
 use rand::rngs::OsRng;
 use test_cluster::{TestCluster, TestClusterBuilder};
 use tokio::time::sleep;
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    committee::{
-        VALIDATOR_CONSENSUS_LOW_POWER, VALIDATOR_CONSENSUS_MIN_POWER,
-        VALIDATOR_CONSENSUS_VERY_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
-    },
-    config::genesis_config::{
-        AccountConfig, DEFAULT_GAS_AMOUNT, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
-    },
-    crypto::{KeypairTraits, SomaKeyPair},
-    effects::TransactionEffectsAPI,
-    system_state::SystemStateTrait as _,
-    transaction::{
-        AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
-    },
+use types::base::SomaAddress;
+use types::committee::{
+    VALIDATOR_CONSENSUS_LOW_POWER, VALIDATOR_CONSENSUS_MIN_POWER,
+    VALIDATOR_CONSENSUS_VERY_LOW_POWER, VALIDATOR_LOW_STAKE_GRACE_PERIOD,
+};
+use types::config::genesis_config::{
+    AccountConfig, DEFAULT_GAS_AMOUNT, ValidatorGenesisConfig, ValidatorGenesisConfigBuilder,
+};
+use types::crypto::{KeypairTraits, SomaKeyPair};
+use types::effects::TransactionEffectsAPI;
+use types::system_state::SystemStateTrait as _;
+use types::transaction::{
+    AddValidatorArgs, RemoveValidatorArgs, Transaction, TransactionData, TransactionKind,
 };
 use utils::logging::init_tracing;
 

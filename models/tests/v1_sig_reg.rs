@@ -4,9 +4,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use arrgen::{normal_array, uniform_array};
+use burn::Tensor;
+use burn::backend::NdArray;
 use burn::tensor::ops::FloatElem;
 use burn::tensor::{PrintOptions, Tolerance, set_print_options};
-use burn::{Tensor, backend::NdArray};
 use models::tensor_conversions::IntoTensorData;
 use models::v1::modules::sig_reg::{SIGReg, SIGRegConfig};
 

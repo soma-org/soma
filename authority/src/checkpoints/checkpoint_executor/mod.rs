@@ -19,20 +19,11 @@
 //! CheckpointExecutor enforces the invariant that if `run` returns successfully, we have reached the
 //! end of epoch. This allows us to use it as a signal for reconfig.
 
-use crate::authority::{AuthorityState, ExecutionEnv};
-use crate::authority_per_epoch_store::AuthorityPerEpochStore;
-use crate::backpressure_manager::BackpressureManager;
-use crate::cache::{ObjectCacheRead, TransactionCacheRead};
-use crate::checkpoints::CheckpointStore;
-use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
-    load_checkpoint, store_checkpoint_locally,
-};
-use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
-use crate::global_state_hasher::GlobalStateHasher;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
 use futures::StreamExt;
 use parking_lot::Mutex;
-use std::time::Duration;
-use std::{sync::Arc, time::Instant};
 use tap::{TapFallible, TapOptional};
 use tracing::{debug, error, info, instrument, warn};
 use types::base::SequenceNumber;
@@ -48,14 +39,24 @@ use types::effects::{
 use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
 use types::full_checkpoint_content::Checkpoint;
-use types::object::ObjectType;
-use types::object::{ObjectRef, Version};
+use types::object::{ObjectRef, ObjectType, Version};
 use types::system_state::SystemStateTrait as _;
 use types::transaction::{
     ExecutableTransaction, Transaction, TransactionKind, VerifiedExecutableTransaction,
     VerifiedTransaction,
 };
 use utils::*;
+
+use crate::authority::{AuthorityState, ExecutionEnv};
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::backpressure_manager::BackpressureManager;
+use crate::cache::{ObjectCacheRead, TransactionCacheRead};
+use crate::checkpoints::CheckpointStore;
+use crate::checkpoints::checkpoint_executor::data_ingestion_handler::{
+    load_checkpoint, store_checkpoint_locally,
+};
+use crate::execution_scheduler::{BarrierDependencyBuilder, ExecutionScheduler};
+use crate::global_state_hasher::GlobalStateHasher;
 
 mod data_ingestion_handler;
 pub(crate) mod utils;

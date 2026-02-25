@@ -5,28 +5,24 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::base::AuthorityName;
-use crate::committee::EpochId;
-
-use crate::{
-    effects::SignedTransactionEffects,
-    transaction::{CertifiedTransaction, SignedTransaction, Transaction},
-};
-
-use crate::checkpoints::CheckpointSequenceNumber;
-use crate::committee::StakeUnit;
-use crate::crypto::{AuthorityStrongQuorumSignInfo, ConciseAuthorityPublicKeyBytes};
-use crate::digests::TransactionDigest;
-use crate::effects::{
-    CertifiedTransactionEffects, TransactionEffects, VerifiedCertifiedTransactionEffects,
-};
-use crate::error::{ErrorCategory, SomaError};
-use crate::object::Object;
-use crate::object::ObjectRef;
-use crate::transaction::VerifiedTransaction;
 use serde::{Deserialize, Serialize};
 use strum::AsRefStr;
 use thiserror::Error;
+
+use crate::base::AuthorityName;
+use crate::checkpoints::CheckpointSequenceNumber;
+use crate::committee::{EpochId, StakeUnit};
+use crate::crypto::{AuthorityStrongQuorumSignInfo, ConciseAuthorityPublicKeyBytes};
+use crate::digests::TransactionDigest;
+use crate::effects::{
+    CertifiedTransactionEffects, SignedTransactionEffects, TransactionEffects,
+    VerifiedCertifiedTransactionEffects,
+};
+use crate::error::{ErrorCategory, SomaError};
+use crate::object::{Object, ObjectRef};
+use crate::transaction::{
+    CertifiedTransaction, SignedTransaction, Transaction, VerifiedTransaction,
+};
 
 pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;
 

@@ -2,16 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{cmp::Ordering, sync::Arc};
+use std::cmp::Ordering;
+use std::sync::Arc;
 
 use tokio::time::Instant;
 use tracing::{debug, info};
-
-use types::consensus::{
-    block::{BlockRef, Round},
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-};
+use types::consensus::block::{BlockRef, Round};
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 
 pub(crate) struct ThresholdClock {
     context: Arc<Context>,
@@ -96,9 +94,10 @@ impl ThresholdClock {
 // SPDX-License-Identifier: Apache-2.0
 #[cfg(test)]
 mod tests {
-    use super::*;
     use types::committee::AuthorityIndex;
     use types::consensus::block::BlockDigest;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_threshold_clock_add_block() {

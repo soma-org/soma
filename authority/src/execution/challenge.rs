@@ -21,22 +21,21 @@
 //! - No quorum: challenger wins (benefit of doubt), bond returned
 
 use tracing::info;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    challenge::{ChallengeStatus, ChallengeV1},
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
-    metadata::{ManifestAPI, MetadataAPI},
-    object::{Object, ObjectID, ObjectType, Owner},
-    system_state::{SystemState, SystemStateTrait},
-    target::{TargetStatus, TargetV1},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::challenge::{ChallengeStatus, ChallengeV1};
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError};
+use types::metadata::{ManifestAPI, MetadataAPI};
+use types::object::{Object, ObjectID, ObjectType, Owner};
+use types::system_state::{SystemState, SystemStateTrait};
+use types::target::{TargetStatus, TargetV1};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor, object::check_ownership};
+use super::object::check_ownership;
+use super::{FeeCalculator, TransactionExecutor};
 
 pub struct ChallengeExecutor;
 

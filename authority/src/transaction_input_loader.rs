@@ -2,26 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    authority_per_epoch_store::CertLockGuard, cache::ObjectCacheRead,
-    shared_obj_version_manager::AssignedVersions,
-};
-use itertools::izip;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+
+use itertools::izip;
 use tracing::instrument;
-use types::{
-    base::FullObjectID,
-    committee::EpochId,
-    digests::TransactionDigest,
-    error::{SomaError, SomaResult},
-    object::ObjectRef,
-    storage::{FullObjectKey, ObjectKey},
-    transaction::{
-        InputObjectKind, InputObjects, ObjectReadResult, ObjectReadResultKind,
-        ReceivingObjectReadResult, ReceivingObjectReadResultKind, ReceivingObjects, TransactionKey,
-    },
+use types::base::FullObjectID;
+use types::committee::EpochId;
+use types::digests::TransactionDigest;
+use types::error::{SomaError, SomaResult};
+use types::object::ObjectRef;
+use types::storage::{FullObjectKey, ObjectKey};
+use types::transaction::{
+    InputObjectKind, InputObjects, ObjectReadResult, ObjectReadResultKind,
+    ReceivingObjectReadResult, ReceivingObjectReadResultKind, ReceivingObjects, TransactionKey,
 };
+
+use crate::authority_per_epoch_store::CertLockGuard;
+use crate::cache::ObjectCacheRead;
+use crate::shared_obj_version_manager::AssignedVersions;
 
 pub(crate) struct TransactionInputLoader {
     cache: Arc<dyn ObjectCacheRead>,

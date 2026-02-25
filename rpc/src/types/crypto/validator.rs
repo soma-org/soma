@@ -2,10 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::types::{
-    EpochId, StakeUnit,
-    crypto::{Bls12381PublicKey, Bls12381Signature},
-};
+use crate::types::crypto::{Bls12381PublicKey, Bls12381Signature};
+use crate::types::{EpochId, StakeUnit};
 
 /// The Validator Set for a particular epoch.
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]

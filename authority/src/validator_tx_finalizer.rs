@@ -2,23 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::authority_aggregator::AuthorityAggregator;
-use crate::authority_client::AuthorityAPI;
-use crate::authority_per_epoch_store::AuthorityPerEpochStore;
-use crate::cache::TransactionCacheRead;
-use arc_swap::ArcSwap;
 use std::cmp::min;
 use std::ops::Add;
 use std::sync::Arc;
 #[cfg(any(msim, test))]
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::time::Duration;
+
+use arc_swap::ArcSwap;
 use tokio::select;
 use tokio::time::Instant;
 use tracing::{debug, error, trace};
 use types::base::AuthorityName;
 use types::digests::TransactionDigest;
 use types::transaction::VerifiedSignedTransaction;
+
+use crate::authority_aggregator::AuthorityAggregator;
+use crate::authority_client::AuthorityAPI;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::cache::TransactionCacheRead;
 
 pub struct ValidatorTxFinalizerConfig {
     pub tx_finalization_delay: Duration,

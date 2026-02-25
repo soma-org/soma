@@ -4,11 +4,14 @@
 
 use std::sync::Arc;
 
-use crate::{dag_state::DagState, round_tracker::QuorumRound};
 use parking_lot::RwLock;
 use tracing::{debug, info};
 use types::committee::{AuthorityIndex, Stake};
-use types::consensus::{context::Context, leader_scoring::ReputationScores};
+use types::consensus::context::Context;
+use types::consensus::leader_scoring::ReputationScores;
+
+use crate::dag_state::DagState;
+use crate::round_tracker::QuorumRound;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum AncestorState {
@@ -290,10 +293,12 @@ impl AncestorStateManager {
 // SPDX-License-Identifier: Apache-2.0
 #[cfg(test)]
 mod tests {
+    use types::consensus::context::Context;
+    use types::consensus::leader_scoring::ReputationScores;
+    use types::storage::consensus::mem_store::MemStore;
+
     use super::*;
     use crate::test_dag_builder::DagBuilder;
-    use types::consensus::{context::Context, leader_scoring::ReputationScores};
-    use types::storage::consensus::mem_store::MemStore;
 
     #[tokio::test]
     async fn test_calculate_network_high_accepted_quorum_round() {

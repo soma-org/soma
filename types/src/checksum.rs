@@ -2,13 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::{error::FastCryptoError, hash::Digest, traits::ToFromBytes};
+use std::cmp::Ordering;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+
+use fastcrypto::error::FastCryptoError;
+use fastcrypto::hash::Digest;
+use fastcrypto::traits::ToFromBytes;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{
-    cmp::Ordering,
-    fmt,
-    hash::{Hash, Hasher},
-};
 
 use crate::crypto::{DIGEST_LENGTH, DefaultHash as DefaultHashFunction};
 

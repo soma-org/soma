@@ -2,15 +2,14 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::Context;
-use anyhow::Result;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use tracing::debug;
-use tracing::trace;
+
+use anyhow::{Context, Result};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use tracing::{debug, trace};
 
 use crate::multiaddr::Multiaddr;
 

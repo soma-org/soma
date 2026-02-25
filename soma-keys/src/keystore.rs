@@ -2,9 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::key_derive::{derive_key_pair_from_path, generate_new_key};
-use crate::key_identity::KeyIdentity;
-use crate::random_names::{random_name, random_names};
+use std::collections::{BTreeMap, HashSet};
+use std::fmt::{Display, Formatter, Write};
+use std::fs;
+use std::io::BufReader;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail, ensure};
 use async_trait::async_trait;
@@ -13,21 +17,19 @@ use bip39::{Language, Mnemonic, Seed};
 #[cfg(unix)]
 use colored::Colorize as _;
 use enum_dispatch::enum_dispatch;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{BTreeMap, HashSet};
-use std::fmt::Write;
-use std::fmt::{Display, Formatter};
-use std::fs;
-use std::io::BufReader;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
 use types::base::SomaAddress;
-use types::crypto::get_key_pair_from_rng;
-use types::crypto::{EncodeDecodeBase64, PublicKey, Signature, SignatureScheme, SomaKeyPair};
+use types::crypto::{
+    EncodeDecodeBase64, PublicKey, Signature, SignatureScheme, SomaKeyPair, get_key_pair_from_rng,
+};
 use types::intent::{Intent, IntentMessage};
+
+use crate::key_derive::{derive_key_pair_from_path, generate_new_key};
+use crate::key_identity::KeyIdentity;
+use crate::random_names::{random_name, random_names};
 
 pub const ALIASES_FILE_EXTENSION: &str = "aliases";
 

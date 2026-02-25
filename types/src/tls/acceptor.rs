@@ -2,16 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::io;
 use std::sync::Arc;
 
-use axum::{Extension, middleware::AddExtension};
-use axum_server::{
-    accept::Accept,
-    tls_rustls::{RustlsAcceptor, RustlsConfig},
-};
+use axum::Extension;
+use axum::middleware::AddExtension;
+use axum_server::accept::Accept;
+use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use fastcrypto::ed25519::Ed25519PublicKey;
 use rustls::pki_types::CertificateDer;
-use std::io;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::server::TlsStream;
 use tower_layer::Layer;

@@ -16,13 +16,12 @@
 //!
 //! Uses Burn tensor operations with NdArray backend for deterministic CPU-based computation.
 
-use burn::{
-    backend::NdArray,
-    prelude::Backend,
-    tensor::{Tensor, TensorData},
-};
+use burn::backend::NdArray;
+use burn::prelude::Backend;
+use burn::tensor::{Tensor, TensorData};
 
-use crate::{model::ModelId, tensor::SomaTensor};
+use crate::model::ModelId;
+use crate::tensor::SomaTensor;
 
 /// Result of model selection - contains model ID, raw distance², and weighted score.
 #[derive(Debug, Clone, PartialEq)]

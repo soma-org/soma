@@ -2,34 +2,26 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::time::timeout;
 use tracing::instrument;
-use types::{
-    base::AuthorityName,
-    error::ErrorCategory,
-    messages_grpc::{SubmitTxRequest, SubmitTxResult, TxType},
-};
+use types::base::AuthorityName;
+use types::error::ErrorCategory;
+use types::messages_grpc::{SubmitTxRequest, SubmitTxResult, TxType};
 
-use crate::{
-    authority_aggregator::AuthorityAggregator,
-    authority_client::AuthorityAPI,
-    safe_client::SafeClient,
-    transaction_driver::{
-        SubmitTransactionOptions,
-        error::{
-            AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
-            aggregate_request_errors,
-        },
-        request_retrier::RequestRetrier,
-    },
-    validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor},
+use crate::authority_aggregator::AuthorityAggregator;
+use crate::authority_client::AuthorityAPI;
+use crate::safe_client::SafeClient;
+use crate::transaction_driver::SubmitTransactionOptions;
+use crate::transaction_driver::error::{
+    AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+    aggregate_request_errors,
 };
+use crate::transaction_driver::request_retrier::RequestRetrier;
+use crate::validator_client_monitor::{OperationFeedback, OperationType, ValidatorClientMonitor};
 
 #[cfg(test)]
 #[path = "unit_tests/transaction_submitter_tests.rs"]

@@ -1,10 +1,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt;
+
 use object_store::path::Path;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use types::{checksum::Checksum, committee::Epoch};
+use types::checksum::Checksum;
+use types::committee::Epoch;
 
 pub mod downloader;
 pub(crate) mod engine;

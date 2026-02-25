@@ -34,11 +34,12 @@ impl SubmissionManifest {
 
 #[cfg(test)]
 mod tests {
+    use url::Url;
+
     use super::*;
     use crate::checksum::Checksum;
     use crate::crypto::DIGEST_LENGTH;
     use crate::metadata::{ManifestV1, Metadata, MetadataV1};
-    use url::Url;
 
     fn test_manifest() -> SubmissionManifest {
         let url = Url::parse("https://example.com/data").unwrap();

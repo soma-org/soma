@@ -93,8 +93,9 @@
 //!     reliability: 0.8
 //! ```
 
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 
 /// Configuration for validator client monitoring from the client perspective
 #[derive(Debug, Clone, Serialize, Deserialize)]

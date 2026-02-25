@@ -2,30 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, io::Read, sync::Arc};
+use std::collections::HashMap;
+use std::io::Read;
+use std::sync::Arc;
 
-use crate::{
-    checkpoints::{VerifiedCheckpoint, VerifiedCheckpointContents},
-    committee::{Committee, Epoch},
-    consensus::{
-        block::{BlockAPI as _, BlockRef, VerifiedBlock},
-        commit::{
-            Commit, CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommittedSubDag,
-            TrustedCommit,
-        },
-    },
-    digests::TransactionDigest,
-    effects::TransactionEffects,
-    transaction::VerifiedTransaction,
-};
 use anyhow::anyhow;
 use parking_lot::RwLock;
 use tap::Pipe as _;
 
-use super::{
-    read_store::ReadStore,
-    storage_error::{self, Error, Result},
+use super::read_store::ReadStore;
+use super::storage_error::{self, Error, Result};
+use crate::checkpoints::{VerifiedCheckpoint, VerifiedCheckpointContents};
+use crate::committee::{Committee, Epoch};
+use crate::consensus::block::{BlockAPI as _, BlockRef, VerifiedBlock};
+use crate::consensus::commit::{
+    Commit, CommitAPI as _, CommitDigest, CommitIndex, CommitInfo, CommittedSubDag, TrustedCommit,
 };
+use crate::digests::TransactionDigest;
+use crate::effects::TransactionEffects;
+use crate::transaction::VerifiedTransaction;
 
 pub trait WriteStore: ReadStore {
     fn insert_checkpoint(&self, checkpoint: &VerifiedCheckpoint) -> Result<()>;

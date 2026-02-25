@@ -2,7 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeMap, fs, path::Path};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::Path;
 
 use anyhow::{Context, bail};
 use camino::Utf8Path;
@@ -12,38 +14,32 @@ use fastcrypto::traits::{KeyPair as _, ToFromBytes};
 use protocol_config::ProtocolVersion;
 use tracing::trace;
 
-use crate::base::ExecutionDigests;
+use crate::SYSTEM_STATE_OBJECT_ID;
+use crate::base::{ExecutionDigests, SomaAddress};
+use crate::checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary};
 use crate::config::genesis_config::{
     GenesisCeremonyParameters, GenesisModelConfig, TOTAL_SUPPLY_SHANNONS,
     TokenDistributionSchedule, ValidatorGenesisConfig,
 };
-use crate::crypto::{AuthoritySignInfoTrait as _, AuthoritySignature};
+use crate::crypto::{
+    AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo, AuthoritySignInfoTrait as _,
+    AuthoritySignature,
+};
+use crate::digests::TransactionDigest;
+use crate::effects::{ExecutionStatus, TransactionEffects};
 use crate::envelope::Message as _;
-use crate::intent::{IntentMessage, IntentScope};
-use crate::object::{ObjectData, ObjectType, Version};
+use crate::genesis::{Genesis, UnsignedGenesis};
+use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::object::{Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::staking::StakingPool;
 use crate::system_state::validator::{Validator, ValidatorMetadata};
-use crate::system_state::{FeeParameters, get_system_state};
+use crate::system_state::{FeeParameters, SystemState, SystemStateTrait, get_system_state};
 use crate::target::{generate_target, make_target_seed};
-use crate::transaction::InputObjects;
+use crate::temporary_store::TemporaryStore;
+use crate::transaction::{InputObjects, Transaction, VerifiedTransaction};
 use crate::tx_fee::TransactionFee;
 use crate::validator_info::GenesisValidatorInfo;
-use crate::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    checkpoints::{CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary},
-    crypto::{AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo},
-    digests::TransactionDigest,
-    effects::{ExecutionStatus, TransactionEffects},
-    genesis::{Genesis, UnsignedGenesis},
-    intent::Intent,
-    object::{Object, ObjectID, Owner},
-    system_state::{SystemState, SystemStateTrait},
-    temporary_store::TemporaryStore,
-    transaction::{Transaction, VerifiedTransaction},
-};
-use std::collections::BTreeSet;
 
 const GENESIS_BUILDER_COMMITTEE_DIR: &str = "committee";
 const GENESIS_BUILDER_MODELS_DIR: &str = "models";
@@ -510,7 +506,9 @@ impl GenesisBuilder {
                             next_epoch_proxy_address: None,
                         },
                         voting_power: 0, // Will be set by set_voting_power()
-                        staking_pool: StakingPool::new(Self::deterministic_object_id(&mut id_counter)),
+                        staking_pool: StakingPool::new(Self::deterministic_object_id(
+                            &mut id_counter,
+                        )),
                         commission_rate: v.info.commission_rate,
                         next_epoch_stake: 0,
                         next_epoch_commission_rate: v.info.commission_rate,

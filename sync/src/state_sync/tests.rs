@@ -10,20 +10,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::RwLock;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use tokio::sync::broadcast;
 use tonic::Request;
-use types::{
-    config::{p2p_config::P2pConfig, state_sync_config::StateSyncConfig},
-    crypto::NetworkKeyPair,
-    digests::CheckpointDigest,
-    peer_id::PeerId,
-    storage::write_store::WriteStore,
-    sync::{
-        GetCheckpointAvailabilityRequest, GetCheckpointContentsRequest,
-        GetCheckpointSummaryRequest, PushCheckpointSummaryRequest, active_peers::ActivePeers,
-        channel_manager::PeerInfo,
-    },
+use types::config::p2p_config::P2pConfig;
+use types::config::state_sync_config::StateSyncConfig;
+use types::crypto::NetworkKeyPair;
+use types::digests::CheckpointDigest;
+use types::peer_id::PeerId;
+use types::storage::write_store::WriteStore;
+use types::sync::active_peers::ActivePeers;
+use types::sync::channel_manager::PeerInfo;
+use types::sync::{
+    GetCheckpointAvailabilityRequest, GetCheckpointContentsRequest, GetCheckpointSummaryRequest,
+    PushCheckpointSummaryRequest,
 };
 
 use crate::builder::P2pBuilder;
@@ -887,8 +888,9 @@ fn test_get_or_insert_across_epoch_boundary() {
 // Worker Unit Tests — StateSyncWorker::process_checkpoint
 // ============================================================================
 
-use crate::state_sync::worker::StateSyncWorker;
 use data_ingestion::Worker;
+
+use crate::state_sync::worker::StateSyncWorker;
 
 #[tokio::test]
 async fn test_worker_process_checkpoint_empty() {

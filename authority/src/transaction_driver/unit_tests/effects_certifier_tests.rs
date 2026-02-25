@@ -23,13 +23,12 @@ use types::messages_grpc::{ExecutedData, SubmitTxResult, TxType, WaitForEffectsR
 use types::object::OBJECT_START_VERSION;
 use types::storage::committee_store::CommitteeStore;
 
+use super::EffectsCertifier;
 use crate::authority_aggregator::AuthorityAggregator;
 use crate::test_authority_clients::MockAuthorityApi;
 use crate::transaction_driver::SubmitTransactionOptions;
 use crate::transaction_driver::error::TransactionDriverError;
 use crate::validator_client_monitor::ValidatorClientMonitor;
-
-use super::EffectsCertifier;
 
 /// Create a test setup for effects certifier tests.
 fn setup() -> (

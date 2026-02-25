@@ -4,10 +4,12 @@
 
 use std::sync::Arc;
 
-use crate::transaction_certifier::TransactionCertifier;
 use tokio::sync::broadcast;
 use tracing::{trace, warn};
-use types::consensus::{block::ExtendedBlock, context::Context};
+use types::consensus::block::ExtendedBlock;
+use types::consensus::context::Context;
+
+use crate::transaction_certifier::TransactionCertifier;
 
 /// Runs async processing logic for proposed blocks.
 /// Currently it only call transaction certifier with proposed blocks.

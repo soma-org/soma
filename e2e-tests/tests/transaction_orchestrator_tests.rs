@@ -19,15 +19,16 @@
 //! instead of Move transactions.
 
 use std::time::Duration;
+
 use test_cluster::TestClusterBuilder;
 use tokio::time::{sleep, timeout};
 use tracing::info;
-use types::{
-    effects::TransactionEffectsAPI,
-    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType, FinalizedEffects},
-    system_state::SystemStateTrait as _,
-    transaction::{TransactionData, TransactionKind},
+use types::effects::TransactionEffectsAPI;
+use types::quorum_driver::{
+    ExecuteTransactionRequest, ExecuteTransactionRequestType, FinalizedEffects,
 };
+use types::system_state::SystemStateTrait as _;
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 /// Helper: create a coin transfer TransactionData

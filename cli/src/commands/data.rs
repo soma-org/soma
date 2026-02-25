@@ -6,16 +6,16 @@
 //! This module provides the `soma target download` command for fetching data associated
 //! with filled targets from the validator proxy network.
 
+use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
+
 use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-use std::path::PathBuf;
-use tokio::io::AsyncWriteExt;
-
 use sdk::proxy_client::ProxyClient;
 use sdk::wallet_context::WalletContext;
+use serde::Serialize;
+use tokio::io::AsyncWriteExt;
 use types::object::ObjectID;
 use types::target::TargetId;
 

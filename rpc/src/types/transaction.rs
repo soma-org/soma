@@ -2,16 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use serde::{Deserialize, Serialize};
-
-use crate::types::{Address, CheckpointTimestamp, EpochId, Object, ObjectReference, UserSignature};
-use crate::types::{Digest, ProtocolVersion};
-use serde::Deserializer;
-use serde::Serializer;
 use serde::ser::SerializeSeq;
-use serde_with::DeserializeAs;
-use serde_with::SerializeAs;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{DeserializeAs, SerializeAs};
 use url::Url;
+
+use crate::types::{
+    Address, CheckpointTimestamp, Digest, EpochId, Object, ObjectReference, ProtocolVersion,
+    UserSignature,
+};
 
 /// A transaction
 ///

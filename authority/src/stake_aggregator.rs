@@ -2,23 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
+use std::sync::Arc;
+
 use serde::Serialize;
-use std::{
-    collections::{BTreeMap, HashMap, hash_map::Entry},
-    hash::Hash,
-    sync::Arc,
-};
 use store::TypedStoreError;
 use tracing::warn;
-use types::{
-    base::AuthorityName,
-    committee::{Committee, VotingPower},
-    crypto::{AuthorityQuorumSignInfo, AuthoritySignInfo},
-    envelope::{Envelope, Message},
-    error::{SomaError, SomaResult},
-    intent::Intent,
-};
-use types::{base::ConciseableName, committee::CommitteeTrait, crypto::AuthoritySignInfoTrait};
+use types::base::{AuthorityName, ConciseableName};
+use types::committee::{Committee, CommitteeTrait, VotingPower};
+use types::crypto::{AuthorityQuorumSignInfo, AuthoritySignInfo, AuthoritySignInfoTrait};
+use types::envelope::{Envelope, Message};
+use types::error::{SomaError, SomaResult};
+use types::intent::Intent;
 
 /// StakeAggregator allows us to keep track of the total stake of a set of validators.
 /// STRENGTH indicates whether we want a strong quorum (2f+1) or a weak quorum (f+1).

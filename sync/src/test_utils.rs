@@ -7,29 +7,28 @@
 
 #![allow(unused_imports, clippy::unwrap_used, clippy::expect_used)]
 
-use rand::{SeedableRng as _, rngs::StdRng};
 use std::collections::BTreeMap;
-use tokio::sync::{broadcast, mpsc};
-use types::{
-    checkpoints::{
-        CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
-        CheckpointSummary, EndOfEpochData, FullCheckpointContents, VerifiedCheckpoint,
-        VerifiedCheckpointContents,
-    },
-    committee::{Authority, Committee, EpochId, get_available_local_address},
-    crypto::{AuthorityKeyPair, NetworkKeyPair},
-    digests::CheckpointDigest,
-    multiaddr::Multiaddr,
-    storage::{shared_in_memory_store::SharedInMemoryStore, write_store::WriteStore},
-    sync::{
-        PeerEvent,
-        active_peers::ActivePeers,
-        channel_manager::{ChannelManager, ChannelManagerRequest},
-    },
-    tx_fee::TransactionFee,
-};
 
-use crate::{server::P2pService, tonic_gen::p2p_server::P2pServer};
+use rand::SeedableRng as _;
+use rand::rngs::StdRng;
+use tokio::sync::{broadcast, mpsc};
+use types::checkpoints::{
+    CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber, CheckpointSummary,
+    EndOfEpochData, FullCheckpointContents, VerifiedCheckpoint, VerifiedCheckpointContents,
+};
+use types::committee::{Authority, Committee, EpochId, get_available_local_address};
+use types::crypto::{AuthorityKeyPair, NetworkKeyPair};
+use types::digests::CheckpointDigest;
+use types::multiaddr::Multiaddr;
+use types::storage::shared_in_memory_store::SharedInMemoryStore;
+use types::storage::write_store::WriteStore;
+use types::sync::PeerEvent;
+use types::sync::active_peers::ActivePeers;
+use types::sync::channel_manager::{ChannelManager, ChannelManagerRequest};
+use types::tx_fee::TransactionFee;
+
+use crate::server::P2pService;
+use crate::tonic_gen::p2p_server::P2pServer;
 
 /// Test fixture for generating certified checkpoint chains.
 ///

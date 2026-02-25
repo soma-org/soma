@@ -3,12 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::traits::Signer;
-use rand::{SeedableRng as _, rngs::StdRng};
+use rand::SeedableRng as _;
+use rand::rngs::StdRng;
 
-use crate::{
-    crypto::{Signature, SomaKeyPair, get_key_pair_from_rng},
-    transaction::{Transaction, TransactionData},
-};
+use crate::crypto::{Signature, SomaKeyPair, get_key_pair_from_rng};
+use crate::transaction::{Transaction, TransactionData};
 
 // This is used to sign transaction with signer using default Intent.
 pub fn to_sender_signed_transaction(

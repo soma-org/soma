@@ -10,19 +10,18 @@
 //! - Transaction type helpers for submissions
 //! - Tally-based submission reports on Target objects
 
-use crate::{
-    base::SomaAddress,
-    checksum::Checksum,
-    crypto::DIGEST_LENGTH,
-    digests::DataCommitment,
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::ModelId,
-    object::ObjectID,
-    submission::SubmissionManifest,
-    tensor::SomaTensor,
-    transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionKind},
-};
 use url::Url;
+
+use crate::base::SomaAddress;
+use crate::checksum::Checksum;
+use crate::crypto::DIGEST_LENGTH;
+use crate::digests::DataCommitment;
+use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use crate::model::ModelId;
+use crate::object::ObjectID;
+use crate::submission::SubmissionManifest;
+use crate::tensor::SomaTensor;
+use crate::transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionKind};
 
 /// Helper to create a test SubmissionManifest
 fn test_submission_manifest(size: usize) -> SubmissionManifest {
@@ -171,9 +170,10 @@ fn test_bond_scales_with_data_size() {
 // Tally-Based Submission Report Tests (Target methods)
 // =============================================================================
 
+use std::collections::BTreeMap;
+
 use super::test_utils::{create_test_system_state, create_validators_with_stakes};
 use crate::target::{TargetStatus, TargetV1};
-use std::collections::BTreeMap;
 
 /// Helper to create a test system state with voting power properly set.
 fn create_test_system_state_with_voting_power(

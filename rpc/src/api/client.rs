@@ -5,37 +5,29 @@
 use std::pin::Pin;
 use std::time::Duration;
 
-use futures::Stream;
-use futures::StreamExt;
-use futures::TryStreamExt;
+use futures::{Stream, StreamExt, TryStreamExt};
+use prost_types::FieldMask;
 use tap::Pipe;
 use tonic::metadata::MetadataMap;
 use tracing::info;
+use types::checkpoints::{CertifiedCheckpointSummary, CheckpointSequenceNumber};
 use types::digests::TransactionDigest;
-use types::effects::TransactionEffectsAPI as _;
 use types::effects::object_change::IDOperation;
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use types::full_checkpoint_content::{CheckpointData, ObjectSet};
+use types::object::{Object, ObjectID, Version};
+use types::transaction::Transaction;
 
-use crate::api::ServerVersion;
-use crate::api::rpc_client;
 use crate::api::rpc_client::HeadersInterceptor;
-use crate::proto::TryFromProtoError;
-use crate::proto::soma as proto;
-use crate::proto::soma::GetEpochResponse;
-use crate::proto::soma::ListOwnedObjectsRequest;
-use crate::proto::soma::SimulateTransactionRequest;
-use crate::proto::soma::SimulateTransactionResponse;
-use crate::proto::soma::SubscribeCheckpointsRequest;
+use crate::api::{ServerVersion, rpc_client};
 use crate::proto::soma::transaction_kind::Kind;
+use crate::proto::soma::{
+    GetEpochResponse, ListOwnedObjectsRequest, SimulateTransactionRequest,
+    SimulateTransactionResponse, SubscribeCheckpointsRequest,
+};
+use crate::proto::{TryFromProtoError, soma as proto};
 use crate::utils::field::FieldMaskUtil;
 use crate::utils::types_conversions::SdkTypeConversionError;
-use prost_types::FieldMask;
-use types::checkpoints::{CertifiedCheckpointSummary, CheckpointSequenceNumber};
-use types::effects::TransactionEffects;
-use types::full_checkpoint_content::CheckpointData;
-use types::full_checkpoint_content::ObjectSet;
-use types::object::Object;
-use types::object::{ObjectID, Version};
-use types::transaction::Transaction;
 pub type Result<T, E = tonic::Status> = std::result::Result<T, E>;
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

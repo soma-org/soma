@@ -3,19 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::api::RpcService;
-use crate::proto::soma::GetBalanceRequest;
-use crate::proto::soma::GetBalanceResponse;
-use crate::proto::soma::GetChallengeRequest;
-use crate::proto::soma::GetChallengeResponse;
-use crate::proto::soma::GetTargetRequest;
-use crate::proto::soma::GetTargetResponse;
-use crate::proto::soma::ListChallengesRequest;
-use crate::proto::soma::ListChallengesResponse;
-use crate::proto::soma::ListOwnedObjectsRequest;
-use crate::proto::soma::ListOwnedObjectsResponse;
-use crate::proto::soma::ListTargetsRequest;
-use crate::proto::soma::ListTargetsResponse;
 use crate::proto::soma::state_service_server::StateService;
+use crate::proto::soma::{
+    GetBalanceRequest, GetBalanceResponse, GetChallengeRequest, GetChallengeResponse,
+    GetTargetRequest, GetTargetResponse, ListChallengesRequest, ListChallengesResponse,
+    ListOwnedObjectsRequest, ListOwnedObjectsResponse, ListTargetsRequest, ListTargetsResponse,
+};
 
 mod get_balance;
 mod get_challenge;

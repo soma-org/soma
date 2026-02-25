@@ -2,11 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use tap::Pipe;
+
 use super::*;
 use crate::proto::TryFromProtoError;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
-use tap::Pipe;
 
 //
 // CheckpointSummary

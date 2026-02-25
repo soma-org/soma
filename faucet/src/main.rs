@@ -6,13 +6,14 @@
 // This file is derived from the Sui project (https://github.com/MystenLabs/sui),
 // specifically crates/sui-faucet/src/main.rs
 
+use std::sync::Arc;
+
 use clap::Parser;
 use faucet::app_state::AppState;
 use faucet::faucet_config::FaucetConfig;
 use faucet::local_faucet::LocalFaucet;
 use faucet::server::start_faucet;
 use sdk::wallet_context::create_wallet_context;
-use std::sync::Arc;
 use tracing::info;
 use types::config::soma_config_dir;
 

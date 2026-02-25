@@ -2,22 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Formatter},
-    sync::Arc,
-};
+use std::collections::BTreeMap;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
-use rand::{SeedableRng, prelude::SliceRandom, rngs::StdRng};
+use rand::SeedableRng;
+use rand::prelude::SliceRandom;
+use rand::rngs::StdRng;
 use types::committee::{AuthorityIndex, Stake};
-
-use types::consensus::{
-    block::Round,
-    commit::{CommitIndex, CommitRange},
-    context::Context,
-    leader_scoring::ReputationScores,
-};
+use types::consensus::block::Round;
+use types::consensus::commit::{CommitIndex, CommitRange};
+use types::consensus::context::Context;
+use types::consensus::leader_scoring::ReputationScores;
 
 use crate::dag_state::DagState;
 
@@ -411,13 +408,16 @@ impl Debug for LeaderSwapTable {
 #[cfg(test)]
 mod tests {
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockDigest, BlockRef, BlockTimestampMs, TestBlock, VerifiedBlock},
-        commit::{CommitDigest, CommitInfo, CommitRef, CommittedSubDag, TrustedCommit},
-        context::Context,
-        leader_scoring::ReputationScores,
+    use types::consensus::block::{
+        BlockDigest, BlockRef, BlockTimestampMs, TestBlock, VerifiedBlock,
     };
-    use types::storage::consensus::{Store, WriteBatch, mem_store::MemStore};
+    use types::consensus::commit::{
+        CommitDigest, CommitInfo, CommitRef, CommittedSubDag, TrustedCommit,
+    };
+    use types::consensus::context::Context;
+    use types::consensus::leader_scoring::ReputationScores;
+    use types::storage::consensus::mem_store::MemStore;
+    use types::storage::consensus::{Store, WriteBatch};
 
     use super::*;
     use crate::test_dag_builder::DagBuilder;

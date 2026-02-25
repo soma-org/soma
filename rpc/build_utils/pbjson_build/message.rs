@@ -8,10 +8,8 @@
 //! This module therefore extracts a slightly less obtuse representation of a
 //! message that can be used by the code generation logic
 
-use prost_types::{
-    FieldDescriptorProto,
-    field_descriptor_proto::{Label, Type},
-};
+use prost_types::FieldDescriptorProto;
+use prost_types::field_descriptor_proto::{Label, Type};
 
 use crate::build_utils::pbjson_build::descriptor::{
     Descriptor, DescriptorSet, MessageDescriptor, Syntax, TypeName, TypePath,

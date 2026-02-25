@@ -4,24 +4,21 @@
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod delegation_tests {
-    use crate::{
-        base::{SomaAddress, dbg_addr},
-        config::genesis_config::SHANNONS_PER_SOMA,
-        effects::ExecutionFailureStatus,
-        error::SomaError,
-        system_state::{
-            SystemParameters, SystemState,
-            staking::StakedSomaV1,
-            test_utils::{
-                self, add_validator, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
-                assert_validator_total_stake_amounts, create_test_system_state,
-                create_validator_for_testing, stake_with, total_soma_balance, unstake,
-                validator_stake_amount,
-            },
-            validator::Validator,
-        },
-    };
     use std::collections::BTreeMap;
+
+    use crate::base::{SomaAddress, dbg_addr};
+    use crate::config::genesis_config::SHANNONS_PER_SOMA;
+    use crate::effects::ExecutionFailureStatus;
+    use crate::error::SomaError;
+    use crate::system_state::staking::StakedSomaV1;
+    use crate::system_state::test_utils::{
+        self, add_validator, advance_epoch_with_reward_amounts, advance_epoch_with_rewards,
+        assert_validator_total_stake_amounts, create_test_system_state,
+        create_validator_for_testing, stake_with, total_soma_balance, unstake,
+        validator_stake_amount,
+    };
+    use crate::system_state::validator::Validator;
+    use crate::system_state::{SystemParameters, SystemState};
 
     // Create constant validator addresses for testing
     fn validator_addr_1() -> SomaAddress {

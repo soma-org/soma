@@ -20,12 +20,10 @@
 
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    config::genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT},
-    effects::TransactionEffectsAPI,
-    system_state::{SystemState, SystemStateTrait as _},
-    transaction::{TransactionData, TransactionKind},
-};
+use types::config::genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT};
+use types::effects::TransactionEffectsAPI;
+use types::system_state::{SystemState, SystemStateTrait as _};
+use types::transaction::{TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 /// Extract supply-relevant balances from the system state.

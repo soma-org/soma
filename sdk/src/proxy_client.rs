@@ -32,12 +32,13 @@ use std::time::Duration;
 
 use rand::seq::SliceRandom as _;
 use tracing::{info, warn};
+use types::base::AuthorityName;
+use types::model::ModelId;
+use types::multiaddr::Multiaddr;
+use types::object::ObjectID;
+use types::system_state::SystemState;
+use types::target::TargetId;
 use url::Url;
-
-use types::{
-    base::AuthorityName, model::ModelId, multiaddr::Multiaddr, object::ObjectID,
-    system_state::SystemState, target::TargetId,
-};
 
 // ===========================================================================
 // Errors
@@ -428,6 +429,7 @@ mod tests {
     #[test]
     fn test_multiaddr_to_http_url_basic() {
         use std::str::FromStr;
+
         use types::multiaddr::Multiaddr;
 
         let addr = Multiaddr::from_str("/ip4/127.0.0.1/tcp/8080/http").unwrap();
@@ -443,6 +445,7 @@ mod tests {
     #[test]
     fn test_multiaddr_to_http_url_https() {
         use std::str::FromStr;
+
         use types::multiaddr::Multiaddr;
 
         let addr = Multiaddr::from_str("/ip4/192.168.1.1/tcp/443/https").unwrap();
@@ -458,6 +461,7 @@ mod tests {
     #[test]
     fn test_multiaddr_to_http_url_dns() {
         use std::str::FromStr;
+
         use types::multiaddr::Multiaddr;
 
         let addr = Multiaddr::from_str("/dns/example.com/tcp/8080/http").unwrap();
@@ -471,6 +475,7 @@ mod tests {
     #[test]
     fn test_multiaddr_to_http_url_missing_port() {
         use std::str::FromStr;
+
         use types::multiaddr::Multiaddr;
 
         // Multiaddr without port should return None

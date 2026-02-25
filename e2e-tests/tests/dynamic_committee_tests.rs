@@ -2,27 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use node::handle::SomaNodeHandle;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use test_cluster::{TestCluster, TestClusterBuilder};
 use tracing::info;
-use types::{
-    base::{SequenceNumber, SomaAddress},
-    config::genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT},
-    digests::ObjectDigest,
-    effects::{TransactionEffects, TransactionEffectsAPI},
-    object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version},
-    storage::object_store::ObjectStore,
-    system_state::{SystemState, SystemStateTrait as _, validator::Validator},
-    transaction::{Transaction, TransactionData, TransactionKind},
-};
+use types::base::{SequenceNumber, SomaAddress};
+use types::config::genesis_config::{AccountConfig, DEFAULT_GAS_AMOUNT};
+use types::digests::ObjectDigest;
+use types::effects::{TransactionEffects, TransactionEffectsAPI};
+use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
+use types::storage::object_store::ObjectStore;
+use types::system_state::validator::Validator;
+use types::system_state::{SystemState, SystemStateTrait as _};
+use types::transaction::{Transaction, TransactionData, TransactionKind};
 use utils::logging::init_tracing;
 
 const MAX_DELEGATION_AMOUNT: u64 = 1_000_000_000_000; // 1K SOMA
@@ -190,8 +188,10 @@ impl StressTestRunner {
 }
 
 mod add_stake {
+    use types::effects::TransactionEffects;
+    use types::system_state::staking::StakedSomaV1;
+
     use super::*;
-    use types::{effects::TransactionEffects, system_state::staking::StakedSomaV1};
 
     pub struct RequestAddStakeGen;
 

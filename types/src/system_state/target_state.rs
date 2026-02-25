@@ -12,8 +12,9 @@
 //! The actual Target objects are shared objects stored separately from SystemState.
 //! This design prevents SystemState from becoming a contention bottleneck.
 
-use crate::tensor::SomaTensor;
 use serde::{Deserialize, Serialize};
+
+use crate::tensor::SomaTensor;
 
 /// Lightweight coordination state for target generation.
 ///

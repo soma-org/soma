@@ -2,28 +2,25 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    cell::OnceCell,
-    fmt::{Debug, Display, Formatter},
-    ops::{Deref, DerefMut},
-    sync::OnceLock,
-};
+use std::cell::OnceCell;
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Deref, DerefMut};
+use std::sync::OnceLock;
 
 use fastcrypto::traits::{KeyPair, Signer};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    base::AuthorityName,
-    checkpoints::CheckpointSequenceNumber,
-    committee::{Committee, EpochId},
-    crypto::{
-        AuthorityKeyPair, AuthorityQuorumSignInfo, AuthoritySignInfo, AuthoritySignInfoTrait,
-        AuthoritySignature, AuthorityStrongQuorumSignInfo, EmptySignInfo,
-    },
-    error::SomaResult,
-    intent::{Intent, IntentScope},
-    transaction::{CertificateProof, SenderSignedData},
+use crate::base::AuthorityName;
+use crate::checkpoints::CheckpointSequenceNumber;
+use crate::committee::{Committee, EpochId};
+use crate::crypto::{
+    AuthorityKeyPair, AuthorityQuorumSignInfo, AuthoritySignInfo, AuthoritySignInfoTrait,
+    AuthoritySignature, AuthorityStrongQuorumSignInfo, EmptySignInfo,
 };
+use crate::error::SomaResult;
+use crate::intent::{Intent, IntentScope};
+use crate::transaction::{CertificateProof, SenderSignedData};
 
 pub trait Message {
     type DigestType: Clone + Debug;

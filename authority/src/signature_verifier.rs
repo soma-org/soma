@@ -2,18 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use either::Either;
 use futures::pin_mut;
 use im::hashmap::HashMap as ImHashMap;
 use itertools::{Itertools as _, izip};
 use parking_lot::{Mutex, MutexGuard, RwLock};
-use std::sync::Arc;
 use tap::TapFallible;
 use tokio::runtime::Handle;
-use tokio::{
-    sync::oneshot,
-    time::{Duration, timeout},
-};
+use tokio::sync::oneshot;
+use tokio::time::{Duration, timeout};
 use tracing::{debug, info};
 use types::checkpoints::SignedCheckpointSummary;
 use types::committee::Committee;
@@ -23,8 +22,10 @@ use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
 use types::intent::Intent;
 use types::signature_verification::VerifiedDigestCache;
-use types::transaction::{CertifiedTransaction, SenderSignedData};
-use types::transaction::{VerifiedCertificate, verify_sender_signed_data_message_signatures};
+use types::transaction::{
+    CertifiedTransaction, SenderSignedData, VerifiedCertificate,
+    verify_sender_signed_data_message_signatures,
+};
 
 // Maximum amount of time we wait for a batch to fill up before verifying a partial batch.
 const BATCH_TIMEOUT_MS: Duration = Duration::from_millis(10);

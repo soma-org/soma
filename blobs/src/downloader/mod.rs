@@ -9,17 +9,16 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use object_store::ObjectStore;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use reqwest_retry::RetryTransientMiddleware;
+use reqwest_retry::policies::ExponentialBackoff;
 use tokio::sync::Semaphore;
-use types::{
-    error::{BlobError, BlobResult},
-    metadata::{Manifest, ManifestAPI},
-    parameters::HttpParameters,
-};
+use types::error::{BlobError, BlobResult};
+use types::metadata::{Manifest, ManifestAPI};
+use types::parameters::HttpParameters;
 use url::Url;
 
-use crate::engine::BlobEngine;
-use crate::{BlobPath, engine::BlobReader};
+use crate::BlobPath;
+use crate::engine::{BlobEngine, BlobReader};
 
 #[async_trait]
 pub trait BlobDownloader: Send + Sync + 'static {
@@ -125,11 +124,10 @@ impl BlobReader for HttpReader {
 
 #[cfg(test)]
 mod tests {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
     use super::*;
-    use wiremock::{
-        Mock, MockServer, ResponseTemplate,
-        matchers::{header, method, path},
-    };
 
     fn test_client() -> ClientWithMiddleware {
         ClientBuilder::new(reqwest::Client::new()).build()

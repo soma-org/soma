@@ -4,12 +4,12 @@
 
 use std::str::FromStr;
 
-use super::*;
-use crate::{
-    proto::TryFromProtoError,
-    utils::{field::FieldMaskTree, merge::Merge},
-};
 use tap::Pipe;
+
+use super::*;
+use crate::proto::TryFromProtoError;
+use crate::utils::field::FieldMaskTree;
+use crate::utils::merge::Merge;
 
 //
 // Object
@@ -234,8 +234,9 @@ impl TryFrom<&ObjectReference> for crate::types::ObjectReference {
 
 impl From<crate::types::Owner> for Owner {
     fn from(value: crate::types::Owner) -> Self {
-        use crate::types::Owner::*;
         use owner::OwnerKind;
+
+        use crate::types::Owner::*;
 
         let mut message = Self::default();
 

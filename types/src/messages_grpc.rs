@@ -6,14 +6,12 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
-use crate::{
-    crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo},
-    digests::TransactionDigest,
-    effects::{SignedTransactionEffects, VerifiedSignedTransactionEffects},
-    error::SomaError,
-    object::{Object, ObjectID},
-    transaction::{CertifiedTransaction, SenderSignedData, Transaction},
-};
+use crate::crypto::{AuthoritySignInfo, AuthorityStrongQuorumSignInfo};
+use crate::digests::TransactionDigest;
+use crate::effects::{SignedTransactionEffects, VerifiedSignedTransactionEffects};
+use crate::error::SomaError;
+use crate::object::{Object, ObjectID};
+use crate::transaction::{CertifiedTransaction, SenderSignedData, Transaction};
 
 /// A request for information about an object and optionally its
 /// parent certificate at a specific version.

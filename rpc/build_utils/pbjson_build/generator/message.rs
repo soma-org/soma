@@ -26,10 +26,6 @@
 
 use std::io::{Result, Write};
 
-use crate::build_utils::pbjson_build::message::{
-    Field, FieldModifier, FieldType, Message, OneOf, ScalarType,
-};
-
 use super::{
     Indent, write_deserialize_end, write_deserialize_start, write_serialize_end,
     write_serialize_start,
@@ -37,6 +33,9 @@ use super::{
 use crate::build_utils::pbjson_build::descriptor::TypePath;
 use crate::build_utils::pbjson_build::escape::escape_type;
 use crate::build_utils::pbjson_build::generator::write_fields_array;
+use crate::build_utils::pbjson_build::message::{
+    Field, FieldModifier, FieldType, Message, OneOf, ScalarType,
+};
 use crate::build_utils::pbjson_build::resolver::Resolver;
 
 pub fn generate_message<W: Write>(

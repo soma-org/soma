@@ -30,9 +30,10 @@ impl HeadersInterceptor {
         U: std::fmt::Display,
         P: std::fmt::Display,
     {
+        use std::io::Write;
+
         use base64::prelude::BASE64_STANDARD;
         use base64::write::EncoderWriter;
-        use std::io::Write;
 
         let mut buf = b"Basic ".to_vec();
         {

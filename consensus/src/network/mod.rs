@@ -17,17 +17,17 @@
 //! directly to the server. This keeps the logic agnostics to the underlying network outside of
 //! this module, so they can be reused easily across network implementations.
 
-use std::{pin::Pin, sync::Arc, time::Duration};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockRef, ExtendedBlock, Round, VerifiedBlock},
-    commit::{CommitRange, TrustedCommit},
-    context::Context,
-};
+use types::consensus::block::{BlockRef, ExtendedBlock, Round, VerifiedBlock};
+use types::consensus::commit::{CommitRange, TrustedCommit};
+use types::consensus::context::Context;
 use types::crypto::NetworkKeyPair;
 use types::error::ConsensusResult;
 

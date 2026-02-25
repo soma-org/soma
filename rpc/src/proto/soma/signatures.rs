@@ -2,11 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use tap::Pipe;
+
 use super::*;
 use crate::proto::TryFromProtoError;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
-use tap::Pipe;
 
 //
 // ValidatorAggregatedSignature
@@ -201,9 +202,9 @@ impl TryFrom<&SimpleSignature> for crate::types::SimpleSignature {
     type Error = TryFromProtoError;
 
     fn try_from(value: &SimpleSignature) -> Result<Self, Self::Error> {
-        use crate::types::Ed25519PublicKey;
-        use crate::types::Ed25519Signature;
         use SignatureScheme;
+
+        use crate::types::{Ed25519PublicKey, Ed25519Signature};
 
         let scheme = value
             .scheme
@@ -436,8 +437,9 @@ impl From<crate::types::UserSignature> for UserSignature {
 
 impl Merge<crate::types::UserSignature> for UserSignature {
     fn merge(&mut self, source: crate::types::UserSignature, mask: &FieldMaskTree) {
-        use crate::types::UserSignature::*;
         use user_signature::Signature;
+
+        use crate::types::UserSignature::*;
 
         if mask.contains(Self::SCHEME_FIELD.name) {
             self.scheme = Some(source.scheme().to_u8().into());

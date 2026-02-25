@@ -3,6 +3,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
+
 use arrgen::{constant_array, normal_array};
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
@@ -11,7 +13,6 @@ use burn::tensor::{Tensor, Tolerance};
 use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
 use models::v1::modules::pwff::PositionWiseFeedForwardConfig;
 use safetensors::serialize;
-use std::collections::HashMap;
 
 type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;

@@ -2,24 +2,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 use types::committee::Stake;
-use types::consensus::{
-    block::{BlockAPI, BlockRef, Round, TransactionIndex, VerifiedBlock},
-    commit::{CommitIndex, CommittedSubDag, DEFAULT_WAVE_LENGTH},
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-};
+use types::consensus::block::{BlockAPI, BlockRef, Round, TransactionIndex, VerifiedBlock};
+use types::consensus::commit::{CommitIndex, CommittedSubDag, DEFAULT_WAVE_LENGTH};
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
 use types::error::{ConsensusError, ConsensusResult};
 
-use crate::{dag_state::DagState, transaction_certifier::TransactionCertifier};
+use crate::dag_state::DagState;
+use crate::transaction_certifier::TransactionCertifier;
 
 /// For transaction T committed at leader round R, when a new leader at round >= R + INDIRECT_REJECT_DEPTH
 /// commits and T is still not finalized, T is rejected.
@@ -690,18 +687,15 @@ mod tests {
 
     use parking_lot::RwLock;
     use tokio::sync::mpsc::unbounded_channel;
-    use types::consensus::{
-        block::{BlockAPI, TransactionIndex},
-        context::Context,
-    };
+    use types::consensus::block::{BlockAPI, TransactionIndex};
+    use types::consensus::context::Context;
     use types::storage::consensus::mem_store::MemStore;
 
-    use crate::{
-        block_verifier::NoopBlockVerifier, dag_state::DagState, test_dag_builder::DagBuilder,
-        transaction_certifier::TransactionCertifier,
-    };
-
     use super::CommitFinalizer;
+    use crate::block_verifier::NoopBlockVerifier;
+    use crate::dag_state::DagState;
+    use crate::test_dag_builder::DagBuilder;
+    use crate::transaction_certifier::TransactionCertifier;
 
     /// Build a fully connected DAG, commit through the pipeline, and verify all
     /// blocks are directly finalized with no rejected transactions.

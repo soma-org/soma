@@ -2,11 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::error::TypedStoreError;
-use bincode::Options;
-use serde::de::DeserializeOwned;
 use std::collections::{BTreeMap, Bound, HashMap};
 use std::sync::{Arc, RwLock};
+
+use bincode::Options;
+use serde::de::DeserializeOwned;
+
+use crate::error::TypedStoreError;
 
 type InMemoryStoreInternal = Arc<RwLock<HashMap<String, BTreeMap<Vec<u8>, Vec<u8>>>>>;
 

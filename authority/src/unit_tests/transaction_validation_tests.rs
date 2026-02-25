@@ -8,21 +8,17 @@
 //! - Transaction data serialization
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    base::SomaAddress,
-    consensus::ConsensusCommitPrologueV1,
-    crypto::get_key_pair,
-    digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest},
-    effects::TransactionEffectsAPI,
-    object::{Object, ObjectID},
-    transaction::{ChangeEpoch, TransactionData, TransactionKind},
-    unit_tests::utils::to_sender_signed_transaction,
-};
+use types::base::SomaAddress;
+use types::consensus::ConsensusCommitPrologueV1;
+use types::crypto::get_key_pair;
+use types::digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest};
+use types::effects::TransactionEffectsAPI;
+use types::object::{Object, ObjectID};
+use types::transaction::{ChangeEpoch, TransactionData, TransactionKind};
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority_test_utils::send_and_confirm_transaction_,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority_test_utils::send_and_confirm_transaction_;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // System transaction rejection tests

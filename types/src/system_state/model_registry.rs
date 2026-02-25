@@ -5,11 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    base::SomaAddress,
-    model::{ModelId, ModelV1},
-    object::ObjectID,
-};
+use crate::base::SomaAddress;
+use crate::model::{ModelId, ModelV1};
+use crate::object::ObjectID;
 
 /// Registry of all models in the SOMA data submission system.
 ///

@@ -2,33 +2,30 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs, path::Path};
+use std::fs;
+use std::path::Path;
 
 use anyhow::Context;
-use fastcrypto::{
-    encoding::{Base64, Encoding as _},
-    hash::HashFunction as _,
-};
+use fastcrypto::encoding::{Base64, Encoding as _};
+use fastcrypto::hash::HashFunction as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tracing::trace;
 
-use crate::{
-    checkpoints::{
-        CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary, VerifiedCheckpoint,
-    },
-    committee::{AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId},
-    consensus::{
-        ConsensusTransaction,
-        block::{Block, BlockDigest, BlockRef, GENESIS_ROUND, SignedBlock, VerifiedBlock},
-        commit::{CommitDigest, CommitRef, CommittedSubDag},
-    },
-    crypto::DefaultHash,
-    effects::{self, TransactionEffects},
-    error::SomaResult,
-    object::{Object, ObjectID},
-    system_state::{SystemState, SystemStateTrait, get_system_state},
-    transaction::{CertifiedTransaction, Transaction},
+use crate::checkpoints::{
+    CertifiedCheckpointSummary, CheckpointContents, CheckpointSummary, VerifiedCheckpoint,
 };
+use crate::committee::{AuthorityIndex, Committee, CommitteeWithNetworkMetadata, EpochId};
+use crate::consensus::ConsensusTransaction;
+use crate::consensus::block::{
+    Block, BlockDigest, BlockRef, GENESIS_ROUND, SignedBlock, VerifiedBlock,
+};
+use crate::consensus::commit::{CommitDigest, CommitRef, CommittedSubDag};
+use crate::crypto::DefaultHash;
+use crate::effects::{self, TransactionEffects};
+use crate::error::SomaResult;
+use crate::object::{Object, ObjectID};
+use crate::system_state::{SystemState, SystemStateTrait, get_system_state};
+use crate::transaction::{CertifiedTransaction, Transaction};
 
 #[derive(Clone, Debug)]
 pub struct Genesis {

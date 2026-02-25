@@ -2,7 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, fmt::Debug, time::Duration};
+use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::time::Duration;
 
 /// A moving window that maintains the last N values of type `T` and calculates their arithmetic
 /// mean. All values in the window have equal weight and the oldest value is dropped when the

@@ -2,22 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::api::RpcService;
-use crate::api::error::CheckpointNotFoundError;
-use crate::api::error::RpcError;
-use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::Checkpoint;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::ExecutedTransaction;
-use crate::proto::soma::GetCheckpointRequest;
-use crate::proto::soma::GetCheckpointResponse;
-use crate::proto::soma::ObjectSet;
-use crate::proto::soma::get_checkpoint_request::CheckpointId;
-use crate::types::Digest;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::field::FieldMaskUtil;
-use crate::utils::merge::Merge;
 use prost_types::FieldMask;
+
+use crate::api::RpcService;
+use crate::api::error::{CheckpointNotFoundError, RpcError};
+use crate::proto::google::rpc::bad_request::FieldViolation;
+use crate::proto::soma::get_checkpoint_request::CheckpointId;
+use crate::proto::soma::{
+    Checkpoint, ErrorReason, ExecutedTransaction, GetCheckpointRequest, GetCheckpointResponse,
+    ObjectSet,
+};
+use crate::types::Digest;
+use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
+use crate::utils::merge::Merge;
 
 pub const READ_MASK_DEFAULT: &str = "sequence_number,digest";
 

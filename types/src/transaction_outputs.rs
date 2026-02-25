@@ -2,20 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
-use crate::{
-    base::FullObjectID,
-    effects::{TransactionEffects, TransactionEffectsAPI},
-    full_checkpoint_content::ObjectSet,
-    object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest},
-    storage::{FullObjectKey, MarkerValue, ObjectKey},
-    temporary_store::InnerTemporaryStore,
-    transaction::{TransactionData, VerifiedTransaction},
-};
+use crate::base::FullObjectID;
+use crate::effects::{TransactionEffects, TransactionEffectsAPI};
+use crate::full_checkpoint_content::ObjectSet;
+use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
+use crate::storage::{FullObjectKey, MarkerValue, ObjectKey};
+use crate::temporary_store::InnerTemporaryStore;
+use crate::transaction::{TransactionData, VerifiedTransaction};
 
 pub type ObjectMap = BTreeMap<ObjectID, Object>;
 pub type WrittenObjects = BTreeMap<ObjectID, Object>;

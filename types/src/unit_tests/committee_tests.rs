@@ -2,10 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use fastcrypto::traits::KeyPair;
+
 use crate::committee::{
     Committee, CommitteeTrait, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDITY_THRESHOLD,
 };
-use fastcrypto::traits::KeyPair;
 
 #[test]
 fn test_committee_creation() {
@@ -106,13 +107,14 @@ fn test_committee_epoch() {
     assert_eq!(committee.epoch(), 0, "Default test committee should have epoch 0");
 
     // Verify with a specific epoch via the normalized constructor
-    use crate::committee::Authority;
-    use crate::committee::get_available_local_address;
-    use crate::crypto::{AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair};
+    use std::collections::BTreeMap;
+
     use fastcrypto::traits::KeyPair;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-    use std::collections::BTreeMap;
+
+    use crate::committee::{Authority, get_available_local_address};
+    use crate::crypto::{AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair};
 
     let mut rng = StdRng::from_seed([1; 32]);
     let kp = AuthorityKeyPair::generate(&mut rng);

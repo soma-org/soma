@@ -3,16 +3,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    base::SomaAddress,
-    committee::EpochId,
-    crypto::DecryptionKey,
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    metadata::Manifest,
-    object::ObjectID,
-    system_state::staking::StakingPool,
-    tensor::SomaTensor,
-};
+use crate::base::SomaAddress;
+use crate::committee::EpochId;
+use crate::crypto::DecryptionKey;
+use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::metadata::Manifest;
+use crate::object::ObjectID;
+use crate::system_state::staking::StakingPool;
+use crate::tensor::SomaTensor;
 
 /// Version identifier for model architecture. Protocol config controls the current version.
 pub type ArchitectureVersion = u64;

@@ -4,21 +4,18 @@
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod rewards_distribution_tests {
-    use crate::{
-        base::{SomaAddress, dbg_addr},
-        config::genesis_config::SHANNONS_PER_SOMA,
-        system_state::{
-            SystemState,
-            test_utils::{
-                self, ValidatorRewards, advance_epoch_with_reward_amounts,
-                advance_epoch_with_reward_amounts_and_slashing_rates,
-                assert_validator_non_self_stake_amounts, assert_validator_self_stake_amounts,
-                assert_validator_total_stake_amounts, stake_with, total_soma_balance, unstake,
-            },
-            validator::Validator,
-        },
-    };
     use std::collections::BTreeMap;
+
+    use crate::base::{SomaAddress, dbg_addr};
+    use crate::config::genesis_config::SHANNONS_PER_SOMA;
+    use crate::system_state::SystemState;
+    use crate::system_state::test_utils::{
+        self, ValidatorRewards, advance_epoch_with_reward_amounts,
+        advance_epoch_with_reward_amounts_and_slashing_rates,
+        assert_validator_non_self_stake_amounts, assert_validator_self_stake_amounts,
+        assert_validator_total_stake_amounts, stake_with, total_soma_balance, unstake,
+    };
+    use crate::system_state::validator::Validator;
 
     // Create constant validator addresses for testing
     fn validator_addr_1() -> SomaAddress {

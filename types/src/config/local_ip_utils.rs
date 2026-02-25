@@ -2,7 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::{Arc, atomic::AtomicI16};
+use std::sync::Arc;
+use std::sync::atomic::AtomicI16;
 
 use crate::multiaddr::Multiaddr;
 

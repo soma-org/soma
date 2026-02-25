@@ -2,26 +2,24 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{
-    CommitConsumerArgs,
-    commit_finalizer::{CommitFinalizer, CommitFinalizerHandle},
-    dag_state::DagState,
-    leader_schedule::LeaderSchedule,
-    linearizer::Linearizer,
-    transaction_certifier::TransactionCertifier,
-};
 use parking_lot::RwLock;
 use tokio::time::Instant;
 use tracing::info;
-use types::consensus::{
-    block::{BlockAPI, VerifiedBlock},
-    commit::{CommitAPI, CommittedSubDag, load_committed_subdag_from_store},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, VerifiedBlock};
+use types::consensus::commit::{CommitAPI, CommittedSubDag, load_committed_subdag_from_store};
+use types::consensus::context::Context;
 use types::error::ConsensusResult;
 use types::storage::consensus::Store;
+
+use crate::CommitConsumerArgs;
+use crate::commit_finalizer::{CommitFinalizer, CommitFinalizerHandle};
+use crate::dag_state::DagState;
+use crate::leader_schedule::LeaderSchedule;
+use crate::linearizer::Linearizer;
+use crate::transaction_certifier::TransactionCertifier;
 
 /// Role of CommitObserver
 /// - Called by core when try_commit() returns newly committed leaders.
@@ -265,30 +263,26 @@ impl CommitObserver {
 // Adapted for SOMA.
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Duration};
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use parking_lot::RwLock;
     use tokio::time::timeout;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockAPI, BlockRef},
-        commit::{CommitAPI, CommitIndex, CommittedSubDag},
-        context::Context,
-    };
+    use types::consensus::block::{BlockAPI, BlockRef};
+    use types::consensus::commit::{CommitAPI, CommitIndex, CommittedSubDag};
+    use types::consensus::context::Context;
     use types::storage::consensus::Store;
     use types::storage::consensus::mem_store::MemStore;
 
-    use crate::{
-        CommitConsumerArgs,
-        block_verifier::NoopBlockVerifier,
-        dag_state::DagState,
-        leader_schedule::{LeaderSchedule, LeaderSwapTable},
-        linearizer::median_timestamp_by_stake,
-        test_dag_builder::DagBuilder,
-        transaction_certifier::TransactionCertifier,
-    };
-
     use super::CommitObserver;
+    use crate::CommitConsumerArgs;
+    use crate::block_verifier::NoopBlockVerifier;
+    use crate::dag_state::DagState;
+    use crate::leader_schedule::{LeaderSchedule, LeaderSwapTable};
+    use crate::linearizer::median_timestamp_by_stake;
+    use crate::test_dag_builder::DagBuilder;
+    use crate::transaction_certifier::TransactionCertifier;
 
     #[tokio::test]
     async fn test_handle_commit() {

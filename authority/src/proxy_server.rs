@@ -14,36 +14,32 @@
 //!
 //! Fullnodes use `ProxyClient` to connect to validators via this proxy.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
-use axum::{
-    Router,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-};
-use bytes::Bytes;
-use dashmap::DashMap;
-use tokio::sync::{broadcast, mpsc};
-use tracing::{info, warn};
-
+use axum::Router;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::get;
 use blobs::BlobPath;
 use blobs::downloader::{BlobDownloader, HttpBlobDownloader};
+use bytes::Bytes;
+use dashmap::DashMap;
 use object_store::ObjectStore;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    consensus::ConsensusTransaction,
-    crypto::{Signature, SomaKeyPair},
-    intent::{Intent, IntentMessage},
-    metadata::{Manifest, ManifestAPI as _, MetadataAPI as _},
-    model::ModelId,
-    object::ObjectID,
-    parameters::HttpParameters,
-    target::TargetId,
-    transaction::{Transaction, TransactionData, TransactionKind},
-};
+use tokio::sync::{broadcast, mpsc};
+use tracing::{info, warn};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::consensus::ConsensusTransaction;
+use types::crypto::{Signature, SomaKeyPair};
+use types::intent::{Intent, IntentMessage};
+use types::metadata::{Manifest, ManifestAPI as _, MetadataAPI as _};
+use types::model::ModelId;
+use types::object::ObjectID;
+use types::parameters::HttpParameters;
+use types::target::TargetId;
+use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 use crate::authority::AuthorityState;
 use crate::authority_per_epoch_store::AuthorityPerEpochStore;

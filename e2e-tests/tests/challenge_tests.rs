@@ -18,31 +18,28 @@
 //! 10. test_report_challenge_transaction - Validators can report challenge verdict
 //! 11. test_duplicate_challenge_rejected - Second InitiateChallenge on same target fails
 
+use fastcrypto::hash::HashFunction as _;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    checksum::Checksum,
-    config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA},
-    crypto::{DecryptionKey, DefaultHash, Signature},
-    digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::TransactionEffectsAPI,
-    intent::{Intent, IntentMessage},
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ModelId, ModelWeightsManifest},
-    object::ObjectID,
-    submission::SubmissionManifest,
-    tensor::SomaTensor,
-    transaction::{
-        ClaimRewardsArgs, InitiateChallengeArgs, SubmitDataArgs, Transaction, TransactionData,
-        TransactionKind,
-    },
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
+use types::crypto::{DecryptionKey, DefaultHash, Signature};
+use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::effects::TransactionEffectsAPI;
+use types::intent::{Intent, IntentMessage};
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::model::{ModelId, ModelWeightsManifest};
+use types::object::ObjectID;
+use types::submission::SubmissionManifest;
+use types::tensor::SomaTensor;
+use types::transaction::{
+    ClaimRewardsArgs, InitiateChallengeArgs, SubmitDataArgs, Transaction, TransactionData,
+    TransactionKind,
 };
 use url::Url;
 use utils::logging::init_tracing;
-
-use fastcrypto::hash::HashFunction as _;
 
 // ===== Helpers =====
 

@@ -1,14 +1,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use burn::config::Config;
+use burn::module::Module;
+use burn::nn::attention::generate_autoregressive_mask;
+use burn::nn::{Initializer, Linear, LinearConfig};
+use burn::prelude::Backend;
+use burn::tensor::activation::softmax;
+use burn::tensor::{Bool, Int, Tensor};
+
 use crate::v1::{V1_EMBEDDING_DIM, V1_MAX_WAVELENGTH, V1_NUM_HEADS, V1_SCALE_FACTOR};
-use burn::{
-    config::Config,
-    module::Module,
-    nn::{Initializer, Linear, LinearConfig, attention::generate_autoregressive_mask},
-    prelude::Backend,
-    tensor::{Bool, Int, Tensor, activation::softmax},
-};
 
 pub fn apply_rope<B: Backend>(
     inputs: Tensor<B, 4>,         // [batch_size, seq_len, num_heads, head_dim]

@@ -2,20 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::{
-    sync::{
-        oneshot::{Receiver, Sender},
-        watch,
-    },
-    task::JoinHandle,
-    time::{Instant, sleep_until},
-};
+use tokio::sync::oneshot::{Receiver, Sender};
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
+use tokio::time::{Instant, sleep_until};
 use tracing::{debug, warn};
-use types::consensus::{block::Round, context::Context};
+use types::consensus::block::Round;
+use types::consensus::context::Context;
 
-use crate::{core::CoreSignalsReceivers, core_thread::CoreThreadDispatcher};
+use crate::core::CoreSignalsReceivers;
+use crate::core_thread::CoreThreadDispatcher;
 
 pub(crate) struct LeaderTimeoutTaskHandle {
     handle: JoinHandle<()>,

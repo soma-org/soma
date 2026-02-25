@@ -4,19 +4,18 @@
 
 use core::panic;
 
-use crate::{authority_per_epoch_store::AuthorityPerEpochStore, authority_store::LockDetails};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry as DashMapEntry;
 use tracing::{debug, error, info, instrument, trace};
-use types::{
-    digests::TransactionDigest,
-    error::{SomaError, SomaResult},
-    object::{Object, ObjectID, ObjectRef},
-    storage::object_store::ObjectStore,
-    transaction::VerifiedSignedTransaction,
-};
+use types::digests::TransactionDigest;
+use types::error::{SomaError, SomaResult};
+use types::object::{Object, ObjectID, ObjectRef};
+use types::storage::object_store::ObjectStore;
+use types::transaction::VerifiedSignedTransaction;
 
 use super::writeback_cache::WritebackCache;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store::LockDetails;
 
 type RefCount = usize;
 

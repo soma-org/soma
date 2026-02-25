@@ -2,7 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::collections::BTreeSet;
+use std::marker::PhantomData;
 
 use crate::committee::{AuthorityIndex, Committee, Stake};
 

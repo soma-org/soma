@@ -2,34 +2,28 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    str::FromStr,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::str::FromStr;
 
-use fastcrypto::{ed25519::Ed25519PublicKey, traits::ToFromBytes};
+use fastcrypto::ed25519::Ed25519PublicKey;
+use fastcrypto::traits::ToFromBytes;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-use crate::{
-    base::SomaAddress,
-    committee::{
-        MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_CONSENSUS_LOW_POWER,
-        VALIDATOR_CONSENSUS_MIN_POWER, VALIDATOR_CONSENSUS_VERY_LOW_POWER,
-    },
-    crypto::{self, AuthoritySignature, NetworkPublicKey},
-    effects::ExecutionFailureStatus,
-    error::ExecutionResult,
-    multiaddr::Multiaddr,
-    object::ObjectID,
-    transaction::UpdateValidatorMetadataArgs,
+use super::PublicKey;
+use super::staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool};
+use crate::base::SomaAddress;
+use crate::committee::{
+    MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_CONSENSUS_LOW_POWER,
+    VALIDATOR_CONSENSUS_MIN_POWER, VALIDATOR_CONSENSUS_VERY_LOW_POWER,
 };
-
-use super::{
-    PublicKey,
-    staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool},
-};
+use crate::crypto::{self, AuthoritySignature, NetworkPublicKey};
+use crate::effects::ExecutionFailureStatus;
+use crate::error::ExecutionResult;
+use crate::multiaddr::Multiaddr;
+use crate::object::ObjectID;
+use crate::transaction::UpdateValidatorMetadataArgs;
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize, Hash)]
 pub struct ValidatorMetadata {

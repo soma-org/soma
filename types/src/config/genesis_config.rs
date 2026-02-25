@@ -4,23 +4,22 @@
 
 use std::net::{IpAddr, SocketAddr};
 
-use super::local_ip_utils;
-use crate::{
-    base::SomaAddress,
-    config::Config,
-    crypto::{
-        AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
-    },
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    model::{ArchitectureVersion, ModelId, ModelWeightsManifest},
-    multiaddr::Multiaddr,
-    object::ObjectID,
-};
 use anyhow::Result;
 use fastcrypto::traits::KeyPair as _;
 use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 use tracing::info;
+
+use super::local_ip_utils;
+use crate::base::SomaAddress;
+use crate::config::Config;
+use crate::crypto::{
+    AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
+};
+use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::model::{ArchitectureVersion, ModelId, ModelWeightsManifest};
+use crate::multiaddr::Multiaddr;
+use crate::object::ObjectID;
 
 // All information needed to build a NodeConfig for a validator.
 #[derive(Serialize, Deserialize, Debug)]

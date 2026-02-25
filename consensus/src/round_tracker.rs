@@ -14,11 +14,8 @@ use std::sync::Arc;
 use itertools::Itertools;
 use tracing::{debug, trace};
 use types::committee::{AuthorityIndex, Committee};
-
-use types::consensus::{
-    block::{BlockAPI, ExtendedBlock, Round},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, ExtendedBlock, Round};
+use types::consensus::context::Context;
 
 /// A [`QuorumRound`] is a round range [low, high]. It is computed from
 /// highest received or accepted rounds of an authority reported by all

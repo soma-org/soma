@@ -2,27 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::HashMap,
-    fmt::Write as FmtWrite,
-    fs::{self, File},
-    io::Write,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, Once},
-};
+use std::collections::HashMap;
+use std::fmt::Write as FmtWrite;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, Once, RwLock};
 
 use regex::Regex;
-use std::sync::RwLock;
-use tracing::{
-    Event, Subscriber,
-    field::{Field, Visit},
-    span,
-};
-use tracing_subscriber::{
-    EnvFilter, Layer, Registry,
-    layer::{Context, SubscriberExt},
-    registry::LookupSpan,
-};
+use tracing::field::{Field, Visit};
+use tracing::{Event, Subscriber, span};
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{EnvFilter, Layer, Registry};
 
 const LOG_DIR: &str = "logs";
 static INIT: Once = Once::new();

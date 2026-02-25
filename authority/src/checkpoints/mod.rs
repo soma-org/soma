@@ -2,6 +2,56 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs::File;
+use std::future::Future;
+use std::io::Write;
+use std::path::Path;
+use std::pin::Pin;
+use std::sync::{Arc, Weak};
+use std::task::{Context, Poll};
+use std::time::{Duration, SystemTime};
+
+use diffy::create_patch;
+use fastcrypto::hash::MultisetHash as _;
+use itertools::Itertools as _;
+use nonempty::NonEmpty;
+use parking_lot::Mutex;
+use pin_project_lite::pin_project;
+use protocol_config::ProtocolVersion;
+use rand::seq::SliceRandom as _;
+use serde::{Deserialize, Serialize};
+use store::rocks::{DBMap, DBOptions, ReadWriteOptions, default_db_options};
+use store::{DBMapUtils, Map as _, TypedStoreError};
+use tokio::sync::{Notify, mpsc, watch};
+use tokio::time::timeout;
+use tracing::{debug, error, info, instrument, trace, warn};
+use types::base::{AuthorityName, ConciseableName as _};
+use types::checkpoints::{
+    CertifiedCheckpointSummary, CheckpointArtifacts, CheckpointCommitment, CheckpointContents,
+    CheckpointRequest, CheckpointResponse, CheckpointSequenceNumber, CheckpointSignatureMessage,
+    CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp, EndOfEpochData,
+    FullCheckpointContents, SignedCheckpointSummary, TrustedCheckpoint, VerifiedCheckpoint,
+    VerifiedCheckpointContents,
+};
+use types::client::Config;
+use types::committee::{EpochId, StakeUnit};
+use types::consensus::ConsensusTransactionKey;
+use types::crypto::{AuthorityStrongQuorumSignInfo, GenericSignature};
+use types::digests::{
+    CheckpointContentsDigest, CheckpointDigest, TransactionDigest, TransactionEffectsDigest,
+};
+use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use types::envelope::Message as _;
+use types::error::{SomaError, SomaResult};
+use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+use types::system_state::{SystemState, SystemStateTrait as _};
+use types::transaction::{
+    TransactionKey, TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction,
+};
+use types::tx_fee::TransactionFee;
+use utils::notify_read::{CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME, NotifyRead};
+
 use crate::authority::AuthorityState;
 use crate::authority_client::{
     AuthorityAPI as _, make_network_authority_clients_with_network_config,
@@ -15,65 +65,6 @@ use crate::consensus_handler::SequencedConsensusTransactionKey;
 use crate::consensus_manager::ReplayWaiter;
 use crate::global_state_hasher::{GlobalStateHasher, accumulate_effects};
 use crate::stake_aggregator::{InsertResult, MultiStakeAggregator};
-use diffy::create_patch;
-use fastcrypto::hash::MultisetHash as _;
-use itertools::Itertools as _;
-use nonempty::NonEmpty;
-use parking_lot::Mutex;
-use pin_project_lite::pin_project;
-use protocol_config::ProtocolVersion;
-use rand::seq::SliceRandom as _;
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fs::File;
-use std::future::Future;
-use std::io::Write;
-use std::path::Path;
-use std::pin::Pin;
-use std::sync::{Arc, Weak};
-use std::task::{Context, Poll};
-use std::time::{Duration, SystemTime};
-use store::Map as _;
-use store::{
-    DBMapUtils, TypedStoreError,
-    rocks::{DBMap, DBOptions, ReadWriteOptions, default_db_options},
-};
-use tokio::sync::Notify;
-use tokio::sync::mpsc;
-use tokio::sync::watch;
-use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, trace, warn};
-use types::base::{AuthorityName, ConciseableName as _};
-use types::checkpoints::{
-    CertifiedCheckpointSummary, CheckpointArtifacts, CheckpointCommitment, CheckpointResponse,
-    CheckpointSignatureMessage, CheckpointSummaryResponse, EndOfEpochData, SignedCheckpointSummary,
-    VerifiedCheckpointContents,
-};
-use types::client::Config;
-use types::committee::StakeUnit;
-use types::consensus::ConsensusTransactionKey;
-use types::crypto::{AuthorityStrongQuorumSignInfo, GenericSignature};
-use types::effects::TransactionEffects;
-use types::effects::TransactionEffectsAPI as _;
-use types::envelope::Message as _;
-use types::error::{SomaError, SomaResult};
-use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
-use types::system_state::{SystemState, SystemStateTrait as _};
-use types::transaction::{TransactionKind, VerifiedExecutableTransaction, VerifiedTransaction};
-use types::tx_fee::TransactionFee;
-use types::{
-    checkpoints::{
-        CheckpointContents, CheckpointRequest, CheckpointSequenceNumber, CheckpointSummary,
-        CheckpointTimestamp, FullCheckpointContents, TrustedCheckpoint, VerifiedCheckpoint,
-    },
-    committee::EpochId,
-    digests::{
-        CheckpointContentsDigest, CheckpointDigest, TransactionDigest, TransactionEffectsDigest,
-    },
-    transaction::TransactionKey,
-};
-use utils::notify_read::CHECKPOINT_BUILDER_NOTIFY_READ_TASK_NAME;
-use utils::notify_read::NotifyRead;
 
 mod causal_order;
 pub mod checkpoint_executor;

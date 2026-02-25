@@ -5,36 +5,27 @@
 //
 // Modified for the SOMA project.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Weak},
-};
+use std::collections::HashMap;
+use std::sync::{Arc, Weak};
 
-use crate::{
-    server::P2pService,
-    state_sync::{PeerHeights, StateSyncEventLoop, StateSyncMessage},
-    tonic_gen::p2p_server::{P2p, P2pServer},
-};
 use parking_lot::RwLock;
 use tap::Pipe;
-use tokio::{
-    sync::{broadcast, mpsc, oneshot},
-    task::JoinSet,
-};
-use types::{
-    checkpoints::VerifiedCheckpoint,
-    config::{
-        node_config::ArchiveReaderConfig, p2p_config::P2pConfig, state_sync_config::StateSyncConfig,
-    },
-    crypto::NetworkKeyPair,
-    storage::write_store::WriteStore,
-    sync::{
-        PeerEvent, SignedNodeInfo, active_peers::ActivePeers,
-        channel_manager::ChannelManagerRequest,
-    },
-};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tokio::task::JoinSet;
+use types::checkpoints::VerifiedCheckpoint;
+use types::config::node_config::ArchiveReaderConfig;
+use types::config::p2p_config::P2pConfig;
+use types::config::state_sync_config::StateSyncConfig;
+use types::crypto::NetworkKeyPair;
+use types::storage::write_store::WriteStore;
+use types::sync::active_peers::ActivePeers;
+use types::sync::channel_manager::ChannelManagerRequest;
+use types::sync::{PeerEvent, SignedNodeInfo};
 
 use crate::discovery::{DiscoveryEventLoop, DiscoveryState};
+use crate::server::P2pService;
+use crate::state_sync::{PeerHeights, StateSyncEventLoop, StateSyncMessage};
+use crate::tonic_gen::p2p_server::{P2p, P2pServer};
 
 /// A Handle to the Discovery subsystem. The Discovery system will be shutdown once its Handle has
 /// been dropped.

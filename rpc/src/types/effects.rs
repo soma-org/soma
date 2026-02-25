@@ -4,9 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{
-    Address, EpochId, ExecutionStatus, Owner, TransactionFee, Version, digest::Digest,
-};
+use crate::types::digest::Digest;
+use crate::types::{Address, EpochId, ExecutionStatus, Owner, TransactionFee, Version};
 
 #[derive(PartialEq, Clone, Debug, Deserialize, Serialize)]
 pub struct TransactionEffects {

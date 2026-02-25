@@ -51,48 +51,48 @@
 //! channel will always be made in order. StateSync will also send out a notification to its peers
 //! of the newly synchronized checkpoint so that it can help other peers synchronize.
 
+use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::ops::RangeInclusive;
+use std::sync::Arc;
+use std::time::Duration;
+
 use bytes::Bytes;
-use data_ingestion::{executor::setup_single_workflow_with_options, reader::ReaderOptions};
-use futures::{FutureExt as _, StreamExt, stream::FuturesOrdered};
+use data_ingestion::executor::setup_single_workflow_with_options;
+use data_ingestion::reader::ReaderOptions;
+use futures::stream::FuturesOrdered;
+use futures::{FutureExt as _, StreamExt};
 use itertools::Itertools;
 use parking_lot::RwLock;
 use rand::Rng;
-use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
-    ops::RangeInclusive,
-    sync::Arc,
-    time::Duration,
-};
 use tap::{Pipe as _, TapFallible as _, TapOptional as _};
-use tokio::{
-    sync::{broadcast, mpsc, oneshot, watch},
-    task::{AbortHandle, JoinSet},
-    time::sleep,
-};
-use tonic::{Request, Response, transport::Channel};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use tokio::task::{AbortHandle, JoinSet};
+use tokio::time::sleep;
+use tonic::transport::Channel;
+use tonic::{Request, Response};
 use tracing::{debug, info, instrument, trace, warn};
-use types::{
-    checkpoints::{
-        CertifiedCheckpointSummary as Checkpoint, CheckpointSequenceNumber, EndOfEpochData,
-        FullCheckpointContents, VerifiedCheckpoint, VerifiedCheckpointContents,
-    },
-    config::{node_config::ArchiveReaderConfig, state_sync_config::StateSyncConfig},
-    crypto::NetworkPublicKey,
-    digests::CheckpointDigest,
-    error::{ConsensusError, SomaError},
-    peer_id::PeerId,
-    storage::{verify_checkpoint, write_store::WriteStore},
-    sync::{
-        GetCheckpointAvailabilityRequest, GetCheckpointAvailabilityResponse,
-        GetCheckpointContentsRequest, GetCheckpointContentsResponse, GetCheckpointSummaryRequest,
-        GetCheckpointSummaryResponse, PeerEvent, PushCheckpointSummaryRequest,
-        active_peers::{ActivePeers, PeerState},
-    },
+use types::checkpoints::{
+    CertifiedCheckpointSummary as Checkpoint, CheckpointSequenceNumber, EndOfEpochData,
+    FullCheckpointContents, VerifiedCheckpoint, VerifiedCheckpointContents,
+};
+use types::config::node_config::ArchiveReaderConfig;
+use types::config::state_sync_config::StateSyncConfig;
+use types::crypto::NetworkPublicKey;
+use types::digests::CheckpointDigest;
+use types::error::{ConsensusError, SomaError};
+use types::peer_id::PeerId;
+use types::storage::verify_checkpoint;
+use types::storage::write_store::WriteStore;
+use types::sync::active_peers::{ActivePeers, PeerState};
+use types::sync::{
+    GetCheckpointAvailabilityRequest, GetCheckpointAvailabilityResponse,
+    GetCheckpointContentsRequest, GetCheckpointContentsResponse, GetCheckpointSummaryRequest,
+    GetCheckpointSummaryResponse, PeerEvent, PushCheckpointSummaryRequest,
 };
 
-use crate::{
-    discovery::now_unix, state_sync::worker::StateSyncWorker, tonic_gen::p2p_client::P2pClient,
-};
+use crate::discovery::now_unix;
+use crate::state_sync::worker::StateSyncWorker;
+use crate::tonic_gen::p2p_client::P2pClient;
 
 #[cfg(test)]
 mod tests;

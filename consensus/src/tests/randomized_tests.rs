@@ -7,17 +7,16 @@
 // regardless of the order in which blocks are delivered, including scenarios
 // with equivocating authorities.
 
-use rand::{SeedableRng, rngs::StdRng};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use types::committee::AuthorityIndex;
 use types::consensus::block::{Round, Slot};
 
-use crate::{
-    commit_test_fixture::{
-        CommitTestFixture, EquivocatingRandomDag, RandomDag, RandomDagConfig,
-        assert_commit_sequences_match,
-    },
-    test_dag::create_random_dag,
+use crate::commit_test_fixture::{
+    CommitTestFixture, EquivocatingRandomDag, RandomDag, RandomDagConfig,
+    assert_commit_sequences_match,
 };
+use crate::test_dag::create_random_dag;
 
 /// Test that a fully connected random DAG (with 100% leader inclusion) always
 /// produces direct commits for every leader round, across multiple seeds.

@@ -2,21 +2,22 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::authority::ExecutionEnv;
-use crate::authority_per_epoch_store::AuthorityPerEpochStore;
-use crate::cache::{ObjectCacheRead, TransactionCacheRead};
-use crate::shared_obj_version_manager::Schedulable;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::BTreeMap, sync::Arc};
+
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::instrument;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 use types::base::FullObjectID;
 use types::digests::TransactionDigest;
 use types::object::ObjectID;
 use types::storage::InputKey;
 use types::transaction::{SharedInputObject, TransactionData, VerifiedExecutableTransaction};
+
+use crate::authority::ExecutionEnv;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::cache::{ObjectCacheRead, TransactionCacheRead};
+use crate::shared_obj_version_manager::Schedulable;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SchedulingSource {

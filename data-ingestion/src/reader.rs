@@ -2,18 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::Result;
 use backoff::backoff::Backoff;
 use futures::StreamExt;
 use object_store::ObjectStore;
 use object_store::path::Path;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 use tap::pipe::Pipe;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use types::checkpoints::CheckpointSequenceNumber;

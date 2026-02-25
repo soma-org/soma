@@ -4,15 +4,14 @@
 
 use std::sync::Arc;
 
-use crate::dag_state::DagState;
 use itertools::Itertools;
 use parking_lot::RwLock;
 use types::committee::Stake;
-use types::consensus::{
-    block::{BlockAPI, BlockRef, BlockTimestampMs, Round, VerifiedBlock},
-    commit::{Commit, CommittedSubDag, TrustedCommit, sort_sub_dag_blocks},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, BlockRef, BlockTimestampMs, Round, VerifiedBlock};
+use types::consensus::commit::{Commit, CommittedSubDag, TrustedCommit, sort_sub_dag_blocks};
+use types::consensus::context::Context;
+
+use crate::dag_state::DagState;
 
 /// The `StorageAPI` trait provides an interface for the block store and has been
 /// mostly introduced for allowing to inject the test store in `DagBuilder`.
@@ -285,20 +284,18 @@ mod tests {
 
     use parking_lot::RwLock;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockAPI, TestBlock, VerifiedBlock},
-        commit::{CommitAPI as _, CommitDigest, CommitIndex, DEFAULT_WAVE_LENGTH, TrustedCommit},
-        context::Context,
+    use types::consensus::block::{BlockAPI, TestBlock, VerifiedBlock};
+    use types::consensus::commit::{
+        CommitAPI as _, CommitDigest, CommitIndex, DEFAULT_WAVE_LENGTH, TrustedCommit,
     };
+    use types::consensus::context::Context;
     use types::storage::consensus::mem_store::MemStore;
 
     use super::*;
-    use crate::{
-        dag_state::DagState,
-        leader_schedule::{LeaderSchedule, LeaderSwapTable},
-        test_dag_builder::DagBuilder,
-        test_dag_parser::parse_dag,
-    };
+    use crate::dag_state::DagState;
+    use crate::leader_schedule::{LeaderSchedule, LeaderSwapTable};
+    use crate::test_dag_builder::DagBuilder;
+    use crate::test_dag_parser::parse_dag;
 
     #[tokio::test]
     async fn test_handle_commit() {

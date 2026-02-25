@@ -2,11 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    response::{IntoResponse, Response},
-};
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Response};
 
 use crate::api::RpcService;
 use crate::api::rpc_client::headers::{

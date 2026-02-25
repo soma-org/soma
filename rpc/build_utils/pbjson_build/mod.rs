@@ -83,16 +83,15 @@
     clippy::future_not_send
 )]
 
-use prost_types::FileDescriptorProto;
 use std::io::{BufWriter, Result, Write};
 use std::path::PathBuf;
 
+use prost_types::FileDescriptorProto;
+
 use crate::build_utils::pbjson_build::descriptor::{Descriptor, Package};
+use crate::build_utils::pbjson_build::generator::{generate_enum, generate_message};
 use crate::build_utils::pbjson_build::message::resolve_message;
-use crate::build_utils::pbjson_build::{
-    generator::{generate_enum, generate_message},
-    resolver::Resolver,
-};
+use crate::build_utils::pbjson_build::resolver::Resolver;
 
 mod descriptor;
 mod escape;

@@ -2,21 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+use std::time::Instant;
 
 use itertools::Itertools as _;
-
-use crate::dag_state::DagState;
 use parking_lot::RwLock;
 use tracing::{debug, trace, warn};
-use types::consensus::{
-    block::{BlockAPI, BlockRef, GENESIS_ROUND, Round, VerifiedBlock},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, BlockRef, GENESIS_ROUND, Round, VerifiedBlock};
+use types::consensus::context::Context;
+
+use crate::dag_state::DagState;
 
 struct SuspendedBlock {
     block: VerifiedBlock,
@@ -439,22 +435,23 @@ enum TryAcceptResult {
 // SPDX-License-Identifier: Apache-2.0
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, sync::Arc};
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
 
     use parking_lot::RwLock;
-    use rand::{SeedableRng, prelude::StdRng, seq::SliceRandom};
+    use rand::SeedableRng;
+    use rand::prelude::StdRng;
+    use rand::seq::SliceRandom;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockAPI, BlockDigest, BlockRef, Round, VerifiedBlock},
-        commit::{CommitDigest, TrustedCommit},
-        context::Context,
-    };
+    use types::consensus::block::{BlockAPI, BlockDigest, BlockRef, Round, VerifiedBlock};
+    use types::consensus::commit::{CommitDigest, TrustedCommit};
+    use types::consensus::context::Context;
     use types::storage::consensus::mem_store::MemStore;
 
-    use crate::{
-        block_manager::BlockManager, dag_state::DagState, test_dag_builder::DagBuilder,
-        test_dag_parser::parse_dag,
-    };
+    use crate::block_manager::BlockManager;
+    use crate::dag_state::DagState;
+    use crate::test_dag_builder::DagBuilder;
+    use crate::test_dag_parser::parse_dag;
 
     #[tokio::test]
     async fn suspend_blocks_with_missing_ancestors() {

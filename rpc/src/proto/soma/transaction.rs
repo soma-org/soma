@@ -2,12 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use tap::Pipe;
+use url::Url;
+
 use super::*;
 use crate::proto::TryFromProtoError;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
-use tap::Pipe;
-use url::Url;
 
 impl From<crate::types::Metadata> for Metadata {
     fn from(value: crate::types::Metadata) -> Self {
@@ -182,8 +183,9 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
 // Converting from domain types to protobuf
 impl From<crate::types::TransactionKind> for TransactionKind {
     fn from(value: crate::types::TransactionKind) -> Self {
-        use crate::types::TransactionKind::*;
         use transaction_kind::Kind;
+
+        use crate::types::TransactionKind::*;
 
         let kind = match value {
             Genesis(genesis) => Kind::Genesis(genesis.into()),

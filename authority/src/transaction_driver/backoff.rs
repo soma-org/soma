@@ -2,7 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{iter::Iterator, time::Duration};
+use std::iter::Iterator;
+use std::time::Duration;
 
 use rand::Rng as _;
 

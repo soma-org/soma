@@ -2,46 +2,42 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
+use std::sync::Arc;
 
-use crate::{
-    authority::{AuthorityState, ExecutionEnv},
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_store::AuthorityStore,
-    authority_store_pruner::{ObjectsCompactionFilter, PrunerWatermarks},
-    authority_store_tables::{
-        AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
-    },
-    backpressure_manager::BackpressureManager,
-    cache::build_execution_cache,
-    checkpoints::CheckpointStore,
-    execution_scheduler::SchedulingSource,
-    rpc_index::RpcIndexStore,
-    start_epoch::EpochStartConfiguration,
-};
 use fastcrypto::traits::KeyPair;
 use protocol_config::{Chain, ProtocolConfig};
 use store::nondeterministic;
-use types::{
-    base::AuthorityName,
-    config::{
-        certificate_deny_config::CertificateDenyConfig,
-        genesis_config::AccountConfig,
-        network_config::{ConfigBuilder, NetworkConfig},
-        node_config::{
-            AuthorityStorePruningConfig, ExecutionCacheConfig, ExpensiveSafetyCheckConfig,
-        },
-        transaction_deny_config::TransactionDenyConfig,
-    },
-    crypto::AuthorityKeyPair,
-    digests::ChainIdentifier,
-    genesis::Genesis,
-    object::{Object, ObjectID},
-    storage::committee_store::CommitteeStore,
-    supported_protocol_versions::SupportedProtocolVersions,
-    system_state::SystemStateTrait,
-    transaction::{VerifiedExecutableTransaction, VerifiedTransaction},
+use types::base::AuthorityName;
+use types::config::certificate_deny_config::CertificateDenyConfig;
+use types::config::genesis_config::AccountConfig;
+use types::config::network_config::{ConfigBuilder, NetworkConfig};
+use types::config::node_config::{
+    AuthorityStorePruningConfig, ExecutionCacheConfig, ExpensiveSafetyCheckConfig,
 };
+use types::config::transaction_deny_config::TransactionDenyConfig;
+use types::crypto::AuthorityKeyPair;
+use types::digests::ChainIdentifier;
+use types::genesis::Genesis;
+use types::object::{Object, ObjectID};
+use types::storage::committee_store::CommitteeStore;
+use types::supported_protocol_versions::SupportedProtocolVersions;
+use types::system_state::SystemStateTrait;
+use types::transaction::{VerifiedExecutableTransaction, VerifiedTransaction};
+
+use crate::authority::{AuthorityState, ExecutionEnv};
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store::AuthorityStore;
+use crate::authority_store_pruner::{ObjectsCompactionFilter, PrunerWatermarks};
+use crate::authority_store_tables::{
+    AuthorityPerpetualTables, AuthorityPerpetualTablesOptions, AuthorityPrunerTables,
+};
+use crate::backpressure_manager::BackpressureManager;
+use crate::cache::build_execution_cache;
+use crate::checkpoints::CheckpointStore;
+use crate::execution_scheduler::SchedulingSource;
+use crate::rpc_index::RpcIndexStore;
+use crate::start_epoch::EpochStartConfiguration;
 #[derive(Default, Clone)]
 pub struct TestAuthorityBuilder<'a> {
     store_base_path: Option<PathBuf>,

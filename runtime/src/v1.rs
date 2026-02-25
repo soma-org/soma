@@ -3,23 +3,25 @@
 
 use std::sync::Arc;
 
-use crate::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use aes::Aes256;
 use async_trait::async_trait;
-use blobs::{BlobPath, downloader::BlobDownloader, loader::BlobLoader};
-use burn::{Tensor, prelude::Backend};
+use blobs::BlobPath;
+use blobs::downloader::BlobDownloader;
+use blobs::loader::BlobLoader;
+use burn::Tensor;
+use burn::prelude::Backend;
 use ctr::Ctr128BE;
 use ctr::cipher::{KeyIvInit, StreamCipher};
-use models::{
-    ModelAPI, ModelOutput, cosine_distance::cosine_distance, select_best::select_best_model,
-};
+use models::cosine_distance::cosine_distance;
+use models::select_best::select_best_model;
+use models::{ModelAPI, ModelOutput};
 use object_store::{ObjectStore, PutPayload};
 use tokio::task::JoinSet;
-use types::{
-    committee::EpochId,
-    error::{BlobError, RuntimeError, RuntimeResult},
-    metadata::{Manifest, ManifestAPI, MetadataAPI},
-};
+use types::committee::EpochId;
+use types::error::{BlobError, RuntimeError, RuntimeResult};
+use types::metadata::{Manifest, ManifestAPI, MetadataAPI};
+
+use crate::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 
 /// Decrypt data in-place with AES-256-CTR (zero IV).
 fn decrypt_aes256_ctr(data: &mut [u8], key: &[u8; 32]) {

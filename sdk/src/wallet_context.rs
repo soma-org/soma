@@ -2,8 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::SomaClient;
-use crate::client_config::{SomaClientConfig, SomaEnv};
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::anyhow;
 use futures::TryStreamExt as _;
 use rpc::api::client::{TransactionExecutionResponse, TransactionExecutionResponseWithCheckpoint};
@@ -12,11 +16,6 @@ use rpc::types::ObjectType;
 use rpc::utils::field::{FieldMask, FieldMaskUtil};
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::{AccountKeystore, Keystore};
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncRead, AsyncSeek};
 use tokio::sync::RwLock;
@@ -29,6 +28,9 @@ use types::effects::TransactionEffectsAPI;
 use types::intent::Intent;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::transaction::{Transaction, TransactionData, TransactionKind};
+
+use crate::SomaClient;
+use crate::client_config::{SomaClientConfig, SomaEnv};
 
 pub struct WalletContext {
     pub config: PersistedConfig<SomaClientConfig>,

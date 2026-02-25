@@ -2,41 +2,38 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::Arc;
 
-use crate::{
-    authority::ExecutionLockWriteGuard,
-    authority_per_epoch_store::AuthorityPerEpochStore,
-    authority_store::{AuthorityStore, LockResult},
-    backpressure_manager::BackpressureManager,
-    global_state_hasher::GlobalStateHashStore,
-    start_epoch::EpochStartConfiguration,
-};
-use futures::{
-    FutureExt,
-    future::{BoxFuture, Either},
-};
+use futures::FutureExt;
+use futures::future::{BoxFuture, Either};
 use protocol_config::ProtocolVersion;
 use store::rocks::DBBatch;
 use tracing::{debug, instrument};
-use types::{
-    base::{FullObjectID, SomaAddress, VerifiedExecutionData},
-    checkpoints::CheckpointSequenceNumber,
-    committee::EpochId,
-    config::node_config::ExecutionCacheConfig,
-    digests::{TransactionDigest, TransactionEffectsDigest},
-    effects::TransactionEffects,
-    error::{SomaError, SomaResult},
-    object::{Object, ObjectID, ObjectRef, Version},
-    storage::{
-        FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone,
-        object_store::ObjectStore,
-    },
-    system_state::SystemState,
-    transaction::{VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction},
-    transaction_outputs::TransactionOutputs,
+use types::base::{FullObjectID, SomaAddress, VerifiedExecutionData};
+use types::checkpoints::CheckpointSequenceNumber;
+use types::committee::EpochId;
+use types::config::node_config::ExecutionCacheConfig;
+use types::digests::{TransactionDigest, TransactionEffectsDigest};
+use types::effects::TransactionEffects;
+use types::error::{SomaError, SomaResult};
+use types::object::{Object, ObjectID, ObjectRef, Version};
+use types::storage::object_store::ObjectStore;
+use types::storage::{FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone};
+use types::system_state::SystemState;
+use types::transaction::{
+    VerifiedExecutableTransaction, VerifiedSignedTransaction, VerifiedTransaction,
 };
+use types::transaction_outputs::TransactionOutputs;
 use writeback_cache::WritebackCache;
+
+use crate::authority::ExecutionLockWriteGuard;
+use crate::authority_per_epoch_store::AuthorityPerEpochStore;
+use crate::authority_store::{AuthorityStore, LockResult};
+use crate::backpressure_manager::BackpressureManager;
+use crate::global_state_hasher::GlobalStateHashStore;
+use crate::start_epoch::EpochStartConfiguration;
 
 pub(crate) mod cache_types;
 pub(crate) mod object_locks;

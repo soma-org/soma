@@ -2,22 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::api::RpcService;
-use crate::api::error::Result;
-use crate::api::error::RpcError;
-use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::ListOwnedObjectsRequest;
-use crate::proto::soma::ListOwnedObjectsResponse;
-use crate::proto::soma::Object;
-use crate::types::Address;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::field::FieldMaskUtil;
 use bytes::Bytes;
 use prost::Message;
 use prost_types::FieldMask;
 use types::object::ObjectType;
 use types::storage::read_store::OwnedObjectInfo;
+
+use crate::api::RpcService;
+use crate::api::error::{Result, RpcError};
+use crate::proto::google::rpc::bad_request::FieldViolation;
+use crate::proto::soma::{ErrorReason, ListOwnedObjectsRequest, ListOwnedObjectsResponse, Object};
+use crate::types::Address;
+use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
 
 const MAX_PAGE_SIZE: usize = 1000;
 const DEFAULT_PAGE_SIZE: usize = 50;

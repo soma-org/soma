@@ -18,8 +18,9 @@ impl From<crate::types::ExecutionStatus> for ExecutionStatus {
 
 impl From<crate::types::ExecutionError> for ExecutionError {
     fn from(value: crate::types::ExecutionError) -> Self {
-        use crate::types::ExecutionError as E;
         use execution_error::{ErrorDetails, ExecutionErrorKind};
+
+        use crate::types::ExecutionError as E;
 
         let description = Some(format!("{:?}", value));
 

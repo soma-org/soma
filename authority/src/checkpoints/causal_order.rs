@@ -2,14 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use tracing::trace;
-use types::{
-    digests::TransactionDigest,
-    effects::{InputSharedObject, TransactionEffects, TransactionEffectsAPI},
-    storage::ObjectKey,
-};
-
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+use tracing::trace;
+use types::digests::TransactionDigest;
+use types::effects::{InputSharedObject, TransactionEffects, TransactionEffectsAPI};
+use types::storage::ObjectKey;
 
 pub struct CausalOrder {
     not_seen: BTreeMap<TransactionDigest, TransactionDependencies>,
@@ -200,12 +198,11 @@ impl InsertState {
 
 #[cfg(test)]
 mod tests {
+    use types::digests::ObjectDigest;
+    use types::effects::TransactionEffects;
+    use types::object::{ObjectID, Version};
+
     use super::*;
-    use types::{
-        digests::ObjectDigest,
-        effects::TransactionEffects,
-        object::{ObjectID, Version},
-    };
 
     #[test]
     pub fn test_causal_order() {

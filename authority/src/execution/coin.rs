@@ -2,19 +2,17 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use types::{
-    base::SomaAddress,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::ExecutionResult,
-    object::{Object, ObjectID, ObjectRef, ObjectType, Owner},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
+use types::base::SomaAddress;
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::ExecutionResult;
+use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
+use super::object::check_ownership;
+use super::{FeeCalculator, TransactionExecutor};
 use crate::execution::BPS_DENOMINATOR;
-
-use super::{FeeCalculator, TransactionExecutor, object::check_ownership};
 
 /// Executor for coin-related transactions
 pub struct CoinExecutor;

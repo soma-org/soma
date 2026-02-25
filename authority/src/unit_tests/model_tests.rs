@@ -12,22 +12,19 @@
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    crypto::{SomaKeyPair, get_key_pair},
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    error::SomaError,
-    object::{Object, ObjectID},
-    transaction::{CommitModelArgs, TransactionData, TransactionKind},
-    unit_tests::utils::to_sender_signed_transaction,
-};
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
+use types::error::SomaError;
+use types::object::{Object, ObjectID};
+use types::transaction::{CommitModelArgs, TransactionData, TransactionKind};
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority::AuthorityState, authority_test_utils::send_and_confirm_transaction_,
-    test_authority_builder::TestAuthorityBuilder,
-};
+use crate::authority::AuthorityState;
+use crate::authority_test_utils::send_and_confirm_transaction_;
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // Default fees from protocol config v1
 const BPS_DENOMINATOR: u64 = 10000;

@@ -2,41 +2,37 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    sync::Arc,
-    time::Duration,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
-use futures::{StreamExt as _, stream::FuturesUnordered};
+use futures::StreamExt as _;
+use futures::stream::FuturesUnordered;
 use itertools::Itertools as _;
 use parking_lot::{Mutex, RwLock};
-use rand::{prelude::SliceRandom as _, rngs::ThreadRng};
+use rand::prelude::SliceRandom as _;
+use rand::rngs::ThreadRng;
 use tap::TapFallible;
+use tokio::runtime::Handle;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::{
-    runtime::Handle,
-    sync::{mpsc::error::TrySendError, oneshot},
-    task::{JoinError, JoinSet},
-    time::{Instant, sleep, sleep_until, timeout},
-};
+use tokio::sync::oneshot;
+use tokio::task::{JoinError, JoinSet};
+use tokio::time::{Instant, sleep, sleep_until, timeout};
 use tracing::{debug, error, info, trace, warn};
 use types::committee::AuthorityIndex;
-use types::consensus::{
-    block::{BlockAPI, BlockRef, Round, SignedBlock, VerifiedBlock},
-    context::Context,
-};
+use types::consensus::block::{BlockAPI, BlockRef, Round, SignedBlock, VerifiedBlock};
+use types::consensus::context::Context;
 use types::error::{ConsensusError, ConsensusResult};
 
-use crate::{
-    authority_service::COMMIT_LAG_MULTIPLIER, core_thread::CoreThreadDispatcher,
-    transaction_certifier::TransactionCertifier,
-};
-use crate::{
-    block_verifier::BlockVerifier, commit_vote_monitor::CommitVoteMonitor, dag_state::DagState,
-    network::NetworkClient,
-};
+use crate::authority_service::COMMIT_LAG_MULTIPLIER;
+use crate::block_verifier::BlockVerifier;
+use crate::commit_vote_monitor::CommitVoteMonitor;
+use crate::core_thread::CoreThreadDispatcher;
+use crate::dag_state::DagState;
+use crate::network::NetworkClient;
+use crate::transaction_certifier::TransactionCertifier;
 
 /// The number of concurrent fetch blocks requests per authority
 const FETCH_BLOCKS_CONCURRENCY: usize = 5;
@@ -1023,38 +1019,37 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 // Adapted for SOMA.
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, BTreeSet},
-        sync::Arc,
-        time::Duration,
-    };
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::Arc;
+    use std::time::Duration;
 
     use async_trait::async_trait;
     use bytes::Bytes;
     use parking_lot::RwLock;
-    use tokio::{sync::Mutex, time::sleep};
+    use tokio::sync::Mutex;
+    use tokio::time::sleep;
     use types::committee::AuthorityIndex;
-    use types::consensus::{
-        block::{BlockAPI, BlockDigest, BlockRef, Round, TestBlock, VerifiedBlock},
-        commit::{CommitDigest, CommitIndex, CommitRange, CommitRef, TrustedCommit},
-        context::Context,
+    use types::consensus::block::{
+        BlockAPI, BlockDigest, BlockRef, Round, TestBlock, VerifiedBlock,
     };
+    use types::consensus::commit::{
+        CommitDigest, CommitIndex, CommitRange, CommitRef, TrustedCommit,
+    };
+    use types::consensus::context::Context;
     use types::error::{ConsensusError, ConsensusResult};
     use types::parameters::Parameters;
     use types::storage::consensus::mem_store::MemStore;
 
-    use crate::{
-        authority_service::COMMIT_LAG_MULTIPLIER,
-        block_verifier::NoopBlockVerifier,
-        commit_vote_monitor::CommitVoteMonitor,
-        core_thread::{CoreThreadDispatcher, MockCoreThreadDispatcher},
-        dag_state::DagState,
-        network::{BlockStream, NetworkClient},
-        synchronizer::{
-            FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT, InflightBlocksMap, Synchronizer,
-        },
-        transaction_certifier::TransactionCertifier,
+    use crate::authority_service::COMMIT_LAG_MULTIPLIER;
+    use crate::block_verifier::NoopBlockVerifier;
+    use crate::commit_vote_monitor::CommitVoteMonitor;
+    use crate::core_thread::{CoreThreadDispatcher, MockCoreThreadDispatcher};
+    use crate::dag_state::DagState;
+    use crate::network::{BlockStream, NetworkClient};
+    use crate::synchronizer::{
+        FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT, InflightBlocksMap, Synchronizer,
     };
+    use crate::transaction_certifier::TransactionCertifier;
 
     type FetchRequestKey = (Vec<BlockRef>, AuthorityIndex);
     type FetchRequestResponse = (Vec<VerifiedBlock>, Option<Duration>);

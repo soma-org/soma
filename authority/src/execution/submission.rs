@@ -7,26 +7,23 @@
 //! - `SubmitData`: Validate submission, fill target, record hit, spawn replacement
 //! - `ClaimRewards`: Check challenge window, distribute rewards, return bond
 
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::SomaAddress,
-    committee::EpochId,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
-    metadata::{ManifestAPI, MetadataAPI},
-    object::{Object, ObjectID, ObjectType, Owner},
-    system_state::{SystemState, SystemStateTrait},
-    target::{TargetStatus, TargetV1, generate_target, make_target_seed},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
-
 use tracing::info;
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::SomaAddress;
+use types::committee::EpochId;
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError};
+use types::metadata::{ManifestAPI, MetadataAPI};
+use types::object::{Object, ObjectID, ObjectType, Owner};
+use types::system_state::{SystemState, SystemStateTrait};
+use types::target::{TargetStatus, TargetV1, generate_target, make_target_seed};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
+use super::object::check_ownership;
+use super::{FeeCalculator, TransactionExecutor};
 use crate::execution::BPS_DENOMINATOR;
-
-use super::{FeeCalculator, TransactionExecutor, object::check_ownership};
 
 pub struct SubmissionExecutor;
 

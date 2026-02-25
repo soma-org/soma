@@ -2,11 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use tap::Pipe;
+
 use super::*;
 use crate::proto::TryFromProtoError;
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
-use tap::Pipe;
 
 //
 // TransactionEffects
@@ -184,8 +185,7 @@ impl Merge<&crate::types::TransactionEffects> for TransactionEffects {
 
 impl From<crate::types::ChangedObject> for ChangedObject {
     fn from(value: crate::types::ChangedObject) -> Self {
-        use changed_object::InputObjectState;
-        use changed_object::OutputObjectState;
+        use changed_object::{InputObjectState, OutputObjectState};
 
         let mut message =
             Self { object_id: Some(value.object_id.to_string()), ..Default::default() };
@@ -225,8 +225,7 @@ impl TryFrom<&ChangedObject> for crate::types::ChangedObject {
     type Error = TryFromProtoError;
 
     fn try_from(value: &ChangedObject) -> Result<Self, Self::Error> {
-        use changed_object::InputObjectState;
-        use changed_object::OutputObjectState;
+        use changed_object::{InputObjectState, OutputObjectState};
 
         let object_id = value
             .object_id
@@ -336,8 +335,9 @@ impl TryFrom<changed_object::IdOperation> for crate::types::IdOperation {
 
 impl From<crate::types::UnchangedSharedObject> for UnchangedSharedObject {
     fn from(value: crate::types::UnchangedSharedObject) -> Self {
-        use crate::types::UnchangedSharedKind::*;
         use unchanged_shared_object::UnchangedSharedObjectKind;
+
+        use crate::types::UnchangedSharedKind::*;
 
         let mut message =
             Self { object_id: Some(value.object_id.to_string()), ..Default::default() };
@@ -373,8 +373,9 @@ impl TryFrom<&UnchangedSharedObject> for crate::types::UnchangedSharedObject {
     type Error = TryFromProtoError;
 
     fn try_from(value: &UnchangedSharedObject) -> Result<Self, Self::Error> {
-        use crate::types::UnchangedSharedKind;
         use unchanged_shared_object::UnchangedSharedObjectKind;
+
+        use crate::types::UnchangedSharedKind;
 
         let object_id = value
             .object_id

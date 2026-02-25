@@ -2,15 +2,13 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use types::{
-    base::SomaAddress,
-    digests::TransactionDigest,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError, SomaResult},
-    object::{Object, ObjectRef, Owner},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-};
+use types::base::SomaAddress;
+use types::digests::TransactionDigest;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError, SomaResult};
+use types::object::{Object, ObjectRef, Owner};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
 
 use super::{FeeCalculator, TransactionExecutor};
 

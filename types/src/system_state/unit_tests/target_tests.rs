@@ -10,16 +10,13 @@
 //! - Difficulty adjustment
 //! - Reward per target calculation
 
-use crate::{
-    base::SomaAddress,
-    config::genesis_config::SHANNONS_PER_SOMA,
-    target::{TargetStatus, deterministic_embedding, generate_target, make_target_seed},
-};
-
 use super::test_utils::{
     advance_epoch_with_rewards, commit_model, create_test_system_state,
     create_validators_with_stakes, reveal_model, reveal_model_with_dim,
 };
+use crate::base::SomaAddress;
+use crate::config::genesis_config::SHANNONS_PER_SOMA;
+use crate::target::{TargetStatus, deterministic_embedding, generate_target, make_target_seed};
 
 /// Test that target seeds are deterministic
 #[test]

@@ -2,17 +2,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::BytesDeserialize;
-use super::NumberDeserialize;
-use super::base64;
-use prost_types::Any;
-use prost_types::Duration;
-use prost_types::FieldMask;
-use prost_types::ListValue;
-use prost_types::NullValue;
-use prost_types::Struct;
-use prost_types::Timestamp;
-use prost_types::Value;
+use prost_types::{Any, Duration, FieldMask, ListValue, NullValue, Struct, Timestamp, Value};
+
+use super::{BytesDeserialize, NumberDeserialize, base64};
 
 pub struct EmptySerializer<'a>(pub &'a ());
 
@@ -793,8 +785,9 @@ impl<'de> serde::Deserialize<'de> for ValueDeserializer {
     where
         D: serde::Deserializer<'de>,
     {
-        use prost_types::value;
         use std::fmt;
+
+        use prost_types::value;
 
         struct Visitor;
 

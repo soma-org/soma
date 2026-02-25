@@ -2,29 +2,32 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    base::{AuthorityName, ConciseableName, TimestampMs},
-    checkpoints::{CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest},
-    committee::EpochId,
-    consensus::block::{BlockRef, PING_TRANSACTION_INDEX, TransactionIndex},
-    crypto::AuthorityPublicKeyBytes,
-    digests::{
-        AdditionalConsensusStateDigest, CheckpointDigest, ConsensusCommitDigest, TransactionDigest,
-    },
-    error::SomaError,
-    supported_protocol_versions::{SupportedProtocolVersions, SupportedProtocolVersionsWithHashes},
-    transaction::{CertifiedTransaction, Transaction},
-};
+use std::collections::hash_map::DefaultHasher;
+use std::fmt::{Debug, Formatter};
+use std::hash::{Hash as _, Hasher as _};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
 use protocol_config::Chain;
 use serde::{Deserialize, Serialize};
-use std::{collections::hash_map::DefaultHasher, hash::Hash as _, hash::Hasher as _};
-use std::{
-    fmt::{Debug, Formatter},
-    time::{SystemTime, UNIX_EPOCH},
-};
 use validator_set::ValidatorSet;
+
+use crate::base::{AuthorityName, ConciseableName, TimestampMs};
+use crate::checkpoints::{
+    CheckpointSequenceNumber, CheckpointSignatureMessage, ECMHLiveObjectSetDigest,
+};
+use crate::committee::EpochId;
+use crate::consensus::block::{BlockRef, PING_TRANSACTION_INDEX, TransactionIndex};
+use crate::crypto::AuthorityPublicKeyBytes;
+use crate::digests::{
+    AdditionalConsensusStateDigest, CheckpointDigest, ConsensusCommitDigest, TransactionDigest,
+};
+use crate::error::SomaError;
+use crate::supported_protocol_versions::{
+    SupportedProtocolVersions, SupportedProtocolVersionsWithHashes,
+};
+use crate::transaction::{CertifiedTransaction, Transaction};
 
 pub mod block;
 pub mod commit;

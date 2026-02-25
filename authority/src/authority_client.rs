@@ -2,36 +2,36 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::tonic_gen::validator_client::ValidatorClient;
+use std::collections::BTreeMap;
+use std::net::SocketAddr;
+use std::time::Duration;
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use eyre::Result;
-use std::time::Duration;
-use std::{collections::BTreeMap, net::SocketAddr};
 use tap::TapFallible as _;
+use tonic::IntoRequest;
+use tonic::metadata::KeyAndValueRef;
 use tonic::transport::Channel;
-use tonic::{IntoRequest, metadata::KeyAndValueRef};
 use tracing::info;
+use types::base::AuthorityName;
+use types::checkpoints::{CheckpointRequest, CheckpointResponse};
+use types::client::{Config, connect, connect_lazy};
+use types::committee::CommitteeWithNetworkMetadata;
 use types::crypto::NetworkPublicKey;
+use types::error::{SomaError, SomaResult};
 use types::messages_grpc::{
+    HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse,
     ObjectInfoRequest, ObjectInfoResponse, RawValidatorHealthRequest, RawWaitForEffectsRequest,
     SubmitTxRequest, SubmitTxResponse, SystemStateRequest, TransactionInfoRequest,
     TransactionInfoResponse, ValidatorHealthRequest, ValidatorHealthResponse,
     WaitForEffectsRequest, WaitForEffectsResponse,
 };
+use types::multiaddr::Multiaddr;
 use types::system_state::SystemState;
-use types::{
-    base::AuthorityName,
-    checkpoints::{CheckpointRequest, CheckpointResponse},
-    client::{Config, connect, connect_lazy},
-    committee::CommitteeWithNetworkMetadata,
-    error::{SomaError, SomaResult},
-    messages_grpc::{
-        HandleCertificateRequest, HandleCertificateResponse, HandleTransactionResponse,
-    },
-    multiaddr::Multiaddr,
-    transaction::Transaction,
-};
+use types::transaction::Transaction;
+
+use crate::tonic_gen::validator_client::ValidatorClient;
 #[async_trait]
 pub trait AuthorityAPI {
     /// Submits a transaction to validators for sequencing and execution.

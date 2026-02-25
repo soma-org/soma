@@ -2,28 +2,26 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{MultiSigPublicKey, ThresholdUnit, WeightUnit};
-use crate::{
-    base::SomaAddress,
-    crypto::{AuthenticatorTrait, GenericSignature},
-    crypto::{
-        Ed25519SomaSignature, PublicKey, Signature, SomaKeyPair, SomaSignatureInner, get_key_pair,
-        get_key_pair_from_rng,
-    },
-    multisig::{MAX_SIGNER_IN_MULTISIG, MultiSig, as_indices},
-    unit_tests::utils::keys,
-};
-use fastcrypto::{
-    ed25519::Ed25519KeyPair,
-    encoding::{Base64, Encoding},
-    traits::ToFromBytes,
-};
-use once_cell::sync::OnceCell;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::intent::{Intent, IntentMessage, PersonalMessage};
-use rand::{SeedableRng, rngs::StdRng};
+use fastcrypto::ed25519::Ed25519KeyPair;
+use fastcrypto::encoding::{Base64, Encoding};
+use fastcrypto::traits::ToFromBytes;
+use once_cell::sync::OnceCell;
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use roaring::RoaringBitmap;
-use std::{str::FromStr, sync::Arc};
+
+use super::{MultiSigPublicKey, ThresholdUnit, WeightUnit};
+use crate::base::SomaAddress;
+use crate::crypto::{
+    AuthenticatorTrait, Ed25519SomaSignature, GenericSignature, PublicKey, Signature, SomaKeyPair,
+    SomaSignatureInner, get_key_pair, get_key_pair_from_rng,
+};
+use crate::intent::{Intent, IntentMessage, PersonalMessage};
+use crate::multisig::{MAX_SIGNER_IN_MULTISIG, MultiSig, as_indices};
+use crate::unit_tests::utils::keys;
 #[test]
 fn test_combine_sigs() {
     let kp1: SomaKeyPair = SomaKeyPair::Ed25519(get_key_pair().1);

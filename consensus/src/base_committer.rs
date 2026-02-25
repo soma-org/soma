@@ -2,19 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::sync::Arc;
 
-use types::committee::{AuthorityIndex, Stake};
-
-use crate::{dag_state::DagState, leader_schedule::LeaderSchedule};
 use parking_lot::RwLock;
 use tracing::warn;
-use types::consensus::{
-    block::{BlockAPI, BlockRef, Round, Slot, VerifiedBlock},
-    commit::{DEFAULT_WAVE_LENGTH, LeaderStatus, WaveNumber},
-    context::Context,
-    stake_aggregator::{QuorumThreshold, StakeAggregator},
-};
+use types::committee::{AuthorityIndex, Stake};
+use types::consensus::block::{BlockAPI, BlockRef, Round, Slot, VerifiedBlock};
+use types::consensus::commit::{DEFAULT_WAVE_LENGTH, LeaderStatus, WaveNumber};
+use types::consensus::context::Context;
+use types::consensus::stake_aggregator::{QuorumThreshold, StakeAggregator};
+
+use crate::dag_state::DagState;
+use crate::leader_schedule::LeaderSchedule;
 
 #[cfg(test)]
 #[path = "tests/base_committer_tests.rs"]

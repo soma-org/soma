@@ -9,14 +9,14 @@
 use bytes::Bytes;
 use prost::Message;
 use prost_types::FieldMask;
+use types::object::ObjectID;
+use types::storage::read_store::ChallengeInfo;
 
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
 use crate::proto::google::rpc::bad_request::FieldViolation;
 use crate::proto::soma::{Challenge, ErrorReason, ListChallengesRequest, ListChallengesResponse};
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
-use types::object::ObjectID;
-use types::storage::read_store::ChallengeInfo;
 
 const MAX_PAGE_SIZE: usize = 1000;
 const DEFAULT_PAGE_SIZE: usize = 50;

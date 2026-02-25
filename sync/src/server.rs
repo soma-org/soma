@@ -5,16 +5,18 @@
 //
 // Modified for the SOMA project.
 
+use std::collections::HashMap;
+use std::result::Result;
+use std::sync::Arc;
+
 use parking_lot::RwLock;
 use rand::seq::IteratorRandom;
-use std::sync::Arc;
-use std::{collections::HashMap, result::Result};
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, async_trait};
 use tracing::{debug, info};
 use types::checkpoints::VerifiedCheckpoint;
+use types::storage::write_store::WriteStore;
 use types::sync::channel_manager::PeerInfo;
-
 use types::sync::{
     GetCheckpointAvailabilityRequest, GetCheckpointAvailabilityResponse,
     GetCheckpointContentsRequest, GetCheckpointContentsResponse, GetCheckpointSummaryRequest,
@@ -22,12 +24,9 @@ use types::sync::{
     PushCheckpointSummaryRequest, PushCheckpointSummaryResponse, SignedNodeInfo,
 };
 
-use types::storage::write_store::WriteStore;
-
+use crate::discovery::DiscoveryState;
 use crate::state_sync::{PeerHeights, StateSyncMessage};
 use crate::tonic_gen::p2p_server::P2p;
-
-use crate::discovery::DiscoveryState;
 
 const MAX_PEERS_TO_SEND: usize = 200;
 

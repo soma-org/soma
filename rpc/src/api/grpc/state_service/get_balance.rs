@@ -2,12 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use types::base::SomaAddress;
+
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
 use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::{GetBalanceRequest, GetBalanceResponse};
-use types::base::SomaAddress;
+use crate::proto::soma::{ErrorReason, GetBalanceRequest, GetBalanceResponse};
 
 #[tracing::instrument(skip(service))]
 pub fn get_balance(service: &RpcService, request: GetBalanceRequest) -> Result<GetBalanceResponse> {

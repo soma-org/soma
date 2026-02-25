@@ -5,10 +5,8 @@
 use std::pin::Pin;
 
 use crate::api::RpcService;
-use crate::proto::soma::Checkpoint;
-use crate::proto::soma::SubscribeCheckpointsRequest;
-use crate::proto::soma::SubscribeCheckpointsResponse;
 use crate::proto::soma::subscription_service_server::SubscriptionService;
+use crate::proto::soma::{Checkpoint, SubscribeCheckpointsRequest, SubscribeCheckpointsResponse};
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
 

@@ -8,18 +8,15 @@ use enum_dispatch::enum_dispatch;
 use protocol_config::{Chain, ProtocolVersion};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    base::{AuthorityName, SomaAddress},
-    committee::{
-        Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
-    },
-    crypto::{self, ProtocolPublicKey},
-    multiaddr::Multiaddr,
-    peer_id::PeerId,
-    system_state::{FeeParameters, SystemParameters},
-};
-
 use super::PublicKey;
+use crate::base::{AuthorityName, SomaAddress};
+use crate::committee::{
+    Authority, Committee, CommitteeWithNetworkMetadata, EpochId, NetworkMetadata, VotingPower,
+};
+use crate::crypto::{self, ProtocolPublicKey};
+use crate::multiaddr::Multiaddr;
+use crate::peer_id::PeerId;
+use crate::system_state::{FeeParameters, SystemParameters};
 
 /// Versioned wrapper for EpochStartSystemState.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]

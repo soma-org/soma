@@ -2,6 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::path::PathBuf;
+
 use anyhow::{Result, bail};
 use camino::Utf8PathBuf;
 use clap::Parser;
@@ -9,12 +11,13 @@ use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::ToFromBytes;
 use protocol_config::ProtocolVersion;
 use soma_keys::keypair_file::read_authority_keypair_from_file;
-use std::path::PathBuf;
-use types::{
-    config::SOMA_GENESIS_FILENAME, config::genesis_config::GenesisModelConfig,
-    crypto::AuthorityKeyPair, envelope::Message as _, genesis::UnsignedGenesis,
-    genesis_builder::GenesisBuilder, validator_info::GenesisValidatorInfo,
-};
+use types::config::SOMA_GENESIS_FILENAME;
+use types::config::genesis_config::GenesisModelConfig;
+use types::crypto::AuthorityKeyPair;
+use types::envelope::Message as _;
+use types::genesis::UnsignedGenesis;
+use types::genesis_builder::GenesisBuilder;
+use types::validator_info::GenesisValidatorInfo;
 
 mod genesis_inspector;
 use genesis_inspector::examine_genesis_checkpoint;

@@ -6,9 +6,6 @@
 // This file is derived from the Sui project (https://github.com/MystenLabs/sui),
 // specifically crates/sui-faucet/src/local_faucet.rs
 
-use crate::errors::FaucetError;
-use crate::faucet_config::FaucetConfig;
-use crate::types::CoinInfo;
 use sdk::wallet_context::WalletContext;
 use tokio::sync::Mutex;
 use tracing::{error, info};
@@ -16,6 +13,10 @@ use types::base::SomaAddress;
 use types::effects::TransactionEffectsAPI as _;
 use types::object::ObjectRef;
 use types::transaction::TransactionData;
+
+use crate::errors::FaucetError;
+use crate::faucet_config::FaucetConfig;
+use crate::types::CoinInfo;
 
 pub struct LocalFaucet {
     wallet: Mutex<WalletContext>,
@@ -148,9 +149,10 @@ pub async fn find_gas_coins_and_address(
 mod tests {
     use std::sync::Arc;
 
+    use test_cluster::TestClusterBuilder;
+
     use super::*;
     use crate::faucet_config::{DEFAULT_AMOUNT, DEFAULT_NUM_COINS};
-    use test_cluster::TestClusterBuilder;
 
     #[tokio::test]
     async fn test_local_faucet_dispense_coins() {

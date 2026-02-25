@@ -2,12 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::global_state_hasher::GlobalStateHasher;
 use core::default::Default;
+use std::sync::Arc;
+
 use fastcrypto::hash::MultisetHash;
 use fastcrypto::traits::KeyPair;
 use protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
-use std::sync::Arc;
 use types::base::{FullObjectRef, SomaAddress};
 use types::config::node_config::ExpensiveSafetyCheckConfig;
 use types::crypto::{AuthorityKeyPair, SomaKeyPair};
@@ -22,11 +22,11 @@ use types::transaction::{
 use types::unit_tests::utils::to_sender_signed_transaction;
 
 use super::shared_obj_version_manager::AssignedVersions;
-use super::test_authority_builder::TestAuthorityBuilder;
-use crate::authority::*;
-
 #[cfg(test)]
 use super::shared_obj_version_manager::{AssignedTxAndVersions, Schedulable};
+use super::test_authority_builder::TestAuthorityBuilder;
+use crate::authority::*;
+use crate::global_state_hasher::GlobalStateHasher;
 
 pub async fn send_and_confirm_transaction(
     authority: &AuthorityState,
@@ -431,10 +431,10 @@ pub async fn send_batch_consensus_no_execution<C>(
 where
     C: crate::checkpoints::CheckpointServiceNotify + Send + Sync + 'static,
 {
+    use types::consensus::ConsensusTransaction;
+    use types::system_state::epoch_start::EpochStartSystemStateTrait;
+
     use crate::consensus_test_utils::TestConsensusCommit;
-    use types::{
-        consensus::ConsensusTransaction, system_state::epoch_start::EpochStartSystemStateTrait,
-    };
 
     let consensus_transactions: Vec<ConsensusTransaction> = certificates
         .iter()

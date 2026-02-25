@@ -17,21 +17,21 @@
 //! accepted rounds are updated after checking for dependencies which should indicate the quality
 //! of the proposed blocks including its ancestors.
 
-use std::{sync::Arc, time::Duration};
-
-use crate::{
-    core_thread::CoreThreadDispatcher, dag_state::DagState, network::NetworkClient,
-    round_tracker::PeerRoundTracker,
-};
+use std::sync::Arc;
+use std::time::Duration;
 
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use parking_lot::RwLock;
-use tokio::{task::JoinHandle, time::MissedTickBehavior};
-use types::consensus::{
-    block::{BlockAPI as _, Round},
-    context::Context,
-};
+use tokio::task::JoinHandle;
+use tokio::time::MissedTickBehavior;
+use types::consensus::block::{BlockAPI as _, Round};
+use types::consensus::context::Context;
 use utils::notify_once::NotifyOnce;
+
+use crate::core_thread::CoreThreadDispatcher;
+use crate::dag_state::DagState;
+use crate::network::NetworkClient;
+use crate::round_tracker::PeerRoundTracker;
 
 // Handle to control the RoundProber loop and read latest round gaps.
 pub(crate) struct RoundProberHandle {

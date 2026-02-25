@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::base::SomaAddress;
-use crate::effects::TransactionEffects;
-use crate::effects::TransactionEffectsAPI as _;
+use crate::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use crate::full_checkpoint_content::ObjectSet;
-use crate::object::Object;
-use crate::object::Owner;
+use crate::object::{Object, Owner};
 use crate::storage::ObjectKey;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord)]

@@ -4,21 +4,21 @@
 
 use std::collections::BTreeMap;
 
-use crate::checkpoints::CheckpointSequenceNumber;
-use crate::digests::CheckpointDigest;
-use crate::storage::storage_error::Error as StorageError;
-use crate::system_state::SystemStateTrait as _;
-use crate::{
-    base::ExecutionData,
-    checkpoints::{CertifiedCheckpointSummary, CheckpointContents},
-    crypto::GenericSignature,
-    effects::{TransactionEffects, TransactionEffectsAPI as _},
-    object::{Object, ObjectID, ObjectRef},
-    storage::{ObjectKey, read_store::EpochInfo},
-    system_state::get_system_state,
-    transaction::{Transaction, TransactionData, TransactionKind},
-};
 use serde::{Deserialize, Serialize};
+
+use crate::base::ExecutionData;
+use crate::checkpoints::{
+    CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
+};
+use crate::crypto::GenericSignature;
+use crate::digests::CheckpointDigest;
+use crate::effects::{TransactionEffects, TransactionEffectsAPI as _};
+use crate::object::{Object, ObjectID, ObjectRef};
+use crate::storage::ObjectKey;
+use crate::storage::read_store::EpochInfo;
+use crate::storage::storage_error::Error as StorageError;
+use crate::system_state::{SystemStateTrait as _, get_system_state};
+use crate::transaction::{Transaction, TransactionData, TransactionKind};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckpointData {

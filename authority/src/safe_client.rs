@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashMap;
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
-use crate::authority_client::AuthorityAPI;
 use tap::TapFallible as _;
 use tracing::{debug, error, instrument};
 use types::base::ConciseableName as _;
@@ -13,26 +13,25 @@ use types::checkpoints::{
     CertifiedCheckpointSummary, CheckpointRequest, CheckpointResponse, CheckpointSequenceNumber,
     CheckpointSummaryResponse,
 };
-use types::crypto::AuthoritySignInfoTrait;
+use types::committee::{Committee, EpochId};
+use types::crypto::{AuthorityPublicKeyBytes, AuthoritySignInfoTrait};
+use types::digests::{TransactionDigest, TransactionEffectsDigest};
+use types::effects::{self, SignedTransactionEffects, TransactionEffectsAPI};
+use types::error::{SomaError, SomaResult};
 use types::intent::Intent;
 use types::messages_grpc::{
-    ExecutedData, ObjectInfoRequest, ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse,
-    SystemStateRequest, TransactionInfoRequest, ValidatorHealthRequest, ValidatorHealthResponse,
+    ExecutedData, HandleCertificateRequest, HandleCertificateResponse, ObjectInfoRequest,
+    ObjectInfoResponse, SubmitTxRequest, SubmitTxResponse, SystemStateRequest,
+    TransactionInfoRequest, TransactionStatus, ValidatorHealthRequest, ValidatorHealthResponse,
     VerifiedObjectInfoResponse, WaitForEffectsRequest, WaitForEffectsResponse,
 };
 use types::object::{Object, ObjectID, ObjectRef};
+use types::quorum_driver::PlainTransactionInfoResponse;
 use types::storage::committee_store::CommitteeStore;
 use types::system_state::SystemState;
-use types::{
-    committee::{Committee, EpochId},
-    crypto::AuthorityPublicKeyBytes,
-    digests::{TransactionDigest, TransactionEffectsDigest},
-    effects::{self, SignedTransactionEffects, TransactionEffectsAPI},
-    error::{SomaError, SomaResult},
-    messages_grpc::{HandleCertificateRequest, HandleCertificateResponse, TransactionStatus},
-    quorum_driver::PlainTransactionInfoResponse,
-    transaction::{CertifiedTransaction, SignedTransaction, Transaction},
-};
+use types::transaction::{CertifiedTransaction, SignedTransaction, Transaction};
+
+use crate::authority_client::AuthorityAPI;
 
 macro_rules! check_error {
     ($address:expr, $cond:expr, $msg:expr) => {

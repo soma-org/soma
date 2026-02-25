@@ -3,15 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use tracing::info;
-use types::{
-    base::SomaAddress,
-    effects::ExecutionFailureStatus,
-    error::{ExecutionResult, SomaError},
-    object::{ObjectID, ObjectRef},
-    temporary_store::TemporaryStore,
-    transaction::TransactionKind,
-    tx_fee::TransactionFee,
-};
+use types::base::SomaAddress;
+use types::effects::ExecutionFailureStatus;
+use types::error::{ExecutionResult, SomaError};
+use types::object::{ObjectID, ObjectRef};
+use types::temporary_store::TemporaryStore;
+use types::transaction::TransactionKind;
+use types::tx_fee::TransactionFee;
 
 use super::TransactionExecutor;
 

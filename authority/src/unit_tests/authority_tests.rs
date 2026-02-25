@@ -3,27 +3,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use fastcrypto::ed25519::Ed25519KeyPair;
-use types::{
-    SYSTEM_STATE_OBJECT_ID,
-    base::dbg_addr,
-    crypto::{SomaKeyPair, get_key_pair},
-    effects::{ExecutionStatus, TransactionEffectsAPI},
-    object::{Object, ObjectID, Owner},
-    system_state::SystemStateTrait as _,
-    transaction::{
-        SenderSignedData, TransactionData, TransactionKind,
-        verify_sender_signed_data_message_signatures,
-    },
-    unit_tests::utils::to_sender_signed_transaction,
+use types::SYSTEM_STATE_OBJECT_ID;
+use types::base::dbg_addr;
+use types::crypto::{SomaKeyPair, get_key_pair};
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
+use types::object::{Object, ObjectID, Owner};
+use types::system_state::SystemStateTrait as _;
+use types::transaction::{
+    SenderSignedData, TransactionData, TransactionKind,
+    verify_sender_signed_data_message_signatures,
 };
+use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::{
-    authority_test_utils::{
-        certify_transaction, execute_certificate_with_execution_error, init_state_with_ids,
-        send_and_confirm_transaction, send_and_confirm_transaction_,
-    },
-    test_authority_builder::TestAuthorityBuilder,
+use crate::authority_test_utils::{
+    certify_transaction, execute_certificate_with_execution_error, init_state_with_ids,
+    send_and_confirm_transaction, send_and_confirm_transaction_,
 };
+use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
 // Transfer transaction tests

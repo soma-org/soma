@@ -1,34 +1,30 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
+
 use anyhow::{Result, anyhow, bail};
 use clap::*;
 use colored::Colorize;
-use serde::Serialize;
-use std::fmt::{self, Display, Formatter};
-use std::path::PathBuf;
-use tabled::{
-    builder::Builder as TableBuilder,
-    settings::{Panel as TablePanel, Style as TableStyle, style::HorizontalLine},
-};
-use tokio::io::AsyncWriteExt;
-
 use sdk::proxy_client::ProxyClient;
 use sdk::wallet_context::WalletContext;
-use types::{
-    base::SomaAddress,
-    checksum::Checksum,
-    crypto::DecryptionKey,
-    digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment},
-    metadata::{Manifest, ManifestV1, Metadata, MetadataV1},
-    model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest},
-    object::ObjectID,
-    system_state::{SystemState, SystemStateTrait as _},
-    tensor::SomaTensor,
-    transaction::{
-        CommitModelArgs, CommitModelUpdateArgs, RevealModelArgs, RevealModelUpdateArgs,
-        TransactionKind,
-    },
+use serde::Serialize;
+use tabled::builder::Builder as TableBuilder;
+use tabled::settings::style::HorizontalLine;
+use tabled::settings::{Panel as TablePanel, Style as TableStyle};
+use tokio::io::AsyncWriteExt;
+use types::base::SomaAddress;
+use types::checksum::Checksum;
+use types::crypto::DecryptionKey;
+use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
+use types::model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest};
+use types::object::ObjectID;
+use types::system_state::{SystemState, SystemStateTrait as _};
+use types::tensor::SomaTensor;
+use types::transaction::{
+    CommitModelArgs, CommitModelUpdateArgs, RevealModelArgs, RevealModelUpdateArgs, TransactionKind,
 };
 
 use crate::client_commands::TxProcessingArgs;

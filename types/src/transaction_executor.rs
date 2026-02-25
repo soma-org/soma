@@ -4,14 +4,14 @@
 
 use std::collections::BTreeMap;
 
-use crate::{
-    effects::TransactionEffects,
-    error::{ExecutionError, ExecutionResult, SomaError},
-    full_checkpoint_content::ObjectSet,
-    object::{Object, ObjectID},
-    quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionResponse, QuorumDriverError},
-    transaction::TransactionData,
+use crate::effects::TransactionEffects;
+use crate::error::{ExecutionError, ExecutionResult, SomaError};
+use crate::full_checkpoint_content::ObjectSet;
+use crate::object::{Object, ObjectID};
+use crate::quorum_driver::{
+    ExecuteTransactionRequest, ExecuteTransactionResponse, QuorumDriverError,
 };
+use crate::transaction::TransactionData;
 
 /// Trait to define the interface for how the REST service interacts with a a QuorumDriver or a
 /// simulated transaction executor.

@@ -2,9 +2,10 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::ops::{Bound, RangeBounds};
+
 use bincode::Options;
 use serde::Serialize;
-use std::ops::{Bound, RangeBounds};
 
 #[inline]
 pub fn be_fix_int_ser<S>(t: &S) -> Vec<u8>

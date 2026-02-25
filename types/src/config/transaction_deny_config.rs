@@ -4,10 +4,11 @@
 
 use std::collections::HashSet;
 
-use crate::base::SomaAddress;
-use crate::object::ObjectID;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
+
+use crate::base::SomaAddress;
+use crate::object::ObjectID;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]

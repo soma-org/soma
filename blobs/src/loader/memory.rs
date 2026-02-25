@@ -3,10 +3,12 @@
 
 use burn::store::SafetensorsStore;
 use bytes::Bytes;
-use object_store::{ObjectStore, memory::InMemory};
+use object_store::ObjectStore;
+use object_store::memory::InMemory;
 use types::error::{BlobError, BlobResult};
 
-use crate::{BlobPath, loader::BlobLoader};
+use crate::BlobPath;
+use crate::loader::BlobLoader;
 
 #[async_trait::async_trait]
 impl BlobLoader for InMemory {

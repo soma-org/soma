@@ -2,20 +2,20 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
-use types::{base::AuthorityName, messages_grpc::TxType};
+use types::base::AuthorityName;
+use types::messages_grpc::TxType;
 
-use crate::{
-    authority_aggregator::AuthorityAggregator,
-    safe_client::SafeClient,
-    status_aggregator::StatusAggregator,
-    transaction_driver::error::{
-        AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
-        aggregate_request_errors,
-    },
-    validator_client_monitor::ValidatorClientMonitor,
+use crate::authority_aggregator::AuthorityAggregator;
+use crate::safe_client::SafeClient;
+use crate::status_aggregator::StatusAggregator;
+use crate::transaction_driver::error::{
+    AggregatedEffectsDigests, TransactionDriverError, TransactionRequestError,
+    aggregate_request_errors,
 };
+use crate::validator_client_monitor::ValidatorClientMonitor;
 
 /// Select validators with latencies within 2% of the lowest latency.
 const SELECT_LATENCY_DELTA: f64 = 0.02;

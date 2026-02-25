@@ -2,13 +2,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use tracing::debug;
-use types::{
-    base::AuthorityName,
-    committee::{AuthorityIndex, Committee, StakeUnit},
-};
+use types::base::AuthorityName;
+use types::committee::{AuthorityIndex, Committee, StakeUnit};
 
 /// Aggregates various types of statuses from different authorities,
 /// and the total stake of authorities that have inserted statuses.

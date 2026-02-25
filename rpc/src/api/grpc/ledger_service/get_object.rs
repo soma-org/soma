@@ -2,22 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::api::RpcService;
-use crate::api::error::ObjectNotFoundError;
-use crate::api::error::RpcError;
-use crate::proto::google::rpc::bad_request::FieldViolation;
-use crate::proto::soma::BatchGetObjectsRequest;
-use crate::proto::soma::BatchGetObjectsResponse;
-use crate::proto::soma::ErrorReason;
-use crate::proto::soma::GetObjectRequest;
-use crate::proto::soma::GetObjectResponse;
-use crate::proto::soma::GetObjectResult;
-use crate::proto::soma::Object;
-use crate::types::Address;
-use crate::utils::field::FieldMaskTree;
-use crate::utils::field::FieldMaskUtil;
-use crate::utils::merge::Merge;
 use prost_types::FieldMask;
+
+use crate::api::RpcService;
+use crate::api::error::{ObjectNotFoundError, RpcError};
+use crate::proto::google::rpc::bad_request::FieldViolation;
+use crate::proto::soma::{
+    BatchGetObjectsRequest, BatchGetObjectsResponse, ErrorReason, GetObjectRequest,
+    GetObjectResponse, GetObjectResult, Object,
+};
+use crate::types::Address;
+use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
+use crate::utils::merge::Merge;
 
 pub const READ_MASK_DEFAULT: &str = "object_id,version,digest";
 

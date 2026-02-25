@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::time::Duration;
+
 use tap::Pipe;
 use tonic::codec::CompressionEncoding;
 #[cfg(feature = "tls")]

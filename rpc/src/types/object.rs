@@ -4,7 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Address, digest::Digest};
+use crate::types::Address;
+use crate::types::digest::Digest;
 
 pub type Version = u64;
 

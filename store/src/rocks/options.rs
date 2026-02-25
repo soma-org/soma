@@ -2,9 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use rocksdb::{BlockBasedOptions, Cache, MergeOperands, ReadOptions, compaction_filter::Decision};
 use std::collections::BTreeMap;
 use std::env;
+
+use rocksdb::compaction_filter::Decision;
+use rocksdb::{BlockBasedOptions, Cache, MergeOperands, ReadOptions};
 use tap::TapFallible;
 use tracing::{info, warn};
 

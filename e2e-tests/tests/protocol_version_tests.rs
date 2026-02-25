@@ -17,13 +17,13 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+
 use test_cluster::TestClusterBuilder;
 use tokio::time::sleep;
 use tracing::info;
-use types::{
-    supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
-    system_state::{SystemStateTrait, epoch_start::EpochStartSystemStateTrait as _},
-};
+use types::supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions};
+use types::system_state::SystemStateTrait;
+use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use utils::logging::init_tracing;
 
 /// Create a cluster at a protocol version beyond MAX_ALLOWED. The cluster

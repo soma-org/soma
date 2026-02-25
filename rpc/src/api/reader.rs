@@ -5,17 +5,19 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::types::{Address, Object, Version};
-use crate::types::{CheckpointSequenceNumber, EpochId, SignedTransaction, ValidatorCommittee};
 use tap::Pipe;
 use types::balance_change::BalanceChange;
 use types::object::{ObjectID, ObjectType};
 use types::storage::ObjectKey;
-use types::storage::read_store::RpcStateReader;
+use types::storage::object_store::ObjectStore;
+use types::storage::read_store::{RpcStateReader, TransactionInfo};
 use types::storage::storage_error::{Error as StorageError, Result};
-use types::storage::{object_store::ObjectStore, read_store::TransactionInfo};
 
 use crate::api::Direction;
+use crate::types::{
+    Address, CheckpointSequenceNumber, EpochId, Object, SignedTransaction, ValidatorCommittee,
+    Version,
+};
 
 #[derive(Clone)]
 pub struct StateReader {

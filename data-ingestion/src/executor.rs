@@ -2,19 +2,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Worker;
-use crate::reader::{CheckpointReader, ReaderOptions};
-use anyhow::Result;
-use futures::Future;
-use once_cell::sync::Lazy;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
+
+use anyhow::Result;
+use futures::Future;
+use once_cell::sync::Lazy;
 use tokio::sync::{mpsc, oneshot};
 use tracing::info;
 use types::checkpoints::CheckpointSequenceNumber;
 use types::full_checkpoint_content::CheckpointData;
+
+use crate::Worker;
+use crate::reader::{CheckpointReader, ReaderOptions};
 
 pub static MAX_CHECKPOINTS_IN_PROGRESS: Lazy<usize> = Lazy::new(|| {
     std::env::var("MAX_CHECKPOINTS_IN_PROGRESS").ok().and_then(|s| s.parse().ok()).unwrap_or(100)

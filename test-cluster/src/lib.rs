@@ -2,57 +2,52 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-    net::SocketAddr,
-    num::NonZeroUsize,
-    path::PathBuf,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use fastcrypto::hash::HashFunction as _;
 use futures::future::join_all;
 use node::handle::SomaNodeHandle;
-use object_store::{ObjectStore as _, memory::InMemory};
+use object_store::ObjectStore as _;
+use object_store::memory::InMemory;
 use rand::rngs::OsRng;
 use rpc::api::client::{TransactionExecutionResponse, TransactionExecutionResponseWithCheckpoint};
-use sdk::{
-    SomaClient, SomaClientBuilder,
-    client_config::{SomaClientConfig, SomaEnv},
-    wallet_context::WalletContext,
-};
+use sdk::client_config::{SomaClientConfig, SomaEnv};
+use sdk::wallet_context::WalletContext;
+use sdk::{SomaClient, SomaClientBuilder};
 use soma_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
 use swarm::{Swarm, SwarmBuilder};
 use tokio::time::timeout;
 use tracing::{error, info};
-use types::{
-    base::{AuthorityName, ConciseableName, SomaAddress},
-    checksum::Checksum,
-    committee::{CommitteeTrait, EpochId},
-    config::{
-        Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
-        genesis_config::{
-            AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, GenesisModelConfig,
-            ValidatorGenesisConfig,
-        },
-        local_ip_utils,
-        network_config::{
-            NetworkConfig, ProtocolVersionsConfig, SupportedProtocolVersionsCallback,
-        },
-        node_config::{NodeConfig, RunWithRange, ValidatorConfigBuilder, get_key_path},
-        p2p_config::SeedPeer,
-    },
-    crypto::{DefaultHash, NetworkKeyPair, SomaKeyPair},
-    effects::TransactionEffects,
-    error::SomaResult,
-    genesis::Genesis,
-    object::ObjectRef,
-    peer_id::PeerId,
-    supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions},
-    system_state::{SystemState, SystemStateTrait, epoch_start::EpochStartSystemStateTrait as _},
-    transaction::{Transaction, TransactionData},
+use types::base::{AuthorityName, ConciseableName, SomaAddress};
+use types::checksum::Checksum;
+use types::committee::{CommitteeTrait, EpochId};
+use types::config::genesis_config::{
+    AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, GenesisModelConfig, ValidatorGenesisConfig,
 };
+use types::config::network_config::{
+    NetworkConfig, ProtocolVersionsConfig, SupportedProtocolVersionsCallback,
+};
+use types::config::node_config::{NodeConfig, RunWithRange, ValidatorConfigBuilder, get_key_path};
+use types::config::p2p_config::SeedPeer;
+use types::config::{
+    Config, PersistedConfig, SOMA_CLIENT_CONFIG, SOMA_KEYSTORE_FILENAME, SOMA_NETWORK_CONFIG,
+    local_ip_utils,
+};
+use types::crypto::{DefaultHash, NetworkKeyPair, SomaKeyPair};
+use types::effects::TransactionEffects;
+use types::error::SomaResult;
+use types::genesis::Genesis;
+use types::object::ObjectRef;
+use types::peer_id::PeerId;
+use types::supported_protocol_versions::{ProtocolVersion, SupportedProtocolVersions};
+use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+use types::system_state::{SystemState, SystemStateTrait};
+use types::transaction::{Transaction, TransactionData};
 use url::Url;
 
 #[cfg(msim)]
