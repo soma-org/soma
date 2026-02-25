@@ -1310,7 +1310,9 @@ async fn test_concurrent_conflicting_owned_transactions() {
     let result1 = result1.unwrap();
     let result2 = result2.unwrap();
 
-    // Exactly one should succeed, the other should fail with ObjectsDoubleUsed
+    // The safety property: at most one conflicting transaction succeeds (no double-spend).
+    // With concurrent submission, it's possible for both to fail due to split object locks
+    // (each tx locks on a different subset of validators, neither reaching quorum).
     let (successes, failures) =
         [("TX1", &result1), ("TX2", &result2)].iter().fold((0, 0), |(s, f), (name, result)| {
             match result {
@@ -1331,18 +1333,13 @@ async fn test_concurrent_conflicting_owned_transactions() {
             }
         });
 
-    assert_eq!(
-        successes, 1,
-        "Exactly one conflicting owned transaction should succeed (got {})",
+    assert!(
+        successes <= 1,
+        "At most one conflicting owned transaction should succeed (got {})",
         successes
     );
-    assert_eq!(
-        failures, 1,
-        "Exactly one conflicting owned transaction should fail (got {})",
-        failures
-    );
 
-    // Verify the coin was only spent once
+    // Verify the coin was spent at most once
     let executed_count = [digest1, digest2]
         .iter()
         .filter(|d| {
@@ -1350,11 +1347,14 @@ async fn test_concurrent_conflicting_owned_transactions() {
         })
         .count();
 
-    assert_eq!(
-        executed_count, 1,
-        "Only one conflicting transaction should be marked as executed (got {})",
+    assert!(
+        executed_count <= 1,
+        "At most one conflicting transaction should be marked as executed (got {})",
         executed_count
     );
 
-    info!("test_concurrent_conflicting_owned_transactions passed: 1 success, 1 rejection");
+    info!(
+        "test_concurrent_conflicting_owned_transactions passed: {} succeeded, {} failed",
+        successes, failures
+    );
 }
