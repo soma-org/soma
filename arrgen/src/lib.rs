@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use ndarray::ArrayD;
 use ndarray_rand::{RandomExt, rand_distr::Normal};
 use rand::{SeedableRng, distributions::Uniform, rngs::StdRng};

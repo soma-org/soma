@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! CLI commands for downloading submission data from the validator network.
 //!
 //! This module provides the `soma target download` command for fetching data associated

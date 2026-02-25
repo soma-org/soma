@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Submission executor for data submissions to targets.
 //!
 //! Handles `SubmitData` and `ClaimRewards` transactions:

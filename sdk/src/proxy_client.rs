@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Proxy client for fetching submission data and model weights from validators.
 //!
 //! The `ProxyClient` fetches data from validator proxy servers, with:

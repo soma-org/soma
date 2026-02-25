@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! This module contains the code to generate Serialize and Deserialize
 //! implementations for message types
 //!

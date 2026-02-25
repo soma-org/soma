@@ -192,3 +192,29 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - name: Run tests
         run: uv run pytest
+
+  # ===========================================================================
+  # Gate — single required check for branch protection
+  # ===========================================================================
+  ci-gate:
+    if: always()
+    needs: [rustfmt, clippy, test, simtest, ruff, ty, pytest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all jobs passed or were skipped
+        run: |
+          results=(
+            "${{ needs.rustfmt.result }}"
+            "${{ needs.clippy.result }}"
+            "${{ needs.test.result }}"
+            "${{ needs.simtest.result }}"
+            "${{ needs.ruff.result }}"
+            "${{ needs.ty.result }}"
+            "${{ needs.pytest.result }}"
+          )
+          for r in "${results[@]}"; do
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "::error::Job result: $r"
+              exit 1
+            fi
+          done

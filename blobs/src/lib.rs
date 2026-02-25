@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use object_store::path::Path;
 use serde::{Deserialize, Serialize};
 use std::fmt;

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
 use multiaddr::Protocol;

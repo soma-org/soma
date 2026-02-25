@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Challenge executor for dispute resolution.
 //!
 //! Handles challenge transactions using the tally-based approach.

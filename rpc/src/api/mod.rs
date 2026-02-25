@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 #[cfg(feature = "server")]
 use std::sync::Arc;
 

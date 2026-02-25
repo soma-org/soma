@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{BlobPath, loader::BlobLoader};
 use async_trait::async_trait;
 use burn::store::SafetensorsStore;

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::checksum::Checksum;
 use crate::{
     base::SomaAddress,

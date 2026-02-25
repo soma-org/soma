@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::base::SomaAddress;
 use crate::effects::TransactionEffects;
 use crate::effects::TransactionEffectsAPI as _;

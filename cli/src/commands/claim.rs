@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Claim command for claiming rewards from filled targets (`soma target claim`).
 
 use anyhow::{Result, bail};

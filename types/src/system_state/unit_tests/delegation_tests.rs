@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod delegation_tests {

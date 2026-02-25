@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use burn::store::SafetensorsStore;
 use bytes::Bytes;
 use object_store::{ObjectStore, memory::InMemory};

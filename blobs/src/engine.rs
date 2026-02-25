@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE};
 use async_trait::async_trait;
 use bytes::Bytes;

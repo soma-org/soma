@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use burn::{Tensor, prelude::Backend};
 
 pub struct RunningMean<B: Backend, const D: usize> {

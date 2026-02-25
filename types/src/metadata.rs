@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;

@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tests for model management transactions:
 //! CommitModel, DeactivateModel, SetModelCommissionRate, ReportModel.
 //!

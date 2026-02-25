@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use async_trait::async_trait;
 use burn::store::SafetensorsStore;
 use types::error::BlobResult;

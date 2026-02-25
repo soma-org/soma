@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use types::checksum::Checksum;

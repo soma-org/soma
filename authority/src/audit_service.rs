@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Validator audit service for challenge resolution.
 //!
 //! When a Challenge object is created, validators:

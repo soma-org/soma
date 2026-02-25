@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Fullnode Thin Proxy for forwarding data/model requests to validators.
 //!
 //! Fullnodes run this proxy to forward client requests to validators. This allows

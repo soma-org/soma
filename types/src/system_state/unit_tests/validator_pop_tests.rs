@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 //! Tests for Proof of Possession (PoP) and duplicate validator metadata checks.
 //!
 //! Covers:

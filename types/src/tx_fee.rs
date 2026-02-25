@@ -1,3 +1,6 @@
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
