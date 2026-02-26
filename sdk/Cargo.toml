@@ -45,5 +45,9 @@ proxy = ["dep:reqwest"]
 tls = ["rpc/tls", "proxy", "reqwest/rustls-tls"]
 grpc-services = ["dep:scoring", "dep:admin"]
 
+[dev-dependencies]
+faucet = { path = "../faucet", default-features = false }
+tokio-stream.workspace = true
+
 [lints]
 workspace = true

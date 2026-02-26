@@ -45,14 +45,20 @@ thiserror.workspace = true
 # Optional server deps
 axum = { workspace = true, features = ["matched-path"], optional = true }
 tonic-web = { version = "0.13.1", optional = true }
+tonic-health = { version = "0.13", optional = true }
+tonic-reflection = { version = "0.13", optional = true }
 
 [features]
 default = ["server", "tls"]
 server = [
-    "dep:axum", "dep:tonic-web",
+    "dep:axum", "dep:tonic-web", "dep:tonic-health", "dep:tonic-reflection",
     "types/storage", "types/ml", "types/cloud-storage", "types/server", "types/tls",
 ]
 tls = ["tonic/tls-ring", "tonic/tls-webpki-roots", "types/tls"]
+
+[dev-dependencies]
+tonic-health = "0.13"
+tonic-reflection = "0.13"
 
 [build-dependencies]
 tonic-build = "0.13"

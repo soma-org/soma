@@ -1,79 +1,136 @@
-// Copyright (c) Mysten Labs, Inc.
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+//! gRPC faucet client for requesting test tokens.
+//!
+//! Types and codec are defined inline to avoid a cyclic dependency
+//! (`sdk -> faucet -> sdk`). The wire format (BCS over gRPC) is
+//! identical to the faucet server.
+
+use std::marker::PhantomData;
+
+use bytes::{Buf, BufMut};
 use serde::{Deserialize, Serialize};
-use types::base::SomaAddress;
+use tonic::Status;
+use tonic::codec::{Codec, DecodeBuf, Decoder, EncodeBuf, Encoder};
 
-pub const DEFAULT_FAUCET_URL: &str = "http://127.0.0.1:9123/gas";
+// ---------------------------------------------------------------------------
+// Faucet types (mirrors faucet::faucet_types)
+// ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
-enum FaucetRequest {
-    FixedAmountRequest { recipient: String },
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GasRequest {
+    pub recipient: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct FaucetResponse {
-    pub status: RequestStatus,
-    pub coins_sent: Option<Vec<CoinInfo>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GasResponse {
+    pub status: String,
+    #[serde(default)]
+    pub coins_sent: Vec<GasCoinInfo>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub enum RequestStatus {
-    Success,
-    Failure(String),
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct CoinInfo {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GasCoinInfo {
     pub amount: u64,
     pub id: String,
     pub transfer_tx_digest: String,
 }
 
-/// Request test tokens from a faucet server.
-///
-/// Sends a `FixedAmountRequest` to the given faucet URL and returns the
-/// response containing the coins sent.
-pub async fn request_from_faucet(
-    address: SomaAddress,
-    faucet_url: &str,
-) -> anyhow::Result<FaucetResponse> {
-    let body = FaucetRequest::FixedAmountRequest { recipient: address.to_string() };
+// ---------------------------------------------------------------------------
+// BCS codec (mirrors faucet::codec)
+// ---------------------------------------------------------------------------
 
-    let resp = reqwest::Client::new()
-        .post(faucet_url)
-        .json(&body)
-        .send()
-        .await?;
+#[derive(Debug)]
+struct BcsEncoder<T>(PhantomData<T>);
 
-    let status_code = resp.status();
+impl<T: Serialize> Encoder for BcsEncoder<T> {
+    type Item = T;
+    type Error = Status;
 
-    if status_code == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        anyhow::bail!("Faucet rate limit exceeded (429). Please wait and try again.");
+    fn encode(&mut self, item: Self::Item, buf: &mut EncodeBuf<'_>) -> Result<(), Self::Error> {
+        bcs::serialize_into(&mut buf.writer(), &item).map_err(|e| Status::internal(e.to_string()))
     }
-
-    if status_code == reqwest::StatusCode::SERVICE_UNAVAILABLE {
-        anyhow::bail!("Faucet service is temporarily unavailable (503). Please try again later.");
-    }
-
-    if status_code.is_client_error() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Faucet request failed with status {status_code}: {body}");
-    }
-
-    let faucet_resp: FaucetResponse = resp.json().await?;
-    Ok(faucet_resp)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug)]
+struct BcsDecoder<U>(PhantomData<U>);
 
-    #[tokio::test]
-    async fn test_sdk_faucet_bad_url() {
-        let address = SomaAddress::ZERO;
-        let result = request_from_faucet(address, "http://127.0.0.1:1/gas").await;
-        assert!(result.is_err(), "Expected connection error for bad URL");
+impl<U: serde::de::DeserializeOwned> Decoder for BcsDecoder<U> {
+    type Item = U;
+    type Error = Status;
+
+    fn decode(&mut self, buf: &mut DecodeBuf<'_>) -> Result<Option<Self::Item>, Self::Error> {
+        let remaining = buf.remaining();
+        if remaining == 0 {
+            match bcs::from_bytes::<Self::Item>(&[]) {
+                Ok(item) => return Ok(Some(item)),
+                Err(_) => return Ok(None),
+            }
+        }
+        let bytes = buf.copy_to_bytes(remaining);
+        let item: Self::Item =
+            bcs::from_bytes(&bytes).map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Some(item))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BcsCodec<T, U>(PhantomData<(T, U)>);
+
+impl<T, U> Default for BcsCodec<T, U> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<T, U> Codec for BcsCodec<T, U>
+where
+    T: Serialize + Send + 'static,
+    U: serde::de::DeserializeOwned + Send + 'static,
+{
+    type Encode = T;
+    type Decode = U;
+    type Encoder = BcsEncoder<T>;
+    type Decoder = BcsDecoder<U>;
+
+    fn encoder(&mut self) -> Self::Encoder {
+        BcsEncoder(PhantomData)
+    }
+
+    fn decoder(&mut self) -> Self::Decoder {
+        BcsDecoder(PhantomData)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FaucetClient
+// ---------------------------------------------------------------------------
+
+/// A gRPC client for the faucet service.
+#[derive(Debug, Clone)]
+pub struct FaucetClient {
+    inner: tonic::client::Grpc<tonic::transport::Channel>,
+}
+
+impl FaucetClient {
+    /// Connect to a faucet server at the given URL.
+    pub async fn connect(url: impl Into<String>) -> Result<Self, tonic::transport::Error> {
+        let conn = tonic::transport::Endpoint::new(url.into())?.connect().await?;
+        Ok(Self { inner: tonic::client::Grpc::new(conn) })
+    }
+
+    /// Request test tokens for the given address.
+    pub async fn request_gas(
+        &mut self,
+        request: GasRequest,
+    ) -> Result<tonic::Response<GasResponse>, tonic::Status> {
+        self.inner.ready().await.map_err(|e| {
+            tonic::Status::unknown(format!("Service was not ready: {}", e))
+        })?;
+        let codec: BcsCodec<GasRequest, GasResponse> = BcsCodec::default();
+        let path =
+            tonic::codegen::http::uri::PathAndQuery::from_static("/faucet.Faucet/RequestGas");
+        self.inner.unary(tonic::Request::new(request), path, codec).await
     }
 }

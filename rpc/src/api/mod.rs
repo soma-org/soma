@@ -111,16 +111,62 @@ impl RpcService {
                 S::NAME
             }
 
+            // gRPC Health Check service
+            let (health_reporter, health_service) = tonic_health::server::health_reporter();
+            for name in [
+                service_name(&ledger_service),
+                service_name(&transaction_execution_service),
+                service_name(&state_service),
+            ] {
+                health_reporter
+                    .set_service_status(name, tonic_health::ServingStatus::Serving)
+                    .await;
+            }
+
+            // gRPC Server Reflection (v1 + v1alpha)
+            let reflection_v1 = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(
+                    crate::proto::google::protobuf::FILE_DESCRIPTOR_SET,
+                )
+                .register_encoded_file_descriptor_set(
+                    crate::proto::google::rpc::FILE_DESCRIPTOR_SET,
+                )
+                .register_encoded_file_descriptor_set(crate::proto::soma::FILE_DESCRIPTOR_SET)
+                .register_encoded_file_descriptor_set(tonic_health::pb::FILE_DESCRIPTOR_SET)
+                .build_v1()
+                .unwrap();
+
+            let reflection_v1alpha = tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(
+                    crate::proto::google::protobuf::FILE_DESCRIPTOR_SET,
+                )
+                .register_encoded_file_descriptor_set(
+                    crate::proto::google::rpc::FILE_DESCRIPTOR_SET,
+                )
+                .register_encoded_file_descriptor_set(crate::proto::soma::FILE_DESCRIPTOR_SET)
+                .register_encoded_file_descriptor_set(tonic_health::pb::FILE_DESCRIPTOR_SET)
+                .build_v1alpha()
+                .unwrap();
+
             let mut services = grpc::Services::new()
                 .add_service(ledger_service)
                 .add_service(transaction_execution_service)
-                .add_service(state_service);
+                .add_service(state_service)
+                .add_service(health_service)
+                .add_service(reflection_v1)
+                .add_service(reflection_v1alpha);
 
             if self.subscription_service_handle.is_some() {
                 let subscription_service =
                     crate::proto::soma::subscription_service_server::SubscriptionServiceServer::new(
                         self.clone(),
                     );
+                health_reporter
+                    .set_service_status(
+                        service_name(&subscription_service),
+                        tonic_health::ServingStatus::Serving,
+                    )
+                    .await;
 
                 services = services.add_service(subscription_service);
             }

@@ -20,6 +20,7 @@ use crate::error::SomaRpcResult;
 pub mod client_config;
 pub mod crypto_utils;
 pub mod error;
+pub mod faucet_client;
 pub mod keypair;
 #[cfg(feature = "proxy")]
 pub mod proxy_client;
@@ -48,6 +49,7 @@ pub const SOMA_TESTNET_URL: &str = "https://fullnode.testnet.soma.org:443";
 /// Builder for configuring a SomaClient
 pub struct SomaClientBuilder {
     request_timeout: Duration,
+    faucet_url: Option<String>,
     #[cfg(feature = "grpc-services")]
     scoring_url: Option<String>,
     #[cfg(feature = "grpc-services")]
@@ -58,6 +60,7 @@ impl Default for SomaClientBuilder {
     fn default() -> Self {
         Self {
             request_timeout: Duration::from_secs(60),
+            faucet_url: None,
             #[cfg(feature = "grpc-services")]
             scoring_url: None,
             #[cfg(feature = "grpc-services")]
@@ -84,6 +87,12 @@ impl SomaClientBuilder {
     #[cfg(feature = "grpc-services")]
     pub fn admin_url(mut self, url: impl Into<String>) -> Self {
         self.admin_url = Some(url.into());
+        self
+    }
+
+    /// Set the faucet service URL (e.g. `http://127.0.0.1:9123`).
+    pub fn faucet_url(mut self, url: impl Into<String>) -> Self {
+        self.faucet_url = Some(url.into());
         self
     }
 
@@ -114,8 +123,19 @@ impl SomaClientBuilder {
             None => None,
         };
 
+        let faucet_client = match self.faucet_url {
+            Some(url) => {
+                let fc = faucet_client::FaucetClient::connect(url)
+                    .await
+                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
+                Some(Arc::new(Mutex::new(fc)))
+            }
+            None => None,
+        };
+
         Ok(SomaClient {
             inner: Arc::new(RwLock::new(client)),
+            faucet_client,
             #[cfg(feature = "grpc-services")]
             scoring_client,
             #[cfg(feature = "grpc-services")]
@@ -138,6 +158,7 @@ impl SomaClientBuilder {
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
+    faucet_client: Option<Arc<Mutex<faucet_client::FaucetClient>>>,
     #[cfg(feature = "grpc-services")]
     scoring_client: Option<Arc<Mutex<ScoringGrpcClient>>>,
     #[cfg(feature = "grpc-services")]
@@ -463,6 +484,29 @@ impl SomaClient {
         Ok(response.ok)
     }
 
+    /// Request test tokens from the faucet. Returns the gas response.
+    pub async fn request_faucet(
+        &self,
+        address: SomaAddress,
+    ) -> Result<faucet_client::GasResponse, error::Error> {
+        let fc = self
+            .faucet_client
+            .as_ref()
+            .ok_or_else(|| {
+                error::Error::ServiceNotConfigured(
+                    "No faucet_url was provided when creating SomaClient".into(),
+                )
+            })?
+            .clone();
+        let mut client = fc.lock().await;
+        let response = client
+            .request_gas(faucet_client::GasRequest { recipient: address.to_string() })
+            .await
+            .map_err(|e| error::Error::GrpcError(e.to_string()))?
+            .into_inner();
+        Ok(response)
+    }
+
     /// Trigger epoch advancement on localnet. Returns the new epoch number.
     #[cfg(feature = "grpc-services")]
     pub async fn advance_epoch(&self) -> Result<u64, error::Error> {
@@ -482,5 +526,73 @@ impl SomaClient {
             .map_err(|e| error::Error::GrpcError(e.to_string()))?
             .into_inner();
         Ok(response.epoch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use faucet::faucet_gen::faucet_server::{Faucet, FaucetServer};
+
+    /// A mock faucet that always returns a single coin.
+    struct MockFaucet;
+
+    #[faucet::tonic::async_trait]
+    impl Faucet for MockFaucet {
+        async fn request_gas(
+            &self,
+            request: faucet::tonic::Request<faucet::faucet_types::GasRequest>,
+        ) -> Result<
+            faucet::tonic::Response<faucet::faucet_types::GasResponse>,
+            faucet::tonic::Status,
+        > {
+            let recipient = request.into_inner().recipient;
+            Ok(faucet::tonic::Response::new(faucet::faucet_types::GasResponse {
+                status: "Success".to_string(),
+                coins_sent: vec![faucet::faucet_types::GasCoinInfo {
+                    amount: 1_000_000_000,
+                    id: format!("0xmock_coin_for_{recipient}"),
+                    transfer_tx_digest: "0xmock_tx_digest".to_string(),
+                }],
+            }))
+        }
+    }
+
+    /// Test that the SDK's inline faucet client is wire-compatible with
+    /// the faucet crate's server (both use BCS codec over gRPC).
+    #[tokio::test]
+    async fn test_faucet_client_grpc() {
+        // Start a mock faucet gRPC server (tonic 0.14, faucet crate) on a random port.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            faucet::tonic::transport::Server::builder()
+                .add_service(FaucetServer::new(MockFaucet))
+                .serve_with_incoming(incoming)
+                .await
+                .unwrap();
+        });
+
+        // Give server a moment to start.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Connect the SDK's inline faucet client (tonic 0.13).
+        let faucet_url = format!("http://127.0.0.1:{}", addr.port());
+        let mut client = faucet_client::FaucetClient::connect(faucet_url).await.unwrap();
+
+        let response = client
+            .request_gas(faucet_client::GasRequest {
+                recipient: SomaAddress::ZERO.to_string(),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_eq!(response.status, "Success");
+        assert_eq!(response.coins_sent.len(), 1);
+        assert_eq!(response.coins_sent[0].amount, 1_000_000_000);
     }
 }
