@@ -667,11 +667,10 @@ impl ValidatorConfigBuilder {
         });
 
         let p2p_config = {
+            let listen_address =
+                crate::sync::to_socket_addr(&validator.p2p_address).expect("valid p2p address");
             P2pConfig {
-                // listen_address: Some(
-                //     self.p2p_listen_address
-                //         .unwrap_or_else(|| validator_config.p2p_listen_address),
-                // ),
+                listen_address,
                 external_address: Some(validator.p2p_address.clone()),
                 seed_peers,
                 // Set a shorter timeout for commit content download in tests, since
@@ -816,20 +815,23 @@ impl FullnodeConfigBuilder {
 
         let ip = local_ip_utils::get_new_ip();
         let network_address = local_ip_utils::new_tcp_address_for_testing(&ip);
-        let p2p_address = local_ip_utils::new_tcp_address_for_testing(&ip);
+
+        let ip_addr: std::net::IpAddr = ip.parse().unwrap();
+        let p2p_port = local_ip_utils::get_available_port(&ip);
+        let p2p_listen_address = SocketAddr::new(ip_addr, p2p_port);
+        let p2p_address: Multiaddr = format!("/ip4/{}/tcp/{}/http", ip, p2p_port).parse().unwrap();
 
         let rpc_address = if let Some(addr) = self.rpc_addr {
             addr
         } else if let Some(port) = self.rpc_port {
-            let ip_addr: std::net::IpAddr = ip.parse().unwrap();
             SocketAddr::new(ip_addr, port)
         } else {
-            let ip_addr: std::net::IpAddr = ip.parse().unwrap();
             let port = local_ip_utils::get_available_port(&ip);
             SocketAddr::new(ip_addr, port)
         };
 
         let p2p_config = P2pConfig {
+            listen_address: p2p_listen_address,
             external_address: Some(p2p_address),
             seed_peers,
             state_sync: Some(StateSyncConfig {

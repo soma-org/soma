@@ -54,7 +54,7 @@ pub enum ChannelManagerRequest {
 }
 
 pub struct ChannelManager<S> {
-    own_address: Multiaddr,
+    listen_address: SocketAddr,
     network_keypair: NetworkKeyPair,
     mailbox: mpsc::Receiver<ChannelManagerRequest>,
     active_peers: ActivePeers,
@@ -71,7 +71,7 @@ where
     S: NamedService,
 {
     pub fn new(
-        own_address: Multiaddr,
+        listen_address: SocketAddr,
         network_keypair: NetworkKeyPair,
         service: S,
         active_peers: ActivePeers,
@@ -79,7 +79,7 @@ where
         let (sender, receiver) = mpsc::channel(1000);
         (
             Self {
-                own_address,
+                listen_address,
                 network_keypair,
                 mailbox: receiver,
                 active_peers,
@@ -152,7 +152,7 @@ where
     async fn setup_server(&mut self) -> SomaResult<()> {
         info!("Starting GRPC service");
 
-        let own_address = to_socket_addr(&self.own_address)?;
+        let own_address = self.listen_address;
 
         let tls_server_config = create_rustls_server_config(
             AllowAll,

@@ -560,12 +560,9 @@ impl SomaNode {
             .archive_config(config.state_archive_read_config.clone())
             .build();
 
-        let own_address =
-            config.p2p_config.external_address.clone().expect("External address must be set");
-
         let active_peers = ActivePeers::new(1000);
         let (channel_manager, channel_manager_tx) = ChannelManager::new(
-            own_address,
+            config.p2p_config.listen_address,
             config.network_key_pair().clone(),
             p2p_server,
             active_peers.clone(),

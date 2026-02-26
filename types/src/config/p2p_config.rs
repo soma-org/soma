@@ -12,10 +12,11 @@ use super::state_sync_config::StateSyncConfig;
 use crate::multiaddr::Multiaddr;
 use crate::peer_id::PeerId;
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct P2pConfig {
-    // /// The address that the p2p network will bind on.
-    // pub listen_address: Option<Multiaddr>,
+    /// The address that the p2p network will bind on.
+    #[serde(default = "default_listen_address")]
+    pub listen_address: SocketAddr,
     /// The external address other nodes can use to reach this node.
     /// This will be shared with other peers through the discovery service
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +31,22 @@ pub struct P2pConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub discovery: Option<DiscoveryConfig>,
+}
+
+fn default_listen_address() -> SocketAddr {
+    "0.0.0.0:8084".parse().unwrap()
+}
+
+impl Default for P2pConfig {
+    fn default() -> Self {
+        Self {
+            listen_address: default_listen_address(),
+            external_address: Default::default(),
+            seed_peers: Default::default(),
+            state_sync: None,
+            discovery: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

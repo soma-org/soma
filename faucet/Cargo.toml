@@ -42,7 +42,3 @@ server = [
 [lints]
 workspace = true
 
-[[bin]]
-name = "soma-faucet"
-path = "src/main.rs"
-required-features = ["server"]
