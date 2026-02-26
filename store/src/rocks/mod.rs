@@ -890,6 +890,11 @@ pub fn open_cf_opts<P: AsRef<Path>>(
     opt_cfs: &[(&str, rocksdb::Options)],
 ) -> Result<Arc<Database>, TypedStoreError> {
     let path = path.as_ref();
+    // Ensure parent directories exist before RocksDB tries to create the DB directory.
+    // RocksDB's create_if_missing only creates the leaf directory, not parents.
+    std::fs::create_dir_all(path).map_err(|e| {
+        TypedStoreError::RocksDBError(format!("Failed to create directory {path:?}: {e}"))
+    })?;
     // In the simulator, we intercept the wall clock in the test thread only. This causes problems
     // because rocksdb uses the simulated clock when creating its background threads, but then
     // those threads see the real wall clock (because they are not the test thread), which causes

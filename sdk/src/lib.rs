@@ -531,9 +531,9 @@ impl SomaClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use faucet::faucet_gen::faucet_server::{Faucet, FaucetServer};
+
+    use super::*;
 
     /// A mock faucet that always returns a single coin.
     struct MockFaucet;
@@ -543,10 +543,8 @@ mod tests {
         async fn request_gas(
             &self,
             request: faucet::tonic::Request<faucet::faucet_types::GasRequest>,
-        ) -> Result<
-            faucet::tonic::Response<faucet::faucet_types::GasResponse>,
-            faucet::tonic::Status,
-        > {
+        ) -> Result<faucet::tonic::Response<faucet::faucet_types::GasResponse>, faucet::tonic::Status>
+        {
             let recipient = request.into_inner().recipient;
             Ok(faucet::tonic::Response::new(faucet::faucet_types::GasResponse {
                 status: "Success".to_string(),
@@ -584,9 +582,7 @@ mod tests {
         let mut client = faucet_client::FaucetClient::connect(faucet_url).await.unwrap();
 
         let response = client
-            .request_gas(faucet_client::GasRequest {
-                recipient: SomaAddress::ZERO.to_string(),
-            })
+            .request_gas(faucet_client::GasRequest { recipient: SomaAddress::ZERO.to_string() })
             .await
             .unwrap()
             .into_inner();

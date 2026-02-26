@@ -125,9 +125,10 @@ impl FaucetClient {
         &mut self,
         request: GasRequest,
     ) -> Result<tonic::Response<GasResponse>, tonic::Status> {
-        self.inner.ready().await.map_err(|e| {
-            tonic::Status::unknown(format!("Service was not ready: {}", e))
-        })?;
+        self.inner
+            .ready()
+            .await
+            .map_err(|e| tonic::Status::unknown(format!("Service was not ready: {}", e)))?;
         let codec: BcsCodec<GasRequest, GasResponse> = BcsCodec::default();
         let path =
             tonic::codegen::http::uri::PathAndQuery::from_static("/faucet.Faucet/RequestGas");
