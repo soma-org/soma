@@ -117,25 +117,23 @@ SIGReg noise is generated using each framework's native RNG (`jax.random` via `n
 
 ### Tokenizer
 
-The tokenizer implements the on-chain data contract as a framework-agnostic Python module. It converts raw bytes into `token_ids`, `targets`, and `pos_ids` that can be wrapped with any framework's tensor constructor (`torch.tensor()`, `jnp.array()`, `tf.constant()`, etc.).
+The tokenizer implements the on-chain data contract as a framework-agnostic Python module. It converts raw bytes into a list of `TokenizedSequence` items with `token_ids`, `targets`, and `pos_ids` that can be wrapped with any framework's tensor constructor (`torch.tensor()`, `jnp.array()`, `tf.constant()`, etc.).
 
 ```python
 from soma_models.v1.tokenizer import tokenize
 
-batches = tokenize(raw_bytes)
-for batch in batches:
-    batch.token_ids   # [batch, seq_len] nested list of ints
-    batch.targets     # [batch, seq_len] nested list of ints
-    batch.pos_ids     # [batch, seq_len] nested list of ints
+sequences = tokenize(raw_bytes)
+for seq in sequences:
+    seq.token_ids   # [seq_len] list of ints
+    seq.targets     # [seq_len] list of ints
+    seq.pos_ids     # [seq_len] list of ints
 ```
 
-The default `max_seq_len` and `batch_size` match the on-chain evaluation parameters. You can override them for training:
+The default `max_seq_len` matches the on-chain evaluation parameter. You can override it for training:
 
 ```python
-batches = tokenize(raw_bytes, max_seq_len=512, batch_size=32)
+sequences = tokenize(raw_bytes, max_seq_len=512)
 ```
-
-The final batch may contain fewer than `batch_size` sequences (matching the Rust DataLoader behaviour).
 
 ### Usage
 
@@ -156,14 +154,14 @@ model = Model(ModelConfig(dropout_rate=0.1))
 sig_reg = SIGReg(SIGRegConfig())
 
 # Tokenize raw bytes
-batches = tokenize(raw_bytes)
+sequences = tokenize(raw_bytes)
 
 # Forward + loss (differentiable)
-for batch in batches:
+for seq in sequences:
     loss, embedding = compute_loss(
         model, sig_reg,
-        token_ids=torch.tensor(batch.token_ids),
-        targets=torch.tensor(batch.targets),
+        token_ids=torch.tensor([seq.token_ids]),
+        targets=torch.tensor([seq.targets]),
     )
     loss.backward()
 
@@ -189,14 +187,14 @@ model = Model(ModelConfig(dropout_rate=0.1), rngs=rngs)
 sig_reg = SIGReg(SIGRegConfig(), rngs=rngs)
 
 # Tokenize raw bytes
-batches = tokenize(raw_bytes)
+sequences = tokenize(raw_bytes)
 
 # Forward + loss (differentiable via jax.grad)
-for batch in batches:
+for seq in sequences:
     loss, embedding = compute_loss(
         model, sig_reg,
-        token_ids=jnp.array(batch.token_ids),
-        targets=jnp.array(batch.targets),
+        token_ids=jnp.array([seq.token_ids]),
+        targets=jnp.array([seq.targets]),
     )
 
 # Save / load weights
