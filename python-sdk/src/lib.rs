@@ -44,15 +44,28 @@ fn to_py_obj(value: &impl serde::Serialize) -> PyResult<Py<PyAny>> {
 }
 
 /// Recursively convert Python dicts to `types.SimpleNamespace` for attribute access.
+/// Dicts with non-string keys (e.g. `exchange_rates: {epoch_id: rate}`) are left as
+/// plain dicts since `SimpleNamespace` kwargs require string keys.
 fn dict_to_ns<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     if let Ok(dict) = obj.cast::<PyDict>() {
-        let types_mod = py.import("types")?;
-        let ns_cls = types_mod.getattr("SimpleNamespace")?;
-        let kwargs = PyDict::new(py);
-        for (key, val) in dict {
-            kwargs.set_item(&key, dict_to_ns(py, &val)?)?;
+        let all_string_keys =
+            dict.keys().iter().all(|k| k.downcast::<pyo3::types::PyString>().is_ok());
+        if all_string_keys {
+            let types_mod = py.import("types")?;
+            let ns_cls = types_mod.getattr("SimpleNamespace")?;
+            let kwargs = PyDict::new(py);
+            for (key, val) in dict {
+                kwargs.set_item(&key, dict_to_ns(py, &val)?)?;
+            }
+            ns_cls.call((), Some(&kwargs))
+        } else {
+            // Non-string keys: recurse into values but keep as a plain dict.
+            let out = PyDict::new(py);
+            for (key, val) in dict {
+                out.set_item(&key, dict_to_ns(py, &val)?)?;
+            }
+            Ok(out.into_any())
         }
-        ns_cls.call((), Some(&kwargs))
     } else if let Ok(list) = obj.cast::<pyo3::types::PyList>() {
         let items: Vec<Bound<'py, PyAny>> =
             list.iter().map(|item| dict_to_ns(py, &item)).collect::<PyResult<_>>()?;
@@ -60,6 +73,45 @@ fn dict_to_ns<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'
     } else {
         Ok(obj.clone())
     }
+}
+
+/// Convert an `Object` to a Python SimpleNamespace with top-level `id`, `version`,
+/// and `digest` fields (the object reference), plus all the original object fields.
+fn obj_to_py_with_ref(obj: &types::object::Object) -> PyResult<Py<PyAny>> {
+    Python::attach(|py| {
+        let py_val = pythonize::pythonize(py, obj).map_err(to_py_err)?;
+        // Add top-level id, version, digest from the computed object reference
+        if let Ok(dict) = py_val.downcast::<PyDict>() {
+            let (id, version, digest) = obj.compute_object_reference();
+            dict.set_item("id", id.to_string())?;
+            dict.set_item("version", version.value())?;
+            dict.set_item("digest", digest.to_string())?;
+        }
+        dict_to_ns(py, &py_val).map(|v| v.unbind())
+    })
+}
+
+/// Fetch the first coin owned by `sender`.
+async fn auto_fetch_coin(client: &sdk::SomaClient, sender: SomaAddress) -> PyResult<ObjectRef> {
+    use futures::TryStreamExt as _;
+    let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+    request.owner = Some(sender.to_string());
+    request.page_size = Some(1);
+    request.object_type = Some(rpc::types::ObjectType::Coin.into());
+    let stream = client.list_owned_objects(request).await;
+    tokio::pin!(stream);
+    let obj = stream
+        .try_next()
+        .await
+        .map_err(to_py_err)?
+        .ok_or_else(|| PyRuntimeError::new_err(format!("No coin found for {sender}")))?;
+    Ok(obj.compute_object_reference())
+}
+
+/// Fetch the object reference for an object by its ID.
+async fn auto_fetch_object_ref(client: &sdk::SomaClient, id: ObjectID) -> PyResult<ObjectRef> {
+    let obj = client.get_object(id).await.map_err(to_py_err)?;
+    Ok(obj.compute_object_reference())
 }
 
 fn parse_address(s: &str) -> PyResult<SomaAddress> {
@@ -258,14 +310,11 @@ impl PyKeypair {
 // PySomaClient
 // ---------------------------------------------------------------------------
 
-type FaucetGrpcClient =
-    faucet::faucet_gen::faucet_client::FaucetClient<faucet::tonic::transport::Channel>;
-
 /// A client for interacting with the SOMA network via gRPC.
 #[pyclass(name = "SomaClient")]
 struct PySomaClient {
     inner: sdk::SomaClient,
-    faucet_client: Option<Arc<Mutex<FaucetGrpcClient>>>,
+    faucet_client: Option<Arc<Mutex<sdk::faucet_client::FaucetClient>>>,
     proxy_client: sdk::proxy_client::ProxyClient,
 }
 
@@ -273,36 +322,85 @@ struct PySomaClient {
 impl PySomaClient {
     /// Create a new SomaClient connected to the given gRPC URL.
     ///
-    /// Optional service URLs connect gRPC clients for scoring, admin, and faucet.
+    /// Use ``chain`` for named network presets (``"testnet"``, ``"localnet"``),
+    /// or provide an explicit ``rpc_url``.  Providing both ``chain`` and
+    /// ``rpc_url`` / ``faucet_url`` is an error.
+    ///
+    /// ``scoring_url`` is always user-configurable regardless of chain.
+    /// ``admin_url`` is only relevant for localnet.
     #[new]
-    #[pyo3(signature = (rpc_url, scoring_url=None, admin_url=None, faucet_url=None))]
+    #[pyo3(signature = (rpc_url=None, *, chain=None, scoring_url=None, admin_url=None, faucet_url=None))]
     fn new(
         py: Python<'_>,
-        rpc_url: String,
+        rpc_url: Option<String>,
+        chain: Option<String>,
         scoring_url: Option<String>,
         admin_url: Option<String>,
         faucet_url: Option<String>,
     ) -> PyResult<Bound<'_, PyAny>> {
+        // Resolve chain presets
+        let (resolved_rpc, resolved_faucet, resolved_admin, resolved_scoring) =
+            match chain.as_deref() {
+                Some("testnet") => {
+                    if rpc_url.is_some() || faucet_url.is_some() {
+                        return Err(PyValueError::new_err(
+                            "Cannot provide rpc_url or faucet_url when chain=\"testnet\"",
+                        ));
+                    }
+                    (
+                        "https://fullnode.testnet.soma.org".to_string(),
+                        Some("https://faucet.testnet.soma.org".to_string()),
+                        None,
+                        scoring_url,
+                    )
+                }
+                Some("localnet") => {
+                    if rpc_url.is_some() || faucet_url.is_some() {
+                        return Err(PyValueError::new_err(
+                            "Cannot provide rpc_url or faucet_url when chain=\"localnet\"",
+                        ));
+                    }
+                    (
+                        "http://127.0.0.1:9000".to_string(),
+                        Some("http://127.0.0.1:9123".to_string()),
+                        admin_url.or_else(|| Some("http://127.0.0.1:9125".to_string())),
+                        scoring_url.or_else(|| Some("http://127.0.0.1:9124".to_string())),
+                    )
+                }
+                Some(other) => {
+                    return Err(PyValueError::new_err(format!(
+                        "Unknown chain \"{other}\". Supported: \"testnet\", \"localnet\""
+                    )));
+                }
+                None => {
+                    let rpc = rpc_url.ok_or_else(|| {
+                        PyValueError::new_err("Either rpc_url or chain must be provided")
+                    })?;
+                    (rpc, faucet_url, admin_url, scoring_url)
+                }
+            };
+
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let mut builder = sdk::SomaClient::builder();
-            if let Some(url) = &scoring_url {
+            if let Some(url) = &resolved_scoring {
                 builder = builder.scoring_url(url);
             }
-            if let Some(url) = &admin_url {
+            if let Some(url) = &resolved_admin {
                 builder = builder.admin_url(url);
             }
-            let inner = builder.build(&rpc_url).await.map_err(to_py_err)?;
+            let inner = builder.build(&resolved_rpc).await.map_err(to_py_err)?;
 
-            let faucet_client = match faucet_url {
+            let faucet_client = match resolved_faucet {
                 Some(url) => {
-                    let fc = FaucetGrpcClient::connect(url).await.map_err(to_py_err)?;
+                    let fc =
+                        sdk::faucet_client::FaucetClient::connect(url).await.map_err(to_py_err)?;
                     Some(Arc::new(Mutex::new(fc)))
                 }
                 None => None,
             };
 
             let proxy_client =
-                sdk::proxy_client::ProxyClient::from_url(&rpc_url).map_err(to_py_err)?;
+                sdk::proxy_client::ProxyClient::from_url(&resolved_rpc).map_err(to_py_err)?;
 
             Ok(PySomaClient { inner, faucet_client, proxy_client })
         })
@@ -392,13 +490,13 @@ impl PySomaClient {
         })
     }
 
-    /// Get the balance (in shannons) for the given address.
+    /// Get the balance (in SOMA) for the given address.
     fn get_balance<'py>(&self, py: Python<'py>, address: String) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let addr = parse_address(&address)?;
-            let balance = client.get_balance(&addr).await.map_err(to_py_err)?;
-            Ok(balance)
+            let shannons = client.get_balance(&addr).await.map_err(to_py_err)?;
+            Ok(sdk::crypto_utils::to_soma(shannons))
         })
     }
 
@@ -408,7 +506,7 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let id = parse_object_id(&object_id)?;
             let obj = client.get_object(id).await.map_err(to_py_err)?;
-            to_py_obj(&obj)
+            obj_to_py_with_ref(&obj)
         })
     }
 
@@ -440,11 +538,15 @@ impl PySomaClient {
     }
 
     /// Get the latest system state as a Python object.
+    ///
+    /// The Rust SDK returns `SystemState` (a versioned enum). We unwrap the inner
+    /// variant so callers can access `state.epoch` directly.
     fn get_latest_system_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let state = client.get_latest_system_state().await.map_err(to_py_err)?;
-            to_py_obj(&state)
+            let types::system_state::SystemState::V1(v1) = state;
+            to_py_obj(&v1)
         })
     }
 
@@ -523,7 +625,7 @@ impl PySomaClient {
                 .get_object_with_version(id, Version::from_u64(version))
                 .await
                 .map_err(to_py_err)?;
-            to_py_obj(&obj)
+            obj_to_py_with_ref(&obj)
         })
     }
 
@@ -567,7 +669,7 @@ impl PySomaClient {
 
             let mut results = Vec::new();
             while let Some(obj) = stream.try_next().await.map_err(to_py_err)? {
-                results.push(to_py_obj(&obj)?);
+                results.push(obj_to_py_with_ref(&obj)?);
                 if let Some(limit) = limit {
                     if results.len() >= limit as usize {
                         break;
@@ -833,7 +935,7 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let mut client = fc.lock().await;
             let response = client
-                .request_gas(faucet::faucet_types::GasRequest { recipient: address })
+                .request_gas(sdk::faucet_client::GasRequest { recipient: address })
                 .await
                 .map_err(to_py_err)?
                 .into_inner();
@@ -1786,6 +1888,8 @@ impl PySomaClient {
     /// Commit a model: auto-generates model_id and staking_pool_id,
     /// computes commitments, signs, and executes.
     /// Returns the model_id as a hex string.
+    /// Commit a model. `stake_amount` is in SOMA (e.g. `5.0`).
+    /// If omitted, uses the network's minimum model stake.
     #[pyo3(signature = (signer, weights_url, encrypted_weights, commission_rate, stake_amount=None))]
     fn commit_model<'py>(
         &self,
@@ -1794,10 +1898,11 @@ impl PySomaClient {
         weights_url: String,
         encrypted_weights: &[u8],
         commission_rate: u64,
-        stake_amount: Option<u64>,
+        stake_amount: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
+        let stake_shannons = stake_amount.map(sdk::crypto_utils::to_shannons);
 
         let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
         let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
@@ -1811,7 +1916,7 @@ impl PySomaClient {
             let architecture_version =
                 client.get_architecture_version().await.map_err(to_py_err)?;
 
-            let final_stake = match stake_amount {
+            let final_stake = match stake_shannons {
                 Some(s) => s,
                 None => {
                     let state = client.get_latest_system_state().await.map_err(to_py_err)?;
@@ -1949,6 +2054,635 @@ impl PySomaClient {
             let tx_data =
                 client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
             client.sign_and_execute(&kp, tx_data, "ClaimRewards").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Coin & Object
+    // -------------------------------------------------------------------
+
+    /// Transfer SOMA to a recipient. `amount` is in SOMA (e.g. `0.5`).
+    /// Auto-fetches a coin, signs, and executes.
+    fn transfer_coin<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        recipient: String,
+        amount: f64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let recipient_addr = parse_address(&recipient)?;
+        let shannons = sdk::crypto_utils::to_shannons(amount);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let coin_ref = auto_fetch_coin(&client, sender).await?;
+            let kind = TransactionKind::TransferCoin {
+                coin: coin_ref,
+                amount: Some(shannons),
+                recipient: recipient_addr,
+            };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "TransferCoin").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Transfer objects to a recipient by their IDs. Auto-fetches refs, signs, and executes.
+    fn transfer_objects<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        recipient: String,
+        object_ids: Vec<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let recipient_addr = parse_address(&recipient)?;
+        let ids: Vec<ObjectID> =
+            object_ids.iter().map(|s| parse_object_id(s)).collect::<PyResult<_>>()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let mut obj_refs = Vec::with_capacity(ids.len());
+            for id in ids {
+                obj_refs.push(auto_fetch_object_ref(&client, id).await?);
+            }
+            let kind =
+                TransactionKind::TransferObjects { objects: obj_refs, recipient: recipient_addr };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "TransferObjects").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Pay SOMA to multiple recipients. `amounts` are in SOMA (e.g. `[0.25, 0.25]`).
+    /// Auto-fetches coins, signs, and executes.
+    fn pay_coins<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        recipients: Vec<String>,
+        amounts: Vec<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let recipient_addrs: Vec<SomaAddress> =
+            recipients.iter().map(|r| parse_address(r)).collect::<PyResult<_>>()?;
+        let shannons: Vec<u64> =
+            amounts.iter().map(|a| sdk::crypto_utils::to_shannons(*a)).collect();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let coin_ref = auto_fetch_coin(&client, sender).await?;
+            let kind = TransactionKind::PayCoins {
+                coins: vec![coin_ref],
+                amounts: Some(shannons),
+                recipients: recipient_addrs,
+            };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "PayCoins").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Staking
+    // -------------------------------------------------------------------
+
+    /// Add stake to a validator. `amount` is in SOMA (e.g. `1.0`).
+    /// If omitted, stakes the entire coin. Auto-fetches a coin, signs, and executes.
+    #[pyo3(signature = (signer, validator, amount=None))]
+    fn add_stake<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        validator: String,
+        amount: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let validator_addr = parse_address(&validator)?;
+        let shannons = amount.map(sdk::crypto_utils::to_shannons);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let coin_ref = auto_fetch_coin(&client, sender).await?;
+            let kind =
+                TransactionKind::AddStake { address: validator_addr, coin_ref, amount: shannons };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "AddStake").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Withdraw stake. Accepts a staked object ID string, auto-fetches the ref, signs, and executes.
+    fn withdraw_stake<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        staked_soma_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let staked_id = parse_object_id(&staked_soma_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let staked_ref = auto_fetch_object_ref(&client, staked_id).await?;
+            let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "WithdrawStake").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Add stake to a model. `amount` is in SOMA (e.g. `5.0`).
+    /// If omitted, stakes the entire coin. Auto-fetches a coin, signs, and executes.
+    #[pyo3(signature = (signer, model_id, amount=None))]
+    fn add_stake_to_model<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        amount: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        let shannons = amount.map(sdk::crypto_utils::to_shannons);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let coin_ref = auto_fetch_coin(&client, sender).await?;
+            let kind =
+                TransactionKind::AddStakeToModel { model_id: model, coin_ref, amount: shannons };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "AddStakeToModel").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Model Management
+    // -------------------------------------------------------------------
+
+    /// Commit a model update: computes commitments from encrypted_weights, signs, and executes.
+    fn commit_model_update<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        weights_url: String,
+        encrypted_weights: &[u8],
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
+        let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
+                model_id: model,
+                weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "CommitModelUpdate").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Reveal a model update: computes checksum/size from encrypted_weights, signs, and executes.
+    fn reveal_model_update<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        weights_url: String,
+        encrypted_weights: &[u8],
+        decryption_key: String,
+        embedding: Vec<f32>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
+        let weights_size = encrypted_weights.len();
+        let manifest =
+            build_weights_manifest(&weights_url, &checksum_hex, weights_size, &decryption_key)?;
+        let embedding_tensor = parse_embedding_vec(embedding)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
+                model_id: model,
+                weights_manifest: manifest,
+                embedding: embedding_tensor,
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "RevealModelUpdate").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Deactivate a model: signs and executes.
+    fn deactivate_model<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::DeactivateModel { model_id: model };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "DeactivateModel").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Set a model's commission rate: signs and executes.
+    fn set_model_commission_rate<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        new_rate: u64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::SetModelCommissionRate { model_id: model, new_rate };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client
+                .sign_and_execute(&kp, tx_data, "SetModelCommissionRate")
+                .await
+                .map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Report a model: signs and executes.
+    fn report_model<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::ReportModel { model_id: model };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ReportModel").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Undo a model report: signs and executes.
+    fn undo_report_model<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::UndoReportModel { model_id: model };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "UndoReportModel").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Submission
+    // -------------------------------------------------------------------
+
+    /// Report a submission: signs and executes.
+    #[pyo3(signature = (signer, target_id, challenger=None))]
+    fn report_submission<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        target_id: String,
+        challenger: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let target = parse_object_id(&target_id)?;
+        let challenger_addr = challenger.map(|c| parse_address(&c)).transpose()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::ReportSubmission {
+                target_id: target,
+                challenger: challenger_addr,
+            };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ReportSubmission").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Undo a submission report: signs and executes.
+    fn undo_report_submission<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        target_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let target = parse_object_id(&target_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::UndoReportSubmission { target_id: target };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client
+                .sign_and_execute(&kp, tx_data, "UndoReportSubmission")
+                .await
+                .map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Challenge
+    // -------------------------------------------------------------------
+
+    /// Initiate a challenge: auto-fetches bond coin, signs, and executes.
+    fn initiate_challenge<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        target_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let target = parse_object_id(&target_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let bond_coin = auto_fetch_coin(&client, sender).await?;
+            let kind = TransactionKind::InitiateChallenge(InitiateChallengeArgs {
+                target_id: target,
+                bond_coin,
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "InitiateChallenge").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Report a challenge: signs and executes.
+    fn report_challenge<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        challenge_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let cid = parse_object_id(&challenge_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::ReportChallenge { challenge_id: cid };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ReportChallenge").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Undo a challenge report: signs and executes.
+    fn undo_report_challenge<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        challenge_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let cid = parse_object_id(&challenge_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::UndoReportChallenge { challenge_id: cid };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client
+                .sign_and_execute(&kp, tx_data, "UndoReportChallenge")
+                .await
+                .map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Claim a challenge bond: signs and executes.
+    fn claim_challenge_bond<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        challenge_id: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let cid = parse_object_id(&challenge_id)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::ClaimChallengeBond { challenge_id: cid };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ClaimChallengeBond").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    // -------------------------------------------------------------------
+    // High-level: Validator Management
+    // -------------------------------------------------------------------
+
+    /// Add a validator: signs and executes.
+    fn add_validator<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        pubkey_bytes: Vec<u8>,
+        network_pubkey_bytes: Vec<u8>,
+        worker_pubkey_bytes: Vec<u8>,
+        proof_of_possession: Vec<u8>,
+        net_address: Vec<u8>,
+        p2p_address: Vec<u8>,
+        primary_address: Vec<u8>,
+        proxy_address: Vec<u8>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::AddValidator(AddValidatorArgs {
+                pubkey_bytes,
+                network_pubkey_bytes,
+                worker_pubkey_bytes,
+                proof_of_possession,
+                net_address,
+                p2p_address,
+                primary_address,
+                proxy_address,
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "AddValidator").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Remove a validator: signs and executes.
+    fn remove_validator<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        pubkey_bytes: Vec<u8>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "RemoveValidator").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Update validator metadata: signs and executes.
+    #[pyo3(signature = (
+        signer,
+        next_epoch_network_address=None,
+        next_epoch_p2p_address=None,
+        next_epoch_primary_address=None,
+        next_epoch_proxy_address=None,
+        next_epoch_protocol_pubkey=None,
+        next_epoch_worker_pubkey=None,
+        next_epoch_network_pubkey=None,
+        next_epoch_proof_of_possession=None,
+    ))]
+    fn update_validator_metadata<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        next_epoch_network_address: Option<Vec<u8>>,
+        next_epoch_p2p_address: Option<Vec<u8>>,
+        next_epoch_primary_address: Option<Vec<u8>>,
+        next_epoch_proxy_address: Option<Vec<u8>>,
+        next_epoch_protocol_pubkey: Option<Vec<u8>>,
+        next_epoch_worker_pubkey: Option<Vec<u8>>,
+        next_epoch_network_pubkey: Option<Vec<u8>>,
+        next_epoch_proof_of_possession: Option<Vec<u8>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs {
+                next_epoch_network_address,
+                next_epoch_p2p_address,
+                next_epoch_primary_address,
+                next_epoch_proxy_address,
+                next_epoch_protocol_pubkey,
+                next_epoch_worker_pubkey,
+                next_epoch_network_pubkey,
+                next_epoch_proof_of_possession,
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client
+                .sign_and_execute(&kp, tx_data, "UpdateValidatorMetadata")
+                .await
+                .map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Set validator commission rate: signs and executes.
+    fn set_validator_commission_rate<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        new_rate: u64,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::SetCommissionRate { new_rate };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "SetCommissionRate").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Report a validator: signs and executes.
+    fn report_validator<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        reportee: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let reportee_addr = parse_address(&reportee)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::ReportValidator { reportee: reportee_addr };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "ReportValidator").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Undo a validator report: signs and executes.
+    fn undo_report_validator<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        reportee: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let reportee_addr = parse_address(&reportee)?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::UndoReportValidator { reportee: reportee_addr };
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client
+                .sign_and_execute(&kp, tx_data, "UndoReportValidator")
+                .await
+                .map_err(to_py_err)?;
             Ok(())
         })
     }

@@ -16,6 +16,8 @@ soma-example-client = "soma_examples.client:main"
 soma-example-faucet = "soma_examples.faucet:main"
 soma-example-scoring = "soma_examples.scoring:main"
 soma-example-quickstart = "soma_examples.quickstart:main"
+soma-example-transfers = "soma_examples.transfers:main"
+soma-example-staking = "soma_examples.staking:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]

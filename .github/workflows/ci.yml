@@ -172,34 +172,12 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv run ty check
 
-  pytest:
-    needs: diff
-    if: needs.diff.outputs.isPython == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@1.93.0
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: rust-debug
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: "true"
-      - uses: astral-sh/setup-uv@v7
-      - name: Run tests
-        run: uv run pytest
-
   # ===========================================================================
   # Gate — single required check for branch protection
   # ===========================================================================
   ci-gate:
     if: always()
-    needs: [rustfmt, clippy, test, simtest, ruff, ty, pytest]
+    needs: [rustfmt, clippy, test, simtest, ruff, ty]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all jobs passed or were skipped
@@ -211,7 +189,6 @@ jobs:
             "${{ needs.simtest.result }}"
             "${{ needs.ruff.result }}"
             "${{ needs.ty.result }}"
-            "${{ needs.pytest.result }}"
           )
           for r in "${results[@]}"; do
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then

@@ -22,21 +22,15 @@ from soma_examples.local_storage import LocalStorage
 async def run():
     # Connect to localnet (with scoring, admin, faucet gRPC services)
     kp = Keypair.generate()
-    client = await SomaClient(
-        "http://127.0.0.1:9000",
-        scoring_url="http://127.0.0.1:9124",
-        admin_url="http://127.0.0.1:9125",
-        faucet_url="http://127.0.0.1:9123",
-    )
+    client = await SomaClient(chain="localnet")
     sender = kp.address()
     print(f"Sender: {sender}")
 
     # -- Step 1: Fund account --------------------------------------------------
     print("\n=== Step 1: Fund account ===")
     await client.request_faucet(sender)
-    await asyncio.sleep(2)  # wait for faucet tx
     balance = await client.get_balance(sender)
-    print(f"Balance: {SomaClient.to_soma(balance):.2f} SOMA")
+    print(f"Balance: {balance:.2f} SOMA")
 
     # -- Step 2: Upload model weights + test data ------------------------------
     print("\n=== Step 2: Upload model & data ===")
@@ -125,7 +119,7 @@ async def run():
         balance_before = await client.get_balance(sender)
         await client.claim_rewards(signer=kp, target_id=target.id)
         balance_after = await client.get_balance(sender)
-        print(f"Claimed: {SomaClient.to_soma(balance_after - balance_before):.4f} SOMA")
+        print(f"Claimed: {balance_after - balance_before:.4f} SOMA")
         print("\n=== Quickstart complete! ===")
 
 

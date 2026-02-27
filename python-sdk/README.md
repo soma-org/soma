@@ -23,20 +23,16 @@ import asyncio
 from soma_sdk import SomaClient, Keypair
 
 async def main():
-    # Connect to a local node (started with `soma start localnet`)
-    client = await SomaClient(
-        "http://localhost:9000",
-        faucet_url="http://localhost:9123",
-        scoring_url="http://localhost:9124",
-    )
+    # Connect using a chain preset
+    client = await SomaClient(chain="testnet")   # or chain="localnet"
 
     # Generate a keypair and fund it
     keypair = Keypair.generate()
     await client.request_faucet(keypair.address())
 
-    # Check balance (1 SOMA = 1_000_000_000 shannons)
+    # Check balance (returned as SOMA float)
     balance = await client.get_balance(keypair.address())
-    print(f"Balance: {SomaClient.to_soma(balance)} SOMA")
+    print(f"Balance: {balance:.2f} SOMA")
 
     # Query network state
     state = await client.get_latest_system_state()
@@ -71,13 +67,22 @@ keypair.sign(tx_bytes)   # Sign raw transaction data bytes
 The main client for querying chain state, building transactions, and executing them via gRPC.
 
 ```python
-client = await SomaClient(
-    "http://localhost:9000",
-    scoring_url="http://localhost:9124",   # optional — for scoring
-    faucet_url="http://localhost:9123",    # optional — for faucet
-    admin_url="http://localhost:9125",     # optional — for epoch advancement (localnet)
-)
+# Named chain presets (recommended)
+client = await SomaClient(chain="testnet")    # auto-configures RPC + faucet URLs
+client = await SomaClient(chain="localnet")   # auto-configures RPC + faucet + admin + scoring
+
+# Explicit URLs
+client = await SomaClient("https://fullnode.testnet.soma.org", faucet_url="https://faucet.testnet.soma.org")
+
+# Override scoring_url with any chain preset
+client = await SomaClient(chain="testnet", scoring_url="http://my-scorer:9124")
 ```
+
+Chain presets:
+- `"testnet"` — `https://fullnode.testnet.soma.org` + faucet
+- `"localnet"` — `http://127.0.0.1:9000` + faucet, admin, scoring
+
+> **Note:** `chain` and `rpc_url`/`faucet_url` cannot be combined (raises `ValueError`). `scoring_url` is always configurable.
 
 #### Chain & Node Info
 
@@ -97,7 +102,7 @@ client = await SomaClient(
 |--------|---------|-------------|
 | `get_object(object_id)` | `ObjectRef` | Get object by hex ID |
 | `get_object_with_version(object_id, version)` | `ObjectRef` | Get object at a specific version |
-| `get_balance(address)` | `int` | Balance in shannons |
+| `get_balance(address)` | `float` | Balance in SOMA |
 | `get_latest_system_state()` | `SystemState` | Current global system state |
 | `get_epoch(epoch=None)` | `EpochInfo` | Epoch info (`None` for latest) |
 | `list_owned_objects(owner, object_type=None, limit=None)` | `list[ObjectRef]` | Objects owned by an address |
@@ -290,16 +295,25 @@ tx = await client.build_undo_report_validator(sender, reportee, gas=None)
 
 ## High-Level Convenience Methods
 
-These methods handle building, signing, and executing in one call:
+These methods handle building, signing, and executing in one call. Amounts are in SOMA (float), not shannons.
 
 ```python
+# Transfer coins
+await client.transfer_coin(signer=keypair, recipient="0xADDR", amount=0.5)
+
+# Multi-recipient payment
+await client.pay_coins(signer=keypair, recipients=["0xA", "0xB"], amounts=[0.25, 0.25])
+
+# Stake with a validator
+await client.add_stake(signer=keypair, validator="0xVALIDATOR", amount=10.0)
+
 # Register a model (commit step)
 model_id = await client.commit_model(
     signer=keypair,
     weights_url="https://storage.example.com/weights.safetensors",
     encrypted_weights=encrypted_bytes,
     commission_rate=1000,          # 10%
-    stake_amount=10_000_000_000,   # optional, defaults to minimum
+    stake_amount=10.0,             # SOMA — optional, defaults to minimum
 )
 
 # Reveal model weights (next epoch)

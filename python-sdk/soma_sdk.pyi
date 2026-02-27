@@ -260,10 +260,22 @@ class Keypair:
 # ---------------------------------------------------------------------------
 
 class SomaClient:
-    """A client for interacting with the SOMA network via gRPC."""
+    """A client for interacting with the SOMA network via gRPC.
+
+    Use ``chain`` for named network presets::
+
+        client = await SomaClient(chain="testnet")
+        client = await SomaClient(chain="localnet")
+
+    Or provide an explicit ``rpc_url``::
+
+        client = await SomaClient("https://fullnode.testnet.soma.org")
+    """
     def __init__(
         self,
-        rpc_url: str,
+        rpc_url: Optional[str] = None,
+        *,
+        chain: Optional[str] = None,
         scoring_url: Optional[str] = None,
         admin_url: Optional[str] = None,
         faucet_url: Optional[str] = None,
@@ -310,7 +322,7 @@ class SomaClient:
     # -- Objects & State --
     async def get_object(self, object_id: str) -> ObjectRef: ...
     async def get_object_with_version(self, object_id: str, version: int) -> ObjectRef: ...
-    async def get_balance(self, address: str) -> int: ...
+    async def get_balance(self, address: str) -> float: ...
     async def get_latest_system_state(self) -> SystemState: ...
     async def get_epoch(self, epoch: Optional[int] = None) -> EpochInfo: ...
     async def list_owned_objects(
@@ -620,7 +632,7 @@ class SomaClient:
         weights_url: str,
         encrypted_weights: bytes,
         commission_rate: int,
-        stake_amount: Optional[int] = None,
+        stake_amount: Optional[float] = None,
     ) -> str: ...
     async def reveal_model(
         self,
@@ -645,4 +657,163 @@ class SomaClient:
         self,
         signer: Keypair,
         target_id: str,
+    ) -> None: ...
+
+    # -- High-level: Coin & Object --
+    async def transfer_coin(
+        self,
+        signer: Keypair,
+        recipient: str,
+        amount: float,
+    ) -> None: ...
+    async def transfer_objects(
+        self,
+        signer: Keypair,
+        recipient: str,
+        object_ids: list[str],
+    ) -> None: ...
+    async def pay_coins(
+        self,
+        signer: Keypair,
+        recipients: list[str],
+        amounts: list[float],
+    ) -> None: ...
+
+    # -- High-level: Staking --
+    async def add_stake(
+        self,
+        signer: Keypair,
+        validator: str,
+        amount: Optional[float] = None,
+    ) -> None: ...
+    async def withdraw_stake(
+        self,
+        signer: Keypair,
+        staked_soma_id: str,
+    ) -> None: ...
+    async def add_stake_to_model(
+        self,
+        signer: Keypair,
+        model_id: str,
+        amount: Optional[float] = None,
+    ) -> None: ...
+
+    # -- High-level: Model Management --
+    async def commit_model_update(
+        self,
+        signer: Keypair,
+        model_id: str,
+        weights_url: str,
+        encrypted_weights: bytes,
+    ) -> None: ...
+    async def reveal_model_update(
+        self,
+        signer: Keypair,
+        model_id: str,
+        weights_url: str,
+        encrypted_weights: bytes,
+        decryption_key: str,
+        embedding: list[float],
+    ) -> None: ...
+    async def deactivate_model(
+        self,
+        signer: Keypair,
+        model_id: str,
+    ) -> None: ...
+    async def set_model_commission_rate(
+        self,
+        signer: Keypair,
+        model_id: str,
+        new_rate: int,
+    ) -> None: ...
+    async def report_model(
+        self,
+        signer: Keypair,
+        model_id: str,
+    ) -> None: ...
+    async def undo_report_model(
+        self,
+        signer: Keypair,
+        model_id: str,
+    ) -> None: ...
+
+    # -- High-level: Submission --
+    async def report_submission(
+        self,
+        signer: Keypair,
+        target_id: str,
+        challenger: Optional[str] = None,
+    ) -> None: ...
+    async def undo_report_submission(
+        self,
+        signer: Keypair,
+        target_id: str,
+    ) -> None: ...
+
+    # -- High-level: Challenge --
+    async def initiate_challenge(
+        self,
+        signer: Keypair,
+        target_id: str,
+    ) -> None: ...
+    async def report_challenge(
+        self,
+        signer: Keypair,
+        challenge_id: str,
+    ) -> None: ...
+    async def undo_report_challenge(
+        self,
+        signer: Keypair,
+        challenge_id: str,
+    ) -> None: ...
+    async def claim_challenge_bond(
+        self,
+        signer: Keypair,
+        challenge_id: str,
+    ) -> None: ...
+
+    # -- High-level: Validator Management --
+    async def add_validator(
+        self,
+        signer: Keypair,
+        pubkey_bytes: bytes,
+        network_pubkey_bytes: bytes,
+        worker_pubkey_bytes: bytes,
+        proof_of_possession: bytes,
+        net_address: bytes,
+        p2p_address: bytes,
+        primary_address: bytes,
+        proxy_address: bytes,
+    ) -> None: ...
+    async def remove_validator(
+        self,
+        signer: Keypair,
+        pubkey_bytes: bytes,
+    ) -> None: ...
+    async def update_validator_metadata(
+        self,
+        signer: Keypair,
+        next_epoch_network_address: Optional[bytes] = None,
+        next_epoch_p2p_address: Optional[bytes] = None,
+        next_epoch_primary_address: Optional[bytes] = None,
+        next_epoch_proxy_address: Optional[bytes] = None,
+        next_epoch_protocol_pubkey: Optional[bytes] = None,
+        next_epoch_worker_pubkey: Optional[bytes] = None,
+        next_epoch_network_pubkey: Optional[bytes] = None,
+        next_epoch_proof_of_possession: Optional[bytes] = None,
+    ) -> None: ...
+    async def set_validator_commission_rate(
+        self,
+        signer: Keypair,
+        new_rate: int,
+    ) -> None: ...
+    async def report_validator(
+        self,
+        signer: Keypair,
+        reportee: str,
+    ) -> None: ...
+    async def undo_report_validator(
+        self,
+        signer: Keypair,
+        reportee: str,
     ) -> None: ...

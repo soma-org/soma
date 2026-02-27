@@ -115,8 +115,20 @@ pub struct FaucetClient {
 
 impl FaucetClient {
     /// Connect to a faucet server at the given URL.
+    ///
+    /// When the URL uses `https://` and the `tls` feature is enabled,
+    /// TLS is configured automatically using system root certificates.
     pub async fn connect(url: impl Into<String>) -> Result<Self, tonic::transport::Error> {
-        let conn = tonic::transport::Endpoint::new(url.into())?.connect().await?;
+        let url: String = url.into();
+        let mut endpoint = tonic::transport::Endpoint::new(url.clone())?;
+        if url.starts_with("https://") {
+            #[cfg(feature = "tls")]
+            {
+                use tonic::transport::channel::ClientTlsConfig;
+                endpoint = endpoint.tls_config(ClientTlsConfig::new().with_enabled_roots())?;
+            }
+        }
+        let conn = endpoint.connect().await?;
         Ok(Self { inner: tonic::client::Grpc::new(conn) })
     }
 

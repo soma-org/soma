@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/soma-org/soma/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/soma-org/soma/release.yml" alt="CI"></a>
+  <!-- <a href="https://github.com/soma-org/soma/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/soma-org/soma/release.yml" alt="CI"></a> -->
   <a href="https://github.com/soma-org/soma/releases"><img src="https://img.shields.io/github/v/release/soma-org/soma?label=release" alt="Release"></a>
   <a href="https://pypi.org/project/soma-sdk"><img src="https://img.shields.io/pypi/v/soma-sdk.svg" alt="PyPI"></a>
   <a href="https://docs.soma.org"><img src="https://img.shields.io/badge/docs-soma.org-blue" alt="Docs"></a>

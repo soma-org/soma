@@ -5497,7 +5497,7 @@ checksum = "4a0b3262dc837d2513fe2ef31ff8461352ef932dcca31ba0c0abe33547cf6b9b"
 
 [[package]]
 name = "models"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "arrgen",
  "async-trait",
@@ -8543,10 +8543,9 @@ dependencies = [
 
 [[package]]
 name = "soma-sdk"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bcs",
- "faucet",
  "futures",
  "hex",
  "pyo3",
