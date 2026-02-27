@@ -11,11 +11,11 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["soma-arrgen==0.1.0", "safetensors>=0.6.2"]
+dependencies = ["safetensors>=0.6.2"]
 
 [project.optional-dependencies]
-torch = ["torch>=2.10.0"]
-flax = ["flax>=0.12.3"]
+torch = ["torch>=2.0.0"]
+flax = ["flax>=0.11.0"]
 all = ["soma-models[torch,flax]"]
 
 [project.urls]
@@ -27,7 +27,7 @@ requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
-dev = ["pytest>=8.3.5", "soma-models[all]", "soma-arrgen==0.1.0"]
+dev = ["pytest>=8.3.5", "soma-models[all]", "soma-arrgen"]
 
 [tool.uv.sources]
 soma-arrgen = { workspace = true }
