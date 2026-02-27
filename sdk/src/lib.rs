@@ -374,7 +374,9 @@ impl SomaClient {
 
     /// Build [`TransactionData`] with automatic gas selection.
     ///
-    /// If `gas` is `None`, queries the chain for the sender's first coin object.
+    /// If `gas` is `None`, queries the chain for the sender's coin with the
+    /// highest balance so that transfers and gas payments are less likely to
+    /// fail due to picking a dust coin.
     pub async fn build_transaction_data(
         &self,
         sender: SomaAddress,
@@ -388,23 +390,30 @@ impl SomaClient {
 
                 let mut request = ListOwnedObjectsRequest::default();
                 request.owner = Some(sender.to_string());
-                request.page_size = Some(1);
+                request.page_size = Some(100);
                 request.object_type = Some(rpc::types::ObjectType::Coin.into());
 
                 let stream = self.list_owned_objects(request).await;
                 tokio::pin!(stream);
 
-                let obj = stream
-                    .try_next()
-                    .await
-                    .map_err(|e| error::Error::DataError(e.to_string()))?
-                    .ok_or_else(|| {
-                        error::Error::DataError(format!(
-                            "No gas object found for address {sender}. \
-                             Please ensure the address has coins."
-                        ))
-                    })?;
-                vec![obj.compute_object_reference()]
+                let mut best: Option<(types::object::ObjectRef, u64)> = None;
+                while let Some(obj) =
+                    stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
+                {
+                    let balance = obj.as_coin().unwrap_or(0);
+                    let obj_ref = obj.compute_object_reference();
+                    if best.as_ref().map_or(true, |(_, b)| balance > *b) {
+                        best = Some((obj_ref, balance));
+                    }
+                }
+
+                let (obj_ref, _) = best.ok_or_else(|| {
+                    error::Error::DataError(format!(
+                        "No gas object found for address {sender}. \
+                         Please ensure the address has coins."
+                    ))
+                })?;
+                vec![obj_ref]
             }
         };
         Ok(TransactionData::new(kind, sender, gas_payment))

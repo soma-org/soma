@@ -35,17 +35,18 @@ impl<'a> TransactionBuilder<'a> {
         let gas_payment = match gas {
             Some(gas_ref) => vec![gas_ref],
             None => {
-                let gas_ref =
-                    self.context.get_one_gas_object_owned_by_address(sender).await?.ok_or_else(
-                        || {
-                            anyhow!(
-                                "No gas object found for address {}. \
-                             Please ensure the address has coins.",
-                                sender
-                            )
-                        },
-                    )?;
-                vec![gas_ref]
+                // Fetch all coins sorted richest-first. Using them all as
+                // gas_payment lets smash_gas merge dust coins into the
+                // primary coin, keeping the address clean.
+                let coins = self.context.get_gas_objects_sorted_by_balance(sender).await?;
+                if coins.is_empty() {
+                    return Err(anyhow!(
+                        "No gas object found for address {}. \
+                         Please ensure the address has coins.",
+                        sender
+                    ));
+                }
+                coins
             }
         };
 

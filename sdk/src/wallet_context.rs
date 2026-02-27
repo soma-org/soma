@@ -268,6 +268,59 @@ impl WalletContext {
         Ok(object_refs)
     }
 
+    /// Return the coin with the highest balance owned by this address.
+    ///
+    /// Unlike [`get_one_gas_object_owned_by_address`] (which returns an
+    /// arbitrary first coin), this fetches all coins and picks the richest
+    /// one so that gas/transfer operations are far less likely to fail due
+    /// to insufficient balance.
+    pub async fn get_richest_gas_object_owned_by_address(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Option<ObjectRef>> {
+        Ok(self.get_gas_objects_sorted_by_balance(address).await?.into_iter().next())
+    }
+
+    /// Return all coins owned by `address`, sorted richest-first.
+    ///
+    /// When the resulting vector is used as the `gas_payment` for a
+    /// transaction, `smash_gas` will merge all the dust coins into the
+    /// primary (richest) coin, keeping the address tidy.
+    pub async fn get_gas_objects_sorted_by_balance(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Vec<ObjectRef>> {
+        let client = self.get_client().await?;
+
+        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+        request.owner = Some(address.to_string());
+        request.page_size = Some(100);
+        request.object_type = Some((ObjectType::Coin).into());
+        request.read_mask = Some(FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
+        ]));
+
+        let stream = client.list_owned_objects(request).await;
+        tokio::pin!(stream);
+
+        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
+        while let Some(object) = stream.try_next().await? {
+            let balance = object.as_coin().unwrap_or(0);
+            let obj_ref = object.compute_object_reference();
+            coins.push((obj_ref, balance));
+        }
+
+        // Sort descending by balance so the richest coin is first.
+        coins.sort_by(|a, b| b.1.cmp(&a.1));
+        Ok(coins.into_iter().map(|(r, _)| r).collect())
+    }
+
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {
         let client = self.get_client().await?;
 

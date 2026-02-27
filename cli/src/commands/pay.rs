@@ -38,6 +38,7 @@ pub async fn execute(
         .collect::<Result<Vec<_>>>()?;
 
     // Get coin references
+    let user_specified_coins = coins.is_some();
     let coin_refs = match coins {
         Some(coin_ids) => {
             ensure!(!coin_ids.is_empty(), "At least one input coin is required");
@@ -52,8 +53,10 @@ pub async fn execute(
             refs
         }
         None => {
-            // Auto-select coins from sender's balance
-            let gas_objects = context.get_gas_objects_owned_by_address(sender, Some(10)).await?;
+            // Auto-select all coins sorted richest-first. The first will be
+            // used as the primary gas coin; any dust coins are included so
+            // smash_gas can merge them.
+            let gas_objects = context.get_gas_objects_sorted_by_balance(sender).await?;
             if gas_objects.is_empty() {
                 bail!("No coins found for address {}", sender);
             }
@@ -67,7 +70,8 @@ pub async fn execute(
         recipients: recipient_addresses,
     };
 
-    // Use first coin as gas
-    crate::client_commands::execute_or_serialize(context, sender, kind, Some(coin_refs[0]), tx_args)
-        .await
+    // When auto-selecting, pass None so TransactionBuilder includes all
+    // coins as gas_payment and smash_gas merges dust.
+    let explicit_gas = if user_specified_coins { Some(coin_refs[0]) } else { None };
+    crate::client_commands::execute_or_serialize(context, sender, kind, explicit_gas, tx_args).await
 }

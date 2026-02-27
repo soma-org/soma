@@ -2,10 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
-
 use anyhow::anyhow;
-use fastcrypto::encoding::{Encoding, Hex};
 use fastcrypto::traits::EncodeDecodeBase64;
 use types::crypto::{AuthorityKeyPair, NetworkKeyPair, SomaKeyPair};
 
@@ -37,10 +34,21 @@ pub fn read_authority_keypair_from_file<P: AsRef<std::path::Path>>(
     AuthorityKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
 }
 
-/// Read from file as Base64 encoded `flag || privkey` and return a SomaKeypair.
+/// Read a SomaKeyPair from a file. Accepts Base64 encoded `flag || privkey`
+/// or Bech32 encoded `somaprivkey1...` format.
 pub fn read_keypair_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<SomaKeyPair> {
-    let contents = std::fs::read_to_string(path)?;
-    SomaKeyPair::decode_base64(contents.as_str().trim()).map_err(|e| anyhow!(e))
+    let contents = std::fs::read_to_string(&path)?;
+    let contents = contents.trim();
+
+    if let Ok(key) = SomaKeyPair::decode_base64(contents) {
+        return Ok(key);
+    }
+
+    if let Ok(key) = SomaKeyPair::decode(contents) {
+        return Ok(key);
+    }
+
+    Err(anyhow!("Error decoding keypair from file"))
 }
 
 /// Read from file as Base64 encoded `flag || privkey` and return a NetworkKeyPair.
@@ -51,30 +59,4 @@ pub fn read_network_keypair_from_file<P: AsRef<std::path::Path>>(
     match kp {
         SomaKeyPair::Ed25519(kp) => Ok(NetworkKeyPair::new(kp)),
     }
-}
-
-/// Read a SomaKeyPair from a file. The content could be any of the following:
-/// - Base64 encoded `flag || privkey` for ECDSA key
-/// - Base64 encoded `privkey` for Raw key
-/// - Bech32 encoded private key prefixed with `somaprivkey`
-/// - Hex encoded `privkey` for Raw key
-pub fn read_key(path: &PathBuf) -> Result<SomaKeyPair, anyhow::Error> {
-    if !path.exists() {
-        return Err(anyhow::anyhow!("Key file not found at path: {:?}", path));
-    }
-    let file_contents = std::fs::read_to_string(path)?;
-    let contents = file_contents.as_str().trim();
-
-    // Try base64 encoded SomaKeyPair `flag || privkey`
-    if let Ok(key) = SomaKeyPair::decode_base64(contents) {
-        return Ok(key);
-    }
-
-    // Try Bech32 encoded 33-byte `flag || private key` starting with `somaprivkey`A prefix.
-    // This is the format of a private key exported from SOMA Wallet or soma.keystore.
-    if let Ok(key) = SomaKeyPair::decode(contents) {
-        return Ok(key);
-    }
-
-    Err(anyhow!("Error decoding key from {:?}", path))
 }

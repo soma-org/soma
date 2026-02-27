@@ -24,19 +24,23 @@ pub async fn execute_stake(
     let sender = context.active_address()?;
     let client = context.get_client().await?;
 
-    // Get coin reference
-    let coin_ref = match coin {
+    // Get coin reference and gas strategy
+    let (coin_ref, explicit_gas) = match coin {
         Some(coin_id) => {
             let obj = client
                 .get_object(coin_id)
                 .await
                 .map_err(|e| anyhow!("Failed to get coin: {}", e.message()))?;
-            obj.compute_object_reference()
+            let r = obj.compute_object_reference();
+            (r, Some(r))
         }
-        None => context
-            .get_one_gas_object_owned_by_address(sender)
-            .await?
-            .ok_or_else(|| anyhow!("No coins found for address {}", sender))?,
+        None => {
+            let r = context
+                .get_richest_gas_object_owned_by_address(sender)
+                .await?
+                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
+            (r, None) // None → TransactionBuilder auto-selects all coins, smashing dust
+        }
     };
 
     // Build transaction kind
@@ -48,8 +52,7 @@ pub async fn execute_stake(
         unreachable!()
     };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, Some(coin_ref), tx_args)
-        .await
+    crate::client_commands::execute_or_serialize(context, sender, kind, explicit_gas, tx_args).await
 }
 
 /// Execute the unstake command (withdraw staked SOMA)

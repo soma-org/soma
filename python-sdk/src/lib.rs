@@ -91,21 +91,31 @@ fn obj_to_py_with_ref(obj: &types::object::Object) -> PyResult<Py<PyAny>> {
     })
 }
 
-/// Fetch the first coin owned by `sender`.
+/// Fetch the coin with the highest balance owned by `sender`.
+///
+/// Scans all coins (up to page-size 100) and returns the one with the
+/// largest balance so that gas/transfer operations don't accidentally
+/// pick a dust coin.
 async fn auto_fetch_coin(client: &sdk::SomaClient, sender: SomaAddress) -> PyResult<ObjectRef> {
     use futures::TryStreamExt as _;
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(sender.to_string());
-    request.page_size = Some(1);
+    request.page_size = Some(100);
     request.object_type = Some(rpc::types::ObjectType::Coin.into());
     let stream = client.list_owned_objects(request).await;
     tokio::pin!(stream);
-    let obj = stream
-        .try_next()
-        .await
-        .map_err(to_py_err)?
-        .ok_or_else(|| PyRuntimeError::new_err(format!("No coin found for {sender}")))?;
-    Ok(obj.compute_object_reference())
+
+    let mut best: Option<(ObjectRef, u64)> = None;
+    while let Some(obj) = stream.try_next().await.map_err(to_py_err)? {
+        let balance = obj.as_coin().unwrap_or(0);
+        let obj_ref = obj.compute_object_reference();
+        if best.as_ref().map_or(true, |(_, b)| balance > *b) {
+            best = Some((obj_ref, balance));
+        }
+    }
+
+    best.map(|(r, _)| r)
+        .ok_or_else(|| PyRuntimeError::new_err(format!("No coin found for {sender}")))
 }
 
 /// Fetch the object reference for an object by its ID.
@@ -255,17 +265,24 @@ impl PyKeypair {
         Self { inner: sdk::keypair::Keypair::generate() }
     }
 
-    /// Create a keypair from a 32-byte secret key (raw bytes or hex string).
+    /// Create a keypair from a 32-byte secret key (raw bytes, hex string,
+    /// or Bech32-encoded ``somaprivkey1...`` string).
     #[staticmethod]
     fn from_secret_key(secret: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Self> {
         let secret_bytes: Vec<u8> = if let Ok(b) = secret.extract::<Vec<u8>>() {
             b
         } else if let Ok(s) = secret.extract::<String>() {
+            if s.starts_with("somaprivkey") {
+                let kp = sdk::keypair::Keypair::from_encoded(&s).map_err(to_py_val_err)?;
+                return Ok(Self { inner: kp });
+            }
             let stripped = s.strip_prefix("0x").unwrap_or(&s);
             hex::decode(stripped)
                 .map_err(|e| PyValueError::new_err(format!("Invalid hex string: {}", e)))?
         } else {
-            return Err(PyValueError::new_err("secret_key must be bytes or a hex string"));
+            return Err(PyValueError::new_err(
+                "secret_key must be bytes, a hex string, or a Bech32 somaprivkey1... string",
+            ));
         };
 
         if secret_bytes.len() != 32 {
@@ -286,6 +303,14 @@ impl PyKeypair {
         Ok(Self { inner: kp })
     }
 
+    /// Create a keypair from a Bech32-encoded private key (``somaprivkey1...``).
+    /// This is the format produced by ``soma keytool export``.
+    #[staticmethod]
+    fn from_encoded(encoded: &str) -> PyResult<Self> {
+        let kp = sdk::keypair::Keypair::from_encoded(encoded).map_err(to_py_val_err)?;
+        Ok(Self { inner: kp })
+    }
+
     /// Return the SOMA address (0x-prefixed hex) for this keypair.
     fn address(&self) -> String {
         self.inner.address().to_string()
@@ -303,6 +328,12 @@ impl PyKeypair {
     /// Export the secret key as a hex string (64 hex chars = 32 bytes).
     fn to_secret_key(&self) -> String {
         hex::encode(self.inner.to_secret_key())
+    }
+
+    /// Export as a Bech32-encoded string (``somaprivkey1...``).
+    /// This format can be imported via ``soma keytool import``.
+    fn to_encoded(&self) -> String {
+        self.inner.to_encoded()
     }
 }
 
