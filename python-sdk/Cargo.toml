@@ -5,7 +5,7 @@ edition = "2024"
 
 [lib]
 name = "soma_sdk"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3.workspace = true
@@ -20,6 +20,11 @@ futures.workspace = true
 hex.workspace = true
 url.workspace = true
 pythonize.workspace = true
+
+[dev-dependencies]
+test-cluster.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+soma-keys.workspace = true
 
 [lints]
 workspace = true

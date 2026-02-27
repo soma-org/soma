@@ -56,16 +56,13 @@ class EpochInfo:
     """Shape returned by ``SomaClient.get_epoch()``."""
     epoch: int
     first_checkpoint_id: int
-    epoch_total_transactions: int
-    reference_gas_price: int
     epoch_start_timestamp_ms: int
     end_of_epoch_info: Optional["EndOfEpochInfo"]
 
 class EndOfEpochInfo:
     """Shape for end-of-epoch info within EpochInfo."""
     last_checkpoint_id: int
-    epoch_end_timestamp_ms: int
-    reference_gas_price: int
+    epoch_end_timestamp_ms: Optional[int]
 
 class TransactionEffects:
     """Shape returned by ``execute_transaction()``, ``simulate_transaction()``, ``get_transaction()``."""
@@ -213,20 +210,24 @@ class ListTargetsResponse:
     next_page_token: Optional[str]
 
 class ChallengeInfo:
-    """Shape returned by ``SomaClient.get_challenge()``."""
-    challenge: "ChallengeDetail"
+    """Shape returned by ``SomaClient.get_challenge()``.
 
-class ChallengeDetail:
-    """Detail of a challenge."""
+    ``get_challenge()`` returns this directly (not wrapped in a response object).
+    """
     id: str
-    status: str
-    challenger: str
     target_id: str
-    epoch: int
+    challenger: str
+    challenger_bond: int
+    challenge_epoch: int
+    status: str
+    verdict: Optional[str]
+    distance_threshold: Optional[float]
+    winning_distance_score: Optional[float]
+    winning_model_id: Optional[str]
 
 class ListChallengesResponse:
     """Shape returned by ``SomaClient.list_challenges()``."""
-    challenges: list[ChallengeDetail]
+    challenges: list[ChallengeInfo]
     next_page_token: Optional[str]
 
 class CheckpointSummary:

@@ -221,6 +221,88 @@ struct TargetObj {
     winning_model_id: Option<String>,
 }
 
+#[derive(serde::Serialize)]
+struct ListTargetsObj {
+    targets: Vec<TargetObj>,
+    next_page_token: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct EpochInfoObj {
+    epoch: u64,
+    first_checkpoint_id: u64,
+    epoch_start_timestamp_ms: u64,
+    end_of_epoch_info: Option<EndOfEpochInfoObj>,
+}
+
+#[derive(serde::Serialize)]
+struct EndOfEpochInfoObj {
+    last_checkpoint_id: u64,
+    epoch_end_timestamp_ms: Option<u64>,
+}
+
+#[derive(serde::Serialize)]
+struct ChallengeObj {
+    id: String,
+    target_id: String,
+    challenger: String,
+    challenger_bond: u64,
+    challenge_epoch: u64,
+    status: String,
+    verdict: Option<String>,
+    distance_threshold: Option<f32>,
+    winning_distance_score: Option<f32>,
+    winning_model_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ListChallengesObj {
+    challenges: Vec<ChallengeObj>,
+    next_page_token: Option<String>,
+}
+
+/// Convert a proto Target to a TargetObj with snake_case fields and 0x-prefixed hex IDs.
+fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
+    let hex_id = |s: Option<String>| -> Option<String> {
+        s.map(|v| if v.starts_with("0x") { v } else { format!("0x{v}") })
+    };
+    TargetObj {
+        id: hex_id(t.id).unwrap_or_default(),
+        status: t.status.unwrap_or_default(),
+        embedding: t.embedding,
+        model_ids: t
+            .model_ids
+            .into_iter()
+            .map(|m| if m.starts_with("0x") { m } else { format!("0x{m}") })
+            .collect(),
+        distance_threshold: t.distance_threshold.unwrap_or(0.0),
+        reward_pool: t.reward_pool.unwrap_or(0),
+        generation_epoch: t.generation_epoch.unwrap_or(0),
+        bond_amount: t.bond_amount.unwrap_or(0),
+        submitter: hex_id(t.submitter),
+        winning_model_id: hex_id(t.winning_model_id),
+    }
+}
+
+/// Convert a proto Challenge to a ChallengeObj with snake_case fields.
+fn proto_challenge_to_obj(c: rpc::proto::soma::Challenge) -> ChallengeObj {
+    let hex_id = |s: Option<String>| -> Option<String> {
+        s.map(|v| if v.starts_with("0x") { v } else { format!("0x{v}") })
+    };
+    ChallengeObj {
+        id: hex_id(c.id).unwrap_or_default(),
+        target_id: hex_id(c.target_id).unwrap_or_default(),
+        challenger: c.challenger.unwrap_or_default(),
+        challenger_bond: c.challenger_bond.unwrap_or(0),
+        challenge_epoch: c.challenge_epoch.unwrap_or(0),
+        status: c.status.unwrap_or_default(),
+        verdict: c.verdict,
+        distance_threshold: c.distance_threshold,
+        winning_distance_score: c.winning_distance_score,
+        winning_model_id: hex_id(c.winning_model_id),
+    }
+}
+
 /// Extract a ManifestInput from a Python object (SimpleNamespace or dict).
 fn extract_manifest(obj: &Bound<'_, PyAny>) -> PyResult<sdk::scoring_types::ManifestInput> {
     let url: String = get_field(obj, "url")?.extract()?;
@@ -559,12 +641,35 @@ impl PySomaClient {
         })
     }
 
-    /// Get epoch info as a Python object. Pass None for latest epoch.
+    /// Get epoch info as a Python object. Pass None (or omit) for latest epoch.
+    #[pyo3(signature = (epoch=None))]
     fn get_epoch<'py>(&self, py: Python<'py>, epoch: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let response = client.get_epoch(epoch).await.map_err(to_py_err)?;
-            to_py_obj(&response)
+            let ep = response
+                .epoch
+                .ok_or_else(|| PyRuntimeError::new_err("get_epoch response missing epoch data"))?;
+            let start_ms = ep
+                .start
+                .as_ref()
+                .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64 / 1_000_000))
+                .unwrap_or(0);
+            let end_ms = ep
+                .end
+                .as_ref()
+                .map(|ts| (ts.seconds as u64) * 1000 + (ts.nanos as u64 / 1_000_000));
+            let end_of_epoch_info = ep.last_checkpoint.map(|last_cp| EndOfEpochInfoObj {
+                last_checkpoint_id: last_cp,
+                epoch_end_timestamp_ms: end_ms,
+            });
+            let info = EpochInfoObj {
+                epoch: ep.epoch.unwrap_or(0),
+                first_checkpoint_id: ep.first_checkpoint.unwrap_or(0),
+                epoch_start_timestamp_ms: start_ms,
+                end_of_epoch_info,
+            };
+            to_py_obj(&info)
         })
     }
 
@@ -738,7 +843,13 @@ impl PySomaClient {
                 paths: effective_mask.split(',').map(|s| s.trim().to_string()).collect(),
             });
             let response = client.list_targets(request).await.map_err(to_py_err)?;
-            to_py_obj(&response)
+            let obj = ListTargetsObj {
+                targets: response.targets.into_iter().map(proto_target_to_obj).collect(),
+                next_page_token: response
+                    .next_page_token
+                    .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default()),
+            };
+            to_py_obj(&obj)
         })
     }
 
@@ -753,7 +864,9 @@ impl PySomaClient {
             let mut request = rpc::proto::soma::GetChallengeRequest::default();
             request.challenge_id = Some(challenge_id);
             let response = client.get_challenge(request).await.map_err(to_py_err)?;
-            to_py_obj(&response)
+            let challenge =
+                response.challenge.ok_or_else(|| PyRuntimeError::new_err("Challenge not found"))?;
+            to_py_obj(&proto_challenge_to_obj(challenge))
         })
     }
 
@@ -777,7 +890,13 @@ impl PySomaClient {
                 request.page_size = Some(limit);
             }
             let response = client.list_challenges(request).await.map_err(to_py_err)?;
-            to_py_obj(&response)
+            let obj = ListChallengesObj {
+                challenges: response.challenges.into_iter().map(proto_challenge_to_obj).collect(),
+                next_page_token: response
+                    .next_page_token
+                    .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default()),
+            };
+            to_py_obj(&obj)
         })
     }
 
@@ -880,30 +999,10 @@ impl PySomaClient {
                     .collect(),
             });
             let response = client.list_targets(request).await.map_err(to_py_err)?;
-            let hex_id = |s: Option<String>| -> Option<String> {
-                s.map(|v| if v.starts_with("0x") { v } else { format!("0x{v}") })
-            };
             let targets: Vec<Py<PyAny>> = response
                 .targets
                 .into_iter()
-                .map(|t| {
-                    to_py_obj(&TargetObj {
-                        id: hex_id(t.id).unwrap_or_default(),
-                        status: t.status.unwrap_or_default(),
-                        embedding: t.embedding,
-                        model_ids: t
-                            .model_ids
-                            .into_iter()
-                            .map(|m| if m.starts_with("0x") { m } else { format!("0x{m}") })
-                            .collect(),
-                        distance_threshold: t.distance_threshold.unwrap_or(0.0),
-                        reward_pool: t.reward_pool.unwrap_or(0),
-                        generation_epoch: t.generation_epoch.unwrap_or(0),
-                        bond_amount: t.bond_amount.unwrap_or(0),
-                        submitter: hex_id(t.submitter),
-                        winning_model_id: hex_id(t.winning_model_id),
-                    })
-                })
+                .map(|t| to_py_obj(&proto_target_to_obj(t)))
                 .collect::<PyResult<_>>()?;
             Ok(targets)
         })
@@ -2725,7 +2824,7 @@ impl PySomaClient {
 
 /// Python SDK for the SOMA network.
 #[pymodule]
-fn soma_sdk(m: &Bound<'_, PyModule>) -> PyResult<()> {
+pub fn soma_sdk(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySomaClient>()?;
     m.add_class::<PyKeypair>()?;
     Ok(())
