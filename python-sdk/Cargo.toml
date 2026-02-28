@@ -1,6 +1,6 @@
 [package]
 name = "soma-sdk"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 
 [lib]
@@ -11,7 +11,10 @@ crate-type = ["cdylib", "rlib"]
 pyo3.workspace = true
 pyo3-async-runtimes = { workspace = true, features = ["tokio-runtime"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-sdk = { path = "../sdk", default-features = false, features = ["grpc-services", "tls"] }
+sdk = { path = "../sdk", default-features = false, features = [
+    "grpc-services",
+    "tls",
+] }
 types = { path = "../types", default-features = false }
 rpc = { path = "../rpc", default-features = false }
 serde.workspace = true
