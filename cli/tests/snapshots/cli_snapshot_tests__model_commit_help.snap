@@ -6,32 +6,27 @@ Commit a new model (phase 1 of commit-reveal)
 
 Registers a new model by committing its weight hashes. The model enters "pending" state and must be revealed in the next epoch or the stake is slashed.
 
-Usage: soma model commit [OPTIONS] --weights-url-commitment <WEIGHTS_URL_COMMITMENT> --weights-commitment <WEIGHTS_COMMITMENT> --stake-amount <STAKE_AMOUNT> --staking-pool-id <STAKING_POOL_ID> <MODEL_ID>
+Model ID and staking pool ID are auto-generated. Commitments are auto-computed from the weights file and URL.
 
-Arguments:
-  <MODEL_ID>
-          Pre-assigned model ID (ObjectID)
+Usage: soma model commit [OPTIONS] --weights-file <WEIGHTS_FILE> --weights-url <WEIGHTS_URL>
 
 Options:
-      --weights-url-commitment <WEIGHTS_URL_COMMITMENT>
-          Hex-encoded commitment to the encrypted weights URL (32 bytes)
+      --weights-file <WEIGHTS_FILE>
+          Path to the encrypted weights file
 
-      --weights-commitment <WEIGHTS_COMMITMENT>
-          Hex-encoded commitment to the decrypted model weights (32 bytes)
+      --weights-url <WEIGHTS_URL>
+          URL where the encrypted weights are (or will be) hosted
 
       --architecture-version <ARCHITECTURE_VERSION>
           Model architecture version (auto-fetched from chain if omitted)
 
       --stake-amount <STAKE_AMOUNT>
-          Amount of SOMA to stake (e.g., 100 or 0.5)
+          Amount of SOMA to stake (auto-fetches minimum from chain if omitted)
 
       --commission-rate <COMMISSION_RATE>
           Commission rate in basis points (100 = 1%, max 10000 = 100%)
           
           [default: 0]
-
-      --staking-pool-id <STAKING_POOL_ID>
-          Staking pool ID (ObjectID). Generate with `soma keytool generate <key-scheme>` and use the resulting address as the pool ID
 
       --tx-digest
           Compute the transaction digest and print it out, but do not execute
@@ -42,18 +37,15 @@ Options:
       --serialize-unsigned-transaction
           Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
 
-      --json
-          Output as JSON
-
       --serialize-signed-transaction
           Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
+
+      --json
+          Output as JSON
 
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLES:
-    soma model commit 0xMODEL_ID \
-        --weights-url-commitment 0xABC...DEF \
-        --weights-commitment 0x123...456 \
-        --stake-amount 100 \
-        --staking-pool-id 0xPOOL_ID
+    soma model commit --weights-url https://storage.example.com/weights.bin \
+        --weights-file ./model.bin --commission-rate 500

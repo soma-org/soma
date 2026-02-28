@@ -52,10 +52,12 @@ pub enum TargetCommand {
         name = "submit",
         after_help = "\
 EXAMPLES:
-    soma target submit --target-id 0xTARGET... --data-commitment 0xHEX... \\
-        --data-url https://... --data-checksum 0xHEX... --data-size 1024 \\
-        --model-id 0xMODEL... --embedding 0.1,0.2,0.3 \\
-        --distance-score 0.5 --bond-coin 0xCOIN..."
+    soma target submit --target-id 0xTARGET_ID \\
+        --data-file ./data.bin \\
+        --data-url https://storage.example.com/data.bin \\
+        --model-id 0xMODEL_ID \\
+        --embedding 0.1,0.2,0.3 \\
+        --distance-score 0.5"
     )]
     Submit {
         #[clap(flatten)]

@@ -276,7 +276,7 @@ fn test_model_commit_missing_args() {
         .args(["model", "commit"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("<MODEL_ID>"));
+        .stderr(predicate::str::contains("--weights-file"));
 }
 
 // =============================================================================

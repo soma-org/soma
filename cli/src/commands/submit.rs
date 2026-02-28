@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
 
 use anyhow::{Result, anyhow, bail};
 use clap::*;
@@ -24,25 +25,30 @@ use crate::response::TransactionResponse;
 ///
 /// Submits data that embeds within a target's radius. The submission
 /// includes the data manifest, embedding vector, and reported scores.
-/// A bond (proportional to data size) is required.
+/// A bond coin is auto-selected. Commitment, checksum, and size are
+/// auto-computed from the data file.
 #[derive(Parser)]
-#[clap(rename_all = "kebab-case")]
+#[clap(
+    rename_all = "kebab-case",
+    after_help = "\
+EXAMPLES:
+    soma target submit --target-id 0xTARGET_ID \\
+        --data-file ./data.bin \\
+        --data-url https://storage.example.com/data.bin \\
+        --model-id 0xMODEL_ID \\
+        --embedding 0.1,0.2,0.3 \\
+        --distance-score 0.5"
+)]
 pub struct SubmitCommand {
     /// Target ID to submit to
     #[clap(long)]
     pub target_id: ObjectID,
-    /// Hex-encoded commitment to the data (32 bytes, hash of raw data)
+    /// Path to the data file (commitment, checksum, and size auto-computed)
     #[clap(long)]
-    pub data_commitment: String,
+    pub data_file: PathBuf,
     /// URL where the data is hosted
     #[clap(long)]
     pub data_url: String,
-    /// Hex-encoded checksum of the data file (32 bytes)
-    #[clap(long)]
-    pub data_checksum: String,
-    /// Size of the data file in bytes
-    #[clap(long)]
-    pub data_size: usize,
     /// Model ID to use for this submission (must be in target's model_ids)
     #[clap(long)]
     pub model_id: ObjectID,
@@ -52,9 +58,6 @@ pub struct SubmitCommand {
     /// Distance score (f32, must be <= target threshold)
     #[clap(long)]
     pub distance_score: f32,
-    /// Coin object to use for bond payment
-    #[clap(long)]
-    pub bond_coin: ObjectID,
     #[clap(flatten)]
     pub tx_args: TxProcessingArgs,
 }
@@ -66,23 +69,19 @@ pub struct SubmitCommand {
 impl SubmitCommand {
     pub async fn execute(self, context: &mut WalletContext) -> Result<SubmitCommandResponse> {
         let sender = context.active_address()?;
-        let client = context.get_client().await?;
 
-        // Parse data commitment
-        let commitment_bytes = parse_hex_digest_32(&self.data_commitment, "data-commitment")?;
+        // Auto-compute commitment, checksum, and size from data file
+        let (commitment_bytes, checksum_hex, data_size) =
+            super::parse_helpers::read_and_hash_file(&self.data_file)?;
 
         // Build data manifest
-        let manifest = build_data_manifest(&self.data_url, &self.data_checksum, self.data_size)?;
+        let manifest = build_data_manifest(&self.data_url, &checksum_hex, data_size)?;
 
         // Parse embedding
         let embedding_vec = parse_embedding(&self.embedding)?;
 
-        // Get bond coin reference
-        let coin_obj = client
-            .get_object(self.bond_coin)
-            .await
-            .map_err(|e| anyhow!("Failed to get bond coin: {}", e))?;
-        let bond_coin_ref = coin_obj.compute_object_reference();
+        // Auto-fetch bond coin
+        let bond_coin_ref = super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
 
         let kind = TransactionKind::SubmitData(SubmitDataArgs {
             target_id: self.target_id,

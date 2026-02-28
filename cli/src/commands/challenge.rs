@@ -25,23 +25,24 @@ use crate::response::TransactionResponse;
 pub enum ChallengeCommand {
     /// Submit a fraud challenge against a filled target
     ///
-    /// Challenges a submission for a filled target. The challenger must pay a bond
-    /// proportional to the submission's data size. If the challenge succeeds (fraud
-    /// detected), the challenger receives the submitter's bond. If it fails, the challenger
-    /// loses their bond to validators.
+    /// Challenges a submission for a filled target. A bond coin is auto-selected.
+    /// If the challenge succeeds (fraud detected), the challenger receives the
+    /// submitter's bond. If it fails, the challenger loses their bond to validators.
     ///
     /// Requirements:
     /// - Target must be filled (have a winning submission)
     /// - Challenge must be submitted during the fill epoch (before epoch boundary)
-    /// - Bond coin must cover challenger_bond_per_byte * data_size
-    #[clap(name = "submit")]
+    /// - Sender must have a coin covering challenger_bond_per_byte * data_size
+    #[clap(
+        name = "submit",
+        after_help = "\
+EXAMPLES:
+    soma challenge submit --target-id 0xTARGET_ID"
+    )]
     Submit {
         /// Target ID to challenge
         #[clap(long)]
         target_id: ObjectID,
-        /// Coin object to use for challenger bond payment
-        #[clap(long)]
-        bond_coin: ObjectID,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
@@ -72,18 +73,13 @@ impl ChallengeCommand {
         match self {
             ChallengeCommand::Submit {
                 target_id,
-                bond_coin,
                 tx_args,
             } => {
                 let sender = context.active_address()?;
-                let client = context.get_client().await?;
 
-                // Get bond coin reference
-                let coin_obj = client
-                    .get_object(bond_coin)
-                    .await
-                    .map_err(|e| anyhow!("Failed to get bond coin: {}", e.message()))?;
-                let bond_coin_ref = coin_obj.compute_object_reference();
+                // Auto-fetch bond coin
+                let bond_coin_ref =
+                    super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
 
                 // ChallengeId is derived from tx_digest during execution, not client-provided
                 let kind = TransactionKind::InitiateChallenge(InitiateChallengeArgs {

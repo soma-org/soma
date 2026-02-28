@@ -37,38 +37,32 @@ pub enum ModelCommand {
     ///
     /// Registers a new model by committing its weight hashes. The model enters
     /// "pending" state and must be revealed in the next epoch or the stake is slashed.
+    ///
+    /// Model ID and staking pool ID are auto-generated. Commitments are
+    /// auto-computed from the weights file and URL.
     #[clap(
         name = "commit",
         after_help = "\
 EXAMPLES:
-    soma model commit 0xMODEL_ID \\
-        --weights-url-commitment 0xABC...DEF \\
-        --weights-commitment 0x123...456 \\
-        --stake-amount 100 \\
-        --staking-pool-id 0xPOOL_ID"
+    soma model commit --weights-url https://storage.example.com/weights.bin \\
+        --weights-file ./model.bin --commission-rate 500"
     )]
     Commit {
-        /// Pre-assigned model ID (ObjectID)
-        model_id: ObjectID,
-        /// Hex-encoded commitment to the encrypted weights URL (32 bytes)
+        /// Path to the encrypted weights file
         #[clap(long)]
-        weights_url_commitment: String,
-        /// Hex-encoded commitment to the decrypted model weights (32 bytes)
+        weights_file: PathBuf,
+        /// URL where the encrypted weights are (or will be) hosted
         #[clap(long)]
-        weights_commitment: String,
+        weights_url: String,
         /// Model architecture version (auto-fetched from chain if omitted)
         #[clap(long)]
         architecture_version: Option<ArchitectureVersion>,
-        /// Amount of SOMA to stake (e.g., 100 or 0.5)
+        /// Amount of SOMA to stake (auto-fetches minimum from chain if omitted)
         #[clap(long)]
-        stake_amount: crate::soma_amount::SomaAmount,
+        stake_amount: Option<crate::soma_amount::SomaAmount>,
         /// Commission rate in basis points (100 = 1%, max 10000 = 100%)
         #[clap(long, default_value_t = 0)]
         commission_rate: u64,
-        /// Staking pool ID (ObjectID). Generate with `soma keytool generate <key-scheme>` and use
-        /// the resulting address as the pool ID.
-        #[clap(long)]
-        staking_pool_id: ObjectID,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
@@ -76,15 +70,15 @@ EXAMPLES:
     /// Reveal model weights (phase 2 of commit-reveal)
     ///
     /// Must be called in the epoch following the commit. Provides the actual
-    /// weights URL, checksum, and decryption key. The model becomes active.
+    /// weights URL, file, and decryption key. Checksum and size are auto-computed
+    /// from the weights file. The model becomes active.
     #[clap(
         name = "reveal",
         after_help = "\
 EXAMPLES:
     soma model reveal 0xMODEL_ID \\
         --weights-url https://storage.example.com/weights.bin \\
-        --weights-checksum 0xABC...DEF \\
-        --weights-size 1048576 \\
+        --weights-file ./model.bin \\
         --decryption-key 0x123...456 \\
         --embedding 0.1,0.2,0.3,0.4"
     )]
@@ -94,12 +88,9 @@ EXAMPLES:
         /// URL where the encrypted weights are hosted
         #[clap(long)]
         weights_url: String,
-        /// Hex-encoded checksum of the weights file (32 bytes)
+        /// Path to the encrypted weights file (checksum and size auto-computed)
         #[clap(long)]
-        weights_checksum: String,
-        /// Size of the weights file in bytes
-        #[clap(long)]
-        weights_size: usize,
+        weights_file: PathBuf,
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
@@ -111,36 +102,39 @@ EXAMPLES:
     },
 
     /// Commit updated weights for an active model
+    ///
+    /// Commitments are auto-computed from the weights file and URL.
     #[clap(
         name = "update-commit",
         after_help = "\
 EXAMPLES:
     soma model update-commit 0xMODEL_ID \\
-        --weights-url-commitment 0xABC...DEF \\
-        --weights-commitment 0x123...456"
+        --weights-url https://storage.example.com/weights-v2.bin \\
+        --weights-file ./model-v2.bin"
     )]
     UpdateCommit {
         /// Model ID to update
         model_id: ObjectID,
-        /// Hex-encoded commitment to the new encrypted weights URL (32 bytes)
+        /// URL where the new encrypted weights are (or will be) hosted
         #[clap(long)]
-        weights_url_commitment: String,
-        /// Hex-encoded commitment to the new decrypted model weights (32 bytes)
+        weights_url: String,
+        /// Path to the new encrypted weights file
         #[clap(long)]
-        weights_commitment: String,
+        weights_file: PathBuf,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
 
     /// Reveal updated weights for an active model
+    ///
+    /// Checksum and size are auto-computed from the weights file.
     #[clap(
         name = "update-reveal",
         after_help = "\
 EXAMPLES:
     soma model update-reveal 0xMODEL_ID \\
         --weights-url https://storage.example.com/weights-v2.bin \\
-        --weights-checksum 0xABC...DEF \\
-        --weights-size 2097152 \\
+        --weights-file ./model-v2.bin \\
         --decryption-key 0x123...456 \\
         --embedding 0.1,0.2,0.3,0.4"
     )]
@@ -150,12 +144,9 @@ EXAMPLES:
         /// URL where the new encrypted weights are hosted
         #[clap(long)]
         weights_url: String,
-        /// Hex-encoded checksum of the new weights file (32 bytes)
+        /// Path to the new encrypted weights file (checksum and size auto-computed)
         #[clap(long)]
-        weights_checksum: String,
-        /// Size of the new weights file in bytes
-        #[clap(long)]
-        weights_size: usize,
+        weights_file: PathBuf,
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
@@ -251,22 +242,25 @@ impl ModelCommand {
 
         match self {
             ModelCommand::Commit {
-                model_id,
-                weights_url_commitment,
-                weights_commitment,
+                weights_file,
+                weights_url,
                 architecture_version,
                 stake_amount,
                 commission_rate,
-                staking_pool_id,
                 tx_args,
             } => {
                 if commission_rate > 10000 {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
 
-                let url_commitment =
-                    parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
-                let wt_commitment = parse_hex_digest_32(&weights_commitment, "weights-commitment")?;
+                // Auto-generate model ID and staking pool ID
+                let model_id = ObjectID::random();
+                let staking_pool_id = ObjectID::random();
+
+                // Auto-compute commitments from file and URL
+                let (wt_commitment, _, _) =
+                    super::parse_helpers::read_and_hash_file(&weights_file)?;
+                let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
 
                 if commission_rate > 5000 {
                     eprintln!(
@@ -277,17 +271,25 @@ impl ModelCommand {
                     );
                 }
 
+                let client = context.get_client().await?;
+
                 // Auto-fetch architecture version from chain if not provided
                 let architecture_version = match architecture_version {
                     Some(v) => v,
+                    None => client.get_architecture_version().await.map_err(|e| {
+                        anyhow!("Failed to fetch architecture version from chain: {}", e.message())
+                    })?,
+                };
+
+                // Auto-fetch min stake from chain if not provided
+                let final_stake = match stake_amount {
+                    Some(a) => a.shannons(),
                     None => {
-                        let client = context.get_client().await?;
-                        client.get_architecture_version().await.map_err(|e| {
-                            anyhow!(
-                                "Failed to fetch architecture version from chain: {}",
-                                e.message()
-                            )
-                        })?
+                        let state = client
+                            .get_latest_system_state()
+                            .await
+                            .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
+                        state.parameters().model_min_stake
                     }
                 };
 
@@ -296,7 +298,7 @@ impl ModelCommand {
                     weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
                     weights_commitment: ModelWeightsCommitment::new(wt_commitment),
                     architecture_version,
-                    stake_amount: stake_amount.shannons(),
+                    stake_amount: final_stake,
                     commission_rate,
                     staking_pool_id,
                 });
@@ -308,15 +310,16 @@ impl ModelCommand {
             ModelCommand::Reveal {
                 model_id,
                 weights_url,
-                weights_checksum,
-                weights_size,
+                weights_file,
                 decryption_key,
                 embedding,
                 tx_args,
             } => {
+                let (_, checksum_hex, weights_size) =
+                    super::parse_helpers::read_and_hash_file(&weights_file)?;
                 let manifest = build_weights_manifest(
                     &weights_url,
-                    &weights_checksum,
+                    &checksum_hex,
                     weights_size,
                     &decryption_key,
                 )?;
@@ -332,15 +335,10 @@ impl ModelCommand {
                 Ok(ModelCommandResponse::RevealSuccess { model_id, inner: Box::new(result) })
             }
 
-            ModelCommand::UpdateCommit {
-                model_id,
-                weights_url_commitment,
-                weights_commitment,
-                tx_args,
-            } => {
-                let url_commitment =
-                    parse_hex_digest_32(&weights_url_commitment, "weights-url-commitment")?;
-                let wt_commitment = parse_hex_digest_32(&weights_commitment, "weights-commitment")?;
+            ModelCommand::UpdateCommit { model_id, weights_url, weights_file, tx_args } => {
+                let (wt_commitment, _, _) =
+                    super::parse_helpers::read_and_hash_file(&weights_file)?;
+                let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
 
                 let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
                     model_id,
@@ -354,15 +352,16 @@ impl ModelCommand {
             ModelCommand::UpdateReveal {
                 model_id,
                 weights_url,
-                weights_checksum,
-                weights_size,
+                weights_file,
                 decryption_key,
                 embedding,
                 tx_args,
             } => {
+                let (_, checksum_hex, weights_size) =
+                    super::parse_helpers::read_and_hash_file(&weights_file)?;
                 let manifest = build_weights_manifest(
                     &weights_url,
-                    &weights_checksum,
+                    &checksum_hex,
                     weights_size,
                     &decryption_key,
                 )?;
@@ -676,8 +675,7 @@ impl Display for ModelCommandResponse {
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
                 writeln!(f, "  {} {} \\", "soma model reveal".bold(), model_id)?;
                 writeln!(f, "    --weights-url <url> \\")?;
-                writeln!(f, "    --weights-checksum <hex> \\")?;
-                writeln!(f, "    --weights-size <bytes> \\")?;
+                writeln!(f, "    --weights-file <path> \\")?;
                 writeln!(f, "    --decryption-key <hex> \\")?;
                 writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())
