@@ -394,6 +394,21 @@ class SomaClient:
 
     # -- Epoch Helpers --
     async def wait_for_next_epoch(self, timeout: float = 120.0) -> int: ...
+    async def get_next_epoch_timestamp(self) -> int:
+        """Return estimated UNIX timestamp (ms) when the next epoch starts.
+
+        Computed as: epoch_start_timestamp_ms + epoch_duration_ms from the
+        current system state. Useful for cron scheduling.
+        """
+        ...
+    async def get_following_epoch_timestamp(self) -> int:
+        """Return estimated UNIX timestamp (ms) when the epoch after next starts.
+
+        Computed as: epoch_start_timestamp_ms + 2 * epoch_duration_ms.
+        Useful for scheduling actions that require two epoch boundaries
+        (e.g., claim_rewards after submit_data).
+        """
+        ...
 
     # -- Transaction Builders: Coin & Object --
     async def build_transfer_coin(

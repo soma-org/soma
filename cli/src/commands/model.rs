@@ -273,6 +273,12 @@ impl ModelCommand {
 
                 let client = context.get_client().await?;
 
+                // Always fetch system state (needed for min stake and epoch timing)
+                let state = client
+                    .get_latest_system_state()
+                    .await
+                    .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
+
                 // Auto-fetch architecture version from chain if not provided
                 let architecture_version = match architecture_version {
                     Some(v) => v,
@@ -284,14 +290,14 @@ impl ModelCommand {
                 // Auto-fetch min stake from chain if not provided
                 let final_stake = match stake_amount {
                     Some(a) => a.shannons(),
-                    None => {
-                        let state = client
-                            .get_latest_system_state()
-                            .await
-                            .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
-                        state.parameters().model_min_stake
-                    }
+                    None => state.parameters().model_min_stake,
                 };
+
+                // Compute epoch timing hint from already-fetched state
+                let next_epoch_hint = crate::response::format_next_epoch_hint(
+                    state.epoch_start_timestamp_ms(),
+                    state.epoch_duration_ms(),
+                );
 
                 let kind = TransactionKind::CommitModel(CommitModelArgs {
                     model_id,
@@ -304,7 +310,11 @@ impl ModelCommand {
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::CommitSuccess { model_id, inner: Box::new(result) })
+                Ok(ModelCommandResponse::CommitSuccess {
+                    model_id,
+                    inner: Box::new(result),
+                    next_epoch_hint,
+                })
             }
 
             ModelCommand::Reveal {
@@ -340,13 +350,29 @@ impl ModelCommand {
                     super::parse_helpers::read_and_hash_file(&weights_file)?;
                 let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
 
+                // Pre-fetch epoch timing (non-fatal, before transaction)
+                let next_epoch_hint = match context.get_client().await {
+                    Ok(client) => client.get_latest_system_state().await.ok().and_then(|s| {
+                        crate::response::format_next_epoch_hint(
+                            s.epoch_start_timestamp_ms(),
+                            s.epoch_duration_ms(),
+                        )
+                    }),
+                    Err(_) => None,
+                };
+
                 let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
                     model_id,
                     weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
                     weights_commitment: ModelWeightsCommitment::new(wt_commitment),
                 });
 
-                execute_tx(context, sender, kind, tx_args).await
+                let result = execute_tx(context, sender, kind, tx_args).await?;
+                Ok(ModelCommandResponse::UpdateCommitSuccess {
+                    model_id,
+                    inner: Box::new(result),
+                    next_epoch_hint,
+                })
             }
 
             ModelCommand::UpdateReveal {
@@ -632,9 +658,23 @@ fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
 #[serde(untagged)]
 pub enum ModelCommandResponse {
     Transaction(TransactionResponse),
-    CommitSuccess { model_id: ObjectID, inner: Box<ModelCommandResponse> },
-    RevealSuccess { model_id: ObjectID, inner: Box<ModelCommandResponse> },
-    SerializedTransaction { serialized_transaction: String },
+    CommitSuccess {
+        model_id: ObjectID,
+        inner: Box<ModelCommandResponse>,
+        next_epoch_hint: Option<String>,
+    },
+    RevealSuccess {
+        model_id: ObjectID,
+        inner: Box<ModelCommandResponse>,
+    },
+    UpdateCommitSuccess {
+        model_id: ObjectID,
+        inner: Box<ModelCommandResponse>,
+        next_epoch_hint: Option<String>,
+    },
+    SerializedTransaction {
+        serialized_transaction: String,
+    },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
     Info(ModelInfoOutput),
@@ -667,10 +707,13 @@ impl Display for ModelCommandResponse {
             ModelCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            ModelCommandResponse::CommitSuccess { model_id, inner } => {
+            ModelCommandResponse::CommitSuccess { model_id, inner, next_epoch_hint } => {
                 write!(f, "{}", inner)?;
                 writeln!(f)?;
                 writeln!(f, "  {}", "Next step: Reveal your model weights.".cyan().bold())?;
+                if let Some(hint) = next_epoch_hint {
+                    writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
+                }
                 writeln!(f)?;
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
                 writeln!(f, "  {} {} \\", "soma model reveal".bold(), model_id)?;
@@ -689,6 +732,22 @@ impl Display for ModelCommandResponse {
                     "Your model is now registered and accepting stakes.".green().bold()
                 )?;
                 writeln!(f, "  View it: {} {}", "soma model info".bold(), model_id)?;
+                Ok(())
+            }
+            ModelCommandResponse::UpdateCommitSuccess { model_id, inner, next_epoch_hint } => {
+                write!(f, "{}", inner)?;
+                writeln!(f)?;
+                writeln!(f, "  {}", "Next step: Reveal the model update.".cyan().bold())?;
+                if let Some(hint) = next_epoch_hint {
+                    writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
+                }
+                writeln!(f)?;
+                writeln!(f, "  In the {} epoch, run:", "next".bold())?;
+                writeln!(f, "  {} {} \\", "soma model update-reveal".bold(), model_id)?;
+                writeln!(f, "    --weights-url <url> \\")?;
+                writeln!(f, "    --weights-file <path> \\")?;
+                writeln!(f, "    --decryption-key <hex> \\")?;
+                writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())
             }
             ModelCommandResponse::SerializedTransaction { serialized_transaction } => {

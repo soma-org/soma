@@ -1086,6 +1086,13 @@ pub struct StatusOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub epoch: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub epoch_start_timestamp_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub epoch_duration_ms: Option<u64>,
+    /// Human-readable countdown to next epoch (display only, not stable for parsing)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_epoch_in: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub active_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub balance: Option<u64>,
@@ -1105,6 +1112,9 @@ impl Display for StatusOutput {
         }
         if let Some(e) = self.epoch {
             builder.push_record(["Current Epoch", &e.to_string()]);
+        }
+        if let Some(hint) = &self.next_epoch_in {
+            builder.push_record(["Next Epoch", hint]);
         }
         if let Some(ref addr) = self.active_address {
             builder.push_record(["Active Address", addr]);
@@ -1570,6 +1580,43 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 // =============================================================================
+// EPOCH TIMING HELPERS
+// =============================================================================
+
+/// Compute the estimated time remaining (in ms) until the next epoch boundary.
+/// Returns `None` if the epoch end is already in the past or on overflow.
+pub fn epoch_time_remaining_ms(epoch_start_ms: u64, epoch_duration_ms: u64) -> Option<u64> {
+    let now_ms =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
+    let next_epoch_ms = epoch_start_ms.checked_add(epoch_duration_ms)?;
+    next_epoch_ms.checked_sub(now_ms)
+}
+
+/// Format a duration in milliseconds as a human-readable approximate string.
+pub fn format_duration_approx(ms: u64) -> String {
+    let total_secs = ms / 1000;
+    let hours = total_secs / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+    if hours > 0 {
+        format!("~{}h {}m", hours, mins)
+    } else if mins > 0 {
+        format!("~{}m {}s", mins, secs)
+    } else if secs > 0 {
+        format!("~{}s", secs)
+    } else {
+        "< 1s".to_string()
+    }
+}
+
+/// Format a "next epoch in ..." hint string from system state timing fields.
+/// Returns `None` if timing data indicates the epoch has already passed.
+pub fn format_next_epoch_hint(epoch_start_ms: u64, epoch_duration_ms: u64) -> Option<String> {
+    let remaining = epoch_time_remaining_ms(epoch_start_ms, epoch_duration_ms)?;
+    Some(format!("Next epoch in {}", format_duration_approx(remaining)))
+}
+
+// =============================================================================
 // TESTS
 // =============================================================================
 
@@ -1690,5 +1737,53 @@ mod tests {
         let json = serde_json::to_string_pretty(&output).unwrap();
         assert!(json.contains("\"voting_power\""), "JSON should have voting_power field: {json}");
         assert!(json.contains("\"validators\""), "JSON should have validators array: {json}");
+    }
+
+    #[test]
+    fn test_format_duration_approx() {
+        assert_eq!(format_duration_approx(0), "< 1s");
+        assert_eq!(format_duration_approx(500), "< 1s");
+        assert_eq!(format_duration_approx(5_000), "~5s");
+        assert_eq!(format_duration_approx(30_000), "~30s");
+        assert_eq!(format_duration_approx(90_000), "~1m 30s");
+        assert_eq!(format_duration_approx(300_000), "~5m 0s");
+        assert_eq!(format_duration_approx(3_600_000), "~1h 0m");
+        assert_eq!(format_duration_approx(8_100_000), "~2h 15m");
+        assert_eq!(format_duration_approx(172_800_000), "~48h 0m");
+    }
+
+    #[test]
+    fn test_epoch_time_remaining_ms_future() {
+        let now_ms =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+                as u64;
+        // Epoch started 1 minute ago, lasts 10 minutes => ~9 minutes remaining
+        let start = now_ms - 60_000;
+        let duration = 600_000;
+        let remaining = epoch_time_remaining_ms(start, duration).unwrap();
+        // Should be approximately 540_000 ms (9 minutes), allow some tolerance
+        assert!(remaining > 530_000 && remaining < 550_000, "remaining={remaining}");
+    }
+
+    #[test]
+    fn test_epoch_time_remaining_ms_past() {
+        let now_ms =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+                as u64;
+        // Epoch started 20 minutes ago, lasted 10 minutes => already ended
+        let start = now_ms - 1_200_000;
+        let duration = 600_000;
+        assert!(epoch_time_remaining_ms(start, duration).is_none());
+    }
+
+    #[test]
+    fn test_format_next_epoch_hint() {
+        let now_ms =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+                as u64;
+        let start = now_ms - 60_000; // started 1 min ago
+        let duration = 600_000; // 10 min epochs
+        let hint = format_next_epoch_hint(start, duration).unwrap();
+        assert!(hint.starts_with("Next epoch in ~"), "hint={hint}");
     }
 }
