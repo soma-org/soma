@@ -525,7 +525,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 
 [[package]]
 name = "authority"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -834,7 +834,7 @@ checksum = "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1"
 
 [[package]]
 name = "bin-version"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "const-str 0.6.4",
  "git-version",
@@ -1851,7 +1851,7 @@ checksum = "c3e64b0cc0439b12df2fa678eae89a1c56a529fd067a9115f7827f1fffd22b32"
 
 [[package]]
 name = "cli"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "admin",
  "anyhow",
@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "data-ingestion"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3199,7 +3199,7 @@ checksum = "e1d926b4d407d372f141f93bb444696142c29d32962ccbd3531117cf3aa0bfa9"
 
 [[package]]
 name = "e2e-tests"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5756,7 +5756,7 @@ checksum = "df270209a7f04d62459240d890ecb792714d5db12c92937823574a09930276b4"
 
 [[package]]
 name = "node"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -6700,7 +6700,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-config"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "bcs",
  "burn",
@@ -6716,7 +6716,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-config-macros"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7580,7 +7580,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -7593,7 +7593,7 @@ dependencies = [
  "bytes",
  "fastcrypto",
  "futures",
- "heck 0.5.0",
+ "heck 0.4.1",
  "http",
  "itertools 0.13.0",
  "prettyplease",
@@ -8018,7 +8018,7 @@ dependencies = [
 
 [[package]]
 name = "sdk"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "admin",
  "aes",
@@ -8549,7 +8549,7 @@ dependencies = [
 
 [[package]]
 name = "soma-keys"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8570,7 +8570,7 @@ dependencies = [
 
 [[package]]
 name = "soma-sdk"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "bcs",
  "futures",
@@ -8679,7 +8679,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "store"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "backoff",
  "bcs",
@@ -8701,7 +8701,7 @@ dependencies = [
 
 [[package]]
 name = "store-derive"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
@@ -8800,7 +8800,7 @@ dependencies = [
 
 [[package]]
 name = "sync"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9024,7 +9024,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test-cluster"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bytes",
@@ -9888,7 +9888,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "types"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "arrgen",
@@ -10110,7 +10110,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "bcs",
  "bytes",
