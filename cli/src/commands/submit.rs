@@ -18,6 +18,8 @@ use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
 use types::transaction::{SubmitDataArgs, TransactionKind};
 
+use types::system_state::SystemStateTrait as _;
+
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;
 
@@ -83,6 +85,28 @@ impl SubmitCommand {
         // Auto-fetch bond coin
         let bond_coin_ref = super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
 
+        // Pre-fetch epoch timing (non-fatal, before transaction)
+        let (next_epoch_hint, claim_epoch_hint) = match context.get_client().await {
+            Ok(client) => match client.get_latest_system_state().await {
+                Ok(s) => {
+                    let start = s.epoch_start_timestamp_ms();
+                    let dur = s.epoch_duration_ms();
+                    let next = crate::response::format_next_epoch_hint(start, dur);
+                    let claim =
+                        crate::response::epoch_time_remaining_ms(start, dur).map(|remaining| {
+                            let total = remaining.saturating_add(dur);
+                            format!(
+                                "Claiming available in {}",
+                                crate::response::format_duration_approx(total)
+                            )
+                        });
+                    (next, claim)
+                }
+                Err(_) => (None, None),
+            },
+            Err(_) => (None, None),
+        };
+
         let kind = TransactionKind::SubmitData(SubmitDataArgs {
             target_id: self.target_id,
             data_commitment: DataCommitment::new(commitment_bytes),
@@ -93,7 +117,15 @@ impl SubmitCommand {
             bond_coin: bond_coin_ref,
         });
 
-        execute_tx(context, sender, kind, self.tx_args).await
+        let result = execute_tx(context, sender, kind, self.tx_args).await?;
+        match result {
+            SubmitCommandResponse::Transaction(tx) => Ok(SubmitCommandResponse::SubmitSuccess {
+                transaction: tx,
+                next_epoch_hint,
+                claim_epoch_hint,
+            }),
+            other => Ok(other),
+        }
     }
 }
 
@@ -151,8 +183,18 @@ async fn execute_tx(
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum SubmitCommandResponse {
+    SubmitSuccess {
+        #[serde(flatten)]
+        transaction: TransactionResponse,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        next_epoch_hint: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        claim_epoch_hint: Option<String>,
+    },
     Transaction(TransactionResponse),
-    SerializedTransaction { serialized_transaction: String },
+    SerializedTransaction {
+        serialized_transaction: String,
+    },
     TransactionDigest(types::digests::TransactionDigest),
     Simulation(crate::response::SimulationResponse),
 }
@@ -160,6 +202,27 @@ pub enum SubmitCommandResponse {
 impl Display for SubmitCommandResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            SubmitCommandResponse::SubmitSuccess {
+                transaction,
+                next_epoch_hint,
+                claim_epoch_hint,
+            } => {
+                write!(f, "{}", transaction)?;
+                writeln!(f)?;
+                writeln!(f, "  {}", "Submission accepted.".green().bold())?;
+                if let Some(hint) = next_epoch_hint {
+                    writeln!(
+                        f,
+                        "  {} Challenge window closes at epoch boundary ({})",
+                        ">>".dimmed(),
+                        hint.yellow()
+                    )?;
+                }
+                if let Some(hint) = claim_epoch_hint {
+                    writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
+                }
+                Ok(())
+            }
             SubmitCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }

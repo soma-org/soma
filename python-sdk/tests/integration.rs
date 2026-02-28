@@ -421,6 +421,45 @@ asyncio.run(_test())
     .await;
 }
 
+/// Test epoch timestamp convenience methods.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_epoch_timestamps() {
+    init_python();
+    let cluster = TestClusterBuilder::new().build().await;
+    let rpc_url = cluster.fullnode_handle.rpc_url.clone();
+
+    run_python(format!(
+        r#"
+import asyncio, time
+from soma_sdk import SomaClient
+
+async def _test():
+    client = await SomaClient("{rpc_url}")
+
+    next_ts = await client.get_next_epoch_timestamp()
+    following_ts = await client.get_following_epoch_timestamp()
+
+    now_ms = int(time.time() * 1000)
+
+    assert isinstance(next_ts, int), f"next_ts should be int, got {{type(next_ts).__name__}}"
+    assert isinstance(following_ts, int), f"following_ts should be int, got {{type(following_ts).__name__}}"
+
+    # following must be strictly after next
+    assert following_ts > next_ts, \
+        f"following ({{following_ts}}) should be > next ({{next_ts}})"
+
+    # Verify the gap equals epoch_duration_ms
+    state = await client.get_latest_system_state()
+    epoch_dur = state.parameters.epoch_duration_ms
+    assert following_ts - next_ts == epoch_dur, \
+        f"gap ({{following_ts - next_ts}}) should equal epoch_duration_ms ({{epoch_dur}})"
+
+asyncio.run(_test())
+"#
+    ))
+    .await;
+}
+
 /// Test checkpoint queries.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_checkpoints() {

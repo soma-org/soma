@@ -17,6 +17,8 @@ use types::object::ObjectID;
 use types::target::TargetId;
 use types::transaction::{InitiateChallengeArgs, TransactionKind};
 
+use types::system_state::SystemStateTrait as _;
+
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;
 
@@ -81,13 +83,31 @@ impl ChallengeCommand {
                 let bond_coin_ref =
                     super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
 
+                // Pre-fetch epoch timing (non-fatal, before transaction)
+                let resolution_hint = match context.get_client().await {
+                    Ok(client) => client
+                        .get_latest_system_state()
+                        .await
+                        .ok()
+                        .and_then(|s| {
+                            crate::response::format_next_epoch_hint(
+                                s.epoch_start_timestamp_ms(),
+                                s.epoch_duration_ms(),
+                            )
+                        })
+                        .map(|h| {
+                            format!("Challenge resolves at epoch boundary ({h})")
+                        }),
+                    Err(_) => None,
+                };
+
                 // ChallengeId is derived from tx_digest during execution, not client-provided
                 let kind = TransactionKind::InitiateChallenge(InitiateChallengeArgs {
                     target_id,
                     bond_coin: bond_coin_ref,
                 });
 
-                execute_tx(context, sender, kind, tx_args).await
+                execute_tx(context, sender, kind, tx_args, resolution_hint).await
             }
 
             ChallengeCommand::Info { challenge_id } => {
@@ -133,6 +153,7 @@ async fn execute_tx(
     sender: SomaAddress,
     kind: TransactionKind,
     tx_args: TxProcessingArgs,
+    resolution_hint: Option<String>,
 ) -> Result<ChallengeCommandResponse> {
     let result =
         crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
@@ -150,6 +171,7 @@ async fn execute_tx(
             Ok(ChallengeCommandResponse::Initiated(ChallengeInitiatedOutput {
                 challenge_id,
                 transaction: tx,
+                resolution_hint,
             }))
         }
         crate::response::ClientCommandResponse::SerializedUnsignedTransaction(s) => {
@@ -198,6 +220,8 @@ pub enum ChallengeCommandResponse {
 pub struct ChallengeInitiatedOutput {
     pub challenge_id: ChallengeId,
     pub transaction: TransactionResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution_hint: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -259,6 +283,9 @@ impl Display for ChallengeInitiatedOutput {
         writeln!(f, "{}", "Challenge Initiated".green().bold())?;
         writeln!(f)?;
         writeln!(f, "{}: {}", "Challenge ID".bold(), self.challenge_id)?;
+        if let Some(hint) = &self.resolution_hint {
+            writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
+        }
         writeln!(f)?;
         write!(f, "{}", self.transaction)
     }

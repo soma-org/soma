@@ -1036,6 +1036,32 @@ impl PySomaClient {
         })
     }
 
+    /// Get the estimated UNIX timestamp (ms) when the next epoch starts.
+    ///
+    /// Computed as: epoch_start_timestamp_ms + epoch_duration_ms
+    fn get_next_epoch_timestamp<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        use types::system_state::SystemStateTrait as _;
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            Ok(state.epoch_start_timestamp_ms() + state.epoch_duration_ms())
+        })
+    }
+
+    /// Get the estimated UNIX timestamp (ms) when the epoch after next starts.
+    ///
+    /// Computed as: epoch_start_timestamp_ms + 2 * epoch_duration_ms.
+    /// Useful for scheduling actions that require two epoch boundaries
+    /// (e.g., claiming rewards after submitting data).
+    fn get_following_epoch_timestamp<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        use types::system_state::SystemStateTrait as _;
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            Ok(state.epoch_start_timestamp_ms() + 2 * state.epoch_duration_ms())
+        })
+    }
+
     // -------------------------------------------------------------------
     // Admin gRPC methods (delegated to sdk::SomaClient)
     // -------------------------------------------------------------------

@@ -844,24 +844,45 @@ impl SomaCommand {
                 let rpc_url =
                     context.config.get_active_env().map(|e| e.rpc.clone()).unwrap_or_default();
 
-                let (server_version, chain_id, epoch, balance, server_unreachable) =
-                    match context.get_client().await {
-                        Ok(client) => {
-                            let chain_id = client.get_chain_identifier().await.ok();
-                            let server_version = client.get_server_version().await.ok();
-                            let epoch =
-                                client.get_latest_system_state().await.ok().map(|s| s.epoch());
-                            let balance = if let Some(addr) = &active_address {
-                                client.get_balance(addr).await.ok()
-                            } else {
-                                None
-                            };
-                            let unreachable =
-                                server_version.is_none() && chain_id.is_none() && epoch.is_none();
-                            (server_version, chain_id, epoch, balance, unreachable)
-                        }
-                        Err(_) => (None, None, None, None, true),
-                    };
+                let (
+                    server_version,
+                    chain_id,
+                    epoch,
+                    epoch_start_timestamp_ms,
+                    epoch_duration_ms,
+                    balance,
+                    server_unreachable,
+                ) = match context.get_client().await {
+                    Ok(client) => {
+                        let chain_id = client.get_chain_identifier().await.ok();
+                        let server_version = client.get_server_version().await.ok();
+                        let state = client.get_latest_system_state().await.ok();
+                        let epoch = state.as_ref().map(|s| s.epoch());
+                        let epoch_start_ms = state.as_ref().map(|s| s.epoch_start_timestamp_ms());
+                        let epoch_dur_ms = state.as_ref().map(|s| s.epoch_duration_ms());
+                        let balance = if let Some(addr) = &active_address {
+                            client.get_balance(addr).await.ok()
+                        } else {
+                            None
+                        };
+                        let unreachable =
+                            server_version.is_none() && chain_id.is_none() && epoch.is_none();
+                        (
+                            server_version,
+                            chain_id,
+                            epoch,
+                            epoch_start_ms,
+                            epoch_dur_ms,
+                            balance,
+                            unreachable,
+                        )
+                    }
+                    Err(_) => (None, None, None, None, None, None, true),
+                };
+
+                let next_epoch_in = epoch_start_timestamp_ms
+                    .zip(epoch_duration_ms)
+                    .and_then(|(s, d)| crate::response::format_next_epoch_hint(s, d));
 
                 let output = crate::response::StatusOutput {
                     network: active_env,
@@ -869,6 +890,9 @@ impl SomaCommand {
                     server_version,
                     chain_id,
                     epoch,
+                    epoch_start_timestamp_ms,
+                    epoch_duration_ms,
+                    next_epoch_in,
                     active_address: active_address.map(|a| a.to_string()),
                     balance,
                     server_reachable: !server_unreachable,
