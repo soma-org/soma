@@ -16,7 +16,7 @@
   <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?logo=discord&label=Discord" alt="Discord"></a>
 </p>
 
-<p align="center"><b>Open-source Superintelligence.</b></p>
+<p align="center"><b>Open Collective Superintelligence.</b></p>
 
 <p align="center">
   <a href="https://docs.soma.org/getting-started/install">Getting Started</a> &middot;
