@@ -11,8 +11,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor};
-use crate::execution::BPS_DENOMINATOR;
+use super::{bps_mul, checked_add, checked_sub, checked_sum, FeeCalculator, TransactionExecutor};
 
 /// Executor for coin-related transactions
 pub struct CoinExecutor;
@@ -58,15 +57,15 @@ impl CoinExecutor {
                     let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee needed
-                    let total_fee = value_fee + write_fee;
+                    let total_fee = checked_add(value_fee, write_fee)?;
 
                     // Check sufficient balance for both the transfer and the fee
-                    if source_balance < specific_amount + total_fee {
+                    if source_balance < checked_add(specific_amount, total_fee)? {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
                     // Calculate remaining balance after transfer and fees
-                    let remaining_balance = source_balance - specific_amount;
+                    let remaining_balance = checked_sub(source_balance, specific_amount)?;
 
                     // Create new coin for recipient
                     let new_coin = Object::new_coin(
@@ -89,7 +88,7 @@ impl CoinExecutor {
                     }
 
                     // Calculate remaining balance after transfer
-                    let remaining_balance = source_balance - specific_amount;
+                    let remaining_balance = checked_sub(source_balance, specific_amount)?;
 
                     // If transferring the entire balance, just change ownership
                     if specific_amount == source_balance {
@@ -127,7 +126,7 @@ impl CoinExecutor {
                     let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total fee is value_fee + write_fee (base fee already deducted)
-                    let remaining_fee = write_fee + value_fee;
+                    let remaining_fee = checked_add(write_fee, value_fee)?;
 
                     // Ensure there's enough balance after previous fee deduction
                     if source_balance <= remaining_fee {
@@ -135,7 +134,7 @@ impl CoinExecutor {
                     }
 
                     // Calculate amount to transfer (total - remaining fee)
-                    let transfer_amount = source_balance - remaining_fee;
+                    let transfer_amount = checked_sub(source_balance, remaining_fee)?;
 
                     // Create new coin for recipient with (balance - fee)
                     let new_coin = Object::new_coin(
@@ -235,12 +234,12 @@ impl CoinExecutor {
                         gas_coin_data = Some((coin_id, balance));
                     }
 
-                    total_available += balance;
+                    total_available = checked_add(total_available, balance)?;
                     available_coins.push((coin_id, balance));
                 }
 
                 // Calculate total needed
-                let total_payments: u64 = specific_amounts.iter().sum();
+                let total_payments: u64 = checked_sum(specific_amounts.iter().copied())?;
 
                 // Calculate estimated remaining fees (base fee already deducted)
 
@@ -248,10 +247,10 @@ impl CoinExecutor {
                 let write_fee = self.calculate_operation_fee(store, 1 + recipients.len() as u64);
 
                 // Total remaining fee
-                let remaining_fee = value_fee + write_fee;
+                let remaining_fee = checked_add(value_fee, write_fee)?;
 
                 // Check sufficient balance for payments + fees
-                if total_available < total_payments + remaining_fee {
+                if total_available < checked_add(total_payments, remaining_fee)? {
                     return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                 }
 
@@ -267,7 +266,7 @@ impl CoinExecutor {
                 }
 
                 // STEP 3: Update primary coin
-                let remaining_balance = total_available - total_payments;
+                let remaining_balance = checked_sub(total_available, total_payments)?;
 
                 // Distribute the remaining balance, prioritizing the gas coin
                 if let Some((gas_id, _)) = gas_coin_data {
@@ -325,7 +324,7 @@ impl CoinExecutor {
                     let gas_coin = store.read_object(&gas_id).unwrap();
                     check_ownership(&gas_coin, signer)?;
                     let gas_balance = verify_coin(&gas_coin)?;
-                    total_available += gas_balance;
+                    total_available = checked_add(total_available, gas_balance)?;
 
                     // Process other coins
                     let mut other_coins = Vec::new();
@@ -334,7 +333,7 @@ impl CoinExecutor {
                             let coin_obj = store.read_object(&coin_ref.0).unwrap();
                             check_ownership(&coin_obj, signer)?;
                             let balance = verify_coin(&coin_obj)?;
-                            total_available += balance;
+                            total_available = checked_add(total_available, balance)?;
                             other_coins.push((coin_ref.0, balance));
                         }
                     }
@@ -345,7 +344,7 @@ impl CoinExecutor {
                     let write_fee = self.calculate_operation_fee(store, 2);
 
                     // Total remaining fee (base fee already deducted)
-                    let remaining_fee = value_fee + write_fee;
+                    let remaining_fee = checked_add(value_fee, write_fee)?;
 
                     // Ensure there's enough balance to pay the fee
                     if total_available <= remaining_fee {
@@ -353,7 +352,7 @@ impl CoinExecutor {
                     }
 
                     // Calculate amount to transfer (total - fee)
-                    let transfer_amount = total_available - remaining_fee;
+                    let transfer_amount = checked_sub(total_available, remaining_fee)?;
 
                     // Create new coin for recipient with (total balance - fee)
                     let new_coin = Object::new_coin(
@@ -425,7 +424,7 @@ impl CoinExecutor {
 
                             // Verify it's a coin and add balance
                             let balance = verify_coin(&coin_object)?;
-                            total_balance += balance;
+                            total_balance = checked_add(total_balance, balance)?;
 
                             // Delete this coin (we'll merge into the first)
                             store.delete_input_object(&coin_id);
@@ -483,7 +482,7 @@ impl FeeCalculator for CoinExecutor {
                     return 0;
                 }
 
-                (transfer_amount * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(transfer_amount, value_fee_bps)
             }
 
             TransactionKind::PayCoins { coins, amounts, .. } => {
@@ -502,7 +501,7 @@ impl FeeCalculator for CoinExecutor {
                     return 0;
                 }
 
-                (total_amount * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(total_amount, value_fee_bps)
             }
 
             _ => 0,

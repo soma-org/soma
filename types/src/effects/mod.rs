@@ -851,6 +851,10 @@ pub enum ExecutionFailureStatus {
     #[error("The coin balance overflows u64")]
     CoinBalanceOverflow,
 
+    /// An arithmetic operation overflowed or underflowed
+    #[error("Arithmetic overflow in execution")]
+    ArithmeticOverflow,
+
     //
     // Validator / Staking errors
     //

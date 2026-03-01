@@ -43,6 +43,37 @@ mod validator;
 /// Basis points for percentage calculations (10000 = 100%)
 pub(crate) const BPS_DENOMINATOR: u64 = 10000;
 
+// ---------------------------------------------------------------------------
+// Checked arithmetic helpers – every arithmetic operation in execution flows
+// through these to guarantee no silent overflow/underflow.
+// ---------------------------------------------------------------------------
+
+/// Safe BPS calculation using u128 intermediates to prevent overflow.
+/// Returns `(amount * bps) / BPS_DENOMINATOR`.
+pub(crate) fn bps_mul(amount: u64, bps: u64) -> u64 {
+    ((amount as u128) * (bps as u128) / (BPS_DENOMINATOR as u128)) as u64
+}
+
+/// Checked addition returning `ArithmeticOverflow` on overflow.
+pub(crate) fn checked_add(a: u64, b: u64) -> Result<u64, ExecutionFailureStatus> {
+    a.checked_add(b).ok_or(ExecutionFailureStatus::ArithmeticOverflow)
+}
+
+/// Checked subtraction returning `ArithmeticOverflow` on underflow.
+pub(crate) fn checked_sub(a: u64, b: u64) -> Result<u64, ExecutionFailureStatus> {
+    a.checked_sub(b).ok_or(ExecutionFailureStatus::ArithmeticOverflow)
+}
+
+/// Checked multiplication returning `ArithmeticOverflow` on overflow.
+pub(crate) fn checked_mul(a: u64, b: u64) -> Result<u64, ExecutionFailureStatus> {
+    a.checked_mul(b).ok_or(ExecutionFailureStatus::ArithmeticOverflow)
+}
+
+/// Checked sum of an iterator of u64 values.
+pub(crate) fn checked_sum<I: Iterator<Item = u64>>(mut iter: I) -> Result<u64, ExecutionFailureStatus> {
+    iter.try_fold(0u64, |acc, x| checked_add(acc, x))
+}
+
 /// Core trait for all transaction executors
 trait TransactionExecutor: FeeCalculator {
     fn execute(
@@ -75,7 +106,7 @@ pub trait FeeCalculator {
 
     /// Calculate operation fee for a given number of objects
     fn calculate_operation_fee(&self, store: &TemporaryStore, num_objects: u64) -> u64 {
-        num_objects * self.write_fee_per_object(store)
+        num_objects.saturating_mul(self.write_fee_per_object(store))
     }
 }
 

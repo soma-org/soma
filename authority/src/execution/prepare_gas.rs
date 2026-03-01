@@ -182,7 +182,9 @@ fn smash_gas_coins(
             ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
         })?;
 
-        total_balance += balance;
+        total_balance = total_balance
+            .checked_add(balance)
+            .ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
 
         // Delete this gas coin (we'll merge into the first)
         store.delete_input_object(&gas_id);
@@ -216,8 +218,8 @@ pub fn calculate_and_deduct_remaining_fees(
     let value_fee = gas_result.value_fee;
 
     // Calculate operation fee (without recalculating value fee)
-    let operation_fee = temporary_store.execution_results.written_objects.len() as u64
-        * executor.write_fee_per_object(temporary_store);
+    let operation_fee = (temporary_store.execution_results.written_objects.len() as u64)
+        .saturating_mul(executor.write_fee_per_object(temporary_store));
 
     // Get gas object
     let gas_obj = match temporary_store.read_object(&gas_id) {

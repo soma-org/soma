@@ -96,14 +96,14 @@ impl FeeParameters {
         }
     }
 
-    /// Calculate value fee for a given amount
+    /// Calculate value fee for a given amount using u128 intermediates to prevent overflow.
     pub fn calculate_value_fee(&self, amount: u64) -> u64 {
-        (amount * self.value_fee_bps) / BPS_DENOMINATOR
+        ((amount as u128) * (self.value_fee_bps as u128) / (BPS_DENOMINATOR as u128)) as u64
     }
 
     /// Calculate operation fee for N object writes
     pub fn calculate_operation_fee(&self, num_objects: u64) -> u64 {
-        num_objects * self.write_object_fee
+        num_objects.saturating_mul(self.write_object_fee)
     }
 }
 

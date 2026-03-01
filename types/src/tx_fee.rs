@@ -20,7 +20,7 @@ pub struct TransactionFee {
 
 impl TransactionFee {
     pub fn new(base_fee: u64, operation_fee: u64, value_fee: u64) -> Self {
-        let total_fee = base_fee + operation_fee + value_fee;
+        let total_fee = base_fee.saturating_add(operation_fee).saturating_add(value_fee);
 
         Self { base_fee, operation_fee, value_fee, total_fee }
     }

@@ -12,8 +12,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor};
-use crate::execution::BPS_DENOMINATOR;
+use super::{FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub};
 
 pub struct StakingExecutor;
 
@@ -74,10 +73,10 @@ impl StakingExecutor {
                     let write_fee = self.calculate_operation_fee(store, 3);
 
                     // Total fee needed
-                    let total_fee = value_fee + write_fee;
+                    let total_fee = checked_add(value_fee, write_fee)?;
 
                     // Check sufficient balance for both staking and the fee
-                    if source_balance < stake_amount + total_fee {
+                    if source_balance < checked_add(stake_amount, total_fee)? {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
@@ -94,7 +93,7 @@ impl StakingExecutor {
                     store.create_object(staked_soma_object);
 
                     // Calculate remaining balance after staking and fees
-                    let remaining_balance = source_balance - stake_amount;
+                    let remaining_balance = checked_sub(source_balance, stake_amount)?;
 
                     // Update source coin with remaining balance
                     let mut updated_source = source_object.clone();
@@ -124,7 +123,7 @@ impl StakingExecutor {
                         store.delete_input_object(&coin_id);
                     } else {
                         // Otherwise update coin with remaining balance
-                        let remaining_balance = source_balance - stake_amount;
+                        let remaining_balance = checked_sub(source_balance, stake_amount)?;
                         let mut updated_source = source_object.clone();
                         updated_source.update_coin_balance(remaining_balance);
                         store.mutate_input_object(updated_source);
@@ -142,7 +141,7 @@ impl StakingExecutor {
                     let write_fee = self.calculate_operation_fee(store, 3);
 
                     // Total fee needed
-                    let total_fee = value_fee + write_fee;
+                    let total_fee = checked_add(value_fee, write_fee)?;
 
                     // Check sufficient balance
                     if source_balance <= total_fee {
@@ -150,7 +149,7 @@ impl StakingExecutor {
                     }
 
                     // Calculate amount to stake (total - fee)
-                    stake_amount = source_balance - total_fee;
+                    stake_amount = checked_sub(source_balance, total_fee)?;
 
                     // Request to add stake
                     let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
@@ -318,14 +317,14 @@ impl FeeCalculator for StakingExecutor {
                     return 0;
                 }
 
-                (stake_amount * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(stake_amount, value_fee_bps)
             }
 
             TransactionKind::WithdrawStake { staked_soma } => {
                 if let Some(staked_obj) = store.read_object(&staked_soma.0) {
                     if let Some(staked_soma_data) = Object::as_staked_soma(&staked_obj) {
                         let principal = staked_soma_data.principal;
-                        return (principal * value_fee_bps) / BPS_DENOMINATOR;
+                        return bps_mul(principal, value_fee_bps);
                     }
                 }
                 // Fallback to base fee if we can't read the object

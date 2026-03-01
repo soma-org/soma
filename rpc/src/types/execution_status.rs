@@ -82,6 +82,9 @@ pub enum ExecutionError {
     InsufficientCoinBalance,
     CoinBalanceOverflow,
 
+    // Arithmetic errors
+    ArithmeticOverflow,
+
     // Staking errors
     ValidatorNotFound,
     StakingPoolNotFound,

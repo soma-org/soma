@@ -12,8 +12,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor};
-use crate::execution::BPS_DENOMINATOR;
+use super::{BPS_DENOMINATOR, FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub};
 
 pub struct ModelExecutor;
 
@@ -109,9 +108,9 @@ impl ModelExecutor {
         // Estimate remaining fees the pipeline will deduct after execution:
         // StakedSoma (created) + gas coin (mutated) + SystemState (mutated) = 3 written objects
         let write_fee = self.calculate_operation_fee(store, 3);
-        let total_fee = value_fee + write_fee;
+        let total_fee = checked_add(value_fee, write_fee)?;
 
-        if gas_balance < args.stake_amount + total_fee {
+        if gas_balance < checked_add(args.stake_amount, total_fee)? {
             return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
         }
 
@@ -143,7 +142,7 @@ impl ModelExecutor {
         store.create_object(staked_soma_object);
 
         // Deduct stake_amount from gas coin balance
-        let remaining_balance = gas_balance - args.stake_amount;
+        let remaining_balance = checked_sub(gas_balance, args.stake_amount)?;
         let mut updated_gas = gas_object;
         updated_gas.update_coin_balance(remaining_balance);
         store.mutate_input_object(updated_gas);
@@ -249,9 +248,9 @@ impl ModelExecutor {
             Some(stake_amount) => {
                 if is_gas_coin {
                     let write_fee = self.calculate_operation_fee(store, 2);
-                    let total_fee = value_fee + write_fee;
+                    let total_fee = checked_add(value_fee, write_fee)?;
 
-                    if source_balance < stake_amount + total_fee {
+                    if source_balance < checked_add(stake_amount, total_fee)? {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
@@ -265,7 +264,7 @@ impl ModelExecutor {
                     );
                     store.create_object(staked_soma_object);
 
-                    let remaining_balance = source_balance - stake_amount;
+                    let remaining_balance = checked_sub(source_balance, stake_amount)?;
                     let mut updated_source = source_object.clone();
                     updated_source.update_coin_balance(remaining_balance);
                     store.mutate_input_object(updated_source);
@@ -287,7 +286,7 @@ impl ModelExecutor {
                     if stake_amount == source_balance {
                         store.delete_input_object(&coin_id);
                     } else {
-                        let remaining_balance = source_balance - stake_amount;
+                        let remaining_balance = checked_sub(source_balance, stake_amount)?;
                         let mut updated_source = source_object.clone();
                         updated_source.update_coin_balance(remaining_balance);
                         store.mutate_input_object(updated_source);
@@ -299,13 +298,13 @@ impl ModelExecutor {
 
                 if is_gas_coin {
                     let write_fee = self.calculate_operation_fee(store, 1);
-                    let total_fee = value_fee + write_fee;
+                    let total_fee = checked_add(value_fee, write_fee)?;
 
                     if source_balance <= total_fee {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
-                    stake_amount = source_balance - total_fee;
+                    stake_amount = checked_sub(source_balance, total_fee)?;
 
                     let staked_soma = state.request_add_stake_to_model(&model_id, stake_amount)?;
 
@@ -448,7 +447,7 @@ impl FeeCalculator for ModelExecutor {
                 if args.stake_amount == 0 {
                     return 0;
                 }
-                (args.stake_amount * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(args.stake_amount, value_fee_bps)
             }
             TransactionKind::AddStakeToModel { coin_ref, amount, .. } => {
                 let stake_amount = if let Some(specific_amount) = amount {
@@ -461,7 +460,7 @@ impl FeeCalculator for ModelExecutor {
                     return 0;
                 }
 
-                (stake_amount * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(stake_amount, value_fee_bps)
             }
             // Other model transactions have no value fee
             _ => 0,

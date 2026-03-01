@@ -22,8 +22,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor};
-use crate::execution::BPS_DENOMINATOR;
+use super::{FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_mul, checked_sub};
 
 pub struct SubmissionExecutor;
 
@@ -194,7 +193,7 @@ impl SubmissionExecutor {
 
         // 7. Calculate required bond from protocol config and validate
         let bond_per_byte = state.parameters().submission_bond_per_byte;
-        let required_bond = data_size * bond_per_byte;
+        let required_bond = checked_mul(data_size, bond_per_byte)?;
 
         // 8. Get and validate bond coin
         let bond_coin_id = args.bond_coin.0;
@@ -225,7 +224,7 @@ impl SubmissionExecutor {
             store.delete_input_object(&bond_coin_id);
         } else {
             // More than needed or is gas coin - update balance
-            let remaining = bond_balance - required_bond;
+            let remaining = checked_sub(bond_balance, required_bond)?;
             let mut updated_bond = bond_object.clone();
             updated_bond.update_coin_balance(remaining);
             store.mutate_input_object(updated_bond);
@@ -264,7 +263,7 @@ impl SubmissionExecutor {
             && state.emission_pool().balance >= reward_per_target
         {
             // Deduct reward from emission pool for the new target
-            state.emission_pool_mut().balance -= reward_per_target;
+            state.emission_pool_mut().balance = checked_sub(state.emission_pool().balance, reward_per_target)?;
 
             let seed_creation_num = store.next_creation_num();
             let seed = make_target_seed(&tx_digest, seed_creation_num);
@@ -420,11 +419,11 @@ impl SubmissionExecutor {
             Self::distribute_bond_to_validators(store, bond, &reporters, tx_digest);
 
             // Reward → emission pool (forfeited)
-            state.emission_pool_mut().balance += reward;
+            state.emission_pool_mut().balance = checked_add(state.emission_pool().balance, reward)?;
 
             // Pay claimer incentive for triggering the cleanup
             let claimer_share =
-                (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
+                bps_mul(reward, state.parameters().target_claimer_incentive_bps);
             if claimer_share > 0 {
                 let claimer_coin = Object::new_coin(
                     ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -443,12 +442,12 @@ impl SubmissionExecutor {
         if reward > 0 {
             let params = state.parameters();
             let submitter_share =
-                (reward * params.target_submitter_reward_share_bps) / BPS_DENOMINATOR;
-            let model_share = (reward * params.target_model_reward_share_bps) / BPS_DENOMINATOR;
-            let claimer_share = (reward * params.target_claimer_incentive_bps) / BPS_DENOMINATOR;
+                bps_mul(reward, params.target_submitter_reward_share_bps);
+            let model_share = bps_mul(reward, params.target_model_reward_share_bps);
+            let claimer_share = bps_mul(reward, params.target_claimer_incentive_bps);
             // Remainder after rounding goes to submitter (ensures 100% distribution)
-            let remainder = reward - submitter_share - model_share - claimer_share;
-            let submitter_total = submitter_share + remainder;
+            let remainder = checked_sub(checked_sub(checked_sub(reward, submitter_share)?, model_share)?, claimer_share)?;
+            let submitter_total = checked_add(submitter_share, remainder)?;
 
             // Submitter reward (includes any rounding remainder)
             if submitter_total > 0 {
@@ -553,11 +552,11 @@ impl SubmissionExecutor {
         // Return most of the reward pool to emissions, pay claimer incentive
         if reward > 0 {
             let claimer_share =
-                (reward * state.parameters().target_claimer_incentive_bps) / BPS_DENOMINATOR;
-            let return_to_pool = reward - claimer_share;
+                bps_mul(reward, state.parameters().target_claimer_incentive_bps);
+            let return_to_pool = checked_sub(reward, claimer_share)?;
 
             // Return to emission pool
-            state.emission_pool_mut().balance += return_to_pool;
+            state.emission_pool_mut().balance = checked_add(state.emission_pool().balance, return_to_pool)?;
 
             // Pay claimer incentive for cleanup
             if claimer_share > 0 {
@@ -727,7 +726,7 @@ impl FeeCalculator for SubmissionExecutor {
                     return 0;
                 }
 
-                (reward * value_fee_bps) / BPS_DENOMINATOR
+                bps_mul(reward, value_fee_bps)
             }
             // SubmitData has no value fee (bond is separate and refundable)
             _ => 0,

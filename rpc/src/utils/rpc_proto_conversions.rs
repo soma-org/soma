@@ -144,6 +144,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 ExecutionErrorKind::DataExceedsMaxSize,
                 Some(format!("size={}, max_size={}", size, max_size)),
             ),
+            E::ArithmeticOverflow => {
+                (ExecutionErrorKind::OtherError, Some("Arithmetic overflow in execution".into()))
+            }
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
         };
 

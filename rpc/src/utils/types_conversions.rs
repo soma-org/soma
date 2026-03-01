@@ -1374,6 +1374,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::ExecutionCancelledDueToSharedObjectCongestion => {
                 Self::SharedObjectCongestion
             }
+            types::effects::ExecutionFailureStatus::ArithmeticOverflow => {
+                Self::ArithmeticOverflow
+            }
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
             }
@@ -1476,6 +1479,9 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             // Coin errors
             ExecutionError::InsufficientCoinBalance => Self::InsufficientCoinBalance,
             ExecutionError::CoinBalanceOverflow => Self::CoinBalanceOverflow,
+
+            // Arithmetic errors
+            ExecutionError::ArithmeticOverflow => Self::ArithmeticOverflow,
 
             // Staking errors
             ExecutionError::ValidatorNotFound => Self::ValidatorNotFound,

@@ -122,6 +122,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::CertificateDenied => (ExecutionErrorKind::CertificateDenied, None),
             E::SharedObjectCongestion => (ExecutionErrorKind::SharedObjectCongestion, None),
 
+            E::ArithmeticOverflow => (
+                ExecutionErrorKind::OtherError,
+                Some(ErrorDetails::OtherError("Arithmetic overflow in execution".into())),
+            ),
+
             E::OtherError(msg) => {
                 (ExecutionErrorKind::OtherError, Some(ErrorDetails::OtherError(msg)))
             }
