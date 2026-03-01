@@ -305,11 +305,7 @@ impl<S: ObjectStore> ProxyServer<S> {
             .get(model_id)
             .ok_or(ProxyError::ModelNotFound(*model_id))?;
 
-        // Get weights manifest (only available if model is revealed/active)
-        let weights_manifest =
-            model.weights_manifest.as_ref().ok_or(ProxyError::ModelNotFound(*model_id))?;
-
-        Ok(weights_manifest.manifest.clone())
+        Ok(model.manifest.clone())
     }
 
     /// Fetch with singleflight pattern to deduplicate concurrent requests.

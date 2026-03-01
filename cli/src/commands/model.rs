@@ -17,9 +17,9 @@ use tokio::io::AsyncWriteExt;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
-use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest};
+use types::model::{ArchitectureVersion, ModelId, ModelV1};
 use types::object::ObjectID;
 use types::system_state::{SystemState, SystemStateTrait as _};
 use types::tensor::SomaTensor;
@@ -35,17 +35,18 @@ use crate::response::TransactionResponse;
 pub enum ModelCommand {
     /// Commit a new model (phase 1 of commit-reveal)
     ///
-    /// Registers a new model by committing its weight hashes. The model enters
-    /// "pending" state and must be revealed in the next epoch or the stake is slashed.
+    /// Registers a new model by committing its weight hashes and embedding
+    /// commitment. The model enters "pending" state and must be revealed in the
+    /// next epoch or the stake is slashed.
     ///
-    /// Model ID and staking pool ID are auto-generated. Commitments are
-    /// auto-computed from the weights file and URL.
+    /// Model ID and staking pool ID are auto-generated on chain. Commitments
+    /// are auto-computed from the weights file and embedding.
     #[clap(
         name = "commit",
         after_help = "\
 EXAMPLES:
     soma model commit --weights-url https://storage.example.com/weights.bin \\
-        --weights-file ./model.bin --commission-rate 500"
+        --weights-file ./model.bin --embedding 0.1,0.2,0.3 --commission-rate 500"
     )]
     Commit {
         /// Path to the encrypted weights file
@@ -54,6 +55,12 @@ EXAMPLES:
         /// URL where the encrypted weights are (or will be) hosted
         #[clap(long)]
         weights_url: String,
+        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+        #[clap(long)]
+        embedding: String,
+        /// Hex-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
+        #[clap(long)]
+        decryption_key: String,
         /// Model architecture version (auto-fetched from chain if omitted)
         #[clap(long)]
         architecture_version: Option<ArchitectureVersion>,
@@ -69,28 +76,19 @@ EXAMPLES:
 
     /// Reveal model weights (phase 2 of commit-reveal)
     ///
-    /// Must be called in the epoch following the commit. Provides the actual
-    /// weights URL, file, and decryption key. Checksum and size are auto-computed
-    /// from the weights file. The model becomes active.
+    /// Must be called in the epoch following the commit. Provides the
+    /// decryption key and embedding vector. The model becomes active.
     #[clap(
         name = "reveal",
         after_help = "\
 EXAMPLES:
     soma model reveal 0xMODEL_ID \\
-        --weights-url https://storage.example.com/weights.bin \\
-        --weights-file ./model.bin \\
         --decryption-key 0x123...456 \\
         --embedding 0.1,0.2,0.3,0.4"
     )]
     Reveal {
         /// Model ID to reveal
         model_id: ObjectID,
-        /// URL where the encrypted weights are hosted
-        #[clap(long)]
-        weights_url: String,
-        /// Path to the encrypted weights file (checksum and size auto-computed)
-        #[clap(long)]
-        weights_file: PathBuf,
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
@@ -110,7 +108,8 @@ EXAMPLES:
 EXAMPLES:
     soma model update-commit 0xMODEL_ID \\
         --weights-url https://storage.example.com/weights-v2.bin \\
-        --weights-file ./model-v2.bin"
+        --weights-file ./model-v2.bin \\
+        --embedding 0.1,0.2,0.3"
     )]
     UpdateCommit {
         /// Model ID to update
@@ -121,32 +120,30 @@ EXAMPLES:
         /// Path to the new encrypted weights file
         #[clap(long)]
         weights_file: PathBuf,
+        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+        #[clap(long)]
+        embedding: String,
+        /// Hex-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
+        #[clap(long)]
+        decryption_key: String,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
     },
 
     /// Reveal updated weights for an active model
     ///
-    /// Checksum and size are auto-computed from the weights file.
+    /// Provides the decryption key and embedding vector for a pending update.
     #[clap(
         name = "update-reveal",
         after_help = "\
 EXAMPLES:
     soma model update-reveal 0xMODEL_ID \\
-        --weights-url https://storage.example.com/weights-v2.bin \\
-        --weights-file ./model-v2.bin \\
         --decryption-key 0x123...456 \\
         --embedding 0.1,0.2,0.3,0.4"
     )]
     UpdateReveal {
         /// Model ID to update
         model_id: ObjectID,
-        /// URL where the new encrypted weights are hosted
-        #[clap(long)]
-        weights_url: String,
-        /// Path to the new encrypted weights file (checksum and size auto-computed)
-        #[clap(long)]
-        weights_file: PathBuf,
         /// Hex-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
@@ -244,6 +241,8 @@ impl ModelCommand {
             ModelCommand::Commit {
                 weights_file,
                 weights_url,
+                embedding,
+                decryption_key,
                 architecture_version,
                 stake_amount,
                 commission_rate,
@@ -253,14 +252,24 @@ impl ModelCommand {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
 
-                // Auto-generate model ID and staking pool ID
-                let model_id = ObjectID::random();
-                let staking_pool_id = ObjectID::random();
-
-                // Auto-compute commitments from file and URL
-                let (wt_commitment, _, _) =
+                // Auto-compute weights commitment from file
+                let (wt_commitment, checksum_hex, weights_size) =
                     super::parse_helpers::read_and_hash_file(&weights_file)?;
-                let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
+
+                // Build manifest from URL + file metadata
+                let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+
+                // Parse embedding and compute commitment
+                let embedding_tensor = parse_embedding_tensor(&embedding)?;
+                let embedding_commitment = EmbeddingCommitment::new(
+                    sdk::crypto_utils::commitment(&bcs::to_bytes(&embedding_tensor).unwrap()),
+                );
+
+                // Parse decryption key and compute commitment
+                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+                let decryption_key_commitment = DecryptionKeyCommitment::new(
+                    sdk::crypto_utils::commitment(&decryption_key_bytes),
+                );
 
                 if commission_rate > 5000 {
                     eprintln!(
@@ -300,18 +309,17 @@ impl ModelCommand {
                 );
 
                 let kind = TransactionKind::CommitModel(CommitModelArgs {
-                    model_id,
-                    weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                    manifest,
                     weights_commitment: ModelWeightsCommitment::new(wt_commitment),
                     architecture_version,
+                    embedding_commitment,
+                    decryption_key_commitment,
                     stake_amount: final_stake,
                     commission_rate,
-                    staking_pool_id,
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
                 Ok(ModelCommandResponse::CommitSuccess {
-                    model_id,
                     inner: Box::new(result),
                     next_epoch_hint,
                 })
@@ -319,25 +327,16 @@ impl ModelCommand {
 
             ModelCommand::Reveal {
                 model_id,
-                weights_url,
-                weights_file,
                 decryption_key,
                 embedding,
                 tx_args,
             } => {
-                let (_, checksum_hex, weights_size) =
-                    super::parse_helpers::read_and_hash_file(&weights_file)?;
-                let manifest = build_weights_manifest(
-                    &weights_url,
-                    &checksum_hex,
-                    weights_size,
-                    &decryption_key,
-                )?;
+                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
 
                 let kind = TransactionKind::RevealModel(RevealModelArgs {
                     model_id,
-                    weights_manifest: manifest,
+                    decryption_key: DecryptionKey::new(decryption_key_bytes),
                     embedding: embedding_tensor,
                 });
 
@@ -345,10 +344,32 @@ impl ModelCommand {
                 Ok(ModelCommandResponse::RevealSuccess { model_id, inner: Box::new(result) })
             }
 
-            ModelCommand::UpdateCommit { model_id, weights_url, weights_file, tx_args } => {
-                let (wt_commitment, _, _) =
+            ModelCommand::UpdateCommit {
+                model_id,
+                weights_url,
+                weights_file,
+                embedding,
+                decryption_key,
+                tx_args,
+            } => {
+                // Auto-compute weights commitment from file
+                let (wt_commitment, checksum_hex, weights_size) =
                     super::parse_helpers::read_and_hash_file(&weights_file)?;
-                let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
+
+                // Build manifest from URL + file metadata
+                let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+
+                // Parse embedding and compute commitment
+                let embedding_tensor = parse_embedding_tensor(&embedding)?;
+                let embedding_commitment = EmbeddingCommitment::new(
+                    sdk::crypto_utils::commitment(&bcs::to_bytes(&embedding_tensor).unwrap()),
+                );
+
+                // Parse decryption key and compute commitment
+                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+                let decryption_key_commitment = DecryptionKeyCommitment::new(
+                    sdk::crypto_utils::commitment(&decryption_key_bytes),
+                );
 
                 // Pre-fetch epoch timing (non-fatal, before transaction)
                 let next_epoch_hint = match context.get_client().await {
@@ -363,8 +384,10 @@ impl ModelCommand {
 
                 let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
                     model_id,
-                    weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                    manifest,
                     weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+                    embedding_commitment,
+                    decryption_key_commitment,
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
@@ -377,25 +400,16 @@ impl ModelCommand {
 
             ModelCommand::UpdateReveal {
                 model_id,
-                weights_url,
-                weights_file,
                 decryption_key,
                 embedding,
                 tx_args,
             } => {
-                let (_, checksum_hex, weights_size) =
-                    super::parse_helpers::read_and_hash_file(&weights_file)?;
-                let manifest = build_weights_manifest(
-                    &weights_url,
-                    &checksum_hex,
-                    weights_size,
-                    &decryption_key,
-                )?;
+                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
 
                 let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                     model_id,
-                    weights_manifest: manifest,
+                    decryption_key: DecryptionKey::new(decryption_key_bytes),
                     embedding: embedding_tensor,
                 });
 
@@ -512,20 +526,12 @@ impl ModelCommand {
 
 use super::parse_helpers::parse_hex_digest_32;
 
-fn build_weights_manifest(
-    url: &str,
-    checksum_hex: &str,
-    size: usize,
-    decryption_key_hex: &str,
-) -> Result<ModelWeightsManifest> {
+fn build_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<Manifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;
     let checksum_bytes = parse_hex_digest_32(checksum_hex, "weights-checksum")?;
-    let key_bytes = parse_hex_digest_32(decryption_key_hex, "decryption-key")?;
 
     let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
-    let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
-
-    Ok(ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new(key_bytes) })
+    Ok(Manifest::V1(ManifestV1::new(parsed_url, metadata)))
 }
 
 fn parse_embedding_tensor(embedding_str: &str) -> Result<SomaTensor> {
@@ -659,7 +665,6 @@ fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
 pub enum ModelCommandResponse {
     Transaction(TransactionResponse),
     CommitSuccess {
-        model_id: ObjectID,
         inner: Box<ModelCommandResponse>,
         next_epoch_hint: Option<String>,
     },
@@ -707,7 +712,7 @@ impl Display for ModelCommandResponse {
             ModelCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
-            ModelCommandResponse::CommitSuccess { model_id, inner, next_epoch_hint } => {
+            ModelCommandResponse::CommitSuccess { inner, next_epoch_hint } => {
                 write!(f, "{}", inner)?;
                 writeln!(f)?;
                 writeln!(f, "  {}", "Next step: Reveal your model weights.".cyan().bold())?;
@@ -716,9 +721,7 @@ impl Display for ModelCommandResponse {
                 }
                 writeln!(f)?;
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
-                writeln!(f, "  {} {} \\", "soma model reveal".bold(), model_id)?;
-                writeln!(f, "    --weights-url <url> \\")?;
-                writeln!(f, "    --weights-file <path> \\")?;
+                writeln!(f, "  {} {} \\", "soma model reveal".bold(), "MODEL_ID")?;
                 writeln!(f, "    --decryption-key <hex> \\")?;
                 writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())
@@ -744,8 +747,6 @@ impl Display for ModelCommandResponse {
                 writeln!(f)?;
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
                 writeln!(f, "  {} {} \\", "soma model update-reveal".bold(), model_id)?;
-                writeln!(f, "    --weights-url <url> \\")?;
-                writeln!(f, "    --weights-file <path> \\")?;
                 writeln!(f, "    --decryption-key <hex> \\")?;
                 writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())

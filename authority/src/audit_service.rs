@@ -398,9 +398,7 @@ impl AuditService {
 
         let model = state.model_registry().active_models.get(model_id).ok_or(())?;
 
-        let weights_manifest = model.weights_manifest.as_ref().ok_or(())?;
-
-        Ok(weights_manifest.manifest.clone())
+        Ok(model.manifest.clone())
     }
 
     /// Verify fraud by calling CompetitionAPI and checking results against claims.

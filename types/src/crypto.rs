@@ -1819,6 +1819,12 @@ impl DecryptionKey {
     }
 }
 
+impl AsRef<[u8]> for DecryptionKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl Debug for DecryptionKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "DecryptionKey(<redacted>)")

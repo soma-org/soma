@@ -955,11 +955,12 @@ impl fmt::Debug for ModelWeightsCommitment {
     }
 }
 
-/// Commitment to encrypted weights URL: hash(encrypted_weights_url).
+/// Commitment to a decryption key: hash(key_bytes).
+/// Allows the executor to reject an invalid reveal without decrypting the weights.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct ModelWeightsUrlCommitment(Digest);
+pub struct DecryptionKeyCommitment(Digest);
 
-impl ModelWeightsUrlCommitment {
+impl DecryptionKeyCommitment {
     pub const fn new(digest: [u8; 32]) -> Self {
         Self(Digest::new(digest))
     }
@@ -981,39 +982,101 @@ impl ModelWeightsUrlCommitment {
     }
 }
 
-impl AsRef<[u8]> for ModelWeightsUrlCommitment {
+impl AsRef<[u8]> for DecryptionKeyCommitment {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl AsRef<[u8; 32]> for ModelWeightsUrlCommitment {
+impl AsRef<[u8; 32]> for DecryptionKeyCommitment {
     fn as_ref(&self) -> &[u8; 32] {
         self.0.as_ref()
     }
 }
 
-impl From<ModelWeightsUrlCommitment> for [u8; 32] {
-    fn from(digest: ModelWeightsUrlCommitment) -> Self {
+impl From<DecryptionKeyCommitment> for [u8; 32] {
+    fn from(digest: DecryptionKeyCommitment) -> Self {
         digest.into_inner()
     }
 }
 
-impl From<[u8; 32]> for ModelWeightsUrlCommitment {
+impl From<[u8; 32]> for DecryptionKeyCommitment {
     fn from(digest: [u8; 32]) -> Self {
         Self::new(digest)
     }
 }
 
-impl fmt::Display for ModelWeightsUrlCommitment {
+impl fmt::Display for DecryptionKeyCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
 }
 
-impl fmt::Debug for ModelWeightsUrlCommitment {
+impl fmt::Debug for DecryptionKeyCommitment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ModelWeightsUrlCommitment").field(&self.0).finish()
+        f.debug_tuple("DecryptionKeyCommitment").field(&self.0).finish()
+    }
+}
+
+/// Commitment to a model embedding: hash(bcs(embedding)).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct EmbeddingCommitment(Digest);
+
+impl EmbeddingCommitment {
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub const fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub const fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for EmbeddingCommitment {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for EmbeddingCommitment {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<EmbeddingCommitment> for [u8; 32] {
+    fn from(digest: EmbeddingCommitment) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for EmbeddingCommitment {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for EmbeddingCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for EmbeddingCommitment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("EmbeddingCommitment").field(&self.0).finish()
     }
 }
 

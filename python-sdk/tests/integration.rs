@@ -669,22 +669,36 @@ from soma_sdk import SomaClient, Keypair
 async def _test():
     client = await SomaClient("{rpc_url}", scoring_url="{scoring_url}")
     kp = Keypair.from_secret_key("{secret}")
+    sender = kp.address()
 
     raw = b"\x00" * 1024
     encrypted, key = SomaClient.encrypt_weights(raw)
 
-    model_id = await client.commit_model(
+    dim = await client.get_embedding_dim()
+    embedding = [0.1] * dim
+
+    await client.commit_model(
         signer=kp,
         weights_url="http://example.com/weights.enc",
         encrypted_weights=encrypted,
+        decryption_key=key,
+        embedding=embedding,
         commission_rate=1000,
+    )
+
+    # Discover model_id from pending models in system state
+    state = await client.get_latest_system_state()
+    pending = vars(state.model_registry.pending_models)
+    model_id = next(
+        mid for mid, m in pending.items()
+        if m.owner == sender
     )
     assert isinstance(model_id, str) and len(model_id) > 0, \
         f"model_id should be non-empty string, got {{model_id!r}}"
 
     builtins._model_id = model_id
-    builtins._encrypted = encrypted
     builtins._key = key
+    builtins._embedding = embedding
 
 asyncio.run(_test())
 "#
@@ -704,14 +718,11 @@ async def _test():
     client = await SomaClient("{rpc_url}", scoring_url="{scoring_url}")
     kp = Keypair.from_secret_key("{secret}")
 
-    dim = await client.get_embedding_dim()
     await client.reveal_model(
         signer=kp,
         model_id=builtins._model_id,
-        weights_url="http://example.com/weights.enc",
-        encrypted_weights=builtins._encrypted,
         decryption_key=builtins._key,
-        embedding=[0.1] * dim,
+        embedding=builtins._embedding,
     )
 
 asyncio.run(_test())

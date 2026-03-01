@@ -219,35 +219,35 @@ pub struct ModelWeightsManifest {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct CommitModelArgs {
-    pub model_id: Address,
-    pub weights_url_commitment: Vec<u8>,
+    pub manifest: Manifest,
     pub weights_commitment: Vec<u8>,
     pub architecture_version: u64,
+    pub embedding_commitment: Vec<u8>,
+    pub decryption_key_commitment: Vec<u8>,
     pub stake_amount: u64,
     pub commission_rate: u64,
-    pub staking_pool_id: Address,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RevealModelArgs {
     pub model_id: Address,
-    pub weights_manifest: ModelWeightsManifest,
-    /// Model embedding for stake-weighted KNN target selection (f32 values)
+    pub decryption_key: Vec<u8>,
     pub embedding: Vec<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct CommitModelUpdateArgs {
     pub model_id: Address,
-    pub weights_url_commitment: Vec<u8>,
+    pub manifest: Manifest,
     pub weights_commitment: Vec<u8>,
+    pub embedding_commitment: Vec<u8>,
+    pub decryption_key_commitment: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RevealModelUpdateArgs {
     pub model_id: Address,
-    pub weights_manifest: ModelWeightsManifest,
-    /// Updated model embedding for stake-weighted KNN target selection (f32 values)
+    pub decryption_key: Vec<u8>,
     pub embedding: Vec<f32>,
 }
 
@@ -262,7 +262,6 @@ pub struct SubmissionManifest {
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct SubmitDataArgs {
     pub target_id: Address,
-    pub data_commitment: Vec<u8>,
     pub data_manifest: SubmissionManifest,
     pub model_id: Address,
     pub embedding: Vec<f32>,

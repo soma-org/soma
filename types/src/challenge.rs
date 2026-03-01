@@ -29,7 +29,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::base::SomaAddress;
 use crate::committee::EpochId;
-use crate::digests::DataCommitment;
 use crate::model::ModelId;
 use crate::object::ObjectID;
 use crate::submission::SubmissionManifest;
@@ -87,11 +86,9 @@ pub struct ChallengeV1 {
     /// The model ID the submitter claimed to use
     pub winning_model_id: ModelId,
 
-    /// Manifest for the submitter's data (URL + checksum + size)
+    /// Manifest for the submitter's data (URL + checksum + size).
+    /// Data integrity is verified via the manifest's checksum.
     pub winning_data_manifest: SubmissionManifest,
-
-    /// Hash commitment of the submitter's raw data
-    pub winning_data_commitment: DataCommitment,
 
     /// The embedding the submitter claimed to produce
     pub winning_embedding: SomaTensor,
@@ -124,7 +121,6 @@ impl ChallengeV1 {
         distance_threshold: SomaTensor,
         winning_model_id: ModelId,
         winning_data_manifest: SubmissionManifest,
-        winning_data_commitment: DataCommitment,
         winning_embedding: SomaTensor,
         winning_distance_score: SomaTensor,
     ) -> Self {
@@ -141,7 +137,6 @@ impl ChallengeV1 {
             distance_threshold,
             winning_model_id,
             winning_data_manifest,
-            winning_data_commitment,
             winning_embedding,
             winning_distance_score,
             // Tally-based challenge reports
@@ -247,7 +242,6 @@ mod tests {
         let dummy_metadata = Metadata::V1(MetadataV1::new(dummy_checksum, 1000));
         let dummy_manifest = Manifest::V1(ManifestV1::new(dummy_url, dummy_metadata));
         let dummy_submission_manifest = SubmissionManifest { manifest: dummy_manifest };
-        let dummy_commitment = DataCommitment::new([0u8; 32]);
 
         ChallengeV1::new(
             challenge_id,
@@ -260,7 +254,6 @@ mod tests {
             SomaTensor::scalar(0.5), // distance threshold
             model_id,
             dummy_submission_manifest,
-            dummy_commitment,
             dummy_embedding,
             SomaTensor::scalar(0.25), // winning distance score
         )

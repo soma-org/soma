@@ -27,7 +27,7 @@ use crate::base::SomaAddress;
 use crate::challenge::ChallengeId;
 use crate::committee::EpochId;
 use crate::crypto::DefaultHash;
-use crate::digests::{DataCommitment, TransactionDigest};
+use crate::digests::TransactionDigest;
 use crate::effects::ExecutionFailureStatus;
 use crate::error::ExecutionResult;
 use crate::model::ModelId;
@@ -96,11 +96,8 @@ pub struct TargetV1 {
     // =========================================================================
     /// Manifest for the winning submission's data (URL + checksum + size).
     /// Used by challengers and auditing validators to download and verify.
+    /// Data integrity is verified via the manifest's checksum.
     pub winning_data_manifest: Option<SubmissionManifest>,
-
-    /// Commitment to the winning submission's raw data: hash(data_bytes).
-    /// Used to verify data integrity during challenge audit.
-    pub winning_data_commitment: Option<DataCommitment>,
 
     /// Embedding vector from the winning submission.
     /// Verified during challenge audit by re-running inference.
@@ -279,7 +276,6 @@ pub fn generate_target(
         bond_amount: 0, // Set when target is filled by a submission
         // Challenge audit fields (set when target is filled)
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: None,
         // Tally-based challenge fields (set when challenged)
@@ -463,8 +459,7 @@ mod tests {
             winning_model_owner: None,
             bond_amount: 0,
             winning_data_manifest: None,
-            winning_data_commitment: None,
-            winning_embedding: None,
+                winning_embedding: None,
             winning_distance_score: None,
             challenger: None,
             challenge_id: None,

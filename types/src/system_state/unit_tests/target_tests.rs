@@ -11,7 +11,7 @@
 //! - Reward per target calculation
 
 use super::test_utils::{
-    advance_epoch_with_rewards, commit_model, create_test_system_state,
+    advance_epoch_with_rewards, commit_model, commit_model_with_dim, create_test_system_state,
     create_validators_with_stakes, reveal_model, reveal_model_with_dim,
 };
 use crate::base::SomaAddress;
@@ -86,7 +86,7 @@ fn test_target_generation_single_model() {
     let owner = SomaAddress::random();
     let model_id = crate::model::ModelId::random();
     let stake = 10 * SHANNONS_PER_SOMA;
-    commit_model(&mut system_state, owner, model_id, stake);
+    commit_model_with_dim(&mut system_state, owner, model_id, stake, 768);
 
     // Advance epoch to reveal
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -132,7 +132,7 @@ fn test_target_generation_multiple_models() {
     for _ in 0..5 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model(&mut system_state, owner, model_id, stake);
+        commit_model_with_dim(&mut system_state, owner, model_id, stake, 768);
         model_ids.push(model_id);
     }
 
@@ -382,7 +382,6 @@ fn test_target_status_transitions() {
         winning_model_owner: None,
         bond_amount: 0,
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: None,
         challenger: None,

@@ -10,13 +10,13 @@ use crate::checksum::Checksum;
 use crate::consensus::ConsensusCommitPrologueV1;
 use crate::crypto::{DecryptionKey, default_hash, get_key_pair};
 use crate::digests::{
-    AdditionalConsensusStateDigest, ConsensusCommitDigest, DataCommitment, ModelWeightsCommitment,
-    ModelWeightsUrlCommitment, ObjectDigest,
+    AdditionalConsensusStateDigest, ConsensusCommitDigest, DecryptionKeyCommitment,
+    EmbeddingCommitment, ModelWeightsCommitment, ObjectDigest,
 };
 use crate::envelope::Message;
 use crate::intent::{Intent, IntentMessage};
 use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use crate::model::{ModelId, ModelWeightsManifest};
+use crate::model::ModelId;
 use crate::object::{ObjectID, ObjectRef, Version};
 use crate::submission::SubmissionManifest;
 use crate::target::TargetId;
@@ -56,14 +56,6 @@ fn dummy_manifest() -> Manifest {
     let url = url::Url::parse("https://example.com/weights.bin").unwrap();
     let metadata = Metadata::V1(MetadataV1::new(Checksum::default(), 1024));
     Manifest::V1(ManifestV1::new(url, metadata))
-}
-
-/// Create a dummy ModelWeightsManifest.
-fn dummy_model_weights_manifest() -> ModelWeightsManifest {
-    ModelWeightsManifest {
-        manifest: dummy_manifest(),
-        decryption_key: DecryptionKey::new([0u8; 32]),
-    }
 }
 
 /// Create a dummy SubmissionManifest.
@@ -230,20 +222,20 @@ fn test_transaction_kind_classification() {
     // Model transactions
     let model_id = ModelId::random();
     let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id,
-        weights_url_commitment: ModelWeightsUrlCommitment::random(),
+        manifest: dummy_manifest(),
         weights_commitment: ModelWeightsCommitment::random(),
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::random(),
+        decryption_key_commitment: DecryptionKeyCommitment::random(),
         stake_amount: 1000,
         commission_rate: 100,
-        staking_pool_id: ObjectID::random(),
     });
     assert!(commit_model.is_model_tx());
     assert!(!commit_model.is_staking_tx());
 
     let reveal_model = TransactionKind::RevealModel(RevealModelArgs {
         model_id,
-        weights_manifest: dummy_model_weights_manifest(),
+        decryption_key: DecryptionKey::new([0u8; 32]),
         embedding: dummy_tensor(),
     });
     assert!(reveal_model.is_model_tx());
@@ -261,7 +253,6 @@ fn test_transaction_kind_classification() {
     let target_id: TargetId = ObjectID::random();
     let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
         target_id,
-        data_commitment: DataCommitment::random(),
         data_manifest: dummy_submission_manifest(),
         model_id,
         embedding: dummy_tensor(),
@@ -440,27 +431,29 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
         // Model
         TransactionKind::CommitModel(CommitModelArgs {
-            model_id,
-            weights_url_commitment: ModelWeightsUrlCommitment::random(),
+            manifest: dummy_manifest(),
             weights_commitment: ModelWeightsCommitment::random(),
             architecture_version: 1,
+            embedding_commitment: EmbeddingCommitment::random(),
+            decryption_key_commitment: DecryptionKeyCommitment::random(),
             stake_amount: 5000,
             commission_rate: 200,
-            staking_pool_id: ObjectID::random(),
         }),
         TransactionKind::RevealModel(RevealModelArgs {
             model_id,
-            weights_manifest: dummy_model_weights_manifest(),
+            decryption_key: DecryptionKey::new([0u8; 32]),
             embedding: dummy_tensor(),
         }),
         TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
             model_id,
-            weights_url_commitment: ModelWeightsUrlCommitment::random(),
+            manifest: dummy_manifest(),
             weights_commitment: ModelWeightsCommitment::random(),
+            embedding_commitment: EmbeddingCommitment::random(),
+            decryption_key_commitment: DecryptionKeyCommitment::random(),
         }),
         TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
             model_id,
-            weights_manifest: dummy_model_weights_manifest(),
+            decryption_key: DecryptionKey::new([0u8; 32]),
             embedding: dummy_tensor(),
         }),
         TransactionKind::AddStakeToModel {
@@ -475,7 +468,6 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         // Submission
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: dummy_submission_manifest(),
             model_id,
             embedding: dummy_tensor(),
@@ -629,13 +621,13 @@ fn test_shared_input_objects() {
 
     // Model tx -> SystemState only
     let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id,
-        weights_url_commitment: ModelWeightsUrlCommitment::random(),
+        manifest: dummy_manifest(),
         weights_commitment: ModelWeightsCommitment::random(),
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::random(),
+        decryption_key_commitment: DecryptionKeyCommitment::random(),
         stake_amount: 1000,
         commission_rate: 100,
-        staking_pool_id: ObjectID::random(),
     });
     let shared: Vec<_> = commit_model.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);
@@ -644,7 +636,6 @@ fn test_shared_input_objects() {
     // Submission tx -> SystemState + Target
     let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
         target_id,
-        data_commitment: DataCommitment::random(),
         data_manifest: dummy_submission_manifest(),
         model_id,
         embedding: dummy_tensor(),
@@ -728,7 +719,6 @@ fn test_contains_shared_object() {
     // SubmitData touches SystemState + Target
     let submit = TransactionKind::SubmitData(SubmitDataArgs {
         target_id: ObjectID::random(),
-        data_commitment: DataCommitment::random(),
         data_manifest: dummy_submission_manifest(),
         model_id: ModelId::random(),
         embedding: dummy_tensor(),
@@ -1037,7 +1027,6 @@ fn test_input_objects_user_txs() {
     let bond_coin = random_object_ref();
     let submit = TransactionKind::SubmitData(SubmitDataArgs {
         target_id,
-        data_commitment: DataCommitment::random(),
         data_manifest: dummy_submission_manifest(),
         model_id: ModelId::random(),
         embedding: dummy_tensor(),

@@ -122,8 +122,8 @@ message ExecutionError {
     // Model reveal epoch mismatch
     MODEL_REVEAL_EPOCH_MISMATCH = 27;
 
-    // Model weights URL commitment mismatch
-    MODEL_WEIGHTS_URL_MISMATCH = 28;
+    // Model embedding commitment mismatch
+    MODEL_EMBEDDING_COMMITMENT_MISMATCH = 28;
 
     // Model has no pending update
     MODEL_NO_PENDING_UPDATE = 29;
@@ -220,6 +220,9 @@ message ExecutionError {
 
     // Invalid proof of possession signature
     INVALID_PROOF_OF_POSSESSION = 56;
+
+    // Model decryption key commitment mismatch
+    MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH = 57;
   }
 
   optional ExecutionErrorKind kind = 2;

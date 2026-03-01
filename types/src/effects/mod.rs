@@ -771,8 +771,11 @@ pub enum ExecutionFailureStatus {
     #[error("Model reveal epoch mismatch: must reveal in the epoch after commit.")]
     ModelRevealEpochMismatch,
 
-    #[error("Model weights URL commitment mismatch.")]
-    ModelWeightsUrlMismatch,
+    #[error("Model embedding commitment mismatch.")]
+    ModelEmbeddingCommitmentMismatch,
+
+    #[error("Model decryption key commitment mismatch.")]
+    ModelDecryptionKeyCommitmentMismatch,
 
     #[error("Model has no pending update.")]
     ModelNoPendingUpdate,

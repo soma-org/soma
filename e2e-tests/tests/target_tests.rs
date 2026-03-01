@@ -11,18 +11,17 @@
 //! 5. test_claim_expired_unfilled_target - Cleanup of expired unfilled targets
 //! 6. test_submit_data_validation_errors - Validates submission rejection scenarios
 
-use fastcrypto::hash::HashFunction as _;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
-use types::crypto::{DecryptionKey, DefaultHash};
-use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::crypto::DecryptionKey;
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::effects::TransactionEffectsAPI;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ModelId, ModelWeightsManifest};
+use types::model::ModelId;
 use types::object::ObjectID;
 use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
@@ -32,19 +31,10 @@ use utils::logging::init_tracing;
 
 // ===== Helpers =====
 
-fn url_commitment_for(url_str: &str) -> ModelWeightsUrlCommitment {
-    let mut hasher = DefaultHash::default();
-    hasher.update(url_str.as_bytes());
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    ModelWeightsUrlCommitment::new(bytes)
-}
-
-fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
+fn make_manifest(url_str: &str) -> Manifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
-    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
+    Manifest::V1(ManifestV1::new(url, metadata))
 }
 
 fn make_genesis_model_config(
@@ -53,17 +43,19 @@ fn make_genesis_model_config(
     initial_stake: u64,
 ) -> GenesisModelConfig {
     let url_str = format!("https://example.com/models/{}", model_id);
-    let url_commitment = url_commitment_for(&url_str);
+    let manifest = make_manifest(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let weights_manifest = make_weights_manifest(&url_str);
 
     GenesisModelConfig {
         owner,
         model_id,
-        weights_manifest,
-        weights_url_commitment: url_commitment,
+        manifest,
+        decryption_key: DecryptionKey::new([0xAA; 32]),
         weights_commitment,
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
+        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -207,7 +199,6 @@ async fn test_submit_data_fills_target() {
     let initial_target_count = initial_response.targets.len();
 
     // Prepare submission data
-    let data_commitment = DataCommitment::random();
     let data_manifest = make_submission_manifest(1024);
     let embedding = SomaTensor::zeros(vec![embedding_dim]);
     let distance_score = SomaTensor::scalar(distance_threshold - 0.1);
@@ -224,7 +215,6 @@ async fn test_submit_data_fills_target() {
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment,
             data_manifest,
             model_id,
             embedding,
@@ -321,7 +311,6 @@ async fn test_claim_rewards_after_challenge_window() {
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -585,7 +574,6 @@ async fn test_submit_data_validation_errors() {
         let bad_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
                 target_id,
-                data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id,
                 embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -618,7 +606,6 @@ async fn test_submit_data_validation_errors() {
         let bad_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
                 target_id,
-                data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id,
                 embedding: SomaTensor::zeros(vec![wrong_dim]), // Wrong dimension
@@ -651,7 +638,6 @@ async fn test_submit_data_validation_errors() {
         let bad_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
                 target_id,
-                data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id: wrong_model_id, // Wrong model
                 embedding: SomaTensor::zeros(vec![embedding_dim]),

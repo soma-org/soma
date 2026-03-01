@@ -115,16 +115,22 @@ impl ModelExecutor {
             return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
         }
 
+        // Generate model_id and staking_pool_id deterministically from tx_digest
+        let model_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
+        let staking_pool_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
+
         // Commit the model in system state (creates pending model + staking pool)
         let staked_soma = state.request_commit_model(
             signer,
-            args.model_id,
-            args.weights_url_commitment,
+            model_id,
+            args.manifest,
             args.weights_commitment,
             args.architecture_version,
+            args.embedding_commitment,
+            args.decryption_key_commitment,
             args.stake_amount,
             args.commission_rate,
-            args.staking_pool_id,
+            staking_pool_id,
         )?;
 
         // Create StakedSoma object
@@ -161,7 +167,7 @@ impl ModelExecutor {
         state.request_reveal_model(
             signer,
             &args.model_id,
-            args.weights_manifest,
+            args.decryption_key,
             args.embedding,
         )?;
 
@@ -184,8 +190,10 @@ impl ModelExecutor {
         state.request_commit_model_update(
             signer,
             &args.model_id,
-            args.weights_url_commitment,
+            args.manifest,
             args.weights_commitment,
+            args.embedding_commitment,
+            args.decryption_key_commitment,
         )?;
 
         Self::save_system_state(store, state_object, &state)
@@ -207,7 +215,7 @@ impl ModelExecutor {
         state.request_reveal_model_update(
             signer,
             &args.model_id,
-            args.weights_manifest,
+            args.decryption_key,
             args.embedding,
         )?;
 

@@ -219,34 +219,30 @@ impl From<crate::types::TransactionKind> for TransactionKind {
 
             // Model transactions
             CommitModel(args) => Kind::CommitModel(super::CommitModel {
-                model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(args.weights_url_commitment.clone().into()),
+                manifest: Some(args.manifest.clone().into()),
                 weights_commitment: Some(args.weights_commitment.clone().into()),
                 architecture_version: Some(args.architecture_version),
+                embedding_commitment: Some(args.embedding_commitment.clone().into()),
+                decryption_key_commitment: Some(args.decryption_key_commitment.clone().into()),
                 stake_amount: Some(args.stake_amount),
                 commission_rate: Some(args.commission_rate),
-                staking_pool_id: Some(args.staking_pool_id.to_string()),
             }),
             RevealModel(args) => Kind::RevealModel(super::RevealModel {
                 model_id: Some(args.model_id.to_string()),
-                weights_manifest: Some(super::ModelWeightsManifest {
-                    manifest: Some(args.weights_manifest.manifest.clone().into()),
-                    decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
-                }),
-                embedding: args.embedding.to_vec(),
+                decryption_key: Some(args.decryption_key.clone().into()),
+                embedding: args.embedding.clone(),
             }),
             CommitModelUpdate(args) => Kind::CommitModelUpdate(super::CommitModelUpdate {
                 model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(args.weights_url_commitment.clone().into()),
+                manifest: Some(args.manifest.clone().into()),
                 weights_commitment: Some(args.weights_commitment.clone().into()),
+                embedding_commitment: Some(args.embedding_commitment.clone().into()),
+                decryption_key_commitment: Some(args.decryption_key_commitment.clone().into()),
             }),
             RevealModelUpdate(args) => Kind::RevealModelUpdate(super::RevealModelUpdate {
                 model_id: Some(args.model_id.to_string()),
-                weights_manifest: Some(super::ModelWeightsManifest {
-                    manifest: Some(args.weights_manifest.manifest.clone().into()),
-                    decryption_key: Some(args.weights_manifest.decryption_key.clone().into()),
-                }),
-                embedding: args.embedding.to_vec(),
+                decryption_key: Some(args.decryption_key.clone().into()),
+                embedding: args.embedding.clone(),
             }),
             AddStakeToModel { model_id, coin_ref, amount } => {
                 Kind::AddStakeToModel(super::AddStakeToModel {
@@ -274,7 +270,6 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             // Submission transactions
             SubmitData(args) => Kind::SubmitData(super::SubmitData {
                 target_id: Some(args.target_id.to_string()),
-                data_commitment: Some(args.data_commitment.clone().into()),
                 data_manifest: Some(super::SubmissionManifest {
                     manifest: Some(args.data_manifest.manifest.clone().into()),
                 }),
@@ -430,17 +425,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
 
             // Model transactions
             Kind::CommitModel(args) => Self::CommitModel(crate::types::CommitModelArgs {
-                model_id: args
-                    .model_id
+                manifest: args
+                    .manifest
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                weights_url_commitment: args
-                    .weights_url_commitment
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("weights_url_commitment"))?
-                    .to_vec(),
+                    .ok_or_else(|| TryFromProtoError::missing("manifest"))?
+                    .try_into()?,
                 weights_commitment: args
                     .weights_commitment
                     .as_ref()
@@ -449,24 +438,24 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 architecture_version: args
                     .architecture_version
                     .ok_or_else(|| TryFromProtoError::missing("architecture_version"))?,
+                embedding_commitment: args
+                    .embedding_commitment
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("embedding_commitment"))?
+                    .to_vec(),
+                decryption_key_commitment: args
+                    .decryption_key_commitment
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("decryption_key_commitment"))?
+                    .to_vec(),
                 stake_amount: args
                     .stake_amount
                     .ok_or_else(|| TryFromProtoError::missing("stake_amount"))?,
                 commission_rate: args
                     .commission_rate
                     .ok_or_else(|| TryFromProtoError::missing("commission_rate"))?,
-                staking_pool_id: args
-                    .staking_pool_id
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("staking_pool_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("staking_pool_id", e))?,
             }),
             Kind::RevealModel(args) => {
-                let manifest = args
-                    .weights_manifest
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("weights_manifest"))?;
                 Self::RevealModel(crate::types::RevealModelArgs {
                     model_id: args
                         .model_id
@@ -474,18 +463,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("model_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                    weights_manifest: crate::types::ModelWeightsManifest {
-                        manifest: manifest
-                            .manifest
-                            .as_ref()
-                            .ok_or_else(|| TryFromProtoError::missing("manifest"))?
-                            .try_into()?,
-                        decryption_key: manifest
-                            .decryption_key
-                            .as_ref()
-                            .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
-                            .to_vec(),
-                    },
+                    decryption_key: args
+                        .decryption_key
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
+                        .to_vec(),
                     embedding: args.embedding.clone(),
                 })
             }
@@ -497,23 +479,29 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("model_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                    weights_url_commitment: args
-                        .weights_url_commitment
+                    manifest: args
+                        .manifest
                         .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("weights_url_commitment"))?
-                        .to_vec(),
+                        .ok_or_else(|| TryFromProtoError::missing("manifest"))?
+                        .try_into()?,
                     weights_commitment: args
                         .weights_commitment
                         .as_ref()
                         .ok_or_else(|| TryFromProtoError::missing("weights_commitment"))?
                         .to_vec(),
+                    embedding_commitment: args
+                        .embedding_commitment
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("embedding_commitment"))?
+                        .to_vec(),
+                    decryption_key_commitment: args
+                        .decryption_key_commitment
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("decryption_key_commitment"))?
+                        .to_vec(),
                 })
             }
             Kind::RevealModelUpdate(args) => {
-                let manifest = args
-                    .weights_manifest
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("weights_manifest"))?;
                 Self::RevealModelUpdate(crate::types::RevealModelUpdateArgs {
                     model_id: args
                         .model_id
@@ -521,18 +509,11 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("model_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                    weights_manifest: crate::types::ModelWeightsManifest {
-                        manifest: manifest
-                            .manifest
-                            .as_ref()
-                            .ok_or_else(|| TryFromProtoError::missing("manifest"))?
-                            .try_into()?,
-                        decryption_key: manifest
-                            .decryption_key
-                            .as_ref()
-                            .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
-                            .to_vec(),
-                    },
+                    decryption_key: args
+                        .decryption_key
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
+                        .to_vec(),
                     embedding: args.embedding.clone(),
                 })
             }
@@ -597,11 +578,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("target_id"))?
                         .parse()
                         .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
-                    data_commitment: args
-                        .data_commitment
-                        .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("data_commitment"))?
-                        .to_vec(),
                     data_manifest: crate::types::SubmissionManifest {
                         manifest: data_manifest
                             .manifest

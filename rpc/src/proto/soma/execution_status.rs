@@ -68,7 +68,8 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ModelNotPending => (ExecutionErrorKind::ModelNotPending, None),
             E::ModelAlreadyInactive => (ExecutionErrorKind::ModelAlreadyInactive, None),
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
-            E::ModelWeightsUrlMismatch => (ExecutionErrorKind::ModelWeightsUrlMismatch, None),
+            E::ModelEmbeddingCommitmentMismatch => (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None),
+            E::ModelDecryptionKeyCommitmentMismatch => (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None),
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
             E::ModelArchitectureVersionMismatch => {
                 (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
@@ -257,7 +258,8 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::ModelNotPending => Ok(Self::ModelNotPending),
             K::ModelAlreadyInactive => Ok(Self::ModelAlreadyInactive),
             K::ModelRevealEpochMismatch => Ok(Self::ModelRevealEpochMismatch),
-            K::ModelWeightsUrlMismatch => Ok(Self::ModelWeightsUrlMismatch),
+            K::ModelEmbeddingCommitmentMismatch => Ok(Self::ModelEmbeddingCommitmentMismatch),
+            K::ModelDecryptionKeyCommitmentMismatch => Ok(Self::ModelDecryptionKeyCommitmentMismatch),
             K::ModelNoPendingUpdate => Ok(Self::ModelNoPendingUpdate),
             K::ModelArchitectureVersionMismatch => Ok(Self::ModelArchitectureVersionMismatch),
             K::ModelCommissionRateTooHigh => Ok(Self::ModelCommissionRateTooHigh),

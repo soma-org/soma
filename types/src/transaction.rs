@@ -25,13 +25,16 @@ use crate::crypto::{
     SomaSignatureInner, default_hash,
 };
 use crate::digests::{
-    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest, DataCommitment,
-    ModelWeightsCommitment, ModelWeightsUrlCommitment, SenderSignedDataDigest, TransactionDigest,
+    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest,
+    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment, SenderSignedDataDigest,
+    TransactionDigest,
 };
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::model::{ArchitectureVersion, ModelId, ModelWeightsManifest};
+use crate::crypto::DecryptionKey;
+use crate::metadata::Manifest;
+use crate::model::{ArchitectureVersion, ModelId};
 use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
 use crate::submission::SubmissionManifest;
 use crate::target::TargetId;
@@ -248,37 +251,41 @@ pub struct UpdateValidatorMetadataArgs {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct CommitModelArgs {
-    pub model_id: ModelId,
-    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    pub manifest: Manifest,
     pub weights_commitment: ModelWeightsCommitment,
     pub architecture_version: ArchitectureVersion,
+    /// Commitment (hash) of the model embedding for stake-weighted KNN selection.
+    pub embedding_commitment: EmbeddingCommitment,
+    /// Commitment (hash) of the decryption key, verified at reveal time.
+    pub decryption_key_commitment: DecryptionKeyCommitment,
     pub stake_amount: u64,
     pub commission_rate: u64,
-    pub staking_pool_id: ObjectID,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct RevealModelArgs {
     pub model_id: ModelId,
-    pub weights_manifest: ModelWeightsManifest,
-    /// Model embedding for stake-weighted KNN target selection.
-    /// This positions the model in the shared embedding space.
+    pub decryption_key: DecryptionKey,
+    /// Full model embedding, revealed after commit.
     pub embedding: SomaTensor,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct CommitModelUpdateArgs {
     pub model_id: ModelId,
-    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    pub manifest: Manifest,
     pub weights_commitment: ModelWeightsCommitment,
+    /// Commitment (hash) of the updated model embedding.
+    pub embedding_commitment: EmbeddingCommitment,
+    /// Commitment (hash) of the decryption key, verified at reveal time.
+    pub decryption_key_commitment: DecryptionKeyCommitment,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct RevealModelUpdateArgs {
     pub model_id: ModelId,
-    pub weights_manifest: ModelWeightsManifest,
-    /// Updated model embedding for stake-weighted KNN target selection.
-    /// Allows repositioning the model in the shared embedding space.
+    pub decryption_key: DecryptionKey,
+    /// Full updated model embedding, revealed after commit.
     pub embedding: SomaTensor,
 }
 
@@ -291,9 +298,6 @@ pub struct RevealModelUpdateArgs {
 pub struct SubmitDataArgs {
     /// Target to submit against (shared object ID)
     pub target_id: TargetId,
-
-    /// Commitment to the raw data: hash(data_bytes)
-    pub data_commitment: DataCommitment,
 
     /// Manifest for submitted data (URL + checksum + size)
     pub data_manifest: SubmissionManifest,

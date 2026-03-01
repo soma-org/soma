@@ -17,7 +17,6 @@
 //! 7. test_shared_object_dependency_tracking — Sequential mutations create dependency chain
 //! 8. test_concurrent_conflicting_owned_transactions — Concurrent spends of same coin via orchestrator
 
-use fastcrypto::hash::HashFunction as _;
 use rpc::proto::soma::ListTargetsRequest;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
@@ -25,12 +24,12 @@ use types::SYSTEM_STATE_OBJECT_ID;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
-use types::crypto::{DecryptionKey, DefaultHash, Signature};
-use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::crypto::{DecryptionKey, Signature};
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::effects::{InputSharedObject, TransactionEffectsAPI};
 use types::intent::{Intent, IntentMessage};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ModelId, ModelWeightsManifest};
+use types::model::ModelId;
 use types::object::{ObjectID, Owner};
 use types::quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType};
 use types::submission::SubmissionManifest;
@@ -44,19 +43,10 @@ use utils::logging::init_tracing;
 
 // ===== Helpers (shared with target_tests.rs / challenge_tests.rs) =====
 
-fn url_commitment_for(url_str: &str) -> ModelWeightsUrlCommitment {
-    let mut hasher = DefaultHash::default();
-    hasher.update(url_str.as_bytes());
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    ModelWeightsUrlCommitment::new(bytes)
-}
-
-fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
+fn make_manifest(url_str: &str) -> Manifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
-    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
+    Manifest::V1(ManifestV1::new(url, metadata))
 }
 
 fn make_genesis_model_config(
@@ -65,17 +55,19 @@ fn make_genesis_model_config(
     initial_stake: u64,
 ) -> GenesisModelConfig {
     let url_str = format!("https://example.com/models/{}", model_id);
-    let url_commitment = url_commitment_for(&url_str);
+    let manifest = make_manifest(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let weights_manifest = make_weights_manifest(&url_str);
 
     GenesisModelConfig {
         owner,
         model_id,
-        weights_manifest,
-        weights_url_commitment: url_commitment,
+        manifest,
+        decryption_key: DecryptionKey::new([0xAA; 32]),
         weights_commitment,
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
+        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -210,7 +202,6 @@ async fn test_shared_object_mutation_via_submit_data() {
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -432,7 +423,6 @@ async fn test_shared_object_status_transition_via_claim() {
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -526,7 +516,6 @@ async fn test_shared_object_status_transition_via_claim() {
     let submit_to_claimed_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(512),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -608,7 +597,6 @@ async fn test_target_version_increments_on_mutations() {
     let submit_tx = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -803,7 +791,6 @@ async fn test_transaction_replay_idempotency() {
     let submit_tx_data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -975,7 +962,6 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
         let submit_tx = TransactionData::new(
             TransactionKind::SubmitData(SubmitDataArgs {
                 target_id,
-                data_commitment: DataCommitment::random(),
                 data_manifest: make_submission_manifest(1024),
                 model_id,
                 embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -1119,7 +1105,6 @@ async fn test_shared_object_dependency_tracking() {
     let submit_tx_data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: make_submission_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),

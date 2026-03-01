@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::base::SomaAddress;
 use crate::committee::EpochId;
 use crate::crypto::DecryptionKey;
-use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use crate::metadata::Manifest;
 use crate::object::ObjectID;
 use crate::system_state::staking::StakingPool;
@@ -31,16 +31,18 @@ pub struct ModelWeightsManifest {
 /// A pending update to an active model's weights (commit-reveal).
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct PendingModelUpdate {
-    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    pub manifest: Manifest,
     pub weights_commitment: ModelWeightsCommitment,
+    pub embedding_commitment: EmbeddingCommitment,
+    pub decryption_key_commitment: DecryptionKeyCommitment,
     pub commit_epoch: EpochId,
 }
 
 /// A registered model in the SOMA data submission system.
 ///
 /// Models go through a commit-reveal lifecycle:
-/// - **Committed**: `weights_manifest.is_none()` && `deactivation_epoch == None`
-/// - **Active**: `weights_manifest.is_some()` && `deactivation_epoch == None`
+/// - **Committed**: `decryption_key.is_none()` && `deactivation_epoch == None`
+/// - **Active**: `decryption_key.is_some()` && `deactivation_epoch == None`
 /// - **PendingUpdate**: Active with `pending_update.is_some()`
 /// - **Inactive**: `staking_pool.deactivation_epoch.is_some()`
 ///
@@ -55,23 +57,27 @@ pub struct ModelV1 {
     pub architecture_version: ArchitectureVersion,
 
     // -- Commit state --
-    /// Commitment to the encrypted weights URL
-    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    /// Manifest for the encrypted weights (URL + checksum + size). Set at commit time.
+    pub manifest: Manifest,
     /// Commitment to the decrypted model weights
     pub weights_commitment: ModelWeightsCommitment,
+    /// Commitment to the model embedding (hash of BCS-serialized SomaTensor)
+    pub embedding_commitment: EmbeddingCommitment,
+    /// Commitment to the decryption key (hash of key bytes), verified at reveal
+    pub decryption_key_commitment: DecryptionKeyCommitment,
     /// Epoch in which CommitModel was executed
     pub commit_epoch: EpochId,
 
     // -- Reveal state (None while Committed) --
-    /// Set when RevealModel is executed; contains manifest URL + decryption key
-    pub weights_manifest: Option<ModelWeightsManifest>,
+    /// AES-256 decryption key, set when RevealModel is executed
+    pub decryption_key: Option<DecryptionKey>,
 
     // -- Model embedding for stake-weighted KNN selection --
     /// The model's embedding vector in the shared embedding space.
     /// Used for stake-weighted KNN model selection: targets prefer nearby models
     /// weighted by normalized stake (voting power). This encourages specialization
     /// and reputation building within specific regions of the embedding space.
-    /// Set during reveal (derived from model weights or specified by owner).
+    /// Set during reveal (verified against embedding_commitment from commit).
     pub embedding: Option<SomaTensor>,
 
     // -- Staking (reuses existing StakingPool, identical to validators) --
@@ -90,12 +96,12 @@ pub struct ModelV1 {
 impl ModelV1 {
     /// Returns true if this model is in the committed (pre-reveal) state.
     pub fn is_committed(&self) -> bool {
-        self.weights_manifest.is_none() && self.staking_pool.deactivation_epoch.is_none()
+        self.decryption_key.is_none() && self.staking_pool.deactivation_epoch.is_none()
     }
 
     /// Returns true if this model has been revealed and is active.
     pub fn is_active(&self) -> bool {
-        self.weights_manifest.is_some() && self.staking_pool.deactivation_epoch.is_none()
+        self.decryption_key.is_some() && self.staking_pool.deactivation_epoch.is_none()
     }
 
     /// Returns true if this model has been deactivated (slashed or owner-deactivated).

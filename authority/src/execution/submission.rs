@@ -247,7 +247,6 @@ impl SubmissionExecutor {
         // 11. Populate challenge audit fields (BEFORE moving args into Submission)
         // These are needed for challengers/validators to verify the submission
         target.winning_data_manifest = Some(args.data_manifest.clone());
-        target.winning_data_commitment = Some(args.data_commitment);
         target.winning_embedding = Some(args.embedding.clone());
         target.winning_distance_score = Some(args.distance_score.clone());
 

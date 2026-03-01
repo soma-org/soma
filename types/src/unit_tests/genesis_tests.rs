@@ -400,37 +400,28 @@ fn test_genesis_creates_initial_targets() {
     let schedule = sched_builder.build();
 
     // Create a genesis model config
-    use fastcrypto::hash::HashFunction as _;
     use url::Url;
 
     use crate::checksum::Checksum;
-    use crate::crypto::{DecryptionKey, DefaultHash};
-    use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+    use crate::crypto::DecryptionKey;
+    use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
     use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-    use crate::model::ModelWeightsManifest;
+    use crate::tensor::SomaTensor;
 
     let url_str = "https://example.com/model/weights";
     let url = Url::parse(url_str).unwrap();
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
     let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    let weights_manifest =
-        ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) };
-
-    let url_bytes = url_str.as_bytes();
-    let url_hash = {
-        let mut hasher = DefaultHash::default();
-        hasher.update(url_bytes);
-        let h = hasher.finalize();
-        let bytes: [u8; 32] = h.as_ref().try_into().unwrap();
-        bytes
-    };
 
     let genesis_model = GenesisModelConfig {
         owner: model_owner,
         model_id,
-        weights_manifest,
-        weights_url_commitment: ModelWeightsUrlCommitment::new(url_hash),
+        manifest,
+        decryption_key: DecryptionKey::new([0u8; 32]),
+        embedding: SomaTensor::zeros(vec![768]),
         weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
+        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
         architecture_version: 1,
         commission_rate: 500, // 5%
         initial_stake: model_stake,

@@ -101,7 +101,7 @@ mod model_tests {
         let model = state.model_registry().active_models.get(&model_id_1()).unwrap();
         assert!(model.is_active());
         assert!(!model.is_committed());
-        assert!(model.weights_manifest.is_some());
+        assert!(model.decryption_key.is_some());
         assert_eq!(model.staking_pool.soma_balance, 5 * SHANNONS_PER_SOMA);
 
         // total_model_stake should reflect the active model
@@ -259,8 +259,10 @@ mod model_tests {
         let stake = 5 * SHANNONS_PER_SOMA;
 
         let url_str = format!("https://example.com/models/{}", model_id_1());
-        let url_commitment = test_utils::url_commitment_for(&url_str);
+        let manifest = test_utils::make_manifest(&url_str);
         let weights_commitment = crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
+        let embedding_commitment = crate::digests::EmbeddingCommitment::new([0u8; 32]);
+        let decryption_key_commitment = crate::digests::DecryptionKeyCommitment::new([0u8; 32]);
         let staking_pool_id = ObjectID::random();
 
         // Use wrong architecture version
@@ -271,9 +273,11 @@ mod model_tests {
         let result = state.request_commit_model(
             model_owner(),
             model_id_1(),
-            url_commitment,
+            manifest,
             weights_commitment,
             wrong_version,
+            embedding_commitment,
+            decryption_key_commitment,
             stake,
             0,
             staking_pool_id,
@@ -321,7 +325,7 @@ mod model_tests {
 
         // Weights commitment should have changed
         assert_ne!(model.weights_commitment, original_commitment);
-        assert!(model.weights_manifest.is_some());
+        assert!(model.decryption_key.is_some());
     }
 
     // ===================================================================
@@ -387,15 +391,19 @@ mod model_tests {
 
         // Second commit update in the same epoch — should overwrite
         let url_str2 = format!("https://example.com/models/{}/update-v2", model_id_1());
-        let url_commitment2 = test_utils::url_commitment_for(&url_str2);
+        let manifest2 = test_utils::make_manifest(&url_str2);
         let weights_commitment2 = crate::digests::ModelWeightsCommitment::new([0xDD; 32]);
+        let embedding_commitment2 = crate::digests::EmbeddingCommitment::new([0u8; 32]);
+        let decryption_key_commitment2 = crate::digests::DecryptionKeyCommitment::new([0u8; 32]);
 
         state
             .request_commit_model_update(
                 model_owner(),
                 &model_id_1(),
-                url_commitment2,
+                manifest2,
                 weights_commitment2,
+                embedding_commitment2,
+                decryption_key_commitment2,
             )
             .unwrap();
 
@@ -456,16 +464,20 @@ mod model_tests {
 
         // Commit with rate > BPS_DENOMINATOR should fail
         let url_str = format!("https://example.com/models/{}", model_id_1());
-        let url_commitment = test_utils::url_commitment_for(&url_str);
+        let manifest = test_utils::make_manifest(&url_str);
         let weights_commitment = crate::digests::ModelWeightsCommitment::new([0xBB; 32]);
+        let embedding_commitment = crate::digests::EmbeddingCommitment::new([0u8; 32]);
+        let decryption_key_commitment = crate::digests::DecryptionKeyCommitment::new([0u8; 32]);
         let staking_pool_id = ObjectID::random();
 
         let result = state.request_commit_model(
             model_owner(),
             model_id_1(),
-            url_commitment,
+            manifest,
             weights_commitment,
             state.parameters().model_architecture_version,
+            embedding_commitment,
+            decryption_key_commitment,
             stake,
             10001, // > 10000
             staking_pool_id,
@@ -647,13 +659,13 @@ mod model_tests {
         advance_epoch_with_reward_amounts(&mut state, 0, &mut vr);
 
         // Non-owner tries to reveal
-        let url_str = format!("https://example.com/models/{}", model_id_1());
-        let manifest = test_utils::make_weights_manifest(&url_str);
+        let decryption_key = crate::crypto::DecryptionKey::new([0xAA; 32]);
         let embedding = crate::tensor::SomaTensor::new(
             vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
             vec![10],
         );
-        let result = state.request_reveal_model(not_owner, &model_id_1(), manifest, embedding);
+        let result =
+            state.request_reveal_model(not_owner, &model_id_1(), decryption_key, embedding);
         match result {
             Err(ExecutionFailureStatus::NotModelOwner) => {}
             other => panic!("Expected NotModelOwner, got {:?}", other),
@@ -678,10 +690,18 @@ mod model_tests {
 
         // Non-owner tries to commit update
         let url_str2 = format!("https://example.com/models/{}/update", model_id_1());
-        let url_commitment2 = test_utils::url_commitment_for(&url_str2);
+        let manifest2 = test_utils::make_manifest(&url_str2);
         let wc2 = crate::digests::ModelWeightsCommitment::new([0xCC; 32]);
-        let result =
-            state.request_commit_model_update(not_owner, &model_id_1(), url_commitment2, wc2);
+        let ec2 = crate::digests::EmbeddingCommitment::new([0u8; 32]);
+        let dkc2 = crate::digests::DecryptionKeyCommitment::new([0u8; 32]);
+        let result = state.request_commit_model_update(
+            not_owner,
+            &model_id_1(),
+            manifest2,
+            wc2,
+            ec2,
+            dkc2,
+        );
         match result {
             Err(ExecutionFailureStatus::NotModelOwner) => {}
             other => panic!("Expected NotModelOwner, got {:?}", other),
@@ -701,13 +721,17 @@ mod model_tests {
         let _staked = commit_model(&mut state, model_owner(), model_id_1(), stake);
 
         // Try to reveal in the same epoch (should fail — must be commit_epoch + 1)
-        let url_str = format!("https://example.com/models/{}", model_id_1());
-        let manifest = test_utils::make_weights_manifest(&url_str);
+        let decryption_key = crate::crypto::DecryptionKey::new([0xAA; 32]);
         let embedding = crate::tensor::SomaTensor::new(
             vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
             vec![10],
         );
-        let result = state.request_reveal_model(model_owner(), &model_id_1(), manifest, embedding);
+        let result = state.request_reveal_model(
+            model_owner(),
+            &model_id_1(),
+            decryption_key,
+            embedding,
+        );
 
         match result {
             Err(ExecutionFailureStatus::ModelRevealEpochMismatch) => {}

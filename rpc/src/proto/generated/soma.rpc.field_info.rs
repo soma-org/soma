@@ -4855,11 +4855,11 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
-        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_url_commitment",
-            json_name: "weightsUrlCommitment",
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
             number: 3i32,
-            message_fields: None,
+            message_fields: Some(Manifest::FIELDS),
         };
         pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
             name: "weights_commitment",
@@ -4867,46 +4867,58 @@ mod _field_impls {
             number: 4i32,
             message_fields: None,
         };
-        pub const COMMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "commit_epoch",
-            json_name: "commitEpoch",
+        pub const EMBEDDING_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "embedding_commitment",
+            json_name: "embeddingCommitment",
             number: 5i32,
             message_fields: None,
         };
-        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
-            name: "weights_manifest",
-            json_name: "weightsManifest",
+        pub const DECRYPTION_KEY_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key_commitment",
+            json_name: "decryptionKeyCommitment",
             number: 6i32,
-            message_fields: Some(ModelWeightsManifest::FIELDS),
+            message_fields: None,
+        };
+        pub const COMMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "commit_epoch",
+            json_name: "commitEpoch",
+            number: 7i32,
+            message_fields: None,
+        };
+        pub const DECRYPTION_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key",
+            json_name: "decryptionKey",
+            number: 8i32,
+            message_fields: None,
         };
         pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
             name: "embedding",
             json_name: "embedding",
-            number: 7i32,
+            number: 9i32,
             message_fields: None,
         };
         pub const STAKING_POOL_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool",
             json_name: "stakingPool",
-            number: 8i32,
+            number: 10i32,
             message_fields: Some(StakingPool::FIELDS),
         };
         pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "commission_rate",
             json_name: "commissionRate",
-            number: 9i32,
+            number: 11i32,
             message_fields: None,
         };
         pub const NEXT_EPOCH_COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_commission_rate",
             json_name: "nextEpochCommissionRate",
-            number: 10i32,
+            number: 12i32,
             message_fields: None,
         };
         pub const PENDING_UPDATE_FIELD: &'static MessageField = &MessageField {
             name: "pending_update",
             json_name: "pendingUpdate",
-            number: 11i32,
+            number: 13i32,
             message_fields: Some(PendingModelUpdate::FIELDS),
         };
     }
@@ -4914,10 +4926,12 @@ mod _field_impls {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::OWNER_FIELD,
             Self::ARCHITECTURE_VERSION_FIELD,
-            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::MANIFEST_FIELD,
             Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::EMBEDDING_COMMITMENT_FIELD,
+            Self::DECRYPTION_KEY_COMMITMENT_FIELD,
             Self::COMMIT_EPOCH_FIELD,
-            Self::WEIGHTS_MANIFEST_FIELD,
+            Self::DECRYPTION_KEY_FIELD,
             Self::EMBEDDING_FIELD,
             Self::STAKING_POOL_FIELD,
             Self::COMMISSION_RATE_FIELD,
@@ -4953,21 +4967,29 @@ mod _field_impls {
             self.path.push(Model::ARCHITECTURE_VERSION_FIELD.name);
             self.finish()
         }
-        pub fn weights_url_commitment(mut self) -> String {
-            self.path.push(Model::WEIGHTS_URL_COMMITMENT_FIELD.name);
-            self.finish()
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(Model::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
         }
         pub fn weights_commitment(mut self) -> String {
             self.path.push(Model::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding_commitment(mut self) -> String {
+            self.path.push(Model::EMBEDDING_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn decryption_key_commitment(mut self) -> String {
+            self.path.push(Model::DECRYPTION_KEY_COMMITMENT_FIELD.name);
             self.finish()
         }
         pub fn commit_epoch(mut self) -> String {
             self.path.push(Model::COMMIT_EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
-            self.path.push(Model::WEIGHTS_MANIFEST_FIELD.name);
-            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        pub fn decryption_key(mut self) -> String {
+            self.path.push(Model::DECRYPTION_KEY_FIELD.name);
+            self.finish()
         }
         pub fn embedding(mut self) -> String {
             self.path.push(Model::EMBEDDING_FIELD.name);
@@ -6898,11 +6920,11 @@ mod _field_impls {
         }
     }
     impl PendingModelUpdate {
-        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_url_commitment",
-            json_name: "weightsUrlCommitment",
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
             number: 1i32,
-            message_fields: None,
+            message_fields: Some(Manifest::FIELDS),
         };
         pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
             name: "weights_commitment",
@@ -6910,17 +6932,31 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const EMBEDDING_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "embedding_commitment",
+            json_name: "embeddingCommitment",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DECRYPTION_KEY_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key_commitment",
+            json_name: "decryptionKeyCommitment",
+            number: 4i32,
+            message_fields: None,
+        };
         pub const COMMIT_EPOCH_FIELD: &'static MessageField = &MessageField {
             name: "commit_epoch",
             json_name: "commitEpoch",
-            number: 3i32,
+            number: 5i32,
             message_fields: None,
         };
     }
     impl MessageFields for PendingModelUpdate {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::MANIFEST_FIELD,
             Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::EMBEDDING_COMMITMENT_FIELD,
+            Self::DECRYPTION_KEY_COMMITMENT_FIELD,
             Self::COMMIT_EPOCH_FIELD,
         ];
     }
@@ -6944,12 +6980,20 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn weights_url_commitment(mut self) -> String {
-            self.path.push(PendingModelUpdate::WEIGHTS_URL_COMMITMENT_FIELD.name);
-            self.finish()
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(PendingModelUpdate::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
         }
         pub fn weights_commitment(mut self) -> String {
             self.path.push(PendingModelUpdate::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding_commitment(mut self) -> String {
+            self.path.push(PendingModelUpdate::EMBEDDING_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn decryption_key_commitment(mut self) -> String {
+            self.path.push(PendingModelUpdate::DECRYPTION_KEY_COMMITMENT_FIELD.name);
             self.finish()
         }
         pub fn commit_epoch(mut self) -> String {
@@ -6958,58 +7002,58 @@ mod _field_impls {
         }
     }
     impl CommitModel {
-        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
-            name: "model_id",
-            json_name: "modelId",
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
             number: 1i32,
-            message_fields: None,
-        };
-        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_url_commitment",
-            json_name: "weightsUrlCommitment",
-            number: 2i32,
-            message_fields: None,
+            message_fields: Some(Manifest::FIELDS),
         };
         pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
             name: "weights_commitment",
             json_name: "weightsCommitment",
-            number: 3i32,
+            number: 2i32,
             message_fields: None,
         };
         pub const ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "architecture_version",
             json_name: "architectureVersion",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const EMBEDDING_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "embedding_commitment",
+            json_name: "embeddingCommitment",
             number: 4i32,
+            message_fields: None,
+        };
+        pub const DECRYPTION_KEY_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key_commitment",
+            json_name: "decryptionKeyCommitment",
+            number: 5i32,
             message_fields: None,
         };
         pub const STAKE_AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "stake_amount",
             json_name: "stakeAmount",
-            number: 5i32,
+            number: 6i32,
             message_fields: None,
         };
         pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
             name: "commission_rate",
             json_name: "commissionRate",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const STAKING_POOL_ID_FIELD: &'static MessageField = &MessageField {
-            name: "staking_pool_id",
-            json_name: "stakingPoolId",
             number: 7i32,
             message_fields: None,
         };
     }
     impl MessageFields for CommitModel {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::MODEL_ID_FIELD,
-            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::MANIFEST_FIELD,
             Self::WEIGHTS_COMMITMENT_FIELD,
             Self::ARCHITECTURE_VERSION_FIELD,
+            Self::EMBEDDING_COMMITMENT_FIELD,
+            Self::DECRYPTION_KEY_COMMITMENT_FIELD,
             Self::STAKE_AMOUNT_FIELD,
             Self::COMMISSION_RATE_FIELD,
-            Self::STAKING_POOL_ID_FIELD,
         ];
     }
     impl CommitModel {
@@ -7032,13 +7076,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn model_id(mut self) -> String {
-            self.path.push(CommitModel::MODEL_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn weights_url_commitment(mut self) -> String {
-            self.path.push(CommitModel::WEIGHTS_URL_COMMITMENT_FIELD.name);
-            self.finish()
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(CommitModel::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
         }
         pub fn weights_commitment(mut self) -> String {
             self.path.push(CommitModel::WEIGHTS_COMMITMENT_FIELD.name);
@@ -7046,6 +7086,14 @@ mod _field_impls {
         }
         pub fn architecture_version(mut self) -> String {
             self.path.push(CommitModel::ARCHITECTURE_VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding_commitment(mut self) -> String {
+            self.path.push(CommitModel::EMBEDDING_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn decryption_key_commitment(mut self) -> String {
+            self.path.push(CommitModel::DECRYPTION_KEY_COMMITMENT_FIELD.name);
             self.finish()
         }
         pub fn stake_amount(mut self) -> String {
@@ -7056,10 +7104,6 @@ mod _field_impls {
             self.path.push(CommitModel::COMMISSION_RATE_FIELD.name);
             self.finish()
         }
-        pub fn staking_pool_id(mut self) -> String {
-            self.path.push(CommitModel::STAKING_POOL_ID_FIELD.name);
-            self.finish()
-        }
     }
     impl RevealModel {
         pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
@@ -7068,11 +7112,11 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
-            name: "weights_manifest",
-            json_name: "weightsManifest",
+        pub const DECRYPTION_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key",
+            json_name: "decryptionKey",
             number: 2i32,
-            message_fields: Some(ModelWeightsManifest::FIELDS),
+            message_fields: None,
         };
         pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
             name: "embedding",
@@ -7084,7 +7128,7 @@ mod _field_impls {
     impl MessageFields for RevealModel {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::MODEL_ID_FIELD,
-            Self::WEIGHTS_MANIFEST_FIELD,
+            Self::DECRYPTION_KEY_FIELD,
             Self::EMBEDDING_FIELD,
         ];
     }
@@ -7112,9 +7156,9 @@ mod _field_impls {
             self.path.push(RevealModel::MODEL_ID_FIELD.name);
             self.finish()
         }
-        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
-            self.path.push(RevealModel::WEIGHTS_MANIFEST_FIELD.name);
-            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        pub fn decryption_key(mut self) -> String {
+            self.path.push(RevealModel::DECRYPTION_KEY_FIELD.name);
+            self.finish()
         }
         pub fn embedding(mut self) -> String {
             self.path.push(RevealModel::EMBEDDING_FIELD.name);
@@ -7128,11 +7172,11 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const WEIGHTS_URL_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_url_commitment",
-            json_name: "weightsUrlCommitment",
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
             number: 2i32,
-            message_fields: None,
+            message_fields: Some(Manifest::FIELDS),
         };
         pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
             name: "weights_commitment",
@@ -7140,12 +7184,26 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
+        pub const EMBEDDING_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "embedding_commitment",
+            json_name: "embeddingCommitment",
+            number: 4i32,
+            message_fields: None,
+        };
+        pub const DECRYPTION_KEY_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key_commitment",
+            json_name: "decryptionKeyCommitment",
+            number: 5i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for CommitModelUpdate {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::MODEL_ID_FIELD,
-            Self::WEIGHTS_URL_COMMITMENT_FIELD,
+            Self::MANIFEST_FIELD,
             Self::WEIGHTS_COMMITMENT_FIELD,
+            Self::EMBEDDING_COMMITMENT_FIELD,
+            Self::DECRYPTION_KEY_COMMITMENT_FIELD,
         ];
     }
     impl CommitModelUpdate {
@@ -7172,12 +7230,20 @@ mod _field_impls {
             self.path.push(CommitModelUpdate::MODEL_ID_FIELD.name);
             self.finish()
         }
-        pub fn weights_url_commitment(mut self) -> String {
-            self.path.push(CommitModelUpdate::WEIGHTS_URL_COMMITMENT_FIELD.name);
-            self.finish()
+        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
+            self.path.push(CommitModelUpdate::MANIFEST_FIELD.name);
+            ManifestFieldPathBuilder::new_with_base(self.path)
         }
         pub fn weights_commitment(mut self) -> String {
             self.path.push(CommitModelUpdate::WEIGHTS_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn embedding_commitment(mut self) -> String {
+            self.path.push(CommitModelUpdate::EMBEDDING_COMMITMENT_FIELD.name);
+            self.finish()
+        }
+        pub fn decryption_key_commitment(mut self) -> String {
+            self.path.push(CommitModelUpdate::DECRYPTION_KEY_COMMITMENT_FIELD.name);
             self.finish()
         }
     }
@@ -7188,11 +7254,11 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const WEIGHTS_MANIFEST_FIELD: &'static MessageField = &MessageField {
-            name: "weights_manifest",
-            json_name: "weightsManifest",
+        pub const DECRYPTION_KEY_FIELD: &'static MessageField = &MessageField {
+            name: "decryption_key",
+            json_name: "decryptionKey",
             number: 2i32,
-            message_fields: Some(ModelWeightsManifest::FIELDS),
+            message_fields: None,
         };
         pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
             name: "embedding",
@@ -7204,7 +7270,7 @@ mod _field_impls {
     impl MessageFields for RevealModelUpdate {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::MODEL_ID_FIELD,
-            Self::WEIGHTS_MANIFEST_FIELD,
+            Self::DECRYPTION_KEY_FIELD,
             Self::EMBEDDING_FIELD,
         ];
     }
@@ -7232,9 +7298,9 @@ mod _field_impls {
             self.path.push(RevealModelUpdate::MODEL_ID_FIELD.name);
             self.finish()
         }
-        pub fn weights_manifest(mut self) -> ModelWeightsManifestFieldPathBuilder {
-            self.path.push(RevealModelUpdate::WEIGHTS_MANIFEST_FIELD.name);
-            ModelWeightsManifestFieldPathBuilder::new_with_base(self.path)
+        pub fn decryption_key(mut self) -> String {
+            self.path.push(RevealModelUpdate::DECRYPTION_KEY_FIELD.name);
+            self.finish()
         }
         pub fn embedding(mut self) -> String {
             self.path.push(RevealModelUpdate::EMBEDDING_FIELD.name);
@@ -7761,12 +7827,6 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const DATA_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "data_commitment",
-            json_name: "dataCommitment",
-            number: 2i32,
-            message_fields: None,
-        };
         pub const DATA_MANIFEST_FIELD: &'static MessageField = &MessageField {
             name: "data_manifest",
             json_name: "dataManifest",
@@ -7801,7 +7861,6 @@ mod _field_impls {
     impl MessageFields for SubmitData {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::TARGET_ID_FIELD,
-            Self::DATA_COMMITMENT_FIELD,
             Self::DATA_MANIFEST_FIELD,
             Self::MODEL_ID_FIELD,
             Self::EMBEDDING_FIELD,
@@ -7831,10 +7890,6 @@ mod _field_impls {
         }
         pub fn target_id(mut self) -> String {
             self.path.push(SubmitData::TARGET_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn data_commitment(mut self) -> String {
-            self.path.push(SubmitData::DATA_COMMITMENT_FIELD.name);
             self.finish()
         }
         pub fn data_manifest(mut self) -> SubmissionManifestFieldPathBuilder {

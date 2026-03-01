@@ -179,41 +179,43 @@ message ModelWeightsManifest {
 
 // Pending update to an active model's weights (commit phase).
 message PendingModelUpdate {
-  optional bytes weights_url_commitment = 1;  // 32-byte digest
-  optional bytes weights_commitment = 2;      // 32-byte digest
-  optional uint64 commit_epoch = 3;
+  optional Manifest manifest = 1;
+  optional bytes weights_commitment = 2;
+  optional bytes embedding_commitment = 3;     // 32-byte hash
+  optional bytes decryption_key_commitment = 4; // 32-byte hash
+  optional uint64 commit_epoch = 5;
 }
 
 // Model transaction messages
 
 message CommitModel {
-  optional string model_id = 1;
-  optional bytes weights_url_commitment = 2;
-  optional bytes weights_commitment = 3;
-  optional uint64 architecture_version = 4;
-  optional uint64 stake_amount = 5;
-  optional uint64 commission_rate = 6;
-  optional string staking_pool_id = 7;
+  optional Manifest manifest = 1;
+  optional bytes weights_commitment = 2;
+  optional uint64 architecture_version = 3;
+  optional bytes embedding_commitment = 4;     // 32-byte hash of BCS-serialized embedding
+  optional bytes decryption_key_commitment = 5; // 32-byte hash of decryption key
+  optional uint64 stake_amount = 6;
+  optional uint64 commission_rate = 7;
 }
 
 message RevealModel {
   optional string model_id = 1;
-  optional ModelWeightsManifest weights_manifest = 2;
-  // Model embedding for stake-weighted KNN target selection (f32 values)
-  repeated float embedding = 3;
+  optional bytes decryption_key = 2;     // 32-byte AES-256 key
+  repeated float embedding = 3;          // Full model embedding revealed here
 }
 
 message CommitModelUpdate {
   optional string model_id = 1;
-  optional bytes weights_url_commitment = 2;
+  optional Manifest manifest = 2;
   optional bytes weights_commitment = 3;
+  optional bytes embedding_commitment = 4;     // 32-byte hash of BCS-serialized embedding
+  optional bytes decryption_key_commitment = 5; // 32-byte hash of decryption key
 }
 
 message RevealModelUpdate {
   optional string model_id = 1;
-  optional ModelWeightsManifest weights_manifest = 2;
-  // Updated model embedding for stake-weighted KNN target selection (f32 values)
-  repeated float embedding = 3;
+  optional bytes decryption_key = 2;     // 32-byte AES-256 key
+  repeated float embedding = 3;          // Full updated model embedding
 }
 
 message AddStakeToModel {
@@ -302,25 +304,12 @@ message ConsensusCommitPrologue {
 
 // Submit data to a target in the data submission competition.
 message SubmitData {
-  // Target ID (ObjectID hex string)
   optional string target_id = 1;
-
-  // Commitment to raw data: hash(data_bytes), 32-byte digest
-  optional bytes data_commitment = 2;
-
-  // Manifest for submitted data
+  // Field 2 removed (was data_commitment)
   optional SubmissionManifest data_manifest = 3;
-
-  // Model ID used for submission (must be in target's model_ids)
   optional string model_id = 4;
-
-  // Pre-computed embedding (f32 values)
   repeated float embedding = 5;
-
-  // Distance score (f32 cosine distance, lower is better)
   optional float distance_score = 6;
-
-  // Bond coin reference
   optional ObjectReference bond_coin = 7;
 }
 

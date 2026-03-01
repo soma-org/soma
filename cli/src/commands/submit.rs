@@ -11,7 +11,6 @@ use sdk::wallet_context::WalletContext;
 use serde::Serialize;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
-use types::digests::DataCommitment;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use types::object::ObjectID;
 use types::submission::SubmissionManifest;
@@ -73,7 +72,7 @@ impl SubmitCommand {
         let sender = context.active_address()?;
 
         // Auto-compute commitment, checksum, and size from data file
-        let (commitment_bytes, checksum_hex, data_size) =
+        let (_commitment_bytes, checksum_hex, data_size) =
             super::parse_helpers::read_and_hash_file(&self.data_file)?;
 
         // Build data manifest
@@ -109,7 +108,6 @@ impl SubmitCommand {
 
         let kind = TransactionKind::SubmitData(SubmitDataArgs {
             target_id: self.target_id,
-            data_commitment: DataCommitment::new(commitment_bytes),
             data_manifest: manifest,
             model_id: self.model_id,
             embedding: SomaTensor::new(embedding_vec.clone(), vec![embedding_vec.len()]),

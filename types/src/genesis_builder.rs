@@ -541,10 +541,13 @@ impl GenesisBuilder {
             system_state.add_model_at_genesis(
                 model_config.model_id,
                 model_config.owner,
-                model_config.weights_manifest.clone(),
-                model_config.weights_url_commitment,
+                model_config.manifest.clone(),
+                model_config.decryption_key,
                 model_config.weights_commitment,
                 model_config.architecture_version,
+                model_config.embedding_commitment,
+                model_config.decryption_key_commitment,
+                model_config.embedding.clone(),
                 model_config.commission_rate,
             );
         }

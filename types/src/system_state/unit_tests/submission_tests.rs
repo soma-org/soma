@@ -6,7 +6,6 @@
 //! Tests for:
 //! - Submission construction and field access
 //! - SubmissionManifest creation and size calculation
-//! - DataCommitment type behavior
 //! - Transaction type helpers for submissions
 //! - Tally-based submission reports on Target objects
 
@@ -15,7 +14,6 @@ use url::Url;
 use crate::base::SomaAddress;
 use crate::checksum::Checksum;
 use crate::crypto::DIGEST_LENGTH;
-use crate::digests::DataCommitment;
 use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use crate::model::ModelId;
 use crate::object::ObjectID;
@@ -55,36 +53,11 @@ fn test_submission_manifest_various_sizes() {
     assert_eq!(zero.size(), 0);
 }
 
-/// Test DataCommitment creation and comparison
-#[test]
-fn test_data_commitment_random() {
-    let c1 = DataCommitment::random();
-    let c2 = DataCommitment::random();
-
-    // Two random commitments should be different
-    assert_ne!(c1, c2);
-
-    // Same commitment should equal itself
-    assert_eq!(c1, c1);
-}
-
-/// Test DataCommitment from bytes
-#[test]
-fn test_data_commitment_from_bytes() {
-    let bytes = [0xABu8; 32];
-    let commitment = DataCommitment::new(bytes);
-
-    // Should be able to get inner bytes back
-    let inner: [u8; 32] = commitment.into_inner();
-    assert_eq!(inner, bytes);
-}
-
 /// Test SubmitData transaction kind helper
 #[test]
 fn test_submit_data_transaction_kind() {
     let target_id = ObjectID::random();
     let model_id = ModelId::random();
-    let data_commitment = DataCommitment::random();
     let data_manifest = test_submission_manifest(1024);
     let embedding = SomaTensor::zeros(vec![768]);
     let bond_coin =
@@ -92,7 +65,6 @@ fn test_submit_data_transaction_kind() {
 
     let args = SubmitDataArgs {
         target_id,
-        data_commitment,
         data_manifest,
         model_id,
         embedding,
@@ -200,7 +172,6 @@ fn create_test_target() -> TargetV1 {
         winning_model_owner: Some(SomaAddress::random()),
         bond_amount: 5000,
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: Some(SomaTensor::scalar(500.0)),
         // New tally-based fields

@@ -33,13 +33,11 @@ use crate::crypto::{
     self, AuthorityPublicKey, DecryptionKey, DefaultHash, NetworkPublicKey, ProtocolPublicKey,
     SomaKeyPair, SomaPublicKey,
 };
-use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use crate::effects::ExecutionFailureStatus;
 use crate::error::{ExecutionResult, SomaError, SomaResult};
-use crate::metadata::ManifestAPI as _;
-use crate::model::{
-    ArchitectureVersion, ModelId, ModelV1, ModelWeightsManifest, PendingModelUpdate,
-};
+use crate::metadata::Manifest;
+use crate::model::{ArchitectureVersion, ModelId, ModelV1, PendingModelUpdate};
 use crate::multiaddr::Multiaddr;
 use crate::object::ObjectID;
 use crate::peer_id::PeerId;
@@ -404,10 +402,13 @@ impl SystemStateV1 {
         &mut self,
         model_id: ModelId,
         owner: SomaAddress,
-        weights_manifest: ModelWeightsManifest,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
+        decryption_key: DecryptionKey,
         weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
+        embedding: SomaTensor,
         commission_rate: u64,
     ) {
         assert!(self.epoch == 0, "Must be called during genesis");
@@ -423,11 +424,13 @@ impl SystemStateV1 {
         let model = ModelV1 {
             owner,
             architecture_version,
-            weights_url_commitment,
+            manifest,
             weights_commitment,
+            embedding_commitment,
+            decryption_key_commitment,
             commit_epoch: 0,
-            weights_manifest: Some(weights_manifest),
-            embedding: None, // Genesis models start without embeddings; can be set via update
+            decryption_key: Some(decryption_key),
+            embedding: Some(embedding),
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
@@ -630,9 +633,11 @@ impl SystemStateV1 {
         &mut self,
         owner: SomaAddress,
         model_id: ModelId,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
         weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
         stake_amount: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -650,11 +655,13 @@ impl SystemStateV1 {
         let model = ModelV1 {
             owner,
             architecture_version,
-            weights_url_commitment,
+            manifest,
             weights_commitment,
+            embedding_commitment,
+            decryption_key_commitment,
             commit_epoch: self.epoch,
-            weights_manifest: None,
-            embedding: None, // Set during reveal via request_reveal_model
+            decryption_key: None,
+            embedding: None,
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
@@ -668,13 +675,14 @@ impl SystemStateV1 {
     }
 
     /// Reveal a pending model (Phase 2 of commit-reveal).
-    /// Moves model from pending to active, setting its embedding for KNN selection.
+    /// Moves model from pending to active. Provides the decryption key and full
+    /// embedding (verified against the embedding_commitment from commit).
     #[allow(clippy::result_large_err)]
     pub fn request_reveal_model(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest,
+        decryption_key: DecryptionKey,
         embedding: SomaTensor,
     ) -> ExecutionResult {
         let model = self
@@ -690,21 +698,32 @@ impl SystemStateV1 {
             return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
         }
 
-        // Verify URL commitment: hash(url) must match weights_url_commitment
-        let url_bytes = weights_manifest.manifest.url().as_str().as_bytes();
-        let url_hash = {
+        // Verify decryption key commitment: hash(key_bytes) must match
+        let dk_hash = {
             let mut hasher = DefaultHash::default();
-            hasher.update(url_bytes);
+            hasher.update(decryption_key.as_ref());
             hasher.finalize()
         };
-        let expected: [u8; 32] = model.weights_url_commitment.into();
-        if url_hash.as_ref() != expected {
-            return Err(ExecutionFailureStatus::ModelWeightsUrlMismatch);
+        let expected_dk: [u8; 32] = model.decryption_key_commitment.into();
+        if dk_hash.as_ref() != expected_dk {
+            return Err(ExecutionFailureStatus::ModelDecryptionKeyCommitmentMismatch);
+        }
+
+        // Verify embedding commitment: hash(bcs(embedding)) must match
+        let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
+        let embedding_hash = {
+            let mut hasher = DefaultHash::default();
+            hasher.update(&embedding_bytes);
+            hasher.finalize()
+        };
+        let expected: [u8; 32] = model.embedding_commitment.into();
+        if embedding_hash.as_ref() != expected {
+            return Err(ExecutionFailureStatus::ModelEmbeddingCommitmentMismatch);
         }
 
         // Move from pending to active
         let mut model = self.model_registry.pending_models.remove(model_id).unwrap();
-        model.weights_manifest = Some(weights_manifest);
+        model.decryption_key = Some(decryption_key);
         model.embedding = Some(embedding);
         model.staking_pool.activation_epoch = Some(self.epoch);
 
@@ -729,8 +748,10 @@ impl SystemStateV1 {
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
         weights_commitment: ModelWeightsCommitment,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
     ) -> ExecutionResult {
         let model = self
             .model_registry
@@ -744,8 +765,10 @@ impl SystemStateV1 {
 
         // Overwrite any existing pending update for this epoch
         model.pending_update = Some(PendingModelUpdate {
-            weights_url_commitment,
+            manifest,
             weights_commitment,
+            embedding_commitment,
+            decryption_key_commitment,
             commit_epoch: self.epoch,
         });
 
@@ -753,13 +776,13 @@ impl SystemStateV1 {
     }
 
     /// Reveal a pending model update.
-    /// Also updates the model's embedding for KNN selection.
+    /// Provides the decryption key and full embedding (verified against commitment).
     #[allow(clippy::result_large_err)]
     pub fn request_reveal_model_update(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest,
+        decryption_key: DecryptionKey,
         embedding: SomaTensor,
     ) -> ExecutionResult {
         let model = self
@@ -779,24 +802,37 @@ impl SystemStateV1 {
             return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
         }
 
-        // Verify URL commitment
-        let url_bytes = weights_manifest.manifest.url().as_str().as_bytes();
-        let url_hash = {
+        // Verify decryption key commitment
+        let dk_hash = {
             let mut hasher = DefaultHash::default();
-            hasher.update(url_bytes);
+            hasher.update(decryption_key.as_ref());
             hasher.finalize()
         };
-        let expected: [u8; 32] = pending.weights_url_commitment.into();
-        if url_hash.as_ref() != expected {
-            return Err(ExecutionFailureStatus::ModelWeightsUrlMismatch);
+        let expected_dk: [u8; 32] = pending.decryption_key_commitment.into();
+        if dk_hash.as_ref() != expected_dk {
+            return Err(ExecutionFailureStatus::ModelDecryptionKeyCommitmentMismatch);
+        }
+
+        // Verify embedding commitment
+        let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
+        let embedding_hash = {
+            let mut hasher = DefaultHash::default();
+            hasher.update(&embedding_bytes);
+            hasher.finalize()
+        };
+        let expected: [u8; 32] = pending.embedding_commitment.into();
+        if embedding_hash.as_ref() != expected {
+            return Err(ExecutionFailureStatus::ModelEmbeddingCommitmentMismatch);
         }
 
         // Apply the update
         let pending = model.pending_update.take().unwrap();
-        model.weights_url_commitment = pending.weights_url_commitment;
+        model.manifest = pending.manifest;
         model.weights_commitment = pending.weights_commitment;
-        model.weights_manifest = Some(weights_manifest);
+        model.embedding_commitment = pending.embedding_commitment;
+        model.decryption_key_commitment = pending.decryption_key_commitment;
         model.embedding = Some(embedding);
+        model.decryption_key = Some(decryption_key);
 
         Ok(())
     }
@@ -1641,20 +1677,26 @@ impl SystemState {
         &mut self,
         model_id: ModelId,
         owner: SomaAddress,
-        weights_manifest: ModelWeightsManifest,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
+        decryption_key: DecryptionKey,
         weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
+        embedding: SomaTensor,
         commission_rate: u64,
     ) {
         match self {
             Self::V1(v1) => v1.add_model_at_genesis(
                 model_id,
                 owner,
-                weights_manifest,
-                weights_url_commitment,
+                manifest,
+                decryption_key,
                 weights_commitment,
                 architecture_version,
+                embedding_commitment,
+                decryption_key_commitment,
+                embedding,
                 commission_rate,
             ),
         }
@@ -1722,9 +1764,11 @@ impl SystemState {
         &mut self,
         owner: SomaAddress,
         model_id: ModelId,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
         weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
         stake_amount: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -1733,9 +1777,11 @@ impl SystemState {
             Self::V1(v1) => v1.request_commit_model(
                 owner,
                 model_id,
-                weights_url_commitment,
+                manifest,
                 weights_commitment,
                 architecture_version,
+                embedding_commitment,
+                decryption_key_commitment,
                 stake_amount,
                 commission_rate,
                 staking_pool_id,
@@ -1747,11 +1793,13 @@ impl SystemState {
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest,
+        decryption_key: DecryptionKey,
         embedding: SomaTensor,
     ) -> ExecutionResult {
         match self {
-            Self::V1(v1) => v1.request_reveal_model(signer, model_id, weights_manifest, embedding),
+            Self::V1(v1) => {
+                v1.request_reveal_model(signer, model_id, decryption_key, embedding)
+            }
         }
     }
 
@@ -1759,15 +1807,19 @@ impl SystemState {
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_url_commitment: ModelWeightsUrlCommitment,
+        manifest: Manifest,
         weights_commitment: ModelWeightsCommitment,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
     ) -> ExecutionResult {
         match self {
             Self::V1(v1) => v1.request_commit_model_update(
                 signer,
                 model_id,
-                weights_url_commitment,
+                manifest,
                 weights_commitment,
+                embedding_commitment,
+                decryption_key_commitment,
             ),
         }
     }
@@ -1776,12 +1828,12 @@ impl SystemState {
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
-        weights_manifest: ModelWeightsManifest,
+        decryption_key: DecryptionKey,
         embedding: SomaTensor,
     ) -> ExecutionResult {
         match self {
             Self::V1(v1) => {
-                v1.request_reveal_model_update(signer, model_id, weights_manifest, embedding)
+                v1.request_reveal_model_update(signer, model_id, decryption_key, embedding)
             }
         }
     }

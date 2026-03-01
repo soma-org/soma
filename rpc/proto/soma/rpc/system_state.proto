@@ -157,21 +157,23 @@ message PoolTokenExchangeRate {
 
 // A registered model in the data submission system.
 // Status derived from fields (same pattern as validators):
-//   Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
-//   Active:    weights_manifest present, staking_pool.deactivation_epoch absent
+//   Committed: decryption_key absent, staking_pool.deactivation_epoch absent
+//   Active:    decryption_key present, staking_pool.deactivation_epoch absent
 //   Inactive:  staking_pool.deactivation_epoch present
 message Model {
-  optional string owner = 1;                              // SomaAddress hex
+  optional string owner = 1;
   optional uint64 architecture_version = 2;
-  optional bytes weights_url_commitment = 3;              // 32-byte digest
+  optional Manifest manifest = 3;                        // Manifest (URL + checksum + size), set at commit
   optional bytes weights_commitment = 4;                  // 32-byte digest
-  optional uint64 commit_epoch = 5;
-  optional ModelWeightsManifest weights_manifest = 6;     // absent while committed
-  repeated float embedding = 7;                           // Model embedding for KNN selection (f32 values)
-  optional StakingPool staking_pool = 8;
-  optional uint64 commission_rate = 9;
-  optional uint64 next_epoch_commission_rate = 10;
-  optional PendingModelUpdate pending_update = 11;        // absent if no update in flight
+  optional bytes embedding_commitment = 5;                // 32-byte hash of BCS-serialized embedding
+  optional bytes decryption_key_commitment = 6;           // 32-byte hash of decryption key
+  optional uint64 commit_epoch = 7;
+  optional bytes decryption_key = 8;                      // 32-byte AES-256 key (absent while committed)
+  repeated float embedding = 9;                           // Model embedding (absent while committed)
+  optional StakingPool staking_pool = 10;
+  optional uint64 commission_rate = 11;
+  optional uint64 next_epoch_commission_rate = 12;
+  optional PendingModelUpdate pending_update = 13;
 }
 
 // Registry of all models in the data submission system.

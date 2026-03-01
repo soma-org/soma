@@ -2923,10 +2923,12 @@ mod _getter_impls {
             Self {
                 owner: None,
                 architecture_version: None,
-                weights_url_commitment: None,
+                manifest: None,
                 weights_commitment: None,
+                embedding_commitment: None,
+                decryption_key_commitment: None,
                 commit_epoch: None,
-                weights_manifest: None,
+                decryption_key: None,
                 embedding: Vec::new(),
                 staking_pool: None,
                 commission_rate: None,
@@ -2947,38 +2949,49 @@ mod _getter_impls {
             self.architecture_version = Some(field.into());
             self
         }
-        pub fn with_weights_url_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.weights_url_commitment = Some(field.into());
+        pub fn manifest(&self) -> &Manifest {
+            self.manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Manifest::default_instance() as _)
+        }
+        pub fn manifest_opt(&self) -> Option<&Manifest> {
+            self.manifest.as_ref().map(|field| field as _)
+        }
+        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
+            self.manifest.as_mut().map(|field| field as _)
+        }
+        pub fn manifest_mut(&mut self) -> &mut Manifest {
+            self.manifest.get_or_insert_default()
+        }
+        pub fn with_manifest(mut self, field: Manifest) -> Self {
+            self.manifest = Some(field.into());
             self
         }
         pub fn with_weights_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.weights_commitment = Some(field.into());
             self
         }
+        pub fn with_embedding_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.embedding_commitment = Some(field.into());
+            self
+        }
+        pub fn with_decryption_key_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.decryption_key_commitment = Some(field.into());
+            self
+        }
         pub fn with_commit_epoch(mut self, field: u64) -> Self {
             self.commit_epoch = Some(field.into());
             self
         }
-        pub fn weights_manifest(&self) -> &ModelWeightsManifest {
-            self.weights_manifest
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ModelWeightsManifest::default_instance() as _)
-        }
-        pub fn weights_manifest_opt(&self) -> Option<&ModelWeightsManifest> {
-            self.weights_manifest.as_ref().map(|field| field as _)
-        }
-        pub fn weights_manifest_opt_mut(&mut self) -> Option<&mut ModelWeightsManifest> {
-            self.weights_manifest.as_mut().map(|field| field as _)
-        }
-        pub fn weights_manifest_mut(&mut self) -> &mut ModelWeightsManifest {
-            self.weights_manifest.get_or_insert_default()
-        }
-        pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
-            self.weights_manifest = Some(field.into());
+        pub fn with_decryption_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.decryption_key = Some(field.into());
             self
         }
         pub fn embedding(&self) -> &[f32] {
@@ -5038,8 +5051,10 @@ mod _getter_impls {
     impl PendingModelUpdate {
         pub const fn const_default() -> Self {
             Self {
-                weights_url_commitment: None,
+                manifest: None,
                 weights_commitment: None,
+                embedding_commitment: None,
+                decryption_key_commitment: None,
                 commit_epoch: None,
             }
         }
@@ -5048,15 +5063,41 @@ mod _getter_impls {
             static DEFAULT: PendingModelUpdate = PendingModelUpdate::const_default();
             &DEFAULT
         }
-        pub fn with_weights_url_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.weights_url_commitment = Some(field.into());
+        pub fn manifest(&self) -> &Manifest {
+            self.manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Manifest::default_instance() as _)
+        }
+        pub fn manifest_opt(&self) -> Option<&Manifest> {
+            self.manifest.as_ref().map(|field| field as _)
+        }
+        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
+            self.manifest.as_mut().map(|field| field as _)
+        }
+        pub fn manifest_mut(&mut self) -> &mut Manifest {
+            self.manifest.get_or_insert_default()
+        }
+        pub fn with_manifest(mut self, field: Manifest) -> Self {
+            self.manifest = Some(field.into());
             self
         }
         pub fn with_weights_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.weights_commitment = Some(field.into());
+            self
+        }
+        pub fn with_embedding_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.embedding_commitment = Some(field.into());
+            self
+        }
+        pub fn with_decryption_key_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.decryption_key_commitment = Some(field.into());
             self
         }
         pub fn with_commit_epoch(mut self, field: u64) -> Self {
@@ -5067,13 +5108,13 @@ mod _getter_impls {
     impl CommitModel {
         pub const fn const_default() -> Self {
             Self {
-                model_id: None,
-                weights_url_commitment: None,
+                manifest: None,
                 weights_commitment: None,
                 architecture_version: None,
+                embedding_commitment: None,
+                decryption_key_commitment: None,
                 stake_amount: None,
                 commission_rate: None,
-                staking_pool_id: None,
             }
         }
         #[doc(hidden)]
@@ -5081,15 +5122,23 @@ mod _getter_impls {
             static DEFAULT: CommitModel = CommitModel::const_default();
             &DEFAULT
         }
-        pub fn with_model_id(mut self, field: String) -> Self {
-            self.model_id = Some(field.into());
-            self
+        pub fn manifest(&self) -> &Manifest {
+            self.manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Manifest::default_instance() as _)
         }
-        pub fn with_weights_url_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.weights_url_commitment = Some(field.into());
+        pub fn manifest_opt(&self) -> Option<&Manifest> {
+            self.manifest.as_ref().map(|field| field as _)
+        }
+        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
+            self.manifest.as_mut().map(|field| field as _)
+        }
+        pub fn manifest_mut(&mut self) -> &mut Manifest {
+            self.manifest.get_or_insert_default()
+        }
+        pub fn with_manifest(mut self, field: Manifest) -> Self {
+            self.manifest = Some(field.into());
             self
         }
         pub fn with_weights_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
@@ -5100,6 +5149,20 @@ mod _getter_impls {
             self.architecture_version = Some(field.into());
             self
         }
+        pub fn with_embedding_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.embedding_commitment = Some(field.into());
+            self
+        }
+        pub fn with_decryption_key_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.decryption_key_commitment = Some(field.into());
+            self
+        }
         pub fn with_stake_amount(mut self, field: u64) -> Self {
             self.stake_amount = Some(field.into());
             self
@@ -5108,16 +5171,12 @@ mod _getter_impls {
             self.commission_rate = Some(field.into());
             self
         }
-        pub fn with_staking_pool_id(mut self, field: String) -> Self {
-            self.staking_pool_id = Some(field.into());
-            self
-        }
     }
     impl RevealModel {
         pub const fn const_default() -> Self {
             Self {
                 model_id: None,
-                weights_manifest: None,
+                decryption_key: None,
                 embedding: Vec::new(),
             }
         }
@@ -5130,23 +5189,8 @@ mod _getter_impls {
             self.model_id = Some(field.into());
             self
         }
-        pub fn weights_manifest(&self) -> &ModelWeightsManifest {
-            self.weights_manifest
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ModelWeightsManifest::default_instance() as _)
-        }
-        pub fn weights_manifest_opt(&self) -> Option<&ModelWeightsManifest> {
-            self.weights_manifest.as_ref().map(|field| field as _)
-        }
-        pub fn weights_manifest_opt_mut(&mut self) -> Option<&mut ModelWeightsManifest> {
-            self.weights_manifest.as_mut().map(|field| field as _)
-        }
-        pub fn weights_manifest_mut(&mut self) -> &mut ModelWeightsManifest {
-            self.weights_manifest.get_or_insert_default()
-        }
-        pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
-            self.weights_manifest = Some(field.into());
+        pub fn with_decryption_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.decryption_key = Some(field.into());
             self
         }
         pub fn embedding(&self) -> &[f32] {
@@ -5164,8 +5208,10 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 model_id: None,
-                weights_url_commitment: None,
+                manifest: None,
                 weights_commitment: None,
+                embedding_commitment: None,
+                decryption_key_commitment: None,
             }
         }
         #[doc(hidden)]
@@ -5177,15 +5223,41 @@ mod _getter_impls {
             self.model_id = Some(field.into());
             self
         }
-        pub fn with_weights_url_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.weights_url_commitment = Some(field.into());
+        pub fn manifest(&self) -> &Manifest {
+            self.manifest
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Manifest::default_instance() as _)
+        }
+        pub fn manifest_opt(&self) -> Option<&Manifest> {
+            self.manifest.as_ref().map(|field| field as _)
+        }
+        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
+            self.manifest.as_mut().map(|field| field as _)
+        }
+        pub fn manifest_mut(&mut self) -> &mut Manifest {
+            self.manifest.get_or_insert_default()
+        }
+        pub fn with_manifest(mut self, field: Manifest) -> Self {
+            self.manifest = Some(field.into());
             self
         }
         pub fn with_weights_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.weights_commitment = Some(field.into());
+            self
+        }
+        pub fn with_embedding_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.embedding_commitment = Some(field.into());
+            self
+        }
+        pub fn with_decryption_key_commitment(
+            mut self,
+            field: ::prost::bytes::Bytes,
+        ) -> Self {
+            self.decryption_key_commitment = Some(field.into());
             self
         }
     }
@@ -5193,7 +5265,7 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 model_id: None,
-                weights_manifest: None,
+                decryption_key: None,
                 embedding: Vec::new(),
             }
         }
@@ -5206,23 +5278,8 @@ mod _getter_impls {
             self.model_id = Some(field.into());
             self
         }
-        pub fn weights_manifest(&self) -> &ModelWeightsManifest {
-            self.weights_manifest
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ModelWeightsManifest::default_instance() as _)
-        }
-        pub fn weights_manifest_opt(&self) -> Option<&ModelWeightsManifest> {
-            self.weights_manifest.as_ref().map(|field| field as _)
-        }
-        pub fn weights_manifest_opt_mut(&mut self) -> Option<&mut ModelWeightsManifest> {
-            self.weights_manifest.as_mut().map(|field| field as _)
-        }
-        pub fn weights_manifest_mut(&mut self) -> &mut ModelWeightsManifest {
-            self.weights_manifest.get_or_insert_default()
-        }
-        pub fn with_weights_manifest(mut self, field: ModelWeightsManifest) -> Self {
-            self.weights_manifest = Some(field.into());
+        pub fn with_decryption_key(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.decryption_key = Some(field.into());
             self
         }
         pub fn embedding(&self) -> &[f32] {
@@ -5468,7 +5525,6 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 target_id: None,
-                data_commitment: None,
                 data_manifest: None,
                 model_id: None,
                 embedding: Vec::new(),
@@ -5483,10 +5539,6 @@ mod _getter_impls {
         }
         pub fn with_target_id(mut self, field: String) -> Self {
             self.target_id = Some(field.into());
-            self
-        }
-        pub fn with_data_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.data_commitment = Some(field.into());
             self
         }
         pub fn data_manifest(&self) -> &SubmissionManifest {

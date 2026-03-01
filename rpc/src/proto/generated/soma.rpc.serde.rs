@@ -3182,10 +3182,7 @@ impl serde::Serialize for CommitModel {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.model_id.is_some() {
-            len += 1;
-        }
-        if self.weights_url_commitment.is_some() {
+        if self.manifest.is_some() {
             len += 1;
         }
         if self.weights_commitment.is_some() {
@@ -3194,23 +3191,21 @@ impl serde::Serialize for CommitModel {
         if self.architecture_version.is_some() {
             len += 1;
         }
+        if self.embedding_commitment.is_some() {
+            len += 1;
+        }
+        if self.decryption_key_commitment.is_some() {
+            len += 1;
+        }
         if self.stake_amount.is_some() {
             len += 1;
         }
         if self.commission_rate.is_some() {
             len += 1;
         }
-        if self.staking_pool_id.is_some() {
-            len += 1;
-        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.CommitModel", len)?;
-        if let Some(v) = self.model_id.as_ref() {
-            struct_ser.serialize_field("modelId", v)?;
-        }
-        if let Some(v) = self.weights_url_commitment.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("weightsUrlCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if let Some(v) = self.manifest.as_ref() {
+            struct_ser.serialize_field("manifest", v)?;
         }
         if let Some(v) = self.weights_commitment.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -3222,6 +3217,16 @@ impl serde::Serialize for CommitModel {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("architectureVersion", ToString::to_string(&v).as_str())?;
         }
+        if let Some(v) = self.embedding_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("embeddingCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.decryption_key_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKeyCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         if let Some(v) = self.stake_amount.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
@@ -3231,9 +3236,6 @@ impl serde::Serialize for CommitModel {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("commissionRate", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.staking_pool_id.as_ref() {
-            struct_ser.serialize_field("stakingPoolId", v)?;
         }
         struct_ser.end()
     }
@@ -3245,31 +3247,30 @@ impl<'de> serde::Deserialize<'de> for CommitModel {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "model_id",
-            "modelId",
-            "weights_url_commitment",
-            "weightsUrlCommitment",
+            "manifest",
             "weights_commitment",
             "weightsCommitment",
             "architecture_version",
             "architectureVersion",
+            "embedding_commitment",
+            "embeddingCommitment",
+            "decryption_key_commitment",
+            "decryptionKeyCommitment",
             "stake_amount",
             "stakeAmount",
             "commission_rate",
             "commissionRate",
-            "staking_pool_id",
-            "stakingPoolId",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            ModelId,
-            WeightsUrlCommitment,
+            Manifest,
             WeightsCommitment,
             ArchitectureVersion,
+            EmbeddingCommitment,
+            DecryptionKeyCommitment,
             StakeAmount,
             CommissionRate,
-            StakingPoolId,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -3292,13 +3293,13 @@ impl<'de> serde::Deserialize<'de> for CommitModel {
                         E: serde::de::Error,
                     {
                         match value {
-                            "modelId" | "model_id" => Ok(GeneratedField::ModelId),
-                            "weightsUrlCommitment" | "weights_url_commitment" => Ok(GeneratedField::WeightsUrlCommitment),
+                            "manifest" => Ok(GeneratedField::Manifest),
                             "weightsCommitment" | "weights_commitment" => Ok(GeneratedField::WeightsCommitment),
                             "architectureVersion" | "architecture_version" => Ok(GeneratedField::ArchitectureVersion),
+                            "embeddingCommitment" | "embedding_commitment" => Ok(GeneratedField::EmbeddingCommitment),
+                            "decryptionKeyCommitment" | "decryption_key_commitment" => Ok(GeneratedField::DecryptionKeyCommitment),
                             "stakeAmount" | "stake_amount" => Ok(GeneratedField::StakeAmount),
                             "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
-                            "stakingPoolId" | "staking_pool_id" => Ok(GeneratedField::StakingPoolId),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -3320,28 +3321,20 @@ impl<'de> serde::Deserialize<'de> for CommitModel {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut model_id__ = None;
-                let mut weights_url_commitment__ = None;
+                let mut manifest__ = None;
                 let mut weights_commitment__ = None;
                 let mut architecture_version__ = None;
+                let mut embedding_commitment__ = None;
+                let mut decryption_key_commitment__ = None;
                 let mut stake_amount__ = None;
                 let mut commission_rate__ = None;
-                let mut staking_pool_id__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::ModelId => {
-                            if model_id__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("modelId"));
+                        GeneratedField::Manifest => {
+                            if manifest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("manifest"));
                             }
-                            model_id__ = map_.next_value()?;
-                        }
-                        GeneratedField::WeightsUrlCommitment => {
-                            if weights_url_commitment__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsUrlCommitment"));
-                            }
-                            weights_url_commitment__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            manifest__ = map_.next_value()?;
                         }
                         GeneratedField::WeightsCommitment => {
                             if weights_commitment__.is_some() {
@@ -3357,6 +3350,22 @@ impl<'de> serde::Deserialize<'de> for CommitModel {
                             }
                             architecture_version__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EmbeddingCommitment => {
+                            if embedding_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embeddingCommitment"));
+                            }
+                            embedding_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DecryptionKeyCommitment => {
+                            if decryption_key_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKeyCommitment"));
+                            }
+                            decryption_key_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
                         GeneratedField::StakeAmount => {
@@ -3375,25 +3384,19 @@ impl<'de> serde::Deserialize<'de> for CommitModel {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::StakingPoolId => {
-                            if staking_pool_id__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("stakingPoolId"));
-                            }
-                            staking_pool_id__ = map_.next_value()?;
-                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
                     }
                 }
                 Ok(CommitModel {
-                    model_id: model_id__,
-                    weights_url_commitment: weights_url_commitment__,
+                    manifest: manifest__,
                     weights_commitment: weights_commitment__,
                     architecture_version: architecture_version__,
+                    embedding_commitment: embedding_commitment__,
+                    decryption_key_commitment: decryption_key_commitment__,
                     stake_amount: stake_amount__,
                     commission_rate: commission_rate__,
-                    staking_pool_id: staking_pool_id__,
                 })
             }
         }
@@ -3411,25 +3414,39 @@ impl serde::Serialize for CommitModelUpdate {
         if self.model_id.is_some() {
             len += 1;
         }
-        if self.weights_url_commitment.is_some() {
+        if self.manifest.is_some() {
             len += 1;
         }
         if self.weights_commitment.is_some() {
+            len += 1;
+        }
+        if self.embedding_commitment.is_some() {
+            len += 1;
+        }
+        if self.decryption_key_commitment.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.CommitModelUpdate", len)?;
         if let Some(v) = self.model_id.as_ref() {
             struct_ser.serialize_field("modelId", v)?;
         }
-        if let Some(v) = self.weights_url_commitment.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("weightsUrlCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if let Some(v) = self.manifest.as_ref() {
+            struct_ser.serialize_field("manifest", v)?;
         }
         if let Some(v) = self.weights_commitment.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("weightsCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.embedding_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("embeddingCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.decryption_key_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKeyCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -3443,17 +3460,22 @@ impl<'de> serde::Deserialize<'de> for CommitModelUpdate {
         const FIELDS: &[&str] = &[
             "model_id",
             "modelId",
-            "weights_url_commitment",
-            "weightsUrlCommitment",
+            "manifest",
             "weights_commitment",
             "weightsCommitment",
+            "embedding_commitment",
+            "embeddingCommitment",
+            "decryption_key_commitment",
+            "decryptionKeyCommitment",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ModelId,
-            WeightsUrlCommitment,
+            Manifest,
             WeightsCommitment,
+            EmbeddingCommitment,
+            DecryptionKeyCommitment,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -3477,8 +3499,10 @@ impl<'de> serde::Deserialize<'de> for CommitModelUpdate {
                     {
                         match value {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
-                            "weightsUrlCommitment" | "weights_url_commitment" => Ok(GeneratedField::WeightsUrlCommitment),
+                            "manifest" => Ok(GeneratedField::Manifest),
                             "weightsCommitment" | "weights_commitment" => Ok(GeneratedField::WeightsCommitment),
+                            "embeddingCommitment" | "embedding_commitment" => Ok(GeneratedField::EmbeddingCommitment),
+                            "decryptionKeyCommitment" | "decryption_key_commitment" => Ok(GeneratedField::DecryptionKeyCommitment),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -3501,8 +3525,10 @@ impl<'de> serde::Deserialize<'de> for CommitModelUpdate {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut model_id__ = None;
-                let mut weights_url_commitment__ = None;
+                let mut manifest__ = None;
                 let mut weights_commitment__ = None;
+                let mut embedding_commitment__ = None;
+                let mut decryption_key_commitment__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ModelId => {
@@ -3511,19 +3537,33 @@ impl<'de> serde::Deserialize<'de> for CommitModelUpdate {
                             }
                             model_id__ = map_.next_value()?;
                         }
-                        GeneratedField::WeightsUrlCommitment => {
-                            if weights_url_commitment__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsUrlCommitment"));
+                        GeneratedField::Manifest => {
+                            if manifest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("manifest"));
                             }
-                            weights_url_commitment__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            manifest__ = map_.next_value()?;
                         }
                         GeneratedField::WeightsCommitment => {
                             if weights_commitment__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("weightsCommitment"));
                             }
                             weights_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EmbeddingCommitment => {
+                            if embedding_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embeddingCommitment"));
+                            }
+                            embedding_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DecryptionKeyCommitment => {
+                            if decryption_key_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKeyCommitment"));
+                            }
+                            decryption_key_commitment__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -3534,8 +3574,10 @@ impl<'de> serde::Deserialize<'de> for CommitModelUpdate {
                 }
                 Ok(CommitModelUpdate {
                     model_id: model_id__,
-                    weights_url_commitment: weights_url_commitment__,
+                    manifest: manifest__,
                     weights_commitment: weights_commitment__,
+                    embedding_commitment: embedding_commitment__,
+                    decryption_key_commitment: decryption_key_commitment__,
                 })
             }
         }
@@ -5040,7 +5082,7 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::ModelNotPending => "MODEL_NOT_PENDING",
             Self::ModelAlreadyInactive => "MODEL_ALREADY_INACTIVE",
             Self::ModelRevealEpochMismatch => "MODEL_REVEAL_EPOCH_MISMATCH",
-            Self::ModelWeightsUrlMismatch => "MODEL_WEIGHTS_URL_MISMATCH",
+            Self::ModelEmbeddingCommitmentMismatch => "MODEL_EMBEDDING_COMMITMENT_MISMATCH",
             Self::ModelNoPendingUpdate => "MODEL_NO_PENDING_UPDATE",
             Self::ModelArchitectureVersionMismatch => "MODEL_ARCHITECTURE_VERSION_MISMATCH",
             Self::ModelCommissionRateTooHigh => "MODEL_COMMISSION_RATE_TOO_HIGH",
@@ -5069,6 +5111,7 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::DuplicateValidatorMetadata => "DUPLICATE_VALIDATOR_METADATA",
             Self::MissingProofOfPossession => "MISSING_PROOF_OF_POSSESSION",
             Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
+            Self::ModelDecryptionKeyCommitmentMismatch => "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
         };
         serializer.serialize_str(variant)
     }
@@ -5107,7 +5150,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "MODEL_NOT_PENDING",
             "MODEL_ALREADY_INACTIVE",
             "MODEL_REVEAL_EPOCH_MISMATCH",
-            "MODEL_WEIGHTS_URL_MISMATCH",
+            "MODEL_EMBEDDING_COMMITMENT_MISMATCH",
             "MODEL_NO_PENDING_UPDATE",
             "MODEL_ARCHITECTURE_VERSION_MISMATCH",
             "MODEL_COMMISSION_RATE_TOO_HIGH",
@@ -5136,6 +5179,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "DUPLICATE_VALIDATOR_METADATA",
             "MISSING_PROOF_OF_POSSESSION",
             "INVALID_PROOF_OF_POSSESSION",
+            "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
         ];
 
         struct GeneratedVisitor;
@@ -5203,7 +5247,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "MODEL_NOT_PENDING" => Ok(execution_error::ExecutionErrorKind::ModelNotPending),
                     "MODEL_ALREADY_INACTIVE" => Ok(execution_error::ExecutionErrorKind::ModelAlreadyInactive),
                     "MODEL_REVEAL_EPOCH_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelRevealEpochMismatch),
-                    "MODEL_WEIGHTS_URL_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelWeightsUrlMismatch),
+                    "MODEL_EMBEDDING_COMMITMENT_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelEmbeddingCommitmentMismatch),
                     "MODEL_NO_PENDING_UPDATE" => Ok(execution_error::ExecutionErrorKind::ModelNoPendingUpdate),
                     "MODEL_ARCHITECTURE_VERSION_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelArchitectureVersionMismatch),
                     "MODEL_COMMISSION_RATE_TOO_HIGH" => Ok(execution_error::ExecutionErrorKind::ModelCommissionRateTooHigh),
@@ -5232,6 +5276,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "DUPLICATE_VALIDATOR_METADATA" => Ok(execution_error::ExecutionErrorKind::DuplicateValidatorMetadata),
                     "MISSING_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::MissingProofOfPossession),
                     "INVALID_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::InvalidProofOfPossession),
+                    "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -9023,16 +9068,22 @@ impl serde::Serialize for Model {
         if self.architecture_version.is_some() {
             len += 1;
         }
-        if self.weights_url_commitment.is_some() {
+        if self.manifest.is_some() {
             len += 1;
         }
         if self.weights_commitment.is_some() {
             len += 1;
         }
+        if self.embedding_commitment.is_some() {
+            len += 1;
+        }
+        if self.decryption_key_commitment.is_some() {
+            len += 1;
+        }
         if self.commit_epoch.is_some() {
             len += 1;
         }
-        if self.weights_manifest.is_some() {
+        if self.decryption_key.is_some() {
             len += 1;
         }
         if !self.embedding.is_empty() {
@@ -9059,23 +9110,33 @@ impl serde::Serialize for Model {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("architectureVersion", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.weights_url_commitment.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("weightsUrlCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if let Some(v) = self.manifest.as_ref() {
+            struct_ser.serialize_field("manifest", v)?;
         }
         if let Some(v) = self.weights_commitment.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("weightsCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
+        if let Some(v) = self.embedding_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("embeddingCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.decryption_key_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKeyCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
         if let Some(v) = self.commit_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("commitEpoch", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.weights_manifest.as_ref() {
-            struct_ser.serialize_field("weightsManifest", v)?;
+        if let Some(v) = self.decryption_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if !self.embedding.is_empty() {
             struct_ser.serialize_field("embedding", &self.embedding)?;
@@ -9109,14 +9170,17 @@ impl<'de> serde::Deserialize<'de> for Model {
             "owner",
             "architecture_version",
             "architectureVersion",
-            "weights_url_commitment",
-            "weightsUrlCommitment",
+            "manifest",
             "weights_commitment",
             "weightsCommitment",
+            "embedding_commitment",
+            "embeddingCommitment",
+            "decryption_key_commitment",
+            "decryptionKeyCommitment",
             "commit_epoch",
             "commitEpoch",
-            "weights_manifest",
-            "weightsManifest",
+            "decryption_key",
+            "decryptionKey",
             "embedding",
             "staking_pool",
             "stakingPool",
@@ -9132,10 +9196,12 @@ impl<'de> serde::Deserialize<'de> for Model {
         enum GeneratedField {
             Owner,
             ArchitectureVersion,
-            WeightsUrlCommitment,
+            Manifest,
             WeightsCommitment,
+            EmbeddingCommitment,
+            DecryptionKeyCommitment,
             CommitEpoch,
-            WeightsManifest,
+            DecryptionKey,
             Embedding,
             StakingPool,
             CommissionRate,
@@ -9165,10 +9231,12 @@ impl<'de> serde::Deserialize<'de> for Model {
                         match value {
                             "owner" => Ok(GeneratedField::Owner),
                             "architectureVersion" | "architecture_version" => Ok(GeneratedField::ArchitectureVersion),
-                            "weightsUrlCommitment" | "weights_url_commitment" => Ok(GeneratedField::WeightsUrlCommitment),
+                            "manifest" => Ok(GeneratedField::Manifest),
                             "weightsCommitment" | "weights_commitment" => Ok(GeneratedField::WeightsCommitment),
+                            "embeddingCommitment" | "embedding_commitment" => Ok(GeneratedField::EmbeddingCommitment),
+                            "decryptionKeyCommitment" | "decryption_key_commitment" => Ok(GeneratedField::DecryptionKeyCommitment),
                             "commitEpoch" | "commit_epoch" => Ok(GeneratedField::CommitEpoch),
-                            "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "decryptionKey" | "decryption_key" => Ok(GeneratedField::DecryptionKey),
                             "embedding" => Ok(GeneratedField::Embedding),
                             "stakingPool" | "staking_pool" => Ok(GeneratedField::StakingPool),
                             "commissionRate" | "commission_rate" => Ok(GeneratedField::CommissionRate),
@@ -9197,10 +9265,12 @@ impl<'de> serde::Deserialize<'de> for Model {
             {
                 let mut owner__ = None;
                 let mut architecture_version__ = None;
-                let mut weights_url_commitment__ = None;
+                let mut manifest__ = None;
                 let mut weights_commitment__ = None;
+                let mut embedding_commitment__ = None;
+                let mut decryption_key_commitment__ = None;
                 let mut commit_epoch__ = None;
-                let mut weights_manifest__ = None;
+                let mut decryption_key__ = None;
                 let mut embedding__ = None;
                 let mut staking_pool__ = None;
                 let mut commission_rate__ = None;
@@ -9222,19 +9292,33 @@ impl<'de> serde::Deserialize<'de> for Model {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::WeightsUrlCommitment => {
-                            if weights_url_commitment__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsUrlCommitment"));
+                        GeneratedField::Manifest => {
+                            if manifest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("manifest"));
                             }
-                            weights_url_commitment__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            manifest__ = map_.next_value()?;
                         }
                         GeneratedField::WeightsCommitment => {
                             if weights_commitment__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("weightsCommitment"));
                             }
                             weights_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EmbeddingCommitment => {
+                            if embedding_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embeddingCommitment"));
+                            }
+                            embedding_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DecryptionKeyCommitment => {
+                            if decryption_key_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKeyCommitment"));
+                            }
+                            decryption_key_commitment__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -9246,11 +9330,13 @@ impl<'de> serde::Deserialize<'de> for Model {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::WeightsManifest => {
-                            if weights_manifest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsManifest"));
+                        GeneratedField::DecryptionKey => {
+                            if decryption_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKey"));
                             }
-                            weights_manifest__ = map_.next_value()?;
+                            decryption_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::Embedding => {
                             if embedding__.is_some() {
@@ -9297,10 +9383,12 @@ impl<'de> serde::Deserialize<'de> for Model {
                 Ok(Model {
                     owner: owner__,
                     architecture_version: architecture_version__,
-                    weights_url_commitment: weights_url_commitment__,
+                    manifest: manifest__,
                     weights_commitment: weights_commitment__,
+                    embedding_commitment: embedding_commitment__,
+                    decryption_key_commitment: decryption_key_commitment__,
                     commit_epoch: commit_epoch__,
-                    weights_manifest: weights_manifest__,
+                    decryption_key: decryption_key__,
                     embedding: embedding__.unwrap_or_default(),
                     staking_pool: staking_pool__,
                     commission_rate: commission_rate__,
@@ -11039,25 +11127,39 @@ impl serde::Serialize for PendingModelUpdate {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.weights_url_commitment.is_some() {
+        if self.manifest.is_some() {
             len += 1;
         }
         if self.weights_commitment.is_some() {
+            len += 1;
+        }
+        if self.embedding_commitment.is_some() {
+            len += 1;
+        }
+        if self.decryption_key_commitment.is_some() {
             len += 1;
         }
         if self.commit_epoch.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.PendingModelUpdate", len)?;
-        if let Some(v) = self.weights_url_commitment.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("weightsUrlCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        if let Some(v) = self.manifest.as_ref() {
+            struct_ser.serialize_field("manifest", v)?;
         }
         if let Some(v) = self.weights_commitment.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("weightsCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.embedding_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("embeddingCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
+        }
+        if let Some(v) = self.decryption_key_commitment.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKeyCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.commit_epoch.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -11074,18 +11176,23 @@ impl<'de> serde::Deserialize<'de> for PendingModelUpdate {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "weights_url_commitment",
-            "weightsUrlCommitment",
+            "manifest",
             "weights_commitment",
             "weightsCommitment",
+            "embedding_commitment",
+            "embeddingCommitment",
+            "decryption_key_commitment",
+            "decryptionKeyCommitment",
             "commit_epoch",
             "commitEpoch",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            WeightsUrlCommitment,
+            Manifest,
             WeightsCommitment,
+            EmbeddingCommitment,
+            DecryptionKeyCommitment,
             CommitEpoch,
             __SkipField__,
         }
@@ -11109,8 +11216,10 @@ impl<'de> serde::Deserialize<'de> for PendingModelUpdate {
                         E: serde::de::Error,
                     {
                         match value {
-                            "weightsUrlCommitment" | "weights_url_commitment" => Ok(GeneratedField::WeightsUrlCommitment),
+                            "manifest" => Ok(GeneratedField::Manifest),
                             "weightsCommitment" | "weights_commitment" => Ok(GeneratedField::WeightsCommitment),
+                            "embeddingCommitment" | "embedding_commitment" => Ok(GeneratedField::EmbeddingCommitment),
+                            "decryptionKeyCommitment" | "decryption_key_commitment" => Ok(GeneratedField::DecryptionKeyCommitment),
                             "commitEpoch" | "commit_epoch" => Ok(GeneratedField::CommitEpoch),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -11133,24 +11242,40 @@ impl<'de> serde::Deserialize<'de> for PendingModelUpdate {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut weights_url_commitment__ = None;
+                let mut manifest__ = None;
                 let mut weights_commitment__ = None;
+                let mut embedding_commitment__ = None;
+                let mut decryption_key_commitment__ = None;
                 let mut commit_epoch__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::WeightsUrlCommitment => {
-                            if weights_url_commitment__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsUrlCommitment"));
+                        GeneratedField::Manifest => {
+                            if manifest__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("manifest"));
                             }
-                            weights_url_commitment__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
+                            manifest__ = map_.next_value()?;
                         }
                         GeneratedField::WeightsCommitment => {
                             if weights_commitment__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("weightsCommitment"));
                             }
                             weights_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::EmbeddingCommitment => {
+                            if embedding_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("embeddingCommitment"));
+                            }
+                            embedding_commitment__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
+                        GeneratedField::DecryptionKeyCommitment => {
+                            if decryption_key_commitment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKeyCommitment"));
+                            }
+                            decryption_key_commitment__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -11168,8 +11293,10 @@ impl<'de> serde::Deserialize<'de> for PendingModelUpdate {
                     }
                 }
                 Ok(PendingModelUpdate {
-                    weights_url_commitment: weights_url_commitment__,
+                    manifest: manifest__,
                     weights_commitment: weights_commitment__,
+                    embedding_commitment: embedding_commitment__,
+                    decryption_key_commitment: decryption_key_commitment__,
                     commit_epoch: commit_epoch__,
                 })
             }
@@ -12060,7 +12187,7 @@ impl serde::Serialize for RevealModel {
         if self.model_id.is_some() {
             len += 1;
         }
-        if self.weights_manifest.is_some() {
+        if self.decryption_key.is_some() {
             len += 1;
         }
         if !self.embedding.is_empty() {
@@ -12070,8 +12197,10 @@ impl serde::Serialize for RevealModel {
         if let Some(v) = self.model_id.as_ref() {
             struct_ser.serialize_field("modelId", v)?;
         }
-        if let Some(v) = self.weights_manifest.as_ref() {
-            struct_ser.serialize_field("weightsManifest", v)?;
+        if let Some(v) = self.decryption_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if !self.embedding.is_empty() {
             struct_ser.serialize_field("embedding", &self.embedding)?;
@@ -12088,15 +12217,15 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
         const FIELDS: &[&str] = &[
             "model_id",
             "modelId",
-            "weights_manifest",
-            "weightsManifest",
+            "decryption_key",
+            "decryptionKey",
             "embedding",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ModelId,
-            WeightsManifest,
+            DecryptionKey,
             Embedding,
             __SkipField__,
         }
@@ -12121,7 +12250,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                     {
                         match value {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
-                            "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "decryptionKey" | "decryption_key" => Ok(GeneratedField::DecryptionKey),
                             "embedding" => Ok(GeneratedField::Embedding),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -12145,7 +12274,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut model_id__ = None;
-                let mut weights_manifest__ = None;
+                let mut decryption_key__ = None;
                 let mut embedding__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -12155,11 +12284,13 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                             }
                             model_id__ = map_.next_value()?;
                         }
-                        GeneratedField::WeightsManifest => {
-                            if weights_manifest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsManifest"));
+                        GeneratedField::DecryptionKey => {
+                            if decryption_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKey"));
                             }
-                            weights_manifest__ = map_.next_value()?;
+                            decryption_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::Embedding => {
                             if embedding__.is_some() {
@@ -12177,7 +12308,7 @@ impl<'de> serde::Deserialize<'de> for RevealModel {
                 }
                 Ok(RevealModel {
                     model_id: model_id__,
-                    weights_manifest: weights_manifest__,
+                    decryption_key: decryption_key__,
                     embedding: embedding__.unwrap_or_default(),
                 })
             }
@@ -12196,7 +12327,7 @@ impl serde::Serialize for RevealModelUpdate {
         if self.model_id.is_some() {
             len += 1;
         }
-        if self.weights_manifest.is_some() {
+        if self.decryption_key.is_some() {
             len += 1;
         }
         if !self.embedding.is_empty() {
@@ -12206,8 +12337,10 @@ impl serde::Serialize for RevealModelUpdate {
         if let Some(v) = self.model_id.as_ref() {
             struct_ser.serialize_field("modelId", v)?;
         }
-        if let Some(v) = self.weights_manifest.as_ref() {
-            struct_ser.serialize_field("weightsManifest", v)?;
+        if let Some(v) = self.decryption_key.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("decryptionKey", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if !self.embedding.is_empty() {
             struct_ser.serialize_field("embedding", &self.embedding)?;
@@ -12224,15 +12357,15 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
         const FIELDS: &[&str] = &[
             "model_id",
             "modelId",
-            "weights_manifest",
-            "weightsManifest",
+            "decryption_key",
+            "decryptionKey",
             "embedding",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             ModelId,
-            WeightsManifest,
+            DecryptionKey,
             Embedding,
             __SkipField__,
         }
@@ -12257,7 +12390,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                     {
                         match value {
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
-                            "weightsManifest" | "weights_manifest" => Ok(GeneratedField::WeightsManifest),
+                            "decryptionKey" | "decryption_key" => Ok(GeneratedField::DecryptionKey),
                             "embedding" => Ok(GeneratedField::Embedding),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -12281,7 +12414,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut model_id__ = None;
-                let mut weights_manifest__ = None;
+                let mut decryption_key__ = None;
                 let mut embedding__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
@@ -12291,11 +12424,13 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                             }
                             model_id__ = map_.next_value()?;
                         }
-                        GeneratedField::WeightsManifest => {
-                            if weights_manifest__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("weightsManifest"));
+                        GeneratedField::DecryptionKey => {
+                            if decryption_key__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("decryptionKey"));
                             }
-                            weights_manifest__ = map_.next_value()?;
+                            decryption_key__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::Embedding => {
                             if embedding__.is_some() {
@@ -12313,7 +12448,7 @@ impl<'de> serde::Deserialize<'de> for RevealModelUpdate {
                 }
                 Ok(RevealModelUpdate {
                     model_id: model_id__,
-                    weights_manifest: weights_manifest__,
+                    decryption_key: decryption_key__,
                     embedding: embedding__.unwrap_or_default(),
                 })
             }
@@ -13702,9 +13837,6 @@ impl serde::Serialize for SubmitData {
         if self.target_id.is_some() {
             len += 1;
         }
-        if self.data_commitment.is_some() {
-            len += 1;
-        }
         if self.data_manifest.is_some() {
             len += 1;
         }
@@ -13723,11 +13855,6 @@ impl serde::Serialize for SubmitData {
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SubmitData", len)?;
         if let Some(v) = self.target_id.as_ref() {
             struct_ser.serialize_field("targetId", v)?;
-        }
-        if let Some(v) = self.data_commitment.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("dataCommitment", crate::utils::_serde::base64::encode(&v).as_str())?;
         }
         if let Some(v) = self.data_manifest.as_ref() {
             struct_ser.serialize_field("dataManifest", v)?;
@@ -13756,8 +13883,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
         const FIELDS: &[&str] = &[
             "target_id",
             "targetId",
-            "data_commitment",
-            "dataCommitment",
             "data_manifest",
             "dataManifest",
             "model_id",
@@ -13772,7 +13897,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             TargetId,
-            DataCommitment,
             DataManifest,
             ModelId,
             Embedding,
@@ -13801,7 +13925,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                     {
                         match value {
                             "targetId" | "target_id" => Ok(GeneratedField::TargetId),
-                            "dataCommitment" | "data_commitment" => Ok(GeneratedField::DataCommitment),
                             "dataManifest" | "data_manifest" => Ok(GeneratedField::DataManifest),
                             "modelId" | "model_id" => Ok(GeneratedField::ModelId),
                             "embedding" => Ok(GeneratedField::Embedding),
@@ -13829,7 +13952,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut target_id__ = None;
-                let mut data_commitment__ = None;
                 let mut data_manifest__ = None;
                 let mut model_id__ = None;
                 let mut embedding__ = None;
@@ -13842,14 +13964,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                                 return Err(serde::de::Error::duplicate_field("targetId"));
                             }
                             target_id__ = map_.next_value()?;
-                        }
-                        GeneratedField::DataCommitment => {
-                            if data_commitment__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("dataCommitment"));
-                            }
-                            data_commitment__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::BytesDeserialize<_>>>()?.map(|x| x.0)
-                            ;
                         }
                         GeneratedField::DataManifest => {
                             if data_manifest__.is_some() {
@@ -13893,7 +14007,6 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                 }
                 Ok(SubmitData {
                     target_id: target_id__,
-                    data_commitment: data_commitment__,
                     data_manifest: data_manifest__,
                     model_id: model_id__,
                     embedding: embedding__.unwrap_or_default(),

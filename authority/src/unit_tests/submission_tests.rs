@@ -20,13 +20,13 @@ use types::config::genesis_config::{GenesisConfig, GenesisModelConfig};
 use types::config::network_config::ConfigBuilder;
 use types::crypto::{DIGEST_LENGTH, DecryptionKey, SomaKeyPair, get_key_pair};
 use types::digests::{
-    DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment, TransactionDigest,
+    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment, TransactionDigest,
 };
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
 use types::error::SomaError;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ModelId, ModelWeightsManifest};
-use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
+use types::model::ModelId;
+use types::object::{Object, ObjectID, ObjectType};
 use types::submission::SubmissionManifest;
 use types::target::{TargetStatus, TargetV1};
 use types::tensor::SomaTensor;
@@ -72,7 +72,6 @@ fn make_open_target(
         winning_model_owner: None,
         bond_amount: 0,
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: None,
         challenger: None,
@@ -106,7 +105,6 @@ fn make_filled_target(
         winning_model_owner: None,
         bond_amount,
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: None,
         challenger: None,
@@ -130,7 +128,6 @@ fn make_claimed_target(target_id: ObjectID, embedding_dim: usize, reward_pool: u
         winning_model_owner: None,
         bond_amount: 0,
         winning_data_manifest: None,
-        winning_data_commitment: None,
         winning_embedding: None,
         winning_distance_score: None,
         challenger: None,
@@ -150,13 +147,13 @@ fn make_genesis_model_config(model_id: ModelId, owner: SomaAddress) -> GenesisMo
     GenesisModelConfig {
         owner,
         model_id,
-        weights_manifest: ModelWeightsManifest {
-            manifest,
-            decryption_key: DecryptionKey::new([0u8; 32]),
-        },
-        weights_url_commitment: ModelWeightsUrlCommitment::new([1u8; 32]),
+        manifest,
+        decryption_key: DecryptionKey::new([0xAA; 32]),
         weights_commitment: ModelWeightsCommitment::new([2u8; 32]),
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
+        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 1000,
         initial_stake: 1_000_000_000, // 1 SOMA
     }
@@ -264,7 +261,6 @@ async fn test_submit_data_basic() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -311,7 +307,6 @@ async fn test_submit_data_target_not_found() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: fake_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id: ObjectID::random(),
             embedding: SomaTensor::zeros(vec![10]),
@@ -364,7 +359,6 @@ async fn test_submit_data_wrong_model() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id: wrong_model,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -411,7 +405,6 @@ async fn test_submit_data_filled_target() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![10]),
@@ -466,7 +459,6 @@ async fn test_submit_data_distance_exceeds_threshold() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -521,7 +513,6 @@ async fn test_submit_data_insufficient_bond() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(10_000_000),
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -576,7 +567,6 @@ async fn test_submit_data_spawn_on_fill() {
     let data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
@@ -865,7 +855,6 @@ async fn test_report_submission_tally() {
     let submit_data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
-            data_commitment: DataCommitment::random(),
             data_manifest: test_manifest(1024),
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),

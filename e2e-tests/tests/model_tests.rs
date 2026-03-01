@@ -1,17 +1,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::hash::HashFunction as _;
 use test_cluster::TestClusterBuilder;
 use tracing::info;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
-use types::crypto::{DecryptionKey, DefaultHash};
-use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::crypto::DecryptionKey;
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::effects::TransactionEffectsAPI;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ModelId, ModelWeightsManifest};
+use types::model::ModelId;
 use types::object::ObjectID;
 use types::system_state::SystemStateTrait as _;
 use types::tensor::SomaTensor;
@@ -21,19 +20,10 @@ use utils::logging::init_tracing;
 
 // ===== Helpers =====
 
-fn url_commitment_for(url_str: &str) -> ModelWeightsUrlCommitment {
-    let mut hasher = DefaultHash::default();
-    hasher.update(url_str.as_bytes());
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    ModelWeightsUrlCommitment::new(bytes)
-}
-
-fn make_weights_manifest(url_str: &str) -> ModelWeightsManifest {
+fn make_manifest(url_str: &str) -> Manifest {
     let url = Url::parse(url_str).expect("Invalid URL");
     let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
-    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-    ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new([0xAA; 32]) }
+    Manifest::V1(ManifestV1::new(url, metadata))
 }
 
 fn make_genesis_model_config(
@@ -42,17 +32,19 @@ fn make_genesis_model_config(
     initial_stake: u64,
 ) -> GenesisModelConfig {
     let url_str = format!("https://example.com/models/{}", model_id);
-    let url_commitment = url_commitment_for(&url_str);
+    let manifest = make_manifest(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let weights_manifest = make_weights_manifest(&url_str);
 
     GenesisModelConfig {
         owner,
         model_id,
-        weights_manifest,
-        weights_url_commitment: url_commitment,
+        manifest,
+        decryption_key: DecryptionKey::new([0xAA; 32]),
         weights_commitment,
         architecture_version: 1,
+        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
+        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -100,7 +92,7 @@ async fn test_genesis_model_bootstrap() {
     assert_eq!(model.architecture_version, 1);
     assert_eq!(model.commission_rate, 0);
     assert!(model.is_active());
-    assert!(model.weights_manifest.is_some());
+    assert!(model.decryption_key.is_some());
 
     // Pool balance should reflect initial_stake
     assert_eq!(model.staking_pool.soma_balance, initial_stake);
@@ -139,13 +131,28 @@ async fn test_model_commit_reveal_round_trip() {
     // (already funded and its keypair is in the wallet keystore)
     let model_owner = test_cluster.get_addresses()[0];
 
-    let model_id = ObjectID::from_bytes([0x77; 32]).unwrap();
-    let staking_pool_id = ObjectID::random();
     let stake_amount = 5 * SHANNONS_PER_SOMA;
 
-    let url_str = format!("https://example.com/models/{}", model_id);
-    let url_commitment = url_commitment_for(&url_str);
+    let url_str = "https://example.com/models/test-model";
+    let manifest = make_manifest(url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
+    let embedding = SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
+    let embedding_commitment = {
+        use fastcrypto::hash::HashFunction as _;
+        let emb_bytes = bcs::to_bytes(&embedding).unwrap();
+        let mut hasher = types::crypto::DefaultHash::default();
+        hasher.update(&emb_bytes);
+        let hash = hasher.finalize();
+        EmbeddingCommitment::new(hash.as_ref().try_into().unwrap())
+    };
+    let decryption_key = DecryptionKey::new([0xAA; 32]);
+    let decryption_key_commitment = {
+        use fastcrypto::hash::HashFunction as _;
+        let mut hasher = types::crypto::DefaultHash::default();
+        hasher.update(decryption_key.as_bytes());
+        let hash = hasher.finalize();
+        DecryptionKeyCommitment::new(hash.as_ref().try_into().unwrap())
+    };
 
     // ----- Step 1: Submit CommitModel transaction -----
 
@@ -158,13 +165,13 @@ async fn test_model_commit_reveal_round_trip() {
 
     let commit_tx_data = TransactionData::new(
         TransactionKind::CommitModel(CommitModelArgs {
-            model_id,
-            weights_url_commitment: url_commitment,
+            manifest: manifest.clone(),
             weights_commitment,
             architecture_version: 1,
+            embedding_commitment,
+            decryption_key_commitment,
             stake_amount,
             commission_rate: 0,
-            staking_pool_id,
         }),
         model_owner,
         vec![gas_object],
@@ -180,23 +187,28 @@ async fn test_model_commit_reveal_round_trip() {
 
     info!("CommitModel transaction succeeded");
 
-    // Verify model is in pending_models
+    // Verify model is in pending_models -- model_id is auto-generated by the executor,
+    // so discover it by finding the newly created pending model owned by model_owner.
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
     });
 
-    assert!(
-        system_state.model_registry().pending_models.contains_key(&model_id),
-        "Model should be in pending_models after CommitModel"
+    assert_eq!(
+        system_state.model_registry().pending_models.len(),
+        1,
+        "There should be exactly one pending model after CommitModel"
     );
+
+    let (&model_id, pending_model) =
+        system_state.model_registry().pending_models.iter().next().unwrap();
+
     assert!(
         !system_state.model_registry().active_models.contains_key(&model_id),
         "Model should NOT be in active_models yet"
     );
 
-    let pending_model = system_state.model_registry().pending_models.get(&model_id).unwrap();
     assert!(pending_model.is_committed());
     assert_eq!(pending_model.owner, model_owner);
     assert_eq!(pending_model.commit_epoch, 0);
@@ -221,8 +233,6 @@ async fn test_model_commit_reveal_round_trip() {
 
     // ----- Step 3: Submit RevealModel transaction -----
 
-    let weights_manifest = make_weights_manifest(&url_str);
-
     let gas_object = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(model_owner)
@@ -230,12 +240,12 @@ async fn test_model_commit_reveal_round_trip() {
         .unwrap()
         .expect("Model owner should have a gas object for reveal");
 
-    // Create a test embedding (10-dimensional)
-    let embedding =
-        SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
-
     let reveal_tx_data = TransactionData::new(
-        TransactionKind::RevealModel(RevealModelArgs { model_id, weights_manifest, embedding }),
+        TransactionKind::RevealModel(RevealModelArgs {
+            model_id,
+            decryption_key,
+            embedding: embedding.clone(),
+        }),
         model_owner,
         vec![gas_object],
     );
@@ -269,7 +279,7 @@ async fn test_model_commit_reveal_round_trip() {
 
     let active_model = system_state.model_registry().active_models.get(&model_id).unwrap();
     assert!(active_model.is_active());
-    assert!(active_model.weights_manifest.is_some());
+    assert!(active_model.decryption_key.is_some());
     assert_eq!(active_model.owner, model_owner);
     assert_eq!(active_model.architecture_version, 1);
     assert_eq!(active_model.staking_pool.soma_balance, stake_amount);

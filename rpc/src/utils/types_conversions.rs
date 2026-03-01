@@ -396,33 +396,35 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             // Model transactions
             TK::CommitModel(args) => TransactionKind::CommitModel(CommitModelArgs {
-                model_id: args.model_id.into(),
-                weights_url_commitment: args.weights_url_commitment.into_inner().to_vec(),
+                manifest: args.manifest.into(),
                 weights_commitment: args.weights_commitment.into_inner().to_vec(),
                 architecture_version: args.architecture_version,
+                embedding_commitment: args.embedding_commitment.into_inner().to_vec(),
+                decryption_key_commitment: args.decryption_key_commitment.into_inner().to_vec(),
                 stake_amount: args.stake_amount,
                 commission_rate: args.commission_rate,
-                staking_pool_id: args.staking_pool_id.into(),
             }),
 
             TK::RevealModel(args) => TransactionKind::RevealModel(RevealModelArgs {
                 model_id: args.model_id.into(),
-                weights_manifest: args.weights_manifest.into(),
+                decryption_key: args.decryption_key.as_ref().to_vec(),
                 embedding: args.embedding.to_vec(),
             }),
 
             TK::CommitModelUpdate(args) => {
                 TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
                     model_id: args.model_id.into(),
-                    weights_url_commitment: args.weights_url_commitment.into_inner().to_vec(),
+                    manifest: args.manifest.into(),
                     weights_commitment: args.weights_commitment.into_inner().to_vec(),
+                    embedding_commitment: args.embedding_commitment.into_inner().to_vec(),
+                    decryption_key_commitment: args.decryption_key_commitment.into_inner().to_vec(),
                 })
             }
 
             TK::RevealModelUpdate(args) => {
                 TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                     model_id: args.model_id.into(),
-                    weights_manifest: args.weights_manifest.into(),
+                    decryption_key: args.decryption_key.as_ref().to_vec(),
                     embedding: args.embedding.to_vec(),
                 })
             }
@@ -454,7 +456,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             // Submission transactions
             TK::SubmitData(args) => TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: args.target_id.into(),
-                data_commitment: args.data_commitment.into_inner().to_vec(),
                 data_manifest: SubmissionManifest { manifest: args.data_manifest.manifest.into() },
                 model_id: args.model_id.into(),
                 embedding: args.embedding.to_vec(),
@@ -606,21 +607,25 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             // Model transactions
             TransactionKind::CommitModel(args) => {
                 TK::CommitModel(types::transaction::CommitModelArgs {
-                    model_id: args.model_id.into(),
-                    weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
-                        args.weights_url_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("weights_url_commitment must be 32 bytes".into())
-                        })?,
-                    ),
+                    manifest: args.manifest.try_into()?,
                     weights_commitment: types::digests::ModelWeightsCommitment::new(
                         args.weights_commitment.try_into().map_err(|_| {
                             SdkTypeConversionError("weights_commitment must be 32 bytes".into())
                         })?,
                     ),
                     architecture_version: args.architecture_version,
+                    embedding_commitment: types::digests::EmbeddingCommitment::new(
+                        args.embedding_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("embedding_commitment must be 32 bytes".into())
+                        })?,
+                    ),
+                    decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                        args.decryption_key_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("decryption_key_commitment must be 32 bytes".into())
+                        })?,
+                    ),
                     stake_amount: args.stake_amount,
                     commission_rate: args.commission_rate,
-                    staking_pool_id: args.staking_pool_id.into(),
                 })
             }
 
@@ -628,7 +633,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 let dim = args.embedding.len();
                 TK::RevealModel(types::transaction::RevealModelArgs {
                     model_id: args.model_id.into(),
-                    weights_manifest: args.weights_manifest.try_into()?,
+                    decryption_key: types::crypto::DecryptionKey::new(
+                        args.decryption_key.try_into().map_err(|_| {
+                            SdkTypeConversionError("decryption_key must be 32 bytes".into())
+                        })?,
+                    ),
                     embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
                 })
             }
@@ -636,14 +645,20 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::CommitModelUpdate(args) => {
                 TK::CommitModelUpdate(types::transaction::CommitModelUpdateArgs {
                     model_id: args.model_id.into(),
-                    weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(
-                        args.weights_url_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("weights_url_commitment must be 32 bytes".into())
-                        })?,
-                    ),
+                    manifest: args.manifest.try_into()?,
                     weights_commitment: types::digests::ModelWeightsCommitment::new(
                         args.weights_commitment.try_into().map_err(|_| {
                             SdkTypeConversionError("weights_commitment must be 32 bytes".into())
+                        })?,
+                    ),
+                    embedding_commitment: types::digests::EmbeddingCommitment::new(
+                        args.embedding_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("embedding_commitment must be 32 bytes".into())
+                        })?,
+                    ),
+                    decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                        args.decryption_key_commitment.try_into().map_err(|_| {
+                            SdkTypeConversionError("decryption_key_commitment must be 32 bytes".into())
                         })?,
                     ),
                 })
@@ -653,7 +668,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 let dim = args.embedding.len();
                 TK::RevealModelUpdate(types::transaction::RevealModelUpdateArgs {
                     model_id: args.model_id.into(),
-                    weights_manifest: args.weights_manifest.try_into()?,
+                    decryption_key: types::crypto::DecryptionKey::new(
+                        args.decryption_key.try_into().map_err(|_| {
+                            SdkTypeConversionError("decryption_key must be 32 bytes".into())
+                        })?,
+                    ),
                     embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
                 })
             }
@@ -680,10 +699,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             // Submission transactions
             TransactionKind::SubmitData(args) => {
-                let data_commitment_array: [u8; 32] =
-                    args.data_commitment.try_into().map_err(|_| {
-                        SdkTypeConversionError("data_commitment must be 32 bytes".into())
-                    })?;
                 let data_manifest = types::submission::SubmissionManifest::new(
                     args.data_manifest.manifest.try_into()?,
                 );
@@ -696,8 +711,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
                 TK::SubmitData(types::transaction::SubmitDataArgs {
                     target_id: args.target_id.into(),
-                    // target_initial_shared_version is ignored from proto - use protocol constant
-                    data_commitment: types::digests::DataCommitment::new(data_commitment_array),
                     data_manifest,
                     model_id: args.model_id.into(),
                     embedding,
@@ -1311,7 +1324,8 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::ModelNotPending => Self::ModelNotPending,
             types::effects::ExecutionFailureStatus::ModelAlreadyInactive => Self::ModelAlreadyInactive,
             types::effects::ExecutionFailureStatus::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
-            types::effects::ExecutionFailureStatus::ModelWeightsUrlMismatch => Self::ModelWeightsUrlMismatch,
+            types::effects::ExecutionFailureStatus::ModelEmbeddingCommitmentMismatch => Self::ModelEmbeddingCommitmentMismatch,
+            types::effects::ExecutionFailureStatus::ModelDecryptionKeyCommitmentMismatch => Self::ModelDecryptionKeyCommitmentMismatch,
             types::effects::ExecutionFailureStatus::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
             types::effects::ExecutionFailureStatus::ModelArchitectureVersionMismatch => Self::ModelArchitectureVersionMismatch,
             types::effects::ExecutionFailureStatus::ModelCommissionRateTooHigh => Self::ModelCommissionRateTooHigh,
@@ -1458,7 +1472,8 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::ModelNotPending => Self::ModelNotPending,
             ExecutionError::ModelAlreadyInactive => Self::ModelAlreadyInactive,
             ExecutionError::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
-            ExecutionError::ModelWeightsUrlMismatch => Self::ModelWeightsUrlMismatch,
+            ExecutionError::ModelEmbeddingCommitmentMismatch => Self::ModelEmbeddingCommitmentMismatch,
+            ExecutionError::ModelDecryptionKeyCommitmentMismatch => Self::ModelDecryptionKeyCommitmentMismatch,
             ExecutionError::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
             ExecutionError::ModelArchitectureVersionMismatch => {
                 Self::ModelArchitectureVersionMismatch

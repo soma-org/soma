@@ -16,8 +16,11 @@ use crate::config::Config;
 use crate::crypto::{
     AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
 };
-use crate::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
-use crate::model::{ArchitectureVersion, ModelId, ModelWeightsManifest};
+use crate::crypto::DecryptionKey;
+use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use crate::metadata::Manifest;
+use crate::model::{ArchitectureVersion, ModelId};
+use crate::tensor::SomaTensor;
 use crate::multiaddr::Multiaddr;
 use crate::object::ObjectID;
 
@@ -69,14 +72,20 @@ pub struct GenesisModelConfig {
     pub owner: SomaAddress,
     /// Pre-assigned model ID (used as key in ModelRegistry maps and for token allocation routing)
     pub model_id: ModelId,
-    /// Revealed weights (skip commit-reveal at genesis)
-    pub weights_manifest: ModelWeightsManifest,
-    /// Commitment to the encrypted weights URL (stored for integrity)
-    pub weights_url_commitment: ModelWeightsUrlCommitment,
+    /// Manifest for the encrypted weights (URL + checksum + size)
+    pub manifest: Manifest,
+    /// AES-256 decryption key for the encrypted weights
+    pub decryption_key: DecryptionKey,
     /// Commitment to the decrypted model weights (stored for integrity)
     pub weights_commitment: ModelWeightsCommitment,
     /// Architecture version (must match protocol config)
     pub architecture_version: ArchitectureVersion,
+    /// Commitment to the model embedding (hash of BCS-serialized SomaTensor)
+    pub embedding_commitment: EmbeddingCommitment,
+    /// Commitment to the decryption key (hash of key bytes), verified at reveal
+    pub decryption_key_commitment: DecryptionKeyCommitment,
+    /// The model's embedding vector in the shared embedding space
+    pub embedding: SomaTensor,
     /// Commission rate in basis points (max 10000)
     pub commission_rate: u64,
     /// Initial stake from the model owner (defaults to model_min_stake: 1 SOMA).

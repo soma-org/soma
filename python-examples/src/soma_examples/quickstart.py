@@ -46,29 +46,37 @@ async def run():
 
         # -- Step 3: Commit model on-chain -------------------------------------
         print("\n=== Step 3: Commit model ===")
-        model_id = await client.commit_model(
+        embedding_dim = await client.get_embedding_dim()
+        embedding = [0.1] * embedding_dim
+        await client.commit_model(
             signer=kp,
             weights_url=model_url,
             encrypted_weights=encrypted_bytes,
+            decryption_key=decryption_key,
+            embedding=embedding,
             commission_rate=1000,  # 10%
         )
-        print(f"Model committed: {model_id}")
+        print("Model committed")
 
         # -- Step 4: Advance epoch, then reveal --------------------------------
         print("\n=== Step 4: Advance epoch + reveal ===")
         epoch = await client.advance_epoch()
         print(f"Epoch -> {epoch}")
 
-        embedding_dim = await client.get_embedding_dim()
+        # Discover the model_id from the pending models in system state
+        state = await client.get_latest_system_state()
+        pending = vars(state.model_registry.pending_models)
+        model_id = next(
+            mid for mid, m in pending.items()
+            if m.owner == sender
+        )
         await client.reveal_model(
             signer=kp,
             model_id=model_id,
-            weights_url=model_url,
-            encrypted_weights=encrypted_bytes,
             decryption_key=decryption_key,
-            embedding=[0.1] * embedding_dim,
+            embedding=embedding,
         )
-        print("Model revealed")
+        print(f"Model revealed: {model_id}")
 
         # -- Step 5: Advance epoch (targets created at boundary) ---------------
         print("\n=== Step 5: Advance epoch (targets generated) ===")

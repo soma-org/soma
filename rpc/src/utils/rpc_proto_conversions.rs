@@ -95,7 +95,8 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ModelNotPending => (ExecutionErrorKind::ModelNotPending, None),
             E::ModelAlreadyInactive => (ExecutionErrorKind::ModelAlreadyInactive, None),
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
-            E::ModelWeightsUrlMismatch => (ExecutionErrorKind::ModelWeightsUrlMismatch, None),
+            E::ModelEmbeddingCommitmentMismatch => (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None),
+            E::ModelDecryptionKeyCommitmentMismatch => (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None),
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
             E::ModelArchitectureVersionMismatch => {
                 (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
@@ -554,31 +555,29 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
 
             // Model transactions
             K::CommitModel(args) => Kind::CommitModel(CommitModel {
-                model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(
-                    args.weights_url_commitment.into_inner().to_vec().into(),
-                ),
+                manifest: Some(args.manifest.into()),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
                 architecture_version: Some(args.architecture_version),
+                embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(args.decryption_key_commitment.into_inner().to_vec().into()),
                 stake_amount: Some(args.stake_amount),
                 commission_rate: Some(args.commission_rate),
-                staking_pool_id: Some(args.staking_pool_id.to_string()),
             }),
             K::RevealModel(args) => Kind::RevealModel(RevealModel {
                 model_id: Some(args.model_id.to_string()),
-                weights_manifest: Some(args.weights_manifest.into()),
+                decryption_key: Some(args.decryption_key.as_ref().to_vec().into()),
                 embedding: args.embedding.to_vec(),
             }),
             K::CommitModelUpdate(args) => Kind::CommitModelUpdate(CommitModelUpdate {
                 model_id: Some(args.model_id.to_string()),
-                weights_url_commitment: Some(
-                    args.weights_url_commitment.into_inner().to_vec().into(),
-                ),
+                manifest: Some(args.manifest.into()),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
+                embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(args.decryption_key_commitment.into_inner().to_vec().into()),
             }),
             K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
                 model_id: Some(args.model_id.to_string()),
-                weights_manifest: Some(args.weights_manifest.into()),
+                decryption_key: Some(args.decryption_key.as_ref().to_vec().into()),
                 embedding: args.embedding.to_vec(),
             }),
             K::AddStakeToModel { model_id, coin_ref, amount } => {
@@ -606,7 +605,6 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             // Submission transactions
             K::SubmitData(args) => Kind::SubmitData(SubmitData {
                 target_id: Some(args.target_id.to_string()),
-                data_commitment: Some(args.data_commitment.into_inner().to_vec().into()),
                 data_manifest: Some(crate::proto::soma::SubmissionManifest {
                     manifest: Some(args.data_manifest.manifest.into()),
                 }),
@@ -1742,8 +1740,10 @@ impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
 impl From<types::model::PendingModelUpdate> for PendingModelUpdate {
     fn from(value: types::model::PendingModelUpdate) -> Self {
         Self {
-            weights_url_commitment: Some(value.weights_url_commitment.into_inner().to_vec().into()),
+            manifest: Some(value.manifest.into()),
             weights_commitment: Some(value.weights_commitment.into_inner().to_vec().into()),
+            embedding_commitment: Some(value.embedding_commitment.into_inner().to_vec().into()),
+            decryption_key_commitment: Some(value.decryption_key_commitment.into_inner().to_vec().into()),
             commit_epoch: Some(value.commit_epoch),
         }
     }
@@ -1753,20 +1753,29 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
     type Error = String;
 
     fn try_from(proto: PendingModelUpdate) -> Result<Self, Self::Error> {
-        let url_bytes: Vec<u8> =
-            proto.weights_url_commitment.ok_or("Missing weights_url_commitment")?.into();
-        let url_array: [u8; 32] = url_bytes
-            .try_into()
-            .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
+        let manifest = proto.manifest.ok_or("Missing manifest")?;
+        let manifest: types::metadata::Manifest = manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
 
         let wt_bytes: Vec<u8> =
             proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
         let wt_array: [u8; 32] =
             wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
 
+        let ec_bytes: Vec<u8> =
+            proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
+        let ec_array: [u8; 32] =
+            ec_bytes.try_into().map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
+
+        let dk_bytes: Vec<u8> =
+            proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
+        let dk_array: [u8; 32] =
+            dk_bytes.try_into().map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+
         Ok(types::model::PendingModelUpdate {
-            weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(url_array),
+            manifest,
             weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+            embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
+            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(dk_array),
             commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
         })
     }
@@ -1783,12 +1792,12 @@ impl TryFrom<types::model::ModelV1> for Model {
         Ok(Model {
             owner: Some(domain.owner.to_string()),
             architecture_version: Some(domain.architecture_version),
-            weights_url_commitment: Some(
-                domain.weights_url_commitment.into_inner().to_vec().into(),
-            ),
+            manifest: Some(domain.manifest.into()),
             weights_commitment: Some(domain.weights_commitment.into_inner().to_vec().into()),
+            embedding_commitment: Some(domain.embedding_commitment.into_inner().to_vec().into()),
+            decryption_key_commitment: Some(domain.decryption_key_commitment.into_inner().to_vec().into()),
             commit_epoch: Some(domain.commit_epoch),
-            weights_manifest: domain.weights_manifest.map(Into::into),
+            decryption_key: domain.decryption_key.map(|k| k.as_ref().to_vec().into()),
             embedding: domain.embedding.map(|e| e.to_vec()).unwrap_or_default(),
             staking_pool: Some(domain.staking_pool.try_into()?),
             commission_rate: Some(domain.commission_rate),
@@ -1808,18 +1817,29 @@ impl TryFrom<Model> for types::model::ModelV1 {
             .parse()
             .map_err(|_| "Invalid SomaAddress".to_string())?;
 
-        let url_bytes: Vec<u8> =
-            proto.weights_url_commitment.ok_or("Missing weights_url_commitment")?.into();
-        let url_array: [u8; 32] = url_bytes
-            .try_into()
-            .map_err(|_| "weights_url_commitment must be 32 bytes".to_string())?;
+        let manifest = proto.manifest.ok_or("Missing manifest")?;
+        let manifest: types::metadata::Manifest = manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
 
         let wt_bytes: Vec<u8> =
             proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
         let wt_array: [u8; 32] =
             wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
 
-        let weights_manifest = proto.weights_manifest.map(TryInto::try_into).transpose()?;
+        let ec_bytes: Vec<u8> =
+            proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
+        let ec_array: [u8; 32] =
+            ec_bytes.try_into().map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
+
+        let dk_commit_bytes: Vec<u8> =
+            proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
+        let dk_commit_array: [u8; 32] =
+            dk_commit_bytes.try_into().map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+
+        let decryption_key = proto.decryption_key.map(|dk| {
+            let dk_vec: Vec<u8> = dk.into();
+            let dk_array: [u8; 32] = dk_vec.try_into().expect("decryption_key must be 32 bytes");
+            types::crypto::DecryptionKey::new(dk_array)
+        });
 
         let staking_pool = proto.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
 
@@ -1838,10 +1858,12 @@ impl TryFrom<Model> for types::model::ModelV1 {
             architecture_version: proto
                 .architecture_version
                 .ok_or("Missing architecture_version")?,
-            weights_url_commitment: types::digests::ModelWeightsUrlCommitment::new(url_array),
+            manifest,
             weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+            embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
+            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(dk_commit_array),
             commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
-            weights_manifest,
+            decryption_key,
             embedding,
             staking_pool,
             commission_rate: proto.commission_rate.ok_or("Missing commission_rate")?,

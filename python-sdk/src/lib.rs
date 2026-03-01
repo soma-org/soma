@@ -10,9 +10,8 @@ use tokio::sync::Mutex;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
-use types::digests::{DataCommitment, ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::ModelWeightsManifest;
 use types::object::{ObjectID, ObjectRef, Version};
 use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
@@ -180,19 +179,12 @@ fn build_submission_manifest(
     Ok(SubmissionManifest::new(manifest))
 }
 
-fn build_weights_manifest(
-    url: &str,
-    checksum_hex: &str,
-    size: usize,
-    decryption_key_hex: &str,
-) -> PyResult<ModelWeightsManifest> {
+fn build_manifest(url: &str, checksum_hex: &str, size: usize) -> PyResult<Manifest> {
     let parsed_url: url::Url =
         url.parse().map_err(|e| PyValueError::new_err(format!("Invalid URL: {}", e)))?;
     let checksum_bytes = parse_hex_32(checksum_hex, "weights-checksum")?;
-    let key_bytes = parse_hex_32(decryption_key_hex, "decryption-key")?;
     let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
-    let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
-    Ok(ModelWeightsManifest { manifest, decryption_key: DecryptionKey::new(key_bytes) })
+    Ok(Manifest::V1(ManifestV1::new(parsed_url, metadata)))
 }
 
 // ---------------------------------------------------------------------------
@@ -946,15 +938,13 @@ impl PySomaClient {
                 let model =
                     registry.active_models.get(&id).or_else(|| registry.inactive_models.get(&id));
                 if let Some(model) = model {
-                    if let Some(wm) = &model.weights_manifest {
-                        let obj = ManifestObj {
-                            url: wm.manifest.url().to_string(),
-                            checksum: hex::encode(wm.manifest.metadata().checksum().0),
-                            size: wm.manifest.metadata().size(),
-                            decryption_key: Some(hex::encode(wm.decryption_key.as_bytes())),
-                        };
-                        results.push(to_py_obj(&obj)?);
-                    }
+                    let obj = ManifestObj {
+                        url: model.manifest.url().to_string(),
+                        checksum: hex::encode(model.manifest.metadata().checksum().0),
+                        size: model.manifest.metadata().size(),
+                        decryption_key: model.decryption_key.as_ref().map(|k| hex::encode(k.as_bytes())),
+                    };
+                    results.push(to_py_obj(&obj)?);
                 }
             }
             Ok(results)
@@ -1377,37 +1367,40 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Build a CommitModel transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, model_id, weights_url_commitment, weights_commitment, stake_amount, commission_rate, staking_pool_id, gas=None))]
+    #[pyo3(signature = (sender, url, checksum, size, weights_commitment, embedding_commitment, decryption_key_commitment, stake_amount, commission_rate, gas=None))]
     fn build_commit_model<'py>(
         &self,
         py: Python<'py>,
         sender: String,
-        model_id: String,
-        weights_url_commitment: String,
+        url: String,
+        checksum: String,
+        size: usize,
         weights_commitment: String,
+        embedding_commitment: String,
+        decryption_key_commitment: String,
         stake_amount: u64,
         commission_rate: u64,
-        staking_pool_id: String,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
-        let model = parse_object_id(&model_id)?;
-        let pool_id = parse_object_id(&staking_pool_id)?;
-        let url_commitment = parse_hex_32(&weights_url_commitment, "weights-url-commitment")?;
+        let manifest = build_manifest(&url, &checksum, size)?;
         let wt_commitment = parse_hex_32(&weights_commitment, "weights-commitment")?;
+        let emb_commitment = parse_hex_32(&embedding_commitment, "embedding-commitment")?;
+        let dk_commitment =
+            parse_hex_32(&decryption_key_commitment, "decryption-key-commitment")?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let architecture_version =
                 client.get_architecture_version().await.map_err(to_py_err)?;
             let kind = TransactionKind::CommitModel(CommitModelArgs {
-                model_id: model,
-                weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                manifest,
                 weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+                embedding_commitment: EmbeddingCommitment::new(emb_commitment),
+                decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
                 architecture_version,
                 stake_amount,
                 commission_rate,
-                staking_pool_id: pool_id,
             });
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
@@ -1419,30 +1412,26 @@ impl PySomaClient {
     }
 
     /// Build a RevealModel transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, model_id, weights_url, weights_checksum, weights_size, decryption_key, embedding, gas=None))]
+    #[pyo3(signature = (sender, model_id, decryption_key, embedding, gas=None))]
     fn build_reveal_model<'py>(
         &self,
         py: Python<'py>,
         sender: String,
         model_id: String,
-        weights_url: String,
-        weights_checksum: String,
-        weights_size: usize,
         decryption_key: String,
         embedding: Vec<f32>,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let manifest =
-            build_weights_manifest(&weights_url, &weights_checksum, weights_size, &decryption_key)?;
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let kind = TransactionKind::RevealModel(RevealModelArgs {
                 model_id: model,
-                weights_manifest: manifest,
+                decryption_key: DecryptionKey::new(key_bytes),
                 embedding: embedding_tensor,
             });
             let tx_data = client
@@ -1455,27 +1444,36 @@ impl PySomaClient {
     }
 
     /// Build a CommitModelUpdate transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, model_id, weights_url_commitment, weights_commitment, gas=None))]
+    #[pyo3(signature = (sender, model_id, url, checksum, size, weights_commitment, embedding_commitment, decryption_key_commitment, gas=None))]
     fn build_commit_model_update<'py>(
         &self,
         py: Python<'py>,
         sender: String,
         model_id: String,
-        weights_url_commitment: String,
+        url: String,
+        checksum: String,
+        size: usize,
         weights_commitment: String,
+        embedding_commitment: String,
+        decryption_key_commitment: String,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let url_commitment = parse_hex_32(&weights_url_commitment, "weights-url-commitment")?;
+        let manifest = build_manifest(&url, &checksum, size)?;
         let wt_commitment = parse_hex_32(&weights_commitment, "weights-commitment")?;
+        let emb_commitment = parse_hex_32(&embedding_commitment, "embedding-commitment")?;
+        let dk_commitment =
+            parse_hex_32(&decryption_key_commitment, "decryption-key-commitment")?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
                 model_id: model,
-                weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                manifest,
                 weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+                embedding_commitment: EmbeddingCommitment::new(emb_commitment),
+                decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
             });
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
@@ -1487,30 +1485,26 @@ impl PySomaClient {
     }
 
     /// Build a RevealModelUpdate transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, model_id, weights_url, weights_checksum, weights_size, decryption_key, embedding, gas=None))]
+    #[pyo3(signature = (sender, model_id, decryption_key, embedding, gas=None))]
     fn build_reveal_model_update<'py>(
         &self,
         py: Python<'py>,
         sender: String,
         model_id: String,
-        weights_url: String,
-        weights_checksum: String,
-        weights_size: usize,
         decryption_key: String,
         embedding: Vec<f32>,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let manifest =
-            build_weights_manifest(&weights_url, &weights_checksum, weights_size, &decryption_key)?;
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                 model_id: model,
-                weights_manifest: manifest,
+                decryption_key: DecryptionKey::new(key_bytes),
                 embedding: embedding_tensor,
             });
             let tx_data = client
@@ -1624,13 +1618,12 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Build a SubmitData transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, target_id, data_commitment, data_url, data_checksum, data_size, model_id, embedding, distance_score, bond_coin, gas=None))]
+    #[pyo3(signature = (sender, target_id, data_url, data_checksum, data_size, model_id, embedding, distance_score, bond_coin, gas=None))]
     fn build_submit_data<'py>(
         &self,
         py: Python<'py>,
         sender: String,
         target_id: String,
-        data_commitment: String,
         data_url: String,
         data_checksum: String,
         data_size: usize,
@@ -1643,7 +1636,6 @@ impl PySomaClient {
         let sender_addr = parse_address(&sender)?;
         let target = parse_object_id(&target_id)?;
         let model = parse_object_id(&model_id)?;
-        let commitment_bytes = parse_hex_32(&data_commitment, "data-commitment")?;
         let manifest = build_submission_manifest(&data_url, &data_checksum, data_size)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let bond_ref = parse_object_ref(&bond_coin)?;
@@ -1652,7 +1644,6 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
-                data_commitment: DataCommitment::new(commitment_bytes),
                 data_manifest: manifest,
                 model_id: model,
                 embedding: embedding_tensor,
@@ -2041,18 +2032,18 @@ impl PySomaClient {
     // High-level convenience methods (sign + execute via sdk)
     // -------------------------------------------------------------------
 
-    /// Commit a model: auto-generates model_id and staking_pool_id,
-    /// computes commitments, signs, and executes.
+    /// Commit a model: computes manifest, commitments, signs, and executes.
     /// Returns the model_id as a hex string.
-    /// Commit a model. `stake_amount` is in SOMA (e.g. `5.0`).
-    /// If omitted, uses the network's minimum model stake.
-    #[pyo3(signature = (signer, weights_url, encrypted_weights, commission_rate, stake_amount=None))]
+    /// `stake_amount` is in SOMA (e.g. `5.0`). If omitted, uses the network's minimum model stake.
+    #[pyo3(signature = (signer, weights_url, encrypted_weights, decryption_key, embedding, commission_rate, stake_amount=None))]
     fn commit_model<'py>(
         &self,
         py: Python<'py>,
         signer: &PyKeypair,
         weights_url: String,
         encrypted_weights: &[u8],
+        decryption_key: String,
+        embedding: Vec<f32>,
         commission_rate: u64,
         stake_amount: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -2060,12 +2051,18 @@ impl PySomaClient {
         let kp = signer.inner.copy();
         let stake_shannons = stake_amount.map(sdk::crypto_utils::to_shannons);
 
-        let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
+        let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
+        let weights_size = encrypted_weights.len();
+        let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
         let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
 
-        let model_id = ObjectID::random();
-        let staking_pool_id = ObjectID::random();
-        let model_id_str = model_id.to_string();
+        let embedding_tensor = parse_embedding_vec(embedding)?;
+        let emb_bytes = bcs::to_bytes(&embedding_tensor)
+            .map_err(|e| PyValueError::new_err(format!("BCS encode embedding: {}", e)))?;
+        let emb_commitment = sdk::crypto_utils::commitment(&emb_bytes);
+
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let dk_commitment = sdk::crypto_utils::commitment(&key_bytes);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
@@ -2081,50 +2078,42 @@ impl PySomaClient {
             };
 
             let kind = TransactionKind::CommitModel(CommitModelArgs {
-                model_id,
-                weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
+                manifest,
                 weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+                embedding_commitment: EmbeddingCommitment::new(emb_commitment),
+                decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
                 architecture_version,
                 stake_amount: final_stake,
                 commission_rate,
-                staking_pool_id,
             });
             let tx_data =
                 client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
             client.sign_and_execute(&kp, tx_data, "CommitModel").await.map_err(to_py_err)?;
-            Ok(model_id_str)
+            Ok(())
         })
     }
 
-    /// Reveal a model: computes checksum/size from encrypted_weights,
-    /// signs, and executes.
-    #[pyo3(signature = (signer, model_id, weights_url, encrypted_weights, decryption_key, embedding))]
+    /// Reveal a model: provides decryption key and embedding, signs, and executes.
+    #[pyo3(signature = (signer, model_id, decryption_key, embedding))]
     fn reveal_model<'py>(
         &self,
         py: Python<'py>,
         signer: &PyKeypair,
         model_id: String,
-        weights_url: String,
-        encrypted_weights: &[u8],
         decryption_key: String,
         embedding: Vec<f32>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let model = parse_object_id(&model_id)?;
-
-        let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
-        let weights_size = encrypted_weights.len();
-
-        let manifest =
-            build_weights_manifest(&weights_url, &checksum_hex, weights_size, &decryption_key)?;
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::RevealModel(RevealModelArgs {
                 model_id: model,
-                weights_manifest: manifest,
+                decryption_key: DecryptionKey::new(key_bytes),
                 embedding: embedding_tensor,
             });
             let tx_data =
@@ -2153,7 +2142,6 @@ impl PySomaClient {
         let target = parse_object_id(&target_id)?;
         let model = parse_object_id(&model_id)?;
 
-        let commitment_bytes = sdk::crypto_utils::commitment(data);
         let hash_hex = sdk::crypto_utils::commitment_hex(data);
         let data_size = data.len();
 
@@ -2180,7 +2168,6 @@ impl PySomaClient {
 
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
-                data_commitment: DataCommitment::new(commitment_bytes),
                 data_manifest: manifest,
                 model_id: model,
                 embedding: embedding_tensor,
@@ -2385,36 +2372,8 @@ impl PySomaClient {
     // High-level: Model Management
     // -------------------------------------------------------------------
 
-    /// Commit a model update: computes commitments from encrypted_weights, signs, and executes.
+    /// Commit a model update: computes manifest and commitments, signs, and executes.
     fn commit_model_update<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        model_id: String,
-        weights_url: String,
-        encrypted_weights: &[u8],
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let model = parse_object_id(&model_id)?;
-        let url_commitment = sdk::crypto_utils::commitment(weights_url.as_bytes());
-        let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
-                model_id: model,
-                weights_url_commitment: ModelWeightsUrlCommitment::new(url_commitment),
-                weights_commitment: ModelWeightsCommitment::new(wt_commitment),
-            });
-            let tx_data =
-                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
-            client.sign_and_execute(&kp, tx_data, "CommitModelUpdate").await.map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    /// Reveal a model update: computes checksum/size from encrypted_weights, signs, and executes.
-    fn reveal_model_update<'py>(
         &self,
         py: Python<'py>,
         signer: &PyKeypair,
@@ -2427,16 +2386,55 @@ impl PySomaClient {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let model = parse_object_id(&model_id)?;
+
         let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
         let weights_size = encrypted_weights.len();
-        let manifest =
-            build_weights_manifest(&weights_url, &checksum_hex, weights_size, &decryption_key)?;
+        let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+        let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
+
+        let embedding_tensor = parse_embedding_vec(embedding)?;
+        let emb_bytes = bcs::to_bytes(&embedding_tensor)
+            .map_err(|e| PyValueError::new_err(format!("BCS encode embedding: {}", e)))?;
+        let emb_commitment = sdk::crypto_utils::commitment(&emb_bytes);
+
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let dk_commitment = sdk::crypto_utils::commitment(&key_bytes);
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
+                model_id: model,
+                manifest,
+                weights_commitment: ModelWeightsCommitment::new(wt_commitment),
+                embedding_commitment: EmbeddingCommitment::new(emb_commitment),
+                decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
+            });
+            let tx_data =
+                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
+            client.sign_and_execute(&kp, tx_data, "CommitModelUpdate").await.map_err(to_py_err)?;
+            Ok(())
+        })
+    }
+
+    /// Reveal a model update: provides decryption key and embedding, signs, and executes.
+    fn reveal_model_update<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        decryption_key: String,
+        embedding: Vec<f32>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
+        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
                 model_id: model,
-                weights_manifest: manifest,
+                decryption_key: DecryptionKey::new(key_bytes),
                 embedding: embedding_tensor,
             });
             let tx_data =

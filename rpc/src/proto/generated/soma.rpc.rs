@@ -652,8 +652,8 @@ pub mod execution_error {
         ModelAlreadyInactive = 26,
         /// Model reveal epoch mismatch
         ModelRevealEpochMismatch = 27,
-        /// Model weights URL commitment mismatch
-        ModelWeightsUrlMismatch = 28,
+        /// Model embedding commitment mismatch
+        ModelEmbeddingCommitmentMismatch = 28,
         /// Model has no pending update
         ModelNoPendingUpdate = 29,
         /// Model architecture version mismatch
@@ -710,6 +710,8 @@ pub mod execution_error {
         MissingProofOfPossession = 55,
         /// Invalid proof of possession signature
         InvalidProofOfPossession = 56,
+        /// Model decryption key commitment mismatch
+        ModelDecryptionKeyCommitmentMismatch = 57,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -745,7 +747,9 @@ pub mod execution_error {
                 Self::ModelNotPending => "MODEL_NOT_PENDING",
                 Self::ModelAlreadyInactive => "MODEL_ALREADY_INACTIVE",
                 Self::ModelRevealEpochMismatch => "MODEL_REVEAL_EPOCH_MISMATCH",
-                Self::ModelWeightsUrlMismatch => "MODEL_WEIGHTS_URL_MISMATCH",
+                Self::ModelEmbeddingCommitmentMismatch => {
+                    "MODEL_EMBEDDING_COMMITMENT_MISMATCH"
+                }
                 Self::ModelNoPendingUpdate => "MODEL_NO_PENDING_UPDATE",
                 Self::ModelArchitectureVersionMismatch => {
                     "MODEL_ARCHITECTURE_VERSION_MISMATCH"
@@ -776,6 +780,9 @@ pub mod execution_error {
                 Self::DuplicateValidatorMetadata => "DUPLICATE_VALIDATOR_METADATA",
                 Self::MissingProofOfPossession => "MISSING_PROOF_OF_POSSESSION",
                 Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
+                Self::ModelDecryptionKeyCommitmentMismatch => {
+                    "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH"
+                }
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -808,7 +815,9 @@ pub mod execution_error {
                 "MODEL_NOT_PENDING" => Some(Self::ModelNotPending),
                 "MODEL_ALREADY_INACTIVE" => Some(Self::ModelAlreadyInactive),
                 "MODEL_REVEAL_EPOCH_MISMATCH" => Some(Self::ModelRevealEpochMismatch),
-                "MODEL_WEIGHTS_URL_MISMATCH" => Some(Self::ModelWeightsUrlMismatch),
+                "MODEL_EMBEDDING_COMMITMENT_MISMATCH" => {
+                    Some(Self::ModelEmbeddingCommitmentMismatch)
+                }
                 "MODEL_NO_PENDING_UPDATE" => Some(Self::ModelNoPendingUpdate),
                 "MODEL_ARCHITECTURE_VERSION_MISMATCH" => {
                     Some(Self::ModelArchitectureVersionMismatch)
@@ -843,6 +852,9 @@ pub mod execution_error {
                 "DUPLICATE_VALIDATOR_METADATA" => Some(Self::DuplicateValidatorMetadata),
                 "MISSING_PROOF_OF_POSSESSION" => Some(Self::MissingProofOfPossession),
                 "INVALID_PROOF_OF_POSSESSION" => Some(Self::InvalidProofOfPossession),
+                "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH" => {
+                    Some(Self::ModelDecryptionKeyCommitmentMismatch)
+                }
                 _ => None,
             }
         }
@@ -3598,39 +3610,43 @@ pub struct PoolTokenExchangeRate {
 }
 /// A registered model in the data submission system.
 /// Status derived from fields (same pattern as validators):
-///    Committed: weights_manifest absent, staking_pool.deactivation_epoch absent
-///    Active:    weights_manifest present, staking_pool.deactivation_epoch absent
+///    Committed: decryption_key absent, staking_pool.deactivation_epoch absent
+///    Active:    decryption_key present, staking_pool.deactivation_epoch absent
 ///    Inactive:  staking_pool.deactivation_epoch present
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Model {
-    /// SomaAddress hex
     #[prost(string, optional, tag = "1")]
     pub owner: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint64, optional, tag = "2")]
     pub architecture_version: ::core::option::Option<u64>,
-    /// 32-byte digest
-    #[prost(bytes = "bytes", optional, tag = "3")]
-    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Manifest (URL + checksum + size), set at commit
+    #[prost(message, optional, tag = "3")]
+    pub manifest: ::core::option::Option<Manifest>,
     /// 32-byte digest
     #[prost(bytes = "bytes", optional, tag = "4")]
     pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint64, optional, tag = "5")]
+    /// 32-byte hash of BCS-serialized embedding
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte hash of decryption key
+    #[prost(bytes = "bytes", optional, tag = "6")]
+    pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "7")]
     pub commit_epoch: ::core::option::Option<u64>,
-    /// absent while committed
-    #[prost(message, optional, tag = "6")]
-    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
-    /// Model embedding for KNN selection (f32 values)
-    #[prost(float, repeated, tag = "7")]
+    /// 32-byte AES-256 key (absent while committed)
+    #[prost(bytes = "bytes", optional, tag = "8")]
+    pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Model embedding (absent while committed)
+    #[prost(float, repeated, tag = "9")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
-    #[prost(message, optional, tag = "8")]
+    #[prost(message, optional, tag = "10")]
     pub staking_pool: ::core::option::Option<StakingPool>,
-    #[prost(uint64, optional, tag = "9")]
+    #[prost(uint64, optional, tag = "11")]
     pub commission_rate: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "10")]
+    #[prost(uint64, optional, tag = "12")]
     pub next_epoch_commission_rate: ::core::option::Option<u64>,
-    /// absent if no update in flight
-    #[prost(message, optional, tag = "11")]
+    #[prost(message, optional, tag = "13")]
     pub pending_update: ::core::option::Option<PendingModelUpdate>,
 }
 /// Registry of all models in the data submission system.
@@ -4076,41 +4092,48 @@ pub struct ModelWeightsManifest {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PendingModelUpdate {
-    /// 32-byte digest
-    #[prost(bytes = "bytes", optional, tag = "1")]
-    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    /// 32-byte digest
+    #[prost(message, optional, tag = "1")]
+    pub manifest: ::core::option::Option<Manifest>,
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint64, optional, tag = "3")]
+    /// 32-byte hash
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte hash
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(uint64, optional, tag = "5")]
     pub commit_epoch: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommitModel {
-    #[prost(string, optional, tag = "1")]
-    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "1")]
+    pub manifest: ::core::option::Option<Manifest>,
     #[prost(bytes = "bytes", optional, tag = "2")]
-    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "3")]
     pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint64, optional, tag = "4")]
+    #[prost(uint64, optional, tag = "3")]
     pub architecture_version: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "5")]
-    pub stake_amount: ::core::option::Option<u64>,
+    /// 32-byte hash of BCS-serialized embedding
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte hash of decryption key
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(uint64, optional, tag = "6")]
+    pub stake_amount: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "7")]
     pub commission_rate: ::core::option::Option<u64>,
-    #[prost(string, optional, tag = "7")]
-    pub staking_pool_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RevealModel {
     #[prost(string, optional, tag = "1")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "2")]
-    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
-    /// Model embedding for stake-weighted KNN target selection (f32 values)
+    /// 32-byte AES-256 key
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Full model embedding revealed here
     #[prost(float, repeated, tag = "3")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
 }
@@ -4119,19 +4142,26 @@ pub struct RevealModel {
 pub struct CommitModelUpdate {
     #[prost(string, optional, tag = "1")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub weights_url_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    #[prost(message, optional, tag = "2")]
+    pub manifest: ::core::option::Option<Manifest>,
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte hash of BCS-serialized embedding
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+    /// 32-byte hash of decryption key
+    #[prost(bytes = "bytes", optional, tag = "5")]
+    pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RevealModelUpdate {
     #[prost(string, optional, tag = "1")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "2")]
-    pub weights_manifest: ::core::option::Option<ModelWeightsManifest>,
-    /// Updated model embedding for stake-weighted KNN target selection (f32 values)
+    /// 32-byte AES-256 key
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Full updated model embedding
     #[prost(float, repeated, tag = "3")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
 }
@@ -4245,25 +4275,17 @@ pub struct ConsensusCommitPrologue {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubmitData {
-    /// Target ID (ObjectID hex string)
     #[prost(string, optional, tag = "1")]
     pub target_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Commitment to raw data: hash(data_bytes), 32-byte digest
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub data_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    /// Manifest for submitted data
+    /// Field 2 removed (was data_commitment)
     #[prost(message, optional, tag = "3")]
     pub data_manifest: ::core::option::Option<SubmissionManifest>,
-    /// Model ID used for submission (must be in target's model_ids)
     #[prost(string, optional, tag = "4")]
     pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Pre-computed embedding (f32 values)
     #[prost(float, repeated, tag = "5")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
-    /// Distance score (f32 cosine distance, lower is better)
     #[prost(float, optional, tag = "6")]
     pub distance_score: ::core::option::Option<f32>,
-    /// Bond coin reference
     #[prost(message, optional, tag = "7")]
     pub bond_coin: ::core::option::Option<ObjectReference>,
 }

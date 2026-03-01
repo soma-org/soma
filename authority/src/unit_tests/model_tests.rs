@@ -14,13 +14,16 @@ use std::sync::Arc;
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::base::SomaAddress;
-use types::crypto::{SomaKeyPair, get_key_pair};
-use types::digests::{ModelWeightsCommitment, ModelWeightsUrlCommitment};
+use types::checksum::Checksum;
+use types::crypto::{DIGEST_LENGTH, SomaKeyPair, get_key_pair};
+use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
 use types::error::SomaError;
+use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use types::object::{Object, ObjectID};
 use types::transaction::{CommitModelArgs, TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
+use url::Url;
 
 use crate::authority::AuthorityState;
 use crate::authority_test_utils::send_and_confirm_transaction_;
@@ -58,15 +61,20 @@ async fn execute_commit_model(
         architecture_version.unwrap_or(system_state.parameters().model_architecture_version);
     let comm_rate = commission_rate.unwrap_or(1000); // 10% default
 
+    let url = Url::parse("https://example.com/model.bin").unwrap();
+    let metadata =
+        Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; DIGEST_LENGTH]), 1024));
+    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
+
     let data = TransactionData::new(
         TransactionKind::CommitModel(CommitModelArgs {
-            model_id: ObjectID::random(),
-            weights_url_commitment: ModelWeightsUrlCommitment::new([1u8; 32]),
+            manifest,
             weights_commitment: ModelWeightsCommitment::new([2u8; 32]),
             architecture_version: arch_version,
+            embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
+            decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
             stake_amount,
             commission_rate: comm_rate,
-            staking_pool_id: ObjectID::random(),
         }),
         sender,
         vec![coin_ref],

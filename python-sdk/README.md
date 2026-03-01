@@ -209,30 +209,32 @@ tx = await client.build_add_stake_to_model(sender, model_id, coin, amount=None, 
 
 ```python
 # Register a model (commit-reveal pattern)
+# Commit publishes the manifest (URL + checksum + size) and commitments
 tx = await client.build_commit_model(
-    sender, model_id,
-    weights_url_commitment,    # Blake2b-256 hex of the weights URL
-    weights_commitment,        # Blake2b-256 hex of the encrypted weights
+    sender,
+    url,                       # Weights URL string
+    checksum,                  # Blake2b-256 hex of encrypted weights
+    size,                      # int (bytes)
+    weights_commitment,        # Blake2b-256 hex of encrypted weights content
+    embedding_commitment,      # Blake2b-256 hex of BCS-serialized embedding
+    decryption_key_commitment, # Blake2b-256 hex of decryption key bytes
     stake_amount,              # int (shannons)
     commission_rate,           # int (BPS, 10000 = 100%)
-    staking_pool_id,           # hex object ID
     gas=None,
 )
 
-# Reveal model weights (must be called the epoch after commit)
+# Reveal model (must be called the epoch after commit)
+# Provides the decryption key and embedding, verified against commitments
 tx = await client.build_reveal_model(
     sender, model_id,
-    weights_url,               # URL string
-    weights_checksum,          # Blake2b-256 hex of raw weights
-    weights_size,              # int (bytes)
     decryption_key,            # AES-256 hex key
     embedding,                 # list[float] — model embedding vector
     gas=None,
 )
 
 # Update model weights (commit-reveal)
-tx = await client.build_commit_model_update(sender, model_id, weights_url_commitment, weights_commitment, gas=None)
-tx = await client.build_reveal_model_update(sender, model_id, weights_url, weights_checksum, weights_size, decryption_key, embedding, gas=None)
+tx = await client.build_commit_model_update(sender, model_id, url, checksum, size, weights_commitment, embedding_commitment, decryption_key_commitment, gas=None)
+tx = await client.build_reveal_model_update(sender, model_id, decryption_key, embedding, gas=None)
 
 # Other model operations
 tx = await client.build_deactivate_model(sender, model_id, gas=None)
@@ -247,7 +249,6 @@ tx = await client.build_undo_report_model(sender, model_id, gas=None)
 # Submit data to fill a target
 tx = await client.build_submit_data(
     sender, target_id,
-    data_commitment,           # Blake2b-256 hex
     data_url,                  # URL string
     data_checksum,             # Blake2b-256 hex
     data_size,                 # int (bytes)
@@ -307,21 +308,21 @@ await client.pay_coins(signer=keypair, recipients=["0xA", "0xB"], amounts=[0.25,
 # Stake with a validator
 await client.add_stake(signer=keypair, validator="0xVALIDATOR", amount=10.0)
 
-# Register a model (commit step)
-model_id = await client.commit_model(
+# Register a model (commit step — publishes manifest + commitments)
+await client.commit_model(
     signer=keypair,
     weights_url="https://storage.example.com/weights.safetensors",
     encrypted_weights=encrypted_bytes,
+    decryption_key=key_hex,
+    embedding=[0.1, 0.2, ...],
     commission_rate=1000,          # 10%
     stake_amount=10.0,             # SOMA — optional, defaults to minimum
 )
 
-# Reveal model weights (next epoch)
+# Reveal model (next epoch — provides decryption key + embedding)
 await client.reveal_model(
     signer=keypair,
     model_id=model_id,
-    weights_url="https://storage.example.com/weights.safetensors",
-    encrypted_weights=encrypted_bytes,
     decryption_key=key_hex,
     embedding=[0.1, 0.2, ...],
 )
