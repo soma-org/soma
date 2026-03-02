@@ -1,13 +1,11 @@
 import asyncio
-import sys
 
-from soma_sdk import Keypair, SomaClient
 from soma_models.v1.flax import Model, ModelConfig
 
 
 async def run():
     model = Model(ModelConfig(dropout_rate=0.0))
-    model_bytes = model.save_bytes()
+    model.save_bytes()
 
 
 def main():

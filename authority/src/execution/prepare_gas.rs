@@ -182,9 +182,8 @@ fn smash_gas_coins(
             ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
         })?;
 
-        total_balance = total_balance
-            .checked_add(balance)
-            .ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
+        total_balance =
+            total_balance.checked_add(balance).ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
 
         // Delete this gas coin (we'll merge into the first)
         store.delete_input_object(&gas_id);

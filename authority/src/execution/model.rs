@@ -12,7 +12,9 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{BPS_DENOMINATOR, FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub};
+use super::{
+    BPS_DENOMINATOR, FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub,
+};
 
 pub struct ModelExecutor;
 

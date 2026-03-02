@@ -263,7 +263,8 @@ impl SubmissionExecutor {
             && state.emission_pool().balance >= reward_per_target
         {
             // Deduct reward from emission pool for the new target
-            state.emission_pool_mut().balance = checked_sub(state.emission_pool().balance, reward_per_target)?;
+            state.emission_pool_mut().balance =
+                checked_sub(state.emission_pool().balance, reward_per_target)?;
 
             let seed_creation_num = store.next_creation_num();
             let seed = make_target_seed(&tx_digest, seed_creation_num);
@@ -422,8 +423,7 @@ impl SubmissionExecutor {
             state.emission_pool_mut().balance = checked_add(state.emission_pool().balance, reward)?;
 
             // Pay claimer incentive for triggering the cleanup
-            let claimer_share =
-                bps_mul(reward, state.parameters().target_claimer_incentive_bps);
+            let claimer_share = bps_mul(reward, state.parameters().target_claimer_incentive_bps);
             if claimer_share > 0 {
                 let claimer_coin = Object::new_coin(
                     ObjectID::derive_id(tx_digest, store.next_creation_num()),
@@ -441,12 +441,14 @@ impl SubmissionExecutor {
         // Full reward goes to submitter, model owner, and claimer (100% distributed)
         if reward > 0 {
             let params = state.parameters();
-            let submitter_share =
-                bps_mul(reward, params.target_submitter_reward_share_bps);
+            let submitter_share = bps_mul(reward, params.target_submitter_reward_share_bps);
             let model_share = bps_mul(reward, params.target_model_reward_share_bps);
             let claimer_share = bps_mul(reward, params.target_claimer_incentive_bps);
             // Remainder after rounding goes to submitter (ensures 100% distribution)
-            let remainder = checked_sub(checked_sub(checked_sub(reward, submitter_share)?, model_share)?, claimer_share)?;
+            let remainder = checked_sub(
+                checked_sub(checked_sub(reward, submitter_share)?, model_share)?,
+                claimer_share,
+            )?;
             let submitter_total = checked_add(submitter_share, remainder)?;
 
             // Submitter reward (includes any rounding remainder)
@@ -551,12 +553,12 @@ impl SubmissionExecutor {
 
         // Return most of the reward pool to emissions, pay claimer incentive
         if reward > 0 {
-            let claimer_share =
-                bps_mul(reward, state.parameters().target_claimer_incentive_bps);
+            let claimer_share = bps_mul(reward, state.parameters().target_claimer_incentive_bps);
             let return_to_pool = checked_sub(reward, claimer_share)?;
 
             // Return to emission pool
-            state.emission_pool_mut().balance = checked_add(state.emission_pool().balance, return_to_pool)?;
+            state.emission_pool_mut().balance =
+                checked_add(state.emission_pool().balance, return_to_pool)?;
 
             // Pay claimer incentive for cleanup
             if claimer_share > 0 {

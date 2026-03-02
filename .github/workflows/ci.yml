@@ -225,7 +225,7 @@ jobs:
   # ===========================================================================
   ci-gate:
     if: always()
-    needs: [rustfmt, clippy, test, simtest, python-sdk-integration, ruff, ty]
+    needs: [rustfmt, clippy, test, simtest, python-sdk-integration, ruff, pytest, ty]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all jobs passed or were skipped
@@ -237,6 +237,7 @@ jobs:
             "${{ needs.simtest.result }}"
             "${{ needs.python-sdk-integration.result }}"
             "${{ needs.ruff.result }}"
+            "${{ needs.pytest.result }}"
             "${{ needs.ty.result }}"
           )
           for r in "${results[@]}"; do

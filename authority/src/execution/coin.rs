@@ -11,7 +11,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{bps_mul, checked_add, checked_sub, checked_sum, FeeCalculator, TransactionExecutor};
+use super::{FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub, checked_sum};
 
 /// Executor for coin-related transactions
 pub struct CoinExecutor;

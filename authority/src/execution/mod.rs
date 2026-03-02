@@ -70,7 +70,9 @@ pub(crate) fn checked_mul(a: u64, b: u64) -> Result<u64, ExecutionFailureStatus>
 }
 
 /// Checked sum of an iterator of u64 values.
-pub(crate) fn checked_sum<I: Iterator<Item = u64>>(mut iter: I) -> Result<u64, ExecutionFailureStatus> {
+pub(crate) fn checked_sum<I: Iterator<Item = u64>>(
+    mut iter: I,
+) -> Result<u64, ExecutionFailureStatus> {
     iter.try_fold(0u64, |acc, x| checked_add(acc, x))
 }
 
