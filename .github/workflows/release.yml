@@ -121,3 +121,18 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+
+  # ===========================================================================
+  # Deploy — trigger Docker image build in ops repo
+  # ===========================================================================
+  deploy:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to ops
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.OPS_DISPATCH_TOKEN }}
+          repository: soma-org/ops
+          event-type: deploy
+          client-payload: '{"tag": "${{ github.ref_name }}"}'
