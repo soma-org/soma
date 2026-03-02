@@ -20,17 +20,17 @@ Usage:
 import argparse
 import os
 
-from safetensors.numpy import save as save_safetensors
+from soma_models.v1.flax import Model, ModelConfig
+from flax import nnx
 
-from soma_sdk import SomaClient
-from soma_examples.model_utils import build_model_weights
+from soma_sdk import Keypair, SomaClient
 
 
-def generate(seed: int = 42, url: str | None = None, out_dir: str = ".") -> str:
-    """Return a GenesisModelConfig YAML string and save encrypted weights."""
+def generate(seed: int = 42, base_url: str | None = None, out_dir: str = ".") -> str:
 
-    # 1. Build model weights
-    model_bytes = save_safetensors(build_model_weights(seed=seed))
+    rngs = nnx.Rngs(seed)
+    model = Model(ModelConfig(dropout_rate=0.0), rngs=rngs)
+    model_bytes = model.save_bytes()
 
     # 2. Encrypt
     encrypted_bytes, decryption_key = SomaClient.encrypt_weights(model_bytes)
@@ -40,16 +40,29 @@ def generate(seed: int = 42, url: str | None = None, out_dir: str = ".") -> str:
     weights_commitment = SomaClient.commitment(model_bytes)
     size = len(encrypted_bytes)
 
-    # 4. Save encrypted weights file
-    enc_path = os.path.join(out_dir, f"weights-seed{seed}.safetensors.enc")
+    # 4. Generate owner keypair
+    keypair = Keypair.generate()
+    owner_address = keypair.address()
+    secret_key = keypair.to_secret_key()
+
+    # 5. Create output folder named by weights commitment
+    model_dir = os.path.join(out_dir, weights_commitment)
+    os.makedirs(model_dir, exist_ok=True)
+
+    # 6. Save encrypted weights file
+    enc_filename = f"{checksum}.safetensors.aes256ctr"
+    enc_path = os.path.join(model_dir, enc_filename)
     with open(enc_path, "wb") as f:
         f.write(encrypted_bytes)
 
-    weights_url = url or f"<UPLOAD {enc_path} AND PASTE URL HERE>"
+    if base_url:
+        weights_url = f"{base_url}/{enc_filename}"
+    else:
+        weights_url = f"<UPLOAD {enc_path} AND PASTE URL HERE>"
 
-    # 5. Build YAML
+    # 7. Build YAML and write to file
     yaml = f"""\
-- owner: "<OWNER ADDRESS>"
+- owner: "{owner_address}"
   manifest:
     V1:
       url: "{weights_url}"
@@ -63,7 +76,21 @@ def generate(seed: int = 42, url: str | None = None, out_dir: str = ".") -> str:
   commission_rate: 1000
   initial_stake: 1000000000"""
 
-    return yaml, enc_path
+    yaml_path = os.path.join(model_dir, "genesis_model_config.yaml")
+    with open(yaml_path, "w") as f:
+        f.write(yaml)
+
+    # 8. Write decryption key to file
+    key_path = os.path.join(model_dir, "decryption.key")
+    with open(key_path, "w") as f:
+        f.write(decryption_key)
+
+    # 9. Write owner secret key to file
+    secret_key_path = os.path.join(model_dir, "owner.key")
+    with open(secret_key_path, "w") as f:
+        f.write(secret_key)
+
+    return model_dir
 
 
 def main():
@@ -73,12 +100,9 @@ def main():
     parser.add_argument("--out-dir", type=str, default=".", help="Output directory")
     args = parser.parse_args()
 
-    yaml, enc_path = generate(seed=args.seed, url=args.url, out_dir=args.out_dir)
+    model_dir = generate(seed=args.seed, base_url=args.url, out_dir=args.out_dir)
 
-    print(f"Encrypted weights saved to: {enc_path}")
-    print()
-    print("--- GenesisModelConfig YAML ---")
-    print(yaml)
+    print(f"Model config written to: {model_dir}")
 
 
 if __name__ == "__main__":
