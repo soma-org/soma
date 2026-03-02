@@ -1732,7 +1732,7 @@ mod tests {
             }],
         };
         let display = format!("{}", output);
-        assert!(display.contains("Validators (1 total)"), "Should show count: {display}");
+        assert!(display.contains("Validators (1 found)"), "Should show count: {display}");
         assert!(display.contains("1000"), "Should show voting power: {display}");
         assert!(display.contains("2.00%"), "Should show commission rate: {display}");
     }

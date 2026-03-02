@@ -150,8 +150,7 @@ async fn test_genesis_target_bootstrap_3_models() {
         })
         .collect();
 
-    let test_cluster =
-        TestClusterBuilder::new().with_genesis_models(model_configs).build().await;
+    let test_cluster = TestClusterBuilder::new().with_genesis_models(model_configs).build().await;
 
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
@@ -184,10 +183,7 @@ async fn test_genesis_target_bootstrap_3_models() {
     );
 
     // Verify emission pool still has balance
-    assert!(
-        system_state.emission_pool().balance > 0,
-        "Emission pool should not be depleted"
-    );
+    assert!(system_state.emission_pool().balance > 0, "Emission pool should not be depleted");
 
     info!(
         "test_genesis_target_bootstrap_3_models passed: {} models, {} targets",

@@ -8,6 +8,7 @@ Usage: soma genesis [OPTIONS] [COMMAND]
 
 Commands:
   ceremony  Coordinate multi-validator genesis for network launches
+  inspect   Inspect a genesis.blob file for models, targets, and key parameters
   help      Print this message or the help of the given subcommand(s)
 
 Options:
