@@ -142,12 +142,23 @@ where
         }
 
         // Decrypt model weights if decryption keys are provided.
+        // Write decrypted data to a separate path so the encrypted cache stays intact.
+        let mut competition_paths = model_paths.clone();
         for (i, key) in input.model_keys().iter().enumerate() {
             if let Some(key) = key {
-                let path = &model_paths[i];
+                let encrypted_path = &model_paths[i];
+                let checksum = input.models()[i].metadata().checksum();
+                let decrypted_path = BlobPath::DecryptedWeights(self.epoch, checksum);
+
+                // Skip if already decrypted and cached.
+                if self.store.head(&decrypted_path.path()).await.is_ok() {
+                    competition_paths[i] = decrypted_path;
+                    continue;
+                }
+
                 let get_result = self
                     .store
-                    .get(&path.path())
+                    .get(&encrypted_path.path())
                     .await
                     .map_err(|e| RuntimeError::BlobError(BlobError::ObjectStoreError(e)))?;
                 let encrypted = get_result
@@ -157,14 +168,19 @@ where
                 let mut decrypted = encrypted.to_vec();
                 decrypt_aes256_ctr(&mut decrypted, key);
                 self.store
-                    .put(&path.path(), PutPayload::from(decrypted))
+                    .put(&decrypted_path.path(), PutPayload::from(decrypted))
                     .await
                     .map_err(|e| RuntimeError::BlobError(BlobError::ObjectStoreError(e)))?;
+                competition_paths[i] = decrypted_path;
             }
         }
 
-        let competition_input =
-            CompetitionInput::new(data_path, model_paths, input.target().clone(), input.seed());
+        let competition_input = CompetitionInput::new(
+            data_path,
+            competition_paths,
+            input.target().clone(),
+            input.seed(),
+        );
         self.competition(competition_input).await
     }
 }

@@ -90,6 +90,7 @@ impl ModelAPI for FailingModel {
 // ---------------------------------------------------------------------------
 
 /// A mock downloader that writes manifest data directly into the in-memory store.
+/// Mirrors the real `BlobEngine` cache behavior: skips download if the path already exists.
 struct MockDownloader {
     store: Arc<InMemory>,
     /// Pre-registered manifest data: checksum -> bytes
@@ -107,6 +108,10 @@ impl BlobDownloader for MockDownloader {
     type Store = InMemory;
 
     async fn download(&self, manifest: &Manifest, blob_path: BlobPath) -> BlobResult<()> {
+        // Match real BlobEngine::download behavior: skip if already cached.
+        if self.store.head(&blob_path.path()).await.is_ok() {
+            return Ok(());
+        }
         let checksum = manifest.metadata().checksum();
         let data = self
             .manifest_data
@@ -502,4 +507,95 @@ async fn manifest_runtime_model_failure_after_download_propagates() {
 
     let err = runtime.manifest_competition(input).await.unwrap_err();
     assert!(err.to_string().contains("mock failure"), "expected model error, got: {err}");
+}
+
+// ===========================================================================
+// Double-decryption bug reproduction
+// ===========================================================================
+
+/// Encrypt plaintext with AES-256-CTR (zero IV), matching `runtime::v1::decrypt_aes256_ctr`.
+fn encrypt_aes256_ctr(data: &[u8], key: &[u8; 32]) -> Vec<u8> {
+    use aes::Aes256;
+    use ctr::Ctr128BE;
+    use ctr::cipher::{KeyIvInit, StreamCipher};
+    let iv = [0u8; 16];
+    let mut cipher = Ctr128BE::<Aes256>::new(key.into(), &iv.into());
+    let mut out = data.to_vec();
+    cipher.apply_keystream(&mut out);
+    out
+}
+
+/// Calling `manifest_competition` twice with encrypted weights should succeed
+/// both times. Currently the second call fails because the decrypted weights
+/// overwrite the cached encrypted file, and decryption is re-applied
+/// (effectively re-encrypting the data).
+#[tokio::test]
+async fn manifest_competition_double_call_with_encrypted_weights() {
+    let store = Arc::new(InMemory::new());
+    let epoch = 1u64;
+
+    let data_content = b"test data".to_vec();
+    let data_checksum = make_checksum(60);
+    let model_checksum = make_checksum(61);
+
+    let plaintext_safetensors = empty_safetensors();
+    let key: [u8; 32] = [42u8; 32];
+    let encrypted_safetensors = encrypt_aes256_ctr(&plaintext_safetensors, &key);
+
+    let mut manifest_data = HashMap::new();
+    manifest_data.insert(data_checksum, data_content.clone());
+    manifest_data.insert(model_checksum, encrypted_safetensors.clone());
+
+    let downloader = Arc::new(MockDownloader::new(store.clone(), manifest_data));
+
+    // Need two outputs: one for each call.
+    let model = Arc::new(MockModel::new(vec![make_output(&[1.0], 0.5), make_output(&[1.0], 0.5)]));
+    let device = <B as Backend>::Device::default();
+
+    let runtime = RuntimeV1::new(store.clone(), downloader, epoch, device, model);
+
+    let make_input = || {
+        ManifestCompetitionInput::new(
+            make_manifest(data_checksum, data_content.len()),
+            vec![make_manifest(model_checksum, encrypted_safetensors.len())],
+            TensorData::from([1.0f32]),
+            0,
+        )
+        .with_model_keys(vec![Some(key)])
+    };
+
+    let encrypted_path = BlobPath::Weights(epoch, model_checksum);
+    let decrypted_path = BlobPath::DecryptedWeights(epoch, model_checksum);
+
+    // First call: downloads encrypted, decrypts to separate path, runs competition.
+    let output1 = runtime.manifest_competition(make_input()).await;
+    assert!(output1.is_ok(), "first call should succeed: {:?}", output1.err());
+
+    // Encrypted cache should be untouched.
+    let cached_encrypted = store.get(&encrypted_path.path()).await.unwrap().bytes().await.unwrap();
+    assert_eq!(
+        cached_encrypted.as_ref(),
+        encrypted_safetensors.as_slice(),
+        "encrypted cache should be untouched"
+    );
+
+    // Decrypted weights should be at the separate path.
+    let cached_decrypted = store.get(&decrypted_path.path()).await.unwrap().bytes().await.unwrap();
+    assert_eq!(
+        cached_decrypted.as_ref(),
+        plaintext_safetensors.as_slice(),
+        "decrypted weights should be plaintext safetensors"
+    );
+
+    // Second call: both caches hit, no re-download or re-decryption.
+    let output2 = runtime.manifest_competition(make_input()).await;
+    assert!(output2.is_ok(), "second call should succeed: {:?}", output2.err());
+
+    // Decrypted path should still contain correct plaintext.
+    let after_second = store.get(&decrypted_path.path()).await.unwrap().bytes().await.unwrap();
+    assert_eq!(
+        after_second.as_ref(),
+        plaintext_safetensors.as_slice(),
+        "decrypted weights should remain correct after second call"
+    );
 }

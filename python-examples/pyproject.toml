@@ -5,7 +5,7 @@ description = "Runnable examples demonstrating the SOMA Python SDK"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "SOMA Contributors" }]
-dependencies = ["soma-sdk", "boto3", "moto[server]", "soma-arrgen", "safetensors"]
+dependencies = ["soma-sdk", "boto3", "moto[server]", "soma-arrgen", "safetensors", "aiohttp"]
 
 [project.urls]
 Homepage = "https://github.com/soma-org/soma"
@@ -19,6 +19,7 @@ soma-example-quickstart = "soma_examples.quickstart:main"
 soma-example-transfers = "soma_examples.transfers:main"
 soma-example-staking = "soma_examples.staking:main"
 soma-example-genesis-model-config = "soma_examples.genesis_model_config:main"
+soma-example-debug-safetensors = "soma_examples.debug_safetensors:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]

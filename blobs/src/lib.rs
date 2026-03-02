@@ -22,6 +22,8 @@ pub(crate) const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
 pub enum BlobPath {
     Data(Epoch, Checksum),
     Weights(Epoch, Checksum),
+    /// Decrypted model weights, stored separately so the encrypted cache stays intact.
+    DecryptedWeights(Epoch, Checksum),
 }
 
 impl BlobPath {
@@ -32,6 +34,9 @@ impl BlobPath {
             }
             Self::Weights(epoch, checksum) => {
                 Path::from(format!("epochs/{}/weights/{}", epoch, checksum))
+            }
+            Self::DecryptedWeights(epoch, checksum) => {
+                Path::from(format!("epochs/{}/weights_decrypted/{}", epoch, checksum))
             }
         }
     }
