@@ -7,11 +7,14 @@ use anyhow::{Result, anyhow};
 use clap::*;
 use colored::Colorize;
 use rpc::proto::soma::ListTargetsRequest;
+use rpc::utils::field::{FieldMask, FieldMaskUtil};
 use sdk::wallet_context::WalletContext;
 use serde::Serialize;
 use tabled::builder::Builder as TableBuilder;
+use tabled::settings::object::Cell;
+use tabled::settings::span::ColumnSpan;
 use tabled::settings::style::HorizontalLine;
-use tabled::settings::{Panel as TablePanel, Style as TableStyle};
+use tabled::settings::{Modify, Panel as TablePanel, Style as TableStyle};
 use types::object::ObjectID;
 use types::target::{TargetId, TargetStatus, TargetV1};
 
@@ -109,6 +112,8 @@ impl TargetCommand {
                 request.status_filter = status;
                 request.epoch_filter = epoch;
                 request.page_size = Some(limit);
+                request.read_mask =
+                    Some(FieldMask::from_str("id,status,reward_pool,model_ids,distance_threshold"));
 
                 let response = client
                     .list_targets(request)
@@ -119,8 +124,11 @@ impl TargetCommand {
                     .targets
                     .into_iter()
                     .filter_map(|t| {
-                        let target_id =
-                            t.id.as_ref().and_then(|s| ObjectID::from_hex_literal(s).ok())?;
+                        let target_id = t.id.as_ref().and_then(|s| {
+                            ObjectID::from_hex_literal(s)
+                                .or_else(|_| ObjectID::from_hex_literal(&format!("0x{s}")))
+                                .ok()
+                        })?;
                         Some(TargetSummary {
                             target_id,
                             status: t.status.unwrap_or_else(|| "unknown".to_string()),
@@ -233,32 +241,56 @@ impl Display for TargetListOutput {
             return writeln!(f, "{}", "No targets found.".yellow());
         }
 
+        const NUM_COLS: usize = 4;
+        let empty = String::new();
         let mut builder = TableBuilder::default();
+
+        // Title row (will span all columns)
         builder.push_record([
-            "Target ID",
-            "Status",
-            "Epoch",
-            "Models",
-            "Reward",
-            "Distance Thresh",
+            format!("Targets ({} found)", self.targets.len()),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
         ]);
 
         for t in &self.targets {
+            // ID row (will span all columns)
             builder.push_record([
-                truncate_id(&t.target_id.to_string()),
-                t.status.clone(),
-                t.generation_epoch.to_string(),
-                t.model_count.to_string(),
-                crate::response::format_soma(t.reward_pool as u128),
-                t.distance_threshold.to_string(),
+                t.target_id.to_string().cyan().bold().to_string(),
+                empty.clone(),
+                empty.clone(),
+                empty.clone(),
+            ]);
+            // Metadata row with labeled values
+            builder.push_record([
+                format!("Status: {}", t.status),
+                format!("Models: {}", t.model_count),
+                format!("Reward: {}", crate::response::format_soma(t.reward_pool as u128)),
+                format!("Threshold: {}", t.distance_threshold),
             ]);
         }
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Targets ({} total)", self.targets.len())));
-        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
+
+        let line = TableStyle::modern().get_horizontal();
+
+        // Span title row across all columns and add separator after it
+        table.with(Modify::new(Cell::new(0, 0)).with(ColumnSpan::new(NUM_COLS)));
+        table.with(HorizontalLine::new(1, line));
+
+        // Span each ID row and add separators
+        for i in 0..self.targets.len() {
+            let id_row = 1 + i * 2;
+            table.with(Modify::new(Cell::new(id_row, 0)).with(ColumnSpan::new(NUM_COLS)));
+            // Separator between ID row and metadata row
+            table.with(HorizontalLine::new(id_row + 1, line));
+            // Separator after metadata row (before next ID row)
+            if i + 1 < self.targets.len() {
+                table.with(HorizontalLine::new(id_row + 2, line));
+            }
+        }
+
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -338,8 +370,6 @@ fn format_status(status: &TargetStatus) -> String {
         TargetStatus::Claimed => "Claimed".green().to_string(),
     }
 }
-
-use crate::response::truncate_id;
 
 impl TargetCommandResponse {
     pub fn print(&self, json: bool) {

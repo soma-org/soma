@@ -703,6 +703,14 @@ pub enum GenesisCommand {
     /// Coordinate multi-validator genesis for network launches
     #[clap(name = "ceremony")]
     Ceremony(crate::genesis_ceremony::Ceremony),
+
+    /// Inspect a genesis.blob file for models, targets, and key parameters
+    #[clap(name = "inspect")]
+    Inspect {
+        /// Path to genesis.blob file
+        #[clap(name = "genesis-blob-path")]
+        file: PathBuf,
+    },
 }
 
 impl SomaCommand {
@@ -1126,8 +1134,14 @@ impl SomaCommand {
                 with_faucet,
                 committee_size,
             } => {
-                if let Some(GenesisCommand::Ceremony(ceremony)) = cmd {
-                    return crate::genesis_ceremony::run(ceremony);
+                match cmd {
+                    Some(GenesisCommand::Ceremony(ceremony)) => {
+                        return crate::genesis_ceremony::run(ceremony);
+                    }
+                    Some(GenesisCommand::Inspect { file }) => {
+                        return crate::genesis_ceremony::inspect_genesis_blob(&file);
+                    }
+                    None => {}
                 }
                 genesis(
                     from_config,

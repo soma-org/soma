@@ -24,7 +24,7 @@ impl Merge<&DomainTarget> for Target {
         }
 
         if mask.contains(Self::MODEL_IDS_FIELD.name) {
-            self.model_ids = source.model_ids.iter().map(|id| id.to_hex()).collect();
+            self.model_ids = source.model_ids.iter().map(|id| id.to_hex_literal()).collect();
         }
 
         if mask.contains(Self::DISTANCE_THRESHOLD_FIELD.name) {
@@ -61,7 +61,7 @@ impl Merge<&DomainTarget> for Target {
         }
 
         if mask.contains(Self::WINNING_MODEL_ID_FIELD.name) {
-            self.winning_model_id = source.winning_model_id.map(|id| id.to_hex());
+            self.winning_model_id = source.winning_model_id.map(|id| id.to_hex_literal());
         }
 
         if mask.contains(Self::WINNING_MODEL_OWNER_FIELD.name) {
@@ -144,7 +144,7 @@ pub fn target_to_proto_with_id(
     let mut proto = Target::default();
 
     if mask.contains(Target::ID_FIELD.name) {
-        proto.id = Some(target_id.to_hex());
+        proto.id = Some(target_id.to_hex_literal());
     }
 
     proto.merge(target, mask);

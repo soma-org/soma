@@ -9,7 +9,8 @@ use rpc::TransactionExecutionResponseWithCheckpoint;
 use sdk::client_config::SomaEnv;
 use serde::Serialize;
 use tabled::builder::Builder as TableBuilder;
-use tabled::settings::object::{Columns as TableCols, Rows as TableRows};
+use tabled::settings::object::{Cell as TableCell, Columns as TableCols, Rows as TableRows};
+use tabled::settings::span::ColumnSpan;
 use tabled::settings::style::HorizontalLine;
 use tabled::settings::{
     Alignment as TableAlignment, Border as TableBorder, Modify as TableModify, Panel as TablePanel,
@@ -1384,23 +1385,55 @@ impl Display for ValidatorListOutput {
             return writeln!(f, "{}", "No validators found.".yellow());
         }
 
+        const NUM_COLS: usize = 3;
+        let empty = String::new();
         let mut builder = TableBuilder::default();
-        builder.push_record(["Address", "Status", "Voting Power", "Commission"]);
+
+        // Title row (will span all columns)
+        builder.push_record([
+            format!("Validators ({} found)", self.validators.len()),
+            empty.clone(),
+            empty.clone(),
+        ]);
 
         for v in &self.validators {
+            // Address row (spans all columns)
             builder.push_record([
-                truncate_id(&v.address.to_string()),
-                v.status.to_string(),
-                v.voting_power.to_string(),
-                format!("{:.2}%", v.commission_rate as f64 / 100.0),
+                v.address.to_string().cyan().bold().to_string(),
+                empty.clone(),
+                empty.clone(),
+            ]);
+            // Metadata row with labeled values
+            builder.push_record([
+                format!("Status: {}", v.status),
+                format!("Voting Power: {}", v.voting_power),
+                format!("Commission: {:.2}%", v.commission_rate as f64 / 100.0),
             ]);
         }
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Validators ({} total)", self.validators.len())));
-        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
+
+        let line = TableStyle::modern().get_horizontal();
+
+        // Span title row and add separator after it
+        table.with(TableModify::new(TableCell::new(0, 0)).with(ColumnSpan::new(NUM_COLS)));
+        table.with(HorizontalLine::new(1, line));
+
+        // Span each address row and add separators
+        for i in 0..self.validators.len() {
+            let addr_row = 1 + i * 2;
+            table.with(
+                TableModify::new(TableCell::new(addr_row, 0)).with(ColumnSpan::new(NUM_COLS)),
+            );
+            // Separator between address and metadata
+            table.with(HorizontalLine::new(addr_row + 1, line));
+            // Separator after metadata (before next validator)
+            if i + 1 < self.validators.len() {
+                table.with(HorizontalLine::new(addr_row + 2, line));
+            }
+        }
+
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -1510,11 +1543,6 @@ pub fn format_with_commas(n: u128) -> String {
         result.push(ch);
     }
     result
-}
-
-/// Truncate a hex ID for display (public for use by command modules).
-pub fn truncate_id(s: &str) -> String {
-    if s.len() <= 16 { s.to_string() } else { format!("{}...{}", &s[..10], &s[s.len() - 6..]) }
 }
 
 /// Format a balance in shannons as SOMA with appropriate suffix

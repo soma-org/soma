@@ -2,7 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 use camino::Utf8PathBuf;
@@ -12,11 +12,13 @@ use fastcrypto::traits::ToFromBytes;
 use protocol_config::ProtocolVersion;
 use soma_keys::keypair_file::read_authority_keypair_from_file;
 use types::config::SOMA_GENESIS_FILENAME;
-use types::config::genesis_config::GenesisModelConfig;
+use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
 use types::crypto::AuthorityKeyPair;
 use types::envelope::Message as _;
-use types::genesis::UnsignedGenesis;
+use types::genesis::{Genesis, UnsignedGenesis};
 use types::genesis_builder::GenesisBuilder;
+use types::object::ObjectType;
+use types::system_state::{SystemStateTrait, get_system_state};
 use types::validator_info::GenesisValidatorInfo;
 
 mod genesis_inspector;
@@ -283,4 +285,171 @@ fn load_model_config(path: &PathBuf) -> Result<GenesisModelConfig> {
     let bytes = std::fs::read(path)?;
     serde_yaml::from_slice(&bytes)
         .map_err(|e| anyhow::anyhow!("Failed to parse model config from {:?}: {}", path, e))
+}
+
+/// Inspect a genesis.blob file and print diagnostic information about models, targets,
+/// emission pool, and key parameters.
+pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
+    let genesis = Genesis::load(path)?;
+    let objects = genesis.objects();
+    let system_state = get_system_state(&objects)?;
+
+    println!("=== Genesis Inspection: {} ===", path.display());
+    println!();
+
+    // --- Summary ---
+    println!("Summary:");
+    println!("  Total Objects:  {}", objects.len());
+    println!("  Epoch:          {}", system_state.epoch());
+    println!();
+
+    // --- Models ---
+    let registry = system_state.model_registry();
+    println!("Models (ModelRegistry):");
+    println!(
+        "  Active: {}  Pending: {}  Inactive: {}",
+        registry.active_models.len(),
+        registry.pending_models.len(),
+        registry.inactive_models.len(),
+    );
+    println!(
+        "  Total Model Stake: {} shannons ({} SOMA)",
+        registry.total_model_stake,
+        registry.total_model_stake / SHANNONS_PER_SOMA
+    );
+    println!();
+
+    if !registry.active_models.is_empty() {
+        println!("  Active Models:");
+        for (i, (id, model)) in registry.active_models.iter().enumerate() {
+            let stake = model.staking_pool.soma_balance;
+            println!(
+                "    [{}] ID: {}  Owner: {}  Arch: {}  Commission: {} bps  Stake: {} SOMA  HasEmbedding: {}",
+                i,
+                id,
+                model.owner,
+                model.architecture_version,
+                model.commission_rate,
+                stake / SHANNONS_PER_SOMA,
+                model.embedding.is_some(),
+            );
+        }
+        println!();
+    }
+
+    // --- Target Parameters ---
+    let params = system_state.parameters();
+    println!("Target Parameters:");
+    println!("  target_initial_targets_per_epoch: {}", params.target_initial_targets_per_epoch);
+    println!("  target_models_per_target:         {}", params.target_models_per_target);
+    println!("  target_embedding_dim:             {}", params.target_embedding_dim);
+    println!("  target_reward_allocation_bps:     {}", params.target_reward_allocation_bps);
+    println!(
+        "  target_initial_distance_threshold: {}",
+        params.target_initial_distance_threshold.as_scalar()
+    );
+    println!();
+
+    // --- Target State ---
+    let target_state = system_state.target_state();
+    println!("Target State:");
+    println!("  distance_threshold:             {}", target_state.distance_threshold.as_scalar());
+    println!("  reward_per_target:              {} shannons", target_state.reward_per_target);
+    println!("  targets_generated_this_epoch:   {}", target_state.targets_generated_this_epoch);
+    println!("  hits_this_epoch:                {}", target_state.hits_this_epoch);
+    println!("  hits_ema:                       {}", target_state.hits_ema);
+    println!();
+
+    // --- Emission Pool ---
+    let pool = system_state.emission_pool();
+    println!("Emission Pool:");
+    println!(
+        "  balance:          {} shannons ({} SOMA)",
+        pool.balance,
+        pool.balance / SHANNONS_PER_SOMA
+    );
+    println!(
+        "  emission_per_epoch: {} shannons ({} SOMA)",
+        pool.emission_per_epoch,
+        pool.emission_per_epoch / SHANNONS_PER_SOMA
+    );
+    if pool.emission_per_epoch > 0 {
+        println!("  epochs_remaining: ~{}", pool.balance / pool.emission_per_epoch);
+    }
+    println!();
+
+    // --- Target Objects ---
+    let target_objects: Vec<_> =
+        objects.iter().filter(|o| *o.type_() == ObjectType::Target).collect();
+    println!("Target Objects: {}", target_objects.len());
+    for (i, obj) in target_objects.iter().enumerate() {
+        if let Some(target) = obj.as_target() {
+            println!(
+                "  [{}] ID: {}  Status: {:?}  Epoch: {}  Models: {}  Reward: {} shannons",
+                i,
+                obj.id(),
+                target.status,
+                target.generation_epoch,
+                target.model_ids.len(),
+                target.reward_pool,
+            );
+        } else {
+            println!("  [{}] ID: {}  (failed to deserialize)", i, obj.id());
+        }
+    }
+    println!();
+
+    // --- Diagnostics ---
+    println!("Diagnostics:");
+    let mut ok = true;
+
+    if registry.active_models.is_empty() {
+        println!("  [WARN] No active models — targets cannot be generated without active models");
+        ok = false;
+    } else {
+        println!("  [OK]   {} active model(s) found", registry.active_models.len());
+    }
+
+    if params.target_initial_targets_per_epoch == 0 {
+        println!("  [WARN] target_initial_targets_per_epoch = 0 — no targets will be generated");
+        ok = false;
+    } else {
+        println!(
+            "  [OK]   target_initial_targets_per_epoch = {}",
+            params.target_initial_targets_per_epoch
+        );
+    }
+
+    if pool.balance == 0 {
+        println!("  [WARN] Emission pool balance is 0 — cannot fund targets");
+        ok = false;
+    } else if target_state.reward_per_target > pool.balance {
+        println!(
+            "  [WARN] reward_per_target ({}) > emission pool balance ({}) — insufficient funds",
+            target_state.reward_per_target, pool.balance
+        );
+        ok = false;
+    } else {
+        println!("  [OK]   Emission pool has sufficient balance");
+    }
+
+    if target_objects.is_empty() && !registry.active_models.is_empty() {
+        println!(
+            "  [FAIL] No target objects despite active models — targets were not generated at genesis"
+        );
+        ok = false;
+    } else if !target_objects.is_empty() {
+        println!("  [OK]   {} target object(s) created", target_objects.len());
+    }
+
+    if ok {
+        println!();
+        println!(
+            "Genesis looks correct: {} models active, {} targets created",
+            registry.active_models.len(),
+            target_objects.len()
+        );
+    }
+
+    Ok(())
 }

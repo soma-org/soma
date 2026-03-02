@@ -128,6 +128,75 @@ async fn test_genesis_target_bootstrap() {
 }
 
 // ===================================================================
+// Test 1b: Genesis target bootstrap with 3 models
+//
+// Same as test_genesis_target_bootstrap but with 3 models (mirrors
+// multi-model testnet setups). Verifies that targets are generated
+// and listed via RPC when multiple models exist at genesis.
+// ===================================================================
+
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_genesis_target_bootstrap_3_models() {
+    init_tracing();
+
+    // Create 3 genesis models (mirrors testnet setup)
+    let model_configs: Vec<GenesisModelConfig> = (0..3)
+        .map(|i| {
+            let mut addr_bytes = [0u8; 32];
+            addr_bytes[0] = i + 1;
+            let owner = SomaAddress::from_bytes(addr_bytes).unwrap();
+            make_genesis_model_config(owner, 5 * SHANNONS_PER_SOMA)
+        })
+        .collect();
+
+    let test_cluster =
+        TestClusterBuilder::new().with_genesis_models(model_configs).build().await;
+
+    let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state()
+            .get_system_state_object_for_testing()
+            .expect("Should be able to get SystemState")
+    });
+
+    // Verify all 3 models are active
+    assert_eq!(
+        system_state.model_registry().active_models.len(),
+        3,
+        "All 3 genesis models should be active"
+    );
+
+    // Verify targets were created
+    let initial_targets_per_epoch = system_state.parameters().target_initial_targets_per_epoch;
+
+    let client = test_cluster.wallet.get_client().await.unwrap();
+    let mut request = ListTargetsRequest::default();
+    request.status_filter = Some("open".to_string());
+    request.epoch_filter = Some(0);
+    request.page_size = Some(100);
+
+    let response = client.list_targets(request).await.unwrap();
+
+    assert_eq!(
+        response.targets.len() as u64,
+        initial_targets_per_epoch,
+        "Should create initial_targets_per_epoch open targets at genesis with 3 models"
+    );
+
+    // Verify emission pool still has balance
+    assert!(
+        system_state.emission_pool().balance > 0,
+        "Emission pool should not be depleted"
+    );
+
+    info!(
+        "test_genesis_target_bootstrap_3_models passed: {} models, {} targets",
+        system_state.model_registry().active_models.len(),
+        response.targets.len()
+    );
+}
+
+// ===================================================================
 // Test 2: Submit data fills target
 //
 // Verifies that a valid SubmitData transaction:

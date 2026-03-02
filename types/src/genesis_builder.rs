@@ -668,6 +668,12 @@ impl GenesisBuilder {
         // Generate seed targets at genesis (after models are active)
         // Only generate targets if we have at least one active model
         if !system_state.model_registry().active_models.is_empty() {
+            tracing::info!(
+                "Genesis target generation: {} active models, emission_pool={}, target_initial_targets_per_epoch={}",
+                system_state.model_registry().active_models.len(),
+                system_state.emission_pool().balance,
+                system_state.parameters().target_initial_targets_per_epoch,
+            );
             // Calculate initial reward_per_target for genesis
             // Use emission_per_epoch * target_allocation_bps as the pool, divided by estimated targets
             let emission_per_epoch = system_state.emission_pool().emission_per_epoch;
@@ -733,6 +739,11 @@ impl GenesisBuilder {
                 "Generated {} seed targets at genesis with reward_per_target={}",
                 objects.iter().filter(|o| *o.type_() == ObjectType::Target).count(),
                 reward_per_target
+            );
+        } else {
+            tracing::warn!(
+                "No active models in genesis — skipping target generation. genesis_models input count: {}",
+                self.genesis_models.len(),
             );
         }
 

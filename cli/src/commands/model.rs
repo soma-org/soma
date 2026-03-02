@@ -11,8 +11,10 @@ use sdk::proxy_client::ProxyClient;
 use sdk::wallet_context::WalletContext;
 use serde::Serialize;
 use tabled::builder::Builder as TableBuilder;
+use tabled::settings::object::Cell;
+use tabled::settings::span::ColumnSpan;
 use tabled::settings::style::HorizontalLine;
-use tabled::settings::{Panel as TablePanel, Style as TableStyle};
+use tabled::settings::{Modify, Panel as TablePanel, Style as TableStyle};
 use tokio::io::AsyncWriteExt;
 use types::base::SomaAddress;
 use types::checksum::Checksum;
@@ -804,25 +806,66 @@ impl Display for ModelListOutput {
             return writeln!(f, "{}", "No models registered.".yellow());
         }
 
+        const NUM_COLS: usize = 4;
+        let empty = String::new();
         let mut builder = TableBuilder::default();
-        builder.push_record(["Model ID", "Owner", "Status", "Arch", "Stake", "Epoch"]);
+
+        // Title row (will span all columns)
+        builder.push_record([
+            format!("Models ({} registered)", self.models.len()),
+            empty.clone(),
+            empty.clone(),
+            empty.clone(),
+        ]);
 
         for s in &self.models {
+            // Model ID row (spans all columns)
             builder.push_record([
-                truncate_id(&s.model_id.to_string()),
-                truncate_id(&s.owner.to_string()),
-                s.status.to_string(),
-                s.architecture_version.to_string(),
-                crate::response::format_soma(s.stake_balance as u128),
-                s.commit_epoch.to_string(),
+                s.model_id.to_string().cyan().bold().to_string(),
+                empty.clone(),
+                empty.clone(),
+                empty.clone(),
+            ]);
+            // Owner row (spans all columns)
+            builder.push_record([
+                format!("Owner: {}", s.owner),
+                empty.clone(),
+                empty.clone(),
+                empty.clone(),
+            ]);
+            // Metadata row with labeled values
+            builder.push_record([
+                format!("Status: {}", s.status),
+                format!("Arch: {}", s.architecture_version),
+                format!("Stake: {}", crate::response::format_soma(s.stake_balance as u128)),
+                format!("Epoch: {}", s.commit_epoch),
             ]);
         }
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Registered Models ({} total)", self.models.len())));
-        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
+
+        let line = TableStyle::modern().get_horizontal();
+
+        // Span title row and add separator after it
+        table.with(Modify::new(Cell::new(0, 0)).with(ColumnSpan::new(NUM_COLS)));
+        table.with(HorizontalLine::new(1, line));
+
+        // Span model ID and owner rows, add separators (3 rows per model)
+        for i in 0..self.models.len() {
+            let base = 1 + i * 3;
+            // Model ID row
+            table.with(Modify::new(Cell::new(base, 0)).with(ColumnSpan::new(NUM_COLS)));
+            table.with(HorizontalLine::new(base + 1, line));
+            // Owner row
+            table.with(Modify::new(Cell::new(base + 1, 0)).with(ColumnSpan::new(NUM_COLS)));
+            table.with(HorizontalLine::new(base + 2, line));
+            // Separator after metadata row (before next model)
+            if i + 1 < self.models.len() {
+                table.with(HorizontalLine::new(base + 3, line));
+            }
+        }
+
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)
     }
@@ -840,5 +883,3 @@ impl ModelCommandResponse {
         }
     }
 }
-
-use crate::response::truncate_id;
