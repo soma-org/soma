@@ -25,6 +25,7 @@ soma-tls.workspace = true
 protocol-config.workspace = true
 utils.workspace = true
 object_store.workspace = true
+scoring = { workspace = true, features = ["server"] }
 
 [lints]
 workspace = true

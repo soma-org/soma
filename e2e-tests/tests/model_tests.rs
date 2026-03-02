@@ -10,8 +10,6 @@ use types::crypto::DecryptionKey;
 use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::effects::TransactionEffectsAPI;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::ModelId;
-use types::object::ObjectID;
 use types::system_state::SystemStateTrait as _;
 use types::tensor::SomaTensor;
 use types::transaction::{CommitModelArgs, RevealModelArgs, TransactionData, TransactionKind};
@@ -26,25 +24,14 @@ fn make_manifest(url_str: &str) -> Manifest {
     Manifest::V1(ManifestV1::new(url, metadata))
 }
 
-fn make_genesis_model_config(
-    owner: SomaAddress,
-    model_id: ModelId,
-    initial_stake: u64,
-) -> GenesisModelConfig {
-    let url_str = format!("https://example.com/models/{}", model_id);
-    let manifest = make_manifest(&url_str);
-    let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-
+fn make_genesis_model_config(owner: SomaAddress, initial_stake: u64) -> GenesisModelConfig {
+    let manifest = make_manifest("https://example.com/models/genesis");
     GenesisModelConfig {
         owner,
-        model_id,
         manifest,
         decryption_key: DecryptionKey::new([0xAA; 32]),
-        weights_commitment,
+        weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
         architecture_version: 1,
-        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
-        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -65,10 +52,9 @@ async fn test_genesis_model_bootstrap() {
 
     // Use an arbitrary address as the model owner (doesn't need to transact)
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
 
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
@@ -80,14 +66,13 @@ async fn test_genesis_model_bootstrap() {
             .expect("Should be able to get SystemState")
     });
 
-    // Model should be in active_models (genesis models skip commit-reveal)
-    assert!(
-        system_state.model_registry().active_models.contains_key(&model_id),
-        "Genesis model should be in active_models"
-    );
-
-    // Verify model fields
-    let model = system_state.model_registry().active_models.get(&model_id).unwrap();
+    // Discover the auto-assigned model_id from active_models
+    let (&model_id, model) = system_state
+        .model_registry()
+        .active_models
+        .iter()
+        .next()
+        .expect("Genesis model should be in active_models");
     assert_eq!(model.owner, model_owner);
     assert_eq!(model.architecture_version, 1);
     assert_eq!(model.commission_rate, 0);
@@ -136,7 +121,8 @@ async fn test_model_commit_reveal_round_trip() {
     let url_str = "https://example.com/models/test-model";
     let manifest = make_manifest(url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let embedding = SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
+    let embedding =
+        SomaTensor::new(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], vec![10]);
     let embedding_commitment = {
         use fastcrypto::hash::HashFunction as _;
         let emb_bytes = bcs::to_bytes(&embedding).unwrap();

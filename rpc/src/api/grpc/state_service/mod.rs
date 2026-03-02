@@ -11,9 +11,7 @@ use crate::proto::soma::{
 };
 
 mod get_balance;
-mod get_challenge;
 mod get_target;
-mod list_challenges;
 mod list_owned_objects;
 mod list_targets;
 
@@ -57,19 +55,15 @@ impl StateService for RpcService {
 
     async fn get_challenge(
         &self,
-        request: tonic::Request<GetChallengeRequest>,
+        _request: tonic::Request<GetChallengeRequest>,
     ) -> Result<tonic::Response<GetChallengeResponse>, tonic::Status> {
-        get_challenge::get_challenge(self, request.into_inner())
-            .map(tonic::Response::new)
-            .map_err(Into::into)
+        Err(tonic::Status::unimplemented("Challenge system has been removed"))
     }
 
     async fn list_challenges(
         &self,
-        request: tonic::Request<ListChallengesRequest>,
+        _request: tonic::Request<ListChallengesRequest>,
     ) -> Result<tonic::Response<ListChallengesResponse>, tonic::Status> {
-        list_challenges::list_challenges(self, request.into_inner())
-            .map(tonic::Response::new)
-            .map_err(Into::into)
+        Err(tonic::Status::unimplemented("Challenge system has been removed"))
     }
 }

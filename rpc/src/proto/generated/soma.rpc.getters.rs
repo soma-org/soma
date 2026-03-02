@@ -5530,6 +5530,7 @@ mod _getter_impls {
                 embedding: Vec::new(),
                 distance_score: None,
                 bond_coin: None,
+                loss_score: Vec::new(),
             }
         }
         #[doc(hidden)]
@@ -5595,6 +5596,16 @@ mod _getter_impls {
         }
         pub fn with_bond_coin(mut self, field: ObjectReference) -> Self {
             self.bond_coin = Some(field.into());
+            self
+        }
+        pub fn loss_score(&self) -> &[f32] {
+            &self.loss_score
+        }
+        pub fn loss_score_mut(&mut self) -> &mut Vec<f32> {
+            &mut self.loss_score
+        }
+        pub fn with_loss_score(mut self, field: Vec<f32>) -> Self {
+            self.loss_score = field;
             self
         }
     }

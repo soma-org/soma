@@ -311,6 +311,7 @@ message SubmitData {
   repeated float embedding = 5;
   optional float distance_score = 6;
   optional ObjectReference bond_coin = 7;
+  repeated float loss_score = 8;
 }
 
 // Claim rewards from a filled or expired target.

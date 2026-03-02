@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use fastcrypto::encoding::{Base58, Encoding};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
@@ -17,8 +18,8 @@ use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
 use types::transaction::{
     AddValidatorArgs, ClaimRewardsArgs, CommitModelArgs, CommitModelUpdateArgs,
-    InitiateChallengeArgs, RemoveValidatorArgs, RevealModelArgs, RevealModelUpdateArgs,
-    SubmitDataArgs, Transaction, TransactionData, TransactionKind, UpdateValidatorMetadataArgs,
+    RemoveValidatorArgs, RevealModelArgs, RevealModelUpdateArgs, SubmitDataArgs, Transaction,
+    TransactionData, TransactionKind, UpdateValidatorMetadataArgs,
 };
 
 // ---------------------------------------------------------------------------
@@ -148,10 +149,9 @@ fn parse_object_ref(obj: &Bound<'_, PyAny>) -> PyResult<ObjectRef> {
     Ok((id, Version::from_u64(version), digest))
 }
 
-fn parse_hex_32(hex_str: &str, field_name: &str) -> PyResult<[u8; 32]> {
-    let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    let bytes = hex::decode(stripped)
-        .map_err(|e| PyValueError::new_err(format!("Invalid hex for {}: {}", field_name, e)))?;
+fn parse_base58_32(base58_str: &str, field_name: &str) -> PyResult<[u8; 32]> {
+    let bytes = Base58::decode(base58_str)
+        .map_err(|e| PyValueError::new_err(format!("Invalid base58 for {}: {}", field_name, e)))?;
     let arr: [u8; 32] = bytes
         .try_into()
         .map_err(|_| PyValueError::new_err(format!("{} must be exactly 32 bytes", field_name)))?;
@@ -168,22 +168,22 @@ fn parse_embedding_vec(embedding: Vec<f32>) -> PyResult<SomaTensor> {
 
 fn build_submission_manifest(
     url: &str,
-    checksum_hex: &str,
+    checksum_base58: &str,
     size: usize,
 ) -> PyResult<SubmissionManifest> {
     let parsed_url: url::Url =
         url.parse().map_err(|e| PyValueError::new_err(format!("Invalid URL: {}", e)))?;
-    let checksum_bytes = parse_hex_32(checksum_hex, "data-checksum")?;
-    let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
+    let checksum_bytes = parse_base58_32(checksum_base58, "data-checksum")?;
+    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash(checksum_bytes), size));
     let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
     Ok(SubmissionManifest::new(manifest))
 }
 
-fn build_manifest(url: &str, checksum_hex: &str, size: usize) -> PyResult<Manifest> {
+fn build_manifest(url: &str, checksum_base58: &str, size: usize) -> PyResult<Manifest> {
     let parsed_url: url::Url =
         url.parse().map_err(|e| PyValueError::new_err(format!("Invalid URL: {}", e)))?;
-    let checksum_bytes = parse_hex_32(checksum_hex, "weights-checksum")?;
-    let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
+    let checksum_bytes = parse_base58_32(checksum_base58, "weights-checksum")?;
+    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash(checksum_bytes), size));
     Ok(Manifest::V1(ManifestV1::new(parsed_url, metadata)))
 }
 
@@ -233,26 +233,6 @@ struct EndOfEpochInfoObj {
     epoch_end_timestamp_ms: Option<u64>,
 }
 
-#[derive(serde::Serialize)]
-struct ChallengeObj {
-    id: String,
-    target_id: String,
-    challenger: String,
-    challenger_bond: u64,
-    challenge_epoch: u64,
-    status: String,
-    verdict: Option<String>,
-    distance_threshold: Option<f32>,
-    winning_distance_score: Option<f32>,
-    winning_model_id: Option<String>,
-}
-
-#[derive(serde::Serialize)]
-struct ListChallengesObj {
-    challenges: Vec<ChallengeObj>,
-    next_page_token: Option<String>,
-}
-
 /// Convert a proto Target to a TargetObj with snake_case fields and 0x-prefixed hex IDs.
 fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
     let hex_id = |s: Option<String>| -> Option<String> {
@@ -276,25 +256,6 @@ fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
     }
 }
 
-/// Convert a proto Challenge to a ChallengeObj with snake_case fields.
-fn proto_challenge_to_obj(c: rpc::proto::soma::Challenge) -> ChallengeObj {
-    let hex_id = |s: Option<String>| -> Option<String> {
-        s.map(|v| if v.starts_with("0x") { v } else { format!("0x{v}") })
-    };
-    ChallengeObj {
-        id: hex_id(c.id).unwrap_or_default(),
-        target_id: hex_id(c.target_id).unwrap_or_default(),
-        challenger: c.challenger.unwrap_or_default(),
-        challenger_bond: c.challenger_bond.unwrap_or(0),
-        challenge_epoch: c.challenge_epoch.unwrap_or(0),
-        status: c.status.unwrap_or_default(),
-        verdict: c.verdict,
-        distance_threshold: c.distance_threshold,
-        winning_distance_score: c.winning_distance_score,
-        winning_model_id: hex_id(c.winning_model_id),
-    }
-}
-
 /// Extract a ManifestInput from a Python object (SimpleNamespace or dict).
 fn extract_manifest(obj: &Bound<'_, PyAny>) -> PyResult<sdk::scoring_types::ManifestInput> {
     let url: String = get_field(obj, "url")?.extract()?;
@@ -311,7 +272,7 @@ fn extract_manifest(obj: &Bound<'_, PyAny>) -> PyResult<sdk::scoring_types::Mani
         .and_then(|v| v.extract().ok());
 
     let (checksum, size) = if let Some(data) = &encrypted_weights {
-        (sdk::crypto_utils::commitment_hex(data), data.len())
+        (sdk::crypto_utils::commitment_base58(data), data.len())
     } else {
         let c: String = get_field(obj, "checksum")?.extract()?;
         let s: usize = get_field(obj, "size")?.extract()?;
@@ -516,7 +477,7 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Encrypt model weights with AES-256-CTR (zero IV).
-    /// Returns (encrypted_bytes, key_hex).
+    /// Returns (encrypted_bytes, key_base58).
     #[staticmethod]
     #[pyo3(signature = (data, key=None))]
     fn encrypt_weights<'py>(
@@ -530,11 +491,11 @@ impl PySomaClient {
             })
             .transpose()?;
         let (encrypted, key_bytes) = sdk::crypto_utils::encrypt_weights(data, key_arr.as_ref());
-        Ok((PyBytes::new(py, &encrypted), hex::encode(key_bytes)))
+        Ok((PyBytes::new(py, &encrypted), Base58::encode(key_bytes)))
     }
 
     /// Decrypt model weights with AES-256-CTR (zero IV).
-    /// Key can be raw 32 bytes or a hex string (64 hex chars).
+    /// Key can be raw 32 bytes or a Base58 string.
     #[staticmethod]
     fn decrypt_weights<'py>(
         py: Python<'py>,
@@ -544,21 +505,20 @@ impl PySomaClient {
         let key_bytes: [u8; 32] = if let Ok(b) = key.extract::<Vec<u8>>() {
             b.try_into().map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
         } else if let Ok(s) = key.extract::<String>() {
-            let stripped = s.strip_prefix("0x").unwrap_or(&s);
-            let decoded = hex::decode(stripped)
-                .map_err(|e| PyValueError::new_err(format!("Invalid hex key: {}", e)))?;
+            let decoded = Base58::decode(&s)
+                .map_err(|e| PyValueError::new_err(format!("Invalid base58 key: {}", e)))?;
             decoded.try_into().map_err(|_| PyValueError::new_err("key must be exactly 32 bytes"))?
         } else {
-            return Err(PyValueError::new_err("key must be bytes or a hex string"));
+            return Err(PyValueError::new_err("key must be bytes or a base58 string"));
         };
         let decrypted = sdk::crypto_utils::decrypt_weights(data, &key_bytes);
         Ok(PyBytes::new(py, &decrypted))
     }
 
-    /// Compute the Blake2b-256 hash of data. Returns a 64-character hex string.
+    /// Compute the Blake2b-256 hash of data. Returns a Base58 string.
     #[staticmethod]
     fn commitment(data: &[u8]) -> String {
-        sdk::crypto_utils::commitment_hex(data)
+        sdk::crypto_utils::commitment_base58(data)
     }
 
     /// Convert SOMA to shannons (the smallest on-chain unit).
@@ -780,11 +740,10 @@ impl PySomaClient {
                     "coin" => rpc::types::ObjectType::Coin,
                     "stakedsoma" | "staked_soma" => rpc::types::ObjectType::StakedSoma,
                     "target" => rpc::types::ObjectType::Target,
-                    "challenge" => rpc::types::ObjectType::Challenge,
                     "systemstate" | "system_state" => rpc::types::ObjectType::SystemState,
                     _ => {
                         return Err(to_py_val_err(format!(
-                            "Unknown object type '{}'. Valid types: coin, staked_soma, target, challenge, system_state",
+                            "Unknown object type '{}'. Valid types: coin, staked_soma, target, system_state",
                             ot
                         )));
                     }
@@ -845,53 +804,6 @@ impl PySomaClient {
         })
     }
 
-    /// Get a challenge by its ID.
-    fn get_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        challenge_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut request = rpc::proto::soma::GetChallengeRequest::default();
-            request.challenge_id = Some(challenge_id);
-            let response = client.get_challenge(request).await.map_err(to_py_err)?;
-            let challenge =
-                response.challenge.ok_or_else(|| PyRuntimeError::new_err("Challenge not found"))?;
-            to_py_obj(&proto_challenge_to_obj(challenge))
-        })
-    }
-
-    /// List challenges with optional filtering.
-    #[pyo3(signature = (target_id=None, status=None, epoch=None, limit=None))]
-    fn list_challenges<'py>(
-        &self,
-        py: Python<'py>,
-        target_id: Option<String>,
-        status: Option<String>,
-        epoch: Option<u64>,
-        limit: Option<u32>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let mut request = rpc::proto::soma::ListChallengesRequest::default();
-            request.target_id = target_id;
-            request.status_filter = status;
-            request.epoch_filter = epoch;
-            if let Some(limit) = limit {
-                request.page_size = Some(limit);
-            }
-            let response = client.list_challenges(request).await.map_err(to_py_err)?;
-            let obj = ListChallengesObj {
-                challenges: response.challenges.into_iter().map(proto_challenge_to_obj).collect(),
-                next_page_token: response
-                    .next_page_token
-                    .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default()),
-            };
-            to_py_obj(&obj)
-        })
-    }
-
     /// Get the target embedding dimension from the current system parameters.
     fn get_embedding_dim<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
@@ -940,9 +852,12 @@ impl PySomaClient {
                 if let Some(model) = model {
                     let obj = ManifestObj {
                         url: model.manifest.url().to_string(),
-                        checksum: hex::encode(model.manifest.metadata().checksum().0),
+                        checksum: Base58::encode(model.manifest.metadata().checksum().as_ref()),
                         size: model.manifest.metadata().size(),
-                        decryption_key: model.decryption_key.as_ref().map(|k| hex::encode(k.as_bytes())),
+                        decryption_key: model
+                            .decryption_key
+                            .as_ref()
+                            .map(|k| Base58::encode(k.as_bytes())),
                     };
                     results.push(to_py_obj(&obj)?);
                 }
@@ -1136,7 +1051,7 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let (final_checksum, final_size) = match (data, data_checksum, data_size) {
             (Some(d), cs, sz) => {
-                let checksum = cs.unwrap_or_else(|| sdk::crypto_utils::commitment_hex(d));
+                let checksum = cs.unwrap_or_else(|| sdk::crypto_utils::commitment_base58(d));
                 let size = sz.unwrap_or(d.len());
                 (checksum, size)
             }
@@ -1384,10 +1299,10 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let manifest = build_manifest(&url, &checksum, size)?;
-        let wt_commitment = parse_hex_32(&weights_commitment, "weights-commitment")?;
-        let emb_commitment = parse_hex_32(&embedding_commitment, "embedding-commitment")?;
+        let wt_commitment = parse_base58_32(&weights_commitment, "weights-commitment")?;
+        let emb_commitment = parse_base58_32(&embedding_commitment, "embedding-commitment")?;
         let dk_commitment =
-            parse_hex_32(&decryption_key_commitment, "decryption-key-commitment")?;
+            parse_base58_32(&decryption_key_commitment, "decryption-key-commitment")?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -1424,7 +1339,7 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
@@ -1461,10 +1376,10 @@ impl PySomaClient {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
         let manifest = build_manifest(&url, &checksum, size)?;
-        let wt_commitment = parse_hex_32(&weights_commitment, "weights-commitment")?;
-        let emb_commitment = parse_hex_32(&embedding_commitment, "embedding-commitment")?;
+        let wt_commitment = parse_base58_32(&weights_commitment, "weights-commitment")?;
+        let emb_commitment = parse_base58_32(&embedding_commitment, "embedding-commitment")?;
         let dk_commitment =
-            parse_hex_32(&decryption_key_commitment, "decryption-key-commitment")?;
+            parse_base58_32(&decryption_key_commitment, "decryption-key-commitment")?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -1497,7 +1412,7 @@ impl PySomaClient {
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let model = parse_object_id(&model_id)?;
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
@@ -1618,7 +1533,7 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Build a SubmitData transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, target_id, data_url, data_checksum, data_size, model_id, embedding, distance_score, bond_coin, gas=None))]
+    #[pyo3(signature = (sender, target_id, data_url, data_checksum, data_size, model_id, embedding, distance_score, loss_score, bond_coin, gas=None))]
     fn build_submit_data<'py>(
         &self,
         py: Python<'py>,
@@ -1630,6 +1545,7 @@ impl PySomaClient {
         model_id: String,
         embedding: Vec<f32>,
         distance_score: f32,
+        loss_score: Vec<f32>,
         bond_coin: Bound<'py, PyAny>,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -1638,6 +1554,7 @@ impl PySomaClient {
         let model = parse_object_id(&model_id)?;
         let manifest = build_submission_manifest(&data_url, &data_checksum, data_size)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
+        let loss_score_tensor = SomaTensor::new(loss_score.clone(), vec![loss_score.len()]);
         let bond_ref = parse_object_ref(&bond_coin)?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
@@ -1648,6 +1565,7 @@ impl PySomaClient {
                 model_id: model,
                 embedding: embedding_tensor,
                 distance_score: SomaTensor::scalar(distance_score),
+                loss_score: loss_score_tensor,
                 bond_coin: bond_ref,
             });
             let tx_data = client
@@ -1684,25 +1602,20 @@ impl PySomaClient {
     }
 
     /// Build a ReportSubmission transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, target_id, challenger=None, gas=None))]
+    #[pyo3(signature = (sender, target_id, gas=None))]
     fn build_report_submission<'py>(
         &self,
         py: Python<'py>,
         sender: String,
         target_id: String,
-        challenger: Option<String>,
         gas: Option<Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let sender_addr = parse_address(&sender)?;
         let target = parse_object_id(&target_id)?;
-        let challenger_addr = challenger.map(|c| parse_address(&c)).transpose()?;
         let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::ReportSubmission {
-                target_id: target,
-                challenger: challenger_addr,
-            };
+            let kind = TransactionKind::ReportSubmission { target_id: target };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -1727,111 +1640,6 @@ impl PySomaClient {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let kind = TransactionKind::UndoReportSubmission { target_id: target };
-            let tx_data = client
-                .build_transaction_data(sender_addr, kind, gas_ref)
-                .await
-                .map_err(to_py_err)?;
-            let bytes = bcs::to_bytes(&tx_data).map_err(to_py_err)?;
-            Ok(Python::attach(|py| PyBytes::new(py, &bytes).unbind()))
-        })
-    }
-
-    // -------------------------------------------------------------------
-    // Transaction builders -- Challenge
-    // -------------------------------------------------------------------
-
-    /// Build an InitiateChallenge transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, target_id, bond_coin, gas=None))]
-    fn build_initiate_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        sender: String,
-        target_id: String,
-        bond_coin: Bound<'py, PyAny>,
-        gas: Option<Bound<'py, PyAny>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let sender_addr = parse_address(&sender)?;
-        let target = parse_object_id(&target_id)?;
-        let bond_ref = parse_object_ref(&bond_coin)?;
-        let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-                target_id: target,
-                bond_coin: bond_ref,
-            });
-            let tx_data = client
-                .build_transaction_data(sender_addr, kind, gas_ref)
-                .await
-                .map_err(to_py_err)?;
-            let bytes = bcs::to_bytes(&tx_data).map_err(to_py_err)?;
-            Ok(Python::attach(|py| PyBytes::new(py, &bytes).unbind()))
-        })
-    }
-
-    /// Build a ReportChallenge transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, challenge_id, gas=None))]
-    fn build_report_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        sender: String,
-        challenge_id: String,
-        gas: Option<Bound<'py, PyAny>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let sender_addr = parse_address(&sender)?;
-        let cid = parse_object_id(&challenge_id)?;
-        let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::ReportChallenge { challenge_id: cid };
-            let tx_data = client
-                .build_transaction_data(sender_addr, kind, gas_ref)
-                .await
-                .map_err(to_py_err)?;
-            let bytes = bcs::to_bytes(&tx_data).map_err(to_py_err)?;
-            Ok(Python::attach(|py| PyBytes::new(py, &bytes).unbind()))
-        })
-    }
-
-    /// Build an UndoReportChallenge transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, challenge_id, gas=None))]
-    fn build_undo_report_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        sender: String,
-        challenge_id: String,
-        gas: Option<Bound<'py, PyAny>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let sender_addr = parse_address(&sender)?;
-        let cid = parse_object_id(&challenge_id)?;
-        let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::UndoReportChallenge { challenge_id: cid };
-            let tx_data = client
-                .build_transaction_data(sender_addr, kind, gas_ref)
-                .await
-                .map_err(to_py_err)?;
-            let bytes = bcs::to_bytes(&tx_data).map_err(to_py_err)?;
-            Ok(Python::attach(|py| PyBytes::new(py, &bytes).unbind()))
-        })
-    }
-
-    /// Build a ClaimChallengeBond transaction. Returns BCS bytes.
-    #[pyo3(signature = (sender, challenge_id, gas=None))]
-    fn build_claim_challenge_bond<'py>(
-        &self,
-        py: Python<'py>,
-        sender: String,
-        challenge_id: String,
-        gas: Option<Bound<'py, PyAny>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let sender_addr = parse_address(&sender)?;
-        let cid = parse_object_id(&challenge_id)?;
-        let gas_ref = gas.as_ref().map(parse_object_ref).transpose()?;
-        let client = self.inner.clone();
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let kind = TransactionKind::ClaimChallengeBond { challenge_id: cid };
             let tx_data = client
                 .build_transaction_data(sender_addr, kind, gas_ref)
                 .await
@@ -2051,9 +1859,9 @@ impl PySomaClient {
         let kp = signer.inner.copy();
         let stake_shannons = stake_amount.map(sdk::crypto_utils::to_shannons);
 
-        let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
+        let checksum_base58 = sdk::crypto_utils::commitment_base58(encrypted_weights);
         let weights_size = encrypted_weights.len();
-        let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+        let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
         let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
 
         let embedding_tensor = parse_embedding_vec(embedding)?;
@@ -2061,7 +1869,7 @@ impl PySomaClient {
             .map_err(|e| PyValueError::new_err(format!("BCS encode embedding: {}", e)))?;
         let emb_commitment = sdk::crypto_utils::commitment(&emb_bytes);
 
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let dk_commitment = sdk::crypto_utils::commitment(&key_bytes);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -2106,7 +1914,7 @@ impl PySomaClient {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let model = parse_object_id(&model_id)?;
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -2125,7 +1933,7 @@ impl PySomaClient {
 
     /// Submit data: computes commitment/checksum/size from data bytes,
     /// auto-selects a bond coin, signs, and executes.
-    #[pyo3(signature = (signer, target_id, data, data_url, model_id, embedding, distance_score))]
+    #[pyo3(signature = (signer, target_id, data, data_url, model_id, embedding, distance_score, loss_score))]
     fn submit_data<'py>(
         &self,
         py: Python<'py>,
@@ -2136,17 +1944,19 @@ impl PySomaClient {
         model_id: String,
         embedding: Vec<f32>,
         distance_score: f32,
+        loss_score: Vec<f32>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let target = parse_object_id(&target_id)?;
         let model = parse_object_id(&model_id)?;
 
-        let hash_hex = sdk::crypto_utils::commitment_hex(data);
+        let hash_base58 = sdk::crypto_utils::commitment_base58(data);
         let data_size = data.len();
 
-        let manifest = build_submission_manifest(&data_url, &hash_hex, data_size)?;
+        let manifest = build_submission_manifest(&data_url, &hash_base58, data_size)?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
+        let loss_score_tensor = SomaTensor::new(loss_score.clone(), vec![loss_score.len()]);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
@@ -2172,6 +1982,7 @@ impl PySomaClient {
                 model_id: model,
                 embedding: embedding_tensor,
                 distance_score: SomaTensor::scalar(distance_score),
+                loss_score: loss_score_tensor,
                 bond_coin,
             });
             let tx_data =
@@ -2387,9 +2198,9 @@ impl PySomaClient {
         let kp = signer.inner.copy();
         let model = parse_object_id(&model_id)?;
 
-        let checksum_hex = sdk::crypto_utils::commitment_hex(encrypted_weights);
+        let checksum_base58 = sdk::crypto_utils::commitment_base58(encrypted_weights);
         let weights_size = encrypted_weights.len();
-        let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+        let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
         let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
 
         let embedding_tensor = parse_embedding_vec(embedding)?;
@@ -2397,7 +2208,7 @@ impl PySomaClient {
             .map_err(|e| PyValueError::new_err(format!("BCS encode embedding: {}", e)))?;
         let emb_commitment = sdk::crypto_utils::commitment(&emb_bytes);
 
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let dk_commitment = sdk::crypto_utils::commitment(&key_bytes);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -2428,7 +2239,7 @@ impl PySomaClient {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let model = parse_object_id(&model_id)?;
-        let key_bytes = parse_hex_32(&decryption_key, "decryption-key")?;
+        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
         let embedding_tensor = parse_embedding_vec(embedding)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
@@ -2533,24 +2344,18 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Report a submission: signs and executes.
-    #[pyo3(signature = (signer, target_id, challenger=None))]
     fn report_submission<'py>(
         &self,
         py: Python<'py>,
         signer: &PyKeypair,
         target_id: String,
-        challenger: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let target = parse_object_id(&target_id)?;
-        let challenger_addr = challenger.map(|c| parse_address(&c)).transpose()?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
-            let kind = TransactionKind::ReportSubmission {
-                target_id: target,
-                challenger: challenger_addr,
-            };
+            let kind = TransactionKind::ReportSubmission { target_id: target };
             let tx_data =
                 client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
             client.sign_and_execute(&kp, tx_data, "ReportSubmission").await.map_err(to_py_err)?;
@@ -2577,97 +2382,6 @@ impl PySomaClient {
                 .sign_and_execute(&kp, tx_data, "UndoReportSubmission")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    // -------------------------------------------------------------------
-    // High-level: Challenge
-    // -------------------------------------------------------------------
-
-    /// Initiate a challenge: auto-fetches bond coin, signs, and executes.
-    fn initiate_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        target_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let target = parse_object_id(&target_id)?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let bond_coin = auto_fetch_coin(&client, sender).await?;
-            let kind = TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-                target_id: target,
-                bond_coin,
-            });
-            let tx_data =
-                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
-            client.sign_and_execute(&kp, tx_data, "InitiateChallenge").await.map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    /// Report a challenge: signs and executes.
-    fn report_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        challenge_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let cid = parse_object_id(&challenge_id)?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::ReportChallenge { challenge_id: cid };
-            let tx_data =
-                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
-            client.sign_and_execute(&kp, tx_data, "ReportChallenge").await.map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    /// Undo a challenge report: signs and executes.
-    fn undo_report_challenge<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        challenge_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let cid = parse_object_id(&challenge_id)?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::UndoReportChallenge { challenge_id: cid };
-            let tx_data =
-                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
-            client
-                .sign_and_execute(&kp, tx_data, "UndoReportChallenge")
-                .await
-                .map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    /// Claim a challenge bond: signs and executes.
-    fn claim_challenge_bond<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        challenge_id: String,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let cid = parse_object_id(&challenge_id)?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::ClaimChallengeBond { challenge_id: cid };
-            let tx_data =
-                client.build_transaction_data(sender, kind, None).await.map_err(to_py_err)?;
-            client.sign_and_execute(&kp, tx_data, "ClaimChallengeBond").await.map_err(to_py_err)?;
             Ok(())
         })
     }

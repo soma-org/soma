@@ -21,7 +21,7 @@ use types::storage::ObjectKey;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
 use types::storage::read_store::{
-    BalanceInfo, ChallengeInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader, TargetInfo,
+    BalanceInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader, TargetInfo,
 };
 use types::storage::storage_error::{Error as StorageError, Result};
 use types::storage::write_store::WriteStore;
@@ -495,22 +495,6 @@ impl RpcIndexes for RestReadStore {
         let iter = self
             .index()?
             .targets_iter(status_filter, epoch_filter, cursor)?
-            .map(|r| r.map_err(Into::into));
-        Ok(Box::new(iter))
-    }
-
-    fn challenges_iter(
-        &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        target_filter: Option<ObjectID>,
-        cursor: Option<ChallengeInfo>,
-    ) -> Result<
-        Box<dyn Iterator<Item = Result<ChallengeInfo, types::storage::storage_error::Error>> + '_>,
-    > {
-        let iter = self
-            .index()?
-            .challenges_iter(status_filter, epoch_filter, target_filter, cursor)?
             .map(|r| r.map_err(Into::into));
         Ok(Box::new(iter))
     }

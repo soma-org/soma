@@ -24,19 +24,17 @@ use burn::tensor::{TensorData, Tolerance};
 use runtime::{CompetitionInput, CompetitionOutput, ManifestCompetitionInput, RuntimeAPI};
 use scoring::tonic_gen::scoring_client::ScoringClient;
 use scoring::types::{ManifestInput, ScoreRequest};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 use types::base::{AuthorityName, SomaAddress};
-use types::challenge::{ChallengeId, ChallengeV1};
 use types::committee::EpochId;
 use types::consensus::ConsensusTransaction;
 use types::crypto::{Signature, SomaKeyPair};
 use types::error::RuntimeResult;
 use types::intent::{Intent, IntentMessage};
 use types::metadata::{Manifest, ManifestAPI, MetadataAPI};
-use types::model::ModelId;
 use types::object::ObjectID;
-use types::target::TargetId;
+use types::target::{TargetId, TargetV1};
 use types::tensor::SomaTensor;
 
 use crate::authority::AuthorityState;
@@ -58,8 +56,8 @@ impl RuntimeAPI for MockRuntimeAPI {
     async fn competition(&self, input: CompetitionInput) -> RuntimeResult<CompetitionOutput> {
         Ok(CompetitionOutput::new(
             0,
-            TensorData::zeros::<f32, _>([768]),
-            TensorData::zeros::<f32, _>([768]),
+            TensorData::zeros::<f32, _>([2048]),
+            TensorData::zeros::<f32, _>([2048]),
             TensorData::from([0.0f32]),
         ))
     }
@@ -72,8 +70,8 @@ impl RuntimeAPI for MockRuntimeAPI {
     ) -> RuntimeResult<CompetitionOutput> {
         Ok(CompetitionOutput::new(
             0,
-            TensorData::zeros::<f32, _>([768]),
-            TensorData::zeros::<f32, _>([768]),
+            TensorData::zeros::<f32, _>([2048]),
+            TensorData::zeros::<f32, _>([2048]),
             TensorData::from([0.0f32]),
         ))
     }
@@ -145,7 +143,7 @@ impl RuntimeAPI for RemoteScoringRuntime {
         input: ManifestCompetitionInput,
     ) -> RuntimeResult<CompetitionOutput> {
         let data = input.data();
-        let data_checksum = hex::encode(data.metadata().checksum().0);
+        let data_checksum = data.metadata().checksum().to_string();
 
         let model_manifests: Vec<ManifestInput> = input
             .models()
@@ -153,9 +151,12 @@ impl RuntimeAPI for RemoteScoringRuntime {
             .zip(input.model_keys().iter())
             .map(|(m, key)| ManifestInput {
                 url: m.url().to_string(),
-                checksum: hex::encode(m.metadata().checksum().0),
+                checksum: m.metadata().checksum().to_string(),
                 size: m.metadata().size(),
-                decryption_key: key.map(hex::encode),
+                decryption_key: key.map(|k| {
+                    use fastcrypto::encoding::{Base58, Encoding};
+                    Base58::encode(k)
+                }),
             })
             .collect();
 
@@ -223,24 +224,20 @@ fn is_within_tolerance(computed: &TensorData, claimed: &TensorData) -> bool {
 // Audit Service
 // ===========================================================================
 
-/// Validator audit service for challenge resolution.
+/// Validator audit service for submission verification.
 ///
 /// This service runs on validators and:
-/// - Listens for new Challenge objects (via channel from CheckpointExecutor)
 /// - Calls CompetitionAPI to download data, verify hash, and run inference
-/// - Submits ReportSubmission and ReportChallenge transactions via consensus
+/// - Submits ReportSubmission transactions via consensus when fraud is detected
 ///
 /// **Tally-Based Approach:**
 ///
-/// Instead of broadcasting votes and aggregating signatures off-chain,
-/// validators submit individual report transactions. Reports accumulate
-/// on Target and Challenge objects until 2f+1 quorum is reached.
+/// Validators submit individual report transactions that accumulate on Target objects.
+/// When 2f+1 stake reports, quorum is reached and ClaimRewards forfeits the bond.
 ///
-/// **Fraud-Only Challenges:**
-///
-/// All challenges are fraud challenges. Availability issues are handled via
-/// submission reports (ReportSubmission/UndoReportSubmission) instead of
-/// availability challenges.
+/// **NOTE: Currently defunct (Stage 1).**
+/// The challenge-triggered spawn has been removed. Stage 2 will add an autonomous
+/// epoch-triggered flow where validators sample filled targets and audit them.
 pub struct AuditService {
     /// This validator's identity (protocol key).
     authority_name: AuthorityName,
@@ -292,62 +289,11 @@ impl AuditService {
         })
     }
 
-    /// Spawn the audit service task.
-    ///
-    /// - `challenge_rx`: Receives new Challenge objects from CheckpointExecutor
-    pub async fn spawn(self: Arc<Self>, mut challenge_rx: mpsc::Receiver<ChallengeV1>) {
-        // Spawn task to handle new challenges
-        tokio::spawn(async move {
-            while let Some(challenge) = challenge_rx.recv().await {
-                let service = self.clone();
-                tokio::spawn(async move {
-                    service.handle_new_challenge(challenge).await;
-                });
-            }
-        });
-    }
-
-    /// Handle a newly created challenge.
-    ///
-    /// All challenges are fraud challenges - call CompetitionAPI, compare results.
-    /// Based on the result, submit appropriate report transactions.
-    ///
-    /// **Report semantics:**
-    /// - `ReportSubmission`: "This submission is fraudulent" → submitter loses bond
-    /// - `ReportChallenge`: "This challenge is invalid" → challenger loses bond
-    async fn handle_new_challenge(&self, challenge: ChallengeV1) {
-        info!("Auditing challenge {:?} for target {:?}", challenge.id, challenge.target_id);
-
-        // Run fraud audit - returns true if fraud was found
-        let fraud_found = self.audit_fraud(&challenge).await;
-
-        if fraud_found {
-            // Fraud confirmed: report submission with challenger attribution
-            // Don't report challenge (challenger was right)
-            self.submit_report_submission(challenge.target_id, Some(challenge.challenger)).await;
-        } else {
-            // No fraud: report challenge (challenger was wrong)
-            self.submit_report_challenge(challenge.id).await;
-        }
-    }
-
     /// Submit a ReportSubmission transaction via consensus.
-    async fn submit_report_submission(&self, target_id: TargetId, challenger: Option<SomaAddress>) {
-        info!(
-            "Submitting ReportSubmission for target {:?} with challenger {:?}",
-            target_id, challenger
-        );
+    pub async fn submit_report_submission(&self, target_id: TargetId) {
+        info!("Submitting ReportSubmission for target {:?}", target_id);
 
-        let kind = types::transaction::TransactionKind::ReportSubmission { target_id, challenger };
-
-        self.submit_validator_transaction(kind).await;
-    }
-
-    /// Submit a ReportChallenge transaction via consensus.
-    async fn submit_report_challenge(&self, challenge_id: ChallengeId) {
-        info!("Submitting ReportChallenge for challenge {:?} (challenger was wrong)", challenge_id);
-
-        let kind = types::transaction::TransactionKind::ReportChallenge { challenge_id };
+        let kind = types::transaction::TransactionKind::ReportSubmission { target_id };
 
         self.submit_validator_transaction(kind).await;
     }
@@ -403,7 +349,7 @@ impl AuditService {
 
     /// Verify fraud by calling CompetitionAPI and checking results against claims.
     ///
-    /// Returns true if fraud was found (challenger wins), false otherwise.
+    /// Returns true if fraud was found, false otherwise.
     ///
     /// # Fraud Detection Logic
     ///
@@ -416,20 +362,23 @@ impl AuditService {
     /// 4. **Distance mismatch**: Distance differs beyond tolerance → FRAUD
     /// 5. **Model unavailable**: System issue, not submitter's fault → NO FRAUD
     /// 6. **Computation failed**: Validator issue, not submitter's fault → NO FRAUD
-    async fn audit_fraud(&self, challenge: &ChallengeV1) -> bool {
-        let data_manifest = &challenge.winning_data_manifest.manifest;
+    pub async fn audit_fraud(&self, target: &TargetV1) -> bool {
+        let data_manifest = match &target.winning_data_manifest {
+            Some(m) => &m.manifest,
+            None => {
+                warn!("Target missing winning_data_manifest, cannot audit");
+                return false;
+            }
+        };
 
         // Collect model manifests from the registry
         let mut model_manifests: Vec<Manifest> = Vec::new();
-        for &model_id in &challenge.model_ids {
+        for &model_id in &target.model_ids {
             match self.load_model_manifest(&model_id).await {
                 Ok(manifest) => {
                     model_manifests.push(manifest);
                 }
                 Err(_) => {
-                    // Model not in registry - skip it
-                    // This shouldn't happen for active targets, but if it does,
-                    // we can't evaluate with this model.
                     warn!("Model {:?} not found in registry, skipping", model_id);
                     continue;
                 }
@@ -437,10 +386,7 @@ impl AuditService {
         }
 
         if model_manifests.is_empty() {
-            // No models could be loaded from registry.
-            // This is a system issue (models should be available for active targets).
-            // Cannot determine fraud without models → default to no fraud.
-            warn!("No models available for challenge {:?}, cannot determine fraud", challenge.id);
+            warn!("No models available for target audit, cannot determine fraud");
             return false;
         }
 
@@ -448,7 +394,7 @@ impl AuditService {
         let input = ManifestCompetitionInput::new(
             data_manifest.clone(),
             model_manifests,
-            challenge.target_embedding.clone().into_tensor_data(),
+            target.embedding.clone().into_tensor_data(),
             0, // TODO: use a real seed if needed for stochastic models
         );
 
@@ -456,51 +402,72 @@ impl AuditService {
         let output = match self.runtime_api.manifest_competition(input).await {
             Ok(result) => result,
             Err(types::error::RuntimeError::DataNotAvailable(msg)) => {
-                // Submitter is responsible for keeping data available during challenge window
-                info!("FRAUD: data unavailable for challenge {:?}: {}", challenge.id, msg);
+                info!("FRAUD: data unavailable: {}", msg);
                 return true;
             }
             Err(types::error::RuntimeError::DataHashMismatch) => {
-                // Submitter submitted data that doesn't match their commitment
-                info!("FRAUD: data hash mismatch for challenge {:?}", challenge.id);
+                info!("FRAUD: data hash mismatch");
                 return true;
             }
             Err(types::error::RuntimeError::ModelNotAvailable(model_id)) => {
-                // Model weights couldn't be downloaded. This is a system/model-owner issue,
-                // not the submitter's fault. Cannot determine fraud.
                 warn!("Model {:?} unavailable during evaluation, cannot determine fraud", model_id);
                 return false;
             }
             Err(e) => {
-                // Other errors (computation failed, etc). This is a validator-side issue.
-                // Cannot determine fraud.
-                warn!("Computation failed for challenge {:?}: {:?}", challenge.id, e);
+                warn!("Computation failed during audit: {:?}", e);
                 return false;
             }
         };
 
         // Trust the CompetitionAPI's results and compare against submitter's claims
-        let claimed_model_id = challenge.winning_model_id;
-        let claimed_distance = &challenge.winning_distance_score;
+        let claimed_model_id = match target.winning_model_id {
+            Some(id) => id,
+            None => {
+                warn!("Target missing winning_model_id, cannot audit");
+                return false;
+            }
+        };
+        let claimed_distance = match &target.winning_distance_score {
+            Some(d) => d,
+            None => {
+                warn!("Target missing winning_distance_score, cannot audit");
+                return false;
+            }
+        };
 
-        let winner = challenge.model_ids[output.winner()];
+        let winner = target.model_ids[output.winner()];
         // Check 1: Did the submitter use the correct winning model?
         if winner != claimed_model_id {
             info!(
-                "FRAUD: wrong model for challenge {:?}. Claimed: {:?}, Actual winner: {:?}",
-                challenge.id, claimed_model_id, winner
+                "FRAUD: wrong model. Claimed: {:?}, Actual winner: {:?}",
+                claimed_model_id, winner
             );
             return true;
         }
 
         // Check 2: Is the claimed distance within tolerance of the actual distance?
-        // Using Burn's Tolerance::permissive() (1% relative, 0.01 absolute)
         if !is_within_tolerance(output.distance(), claimed_distance.as_tensor_data()) {
             info!(
-                "FRAUD: distance mismatch for challenge {:?}. Claimed: {:?}, Actual: {:?}",
-                challenge.id,
+                "FRAUD: distance mismatch. Claimed: {:?}, Actual: {:?}",
                 claimed_distance.to_vec(),
                 output.distance().to_vec::<f32>()
+            );
+            return true;
+        }
+
+        // Check 3: Is the claimed loss_score within tolerance of the actual loss_score?
+        let claimed_loss_score = match &target.winning_loss_score {
+            Some(l) => l,
+            None => {
+                warn!("Target missing winning_loss_score, cannot audit");
+                return false;
+            }
+        };
+        if !is_within_tolerance(output.loss_score(), claimed_loss_score.as_tensor_data()) {
+            info!(
+                "FRAUD: loss_score mismatch. Claimed: {:?}, Actual: {:?}",
+                claimed_loss_score.to_vec(),
+                output.loss_score().to_vec::<f32>()
             );
             return true;
         }

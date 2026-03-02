@@ -34,19 +34,19 @@ fn test_target_seed_deterministic() {
 /// Test that embeddings are deterministic
 #[test]
 fn test_embedding_deterministic() {
-    let embedding1 = deterministic_embedding(42, 768);
-    let embedding2 = deterministic_embedding(42, 768);
+    let embedding1 = deterministic_embedding(42, 2048);
+    let embedding2 = deterministic_embedding(42, 2048);
     assert_eq!(embedding1, embedding2, "Same seed should produce same embedding");
 
-    let embedding3 = deterministic_embedding(43, 768);
+    let embedding3 = deterministic_embedding(43, 2048);
     assert_ne!(embedding1, embedding3, "Different seed should produce different embedding");
 }
 
 /// Test embedding dimension
 #[test]
 fn test_embedding_dimension() {
-    let embedding = deterministic_embedding(42, 768);
-    assert_eq!(embedding.len(), 768);
+    let embedding = deterministic_embedding(42, 2048);
+    assert_eq!(embedding.len(), 2048);
 
     let embedding_small = deterministic_embedding(42, 10);
     assert_eq!(embedding_small.len(), 10);
@@ -64,9 +64,9 @@ fn test_target_generation_requires_active_models() {
         42,
         system_state.model_registry(),
         system_state.target_state(),
-        3,   // models_per_target
-        768, // embedding_dim
-        0,   // current_epoch
+        3,    // models_per_target
+        2048, // embedding_dim
+        0,    // current_epoch
     );
 
     assert!(result.is_err(), "Target generation should fail without active models");
@@ -86,12 +86,12 @@ fn test_target_generation_single_model() {
     let owner = SomaAddress::random();
     let model_id = crate::model::ModelId::random();
     let stake = 10 * SHANNONS_PER_SOMA;
-    commit_model_with_dim(&mut system_state, owner, model_id, stake, 768);
+    commit_model_with_dim(&mut system_state, owner, model_id, stake, 2048);
 
     // Advance epoch to reveal
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
-    // Use 768-dimensional embedding to match target embedding dimension
-    reveal_model_with_dim(&mut system_state, owner, &model_id, 768);
+    // Use 2048-dimensional embedding to match target embedding dimension
+    reveal_model_with_dim(&mut system_state, owner, &model_id, 2048);
 
     // Set up target_state with some thresholds
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
@@ -102,9 +102,9 @@ fn test_target_generation_single_model() {
         42,
         system_state.model_registry(),
         system_state.target_state(),
-        3,   // models_per_target (will be capped to 1)
-        768, // embedding_dim
-        1,   // current_epoch
+        3,    // models_per_target (will be capped to 1)
+        2048, // embedding_dim
+        1,    // current_epoch
     );
 
     assert!(result.is_ok(), "Target generation should succeed");
@@ -112,7 +112,7 @@ fn test_target_generation_single_model() {
 
     assert_eq!(target.model_ids.len(), 1, "Should have 1 model");
     assert_eq!(target.model_ids[0], model_id);
-    assert_eq!(target.embedding.len(), 768);
+    assert_eq!(target.embedding.len(), 2048);
     assert_eq!(target.distance_threshold.as_scalar(), 1.0);
     assert_eq!(target.reward_pool, 1000);
     assert_eq!(target.generation_epoch, 1);
@@ -132,15 +132,15 @@ fn test_target_generation_multiple_models() {
     for _ in 0..5 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model_with_dim(&mut system_state, owner, model_id, stake, 768);
+        commit_model_with_dim(&mut system_state, owner, model_id, stake, 2048);
         model_ids.push(model_id);
     }
 
-    // Advance epoch and reveal all models with 768-dimensional embeddings
+    // Advance epoch and reveal all models with 2048-dimensional embeddings
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
     for model_id in &model_ids {
-        // Use 768-dimensional embedding to match target embedding dimension
-        reveal_model_with_dim(&mut system_state, owner, model_id, 768);
+        // Use 2048-dimensional embedding to match target embedding dimension
+        reveal_model_with_dim(&mut system_state, owner, model_id, 2048);
     }
 
     // Set up target_state
@@ -152,9 +152,9 @@ fn test_target_generation_multiple_models() {
         42,
         system_state.model_registry(),
         system_state.target_state(),
-        3,   // models_per_target
-        768, // embedding_dim
-        1,   // current_epoch
+        3,    // models_per_target
+        2048, // embedding_dim
+        1,    // current_epoch
     );
 
     assert!(result.is_ok());
@@ -384,9 +384,8 @@ fn test_target_status_transitions() {
         winning_data_manifest: None,
         winning_embedding: None,
         winning_distance_score: None,
-        challenger: None,
-        challenge_id: None,
-        submission_reports: std::collections::BTreeMap::new(),
+        winning_loss_score: None,
+        submission_reports: std::collections::BTreeSet::new(),
     };
 
     assert!(target.is_open());

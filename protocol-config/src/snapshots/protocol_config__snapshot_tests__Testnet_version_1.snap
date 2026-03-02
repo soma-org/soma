@@ -30,7 +30,7 @@ min_value_fee_bps: 1
 max_value_fee_bps: 50
 fee_adjustment_rate_bps: 1250
 target_models_per_target: 3
-target_embedding_dim: 768
+target_embedding_dim: 2048
 target_initial_distance_threshold: 2
 target_reward_allocation_bps: 8000
 target_hits_per_epoch: 16
@@ -43,6 +43,5 @@ target_submitter_reward_share_bps: 6900
 target_model_reward_share_bps: 3000
 target_claimer_incentive_bps: 100
 submission_bond_per_byte: 10
-challenger_bond_per_byte: 5
 max_submission_data_size: 1048576
 execution_version: 0

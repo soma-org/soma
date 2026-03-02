@@ -6,8 +6,6 @@ base_fee:
   u64: 1000
 buffer_stake_for_protocol_upgrade_bps:
   u64: 5000
-challenger_bond_per_byte:
-  u64: 5
 consensus_bad_nodes_stake_threshold:
   u64: 30
 consensus_commit_rate_estimation_window_size:
@@ -59,7 +57,7 @@ target_claimer_incentive_bps:
 target_difficulty_adjustment_rate_bps:
   u64: 1000
 target_embedding_dim:
-  u64: 768
+  u64: 2048
 target_epoch_fee_collection:
   u64: 1000000000
 target_hits_ema_decay_bps:

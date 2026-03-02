@@ -73,6 +73,34 @@ pub async fn start_scoring_server(
     Ok(())
 }
 
+/// Start a local scoring gRPC server on an OS-assigned free port.
+///
+/// Returns the `JoinHandle` and the port number the server bound to.
+/// The server runs in a background Tokio task. Callers can abort the
+/// handle for graceful shutdown.
+pub async fn start_local_scoring_server(
+    engine: Arc<ScoringEngine>,
+) -> Result<(tokio::task::JoinHandle<()>, u16), Box<dyn std::error::Error>> {
+    let svc = ScoringService::new(engine);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+
+    info!("Local scoring service listening on 127.0.0.1:{}", port);
+
+    let handle = tokio::spawn(async move {
+        if let Err(e) = tonic::transport::Server::builder()
+            .add_service(ScoringServer::new(svc))
+            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+            .await
+        {
+            tracing::error!("Local scoring server exited with error: {e}");
+        }
+    });
+
+    Ok((handle, port))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

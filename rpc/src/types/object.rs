@@ -153,5 +153,4 @@ pub enum ObjectType {
     Coin,
     StakedSoma,
     Target,
-    Challenge,
 }

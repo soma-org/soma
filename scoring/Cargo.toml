@@ -12,22 +12,24 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
+fastcrypto.workspace = true
 hex.workspace = true
 url.workspace = true
 
 # Server-only deps (heavy — burn, runtime, ML inference)
 runtime = { workspace = true, optional = true }
 burn = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+
 [features]
 default = ["server"]
-server = ["dep:runtime", "dep:burn", "types/cloud-storage"]
+server = ["dep:runtime", "dep:burn", "dep:tokio-stream", "types/cloud-storage"]
 
 [build-dependencies]
 tonic-build.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tokio-stream.workspace = true
 tempfile.workspace = true
 
 

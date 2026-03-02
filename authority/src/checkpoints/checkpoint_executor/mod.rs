@@ -27,7 +27,6 @@ use parking_lot::Mutex;
 use tap::{TapFallible, TapOptional};
 use tracing::{debug, error, info, instrument, warn};
 use types::base::SequenceNumber;
-use types::challenge::ChallengeV1;
 use types::checkpoints::{
     CheckpointContents, CheckpointSequenceNumber, GlobalStateHash, VerifiedCheckpoint,
 };
@@ -39,7 +38,7 @@ use types::effects::{
 use types::envelope::Message as _;
 use types::error::{SomaError, SomaResult};
 use types::full_checkpoint_content::Checkpoint;
-use types::object::{ObjectRef, ObjectType, Version};
+use types::object::{ObjectRef, Version};
 use types::system_state::SystemStateTrait as _;
 use types::transaction::{
     ExecutableTransaction, Transaction, TransactionKind, VerifiedExecutableTransaction,
@@ -134,9 +133,6 @@ pub struct CheckpointExecutor {
     config: CheckpointExecutorConfig,
     tps_estimator: Mutex<TPSEstimator>,
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
-    /// Sender for notifying AuditService of new challenges.
-    /// None for fullnodes (audit service only runs on validators).
-    challenge_observer_sender: Option<tokio::sync::mpsc::Sender<ChallengeV1>>,
 }
 
 impl CheckpointExecutor {
@@ -148,7 +144,6 @@ impl CheckpointExecutor {
         backpressure_manager: Arc<BackpressureManager>,
         config: CheckpointExecutorConfig,
         subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
-        challenge_observer_sender: Option<tokio::sync::mpsc::Sender<ChallengeV1>>,
     ) -> Self {
         Self {
             epoch_store: epoch_store.clone(),
@@ -162,7 +157,6 @@ impl CheckpointExecutor {
             config,
             tps_estimator: Mutex::new(TPSEstimator::default()),
             subscription_service_checkpoint_sender,
-            challenge_observer_sender,
         }
     }
 
@@ -180,7 +174,6 @@ impl CheckpointExecutor {
             BackpressureManager::new_for_tests(),
             Default::default(),
             None,
-            None, // No challenge observer for tests
         )
     }
 
@@ -840,47 +833,9 @@ impl CheckpointExecutor {
                 .expect("failed to update rpc_indexes");
         }
 
-        // Observe created Challenge objects and notify the AuditService
-        self.observe_created_challenges(&checkpoint);
-
         if let Some(sender) = &self.subscription_service_checkpoint_sender {
             if let Err(e) = sender.send(checkpoint).await {
                 warn!("unable to send checkpoint to subscription service: {e}");
-            }
-        }
-    }
-
-    /// Observe Challenge objects created in this checkpoint and notify the AuditService.
-    ///
-    /// For each transaction in the checkpoint, we check for newly created Challenge objects
-    /// and send them to the AuditService via the challenge_observer_sender channel.
-    /// This triggers the challenge audit flow on validators.
-    fn observe_created_challenges(&self, checkpoint: &Checkpoint) {
-        let Some(challenge_tx) = &self.challenge_observer_sender else {
-            return;
-        };
-
-        for tx in &checkpoint.transactions {
-            // Iterate through all output objects to find newly created Challenges
-            for obj in tx.output_objects(&checkpoint.object_set) {
-                // Check if this is a Challenge object
-                if obj.data.object_type() == &ObjectType::Challenge {
-                    if let Some(challenge) = obj.as_challenge() {
-                        debug!(
-                            "Observed new Challenge {:?} for target {:?} in checkpoint {}",
-                            challenge.id, challenge.target_id, checkpoint.summary.sequence_number
-                        );
-                        // Use try_send to avoid blocking - if the channel is full,
-                        // the AuditService is backed up and we should not block
-                        // checkpoint execution
-                        if let Err(e) = challenge_tx.try_send(challenge) {
-                            warn!(
-                                "Unable to send challenge to audit service: {e}. \
-                                 AuditService may be backed up or shut down."
-                            );
-                        }
-                    }
-                }
             }
         }
     }

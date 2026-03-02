@@ -694,14 +694,8 @@ mod model_tests {
         let wc2 = crate::digests::ModelWeightsCommitment::new([0xCC; 32]);
         let ec2 = crate::digests::EmbeddingCommitment::new([0u8; 32]);
         let dkc2 = crate::digests::DecryptionKeyCommitment::new([0u8; 32]);
-        let result = state.request_commit_model_update(
-            not_owner,
-            &model_id_1(),
-            manifest2,
-            wc2,
-            ec2,
-            dkc2,
-        );
+        let result =
+            state.request_commit_model_update(not_owner, &model_id_1(), manifest2, wc2, ec2, dkc2);
         match result {
             Err(ExecutionFailureStatus::NotModelOwner) => {}
             other => panic!("Expected NotModelOwner, got {:?}", other),
@@ -726,12 +720,8 @@ mod model_tests {
             vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
             vec![10],
         );
-        let result = state.request_reveal_model(
-            model_owner(),
-            &model_id_1(),
-            decryption_key,
-            embedding,
-        );
+        let result =
+            state.request_reveal_model(model_owner(), &model_id_1(), decryption_key, embedding);
 
         match result {
             Err(ExecutionFailureStatus::ModelRevealEpochMismatch) => {}

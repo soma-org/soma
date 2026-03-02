@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use challenge::ChallengeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
 use model::ModelExecutor;
@@ -31,7 +30,6 @@ use types::transaction::{
 use types::tx_fee::TransactionFee;
 use validator::ValidatorExecutor;
 
-mod challenge;
 mod change_epoch;
 mod coin;
 mod model;
@@ -306,12 +304,6 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::ClaimRewards(_)
         | TransactionKind::ReportSubmission { .. }
         | TransactionKind::UndoReportSubmission { .. } => Box::new(SubmissionExecutor::new()),
-
-        // Challenge transactions
-        TransactionKind::InitiateChallenge(_)
-        | TransactionKind::ReportChallenge { .. }
-        | TransactionKind::UndoReportChallenge { .. }
-        | TransactionKind::ClaimChallengeBond { .. } => Box::new(ChallengeExecutor::new()),
     }
 }
 

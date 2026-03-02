@@ -25,11 +25,10 @@ use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
 use types::crypto::{DecryptionKey, Signature};
-use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use types::digests::ModelWeightsCommitment;
 use types::effects::{InputSharedObject, TransactionEffectsAPI};
 use types::intent::{Intent, IntentMessage};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::ModelId;
 use types::object::{ObjectID, Owner};
 use types::quorum_driver::{ExecuteTransactionRequest, ExecuteTransactionRequestType};
 use types::submission::SubmissionManifest;
@@ -41,7 +40,7 @@ use types::transaction::{
 use url::Url;
 use utils::logging::init_tracing;
 
-// ===== Helpers (shared with target_tests.rs / challenge_tests.rs) =====
+// ===== Helpers (shared with target_tests.rs) =====
 
 fn make_manifest(url_str: &str) -> Manifest {
     let url = Url::parse(url_str).expect("Invalid URL");
@@ -49,25 +48,14 @@ fn make_manifest(url_str: &str) -> Manifest {
     Manifest::V1(ManifestV1::new(url, metadata))
 }
 
-fn make_genesis_model_config(
-    owner: SomaAddress,
-    model_id: ModelId,
-    initial_stake: u64,
-) -> GenesisModelConfig {
-    let url_str = format!("https://example.com/models/{}", model_id);
-    let manifest = make_manifest(&url_str);
-    let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-
+fn make_genesis_model_config(owner: SomaAddress, initial_stake: u64) -> GenesisModelConfig {
+    let manifest = make_manifest("https://example.com/models/genesis");
     GenesisModelConfig {
         owner,
-        model_id,
         manifest,
         decryption_key: DecryptionKey::new([0xAA; 32]),
-        weights_commitment,
+        weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
         architecture_version: 1,
-        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
-        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -158,19 +146,24 @@ async fn test_shared_object_mutation_via_submit_data() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -206,6 +199,7 @@ async fn test_shared_object_mutation_via_submit_data() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -371,7 +365,7 @@ async fn test_conflicting_owned_transactions_same_coin() {
 // ===================================================================
 // Test 3: Shared object status transition via ClaimRewards
 //
-// After filling a target and closing the challenge window:
+// After filling a target and closing the audit window:
 // - ClaimRewards transitions target to Claimed status
 // - Target appears in mutated() (status change, not deletion)
 // - New reward coins are created
@@ -385,19 +379,24 @@ async fn test_shared_object_status_transition_via_claim() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -427,6 +426,7 @@ async fn test_shared_object_status_transition_via_claim() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -437,10 +437,10 @@ async fn test_shared_object_status_transition_via_claim() {
     assert!(submit_response.effects.status().is_ok(), "SubmitData should succeed");
     info!("Target {} filled in epoch 0", target_id);
 
-    // Advance epochs to close the challenge window (fill_epoch + 1 = 0 + 1 = 1)
+    // Advance epochs to close the audit window (fill_epoch + 1 = 0 + 1 = 1)
     test_cluster.trigger_reconfiguration().await;
     test_cluster.trigger_reconfiguration().await;
-    info!("Advanced to epoch 2 — challenge window closed");
+    info!("Advanced to epoch 2 — audit window closed");
 
     // Execute ClaimRewards
     let gas_object = test_cluster
@@ -520,6 +520,7 @@ async fn test_shared_object_status_transition_via_claim() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -552,19 +553,24 @@ async fn test_target_version_increments_on_mutations() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -601,6 +607,7 @@ async fn test_target_version_increments_on_mutations() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -656,7 +663,7 @@ async fn test_target_version_increments_on_mutations() {
     let gas = get_validator_gas_object(&test_cluster, validator_addr, 1).await;
 
     let report_tx = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         validator_addr,
         vec![gas],
     );
@@ -699,7 +706,7 @@ async fn test_target_version_increments_on_mutations() {
     let gas2 = get_validator_gas_object(&test_cluster, validator_addr_2, 2).await;
 
     let report_tx_2 = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         validator_addr_2,
         vec![gas2],
     );
@@ -752,19 +759,24 @@ async fn test_transaction_replay_idempotency() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -795,6 +807,7 @@ async fn test_transaction_replay_idempotency() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -917,17 +930,22 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -966,6 +984,7 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
                 model_id,
                 embedding: SomaTensor::zeros(vec![embedding_dim]),
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+                loss_score: SomaTensor::new(vec![0.5], vec![1]),
                 bond_coin: gas_object,
             }),
             submitter,
@@ -1064,19 +1083,24 @@ async fn test_shared_object_dependency_tracking() {
     init_tracing();
 
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state, thresholds, and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state().get_system_state_object_for_testing().expect("Should get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -1109,6 +1133,7 @@ async fn test_shared_object_dependency_tracking() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -1126,7 +1151,7 @@ async fn test_shared_object_dependency_tracking() {
     let gas = get_validator_gas_object(&test_cluster, validator_addr, 1).await;
 
     let report_tx_data = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         validator_addr,
         vec![gas],
     );
@@ -1161,7 +1186,7 @@ async fn test_shared_object_dependency_tracking() {
     let gas2 = get_validator_gas_object(&test_cluster, validator_addr_2, 2).await;
 
     let report_tx_data_2 = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         validator_addr_2,
         vec![gas2],
     );

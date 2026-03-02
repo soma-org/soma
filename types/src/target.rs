@@ -13,7 +13,7 @@
 //! - Epoch-scoped: all targets expire at epoch boundary
 //! - Spawn-on-fill: filling a target spawns 1 replacement
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[cfg(feature = "ml")]
 use burn::backend::NdArray;
@@ -24,7 +24,6 @@ use rand::seq::SliceRandom as _;
 use serde::{Deserialize, Serialize};
 
 use crate::base::SomaAddress;
-use crate::challenge::ChallengeId;
 use crate::committee::EpochId;
 use crate::crypto::DefaultHash;
 use crate::digests::TransactionDigest;
@@ -108,21 +107,19 @@ pub struct TargetV1 {
     /// Verified during ScoreFraud challenge audit.
     pub winning_distance_score: Option<SomaTensor>,
 
-    // =========================================================================
-    // Tally-based challenge fields (set when target is filled)
-    // =========================================================================
-    /// Challenger address (set by InitiateChallenge, first one wins).
-    /// If set, ReportSubmission reports can attribute fraud to this challenger.
-    pub challenger: Option<SomaAddress>,
+    /// Loss score from the winning submission's model inference.
+    /// Stored as vector SomaTensor (f32 values).
+    /// Verified during challenge audit.
+    pub winning_loss_score: Option<SomaTensor>,
 
-    /// Challenge object ID (set by InitiateChallenge).
-    /// Used to look up Challenge for ClaimChallengeBond.
-    pub challenge_id: Option<ChallengeId>,
-
-    /// Submission reports: reporter → optional challenger attribution.
+    // =========================================================================
+    // Submission report fields (tally-based fraud detection)
+    // =========================================================================
+    /// Validators who have reported this submission as fraudulent.
+    /// If 2f+1 validators report, the submitter's bond is forfeited at ClaimRewards.
     /// Stored on Target object (not SystemState) for locality.
     /// Cleared when target is claimed.
-    pub submission_reports: BTreeMap<SomaAddress, Option<SomaAddress>>,
+    pub submission_reports: BTreeSet<SomaAddress>,
 }
 
 /// Status of a target in its lifecycle.
@@ -161,31 +158,29 @@ impl TargetV1 {
     }
 
     // =========================================================================
-    // Tally-based submission report methods
+    // Submission report methods (tally-based fraud detection)
     // =========================================================================
 
     /// Record a submission report from a validator.
-    /// The optional challenger parameter allows attributing fraud to a specific challenger.
-    pub fn report_submission(&mut self, reporter: SomaAddress, challenger: Option<SomaAddress>) {
-        self.submission_reports.insert(reporter, challenger);
+    pub fn report_submission(&mut self, reporter: SomaAddress) {
+        self.submission_reports.insert(reporter);
     }
 
     /// Remove a submission report.
     pub fn undo_report_submission(&mut self, reporter: SomaAddress) -> bool {
-        self.submission_reports.remove(&reporter).is_some()
+        self.submission_reports.remove(&reporter)
     }
 
     /// Get submission report quorum result.
-    /// Returns (has_quorum, winning_challenger, reporting_validators).
+    /// Returns (has_quorum, reporting_validators).
     /// - has_quorum: true if total reporter stake >= 2f+1
-    /// - winning_challenger: Some if >2/3 of reporting stake agrees on same challenger
     /// - reporting_validators: list of validators who reported (for bond distribution)
     pub fn get_submission_report_quorum(
         &self,
         validator_set: &ValidatorSet,
-    ) -> (bool, Option<SomaAddress>, Vec<SomaAddress>) {
+    ) -> (bool, Vec<SomaAddress>) {
         if self.submission_reports.is_empty() {
-            return (false, None, vec![]);
+            return (false, vec![]);
         }
 
         let quorum_threshold = crate::committee::QUORUM_THRESHOLD;
@@ -193,34 +188,14 @@ impl TargetV1 {
         // Calculate total reporter stake
         let mut total_stake = 0u64;
         let mut reporters = vec![];
-        for reporter in self.submission_reports.keys() {
+        for reporter in &self.submission_reports {
             if let Some(v) = validator_set.find_validator(*reporter) {
                 total_stake += v.voting_power;
                 reporters.push(*reporter);
             }
         }
 
-        if total_stake < quorum_threshold {
-            return (false, None, reporters);
-        }
-
-        // Count stake by challenger attribution
-        let mut challenger_stakes: BTreeMap<Option<SomaAddress>, u64> = BTreeMap::new();
-        for (reporter, challenger) in &self.submission_reports {
-            if let Some(v) = validator_set.find_validator(*reporter) {
-                *challenger_stakes.entry(*challenger).or_default() += v.voting_power;
-            }
-        }
-
-        // Find if any challenger has quorum among reporting stake
-        for (challenger, stake) in challenger_stakes {
-            if stake >= quorum_threshold {
-                return (true, challenger, reporters);
-            }
-        }
-
-        // Has reporting quorum but no consensus on challenger
-        (true, None, reporters)
+        (total_stake >= quorum_threshold, reporters)
     }
 
     /// Clear submission reports (called when target is claimed).
@@ -278,10 +253,8 @@ pub fn generate_target(
         winning_data_manifest: None,
         winning_embedding: None,
         winning_distance_score: None,
-        // Tally-based challenge fields (set when challenged)
-        challenger: None,
-        challenge_id: None,
-        submission_reports: BTreeMap::new(),
+        winning_loss_score: None,
+        submission_reports: BTreeSet::new(),
     })
 }
 
@@ -429,8 +402,8 @@ mod tests {
 
     #[test]
     fn test_embedding_dimension() {
-        let embedding = deterministic_embedding(42, 768);
-        assert_eq!(embedding.len(), 768);
+        let embedding = deterministic_embedding(42, 2048);
+        assert_eq!(embedding.len(), 2048);
     }
 
     #[test]
@@ -459,11 +432,10 @@ mod tests {
             winning_model_owner: None,
             bond_amount: 0,
             winning_data_manifest: None,
-                winning_embedding: None,
+            winning_embedding: None,
             winning_distance_score: None,
-            challenger: None,
-            challenge_id: None,
-            submission_reports: BTreeMap::new(),
+            winning_loss_score: None,
+            submission_reports: BTreeSet::new(),
         };
 
         assert!(target.is_open());

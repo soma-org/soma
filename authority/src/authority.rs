@@ -1658,10 +1658,9 @@ impl AuthorityState {
             system_state_balance += m.staking_pool.pending_stake as u128;
         }
 
-        // Iterate all live objects to sum coin, target, and challenge balances
+        // Iterate all live objects to sum coin and target balances
         let mut coin_balance: u128 = 0;
         let mut target_balance: u128 = 0;
-        let mut challenge_balance: u128 = 0;
         let mut object_count: u64 = 0;
 
         for live_obj in self.get_global_state_hash_store().iter_live_object_set() {
@@ -1682,19 +1681,13 @@ impl AuthorityState {
                         target_balance += target.bond_amount as u128;
                     }
                 }
-                ObjectType::Challenge => {
-                    if let Some(challenge) = obj.as_challenge() {
-                        challenge_balance += challenge.challenger_bond as u128;
-                    }
-                }
                 // SystemState: accounted above via get_system_state_object_for_testing
                 // StakedSoma, Submission: no SOMA value (receipts only)
                 _ => {}
             }
         }
 
-        let total_accounted =
-            coin_balance + system_state_balance + target_balance + challenge_balance;
+        let total_accounted = coin_balance + system_state_balance + target_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;
 
         if total_accounted != expected {
@@ -1702,7 +1695,7 @@ impl AuthorityState {
                 "SUPPLY CONSERVATION VIOLATION at epoch {}! \
                  Expected {expected}, got {total_accounted} \
                  (coins={coin_balance}, system_state={system_state_balance}, \
-                 targets={target_balance}, challenges={challenge_balance}, \
+                 targets={target_balance}, \
                  objects_scanned={object_count})",
                 cur_epoch_store.epoch(),
             );
@@ -1716,7 +1709,7 @@ impl AuthorityState {
                 "Supply conservation check passed for epoch {} \
                  (total={expected}, coins={coin_balance}, \
                  system_state={system_state_balance}, targets={target_balance}, \
-                 challenges={challenge_balance}, objects={object_count})",
+                 objects={object_count})",
                 cur_epoch_store.epoch(),
             );
         }

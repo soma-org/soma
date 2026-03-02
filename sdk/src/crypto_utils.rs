@@ -84,9 +84,10 @@ pub fn commitment(data: &[u8]) -> [u8; 32] {
     arr
 }
 
-/// Compute the Blake2b-256 hash of `data`, returning a hex string.
-pub fn commitment_hex(data: &[u8]) -> String {
-    hex::encode(commitment(data))
+/// Compute the Blake2b-256 hash of `data`, returning a Base58 string.
+pub fn commitment_base58(data: &[u8]) -> String {
+    use fastcrypto::encoding::{Base58, Encoding};
+    Base58::encode(commitment(data))
 }
 
 #[cfg(test)]

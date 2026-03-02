@@ -95,8 +95,12 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ModelNotPending => (ExecutionErrorKind::ModelNotPending, None),
             E::ModelAlreadyInactive => (ExecutionErrorKind::ModelAlreadyInactive, None),
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
-            E::ModelEmbeddingCommitmentMismatch => (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None),
-            E::ModelDecryptionKeyCommitmentMismatch => (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None),
+            E::ModelEmbeddingCommitmentMismatch => {
+                (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None)
+            }
+            E::ModelDecryptionKeyCommitmentMismatch => {
+                (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None)
+            }
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
             E::ModelArchitectureVersionMismatch => {
                 (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
@@ -120,7 +124,7 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
             E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
             E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
-            E::ChallengeWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::AuditWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
             E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
             // Submission errors
             E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
@@ -134,17 +138,8 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::InsufficientEmissionBalance => {
                 (ExecutionErrorKind::InsufficientEmissionBalance, None)
             }
-            // Challenge errors
-            E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
-            E::InsufficientChallengerBond { .. } => {
-                (ExecutionErrorKind::InsufficientChallengerBond, None)
-            }
-            E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
-            E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
-            E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
-            E::InvalidChallengeResult => (ExecutionErrorKind::InvalidChallengeResult, None),
-            E::InvalidChallengeQuorum => (ExecutionErrorKind::InvalidChallengeQuorum, None),
-            E::ChallengeAlreadyExists => (ExecutionErrorKind::ChallengeAlreadyExists, None),
+            // Audit errors
+            E::AuditWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
             E::DataExceedsMaxSize { size, max_size } => (
                 ExecutionErrorKind::DataExceedsMaxSize,
                 Some(format!("size={}, max_size={}", size, max_size)),
@@ -559,7 +554,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
                 architecture_version: Some(args.architecture_version),
                 embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(args.decryption_key_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(
+                    args.decryption_key_commitment.into_inner().to_vec().into(),
+                ),
                 stake_amount: Some(args.stake_amount),
                 commission_rate: Some(args.commission_rate),
             }),
@@ -573,7 +570,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 manifest: Some(args.manifest.into()),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
                 embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(args.decryption_key_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(
+                    args.decryption_key_commitment.into_inner().to_vec().into(),
+                ),
             }),
             K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
                 model_id: Some(args.model_id.to_string()),
@@ -612,41 +611,18 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 embedding: args.embedding.to_vec(),
                 distance_score: Some(args.distance_score.as_scalar()),
                 bond_coin: Some(object_ref_to_proto(args.bond_coin)),
+                loss_score: args.loss_score.to_vec(),
             }),
             K::ClaimRewards(args) => {
                 Kind::ClaimRewards(ClaimRewards { target_id: Some(args.target_id.to_string()) })
             }
-            K::ReportSubmission { target_id, challenger } => {
-                Kind::ReportSubmission(ReportSubmission {
-                    target_id: Some(target_id.to_string()),
-                    challenger: challenger.map(|c| c.to_string()),
-                })
-            }
+            K::ReportSubmission { target_id } => Kind::ReportSubmission(ReportSubmission {
+                target_id: Some(target_id.to_string()),
+                challenger: None,
+            }),
             K::UndoReportSubmission { target_id } => {
                 Kind::UndoReportSubmission(UndoReportSubmission {
                     target_id: Some(target_id.to_string()),
-                })
-            }
-            // Challenge transactions
-            // All challenges are fraud challenges now (simplified design v2)
-            K::InitiateChallenge(args) => Kind::InitiateChallenge(InitiateChallenge {
-                target_id: Some(args.target_id.to_string()),
-                challenge_type: Some("Fraud".to_string()),
-                model_id: None,
-                bond_coin: Some(object_ref_to_proto(args.bond_coin)),
-            }),
-            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            K::ReportChallenge { challenge_id } => Kind::ReportChallenge(ReportChallenge {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
-            K::UndoReportChallenge { challenge_id } => {
-                Kind::UndoReportChallenge(UndoReportChallenge {
-                    challenge_id: Some(challenge_id.to_string()),
-                })
-            }
-            K::ClaimChallengeBond { challenge_id } => {
-                Kind::ClaimChallengeBond(ClaimChallengeBond {
-                    challenge_id: Some(challenge_id.to_string()),
                 })
             }
         };
@@ -1044,10 +1020,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             submission_bond_per_byte: proto_params
                 .submission_bond_per_byte
                 .ok_or("Missing submission_bond_per_byte")?,
-            // Challenge parameters
-            challenger_bond_per_byte: proto_params
-                .challenger_bond_per_byte
-                .ok_or("Missing challenger_bond_per_byte")?,
             // Data size limit
             max_submission_data_size: proto_params
                 .max_submission_data_size
@@ -1499,10 +1471,10 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
             // Submission parameters
             submission_bond_per_byte: Some(domain_params.submission_bond_per_byte),
-            // Challenge parameters
-            challenger_bond_per_byte: Some(domain_params.challenger_bond_per_byte),
             // Data size limit
             max_submission_data_size: Some(domain_params.max_submission_data_size),
+            // Deprecated (challenge system removed)
+            challenger_bond_per_byte: None,
         })
     }
 }
@@ -1743,7 +1715,9 @@ impl From<types::model::PendingModelUpdate> for PendingModelUpdate {
             manifest: Some(value.manifest.into()),
             weights_commitment: Some(value.weights_commitment.into_inner().to_vec().into()),
             embedding_commitment: Some(value.embedding_commitment.into_inner().to_vec().into()),
-            decryption_key_commitment: Some(value.decryption_key_commitment.into_inner().to_vec().into()),
+            decryption_key_commitment: Some(
+                value.decryption_key_commitment.into_inner().to_vec().into(),
+            ),
             commit_epoch: Some(value.commit_epoch),
         }
     }
@@ -1754,7 +1728,8 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
 
     fn try_from(proto: PendingModelUpdate) -> Result<Self, Self::Error> {
         let manifest = proto.manifest.ok_or("Missing manifest")?;
-        let manifest: types::metadata::Manifest = manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
+        let manifest: types::metadata::Manifest =
+            manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
 
         let wt_bytes: Vec<u8> =
             proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
@@ -1768,8 +1743,9 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
 
         let dk_bytes: Vec<u8> =
             proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
-        let dk_array: [u8; 32] =
-            dk_bytes.try_into().map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+        let dk_array: [u8; 32] = dk_bytes
+            .try_into()
+            .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
 
         Ok(types::model::PendingModelUpdate {
             manifest,
@@ -1795,7 +1771,9 @@ impl TryFrom<types::model::ModelV1> for Model {
             manifest: Some(domain.manifest.into()),
             weights_commitment: Some(domain.weights_commitment.into_inner().to_vec().into()),
             embedding_commitment: Some(domain.embedding_commitment.into_inner().to_vec().into()),
-            decryption_key_commitment: Some(domain.decryption_key_commitment.into_inner().to_vec().into()),
+            decryption_key_commitment: Some(
+                domain.decryption_key_commitment.into_inner().to_vec().into(),
+            ),
             commit_epoch: Some(domain.commit_epoch),
             decryption_key: domain.decryption_key.map(|k| k.as_ref().to_vec().into()),
             embedding: domain.embedding.map(|e| e.to_vec()).unwrap_or_default(),
@@ -1818,7 +1796,8 @@ impl TryFrom<Model> for types::model::ModelV1 {
             .map_err(|_| "Invalid SomaAddress".to_string())?;
 
         let manifest = proto.manifest.ok_or("Missing manifest")?;
-        let manifest: types::metadata::Manifest = manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
+        let manifest: types::metadata::Manifest =
+            manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
 
         let wt_bytes: Vec<u8> =
             proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
@@ -1832,8 +1811,9 @@ impl TryFrom<Model> for types::model::ModelV1 {
 
         let dk_commit_bytes: Vec<u8> =
             proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
-        let dk_commit_array: [u8; 32] =
-            dk_commit_bytes.try_into().map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+        let dk_commit_array: [u8; 32] = dk_commit_bytes
+            .try_into()
+            .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
 
         let decryption_key = proto.decryption_key.map(|dk| {
             let dk_vec: Vec<u8> = dk.into();
@@ -1861,7 +1841,9 @@ impl TryFrom<Model> for types::model::ModelV1 {
             manifest,
             weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
             embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(dk_commit_array),
+            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                dk_commit_array,
+            ),
             commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
             decryption_key,
             embedding,

@@ -4288,6 +4288,8 @@ pub struct SubmitData {
     pub distance_score: ::core::option::Option<f32>,
     #[prost(message, optional, tag = "7")]
     pub bond_coin: ::core::option::Option<ObjectReference>,
+    #[prost(float, repeated, tag = "8")]
+    pub loss_score: ::prost::alloc::vec::Vec<f32>,
 }
 /// Claim rewards from a filled or expired target.
 #[non_exhaustive]

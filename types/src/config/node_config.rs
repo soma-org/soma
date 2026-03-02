@@ -152,10 +152,18 @@ pub struct NodeConfig {
     pub transaction_driver_config: Option<TransactionDriverConfig>,
 
     /// URL of the remote scoring service for fraud auditing (e.g. "http://gpu-host:9124").
-    /// If None, the audit service is disabled and the validator will not participate in
-    /// challenge resolution.
+    /// If None, a local scoring server is started automatically on a free port.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scoring_url: Option<String>,
+
+    /// Compute backend for the local scoring engine (used when `scoring_url` is None).
+    /// Defaults to Wgpu. Only relevant for validators.
+    #[serde(default = "default_scoring_device")]
+    pub scoring_device: DeviceConfig,
+}
+
+fn default_scoring_device() -> DeviceConfig {
+    DeviceConfig::Wgpu
 }
 
 impl NodeConfig {
@@ -724,6 +732,7 @@ impl ValidatorConfigBuilder {
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
             scoring_url: None,
+            scoring_device: default_scoring_device(),
         }
     }
 
@@ -874,6 +883,7 @@ impl FullnodeConfigBuilder {
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
             scoring_url: None,
+            scoring_device: default_scoring_device(),
         }
     }
 }

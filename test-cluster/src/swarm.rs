@@ -19,7 +19,7 @@ use types::config::network_config::{
     CommitteeConfig, ConfigBuilder, NetworkConfig, ProtocolVersionsConfig,
     SupportedProtocolVersionsCallback,
 };
-use types::config::node_config::{FullnodeConfigBuilder, NodeConfig};
+use types::config::node_config::{DeviceConfig, FullnodeConfigBuilder, NodeConfig};
 use types::config::p2p_config::SeedPeer;
 use types::multiaddr::Multiaddr;
 use types::peer_id::PeerId;
@@ -158,6 +158,7 @@ pub struct SwarmBuilder<R = OsRng> {
     data_ingestion_dir: Option<PathBuf>,
     fullnode_run_with_range: Option<types::config::node_config::RunWithRange>,
     scoring_url: Option<String>,
+    scoring_device: Option<DeviceConfig>,
 }
 
 impl Default for SwarmBuilder {
@@ -176,6 +177,7 @@ impl Default for SwarmBuilder {
             data_ingestion_dir: None,
             fullnode_run_with_range: None,
             scoring_url: None,
+            scoring_device: None,
         }
     }
 }
@@ -202,6 +204,7 @@ impl<R> SwarmBuilder<R> {
             data_ingestion_dir: self.data_ingestion_dir,
             fullnode_run_with_range: self.fullnode_run_with_range,
             scoring_url: self.scoring_url,
+            scoring_device: self.scoring_device,
         }
     }
 
@@ -323,6 +326,11 @@ impl<R> SwarmBuilder<R> {
         self.scoring_url = Some(url);
         self
     }
+
+    pub fn with_scoring_device(mut self, device: DeviceConfig) -> Self {
+        self.scoring_device = Some(device);
+        self
+    }
 }
 
 // TODO: modify this build to make use of fullnode configs and data ingestion urls
@@ -355,6 +363,13 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
         if let Some(ref scoring_url) = self.scoring_url {
             for config in &mut network_config.validator_configs {
                 config.scoring_url = Some(scoring_url.clone());
+            }
+        }
+
+        // Override scoring_device on validator configs if set
+        if let Some(ref device) = self.scoring_device {
+            for config in &mut network_config.validator_configs {
+                config.scoring_device = device.clone();
             }
         }
 

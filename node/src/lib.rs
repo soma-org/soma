@@ -64,7 +64,6 @@ use tokio::time::sleep;
 use tower::ServiceBuilder;
 use tracing::{Instrument, debug, error, error_span, info, warn};
 use types::base::AuthorityName;
-use types::challenge::ChallengeV1;
 use types::client::Config;
 use types::committee::Committee;
 use types::config::node_config::{
@@ -108,12 +107,9 @@ pub struct ValidatorComponents {
     consensus_manager: Arc<ConsensusManager>,
     consensus_store_pruner: ConsensusStorePruner,
     consensus_adapter: Arc<ConsensusAdapter>,
-    /// AuditService for challenge resolution (submits tally-based reports).
-    /// Recreated each epoch with fresh channels.
+    /// AuditService for submission verification (submits tally-based reports).
+    /// Currently defunct (Stage 1) — no trigger mechanism until Stage 2.
     audit_service: Option<Arc<AuditService>>,
-    /// Sender for challenge observer - used by CheckpointExecutor to notify AuditService
-    /// of new Challenge objects. Cloned and passed to CheckpointExecutor at startup.
-    challenge_observer_sender: tokio::sync::mpsc::Sender<ChallengeV1>,
     /// Handle for the HTTP proxy server (for serving data/model downloads).
     /// None if proxy_port is not configured.
     #[allow(unused)]
@@ -201,6 +197,10 @@ pub struct SomaNode {
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
 
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
+
+    /// Handle for the local scoring server task (if started).
+    /// Stored so we can abort it on shutdown or validator removal.
+    local_scoring_handle: Option<JoinHandle<()>>,
 }
 
 impl SomaNode {
@@ -466,6 +466,35 @@ impl SomaNode {
 
         let authority_names_to_peer_ids = ArcSwap::from_pointee(authority_names_to_peer_ids);
 
+        // If this is a validator without an external scoring_url, start a local scoring
+        // server so that the audit service can perform ML inference for challenge resolution.
+        let mut local_scoring_handle = None;
+        if is_validator && config.scoring_url.is_none() {
+            info!("No scoring_url configured; starting local scoring server");
+            let scoring_data_dir = config.db_path().join("scoring-data");
+            std::fs::create_dir_all(&scoring_data_dir)
+                .context("Failed to create scoring data directory")?;
+
+            let model_config = scoring::ModelConfig::new();
+            let engine = Arc::new(
+                scoring::scoring::ScoringEngine::new(
+                    &scoring_data_dir,
+                    model_config,
+                    &config.scoring_device,
+                )
+                .context("Failed to create local ScoringEngine")?,
+            );
+
+            let (handle, port) = scoring::server::start_local_scoring_server(engine)
+                .await
+                .map_err(|e| anyhow!("Failed to start local scoring server: {e}"))?;
+
+            let local_url = format!("http://127.0.0.1:{port}");
+            info!("Local scoring server started at {local_url}");
+            config.scoring_url = Some(local_url);
+            local_scoring_handle = Some(handle);
+        }
+
         let validator_components = if state.is_validator(&epoch_store) && is_validator {
             let (components, _) = futures::join!(
                 Self::construct_validator_components(
@@ -509,6 +538,7 @@ impl SomaNode {
             shutdown_channel_tx: shutdown_channel,
             auth_agg,
             subscription_service_checkpoint_sender,
+            local_scoring_handle,
 
             // connection_monitor_status,
             #[cfg(msim)]
@@ -719,21 +749,11 @@ impl SomaNode {
             if std::env::var("DISABLE_REPLAY_WAITER").is_ok() { None } else { Some(replay_waiter) };
         checkpoint_service.spawn(epoch_store.clone(), replay_waiter).await;
 
-        // Create channel for AuditService to receive new Challenge objects from checkpoint execution.
-        let (challenge_tx, challenge_rx) = tokio::sync::mpsc::channel(100);
-
-        // Create AuditService with MockEvaluationService for e2e testing.
-        // TODO: Replace MockEvaluationService with real EvaluationService from inference-engine crate (Phase 6)
-        // once it's implemented. The real EvaluationService will wrap probes/intelligence for
-        // deterministic inference.
-        let audit_service = Self::create_audit_service(
-            config,
-            &state,
-            &epoch_store,
-            consensus_adapter.clone(),
-            challenge_rx,
-        )
-        .await;
+        // AuditService is currently defunct (Stage 1 — challenges removed).
+        // Stage 2 will add autonomous epoch-triggered auditing.
+        let audit_service =
+            Self::create_audit_service(config, &state, &epoch_store, consensus_adapter.clone())
+                .await;
 
         // Start proxy server if proxy_port is configured
         let proxy_server_handle = if let Some(proxy_port) =
@@ -800,7 +820,6 @@ impl SomaNode {
             consensus_store_pruner,
             consensus_adapter,
             audit_service,
-            challenge_observer_sender: challenge_tx,
             proxy_server_handle,
         })
     }
@@ -1022,12 +1041,6 @@ impl SomaNode {
             info!("Creating checkpoint executor for epoch {}", epoch_store.epoch());
 
             // Get the challenge observer sender from ValidatorComponents if this is a validator.
-            // Fullnodes don't run the AuditService, so they get None.
-            let challenge_observer_sender = {
-                let guard = self.validator_components.lock().await;
-                guard.as_ref().map(|c| c.challenge_observer_sender.clone())
-            };
-
             let checkpoint_executor = CheckpointExecutor::new(
                 epoch_store.clone(),
                 self.checkpoint_store.clone(),
@@ -1036,7 +1049,6 @@ impl SomaNode {
                 self.backpressure_manager.clone(),
                 self.config.checkpoint_executor_config.clone(),
                 self.subscription_service_checkpoint_sender.clone(),
-                challenge_observer_sender,
             );
 
             let run_with_range = self.config.run_with_range;
@@ -1140,8 +1152,7 @@ impl SomaNode {
                 consensus_store_pruner,
                 consensus_adapter,
                 audit_service,
-                challenge_observer_sender: _, // Dropped - new channel created each epoch
-                proxy_server_handle: _,       // Dropped - recreated each epoch
+                proxy_server_handle: _, // Dropped - recreated each epoch
             }) = validator_components_lock_guard.take()
             {
                 info!("Reconfiguring the validator.");
@@ -1186,6 +1197,10 @@ impl SomaNode {
                     )
                 } else {
                     info!("This node is no longer a validator after reconfiguration");
+                    if let Some(handle) = &self.local_scoring_handle {
+                        handle.abort();
+                        info!("Local scoring server shut down (no longer a validator)");
+                    }
                     None
                 }
             } else {
@@ -1246,6 +1261,10 @@ impl SomaNode {
     }
 
     async fn shutdown(&self) {
+        if let Some(handle) = &self.local_scoring_handle {
+            handle.abort();
+            info!("Local scoring server shut down");
+        }
         if let Some(validator_components) = &*self.validator_components.lock().await {
             validator_components.consensus_manager.shutdown().await;
         }
@@ -1526,7 +1545,6 @@ impl SomaNode {
         state: &Arc<AuthorityState>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
         consensus_adapter: Arc<ConsensusAdapter>,
-        challenge_rx: tokio::sync::mpsc::Receiver<ChallengeV1>,
     ) -> Option<Arc<AuditService>> {
         let scoring_url = config.scoring_url.as_ref()?;
 
@@ -1541,7 +1559,6 @@ impl SomaNode {
 
         info!("Audit service connected to scoring service at {scoring_url}");
 
-        // Get validator's account address and keypair from config
         let validator_address = config.soma_address();
         let account_keypair = Arc::new(config.account_key_pair.keypair().copy());
 
@@ -1556,8 +1573,8 @@ impl SomaNode {
             epoch_store.clone(),
         );
 
-        // Spawn the audit service
-        audit_service.clone().spawn(challenge_rx).await;
+        // NOTE: AuditService is currently defunct (Stage 1).
+        // Stage 2 will add an autonomous epoch-triggered spawn.
 
         Some(audit_service)
     }

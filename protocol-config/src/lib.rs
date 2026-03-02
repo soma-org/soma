@@ -258,13 +258,6 @@ pub struct ProtocolConfig {
     /// or forfeited to emission pool on successful challenge.
     submission_bond_per_byte: Option<u64>,
 
-    // === Challenge Parameters ===
-    /// Bond per byte for challengers (in shannons)
-    /// Challenger must post challenger_bond_per_byte * data_size as bond.
-    /// If challenger wins: submitter's bond is slashed, challenger gets reward.
-    /// If challenger loses: challenger's bond is slashed.
-    challenger_bond_per_byte: Option<u64>,
-
     // === Data Size Limits ===
     /// Maximum data size allowed for submissions (in bytes).
     /// Submissions exceeding this size will be rejected.
@@ -373,7 +366,7 @@ impl ProtocolConfig {
 
             // Target/Submission parameters
             target_models_per_target: Some(3), // 3 models per target
-            target_embedding_dim: Some(768),   // Standard transformer embedding dim
+            target_embedding_dim: Some(2048),  // Standard transformer embedding dim
             target_initial_distance_threshold: Some(BcsF32(2.0)), // Cosine distance 2.0 = max (impossible to miss)
             target_reward_allocation_bps: Some(8000),             // 80% of emissions to targets
             target_hits_per_epoch: Some(16), // Target 16 hits/epoch (adjusts difficulty)
@@ -390,9 +383,6 @@ impl ProtocolConfig {
 
             // Submission parameters
             submission_bond_per_byte: Some(10), // 10 shannons per byte
-
-            // Challenge parameters
-            challenger_bond_per_byte: Some(5), // 5 shannons per byte (half of submission bond)
 
             // Data size limits
             max_submission_data_size: Some(1024 * 1024), // 1 MiB max data size
@@ -508,8 +498,6 @@ impl ProtocolConfig {
             target_model_reward_share_bps: self.target_model_reward_share_bps(),
             target_claimer_incentive_bps: self.target_claimer_incentive_bps(),
             submission_bond_per_byte: self.submission_bond_per_byte(),
-            // Challenge parameters
-            challenger_bond_per_byte: self.challenger_bond_per_byte(),
             // Data size limits
             max_submission_data_size: self.max_submission_data_size(),
         }
@@ -592,13 +580,6 @@ pub struct SystemParameters {
     /// Bond is held on the Target and returned to submitter on successful claim,
     /// or forfeited to emission pool on successful challenge.
     pub submission_bond_per_byte: u64,
-
-    // === Challenge Parameters ===
-    /// Bond per byte for challengers (in shannons)
-    /// Challenger must post challenger_bond_per_byte * data_size as bond.
-    /// If challenger wins: submitter's bond is slashed, challenger gets reward.
-    /// If challenger loses: challenger's bond is slashed.
-    pub challenger_bond_per_byte: u64,
 
     // === Data Size Limits ===
     /// Maximum data size allowed for submissions (in bytes).

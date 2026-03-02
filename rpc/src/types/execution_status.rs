@@ -62,7 +62,7 @@ pub enum ExecutionError {
     TargetNotOpen,
     TargetExpired { generation_epoch: u64, current_epoch: u64 },
     TargetNotFilled,
-    ChallengeWindowOpen { fill_epoch: u64, current_epoch: u64 },
+    AuditWindowOpen { fill_epoch: u64, current_epoch: u64 },
     TargetAlreadyClaimed,
 
     // Submission errors
@@ -72,15 +72,8 @@ pub enum ExecutionError {
     InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 
-    // Challenge errors
-    ChallengeWindowClosed { fill_epoch: u64, current_epoch: u64 },
-    InsufficientChallengerBond { required: u64, provided: u64 },
-    ChallengeNotFound { challenge_id: Address },
-    ChallengeNotPending { challenge_id: Address },
-    ChallengeExpired { challenge_epoch: u64, current_epoch: u64 },
-    InvalidChallengeResult,
-    InvalidChallengeQuorum,
-    ChallengeAlreadyExists,
+    // Audit errors
+    AuditWindowClosed { fill_epoch: u64, current_epoch: u64 },
 
     // Data size errors
     DataExceedsMaxSize { size: u64, max_size: u64 },

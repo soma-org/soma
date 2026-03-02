@@ -769,7 +769,6 @@ pub enum ObjectContent {
     StakedSoma(StakedSomaDisplay),
     SystemState,
     Target,
-    Challenge,
     Unknown,
 }
 
@@ -824,7 +823,6 @@ impl ObjectOutput {
             }),
             ObjectType::SystemState => Some(ObjectContent::SystemState),
             ObjectType::Target => Some(ObjectContent::Target),
-            ObjectType::Challenge => Some(ObjectContent::Challenge),
         }
     }
 }
@@ -902,13 +900,6 @@ impl Display for ObjectOutput {
                         f,
                         "{}",
                         "Target object (use 'soma target info <id>' for details)".dimmed()
-                    )?;
-                }
-                ObjectContent::Challenge => {
-                    writeln!(
-                        f,
-                        "{}",
-                        "Challenge object (use 'soma challenge info <id>' for details)".dimmed()
                     )?;
                 }
                 ObjectContent::Unknown => {}

@@ -311,18 +311,8 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 builder.add_allocation(stake);
             }
 
-            // Add allocations for genesis model stakes
-            for model in &genesis_config.genesis_models {
-                if model.initial_stake > 0 {
-                    let stake = TokenAllocation {
-                        recipient_address: model.owner,
-                        amount_shannons: model.initial_stake,
-                        staked_with_validator: None,
-                        staked_with_model: Some(model.model_id),
-                    };
-                    builder.add_allocation(stake);
-                }
-            }
+            // Note: genesis model staking is handled internally by the GenesisBuilder
+            // using initial_stake from each GenesisModelConfig.
 
             builder.build()
         };

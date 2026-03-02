@@ -1797,9 +1797,7 @@ impl SystemState {
         embedding: SomaTensor,
     ) -> ExecutionResult {
         match self {
-            Self::V1(v1) => {
-                v1.request_reveal_model(signer, model_id, decryption_key, embedding)
-            }
+            Self::V1(v1) => v1.request_reveal_model(signer, model_id, decryption_key, embedding),
         }
     }
 

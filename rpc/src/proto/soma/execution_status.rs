@@ -68,8 +68,12 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::ModelNotPending => (ExecutionErrorKind::ModelNotPending, None),
             E::ModelAlreadyInactive => (ExecutionErrorKind::ModelAlreadyInactive, None),
             E::ModelRevealEpochMismatch => (ExecutionErrorKind::ModelRevealEpochMismatch, None),
-            E::ModelEmbeddingCommitmentMismatch => (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None),
-            E::ModelDecryptionKeyCommitmentMismatch => (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None),
+            E::ModelEmbeddingCommitmentMismatch => {
+                (ExecutionErrorKind::ModelEmbeddingCommitmentMismatch, None)
+            }
+            E::ModelDecryptionKeyCommitmentMismatch => {
+                (ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch, None)
+            }
             E::ModelNoPendingUpdate => (ExecutionErrorKind::ModelNoPendingUpdate, None),
             E::ModelArchitectureVersionMismatch => {
                 (ExecutionErrorKind::ModelArchitectureVersionMismatch, None)
@@ -83,7 +87,7 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
             E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
             E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
-            E::ChallengeWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::AuditWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
             E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
 
             // Submission errors
@@ -99,17 +103,8 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 (ExecutionErrorKind::InsufficientEmissionBalance, None)
             }
 
-            // Challenge errors
-            E::ChallengeWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
-            E::InsufficientChallengerBond { .. } => {
-                (ExecutionErrorKind::InsufficientChallengerBond, None)
-            }
-            E::ChallengeNotFound { .. } => (ExecutionErrorKind::ChallengeNotFound, None),
-            E::ChallengeNotPending { .. } => (ExecutionErrorKind::ChallengeNotPending, None),
-            E::ChallengeExpired { .. } => (ExecutionErrorKind::ChallengeExpired, None),
-            E::InvalidChallengeResult => (ExecutionErrorKind::InvalidChallengeResult, None),
-            E::InvalidChallengeQuorum => (ExecutionErrorKind::InvalidChallengeQuorum, None),
-            E::ChallengeAlreadyExists => (ExecutionErrorKind::ChallengeAlreadyExists, None),
+            // Audit errors
+            E::AuditWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
             E::DataExceedsMaxSize { size, max_size } => (
                 ExecutionErrorKind::DataExceedsMaxSize,
                 Some(ErrorDetails::OtherError(format!("size={}, max_size={}", size, max_size))),
@@ -259,7 +254,9 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::ModelAlreadyInactive => Ok(Self::ModelAlreadyInactive),
             K::ModelRevealEpochMismatch => Ok(Self::ModelRevealEpochMismatch),
             K::ModelEmbeddingCommitmentMismatch => Ok(Self::ModelEmbeddingCommitmentMismatch),
-            K::ModelDecryptionKeyCommitmentMismatch => Ok(Self::ModelDecryptionKeyCommitmentMismatch),
+            K::ModelDecryptionKeyCommitmentMismatch => {
+                Ok(Self::ModelDecryptionKeyCommitmentMismatch)
+            }
             K::ModelNoPendingUpdate => Ok(Self::ModelNoPendingUpdate),
             K::ModelArchitectureVersionMismatch => Ok(Self::ModelArchitectureVersionMismatch),
             K::ModelCommissionRateTooHigh => Ok(Self::ModelCommissionRateTooHigh),
@@ -271,9 +268,7 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::TargetNotOpen => Ok(Self::TargetNotOpen),
             K::TargetExpired => Ok(Self::TargetExpired { generation_epoch: 0, current_epoch: 0 }),
             K::TargetNotFilled => Ok(Self::TargetNotFilled),
-            K::ChallengeWindowOpen => {
-                Ok(Self::ChallengeWindowOpen { fill_epoch: 0, current_epoch: 0 })
-            }
+            K::ChallengeWindowOpen => Ok(Self::AuditWindowOpen { fill_epoch: 0, current_epoch: 0 }),
             K::TargetAlreadyClaimed => Ok(Self::TargetAlreadyClaimed),
 
             // Submission errors
@@ -290,25 +285,24 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::InsufficientBond => Ok(Self::InsufficientBond { required: 0, provided: 0 }),
             K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),
 
-            // Challenge errors
+            // Audit errors
             K::ChallengeWindowClosed => {
-                Ok(Self::ChallengeWindowClosed { fill_epoch: 0, current_epoch: 0 })
+                Ok(Self::AuditWindowClosed { fill_epoch: 0, current_epoch: 0 })
             }
-            K::InsufficientChallengerBond => {
-                Ok(Self::InsufficientChallengerBond { required: 0, provided: 0 })
+            // Legacy challenge proto variants map to OtherError
+            K::InsufficientChallengerBond
+            | K::ChallengeNotFound
+            | K::ChallengeNotPending
+            | K::ChallengeExpired
+            | K::InvalidChallengeResult
+            | K::InvalidChallengeQuorum
+            | K::ChallengeAlreadyExists => {
+                let msg = value
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| "Legacy challenge error".to_string());
+                Ok(Self::OtherError(msg))
             }
-            K::ChallengeNotFound => {
-                Ok(Self::ChallengeNotFound { challenge_id: crate::types::Address::new([0u8; 32]) })
-            }
-            K::ChallengeNotPending => Ok(Self::ChallengeNotPending {
-                challenge_id: crate::types::Address::new([0u8; 32]),
-            }),
-            K::ChallengeExpired => {
-                Ok(Self::ChallengeExpired { challenge_epoch: 0, current_epoch: 0 })
-            }
-            K::InvalidChallengeResult => Ok(Self::InvalidChallengeResult),
-            K::InvalidChallengeQuorum => Ok(Self::InvalidChallengeQuorum),
-            K::ChallengeAlreadyExists => Ok(Self::ChallengeAlreadyExists),
             K::DataExceedsMaxSize => Ok(Self::DataExceedsMaxSize { size: 0, max_size: 0 }),
 
             K::InsufficientCoinBalance => Ok(Self::InsufficientCoinBalance),

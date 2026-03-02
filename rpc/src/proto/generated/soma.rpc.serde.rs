@@ -13852,6 +13852,9 @@ impl serde::Serialize for SubmitData {
         if self.bond_coin.is_some() {
             len += 1;
         }
+        if !self.loss_score.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SubmitData", len)?;
         if let Some(v) = self.target_id.as_ref() {
             struct_ser.serialize_field("targetId", v)?;
@@ -13870,6 +13873,9 @@ impl serde::Serialize for SubmitData {
         }
         if let Some(v) = self.bond_coin.as_ref() {
             struct_ser.serialize_field("bondCoin", v)?;
+        }
+        if !self.loss_score.is_empty() {
+            struct_ser.serialize_field("lossScore", &self.loss_score)?;
         }
         struct_ser.end()
     }
@@ -13892,6 +13898,8 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
             "distanceScore",
             "bond_coin",
             "bondCoin",
+            "loss_score",
+            "lossScore",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -13902,6 +13910,7 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
             Embedding,
             DistanceScore,
             BondCoin,
+            LossScore,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -13930,6 +13939,7 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                             "embedding" => Ok(GeneratedField::Embedding),
                             "distanceScore" | "distance_score" => Ok(GeneratedField::DistanceScore),
                             "bondCoin" | "bond_coin" => Ok(GeneratedField::BondCoin),
+                            "lossScore" | "loss_score" => Ok(GeneratedField::LossScore),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -13957,6 +13967,7 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                 let mut embedding__ = None;
                 let mut distance_score__ = None;
                 let mut bond_coin__ = None;
+                let mut loss_score__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::TargetId => {
@@ -14000,6 +14011,15 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                             }
                             bond_coin__ = map_.next_value()?;
                         }
+                        GeneratedField::LossScore => {
+                            if loss_score__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("lossScore"));
+                            }
+                            loss_score__ = 
+                                Some(map_.next_value::<Vec<crate::utils::_serde::NumberDeserialize<_>>>()?
+                                    .into_iter().map(|x| x.0).collect())
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -14012,6 +14032,7 @@ impl<'de> serde::Deserialize<'de> for SubmitData {
                     embedding: embedding__.unwrap_or_default(),
                     distance_score: distance_score__,
                     bond_coin: bond_coin__,
+                    loss_score: loss_score__.unwrap_or_default(),
                 })
             }
         }

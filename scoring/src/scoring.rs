@@ -42,9 +42,9 @@ impl ScoringEngine {
             .model_manifests
             .iter()
             .map(|m| {
-                m.decryption_key.as_ref().map(|hex_key| {
-                    let stripped = hex_key.strip_prefix("0x").unwrap_or(hex_key);
-                    let bytes = hex::decode(stripped).expect("invalid hex in decryption_key");
+                m.decryption_key.as_ref().map(|key_str| {
+                    use fastcrypto::encoding::{Base58, Encoding};
+                    let bytes = Base58::decode(key_str).expect("invalid base58 in decryption_key");
                     let mut arr = [0u8; 32];
                     arr.copy_from_slice(&bytes);
                     arr

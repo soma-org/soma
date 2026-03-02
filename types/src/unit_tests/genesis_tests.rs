@@ -376,37 +376,19 @@ fn test_genesis_creates_initial_targets() {
     let per_validator = 1_000 * SHANNONS_PER_SOMA;
 
     let model_owner = SomaAddress::random();
-    let model_id = crate::model::ModelId::random();
     let model_stake = 1 * SHANNONS_PER_SOMA;
 
-    // Build schedule that includes a model stake allocation
-    let mut sched_builder = TokenDistributionScheduleBuilder::new();
-    for config in &configs {
-        let address = SomaAddress::from(&config.account_key_pair.public());
-        sched_builder.add_allocation(TokenAllocation {
-            recipient_address: address,
-            amount_shannons: per_validator,
-            staked_with_validator: Some(address),
-            staked_with_model: None,
-        });
-    }
-    // Add a model stake allocation
-    sched_builder.add_allocation(TokenAllocation {
-        recipient_address: model_owner,
-        amount_shannons: model_stake,
-        staked_with_model: Some(model_id),
-        staked_with_validator: None,
-    });
-    let schedule = sched_builder.build();
+    // Build schedule (validator stakes only — model stake is handled internally
+    // by the builder from GenesisModelConfig.initial_stake)
+    let schedule = make_schedule_for_validators(&configs, per_validator);
 
     // Create a genesis model config
     use url::Url;
 
     use crate::checksum::Checksum;
     use crate::crypto::DecryptionKey;
-    use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+    use crate::digests::ModelWeightsCommitment;
     use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-    use crate::tensor::SomaTensor;
 
     let url_str = "https://example.com/model/weights";
     let url = Url::parse(url_str).unwrap();
@@ -415,13 +397,9 @@ fn test_genesis_creates_initial_targets() {
 
     let genesis_model = GenesisModelConfig {
         owner: model_owner,
-        model_id,
         manifest,
         decryption_key: DecryptionKey::new([0u8; 32]),
-        embedding: SomaTensor::zeros(vec![768]),
         weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
-        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
         architecture_version: 1,
         commission_rate: 500, // 5%
         initial_stake: model_stake,
@@ -435,9 +413,9 @@ fn test_genesis_creates_initial_targets() {
 
     let system_state = get_system_state(&unsigned.objects()).unwrap();
 
-    // Model must be registered as active
+    // Model must be registered as active (model_id is auto-assigned)
     assert!(
-        system_state.model_registry().active_models.contains_key(&model_id),
+        !system_state.model_registry().active_models.is_empty(),
         "Genesis model must be active in the model registry"
     );
 

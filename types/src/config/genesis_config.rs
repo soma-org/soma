@@ -13,16 +13,14 @@ use tracing::info;
 use super::local_ip_utils;
 use crate::base::SomaAddress;
 use crate::config::Config;
+use crate::crypto::DecryptionKey;
 use crate::crypto::{
     AuthorityKeyPair, NetworkKeyPair, ProtocolKeyPair, SomaKeyPair, get_key_pair_from_rng,
 };
-use crate::crypto::DecryptionKey;
-use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use crate::digests::ModelWeightsCommitment;
 use crate::metadata::Manifest;
 use crate::model::{ArchitectureVersion, ModelId};
-use crate::tensor::SomaTensor;
 use crate::multiaddr::Multiaddr;
-use crate::object::ObjectID;
 
 // All information needed to build a NodeConfig for a validator.
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,13 +63,16 @@ impl Clone for ValidatorGenesisConfig {
 /// with `activation_epoch = Some(0)`. This mirrors how genesis validators skip the
 /// `AddValidator` transaction and are created directly as active.
 ///
-/// The staking pool ID is generated at build time (same as validators).
+/// Several fields are auto-generated at build time by the genesis builder:
+/// - `model_id`: assigned deterministically (same pattern as staking pool IDs)
+/// - `embedding`: randomly generated using the protocol config's `target_embedding_dim`
+/// - `embedding_commitment`: computed from the generated embedding
+/// - `decryption_key_commitment`: computed from `decryption_key`
+/// - `initial_stake`: deducted from the emission pool and staked with the model
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GenesisModelConfig {
     /// Owner address for the model
     pub owner: SomaAddress,
-    /// Pre-assigned model ID (used as key in ModelRegistry maps and for token allocation routing)
-    pub model_id: ModelId,
     /// Manifest for the encrypted weights (URL + checksum + size)
     pub manifest: Manifest,
     /// AES-256 decryption key for the encrypted weights
@@ -80,16 +81,10 @@ pub struct GenesisModelConfig {
     pub weights_commitment: ModelWeightsCommitment,
     /// Architecture version (must match protocol config)
     pub architecture_version: ArchitectureVersion,
-    /// Commitment to the model embedding (hash of BCS-serialized SomaTensor)
-    pub embedding_commitment: EmbeddingCommitment,
-    /// Commitment to the decryption key (hash of key bytes), verified at reveal
-    pub decryption_key_commitment: DecryptionKeyCommitment,
-    /// The model's embedding vector in the shared embedding space
-    pub embedding: SomaTensor,
     /// Commission rate in basis points (max 10000)
     pub commission_rate: u64,
     /// Initial stake from the model owner (defaults to model_min_stake: 1 SOMA).
-    /// Translated into a TokenAllocation with `staked_with_model` during genesis building.
+    /// Deducted from the emission pool and staked with the model at genesis.
     #[serde(default = "default_model_stake")]
     pub initial_stake: u64,
 }

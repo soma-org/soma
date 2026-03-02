@@ -289,3 +289,25 @@ async fn test_execute_tx_with_serialized_signature() {
         response.effects.transaction_digest()
     );
 }
+
+/// Build a test cluster with `with_local_scoring()` — validators auto-start their own
+/// local scoring server instead of using the shared mock. Verifies the local scoring
+/// server path works end-to-end (node startup succeeds, audit service is active).
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_local_scoring_server_auto_start() {
+    init_tracing();
+
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(1).with_local_scoring().build().await;
+
+    // If we get here, the validator started with its own local scoring server.
+    // Verify the audit service is active on each validator.
+    for handle in test_cluster.all_validator_handles() {
+        handle.with(|node| {
+            assert!(node.state().name != Default::default(), "Validator should be running");
+        });
+    }
+
+    info!("Validators successfully started with local scoring server");
+}

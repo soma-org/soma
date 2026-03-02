@@ -41,10 +41,10 @@ pub use object::{Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
     AddValidatorArgs, ChangeEpoch, ClaimRewardsArgs, CommitModelArgs, CommitModelUpdateArgs,
-    ConsensusCommitPrologue, GenesisTransaction, InitiateChallengeArgs, Manifest, ManifestV1,
-    Metadata, MetadataV1, ModelWeightsManifest, RemoveValidatorArgs, RevealModelArgs,
-    RevealModelUpdateArgs, SignedTransaction, SubmissionManifest, SubmitDataArgs, Transaction,
-    TransactionKind, UpdateValidatorMetadataArgs,
+    ConsensusCommitPrologue, GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1,
+    ModelWeightsManifest, RemoveValidatorArgs, RevealModelArgs, RevealModelUpdateArgs,
+    SignedTransaction, SubmissionManifest, SubmitDataArgs, Transaction, TransactionKind,
+    UpdateValidatorMetadataArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

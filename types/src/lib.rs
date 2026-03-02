@@ -4,7 +4,6 @@
 
 pub mod balance_change;
 pub mod base;
-pub mod challenge;
 pub mod checkpoints;
 pub mod checksum;
 #[cfg(feature = "tls")]
@@ -88,7 +87,3 @@ pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
 /// The initial shared version for Target objects created at genesis.
 /// All targets are created at genesis with the same lamport timestamp.
 pub const TARGET_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
-
-/// The initial shared version for Challenge objects.
-/// Challenges are created dynamically (not at genesis) but need an initial version for shared object handling.
-pub const CHALLENGE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;

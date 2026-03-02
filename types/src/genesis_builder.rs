@@ -25,7 +25,7 @@ use crate::crypto::{
     AuthorityKeyPair, AuthorityPublicKeyBytes, AuthoritySignInfo, AuthoritySignInfoTrait as _,
     AuthoritySignature,
 };
-use crate::digests::TransactionDigest;
+use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, TransactionDigest};
 use crate::effects::{ExecutionStatus, TransactionEffects};
 use crate::envelope::Message as _;
 use crate::genesis::{Genesis, UnsignedGenesis};
@@ -37,6 +37,7 @@ use crate::system_state::validator::{Validator, ValidatorMetadata};
 use crate::system_state::{FeeParameters, SystemState, SystemStateTrait, get_system_state};
 use crate::target::{generate_target, make_target_seed};
 use crate::temporary_store::TemporaryStore;
+use crate::tensor::SomaTensor;
 use crate::transaction::{InputObjects, Transaction, VerifiedTransaction};
 use crate::tx_fee::TransactionFee;
 use crate::validator_info::GenesisValidatorInfo;
@@ -322,15 +323,17 @@ impl GenesisBuilder {
             }
         }
 
-        // Load genesis models
+        // Load genesis models (sorted by filename for deterministic ordering)
         let mut genesis_models = Vec::new();
         let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
         if models_dir.exists() {
-            for entry in models_dir.read_dir_utf8()? {
-                let entry = entry?;
-                if entry.file_name().starts_with('.') {
-                    continue;
-                }
+            let mut entries: Vec<_> = models_dir
+                .read_dir_utf8()?
+                .filter_map(|e| e.ok())
+                .filter(|e| !e.file_name().starts_with('.'))
+                .collect();
+            entries.sort_by_key(|e| e.file_name().to_string());
+            for entry in entries {
                 let model_path = entry.path();
                 let model_bytes = fs::read(model_path)?;
                 let model_config: GenesisModelConfig = serde_yaml::from_slice(&model_bytes)
@@ -423,12 +426,12 @@ impl GenesisBuilder {
             )?;
         }
 
-        // Write genesis models
+        // Write genesis models (index-based filenames; model_id is assigned at build time)
         let models_dir = path.join(GENESIS_BUILDER_MODELS_DIR);
         fs::create_dir_all(&models_dir)?;
-        for model in &self.genesis_models {
+        for (i, model) in self.genesis_models.iter().enumerate() {
             let model_bytes = serde_yaml::to_string(model)?;
-            fs::write(models_dir.join(model.model_id.to_string()), model_bytes)?;
+            fs::write(models_dir.join(format!("model_{i}")), model_bytes)?;
         }
 
         // Write signatures
@@ -463,6 +466,25 @@ impl GenesisBuilder {
         *counter += 1;
         let hash = hasher.finalize();
         ObjectID::new(hash.digest[..ObjectID::LENGTH].try_into().unwrap())
+    }
+
+    /// Generate a deterministic embedding for a genesis model.
+    /// Uses the model_id as a seed to produce reproducible embeddings.
+    fn generate_genesis_embedding(model_id: &ObjectID, dim: usize) -> SomaTensor {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        model_id.hash(&mut hasher);
+        let seed = hasher.finish();
+
+        let values: Vec<f32> = (0..dim)
+            .map(|i| {
+                let x = ((seed.wrapping_add(i as u64)).wrapping_mul(2654435761) % 1000) as f32;
+                (x / 1000.0) - 0.5 // Normalize to [-0.5, 0.5]
+            })
+            .collect();
+        SomaTensor::new(values, vec![dim])
     }
 
     fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
@@ -537,19 +559,61 @@ impl GenesisBuilder {
         }
 
         // Add genesis models (skip commit-reveal, created directly as active)
+        // model_id, embedding, embedding_commitment, and decryption_key_commitment
+        // are all auto-generated at build time.
+        let embedding_dim = system_state.parameters().target_embedding_dim as usize;
         for model_config in &self.genesis_models {
+            let model_id = Self::deterministic_object_id(&mut id_counter);
+
+            // Generate deterministic embedding from model_id
+            let embedding = Self::generate_genesis_embedding(&model_id, embedding_dim);
+
+            // Compute embedding commitment: hash(bcs(embedding))
+            let embedding_commitment = {
+                let embedding_bytes =
+                    bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
+                let mut hasher = Blake2b256::default();
+                hasher.update(&embedding_bytes);
+                let hash = hasher.finalize();
+                EmbeddingCommitment::new(hash.digest[..32].try_into().unwrap())
+            };
+
+            // Compute decryption key commitment: hash(key_bytes)
+            let decryption_key_commitment = {
+                let mut hasher = Blake2b256::default();
+                hasher.update(model_config.decryption_key.as_bytes());
+                let hash = hasher.finalize();
+                DecryptionKeyCommitment::new(hash.digest[..32].try_into().unwrap())
+            };
+
             system_state.add_model_at_genesis(
-                model_config.model_id,
+                model_id,
                 model_config.owner,
                 model_config.manifest.clone(),
                 model_config.decryption_key,
                 model_config.weights_commitment,
                 model_config.architecture_version,
-                model_config.embedding_commitment,
-                model_config.decryption_key_commitment,
-                model_config.embedding.clone(),
+                embedding_commitment,
+                decryption_key_commitment,
+                embedding,
                 model_config.commission_rate,
             );
+
+            // Handle initial stake: deduct from emission pool and stake with the model
+            if model_config.initial_stake > 0 {
+                system_state.emission_pool_mut().balance -= model_config.initial_stake;
+                let staked_soma = system_state
+                    .request_add_stake_to_model_at_genesis(&model_id, model_config.initial_stake)
+                    .expect("Failed to stake with model at genesis");
+
+                let staked_object = Object::new_staked_soma_object(
+                    Self::deterministic_object_id(&mut id_counter),
+                    staked_soma,
+                    Owner::AddressOwner(model_config.owner),
+                    TransactionDigest::default(),
+                );
+                objects.push(staked_object);
+            }
         }
 
         // Process token allocations

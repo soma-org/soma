@@ -4,15 +4,15 @@
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
-use fastcrypto::encoding::{Encoding, Hex};
+use fastcrypto::encoding::{Base58, Encoding};
 use sdk::wallet_context::WalletContext;
 use types::base::SomaAddress;
 use types::object::ObjectRef;
 
-/// Parse a hex string into a 32-byte array, stripping an optional 0x prefix.
-pub fn parse_hex_digest_32(hex_str: &str, field_name: &str) -> Result<[u8; 32]> {
-    let bytes = Hex::decode(hex_str.strip_prefix("0x").unwrap_or(hex_str))
-        .map_err(|e| anyhow!("Invalid hex for {}: {}", field_name, e))?;
+/// Parse a Base58 string into a 32-byte array.
+pub fn parse_base58_32(base58_str: &str, field_name: &str) -> Result<[u8; 32]> {
+    let bytes = Base58::decode(base58_str)
+        .map_err(|e| anyhow!("Invalid base58 for {}: {}", field_name, e))?;
     let arr: [u8; 32] =
         bytes.try_into().map_err(|_| anyhow!("{} must be exactly 32 bytes", field_name))?;
     Ok(arr)
@@ -45,9 +45,9 @@ pub fn read_and_hash_file(path: &Path) -> Result<([u8; 32], String, usize)> {
     let data = std::fs::read(path)
         .map_err(|e| anyhow!("Failed to read file '{}': {}", path.display(), e))?;
     let commitment = sdk::crypto_utils::commitment(&data);
-    let commitment_hex = sdk::crypto_utils::commitment_hex(&data);
+    let commitment_base58 = sdk::crypto_utils::commitment_base58(&data);
     let size = data.len();
-    Ok((commitment, commitment_hex, size))
+    Ok((commitment, commitment_base58, size))
 }
 
 /// Auto-fetch the coin with the highest balance for bond payment.

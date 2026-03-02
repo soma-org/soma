@@ -137,7 +137,7 @@ impl BlobDownloader for FailingDownloader {
 // ---------------------------------------------------------------------------
 
 fn make_checksum(val: u8) -> Checksum {
-    Checksum([val; 32])
+    Checksum::new_from_hash([val; 32])
 }
 
 fn make_manifest(checksum: Checksum, size: usize) -> Manifest {

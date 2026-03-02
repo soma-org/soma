@@ -807,8 +807,8 @@ pub enum ExecutionFailureStatus {
     #[error("Target is not filled.")]
     TargetNotFilled,
 
-    #[error("Challenge window still open: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
-    ChallengeWindowOpen { fill_epoch: EpochId, current_epoch: EpochId },
+    #[error("Audit window still open: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
+    AuditWindowOpen { fill_epoch: EpochId, current_epoch: EpochId },
 
     #[error("Target rewards have already been claimed.")]
     TargetAlreadyClaimed,
@@ -835,31 +835,10 @@ pub enum ExecutionFailureStatus {
     InsufficientEmissionBalance,
 
     //
-    // Challenge errors
+    // Audit errors
     //
-    #[error("Challenge window has closed: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
-    ChallengeWindowClosed { fill_epoch: EpochId, current_epoch: EpochId },
-
-    #[error("Insufficient challenger bond: required {required}, provided {provided}.")]
-    InsufficientChallengerBond { required: u64, provided: u64 },
-
-    #[error("Challenge not found: {challenge_id}")]
-    ChallengeNotFound { challenge_id: ObjectID },
-
-    #[error("Challenge is not pending: {challenge_id}")]
-    ChallengeNotPending { challenge_id: ObjectID },
-
-    #[error("Challenge already exists for this target (only first challenger wins)")]
-    ChallengeAlreadyExists,
-
-    #[error("Challenge expired: challenge_epoch={challenge_epoch}, current_epoch={current_epoch}")]
-    ChallengeExpired { challenge_epoch: EpochId, current_epoch: EpochId },
-
-    #[error("Invalid challenge result: challenge_id mismatch")]
-    InvalidChallengeResult,
-
-    #[error("Invalid challenge quorum: signature verification failed")]
-    InvalidChallengeQuorum,
+    #[error("Audit window has closed: fill_epoch={fill_epoch}, current_epoch={current_epoch}")]
+    AuditWindowClosed { fill_epoch: EpochId, current_epoch: EpochId },
 
     //
     // Coin errors

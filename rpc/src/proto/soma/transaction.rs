@@ -277,42 +277,18 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 embedding: args.embedding.clone(),
                 distance_score: Some(args.distance_score),
                 bond_coin: Some(args.bond_coin.clone().into()),
+                loss_score: args.loss_score.clone(),
             }),
             ClaimRewards(args) => Kind::ClaimRewards(super::ClaimRewards {
                 target_id: Some(args.target_id.to_string()),
             }),
-            ReportSubmission { target_id, challenger } => {
-                Kind::ReportSubmission(super::ReportSubmission {
-                    target_id: Some(target_id.to_string()),
-                    challenger: challenger.map(|c| c.to_string()),
-                })
-            }
+            ReportSubmission { target_id } => Kind::ReportSubmission(super::ReportSubmission {
+                target_id: Some(target_id.to_string()),
+                challenger: None,
+            }),
             UndoReportSubmission { target_id } => {
                 Kind::UndoReportSubmission(super::UndoReportSubmission {
                     target_id: Some(target_id.to_string()),
-                })
-            }
-
-            // Challenge transactions
-            // All challenges are fraud challenges now (simplified design v2)
-            InitiateChallenge(args) => Kind::InitiateChallenge(super::InitiateChallenge {
-                target_id: Some(args.target_id.to_string()),
-                challenge_type: Some("Fraud".to_string()),
-                model_id: None,
-                bond_coin: Some(args.bond_coin.clone().into()),
-            }),
-            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            ReportChallenge { challenge_id } => Kind::ReportChallenge(super::ReportChallenge {
-                challenge_id: Some(challenge_id.to_string()),
-            }),
-            UndoReportChallenge { challenge_id } => {
-                Kind::UndoReportChallenge(super::UndoReportChallenge {
-                    challenge_id: Some(challenge_id.to_string()),
-                })
-            }
-            ClaimChallengeBond { challenge_id } => {
-                Kind::ClaimChallengeBond(super::ClaimChallengeBond {
-                    challenge_id: Some(challenge_id.to_string()),
                 })
             }
         };
@@ -455,22 +431,20 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .commission_rate
                     .ok_or_else(|| TryFromProtoError::missing("commission_rate"))?,
             }),
-            Kind::RevealModel(args) => {
-                Self::RevealModel(crate::types::RevealModelArgs {
-                    model_id: args
-                        .model_id
-                        .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("model_id"))?
-                        .parse()
-                        .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
-                    decryption_key: args
-                        .decryption_key
-                        .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
-                        .to_vec(),
-                    embedding: args.embedding.clone(),
-                })
-            }
+            Kind::RevealModel(args) => Self::RevealModel(crate::types::RevealModelArgs {
+                model_id: args
+                    .model_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("model_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("model_id", e))?,
+                decryption_key: args
+                    .decryption_key
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("decryption_key"))?
+                    .to_vec(),
+                embedding: args.embedding.clone(),
+            }),
             Kind::CommitModelUpdate(args) => {
                 Self::CommitModelUpdate(crate::types::CommitModelUpdateArgs {
                     model_id: args
@@ -595,6 +569,7 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     distance_score: args
                         .distance_score
                         .ok_or_else(|| TryFromProtoError::missing("distance_score"))?,
+                    loss_score: args.loss_score.clone(),
                     bond_coin: args
                         .bond_coin
                         .as_ref()
@@ -617,12 +592,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .ok_or_else(|| TryFromProtoError::missing("target_id"))?
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
-                challenger: args
-                    .challenger
-                    .as_ref()
-                    .map(|c| c.parse())
-                    .transpose()
-                    .map_err(|e| TryFromProtoError::invalid("challenger", e))?,
             },
             Kind::UndoReportSubmission(args) => Self::UndoReportSubmission {
                 target_id: args
@@ -632,50 +601,16 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
             },
-
-            // Challenge transactions
-            // All challenges are fraud challenges now (simplified design v2)
-            // ChallengeId is derived from tx_digest during execution, not client-provided
-            Kind::InitiateChallenge(args) => {
-                Self::InitiateChallenge(crate::types::InitiateChallengeArgs {
-                    target_id: args
-                        .target_id
-                        .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("target_id"))?
-                        .parse()
-                        .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
-                    bond_coin: args
-                        .bond_coin
-                        .as_ref()
-                        .ok_or_else(|| TryFromProtoError::missing("bond_coin"))?
-                        .try_into()?,
-                })
+            // Challenge variants removed — reject if received from proto
+            Kind::InitiateChallenge(_)
+            | Kind::ReportChallenge(_)
+            | Kind::UndoReportChallenge(_)
+            | Kind::ClaimChallengeBond(_) => {
+                return Err(TryFromProtoError::invalid(
+                    "kind",
+                    "challenge transactions are no longer supported",
+                ));
             }
-            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            Kind::ReportChallenge(args) => Self::ReportChallenge {
-                challenge_id: args
-                    .challenge_id
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
-            },
-            Kind::UndoReportChallenge(args) => Self::UndoReportChallenge {
-                challenge_id: args
-                    .challenge_id
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
-            },
-            Kind::ClaimChallengeBond(args) => Self::ClaimChallengeBond {
-                challenge_id: args
-                    .challenge_id
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("challenge_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("challenge_id", e))?,
-            },
         }
         .pipe(Ok)
     }

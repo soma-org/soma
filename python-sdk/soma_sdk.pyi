@@ -173,7 +173,6 @@ class SystemParameters:
     target_model_reward_share_bps: int
     target_claimer_incentive_bps: int
     submission_bond_per_byte: int
-    challenger_bond_per_byte: int
     max_submission_data_size: int
 
 class EmissionPool:
@@ -207,27 +206,6 @@ class SystemState:
 class ListTargetsResponse:
     """Shape returned by ``SomaClient.list_targets()``."""
     targets: list[Target]
-    next_page_token: Optional[str]
-
-class ChallengeInfo:
-    """Shape returned by ``SomaClient.get_challenge()``.
-
-    ``get_challenge()`` returns this directly (not wrapped in a response object).
-    """
-    id: str
-    target_id: str
-    challenger: str
-    challenger_bond: int
-    challenge_epoch: int
-    status: str
-    verdict: Optional[str]
-    distance_threshold: Optional[float]
-    winning_distance_score: Optional[float]
-    winning_model_id: Optional[str]
-
-class ListChallengesResponse:
-    """Shape returned by ``SomaClient.list_challenges()``."""
-    challenges: list[ChallengeInfo]
     next_page_token: Optional[str]
 
 class CheckpointSummary:
@@ -333,7 +311,7 @@ class SomaClient:
         limit: Optional[int] = None,
     ) -> list[ObjectRef]: ...
 
-    # -- Targets & Challenges --
+    # -- Targets --
     async def list_targets(
         self,
         status: Optional[str] = None,
@@ -351,14 +329,6 @@ class SomaClient:
         self,
         model_ids_or_target: Union[list[str], Target],
     ) -> list[ModelManifest]: ...
-    async def get_challenge(self, challenge_id: str) -> ChallengeInfo: ...
-    async def list_challenges(
-        self,
-        target_id: Optional[str] = None,
-        status: Optional[str] = None,
-        epoch: Optional[int] = None,
-        limit: Optional[int] = None,
-    ) -> ListChallengesResponse: ...
 
     # -- Checkpoints --
     async def get_latest_checkpoint(self) -> CheckpointSummary: ...
@@ -552,40 +522,12 @@ class SomaClient:
         self,
         sender: str,
         target_id: str,
-        challenger: Optional[str] = None,
         gas: Optional[ObjectRef] = None,
     ) -> bytes: ...
     async def build_undo_report_submission(
         self,
         sender: str,
         target_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- Transaction Builders: Challenges --
-    async def build_initiate_challenge(
-        self,
-        sender: str,
-        target_id: str,
-        bond_coin: ObjectRef,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_report_challenge(
-        self,
-        sender: str,
-        challenge_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_undo_report_challenge(
-        self,
-        sender: str,
-        challenge_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_claim_challenge_bond(
-        self,
-        sender: str,
-        challenge_id: str,
         gas: Optional[ObjectRef] = None,
     ) -> bytes: ...
 
@@ -758,34 +700,11 @@ class SomaClient:
         self,
         signer: Keypair,
         target_id: str,
-        challenger: Optional[str] = None,
     ) -> None: ...
     async def undo_report_submission(
         self,
         signer: Keypair,
         target_id: str,
-    ) -> None: ...
-
-    # -- High-level: Challenge --
-    async def initiate_challenge(
-        self,
-        signer: Keypair,
-        target_id: str,
-    ) -> None: ...
-    async def report_challenge(
-        self,
-        signer: Keypair,
-        challenge_id: str,
-    ) -> None: ...
-    async def undo_report_challenge(
-        self,
-        signer: Keypair,
-        challenge_id: str,
-    ) -> None: ...
-    async def claim_challenge_bond(
-        self,
-        signer: Keypair,
-        challenge_id: str,
     ) -> None: ...
 
     # -- High-level: Validator Management --

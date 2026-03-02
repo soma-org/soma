@@ -5769,6 +5769,7 @@ dependencies = [
  "parking_lot 0.12.5",
  "protocol-config",
  "rpc",
+ "scoring",
  "soma-http",
  "soma-tls",
  "store",
@@ -8001,6 +8002,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "burn",
+ "fastcrypto",
  "hex",
  "runtime",
  "serde",
@@ -8573,6 +8575,7 @@ name = "soma-sdk"
 version = "0.1.6"
 dependencies = [
  "bcs",
+ "fastcrypto",
  "futures",
  "hex",
  "pyo3",

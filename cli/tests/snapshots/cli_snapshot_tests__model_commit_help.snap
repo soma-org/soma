@@ -1,14 +1,15 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 96
 expression: stdout
 ---
 Commit a new model (phase 1 of commit-reveal)
 
-Registers a new model by committing its weight hashes. The model enters "pending" state and must be revealed in the next epoch or the stake is slashed.
+Registers a new model by committing its weight hashes and embedding commitment. The model enters "pending" state and must be revealed in the next epoch or the stake is slashed.
 
-Model ID and staking pool ID are auto-generated. Commitments are auto-computed from the weights file and URL.
+Model ID and staking pool ID are auto-generated on chain. Commitments are auto-computed from the weights file and embedding.
 
-Usage: soma model commit [OPTIONS] --weights-file <WEIGHTS_FILE> --weights-url <WEIGHTS_URL>
+Usage: soma model commit [OPTIONS] --weights-file <WEIGHTS_FILE> --weights-url <WEIGHTS_URL> --embedding <EMBEDDING> --decryption-key <DECRYPTION_KEY>
 
 Options:
       --weights-file <WEIGHTS_FILE>
@@ -16,6 +17,12 @@ Options:
 
       --weights-url <WEIGHTS_URL>
           URL where the encrypted weights are (or will be) hosted
+
+      --embedding <EMBEDDING>
+          Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+
+      --decryption-key <DECRYPTION_KEY>
+          Hex-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
 
       --architecture-version <ARCHITECTURE_VERSION>
           Model architecture version (auto-fetched from chain if omitted)
@@ -34,18 +41,18 @@ Options:
       --simulate
           Perform a dry run (simulation) of the transaction, without executing it
 
+      --json
+          Output as JSON
+
       --serialize-unsigned-transaction
           Serialize the unsigned transaction data (base64) instead of executing. Use with `soma tx execute-signed --tx-bytes <TX_BYTES>`
 
       --serialize-signed-transaction
           Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
 
-      --json
-          Output as JSON
-
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLES:
     soma model commit --weights-url https://storage.example.com/weights.bin \
-        --weights-file ./model.bin --commission-rate 500
+        --weights-file ./model.bin --embedding 0.1,0.2,0.3 --commission-rate 500

@@ -152,29 +152,10 @@ pub enum TransactionKind {
     /// Report a submission as fraudulent (validators only)
     ReportSubmission {
         target_id: Address,
-        /// Optional challenger to attribute fraud to (for tally-based bond distribution)
-        challenger: Option<Address>,
     },
     /// Undo a previous submission report
     UndoReportSubmission {
         target_id: Address,
-    },
-
-    // Challenge transactions
-    InitiateChallenge(InitiateChallengeArgs),
-    /// Report a challenge (validators only).
-    /// Reports indicate "the challenger is wrong" (i.e., the submission is valid).
-    /// If 2f+1 validators report, the challenger loses their bond.
-    ReportChallenge {
-        challenge_id: Address,
-    },
-    /// Undo a previous challenge report
-    UndoReportChallenge {
-        challenge_id: Address,
-    },
-    /// Claim the challenger's bond after challenge window closes
-    ClaimChallengeBond {
-        challenge_id: Address,
     },
 }
 
@@ -266,22 +247,13 @@ pub struct SubmitDataArgs {
     pub model_id: Address,
     pub embedding: Vec<f32>,
     pub distance_score: f32,
+    pub loss_score: Vec<f32>,
     pub bond_coin: ObjectReference,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct ClaimRewardsArgs {
     pub target_id: Address,
-}
-
-// Supporting types for challenge transactions
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct InitiateChallengeArgs {
-    /// Target being challenged (must be filled and within challenge window)
-    pub target_id: Address,
-    /// Coin to pay challenger bond (must cover challenger_bond_per_byte * data_size)
-    pub bond_coin: ObjectReference,
 }
 
 /// V1 of the consensus commit prologue system transaction

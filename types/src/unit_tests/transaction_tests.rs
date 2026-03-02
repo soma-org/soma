@@ -5,7 +5,6 @@
 use fastcrypto::ed25519::Ed25519KeyPair;
 
 use crate::base::SomaAddress;
-use crate::challenge::ChallengeId;
 use crate::checksum::Checksum;
 use crate::consensus::ConsensusCommitPrologueV1;
 use crate::crypto::{DecryptionKey, default_hash, get_key_pair};
@@ -153,7 +152,6 @@ fn test_transaction_kind_classification() {
     assert!(!genesis.is_staking_tx());
     assert!(!genesis.is_model_tx());
     assert!(!genesis.is_submission_tx());
-    assert!(!genesis.is_challenge_tx());
 
     let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
@@ -257,6 +255,7 @@ fn test_transaction_kind_classification() {
         model_id,
         embedding: dummy_tensor(),
         distance_score: dummy_scalar_tensor(),
+        loss_score: SomaTensor::new(vec![0.5], vec![1]),
         bond_coin: random_object_ref(),
     });
     assert!(submit_data.is_submission_tx());
@@ -265,29 +264,11 @@ fn test_transaction_kind_classification() {
     let claim_rewards = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id });
     assert!(claim_rewards.is_submission_tx());
 
-    let report_sub = TransactionKind::ReportSubmission { target_id, challenger: None };
+    let report_sub = TransactionKind::ReportSubmission { target_id };
     assert!(report_sub.is_submission_tx());
 
     let undo_report_sub = TransactionKind::UndoReportSubmission { target_id };
     assert!(undo_report_sub.is_submission_tx());
-
-    // Challenge transactions
-    let challenge_id: ChallengeId = ObjectID::random();
-    let init_challenge = TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-        target_id,
-        bond_coin: random_object_ref(),
-    });
-    assert!(init_challenge.is_challenge_tx());
-    assert!(!init_challenge.is_submission_tx());
-
-    let report_chal = TransactionKind::ReportChallenge { challenge_id };
-    assert!(report_chal.is_challenge_tx());
-
-    let undo_report_chal = TransactionKind::UndoReportChallenge { challenge_id };
-    assert!(undo_report_chal.is_challenge_tx());
-
-    let claim_bond = TransactionKind::ClaimChallengeBond { challenge_id };
-    assert!(claim_bond.is_challenge_tx());
 
     // Coin/object transactions should not match any category
     let transfer_coin = TransactionKind::TransferCoin {
@@ -300,7 +281,6 @@ fn test_transaction_kind_classification() {
     assert!(!transfer_coin.is_staking_tx());
     assert!(!transfer_coin.is_model_tx());
     assert!(!transfer_coin.is_submission_tx());
-    assert!(!transfer_coin.is_challenge_tx());
 }
 
 // ---------------------------------------------------------------------------
@@ -371,7 +351,6 @@ fn test_user_tx_has_gas() {
 fn test_all_tx_kinds_bcs_roundtrip() {
     let model_id = ModelId::random();
     let target_id: TargetId = ObjectID::random();
-    let challenge_id: ChallengeId = ObjectID::random();
 
     let kinds: Vec<TransactionKind> = vec![
         // System
@@ -472,25 +451,18 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             model_id,
             embedding: dummy_tensor(),
             distance_score: dummy_scalar_tensor(),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: random_object_ref(),
         }),
         TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        TransactionKind::ReportSubmission { target_id, challenger: Some(SomaAddress::random()) },
+        TransactionKind::ReportSubmission { target_id },
         TransactionKind::UndoReportSubmission { target_id },
-        // Challenge
-        TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-            target_id,
-            bond_coin: random_object_ref(),
-        }),
-        TransactionKind::ReportChallenge { challenge_id },
-        TransactionKind::UndoReportChallenge { challenge_id },
-        TransactionKind::ClaimChallengeBond { challenge_id },
     ];
 
     assert_eq!(
         kinds.len(),
-        31,
-        "Expected 31 TransactionKind variants; if a new variant was added, update this test"
+        27,
+        "Expected 27 TransactionKind variants; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {
@@ -592,7 +564,6 @@ fn test_genesis_transaction() {
 fn test_shared_input_objects() {
     let model_id = ModelId::random();
     let target_id: TargetId = ObjectID::random();
-    let challenge_id: ChallengeId = ObjectID::random();
 
     // Validator tx -> SystemState only
     let add_val = TransactionKind::AddValidator(AddValidatorArgs {
@@ -640,6 +611,7 @@ fn test_shared_input_objects() {
         model_id,
         embedding: dummy_tensor(),
         distance_score: dummy_scalar_tensor(),
+        loss_score: SomaTensor::new(vec![0.5], vec![1]),
         bond_coin: random_object_ref(),
     });
     let shared: Vec<_> = submit_data.shared_input_objects().collect();
@@ -647,13 +619,6 @@ fn test_shared_input_objects() {
     assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
     assert_eq!(shared[1].id, target_id);
     assert!(shared[1].mutable);
-
-    // Challenge tx -> SystemState + Challenge
-    let report_chal = TransactionKind::ReportChallenge { challenge_id };
-    let shared: Vec<_> = report_chal.shared_input_objects().collect();
-    assert_eq!(shared.len(), 2);
-    assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-    assert_eq!(shared[1].id, challenge_id);
 
     // Genesis -> no shared input objects
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
@@ -723,13 +688,10 @@ fn test_contains_shared_object() {
         model_id: ModelId::random(),
         embedding: dummy_tensor(),
         distance_score: dummy_scalar_tensor(),
+        loss_score: SomaTensor::new(vec![0.5], vec![1]),
         bond_coin: random_object_ref(),
     });
     assert!(submit.contains_shared_object(), "SubmitData should contain shared objects");
-
-    // ReportChallenge touches SystemState + Challenge
-    let report_chal = TransactionKind::ReportChallenge { challenge_id: ObjectID::random() };
-    assert!(report_chal.contains_shared_object(), "ReportChallenge should contain shared objects");
 
     // Genesis does NOT touch shared state
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
@@ -935,10 +897,6 @@ fn test_requires_system_state() {
     let claim = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: ObjectID::random() });
     assert!(claim.requires_system_state());
 
-    // Challenge tx requires system state
-    let claim_bond = TransactionKind::ClaimChallengeBond { challenge_id: ObjectID::random() };
-    assert!(claim_bond.requires_system_state());
-
     // ChangeEpoch requires system state (is_epoch_change)
     let epoch = TransactionKind::ChangeEpoch(ChangeEpoch {
         epoch: 1,
@@ -985,7 +943,7 @@ fn test_input_objects_system_tx() {
     let inputs = ccp.input_objects().expect("should succeed");
     assert!(
         inputs.is_empty(),
-        "CCP should have no input objects (not validator/staking/model/submission/challenge)"
+        "CCP should have no input objects (not validator/staking/model/submission)"
     );
 }
 
@@ -1031,6 +989,7 @@ fn test_input_objects_user_txs() {
         model_id: ModelId::random(),
         embedding: dummy_tensor(),
         distance_score: dummy_scalar_tensor(),
+        loss_score: SomaTensor::new(vec![0.5], vec![1]),
         bond_coin,
     });
     let inputs = submit.input_objects().expect("should succeed");

@@ -9,7 +9,7 @@
 //! `GenesisModelConfig`, which creates proper shared objects (targets, system state)
 //! with correct versioning.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
@@ -19,15 +19,14 @@ use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisConfig, GenesisModelConfig};
 use types::config::network_config::ConfigBuilder;
 use types::crypto::{DIGEST_LENGTH, DecryptionKey, SomaKeyPair, get_key_pair};
-use types::digests::{
-    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment, TransactionDigest,
-};
+use types::digests::{ModelWeightsCommitment, TransactionDigest};
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
 use types::error::SomaError;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use types::model::ModelId;
 use types::object::{Object, ObjectID, ObjectType};
 use types::submission::SubmissionManifest;
+use types::system_state::{SystemStateTrait as _, get_system_state};
 use types::target::{TargetStatus, TargetV1};
 use types::tensor::SomaTensor;
 use types::transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind};
@@ -74,9 +73,8 @@ fn make_open_target(
         winning_data_manifest: None,
         winning_embedding: None,
         winning_distance_score: None,
-        challenger: None,
-        challenge_id: None,
-        submission_reports: BTreeMap::new(),
+        winning_loss_score: None,
+        submission_reports: BTreeSet::new(),
     };
     Object::new_target_object(target_id, target, TransactionDigest::default())
 }
@@ -107,9 +105,8 @@ fn make_filled_target(
         winning_data_manifest: None,
         winning_embedding: None,
         winning_distance_score: None,
-        challenger: None,
-        challenge_id: None,
-        submission_reports: BTreeMap::new(),
+        winning_loss_score: None,
+        submission_reports: BTreeSet::new(),
     };
     Object::new_target_object(target_id, target, TransactionDigest::default())
 }
@@ -130,15 +127,14 @@ fn make_claimed_target(target_id: ObjectID, embedding_dim: usize, reward_pool: u
         winning_data_manifest: None,
         winning_embedding: None,
         winning_distance_score: None,
-        challenger: None,
-        challenge_id: None,
-        submission_reports: BTreeMap::new(),
+        winning_loss_score: None,
+        submission_reports: BTreeSet::new(),
     };
     Object::new_target_object(target_id, target, TransactionDigest::default())
 }
 
 /// Create a GenesisModelConfig for seeding a model at genesis.
-fn make_genesis_model_config(model_id: ModelId, owner: SomaAddress) -> GenesisModelConfig {
+fn make_genesis_model_config(owner: SomaAddress) -> GenesisModelConfig {
     let url = Url::parse("https://example.com/model.bin").unwrap();
     let metadata =
         Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; DIGEST_LENGTH]), 1024));
@@ -146,14 +142,10 @@ fn make_genesis_model_config(model_id: ModelId, owner: SomaAddress) -> GenesisMo
 
     GenesisModelConfig {
         owner,
-        model_id,
         manifest,
         decryption_key: DecryptionKey::new([0xAA; 32]),
         weights_commitment: ModelWeightsCommitment::new([2u8; 32]),
         architecture_version: 1,
-        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
-        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 1000,
         initial_stake: 1_000_000_000, // 1 SOMA
     }
@@ -189,11 +181,10 @@ struct ModelTestSetup {
 /// Build an authority state with a seeded genesis model and targets.
 /// This creates the proper shared object versioning from genesis.
 async fn build_authority_with_model() -> ModelTestSetup {
-    let model_id = ObjectID::random();
     let model_owner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
 
     let mut genesis_config = GenesisConfig::for_local_testing();
-    genesis_config.genesis_models.push(make_genesis_model_config(model_id, model_owner));
+    genesis_config.genesis_models.push(make_genesis_model_config(model_owner));
 
     let network_config =
         ConfigBuilder::new_with_temp_dir().with_genesis_config(genesis_config).build();
@@ -201,10 +192,17 @@ async fn build_authority_with_model() -> ModelTestSetup {
     let authority_state =
         TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
-    // Find a genesis target that references our model
-    // Genesis creates targets as shared objects. They are stored in the object store.
-    // We need to find one by scanning genesis objects.
+    // Discover the auto-assigned model_id from the genesis system state
     let genesis_objects = network_config.genesis.objects();
+    let system_state = get_system_state(&genesis_objects).expect("SystemState must exist");
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
+
+    // Find a genesis target
     let genesis_target_id =
         genesis_objects.iter().find(|obj| *obj.type_() == ObjectType::Target).map(|obj| obj.id());
 
@@ -265,6 +263,7 @@ async fn test_submit_data_basic() {
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold * 0.5), // well within threshold
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -311,6 +310,7 @@ async fn test_submit_data_target_not_found() {
             model_id: ObjectID::random(),
             embedding: SomaTensor::zeros(vec![10]),
             distance_score: SomaTensor::scalar(0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -363,6 +363,7 @@ async fn test_submit_data_wrong_model() {
             model_id: wrong_model,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -409,6 +410,7 @@ async fn test_submit_data_filled_target() {
             model_id,
             embedding: SomaTensor::zeros(vec![10]),
             distance_score: SomaTensor::scalar(0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -463,6 +465,7 @@ async fn test_submit_data_distance_exceeds_threshold() {
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(threshold + 1.0), // exceeds threshold
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -517,6 +520,7 @@ async fn test_submit_data_insufficient_bond() {
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -571,6 +575,7 @@ async fn test_submit_data_spawn_on_fill() {
             model_id: setup.model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(threshold * 0.5),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         sender,
@@ -628,9 +633,9 @@ async fn test_claim_rewards_expired_target() {
 
 #[tokio::test]
 async fn test_claim_rewards_too_early() {
-    // Try to claim a filled target while the challenge window is still open.
-    // fill_epoch = 0, current_epoch = 0, challenge_window_end = 1
-    // current_epoch (0) <= challenge_window_end (1) → ChallengeWindowOpen
+    // Try to claim a filled target while the audit window is still open.
+    // fill_epoch = 0, current_epoch = 0, audit_window_end = fill_epoch + 1 = 1
+    // current_epoch (0) <= audit_window_end (1) → AuditWindowOpen
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
     let gas_id = ObjectID::random();
@@ -655,7 +660,7 @@ async fn test_claim_rewards_too_early() {
 
     match result {
         Ok((_, effects)) => {
-            assert!(!effects.status().is_ok(), "Should fail: challenge window still open");
+            assert!(!effects.status().is_ok(), "Should fail: audit window still open");
         }
         Err(_) => {}
     }
@@ -742,7 +747,7 @@ async fn test_report_submission_not_validator() {
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         sender, // NOT a validator
         vec![gas_ref],
     );
@@ -781,7 +786,7 @@ async fn test_report_submission_target_not_filled() {
     authority_state.insert_genesis_object(target_obj).await;
 
     let data = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id },
         v0_address,
         vec![gas_ref],
     );
@@ -797,14 +802,14 @@ async fn test_report_submission_target_not_filled() {
 }
 
 #[tokio::test]
-async fn test_report_submission_tally() {
-    // Validator successfully reports a filled target — the report is recorded.
-    // We first fill a genesis target via SubmitData, then report it via ReportSubmission.
-    let model_id = ObjectID::random();
+async fn test_report_submission_audit_window_enforced() {
+    // Validates that ReportSubmission is rejected when submitted in the same epoch
+    // as the fill. The audit window only opens in fill_epoch + 1.
+    // (Full SubmitData → ReportSubmission flow is covered in e2e tests.)
     let model_owner: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
 
     let mut genesis_config = GenesisConfig::for_local_testing();
-    genesis_config.genesis_models.push(make_genesis_model_config(model_id, model_owner));
+    genesis_config.genesis_models.push(make_genesis_model_config(model_owner));
 
     let network_config =
         ConfigBuilder::new_with_temp_dir().with_genesis_config(genesis_config).build();
@@ -816,8 +821,17 @@ async fn test_report_submission_tally() {
     let authority_state =
         TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
-    // Find a genesis target that includes our model
+    // Discover model_id from genesis system state
     let genesis_objects = network_config.genesis.objects();
+    let system_state = get_system_state(&genesis_objects).expect("SystemState must exist");
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have a genesis model");
+
+    // Find a genesis target that includes our model
     let genesis_target = genesis_objects.iter().find(|obj| *obj.type_() == ObjectType::Target);
 
     let genesis_target_id = match genesis_target {
@@ -851,7 +865,7 @@ async fn test_report_submission_tally() {
     authority_state.insert_genesis_object(bond).await;
     authority_state.insert_genesis_object(gas2).await;
 
-    // Step 1: Fill the target via SubmitData (as a regular user)
+    // Step 1: Fill the target via SubmitData (as a regular user) — fill_epoch = 0
     let submit_data = TransactionData::new(
         TransactionKind::SubmitData(SubmitDataArgs {
             target_id: genesis_target_id,
@@ -859,6 +873,7 @@ async fn test_report_submission_tally() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(threshold * 0.5),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: bond_ref,
         }),
         submitter,
@@ -871,30 +886,26 @@ async fn test_report_submission_tally() {
             .expect("SubmitData should succeed");
     assert_eq!(*submit_effects.status(), ExecutionStatus::Success);
 
-    // Step 2: Report the now-filled target as the validator
-
+    // Step 2: Report in epoch 0, but audit window requires epoch 1 — should fail
     let report_data = TransactionData::new(
-        TransactionKind::ReportSubmission { target_id: genesis_target_id, challenger: None },
+        TransactionKind::ReportSubmission { target_id: genesis_target_id },
         v0_address,
         vec![gas2_ref],
     );
     let report_tx = to_sender_signed_transaction(report_data, &v0_key);
     let result = send_and_confirm_transaction_(&authority_state, None, report_tx, true).await;
 
-    let (_, effects) = result.expect("ReportSubmission by validator should succeed");
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-    // Target should be mutated (report added)
-    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
-    assert!(mutated_ids.contains(&genesis_target_id), "Target should be mutated with new report");
-
-    // Verify the report was recorded on the target
-    let target_obj = authority_state.get_object(&genesis_target_id).await.unwrap();
-    let target = target_obj.as_target().unwrap();
-    assert!(
-        target.submission_reports.contains_key(&v0_address),
-        "Target should have validator's report recorded"
-    );
+    match result {
+        Ok((_, effects)) => {
+            assert!(
+                effects.status().is_err(),
+                "ReportSubmission should fail: audit window not open in fill epoch"
+            );
+        }
+        Err(_) => {
+            // Transaction rejected at submission level — also acceptable
+        }
+    }
 }
 
 // =============================================================================

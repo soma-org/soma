@@ -57,7 +57,7 @@ keypair = Keypair.from_secret_key("0x...")
 # Restore from a BIP-39 mnemonic
 keypair = Keypair.from_mnemonic("word1 word2 ...")
 
-keypair.address()        # SOMA address (hex string)
+keypair.address()        # SOMA address (hex string — addresses use hex)
 keypair.to_secret_key()  # Export secret key (hex string)
 keypair.sign(tx_bytes)   # Sign raw transaction data bytes
 ```
@@ -107,17 +107,15 @@ Chain presets:
 | `get_epoch(epoch=None)` | `EpochInfo` | Epoch info (`None` for latest) |
 | `list_owned_objects(owner, object_type=None, limit=None)` | `list[ObjectRef]` | Objects owned by an address |
 
-`object_type` can be: `"coin"`, `"staked_soma"`, `"target"`, `"submission"`, `"challenge"`, `"system_state"`.
+`object_type` can be: `"coin"`, `"staked_soma"`, `"target"`, `"submission"`, `"system_state"`.
 
-#### Targets & Challenges
+#### Targets
 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `list_targets(status=None, epoch=None, limit=None)` | `ListTargetsResponse` | List targets with optional filters |
 | `get_targets(status=None, epoch=None, limit=None)` | `list[Target]` | Convenience wrapper returning target list directly |
 | `get_model_manifests(model_ids_or_target)` | `list[ModelManifest]` | Get model weight manifests by IDs or from a Target |
-| `get_challenge(challenge_id)` | `ChallengeInfo` | Get challenge by ID |
-| `list_challenges(target_id=None, status=None, ...)` | `ListChallengesResponse` | List challenges with optional filters |
 
 #### Checkpoints
 
@@ -166,9 +164,9 @@ Chain presets:
 ```python
 SomaClient.to_shannons(1.5)                # 1_500_000_000
 SomaClient.to_soma(1_500_000_000)           # 1.5
-SomaClient.commitment(data)                 # Blake2b-256 hex digest
-SomaClient.encrypt_weights(data)            # (encrypted_bytes, key_hex)
-SomaClient.decrypt_weights(data, key_hex)   # decrypted bytes
+SomaClient.commitment(data)                 # Blake2b-256 Base58 digest
+SomaClient.encrypt_weights(data)            # (encrypted_bytes, key_base58)
+SomaClient.decrypt_weights(data, key)       # decrypted bytes (key: bytes or Base58 string)
 ```
 
 ---
@@ -213,11 +211,11 @@ tx = await client.build_add_stake_to_model(sender, model_id, coin, amount=None, 
 tx = await client.build_commit_model(
     sender,
     url,                       # Weights URL string
-    checksum,                  # Blake2b-256 hex of encrypted weights
+    checksum,                  # Blake2b-256 Base58 of encrypted weights
     size,                      # int (bytes)
-    weights_commitment,        # Blake2b-256 hex of encrypted weights content
-    embedding_commitment,      # Blake2b-256 hex of BCS-serialized embedding
-    decryption_key_commitment, # Blake2b-256 hex of decryption key bytes
+    weights_commitment,        # Blake2b-256 Base58 of encrypted weights content
+    embedding_commitment,      # Blake2b-256 Base58 of BCS-serialized embedding
+    decryption_key_commitment, # Blake2b-256 Base58 of decryption key bytes
     stake_amount,              # int (shannons)
     commission_rate,           # int (BPS, 10000 = 100%)
     gas=None,
@@ -227,7 +225,7 @@ tx = await client.build_commit_model(
 # Provides the decryption key and embedding, verified against commitments
 tx = await client.build_reveal_model(
     sender, model_id,
-    decryption_key,            # AES-256 hex key
+    decryption_key,            # AES-256 Base58 key
     embedding,                 # list[float] — model embedding vector
     gas=None,
 )
@@ -250,7 +248,7 @@ tx = await client.build_undo_report_model(sender, model_id, gas=None)
 tx = await client.build_submit_data(
     sender, target_id,
     data_url,                  # URL string
-    data_checksum,             # Blake2b-256 hex
+    data_checksum,             # Blake2b-256 Base58
     data_size,                 # int (bytes)
     model_id,                  # hex object ID
     embedding,                 # list[float]
@@ -263,22 +261,8 @@ tx = await client.build_submit_data(
 tx = await client.build_claim_rewards(sender, target_id, gas=None)
 
 # Report a fraudulent submission
-tx = await client.build_report_submission(sender, target_id, challenger=None, gas=None)
+tx = await client.build_report_submission(sender, target_id, gas=None)
 tx = await client.build_undo_report_submission(sender, target_id, gas=None)
-```
-
-### Challenges
-
-```python
-# Initiate a challenge against a filled target
-tx = await client.build_initiate_challenge(sender, target_id, bond_coin, gas=None)
-
-# Report/undo challenge
-tx = await client.build_report_challenge(sender, challenge_id, gas=None)
-tx = await client.build_undo_report_challenge(sender, challenge_id, gas=None)
-
-# Resolve and claim challenge bond
-tx = await client.build_claim_challenge_bond(sender, challenge_id, gas=None)
 ```
 
 ### Validator Management
@@ -313,7 +297,7 @@ await client.commit_model(
     signer=keypair,
     weights_url="https://storage.example.com/weights.safetensors",
     encrypted_weights=encrypted_bytes,
-    decryption_key=key_hex,
+    decryption_key=key_base58,
     embedding=[0.1, 0.2, ...],
     commission_rate=1000,          # 10%
     stake_amount=10.0,             # SOMA — optional, defaults to minimum
@@ -323,7 +307,7 @@ await client.commit_model(
 await client.reveal_model(
     signer=keypair,
     model_id=model_id,
-    decryption_key=key_hex,
+    decryption_key=key_base58,
     embedding=[0.1, 0.2, ...],
 )
 

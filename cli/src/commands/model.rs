@@ -253,20 +253,20 @@ impl ModelCommand {
                 }
 
                 // Auto-compute weights commitment from file
-                let (wt_commitment, checksum_hex, weights_size) =
+                let (wt_commitment, checksum_base58, weights_size) =
                     super::parse_helpers::read_and_hash_file(&weights_file)?;
 
                 // Build manifest from URL + file metadata
-                let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+                let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
 
                 // Parse embedding and compute commitment
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
-                let embedding_commitment = EmbeddingCommitment::new(
-                    sdk::crypto_utils::commitment(&bcs::to_bytes(&embedding_tensor).unwrap()),
-                );
+                let embedding_commitment = EmbeddingCommitment::new(sdk::crypto_utils::commitment(
+                    &bcs::to_bytes(&embedding_tensor).unwrap(),
+                ));
 
                 // Parse decryption key and compute commitment
-                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
                 let decryption_key_commitment = DecryptionKeyCommitment::new(
                     sdk::crypto_utils::commitment(&decryption_key_bytes),
                 );
@@ -319,19 +319,11 @@ impl ModelCommand {
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::CommitSuccess {
-                    inner: Box::new(result),
-                    next_epoch_hint,
-                })
+                Ok(ModelCommandResponse::CommitSuccess { inner: Box::new(result), next_epoch_hint })
             }
 
-            ModelCommand::Reveal {
-                model_id,
-                decryption_key,
-                embedding,
-                tx_args,
-            } => {
-                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+            ModelCommand::Reveal { model_id, decryption_key, embedding, tx_args } => {
+                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
 
                 let kind = TransactionKind::RevealModel(RevealModelArgs {
@@ -353,20 +345,20 @@ impl ModelCommand {
                 tx_args,
             } => {
                 // Auto-compute weights commitment from file
-                let (wt_commitment, checksum_hex, weights_size) =
+                let (wt_commitment, checksum_base58, weights_size) =
                     super::parse_helpers::read_and_hash_file(&weights_file)?;
 
                 // Build manifest from URL + file metadata
-                let manifest = build_manifest(&weights_url, &checksum_hex, weights_size)?;
+                let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
 
                 // Parse embedding and compute commitment
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
-                let embedding_commitment = EmbeddingCommitment::new(
-                    sdk::crypto_utils::commitment(&bcs::to_bytes(&embedding_tensor).unwrap()),
-                );
+                let embedding_commitment = EmbeddingCommitment::new(sdk::crypto_utils::commitment(
+                    &bcs::to_bytes(&embedding_tensor).unwrap(),
+                ));
 
                 // Parse decryption key and compute commitment
-                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
                 let decryption_key_commitment = DecryptionKeyCommitment::new(
                     sdk::crypto_utils::commitment(&decryption_key_bytes),
                 );
@@ -398,13 +390,8 @@ impl ModelCommand {
                 })
             }
 
-            ModelCommand::UpdateReveal {
-                model_id,
-                decryption_key,
-                embedding,
-                tx_args,
-            } => {
-                let decryption_key_bytes = parse_hex_digest_32(&decryption_key, "decryption-key")?;
+            ModelCommand::UpdateReveal { model_id, decryption_key, embedding, tx_args } => {
+                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
 
                 let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
@@ -524,13 +511,13 @@ impl ModelCommand {
 // Helpers
 // =============================================================================
 
-use super::parse_helpers::parse_hex_digest_32;
+use super::parse_helpers::parse_base58_32;
 
-fn build_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<Manifest> {
+fn build_manifest(url: &str, checksum_base58: &str, size: usize) -> Result<Manifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;
-    let checksum_bytes = parse_hex_digest_32(checksum_hex, "weights-checksum")?;
+    let checksum_bytes = parse_base58_32(checksum_base58, "weights-checksum")?;
 
-    let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
+    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash(checksum_bytes), size));
     Ok(Manifest::V1(ManifestV1::new(parsed_url, metadata)))
 }
 

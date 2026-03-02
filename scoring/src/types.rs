@@ -75,18 +75,19 @@ pub struct HealthResponse {
     pub ok: bool,
 }
 
-pub fn parse_hex_checksum(hex_str: &str) -> Result<Checksum> {
-    let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    let bytes = hex::decode(stripped)?;
+pub fn parse_base58_checksum(base58_str: &str) -> Result<Checksum> {
+    use fastcrypto::encoding::{Base58, Encoding};
+    let bytes = Base58::decode(base58_str)
+        .map_err(|e| anyhow::anyhow!("Invalid base58 checksum: {}", e))?;
     ensure!(bytes.len() == 32, "Checksum must be 32 bytes, got {}", bytes.len());
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
     Ok(Checksum::new_from_hash(arr))
 }
 
-pub fn manifest_from_input(url: &str, checksum_hex: &str, size: usize) -> Result<Manifest> {
+pub fn manifest_from_input(url: &str, checksum_base58: &str, size: usize) -> Result<Manifest> {
     let parsed_url = Url::parse(url)?;
-    let checksum = parse_hex_checksum(checksum_hex)?;
+    let checksum = parse_base58_checksum(checksum_base58)?;
     let metadata = Metadata::V1(MetadataV1::new(checksum, size));
     Ok(Manifest::V1(ManifestV1::new(parsed_url, metadata)))
 }
@@ -133,45 +134,40 @@ mod tests {
     }
 
     #[test]
-    fn parse_hex_checksum_valid() {
-        let hex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert!(parse_hex_checksum(hex).is_ok());
+    fn parse_base58_checksum_valid() {
+        // Base58-encoded 32 bytes
+        use fastcrypto::encoding::{Base58, Encoding};
+        let base58 = Base58::encode([0xab; 32]);
+        assert!(parse_base58_checksum(&base58).is_ok());
     }
 
     #[test]
-    fn parse_hex_checksum_with_0x_prefix() {
-        let hex = "0xabcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-        assert!(parse_hex_checksum(hex).is_ok());
+    fn parse_base58_checksum_wrong_length() {
+        // Too short
+        use fastcrypto::encoding::{Base58, Encoding};
+        let base58 = Base58::encode([0xab; 16]);
+        assert!(parse_base58_checksum(&base58).is_err());
     }
 
     #[test]
-    fn parse_hex_checksum_wrong_length() {
-        assert!(parse_hex_checksum("abcdef").is_err());
-    }
-
-    #[test]
-    fn parse_hex_checksum_invalid_hex() {
-        let hex = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
-        assert!(parse_hex_checksum(hex).is_err());
+    fn parse_base58_checksum_invalid() {
+        // Invalid base58 characters (0, O, I, l are not in base58)
+        assert!(parse_base58_checksum("0OIl").is_err());
     }
 
     #[test]
     fn manifest_from_input_valid() {
-        let result = manifest_from_input(
-            "https://example.com/data.bin",
-            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-            1024,
-        );
+        use fastcrypto::encoding::{Base58, Encoding};
+        let checksum_base58 = Base58::encode([0xab; 32]);
+        let result = manifest_from_input("https://example.com/data.bin", &checksum_base58, 1024);
         assert!(result.is_ok());
     }
 
     #[test]
     fn manifest_from_input_bad_url() {
-        let result = manifest_from_input(
-            "not a url",
-            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-            1024,
-        );
+        use fastcrypto::encoding::{Base58, Encoding};
+        let checksum_base58 = Base58::encode([0xab; 32]);
+        let result = manifest_from_input("not a url", &checksum_base58, 1024);
         assert!(result.is_err());
     }
 }

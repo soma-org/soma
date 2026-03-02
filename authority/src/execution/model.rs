@@ -164,12 +164,7 @@ impl ModelExecutor {
 
         let (state_object, mut state) = Self::load_system_state(store)?;
 
-        state.request_reveal_model(
-            signer,
-            &args.model_id,
-            args.decryption_key,
-            args.embedding,
-        )?;
+        state.request_reveal_model(signer, &args.model_id, args.decryption_key, args.embedding)?;
 
         Self::save_system_state(store, state_object, &state)
     }

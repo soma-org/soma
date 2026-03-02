@@ -467,6 +467,9 @@ pub struct TestClusterBuilder {
     validators: Option<Vec<ValidatorGenesisConfig>>,
     validator_supported_protocol_versions_config: ProtocolVersionsConfig,
     fullnode_run_with_range: Option<RunWithRange>,
+    /// When true, skip the mock scoring server and let validators start their own
+    /// local scoring service (using CPU backend and small model for testing).
+    use_local_scoring: bool,
 }
 
 impl TestClusterBuilder {
@@ -478,6 +481,7 @@ impl TestClusterBuilder {
             validators: None,
             validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             fullnode_run_with_range: None,
+            use_local_scoring: false,
         }
     }
 
@@ -538,6 +542,13 @@ impl TestClusterBuilder {
         self
     }
 
+    /// Skip the mock scoring server and let each validator start its own local
+    /// scoring service (CPU backend). Useful for testing the auto-start path.
+    pub fn with_local_scoring(mut self) -> Self {
+        self.use_local_scoring = true;
+        self
+    }
+
     pub async fn build(mut self) -> TestCluster {
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
@@ -576,24 +587,47 @@ impl TestClusterBuilder {
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
-        // Start a mock scoring server so validators can run the audit service.
-        let scoring_host = local_ip_utils::get_new_ip();
-        let scoring_port = local_ip_utils::get_available_port(&scoring_host);
-        let scoring_addr: SocketAddr = format!("{scoring_host}:{scoring_port}").parse().unwrap();
+        let mut builder: SwarmBuilder = Swarm::builder().with_fullnode_count(1);
 
-        // In msim, services must run inside a simulated node with an assigned IP.
-        // Spawn the scoring server on its own node, matching the pattern used by
-        // validator containers in container-sim.rs.
-        #[cfg(msim)]
-        {
-            let ip: std::net::IpAddr = scoring_host.parse().unwrap();
-            let handle = msim::runtime::Handle::current();
-            handle
-                .create_node()
-                .ip(ip)
-                .name("mock-scoring")
-                .init(move || async move {
-                    let listener = tokio::net::TcpListener::bind(scoring_addr).await.unwrap();
+        if !self.use_local_scoring {
+            // Start a mock scoring server so validators can run the audit service.
+            let scoring_host = local_ip_utils::get_new_ip();
+            let scoring_port = local_ip_utils::get_available_port(&scoring_host);
+            let scoring_addr: SocketAddr =
+                format!("{scoring_host}:{scoring_port}").parse().unwrap();
+
+            // In msim, services must run inside a simulated node with an assigned IP.
+            // Spawn the scoring server on its own node, matching the pattern used by
+            // validator containers in container-sim.rs.
+            #[cfg(msim)]
+            {
+                let ip: std::net::IpAddr = scoring_host.parse().unwrap();
+                let handle = msim::runtime::Handle::current();
+                handle
+                    .create_node()
+                    .ip(ip)
+                    .name("mock-scoring")
+                    .init(move || async move {
+                        let listener = tokio::net::TcpListener::bind(scoring_addr).await.unwrap();
+                        scoring::tonic::transport::Server::builder()
+                            .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
+                                MockScoringService,
+                            ))
+                            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
+                                listener,
+                            ))
+                            .await
+                            .expect("mock scoring server");
+                    })
+                    .build();
+            }
+
+            #[cfg(not(msim))]
+            {
+                let std_listener = std::net::TcpListener::bind(scoring_addr)?;
+                std_listener.set_nonblocking(true)?;
+                let listener = tokio::net::TcpListener::from_std(std_listener)?;
+                tokio::spawn(async move {
                     scoring::tonic::transport::Server::builder()
                         .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
                             MockScoringService,
@@ -603,31 +637,17 @@ impl TestClusterBuilder {
                         ))
                         .await
                         .expect("mock scoring server");
-                })
-                .build();
+                });
+            }
+
+            let scoring_url = format!("http://{scoring_addr}");
+            info!("Mock scoring server started at {scoring_url}");
+            builder = builder.with_scoring_url(scoring_url);
+        } else {
+            info!("Using local scoring (no mock server); validators will auto-start their own");
+            // Use CPU backend for tests (reliable without GPU).
+            builder = builder.with_scoring_device(types::config::node_config::DeviceConfig::Cpu);
         }
-
-        #[cfg(not(msim))]
-        {
-            let std_listener = std::net::TcpListener::bind(scoring_addr)?;
-            std_listener.set_nonblocking(true)?;
-            let listener = tokio::net::TcpListener::from_std(std_listener)?;
-            tokio::spawn(async move {
-                scoring::tonic::transport::Server::builder()
-                    .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
-                        MockScoringService,
-                    ))
-                    .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
-                    .await
-                    .expect("mock scoring server");
-            });
-        }
-
-        let scoring_url = format!("http://{scoring_addr}");
-        info!("Mock scoring server started at {scoring_url}");
-
-        let mut builder: SwarmBuilder =
-            Swarm::builder().with_fullnode_count(1).with_scoring_url(scoring_url);
 
         if let Some(validators) = self.validators.take() {
             builder = builder.with_validators(validators);

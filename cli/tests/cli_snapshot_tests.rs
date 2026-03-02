@@ -199,17 +199,6 @@ fn test_target_help() {
 }
 
 #[test]
-fn test_challenge_help() {
-    let output = soma_cmd()
-        .args(["challenge", "--help"])
-        .output()
-        .expect("failed to run soma challenge --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("challenge_help", stdout);
-}
-
-#[test]
 fn test_network_help() {
     let output =
         soma_cmd().args(["network", "--help"]).output().expect("failed to run soma network --help");

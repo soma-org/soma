@@ -60,7 +60,6 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::Coin => ObjectType::Coin,
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
             types::object::ObjectType::Target => ObjectType::Target,
-            types::object::ObjectType::Challenge => ObjectType::Challenge,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -87,7 +86,6 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::Coin => types::object::ObjectType::Coin,
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
             ObjectType::Target => types::object::ObjectType::Target,
-            ObjectType::Challenge => types::object::ObjectType::Challenge,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -460,6 +458,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 model_id: args.model_id.into(),
                 embedding: args.embedding.to_vec(),
                 distance_score: args.distance_score.as_scalar(),
+                loss_score: args.loss_score.to_vec(),
                 bond_coin: args.bond_coin.into(),
             }),
 
@@ -467,32 +466,11 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: args.target_id.into() })
             }
 
-            TK::ReportSubmission { target_id, challenger } => TransactionKind::ReportSubmission {
-                target_id: target_id.into(),
-                challenger: challenger.map(|c| c.into()),
-            },
+            TK::ReportSubmission { target_id } => {
+                TransactionKind::ReportSubmission { target_id: target_id.into() }
+            }
             TK::UndoReportSubmission { target_id } => {
                 TransactionKind::UndoReportSubmission { target_id: target_id.into() }
-            }
-
-            // Challenge transactions
-            // All challenges are fraud challenges now (simplified design v2)
-            // ChallengeId is derived from tx_digest during execution, not client-provided
-            TK::InitiateChallenge(args) => {
-                TransactionKind::InitiateChallenge(InitiateChallengeArgs {
-                    target_id: args.target_id.into(),
-                    bond_coin: args.bond_coin.into(),
-                })
-            }
-            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            TK::ReportChallenge { challenge_id } => {
-                TransactionKind::ReportChallenge { challenge_id: challenge_id.into() }
-            }
-            TK::UndoReportChallenge { challenge_id } => {
-                TransactionKind::UndoReportChallenge { challenge_id: challenge_id.into() }
-            }
-            TK::ClaimChallengeBond { challenge_id } => {
-                TransactionKind::ClaimChallengeBond { challenge_id: challenge_id.into() }
             }
         })
     }
@@ -621,7 +599,9 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     ),
                     decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
                         args.decryption_key_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("decryption_key_commitment must be 32 bytes".into())
+                            SdkTypeConversionError(
+                                "decryption_key_commitment must be 32 bytes".into(),
+                            )
                         })?,
                     ),
                     stake_amount: args.stake_amount,
@@ -658,7 +638,9 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     ),
                     decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
                         args.decryption_key_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("decryption_key_commitment must be 32 bytes".into())
+                            SdkTypeConversionError(
+                                "decryption_key_commitment must be 32 bytes".into(),
+                            )
                         })?,
                     ),
                 })
@@ -708,6 +690,10 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     vec![args.embedding.len()],
                 );
                 let distance_score = types::tensor::SomaTensor::scalar(args.distance_score);
+                let loss_score = types::tensor::SomaTensor::new(
+                    args.loss_score.clone(),
+                    vec![args.loss_score.len()],
+                );
 
                 TK::SubmitData(types::transaction::SubmitDataArgs {
                     target_id: args.target_id.into(),
@@ -715,6 +701,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     model_id: args.model_id.into(),
                     embedding,
                     distance_score,
+                    loss_score,
                     bond_coin: args.bond_coin.into(),
                 })
             }
@@ -726,32 +713,11 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
-            TransactionKind::ReportSubmission { target_id, challenger } => TK::ReportSubmission {
-                target_id: target_id.into(),
-                challenger: challenger.map(|c| c.into()),
-            },
+            TransactionKind::ReportSubmission { target_id } => {
+                TK::ReportSubmission { target_id: target_id.into() }
+            }
             TransactionKind::UndoReportSubmission { target_id } => {
                 TK::UndoReportSubmission { target_id: target_id.into() }
-            }
-
-            // Challenge transactions
-            // All challenges are fraud challenges now (simplified design v2)
-            // ChallengeId is derived from tx_digest during execution, not client-provided
-            TransactionKind::InitiateChallenge(args) => {
-                TK::InitiateChallenge(types::transaction::InitiateChallengeArgs {
-                    target_id: args.target_id.into(),
-                    bond_coin: args.bond_coin.into(),
-                })
-            }
-            // Tally-based challenge transactions (simplified: reports indicate "challenger is wrong")
-            TransactionKind::ReportChallenge { challenge_id } => {
-                TK::ReportChallenge { challenge_id: challenge_id.into() }
-            }
-            TransactionKind::UndoReportChallenge { challenge_id } => {
-                TK::UndoReportChallenge { challenge_id: challenge_id.into() }
-            }
-            TransactionKind::ClaimChallengeBond { challenge_id } => {
-                TK::ClaimChallengeBond { challenge_id: challenge_id.into() }
             }
         })
     }
@@ -1343,10 +1309,10 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 current_epoch,
             },
             types::effects::ExecutionFailureStatus::TargetNotFilled => Self::TargetNotFilled,
-            types::effects::ExecutionFailureStatus::ChallengeWindowOpen {
+            types::effects::ExecutionFailureStatus::AuditWindowOpen {
                 fill_epoch,
                 current_epoch,
-            } => Self::ChallengeWindowOpen {
+            } => Self::AuditWindowOpen {
                 fill_epoch,
                 current_epoch,
             },
@@ -1375,24 +1341,10 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Self::InsufficientEmissionBalance
             }
 
-            // Challenge errors
-            types::effects::ExecutionFailureStatus::ChallengeWindowClosed { fill_epoch, current_epoch } => {
-                Self::ChallengeWindowClosed { fill_epoch, current_epoch }
+            // Audit errors
+            types::effects::ExecutionFailureStatus::AuditWindowClosed { fill_epoch, current_epoch } => {
+                Self::AuditWindowClosed { fill_epoch, current_epoch }
             }
-            types::effects::ExecutionFailureStatus::InsufficientChallengerBond { required, provided } => {
-                Self::InsufficientChallengerBond { required, provided }
-            }
-            types::effects::ExecutionFailureStatus::ChallengeNotFound { challenge_id } => {
-                Self::ChallengeNotFound { challenge_id: challenge_id.into() }
-            }
-            types::effects::ExecutionFailureStatus::ChallengeNotPending { challenge_id } => {
-                Self::ChallengeNotPending { challenge_id: challenge_id.into() }
-            }
-            types::effects::ExecutionFailureStatus::ChallengeExpired { challenge_epoch, current_epoch } => {
-                Self::ChallengeExpired { challenge_epoch, current_epoch }
-            }
-            types::effects::ExecutionFailureStatus::InvalidChallengeResult => Self::InvalidChallengeResult,
-            types::effects::ExecutionFailureStatus::InvalidChallengeQuorum => Self::InvalidChallengeQuorum,
             types::effects::ExecutionFailureStatus::DataExceedsMaxSize { size, max_size } => {
                 Self::DataExceedsMaxSize { size, max_size }
             }
@@ -1424,9 +1376,6 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             }
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
-            }
-            types::effects::ExecutionFailureStatus::ChallengeAlreadyExists => {
-                Self::ChallengeAlreadyExists
             }
         }
     }
@@ -1472,8 +1421,12 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             ExecutionError::ModelNotPending => Self::ModelNotPending,
             ExecutionError::ModelAlreadyInactive => Self::ModelAlreadyInactive,
             ExecutionError::ModelRevealEpochMismatch => Self::ModelRevealEpochMismatch,
-            ExecutionError::ModelEmbeddingCommitmentMismatch => Self::ModelEmbeddingCommitmentMismatch,
-            ExecutionError::ModelDecryptionKeyCommitmentMismatch => Self::ModelDecryptionKeyCommitmentMismatch,
+            ExecutionError::ModelEmbeddingCommitmentMismatch => {
+                Self::ModelEmbeddingCommitmentMismatch
+            }
+            ExecutionError::ModelDecryptionKeyCommitmentMismatch => {
+                Self::ModelDecryptionKeyCommitmentMismatch
+            }
             ExecutionError::ModelNoPendingUpdate => Self::ModelNoPendingUpdate,
             ExecutionError::ModelArchitectureVersionMismatch => {
                 Self::ModelArchitectureVersionMismatch
@@ -1489,8 +1442,8 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
                 Self::TargetExpired { generation_epoch, current_epoch }
             }
             ExecutionError::TargetNotFilled => Self::TargetNotFilled,
-            ExecutionError::ChallengeWindowOpen { fill_epoch, current_epoch } => {
-                Self::ChallengeWindowOpen { fill_epoch, current_epoch }
+            ExecutionError::AuditWindowOpen { fill_epoch, current_epoch } => {
+                Self::AuditWindowOpen { fill_epoch, current_epoch }
             }
             ExecutionError::TargetAlreadyClaimed => Self::TargetAlreadyClaimed,
 
@@ -1512,28 +1465,13 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             }
             ExecutionError::InsufficientEmissionBalance => Self::InsufficientEmissionBalance,
 
-            // Challenge errors
-            ExecutionError::ChallengeWindowClosed { fill_epoch, current_epoch } => {
-                Self::ChallengeWindowClosed { fill_epoch, current_epoch }
+            // Audit errors
+            ExecutionError::AuditWindowClosed { fill_epoch, current_epoch } => {
+                Self::AuditWindowClosed { fill_epoch, current_epoch }
             }
-            ExecutionError::InsufficientChallengerBond { required, provided } => {
-                Self::InsufficientChallengerBond { required, provided }
-            }
-            ExecutionError::ChallengeNotFound { challenge_id } => {
-                Self::ChallengeNotFound { challenge_id: challenge_id.into() }
-            }
-            ExecutionError::ChallengeNotPending { challenge_id } => {
-                Self::ChallengeNotPending { challenge_id: challenge_id.into() }
-            }
-            ExecutionError::ChallengeExpired { challenge_epoch, current_epoch } => {
-                Self::ChallengeExpired { challenge_epoch, current_epoch }
-            }
-            ExecutionError::InvalidChallengeResult => Self::InvalidChallengeResult,
-            ExecutionError::InvalidChallengeQuorum => Self::InvalidChallengeQuorum,
             ExecutionError::DataExceedsMaxSize { size, max_size } => {
                 Self::DataExceedsMaxSize { size, max_size }
             }
-            ExecutionError::ChallengeAlreadyExists => Self::ChallengeAlreadyExists,
 
             // Coin errors
             ExecutionError::InsufficientCoinBalance => Self::InsufficientCoinBalance,

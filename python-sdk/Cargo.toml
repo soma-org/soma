@@ -20,6 +20,7 @@ rpc = { path = "../rpc", default-features = false }
 serde.workspace = true
 bcs.workspace = true
 futures.workspace = true
+fastcrypto.workspace = true
 hex.workspace = true
 url.workspace = true
 pythonize.workspace = true

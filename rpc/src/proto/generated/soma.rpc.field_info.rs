@@ -7857,6 +7857,12 @@ mod _field_impls {
             number: 7i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
+        pub const LOSS_SCORE_FIELD: &'static MessageField = &MessageField {
+            name: "loss_score",
+            json_name: "lossScore",
+            number: 8i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for SubmitData {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -7866,6 +7872,7 @@ mod _field_impls {
             Self::EMBEDDING_FIELD,
             Self::DISTANCE_SCORE_FIELD,
             Self::BOND_COIN_FIELD,
+            Self::LOSS_SCORE_FIELD,
         ];
     }
     impl SubmitData {
@@ -7911,6 +7918,10 @@ mod _field_impls {
         pub fn bond_coin(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(SubmitData::BOND_COIN_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn loss_score(mut self) -> String {
+            self.path.push(SubmitData::LOSS_SCORE_FIELD.name);
+            self.finish()
         }
     }
     impl ClaimRewards {

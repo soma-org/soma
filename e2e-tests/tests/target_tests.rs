@@ -6,7 +6,7 @@
 //! Tests:
 //! 1. test_genesis_target_bootstrap - Genesis creates seed targets
 //! 2. test_submit_data_fills_target - Submission fills target, spawns replacement
-//! 3. test_claim_rewards_after_challenge_window - Reward claiming works correctly
+//! 3. test_claim_rewards_after_audit_window - Reward claiming works correctly
 //! 4. test_epoch_boundary_issues_new_targets - Epoch change creates new targets
 //! 5. test_claim_expired_unfilled_target - Cleanup of expired unfilled targets
 //! 6. test_submit_data_validation_errors - Validates submission rejection scenarios
@@ -18,12 +18,12 @@ use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::config::genesis_config::{GenesisModelConfig, SHANNONS_PER_SOMA};
 use types::crypto::DecryptionKey;
-use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use types::digests::ModelWeightsCommitment;
 use types::effects::TransactionEffectsAPI;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::ModelId;
 use types::object::ObjectID;
 use types::submission::SubmissionManifest;
+use types::system_state::SystemStateTrait as _;
 use types::tensor::SomaTensor;
 use types::transaction::{ClaimRewardsArgs, SubmitDataArgs, TransactionData, TransactionKind};
 use url::Url;
@@ -37,25 +37,14 @@ fn make_manifest(url_str: &str) -> Manifest {
     Manifest::V1(ManifestV1::new(url, metadata))
 }
 
-fn make_genesis_model_config(
-    owner: SomaAddress,
-    model_id: ModelId,
-    initial_stake: u64,
-) -> GenesisModelConfig {
-    let url_str = format!("https://example.com/models/{}", model_id);
-    let manifest = make_manifest(&url_str);
-    let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-
+fn make_genesis_model_config(owner: SomaAddress, initial_stake: u64) -> GenesisModelConfig {
+    let manifest = make_manifest("https://example.com/models/genesis");
     GenesisModelConfig {
         owner,
-        model_id,
         manifest,
         decryption_key: DecryptionKey::new([0xAA; 32]),
-        weights_commitment,
+        weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
         architecture_version: 1,
-        embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-        decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
-        embedding: SomaTensor::zeros(vec![768]),
         commission_rate: 0,
         initial_stake,
     }
@@ -83,9 +72,8 @@ async fn test_genesis_target_bootstrap() {
 
     // Create a genesis model to ensure targets can be generated
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
@@ -97,9 +85,9 @@ async fn test_genesis_target_bootstrap() {
             .expect("Should be able to get SystemState")
     });
 
-    // Verify we have an active model
+    // Verify we have an active model (model_id is auto-assigned at genesis)
     assert!(
-        system_state.model_registry().active_models.contains_key(&model_id),
+        !system_state.model_registry().active_models.is_empty(),
         "Genesis model should be active"
     );
 
@@ -155,21 +143,26 @@ async fn test_submit_data_fills_target() {
 
     // Create a genesis model
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state to find thresholds
+    // Get system state to find thresholds and discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -219,6 +212,7 @@ async fn test_submit_data_fills_target() {
             model_id,
             embedding,
             distance_score,
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -256,33 +250,38 @@ async fn test_submit_data_fills_target() {
 }
 
 // ===================================================================
-// Test 3: Claim rewards after challenge window
+// Test 3: Claim rewards after audit window
 //
-// Verifies that rewards can be claimed after the challenge window closes.
+// Verifies that rewards can be claimed after the audit window closes.
 // ===================================================================
 
 #[cfg(msim)]
 #[msim::sim_test]
-async fn test_claim_rewards_after_challenge_window() {
+async fn test_claim_rewards_after_audit_window() {
     init_tracing();
 
     // Create a genesis model
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state and thresholds, discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -315,6 +314,7 @@ async fn test_claim_rewards_after_challenge_window() {
             model_id,
             embedding: SomaTensor::zeros(vec![embedding_dim]),
             distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
             bond_coin: gas_object,
         }),
         submitter,
@@ -326,12 +326,12 @@ async fn test_claim_rewards_after_challenge_window() {
 
     info!("Target filled in epoch 0");
 
-    // Advance epoch twice to close the challenge window
+    // Advance epoch twice to close the audit window
     test_cluster.trigger_reconfiguration().await;
     info!("Advanced to epoch 1");
 
     test_cluster.trigger_reconfiguration().await;
-    info!("Advanced to epoch 2 - challenge window closed");
+    info!("Advanced to epoch 2 - audit window closed");
 
     // Claim rewards
     let gas_object = test_cluster
@@ -367,7 +367,7 @@ async fn test_claim_rewards_after_challenge_window() {
 
     assert!(!found, "Target should be deleted after ClaimRewards");
 
-    info!("test_claim_rewards_after_challenge_window passed");
+    info!("test_claim_rewards_after_audit_window passed");
 }
 
 // ===================================================================
@@ -383,9 +383,8 @@ async fn test_epoch_boundary_issues_new_targets() {
 
     // Create a genesis model
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
@@ -451,9 +450,8 @@ async fn test_claim_expired_unfilled_target() {
 
     // Create a genesis model
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
@@ -530,21 +528,26 @@ async fn test_submit_data_validation_errors() {
 
     // Create a genesis model
     let model_owner = SomaAddress::from_bytes([0x01; 32]).unwrap();
-    let model_id = ObjectID::from_bytes([0x42; 32]).unwrap();
     let initial_stake = 5 * SHANNONS_PER_SOMA;
-    let model_config = make_genesis_model_config(model_owner, model_id, initial_stake);
+    let model_config = make_genesis_model_config(model_owner, initial_stake);
 
     let test_cluster =
         TestClusterBuilder::new().with_genesis_models(vec![model_config]).build().await;
 
     let submitter = test_cluster.get_addresses()[0];
 
-    // Get system state and thresholds
+    // Get system state and thresholds, discover auto-assigned model_id
     let system_state = test_cluster.fullnode_handle.soma_node.with(|node| {
         node.state()
             .get_system_state_object_for_testing()
             .expect("Should be able to get SystemState")
     });
+    let model_id = *system_state
+        .model_registry()
+        .active_models
+        .keys()
+        .next()
+        .expect("Should have at least one active model");
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -578,6 +581,7 @@ async fn test_submit_data_validation_errors() {
                 model_id,
                 embedding: SomaTensor::zeros(vec![embedding_dim]),
                 distance_score: SomaTensor::scalar(distance_threshold + 0.1), // Exceeds threshold
+                loss_score: SomaTensor::new(vec![0.5], vec![1]),
                 bond_coin: gas_object,
             }),
             submitter,
@@ -610,6 +614,7 @@ async fn test_submit_data_validation_errors() {
                 model_id,
                 embedding: SomaTensor::zeros(vec![wrong_dim]), // Wrong dimension
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+                loss_score: SomaTensor::new(vec![0.5], vec![1]),
                 bond_coin: gas_object,
             }),
             submitter,
@@ -642,6 +647,7 @@ async fn test_submit_data_validation_errors() {
                 model_id: wrong_model_id, // Wrong model
                 embedding: SomaTensor::zeros(vec![embedding_dim]),
                 distance_score: SomaTensor::scalar(distance_threshold - 0.1),
+                loss_score: SomaTensor::new(vec![0.5], vec![1]),
                 bond_coin: gas_object,
             }),
             submitter,

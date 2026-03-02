@@ -398,8 +398,7 @@ pub async fn spawn_report_handler(
         let tx_kind = match report {
             AvailabilityReport::Submission(target_id) => {
                 info!("Submitting ReportSubmission for target {}", target_id);
-                // challenger=None for availability issues (no fraud, just data unavailable)
-                TransactionKind::ReportSubmission { target_id, challenger: None }
+                TransactionKind::ReportSubmission { target_id }
             }
             AvailabilityReport::Model(model_id) => {
                 info!("Submitting ReportModel for model {}", model_id);

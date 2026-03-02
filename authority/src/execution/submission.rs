@@ -249,6 +249,7 @@ impl SubmissionExecutor {
         target.winning_data_manifest = Some(args.data_manifest.clone());
         target.winning_embedding = Some(args.embedding.clone());
         target.winning_distance_score = Some(args.distance_score.clone());
+        target.winning_loss_score = Some(args.loss_score.clone());
 
         // 12. Record hit in target_state (for difficulty adjustment at epoch boundary)
         state.target_state_mut().record_hit();
@@ -371,12 +372,11 @@ impl SubmissionExecutor {
         Ok(())
     }
 
-    /// Claim rewards from a filled target after the challenge window closes.
+    /// Claim rewards from a filled target after the audit window closes.
     ///
     /// Handles tally-based fraud detection:
     /// - Check Target.submission_reports for 2f+1 quorum
-    /// - If quorum WITH challenger: submitter bond → challenger
-    /// - If quorum WITHOUT challenger: submitter bond → reporting validators (split evenly)
+    /// - If quorum: submitter bond → reporting validators (split evenly)
     /// - No quorum: normal distribution (submitter gets rewards + bond)
     fn claim_filled_target(
         &self,
@@ -389,12 +389,12 @@ impl SubmissionExecutor {
         fill_epoch: EpochId,
         current_epoch: EpochId,
     ) -> ExecutionResult<()> {
-        // Validate challenge window is closed
-        // Challenge window = fill_epoch + 1
+        // Validate audit window is closed
+        // Audit window = fill_epoch + 1
         // Can claim when current_epoch > fill_epoch + 1
-        let challenge_window_end = fill_epoch + 1;
-        if current_epoch <= challenge_window_end {
-            return Err(ExecutionFailureStatus::ChallengeWindowOpen { fill_epoch, current_epoch });
+        let audit_window_end = fill_epoch + 1;
+        if current_epoch <= audit_window_end {
+            return Err(ExecutionFailureStatus::AuditWindowOpen { fill_epoch, current_epoch });
         }
 
         // Get reward amount and recipient info
@@ -408,34 +408,16 @@ impl SubmissionExecutor {
         target.status = TargetStatus::Claimed;
 
         // Check submission reports on Target object using tally-based quorum
-        let (has_quorum, winning_challenger, reporters) =
-            target.get_submission_report_quorum(state.validators());
+        let (has_quorum, reporters) = target.get_submission_report_quorum(state.validators());
 
         // Clear submission reports from Target
         target.clear_submission_reports();
 
         if has_quorum {
-            // Fraud detected by validator quorum
-            info!(
-                "ClaimRewards: submission reported with quorum - has_quorum={}, winning_challenger={:?}, reporters={:?}",
-                has_quorum, winning_challenger, reporters
-            );
+            // Fraud detected by validator quorum — submitter bond → reporting validators
+            info!("ClaimRewards: submission reported with quorum - reporters={:?}", reporters);
 
-            if let Some(challenger) = winning_challenger {
-                // FRAUD WITH CHALLENGER: submitter bond → challenger
-                if bond > 0 {
-                    let challenger_coin = Object::new_coin(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        bond,
-                        Owner::AddressOwner(challenger),
-                        tx_digest,
-                    );
-                    store.create_object(challenger_coin);
-                }
-            } else {
-                // AVAILABILITY (no challenger): submitter bond → reporting validators (split evenly)
-                Self::distribute_bond_to_validators(store, bond, &reporters, tx_digest);
-            }
+            Self::distribute_bond_to_validators(store, bond, &reporters, tx_digest);
 
             // Reward → emission pool (forfeited)
             state.emission_pool_mut().balance += reward;
@@ -604,7 +586,6 @@ impl SubmissionExecutor {
         store: &mut TemporaryStore,
         signer: SomaAddress,
         target_id: ObjectID,
-        challenger: Option<SomaAddress>,
     ) -> ExecutionResult<()> {
         // Load system state and target
         let (state_object, state) = Self::load_system_state(store)?;
@@ -622,22 +603,18 @@ impl SubmissionExecutor {
             TargetStatus::Claimed => return Err(ExecutionFailureStatus::TargetAlreadyClaimed),
         };
 
-        // Verify we're still within the challenge window (fill_epoch + 1)
-        let challenge_window_end = fill_epoch + 1;
-        if state.epoch() > challenge_window_end {
-            return Err(ExecutionFailureStatus::ChallengeWindowClosed {
+        // Reports only valid in exactly the epoch after fill (E+1)
+        if state.epoch() != fill_epoch + 1 {
+            return Err(ExecutionFailureStatus::AuditWindowClosed {
                 fill_epoch,
                 current_epoch: state.epoch(),
             });
         }
 
         // Record the report on the Target object (tally-based)
-        target.report_submission(signer, challenger);
+        target.report_submission(signer);
 
-        info!(
-            "ReportSubmission: validator {:?} reported target {:?} with challenger={:?}",
-            signer, target_id, challenger
-        );
+        info!("ReportSubmission: validator {:?} reported target {:?}", signer, target_id);
 
         // Save updated target
         Self::save_target(store, target_object, &target)?;
@@ -673,10 +650,9 @@ impl SubmissionExecutor {
             TargetStatus::Claimed => return Err(ExecutionFailureStatus::TargetAlreadyClaimed),
         };
 
-        // Verify we're still within the challenge window (fill_epoch + 1)
-        let challenge_window_end = fill_epoch + 1;
-        if state.epoch() > challenge_window_end {
-            return Err(ExecutionFailureStatus::ChallengeWindowClosed {
+        // Reports only valid in exactly the epoch after fill (E+1)
+        if state.epoch() != fill_epoch + 1 {
+            return Err(ExecutionFailureStatus::AuditWindowClosed {
                 fill_epoch,
                 current_epoch: state.epoch(),
             });
@@ -715,8 +691,8 @@ impl TransactionExecutor for SubmissionExecutor {
             TransactionKind::ClaimRewards(_) => {
                 self.execute_claim_rewards(store, signer, kind, tx_digest)
             }
-            TransactionKind::ReportSubmission { target_id, challenger } => {
-                self.execute_report_submission(store, signer, target_id, challenger)
+            TransactionKind::ReportSubmission { target_id } => {
+                self.execute_report_submission(store, signer, target_id)
             }
             TransactionKind::UndoReportSubmission { target_id } => {
                 self.execute_undo_report_submission(store, signer, target_id)

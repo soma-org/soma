@@ -4,7 +4,6 @@
 
 // Command modules for top-level CLI commands
 pub mod balance;
-pub mod challenge;
 pub mod claim;
 pub mod data;
 pub mod env;
@@ -25,7 +24,6 @@ pub mod wallet;
 pub(crate) mod parse_helpers;
 
 // Re-export subcommand enums for use in soma_commands.rs
-pub use challenge::ChallengeCommand;
 pub use env::EnvCommand;
 pub use model::ModelCommand;
 pub use objects::ObjectsCommand;

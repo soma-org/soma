@@ -21,7 +21,6 @@ Commands:
   env        Manage network environments (switch, add, list)
   model      Manage models (commit, reveal, update, deactivate, query)
   target     Manage targets: query, submit data, claim rewards, download data
-  challenge  Challenge a filled target's submission
   validator  Manage validators (register, set gas price, commission)
   start      Start a long-running service (localnet, validator, faucet, scoring)
   network    Inspect local network configuration and validator addresses

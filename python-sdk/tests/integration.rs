@@ -791,7 +791,7 @@ asyncio.run(_test())
     ))
     .await;
 
-    // Skip challenge window (2 epoch advances)
+    // Advance epochs so rewards become claimable
     cluster.trigger_reconfiguration().await;
     cluster.trigger_reconfiguration().await;
 

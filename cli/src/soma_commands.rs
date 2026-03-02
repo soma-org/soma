@@ -44,8 +44,7 @@ use url::Url;
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
 use crate::commands::{
-    ChallengeCommand, EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand,
-    TargetCommand, WalletCommand,
+    EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, TargetCommand, WalletCommand,
 };
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
@@ -406,24 +405,6 @@ EXAMPLES:
     Target {
         #[clap(subcommand)]
         cmd: TargetCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Challenge a filled target's submission
-    ///
-    /// Submit a fraud challenge against a submitter's submission for a filled target.
-    /// Requires a bond proportional to the data size.
-    #[clap(
-        name = "challenge",
-        after_help = "\
-EXAMPLES:
-    soma challenge submit --target-id 0xTARGET... --bond-coin 0xCOIN...
-    soma challenge info 0xCHALLENGE_ID"
-    )]
-    Challenge {
-        #[clap(subcommand)]
-        cmd: ChallengeCommand,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -1012,12 +993,6 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Challenge { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
             // =================================================================
             // NODE OPERATIONS
             // =================================================================
@@ -1232,7 +1207,7 @@ async fn start(
             GenesisConfig::for_local_testing()
         };
         if small_model {
-            // Small model uses embedding_dim=16; override protocol config default of 768
+            // Small model uses embedding_dim=16; override protocol config default of 2048
             genesis_config.parameters.target_embedding_dim_override = Some(16);
         }
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);

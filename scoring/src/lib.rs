@@ -17,6 +17,9 @@ pub mod scoring;
 #[cfg(feature = "server")]
 pub mod server;
 
+#[cfg(feature = "server")]
+pub use runtime::ModelConfig;
+
 /// A small model config for testing (embedding_dim=16, num_layers=2).
 #[cfg(feature = "server")]
 pub fn model_config_small() -> runtime::ModelConfig {

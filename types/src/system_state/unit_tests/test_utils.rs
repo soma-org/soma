@@ -22,9 +22,7 @@ use crate::crypto::{
     self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey,
     ProtocolKeyPair,
 };
-use crate::digests::{
-    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment,
-};
+use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use crate::effects::ExecutionFailureStatus;
 use crate::error::ExecutionResult;
 use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};

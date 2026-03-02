@@ -63,9 +63,10 @@ pub enum CeremonyCommand {
 
     /// Add a seed model from a YAML config file
     ///
-    /// The model config file should contain: owner, model_id, weights_manifest,
-    /// weights_url_commitment, weights_commitment, architecture_version,
-    /// commission_rate, and initial_stake fields.
+    /// The model config file should contain: owner, manifest, decryption_key,
+    /// weights_commitment, architecture_version, commission_rate, and
+    /// optionally initial_stake (defaults to 1 SOMA). The model_id, embedding,
+    /// and commitments are auto-generated at build time.
     AddModel {
         /// Path to the model config YAML file
         #[clap(name = "model-config-path")]
@@ -152,12 +153,16 @@ pub fn run(cmd: Ceremony) -> Result<()> {
             let mut builder = GenesisBuilder::load(&dir)?;
 
             let model_config: GenesisModelConfig = load_model_config(&file)?;
-            let model_id = model_config.model_id;
+            let index = builder.genesis_models().len();
 
             builder = builder.add_model(model_config);
             builder.save(&dir)?;
 
-            println!("Added seed model {} from {}", model_id, file.display());
+            println!(
+                "Added seed model #{} from {} (model_id assigned at build time)",
+                index,
+                file.display()
+            );
         }
 
         CeremonyCommand::ListModels => {
@@ -166,20 +171,21 @@ pub fn run(cmd: Ceremony) -> Result<()> {
             let models = builder.genesis_models();
 
             println!("Seed Models ({}):", models.len());
+            println!("(model_id and embedding are assigned at build time)");
             println!("{:-<80}", "");
 
             let mut writer = csv::Writer::from_writer(std::io::stdout());
             writer.write_record([
-                "model-id",
+                "index",
                 "owner",
                 "architecture-version",
                 "commission-rate",
                 "initial-stake",
             ])?;
 
-            for m in models {
+            for (i, m) in models.iter().enumerate() {
                 writer.write_record([
-                    &m.model_id.to_string(),
+                    &i.to_string(),
                     &m.owner.to_string(),
                     &m.architecture_version.to_string(),
                     &m.commission_rate.to_string(),

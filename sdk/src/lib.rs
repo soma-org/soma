@@ -307,28 +307,6 @@ impl SomaClient {
     }
 
     /// Get a challenge by ID.
-    ///
-    /// Returns the challenge details including status, challenger, target, and audit data.
-    pub async fn get_challenge(
-        &self,
-        request: impl tonic::IntoRequest<rpc::proto::soma::GetChallengeRequest>,
-    ) -> Result<rpc::proto::soma::GetChallengeResponse, tonic::Status> {
-        let mut client = self.inner.write().await;
-        client.get_challenge(request).await
-    }
-
-    /// List challenges with optional filtering by status, epoch, and target.
-    ///
-    /// Returns a paginated list of challenges. Use `status_filter` to filter by "pending" or "resolved".
-    /// Use `epoch_filter` to filter by challenge epoch. Use `target_filter` to filter by target ID.
-    pub async fn list_challenges(
-        &self,
-        request: impl tonic::IntoRequest<rpc::proto::soma::ListChallengesRequest>,
-    ) -> Result<rpc::proto::soma::ListChallengesResponse, tonic::Status> {
-        let mut client = self.inner.write().await;
-        client.list_challenges(request).await
-    }
-
     /// Get epoch information
     pub async fn get_epoch(
         &self,

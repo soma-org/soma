@@ -59,6 +59,9 @@ pub struct SubmitCommand {
     /// Distance score (f32, must be <= target threshold)
     #[clap(long)]
     pub distance_score: f32,
+    /// Loss score from model inference (comma-separated f32 values)
+    #[clap(long)]
+    pub loss_score: String,
     #[clap(flatten)]
     pub tx_args: TxProcessingArgs,
 }
@@ -72,14 +75,15 @@ impl SubmitCommand {
         let sender = context.active_address()?;
 
         // Auto-compute commitment, checksum, and size from data file
-        let (_commitment_bytes, checksum_hex, data_size) =
+        let (_commitment_bytes, checksum_base58, data_size) =
             super::parse_helpers::read_and_hash_file(&self.data_file)?;
 
         // Build data manifest
-        let manifest = build_data_manifest(&self.data_url, &checksum_hex, data_size)?;
+        let manifest = build_data_manifest(&self.data_url, &checksum_base58, data_size)?;
 
-        // Parse embedding
+        // Parse embedding and loss_score
         let embedding_vec = parse_embedding(&self.embedding)?;
+        let loss_score_vec = parse_embedding(&self.loss_score)?;
 
         // Auto-fetch bond coin
         let bond_coin_ref = super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
@@ -112,6 +116,7 @@ impl SubmitCommand {
             model_id: self.model_id,
             embedding: SomaTensor::new(embedding_vec.clone(), vec![embedding_vec.len()]),
             distance_score: SomaTensor::scalar(self.distance_score),
+            loss_score: SomaTensor::new(loss_score_vec.clone(), vec![loss_score_vec.len()]),
             bond_coin: bond_coin_ref,
         });
 
@@ -131,13 +136,17 @@ impl SubmitCommand {
 // Helpers
 // =============================================================================
 
-use super::parse_helpers::{parse_embedding, parse_hex_digest_32};
+use super::parse_helpers::{parse_base58_32, parse_embedding};
 
-fn build_data_manifest(url: &str, checksum_hex: &str, size: usize) -> Result<SubmissionManifest> {
+fn build_data_manifest(
+    url: &str,
+    checksum_base58: &str,
+    size: usize,
+) -> Result<SubmissionManifest> {
     let parsed_url: url::Url = url.parse().map_err(|e| anyhow!("Invalid URL: {}", e))?;
-    let checksum_bytes = parse_hex_digest_32(checksum_hex, "data-checksum")?;
+    let checksum_bytes = parse_base58_32(checksum_base58, "data-checksum")?;
 
-    let metadata = Metadata::V1(MetadataV1::new(Checksum(checksum_bytes), size));
+    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash(checksum_bytes), size));
     let manifest = Manifest::V1(ManifestV1::new(parsed_url, metadata));
 
     Ok(SubmissionManifest::new(manifest))
@@ -211,7 +220,7 @@ impl Display for SubmitCommandResponse {
                 if let Some(hint) = next_epoch_hint {
                     writeln!(
                         f,
-                        "  {} Challenge window closes at epoch boundary ({})",
+                        "  {} Audit window closes at epoch boundary ({})",
                         ">>".dimmed(),
                         hint.yellow()
                     )?;
