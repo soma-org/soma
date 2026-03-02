@@ -657,6 +657,9 @@ async fn test_target_version_increments_on_mutations() {
         );
     }
 
+    // === Advance epoch so ReportSubmission is valid (requires fill_epoch + 1) ===
+    test_cluster.trigger_reconfiguration().await;
+
     // === Mutation 2: ReportSubmission (validator reports the filled target) ===
 
     let validator_addr = get_validator_address(&test_cluster, 0);
@@ -1145,6 +1148,9 @@ async fn test_shared_object_dependency_tracking() {
 
     let tx1_digest = *response1.effects.transaction_digest();
     info!("Mutation 1 (SubmitData) digest: {}", tx1_digest);
+
+    // === Advance epoch so ReportSubmission is valid (requires fill_epoch + 1) ===
+    test_cluster.trigger_reconfiguration().await;
 
     // === Mutation 2: ReportSubmission (validator reports on same target) ===
     let validator_addr = get_validator_address(&test_cluster, 0);

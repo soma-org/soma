@@ -113,6 +113,7 @@ async def run():
             model_id=target.model_ids[score.winner],
             embedding=score.embedding,
             distance_score=score.distance[score.winner],
+            loss_score=score.loss_score,
         )
         print("Data submitted")
 

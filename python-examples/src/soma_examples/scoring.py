@@ -68,12 +68,13 @@ async def run():
 
             print(f"\nWinner model index: {result.winner}")
             print(f"Distance score: {result.distance}")
+            print(f"Loss score: {result.loss_score}")
             print(f"Embedding dim: {len(result.embedding)}")
             print("\nThese values can be passed to:")
             print(
                 "  await client.submit_data(signer=kp, target_id=..., data=..., "
                 "data_url=..., model_id=..., embedding=result.embedding, "
-                "distance_score=result.distance[0])"
+                "distance_score=result.distance[0], loss_score=result.loss_score)"
             )
         except Exception as e:
             print(f"Scoring request failed: {e}")

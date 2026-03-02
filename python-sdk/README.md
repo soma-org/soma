@@ -171,113 +171,6 @@ SomaClient.decrypt_weights(data, key)       # decrypted bytes (key: bytes or Bas
 
 ---
 
-## Transaction Builders
-
-All builders are methods on `SomaClient` and return `bytes` (BCS-encoded `TransactionData`). Sign with `Keypair.sign()` and execute with `client.execute_transaction()`.
-
-The `gas` parameter is always optional — when `None`, a gas coin is auto-selected from the sender's owned coins.
-
-### Coin & Object Transfers
-
-```python
-# Transfer a coin (optionally a partial amount)
-tx = await client.build_transfer_coin(sender, recipient, coin, amount=None, gas=None)
-
-# Transfer arbitrary objects
-tx = await client.build_transfer_objects(sender, recipient, [obj1, obj2], gas=None)
-
-# Multi-recipient payment
-tx = await client.build_pay_coins(sender, recipients, amounts, coins, gas=None)
-```
-
-### Staking
-
-```python
-# Stake with a validator
-tx = await client.build_add_stake(sender, validator, coin, amount=None, gas=None)
-
-# Withdraw stake
-tx = await client.build_withdraw_stake(sender, staked_soma, gas=None)
-
-# Stake with a model
-tx = await client.build_add_stake_to_model(sender, model_id, coin, amount=None, gas=None)
-```
-
-### Model Management
-
-```python
-# Register a model (commit-reveal pattern)
-# Commit publishes the manifest (URL + checksum + size) and commitments
-tx = await client.build_commit_model(
-    sender,
-    url,                       # Weights URL string
-    checksum,                  # Blake2b-256 Base58 of encrypted weights
-    size,                      # int (bytes)
-    weights_commitment,        # Blake2b-256 Base58 of encrypted weights content
-    embedding_commitment,      # Blake2b-256 Base58 of BCS-serialized embedding
-    decryption_key_commitment, # Blake2b-256 Base58 of decryption key bytes
-    stake_amount,              # int (shannons)
-    commission_rate,           # int (BPS, 10000 = 100%)
-    gas=None,
-)
-
-# Reveal model (must be called the epoch after commit)
-# Provides the decryption key and embedding, verified against commitments
-tx = await client.build_reveal_model(
-    sender, model_id,
-    decryption_key,            # AES-256 Base58 key
-    embedding,                 # list[float] — model embedding vector
-    gas=None,
-)
-
-# Update model weights (commit-reveal)
-tx = await client.build_commit_model_update(sender, model_id, url, checksum, size, weights_commitment, embedding_commitment, decryption_key_commitment, gas=None)
-tx = await client.build_reveal_model_update(sender, model_id, decryption_key, embedding, gas=None)
-
-# Other model operations
-tx = await client.build_deactivate_model(sender, model_id, gas=None)
-tx = await client.build_set_model_commission_rate(sender, model_id, new_rate, gas=None)
-tx = await client.build_report_model(sender, model_id, gas=None)
-tx = await client.build_undo_report_model(sender, model_id, gas=None)
-```
-
-### Data Submissions
-
-```python
-# Submit data to fill a target
-tx = await client.build_submit_data(
-    sender, target_id,
-    data_url,                  # URL string
-    data_checksum,             # Blake2b-256 Base58
-    data_size,                 # int (bytes)
-    model_id,                  # hex object ID
-    embedding,                 # list[float]
-    distance_score,            # float
-    bond_coin,                 # ObjectRef
-    gas=None,
-)
-
-# Claim rewards from a filled/expired target
-tx = await client.build_claim_rewards(sender, target_id, gas=None)
-
-# Report a fraudulent submission
-tx = await client.build_report_submission(sender, target_id, gas=None)
-tx = await client.build_undo_report_submission(sender, target_id, gas=None)
-```
-
-### Validator Management
-
-```python
-tx = await client.build_add_validator(sender, pubkey_bytes, network_pubkey_bytes, worker_pubkey_bytes, proof_of_possession, net_address, p2p_address, primary_address, proxy_address, gas=None)
-tx = await client.build_remove_validator(sender, pubkey_bytes, gas=None)
-tx = await client.build_update_validator_metadata(sender, gas=None, next_epoch_network_address=None, ...)
-tx = await client.build_set_commission_rate(sender, new_rate, gas=None)
-tx = await client.build_report_validator(sender, reportee, gas=None)
-tx = await client.build_undo_report_validator(sender, reportee, gas=None)
-```
-
----
-
 ## High-Level Convenience Methods
 
 These methods handle building, signing, and executing in one call. Amounts are in SOMA (float), not shannons.
@@ -320,6 +213,7 @@ await client.submit_data(
     model_id="0xMODEL",
     embedding=[0.1, 0.2, ...],
     distance_score=0.42,
+    loss_score=[0.1, 0.2, ...],
 )
 
 # Claim rewards

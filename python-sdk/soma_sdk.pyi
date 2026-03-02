@@ -265,20 +265,20 @@ class SomaClient:
     @staticmethod
     def encrypt_weights(
         data: bytes,
-        key: Optional[bytes] = None,
+        key: Optional[bytes | str] = None,
     ) -> tuple[bytes, str]:
-        """Encrypt with AES-256-CTR (zero IV). Returns (encrypted_bytes, key_hex)."""
+        """Encrypt with AES-256-CTR (zero IV). Returns (encrypted_bytes, key_base58)."""
         ...
     @staticmethod
     def decrypt_weights(
         data: bytes,
         key: Union[bytes, str],
     ) -> bytes:
-        """Decrypt with AES-256-CTR (zero IV). Key can be bytes or hex string."""
+        """Decrypt with AES-256-CTR (zero IV). Key can be bytes or Base58 string."""
         ...
     @staticmethod
     def commitment(data: bytes) -> str:
-        """Blake2b-256 hash of data, returned as 64-char hex string."""
+        """Blake2b-256 hash of data, returned as Base58 string."""
         ...
     @staticmethod
     def to_shannons(soma: float) -> int:
@@ -380,215 +380,14 @@ class SomaClient:
         """
         ...
 
-    # -- Transaction Builders: Coin & Object --
-    async def build_transfer_coin(
-        self,
-        sender: str,
-        recipient: str,
-        coin: ObjectRef,
-        amount: Optional[int] = None,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_transfer_objects(
-        self,
-        sender: str,
-        recipient: str,
-        objects: list[ObjectRef],
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_pay_coins(
-        self,
-        sender: str,
-        recipients: list[str],
-        amounts: list[int],
-        coins: list[ObjectRef],
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- Transaction Builders: Staking --
-    async def build_add_stake(
-        self,
-        sender: str,
-        validator: str,
-        coin: ObjectRef,
-        amount: Optional[int] = None,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_withdraw_stake(
-        self,
-        sender: str,
-        staked_soma: ObjectRef,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_add_stake_to_model(
-        self,
-        sender: str,
-        model_id: str,
-        coin: ObjectRef,
-        amount: Optional[int] = None,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- Transaction Builders: Model Management --
-    async def build_commit_model(
-        self,
-        sender: str,
-        model_id: str,
-        weights_url_commitment: str,
-        weights_commitment: str,
-        stake_amount: int,
-        commission_rate: int,
-        staking_pool_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_reveal_model(
-        self,
-        sender: str,
-        model_id: str,
-        weights_url: str,
-        weights_checksum: str,
-        weights_size: int,
-        decryption_key: str,
-        embedding: list[float],
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_commit_model_update(
-        self,
-        sender: str,
-        model_id: str,
-        weights_url_commitment: str,
-        weights_commitment: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_reveal_model_update(
-        self,
-        sender: str,
-        model_id: str,
-        weights_url: str,
-        weights_checksum: str,
-        weights_size: int,
-        decryption_key: str,
-        embedding: list[float],
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_deactivate_model(
-        self,
-        sender: str,
-        model_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_set_model_commission_rate(
-        self,
-        sender: str,
-        model_id: str,
-        new_rate: int,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_report_model(
-        self,
-        sender: str,
-        model_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_undo_report_model(
-        self,
-        sender: str,
-        model_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- Transaction Builders: Submissions --
-    async def build_submit_data(
-        self,
-        sender: str,
-        target_id: str,
-        data_commitment: str,
-        data_url: str,
-        data_checksum: str,
-        data_size: int,
-        model_id: str,
-        embedding: list[float],
-        distance_score: float,
-        bond_coin: ObjectRef,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_claim_rewards(
-        self,
-        sender: str,
-        target_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_report_submission(
-        self,
-        sender: str,
-        target_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_undo_report_submission(
-        self,
-        sender: str,
-        target_id: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- Transaction Builders: Validator Management --
-    async def build_add_validator(
-        self,
-        sender: str,
-        pubkey_bytes: bytes,
-        network_pubkey_bytes: bytes,
-        worker_pubkey_bytes: bytes,
-        proof_of_possession: bytes,
-        net_address: bytes,
-        p2p_address: bytes,
-        primary_address: bytes,
-        proxy_address: bytes,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_remove_validator(
-        self,
-        sender: str,
-        pubkey_bytes: bytes,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_update_validator_metadata(
-        self,
-        sender: str,
-        gas: Optional[ObjectRef] = None,
-        next_epoch_network_address: Optional[bytes] = None,
-        next_epoch_p2p_address: Optional[bytes] = None,
-        next_epoch_primary_address: Optional[bytes] = None,
-        next_epoch_proxy_address: Optional[bytes] = None,
-        next_epoch_protocol_pubkey: Optional[bytes] = None,
-        next_epoch_worker_pubkey: Optional[bytes] = None,
-        next_epoch_network_pubkey: Optional[bytes] = None,
-        next_epoch_proof_of_possession: Optional[bytes] = None,
-    ) -> bytes: ...
-    async def build_set_commission_rate(
-        self,
-        sender: str,
-        new_rate: int,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_report_validator(
-        self,
-        sender: str,
-        reportee: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-    async def build_undo_report_validator(
-        self,
-        sender: str,
-        reportee: str,
-        gas: Optional[ObjectRef] = None,
-    ) -> bytes: ...
-
-    # -- High-level convenience methods (build + sign + execute) --
+    # -- High-level convenience methods (sign + execute) --
     async def commit_model(
         self,
         signer: Keypair,
         weights_url: str,
         encrypted_weights: bytes,
+        decryption_key: str,
+        embedding: list[float],
         commission_rate: int,
         stake_amount: Optional[float] = None,
     ) -> str: ...
@@ -596,8 +395,6 @@ class SomaClient:
         self,
         signer: Keypair,
         model_id: str,
-        weights_url: str,
-        encrypted_weights: bytes,
         decryption_key: str,
         embedding: list[float],
     ) -> None: ...
@@ -610,6 +407,7 @@ class SomaClient:
         model_id: str,
         embedding: list[float],
         distance_score: float,
+        loss_score: list[float],
     ) -> None: ...
     async def claim_rewards(
         self,
@@ -663,13 +461,13 @@ class SomaClient:
         model_id: str,
         weights_url: str,
         encrypted_weights: bytes,
+        decryption_key: str,
+        embedding: list[float],
     ) -> None: ...
     async def reveal_model_update(
         self,
         signer: Keypair,
         model_id: str,
-        weights_url: str,
-        encrypted_weights: bytes,
         decryption_key: str,
         embedding: list[float],
     ) -> None: ...

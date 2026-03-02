@@ -231,15 +231,15 @@ assert encrypted != raw, "encrypted should differ from raw"
 decrypted = SomaClient.decrypt_weights(encrypted, key)
 assert decrypted == raw, "decrypt(encrypt(x)) should equal x"
 
-# encrypt with explicit key (bytes)
-encrypted2, key2 = SomaClient.encrypt_weights(raw, bytes.fromhex(key))
+# encrypt with explicit key (base58 string)
+encrypted2, key2 = SomaClient.encrypt_weights(raw, key)
 assert key2 == key, "same key should be returned"
 assert encrypted2 == encrypted, "same key should produce same ciphertext"
 
 # commitment
 h = SomaClient.commitment(raw)
-assert isinstance(h, str) and len(h) == 64, \
-    f"commitment should be 64-char hex, got {h!r}"
+assert isinstance(h, str) and len(h) > 0, \
+    f"commitment should be non-empty base58 string, got {h!r}"
 assert SomaClient.commitment(raw) == h, "commitment should be deterministic"
 
 # different data → different commitment
@@ -772,6 +772,7 @@ async def _test():
     assert isinstance(result.winner, int), f"winner should be int, got {{type(result.winner).__name__}}"
     assert isinstance(result.distance, list), "distance should be a list"
     assert isinstance(result.embedding, list), "embedding should be a list"
+    assert isinstance(result.loss_score, list), "loss_score should be a list"
 
     # submit_data
     await client.submit_data(
@@ -782,6 +783,7 @@ async def _test():
         model_id=target.model_ids[result.winner],
         embedding=result.embedding,
         distance_score=result.distance[result.winner],
+        loss_score=result.loss_score,
     )
 
     builtins._target_id = target.id
