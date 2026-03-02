@@ -35,7 +35,7 @@ pub struct ManifestInput {
     pub url: String,
     pub checksum: String,
     pub size: usize,
-    /// Optional hex-encoded AES-256 decryption key (64 hex chars = 32 bytes).
+    /// Optional Base58-encoded AES-256 decryption key (32 bytes).
     #[serde(default)]
     pub decryption_key: Option<String>,
 }

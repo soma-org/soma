@@ -471,12 +471,12 @@ impl GenesisBuilder {
     /// Generate a deterministic embedding for a genesis model.
     /// Uses the model_id as a seed to produce reproducible embeddings.
     fn generate_genesis_embedding(model_id: &ObjectID, dim: usize) -> SomaTensor {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        model_id.hash(&mut hasher);
-        let seed = hasher.finish();
+        // Use Blake2b256 (not DefaultHasher which is randomized per-process)
+        let mut hasher = Blake2b256::default();
+        hasher.update(b"soma-genesis-model-embedding");
+        hasher.update(model_id.as_ref());
+        let hash = hasher.finalize();
+        let seed = u64::from_le_bytes(hash.digest[..8].try_into().unwrap());
 
         let values: Vec<f32> = (0..dim)
             .map(|i| {

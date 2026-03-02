@@ -13,7 +13,13 @@ pub fn select_best_model<B: Backend>(outputs: &[ModelOutput<B>]) -> Option<usize
     }
     let losses: Vec<_> = outputs.iter().map(|o| o.loss.clone().unsqueeze::<2>()).collect();
     let stacked = Tensor::cat(losses, 0).flatten::<1>(0, 1);
-    let idx = stacked.argmin(0).into_data().to_vec::<i64>().unwrap()[0];
+    let data = stacked.argmin(0).into_data();
+    // Backend may return i32 or i64 for argmin indices; handle both.
+    let idx = data.to_vec::<i64>().unwrap_or_else(|_| {
+        data.to_vec::<i32>()
+            .map(|v| v.into_iter().map(|x| x as i64).collect())
+            .expect("argmin should return i32 or i64")
+    })[0];
     Some(idx as usize)
 }
 

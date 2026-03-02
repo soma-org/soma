@@ -11,7 +11,7 @@ use epoch_start::{EpochStartSystemState, EpochStartValidatorInfoV1};
 use fastcrypto::bls12381::min_sig::BLS12381PublicKey;
 use fastcrypto::bls12381::{self};
 use fastcrypto::ed25519::Ed25519PublicKey;
-use fastcrypto::hash::HashFunction as _;
+use fastcrypto::hash::{Blake2b256, HashFunction as _};
 use fastcrypto::traits::ToFromBytes;
 use model_registry::ModelRegistry;
 use protocol_config::{ProtocolConfig, SomaTensor, SystemParameters};
@@ -414,7 +414,15 @@ impl SystemStateV1 {
         assert!(self.epoch == 0, "Must be called during genesis");
         assert!(commission_rate <= BPS_DENOMINATOR, "Commission rate exceeds max");
 
-        let mut staking_pool = StakingPool::new(ObjectID::random());
+        // Derive deterministic staking pool ID from model_id for reproducible genesis
+        let pool_id = {
+            let mut hasher = Blake2b256::default();
+            hasher.update(b"soma-genesis-model-staking-pool");
+            hasher.update(model_id.as_ref());
+            let hash = hasher.finalize();
+            ObjectID::new(hash.digest[..ObjectID::LENGTH].try_into().unwrap())
+        };
+        let mut staking_pool = StakingPool::new(pool_id);
         // Activate the pool at epoch 0 (same as validator.activate(0))
         staking_pool.activation_epoch = Some(0);
         staking_pool

@@ -564,7 +564,7 @@ impl std::str::FromStr for ObjectDigest {
 pub struct ChainIdentifier(CheckpointDigest);
 
 // pub const MAINNET_CHAIN_IDENTIFIER_BASE58: &str = "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S";
-pub const TESTNET_CHAIN_IDENTIFIER_BASE58: &str = "CMxhPfq6uyhUFnagDcaivU7C19WrQpN6WNGiQnbqBuE7";
+pub const TESTNET_CHAIN_IDENTIFIER_BASE58: &str = "964EDrEzfvQT7HjVsjfXYcM1ubi3qhqB41zV7LLbCxxd";
 
 // pub static MAINNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
 pub static TESTNET_CHAIN_IDENTIFIER: OnceCell<ChainIdentifier> = OnceCell::new();
