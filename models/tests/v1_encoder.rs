@@ -5,24 +5,17 @@
 
 use std::collections::HashMap;
 
-use arrgen::normal_array;
+use arrgen::normal_array_raw;
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Int, Tensor, Tolerance};
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Int, Tensor, TensorData, Tolerance};
+use models::tensor_conversions::ArrayWrapper;
 use models::v1::modules::encoder::EncoderConfig;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;
-
-// set_print_options(PrintOptions {
-//     threshold: 1000,    // Default or custom threshold for summarization.
-//     edge_items: 3,      // Default or custom edge items to display.
-//     precision: Some(8), // High value for full precision.
-// });
-// println!("{}", output);
 
 #[test]
 fn test_v1_encoder_ones() {
@@ -49,67 +42,67 @@ fn test_v1_encoder_ones() {
         let lseed = seed + l as u64;
         tensors.insert(
             format!("layers.{}.norm_1.gamma", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 1, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 1, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_1.beta", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 2, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 2, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.query.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 3, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 3, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.query.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 4, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 4, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.key.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 5, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 5, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.key.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 6, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 6, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.value.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 7, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 7, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.value.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 8, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 8, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.output.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 9, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 9, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.output.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 10, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 10, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_2.gamma", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 11, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 11, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_2.beta", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 12, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 12, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_inner.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 13, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 13, &[embedding_dim, hidden_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_inner.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 14, &[hidden_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 14, &[hidden_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_outer.weight", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 15, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 15, &[hidden_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_outer.bias", l).to_string(),
-            ArrayWrapper(normal_array(lseed + 16, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 16, &[embedding_dim], 0.0, 1.0).into(),
         );
     }
 
@@ -118,10 +111,8 @@ fn test_v1_encoder_ones() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     model.load_from(&mut store).unwrap();
 
-    let input_data = normal_array(seed + 100, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
+    let (v, s) = normal_array_raw(seed + 100, &[batch_size, seq_len, embedding_dim], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(TensorData::new(v, s), &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     let output = model.forward(input_tensor, positions);
@@ -150,67 +141,67 @@ fn build_encoder_weights(
         let lseed = seed + l as u64;
         tensors.insert(
             format!("layers.{}.norm_1.gamma", l),
-            ArrayWrapper(normal_array(lseed + 1, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 1, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_1.beta", l),
-            ArrayWrapper(normal_array(lseed + 2, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 2, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.query.weight", l),
-            ArrayWrapper(normal_array(lseed + 3, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 3, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.query.bias", l),
-            ArrayWrapper(normal_array(lseed + 4, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 4, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.key.weight", l),
-            ArrayWrapper(normal_array(lseed + 5, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 5, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.key.bias", l),
-            ArrayWrapper(normal_array(lseed + 6, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 6, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.value.weight", l),
-            ArrayWrapper(normal_array(lseed + 7, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 7, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.value.bias", l),
-            ArrayWrapper(normal_array(lseed + 8, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 8, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.output.weight", l),
-            ArrayWrapper(normal_array(lseed + 9, &[embedding_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 9, &[embedding_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.attention.output.bias", l),
-            ArrayWrapper(normal_array(lseed + 10, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 10, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_2.gamma", l),
-            ArrayWrapper(normal_array(lseed + 11, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 11, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.norm_2.beta", l),
-            ArrayWrapper(normal_array(lseed + 12, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 12, &[embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_inner.weight", l),
-            ArrayWrapper(normal_array(lseed + 13, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 13, &[embedding_dim, hidden_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_inner.bias", l),
-            ArrayWrapper(normal_array(lseed + 14, &[hidden_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 14, &[hidden_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_outer.weight", l),
-            ArrayWrapper(normal_array(lseed + 15, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 15, &[hidden_dim, embedding_dim], 0.0, 1.0).into(),
         );
         tensors.insert(
             format!("layers.{}.pwff.linear_outer.bias", l),
-            ArrayWrapper(normal_array(lseed + 16, &[embedding_dim], 0.0, 1.0)),
+            normal_array_raw(lseed + 16, &[embedding_dim], 0.0, 1.0).into(),
         );
     }
     tensors
@@ -240,10 +231,8 @@ fn test_v1_encoder_normal_input() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     model.load_from(&mut store).unwrap();
 
-    let input_data = normal_array(seed + 200, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
+    let (v, s) = normal_array_raw(seed + 200, &[batch_size, seq_len, embedding_dim], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(TensorData::new(v, s), &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     let output = model.forward(input_tensor, positions);
@@ -284,10 +273,8 @@ fn test_v1_encoder_multi_batch() {
     let mut store = SafetensorsStore::from_bytes(Some(st));
     model.load_from(&mut store).unwrap();
 
-    let input_data = normal_array(seed + 200, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
+    let (v, s) = normal_array_raw(seed + 200, &[batch_size, seq_len, embedding_dim], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(TensorData::new(v, s), &device);
     let positions: Tensor<TestBackend, 2, Int> =
         Tensor::arange(0..seq_len as i64, &device).unsqueeze().repeat_dim(0, batch_size);
     let output = model.forward(input_tensor, positions);

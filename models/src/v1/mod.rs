@@ -3,16 +3,15 @@
 
 use std::sync::Arc;
 
-use arrgen::normal_array;
+use arrgen::normal_array_raw;
 use burn::data::dataloader::DataLoader;
 use burn::nn::loss::CrossEntropyLossConfig;
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
-use burn::tensor::Tensor;
+use burn::tensor::{Tensor, TensorData};
 use types::error::ModelError;
 
 use crate::running_mean::RunningMean;
-use crate::tensor_conversions::IntoTensorData;
 use crate::v1::data::batcher::ByteSequenceBatch;
 use crate::v1::data::build_data_loader;
 use crate::v1::data::dataset::PAD_TOKEN_ID;
@@ -107,14 +106,13 @@ impl<B: Backend> ModelAPI for ModelRunner<B> {
             let representations = model.encode(batch.token_ids.clone(), batch.pos_ids.clone());
             let logits = model.predict(representations.clone());
 
-            let noise_data = normal_array(
+            let (raw_vec, shape) = normal_array_raw(
                 seed + idx as u64,
                 &[self.config.embedding_dim, sig_reg.slices],
                 0.0,
                 1.0,
-            )
-            .to_tensor_data()
-            .map_err(|e| ModelError::EmptyData(e.to_string()))?;
+            );
+            let noise_data = TensorData::new(raw_vec, shape);
             let noise: Tensor<B, 2> = Tensor::from_data(noise_data, &self.device);
             let sig_reg_loss = sig_reg.forward(representations.clone(), noise);
 

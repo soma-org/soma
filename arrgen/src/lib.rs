@@ -9,12 +9,12 @@ use numpy::{PyArrayDyn, ToPyArray};
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 use rand::SeedableRng;
-use rand::distributions::Uniform;
+use rand::distr::Uniform;
 use rand::rngs::StdRng;
 
 pub fn uniform_array(seed: u64, shape: &[usize], min: f32, max: f32) -> ArrayD<f32> {
     let mut rng = StdRng::seed_from_u64(seed);
-    let dist = Uniform::new(min, max);
+    let dist = Uniform::new(min, max).unwrap();
     let array_shape = IxDyn(shape);
     ArrayD::random_using(array_shape, dist, &mut rng)
 }
@@ -26,9 +26,38 @@ pub fn normal_array(seed: u64, shape: &[usize], mean: f32, std_dev: f32) -> Arra
     ArrayD::random_using(array_shape, dist, &mut rng)
 }
 
+/// Returns `(flat_vec, shape)` without exposing ndarray types to callers.
+pub fn normal_array_raw(
+    seed: u64,
+    shape: &[usize],
+    mean: f32,
+    std_dev: f32,
+) -> (Vec<f32>, Vec<usize>) {
+    let arr = normal_array(seed, shape, mean, std_dev);
+    let s = arr.shape().to_vec();
+    let (v, _) = arr.into_raw_vec_and_offset();
+    (v, s)
+}
+
+/// Returns `(flat_vec, shape)` without exposing ndarray types to callers.
+pub fn uniform_array_raw(seed: u64, shape: &[usize], min: f32, max: f32) -> (Vec<f32>, Vec<usize>) {
+    let arr = uniform_array(seed, shape, min, max);
+    let s = arr.shape().to_vec();
+    let (v, _) = arr.into_raw_vec_and_offset();
+    (v, s)
+}
+
 pub fn constant_array(shape: &[usize], value: f32) -> ArrayD<f32> {
     let array_shape = IxDyn(shape);
     ArrayD::from_elem(array_shape, value)
+}
+
+/// Returns `(flat_vec, shape)` without exposing ndarray types to callers.
+pub fn constant_array_raw(shape: &[usize], value: f32) -> (Vec<f32>, Vec<usize>) {
+    let arr = constant_array(shape, value);
+    let s = arr.shape().to_vec();
+    let (v, _) = arr.into_raw_vec_and_offset();
+    (v, s)
 }
 
 #[cfg(feature = "python")]

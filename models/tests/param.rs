@@ -5,15 +5,15 @@
 
 use std::collections::HashMap;
 
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::normal_array_raw;
 use burn::backend::NdArray;
 use burn::module::{Module, Param};
 use burn::nn::Initializer;
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{PrintOptions, Tensor, TensorPrimitive, Tolerance, set_print_options};
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Tensor, Tolerance};
+use models::tensor_conversions::ArrayWrapper;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
@@ -48,20 +48,13 @@ impl<B: Backend> ParamModule3D<B> {
         self.param.val()
     }
 }
-// set_print_options(PrintOptions {
-//     threshold: 1000,    // Default or custom threshold for summarization.
-//     edge_items: 3,      // Default or custom edge items to display.
-//     precision: Some(8), // High value for full precision.
-// });
-// println!("{}", output);
 
 #[test]
 fn test_1d_param() {
     let seed = 42u64;
     let embedding_dim = 4;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
-    tensors
-        .insert("param".to_string(), ArrayWrapper(normal_array(seed, &[embedding_dim], 0.0, 1.0)));
+    tensors.insert("param".to_string(), normal_array_raw(seed, &[embedding_dim], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
@@ -83,7 +76,7 @@ fn test_3d_param() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "param".to_string(),
-        ArrayWrapper(normal_array(seed, &[1, 1, embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed, &[1, 1, embedding_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

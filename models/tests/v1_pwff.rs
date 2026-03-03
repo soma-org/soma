@@ -5,24 +5,17 @@
 
 use std::collections::HashMap;
 
-use arrgen::{constant_array, normal_array};
+use arrgen::{constant_array_raw, normal_array_raw};
 use burn::backend::NdArray;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Tensor, Tolerance};
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Tensor, TensorData, Tolerance};
+use models::tensor_conversions::ArrayWrapper;
 use models::v1::modules::pwff::PositionWiseFeedForwardConfig;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
 type FT = FloatElem<TestBackend>;
-
-// set_print_options(PrintOptions {
-//     threshold: 1000,    // Default or custom threshold for summarization.
-//     edge_items: 3,      // Default or custom edge items to display.
-//     precision: Some(8), // High value for full precision.
-// });
-// println!("{}", output);
 
 #[test]
 fn test_v1_pwff_ones() {
@@ -32,19 +25,19 @@ fn test_v1_pwff_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &[hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 2, &[hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4, &[embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 4, &[embedding_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -54,8 +47,8 @@ fn test_v1_pwff_ones() {
         .with_hidden_dim(hidden_dim)
         .init(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&[embedding_dim], 1.0).to_tensor_data().unwrap();
-    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
+    let (v, s) = constant_array_raw(&[embedding_dim], 1.0);
+    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
 
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
@@ -74,19 +67,19 @@ fn test_v1_pwff_normal_input() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &[hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 2, &[hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4, &[embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 4, &[embedding_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -96,8 +89,8 @@ fn test_v1_pwff_normal_input() {
         .with_hidden_dim(hidden_dim)
         .init(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = normal_array(seed + 5, &[embedding_dim], 0.0, 1.0).to_tensor_data().unwrap();
-    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
+    let (v, s) = normal_array_raw(seed + 5, &[embedding_dim], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
         [-0.42594010, -0.70958626, -0.26518542, -0.35035765],
@@ -116,19 +109,19 @@ fn test_v1_pwff_batched() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear_inner.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[embedding_dim, hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_inner.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &[hidden_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 2, &[hidden_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 3, &[hidden_dim, embedding_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear_outer.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 4, &[embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 4, &[embedding_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
@@ -138,10 +131,8 @@ fn test_v1_pwff_batched() {
         .with_hidden_dim(hidden_dim)
         .init(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = normal_array(seed + 5, &[batch_size, seq_len, embedding_dim], 0.0, 1.0)
-        .to_tensor_data()
-        .unwrap();
-    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(input_data, &device);
+    let (v, s) = normal_array_raw(seed + 5, &[batch_size, seq_len, embedding_dim], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 3> = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 3>::from_floats(
         [

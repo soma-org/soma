@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::normal_array_raw;
 use burn::backend::NdArray;
 use burn::module::Module;
 use burn::nn::{Embedding, EmbeddingConfig};
@@ -44,7 +44,7 @@ fn test_embedding() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "embedding.weight".to_string(),
-        ArrayWrapper(normal_array(seed, &[num_embeddings, embedding_dim], 0.0, 1.0)),
+        normal_array_raw(seed, &[num_embeddings, embedding_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();

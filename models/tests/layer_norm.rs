@@ -5,15 +5,15 @@
 
 use std::collections::HashMap;
 
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::{constant_array_raw, normal_array_raw, uniform_array_raw};
 use burn::backend::NdArray;
 use burn::module::Module;
 use burn::nn::{LayerNorm, LayerNormConfig};
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Tensor, Tolerance};
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Tensor, TensorData, Tolerance};
+use models::tensor_conversions::ArrayWrapper;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
@@ -34,30 +34,20 @@ impl<B: Backend> LayerNormModule<B> {
     }
 }
 
-// set_print_options(PrintOptions {
-//     threshold: 1000,    // Default or custom threshold for summarization.
-//     edge_items: 3,      // Default or custom edge items to display.
-//     precision: Some(8), // High value for full precision.
-// });
-// println!("{}", output);
-
 #[test]
 fn test_layer_norm_ones() {
     let seed = 42u64;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
+    tensors.insert("layer_norm.gamma".to_string(), normal_array_raw(seed, &[4], 0.0, 1.0).into());
     tensors
-        .insert("layer_norm.gamma".to_string(), ArrayWrapper(normal_array(seed, &[4], 0.0, 1.0)));
-    tensors.insert(
-        "layer_norm.beta".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[4], 0.0, 1.0)),
-    );
+        .insert("layer_norm.beta".to_string(), normal_array_raw(seed + 1, &[4], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LayerNormModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&vec![4], 1.0).to_tensor_data().unwrap();
-    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
+    let (v, s) = constant_array_raw(&vec![4], 1.0);
+    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
         [0.26803425, -0.30034754, -0.18579677, -0.37248048],
@@ -71,20 +61,17 @@ fn test_layer_norm_ones() {
 fn test_layer_norm_uniform() {
     let seed = 44u64;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
+    tensors.insert("layer_norm.gamma".to_string(), normal_array_raw(seed, &[4], 0.0, 1.0).into());
     tensors
-        .insert("layer_norm.gamma".to_string(), ArrayWrapper(normal_array(seed, &[4], 0.0, 1.0)));
-    tensors.insert(
-        "layer_norm.beta".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[4], 0.0, 1.0)),
-    );
+        .insert("layer_norm.beta".to_string(), normal_array_raw(seed + 1, &[4], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LayerNormModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2, &[4], 0.0, 1.0).to_tensor_data().unwrap();
-    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(input_data, &device);
+    let (v, s) = uniform_array_raw(seed + 2, &[4], 0.0, 1.0);
+    let input_tensor: Tensor<TestBackend, 1> = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
         [-0.74536324, -2.98460746, -0.31756663, -0.38157958],

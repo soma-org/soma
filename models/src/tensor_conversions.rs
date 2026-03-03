@@ -3,24 +3,24 @@
 
 use std::borrow;
 
-use burn::tensor::TensorData;
-use ndarray::ArrayD;
-use types::error::ModelResult;
-
-pub trait IntoTensorData {
-    fn to_tensor_data(self) -> ModelResult<TensorData>;
+/// A wrapper around raw float data + shape that implements `safetensors::View`.
+/// This avoids exposing a specific ndarray version in the public API.
+pub struct ArrayWrapper {
+    data: Vec<f32>,
+    shape: Vec<usize>,
 }
 
-impl IntoTensorData for ArrayD<f32> {
-    fn to_tensor_data(self) -> ModelResult<TensorData> {
-        let shape = self.shape().to_vec();
-        let (raw_vec, _) = self.into_raw_vec_and_offset();
-        let data = TensorData::new(raw_vec, shape);
-        Ok(data)
+impl ArrayWrapper {
+    pub fn new(data: Vec<f32>, shape: Vec<usize>) -> Self {
+        Self { data, shape }
     }
 }
 
-pub struct ArrayWrapper(pub ArrayD<f32>);
+impl From<(Vec<f32>, Vec<usize>)> for ArrayWrapper {
+    fn from((data, shape): (Vec<f32>, Vec<usize>)) -> Self {
+        Self { data, shape }
+    }
+}
 
 impl safetensors::View for ArrayWrapper {
     fn dtype(&self) -> safetensors::Dtype {
@@ -28,20 +28,20 @@ impl safetensors::View for ArrayWrapper {
     }
 
     fn shape(&self) -> &[usize] {
-        self.0.shape()
+        &self.shape
     }
 
     fn data(&self) -> borrow::Cow<'_, [u8]> {
         let bytes: &[u8] = unsafe {
             std::slice::from_raw_parts(
-                self.0.as_ptr() as *const u8,
-                self.0.len() * std::mem::size_of::<f32>(),
+                self.data.as_ptr() as *const u8,
+                self.data.len() * std::mem::size_of::<f32>(),
             )
         };
         borrow::Cow::Borrowed(bytes)
     }
 
     fn data_len(&self) -> usize {
-        self.0.len() * std::mem::size_of::<f32>()
+        self.data.len() * std::mem::size_of::<f32>()
     }
 }

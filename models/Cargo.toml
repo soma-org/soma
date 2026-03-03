@@ -5,7 +5,6 @@ version = "0.1.4"
 
 [dependencies]
 num-traits.workspace = true
-ndarray.workspace = true
 burn.workspace = true
 safetensors.workspace = true
 types.workspace = true

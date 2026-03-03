@@ -5,15 +5,15 @@
 
 use std::collections::HashMap;
 
-use arrgen::{constant_array, normal_array, uniform_array};
+use arrgen::{constant_array_raw, normal_array_raw, uniform_array_raw};
 use burn::backend::NdArray;
 use burn::module::Module;
 use burn::nn::{Linear, LinearConfig};
 use burn::prelude::Backend;
 use burn::store::{ModuleSnapshot, SafetensorsStore};
 use burn::tensor::ops::FloatElem;
-use burn::tensor::{Tensor, Tolerance};
-use models::tensor_conversions::{ArrayWrapper, IntoTensorData};
+use burn::tensor::{Tensor, TensorData, Tolerance};
+use models::tensor_conversions::ArrayWrapper;
 use safetensors::serialize;
 
 type TestBackend = NdArray<f32>;
@@ -34,13 +34,6 @@ impl<B: Backend> LinearModule<B> {
     }
 }
 
-// set_print_options(PrintOptions {
-//     threshold: 1000,    // Default or custom threshold for summarization.
-//     edge_items: 3,      // Default or custom edge items to display.
-//     precision: Some(8), // High value for full precision.
-// });
-// println!("{}", output);
-
 #[test]
 fn test_linear_ones() {
     let seed = 42u64;
@@ -49,19 +42,17 @@ fn test_linear_ones() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[input_dim, output_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[input_dim, output_dim], 0.0, 1.0).into(),
     );
-    tensors.insert(
-        "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed, &[output_dim], 0.0, 1.0)),
-    );
+    tensors
+        .insert("linear.bias".to_string(), normal_array_raw(seed, &[output_dim], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
-    let input_data = constant_array(&vec![input_dim], 1.0).to_tensor_data().unwrap();
-    let input_tensor = Tensor::from_data(input_data, &device);
+    let (v, s) = constant_array_raw(&vec![input_dim], 1.0);
+    let input_tensor = Tensor::from_data(TensorData::new(v, s), &device);
 
     let output = model.forward(input_tensor);
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
@@ -80,20 +71,18 @@ fn test_linear_uniform() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[input_dim, output_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[input_dim, output_dim], 0.0, 1.0).into(),
     );
-    tensors.insert(
-        "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed, &[output_dim], 0.0, 1.0)),
-    );
+    tensors
+        .insert("linear.bias".to_string(), normal_array_raw(seed, &[output_dim], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let device = Default::default();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let mut model = LinearModule::<TestBackend>::new(&device);
     model.load_from(&mut store).unwrap();
 
-    let input_data = uniform_array(seed + 2, &[input_dim], 0.0, 1.0).to_tensor_data().unwrap();
-    let input_tensor = Tensor::from_data(input_data, &device);
+    let (v, s) = uniform_array_raw(seed + 2, &[input_dim], 0.0, 1.0);
+    let input_tensor = Tensor::from_data(TensorData::new(v, s), &device);
     let output = model.forward(input_tensor);
 
     let expected_output = Tensor::<TestBackend, 1>::from_floats(
@@ -114,11 +103,10 @@ fn load_wrong_weight_shape_reports_error() {
     let output_dim = 4;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     // weight should be [2, 4] but we provide [3, 5]
-    tensors
-        .insert("linear.weight".to_string(), ArrayWrapper(normal_array(seed, &[3, 5], 0.0, 1.0)));
+    tensors.insert("linear.weight".to_string(), normal_array_raw(seed, &[3, 5], 0.0, 1.0).into());
     tensors.insert(
         "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[output_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[output_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let mut store = SafetensorsStore::from_bytes(Some(st));
@@ -143,10 +131,8 @@ fn load_missing_weight_key_returns_error() {
     let output_dim = 4;
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     // Only provide bias, omit weight entirely
-    tensors.insert(
-        "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed, &[output_dim], 0.0, 1.0)),
-    );
+    tensors
+        .insert("linear.bias".to_string(), normal_array_raw(seed, &[output_dim], 0.0, 1.0).into());
     let st = serialize(tensors, &None).unwrap();
     let mut store = SafetensorsStore::from_bytes(Some(st));
     let device = Default::default();
@@ -164,7 +150,7 @@ fn load_missing_bias_key_returns_error() {
     // Only provide weight, omit bias
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed, &[input_dim, output_dim], 0.0, 1.0)),
+        normal_array_raw(seed, &[input_dim, output_dim], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let mut store = SafetensorsStore::from_bytes(Some(st));
@@ -182,15 +168,15 @@ fn load_extra_unused_key_reports_unused() {
     let mut tensors: HashMap<String, ArrayWrapper> = HashMap::new();
     tensors.insert(
         "linear.weight".to_string(),
-        ArrayWrapper(normal_array(seed, &[input_dim, output_dim], 0.0, 1.0)),
+        normal_array_raw(seed, &[input_dim, output_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear.bias".to_string(),
-        ArrayWrapper(normal_array(seed + 1, &[output_dim], 0.0, 1.0)),
+        normal_array_raw(seed + 1, &[output_dim], 0.0, 1.0).into(),
     );
     tensors.insert(
         "linear.bogus_param".to_string(),
-        ArrayWrapper(normal_array(seed + 2, &[3], 0.0, 1.0)),
+        normal_array_raw(seed + 2, &[3], 0.0, 1.0).into(),
     );
     let st = serialize(tensors, &None).unwrap();
     let mut store = SafetensorsStore::from_bytes(Some(st));
