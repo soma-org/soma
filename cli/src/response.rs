@@ -611,6 +611,8 @@ impl Display for NewAddressOutput {
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
         writeln!(f, "{}", table)?;
 
         writeln!(f)?;
