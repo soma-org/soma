@@ -35,14 +35,14 @@ async def run():
     print(f"  Fetched {len(manifests)} manifest(s)")
 
     manifest = manifests[0]
-    print(f"\n=== Step 2: Manifest details ===")
+    print("\n=== Step 2: Manifest details ===")
     print(f"  url:            {manifest.url}")
     print(f"  checksum:       {manifest.checksum}")
     print(f"  size:           {manifest.size}")
     print(f"  decryption_key: {manifest.decryption_key}")
 
     # 2. Download the raw bytes
-    print(f"\n=== Step 3: Download raw bytes from URL ===")
+    print("\n=== Step 3: Download raw bytes from URL ===")
     async with aiohttp.ClientSession() as session:
         async with session.get(manifest.url) as response:
             if response.status != 200:
@@ -55,28 +55,28 @@ async def run():
         print(f"  WARNING: Size mismatch! Downloaded {len(raw_bytes)} vs manifest {manifest.size}")
 
     # 3. Verify checksum
-    print(f"\n=== Step 4: Verify checksum ===")
+    print("\n=== Step 4: Verify checksum ===")
     computed_checksum = SomaClient.commitment(raw_bytes)
     print(f"  Computed: {computed_checksum}")
     print(f"  Expected: {manifest.checksum}")
     if computed_checksum == manifest.checksum:
-        print(f"  OK: checksums match (raw downloaded bytes = encrypted weights)")
+        print("  OK: checksums match (raw downloaded bytes = encrypted weights)")
     else:
-        print(f"  MISMATCH: checksums differ!")
+        print("  MISMATCH: checksums differ!")
 
     # 4. Inspect raw bytes as safetensors (before decryption)
-    print(f"\n=== Step 5: Inspect raw bytes (encrypted) as safetensors ===")
+    print("\n=== Step 5: Inspect raw bytes (encrypted) as safetensors ===")
     inspect_safetensors(raw_bytes, label="encrypted")
 
     # 5. Decrypt and inspect
     if manifest.decryption_key:
-        print(f"\n=== Step 6: Decrypt and inspect ===")
+        print("\n=== Step 6: Decrypt and inspect ===")
         decrypted = SomaClient.decrypt_weights(raw_bytes, manifest.decryption_key)
         print(f"  Decrypted {len(decrypted)} bytes")
         inspect_safetensors(decrypted, label="decrypted")
 
         # 6. Try loading with safetensors library
-        print(f"\n=== Step 7: Try loading with safetensors Python library ===")
+        print("\n=== Step 7: Try loading with safetensors Python library ===")
         try:
             from safetensors import safe_open
             import tempfile
@@ -99,14 +99,14 @@ async def run():
         except Exception as e:
             print(f"  FAILED to load safetensors: {e}")
         # 7. Simulate double-decryption (what happens on 2nd scoring call)
-        print(f"\n=== Step 8: Simulate double-decryption (2nd scoring call) ===")
+        print("\n=== Step 8: Simulate double-decryption (2nd scoring call) ===")
         print("  The scoring service caches the decrypted file at the same path.")
         print("  On a 2nd call, download is skipped (cache hit) but decrypt runs again.")
         double_decrypted = SomaClient.decrypt_weights(decrypted, manifest.decryption_key)
-        print(f"  Applying CTR decrypt to already-decrypted bytes...")
+        print("  Applying CTR decrypt to already-decrypted bytes...")
         inspect_safetensors(double_decrypted, label="double-decrypted")
     else:
-        print(f"\n=== Step 6: No decryption key available ===")
+        print("\n=== Step 6: No decryption key available ===")
         print("  Cannot decrypt — the model may not have been revealed yet.")
 
 
