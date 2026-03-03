@@ -7,17 +7,20 @@
 //! Most common operations have been promoted to top-level commands (balance, send, transfer, etc.).
 //! This module contains advanced operations like executing serialized transactions.
 
+use std::collections::HashSet;
+
 use anyhow::{Result, anyhow, bail, ensure};
 use clap::*;
 use fastcrypto::encoding::{Base64, Encoding};
 use fastcrypto::traits::ToFromBytes;
 use sdk::transaction_builder::TransactionBuilder;
 use sdk::wallet_context::WalletContext;
+use tracing::warn;
 use types::base::SomaAddress;
 use types::crypto::GenericSignature;
 use types::effects::{ExecutionStatus, TransactionEffectsAPI as _};
 use types::envelope::Envelope;
-use types::object::ObjectRef;
+use types::object::{ObjectID, ObjectRef};
 use types::transaction::{SenderSignedData, Transaction, TransactionData, TransactionKind};
 
 use crate::response::{
@@ -163,7 +166,7 @@ pub async fn execute_or_serialize(
 
     // Build transaction data
     let builder = TransactionBuilder::new(context);
-    let tx_data = builder.build_transaction_data(sender, kind, gas).await?;
+    let tx_data = builder.build_transaction_data(sender, kind.clone(), gas).await?;
 
     // Handle tx-digest-only mode
     if processing.tx_digest {
@@ -212,8 +215,88 @@ pub async fn execute_or_serialize(
         return Ok(ClientCommandResponse::SerializedSignedTransaction(encoded));
     }
 
-    // Execute the transaction
-    let response = context.execute_transaction_may_fail(tx).await?;
+    // Execute the transaction, with retry on ObjectLockConflict when gas is auto-selected
+    let response = if gas.is_none() {
+        execute_with_lock_retry(context, sender, kind, tx).await?
+    } else {
+        context.execute_transaction_may_fail(tx).await?
+    };
 
     Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(&response)))
+}
+
+/// Execute a transaction with retry on ObjectLockConflict.
+///
+/// When a gas coin is locked by a previous (possibly failed) transaction, this
+/// function excludes the locked coin, rebuilds the transaction with the remaining
+/// coins, and retries. Only used when gas is auto-selected.
+async fn execute_with_lock_retry(
+    context: &mut WalletContext,
+    sender: SomaAddress,
+    kind: TransactionKind,
+    initial_tx: Transaction,
+) -> Result<rpc::api::client::TransactionExecutionResponseWithCheckpoint> {
+    const MAX_RETRIES: usize = 3;
+    let mut excluded_coins: HashSet<ObjectID> = HashSet::new();
+    let mut current_tx = initial_tx;
+
+    for attempt in 0..=MAX_RETRIES {
+        match context.execute_transaction_may_fail(current_tx).await {
+            Ok(resp) => return Ok(resp),
+            Err(e) => {
+                let err_str = e.to_string();
+                let is_lock_conflict =
+                    err_str.contains("already locked") || err_str.contains("ObjectLockConflict");
+
+                if !is_lock_conflict || attempt == MAX_RETRIES {
+                    return Err(e);
+                }
+
+                // Parse locked object ID from error message
+                if let Some(obj_id) = parse_locked_object_id(&err_str) {
+                    warn!(
+                        "Gas coin {} is locked, excluding and retrying (attempt {}/{})",
+                        obj_id,
+                        attempt + 1,
+                        MAX_RETRIES
+                    );
+                    excluded_coins.insert(obj_id);
+                } else {
+                    warn!(
+                        "Lock conflict detected but could not parse object ID, \
+                         retrying with fresh coins (attempt {}/{})",
+                        attempt + 1,
+                        MAX_RETRIES
+                    );
+                }
+
+                // Re-fetch coins excluding locked ones and rebuild
+                let coins = context.get_gas_objects_sorted_by_balance(sender).await?;
+                let gas_payment: Vec<ObjectRef> =
+                    coins.into_iter().filter(|c| !excluded_coins.contains(&c.0)).collect();
+
+                if gas_payment.is_empty() {
+                    return Err(anyhow!(
+                        "No available gas coins after excluding locked coins: {:?}",
+                        excluded_coins
+                    ));
+                }
+
+                let tx_data = TransactionData::new(kind.clone(), sender, gas_payment);
+                current_tx = context.sign_transaction(&tx_data).await;
+            }
+        }
+    }
+    unreachable!()
+}
+
+/// Parse the locked object ID from an ObjectLockConflict error message.
+/// Expected format: "Object (0x<hex>, Version(...), ...)"
+fn parse_locked_object_id(err_str: &str) -> Option<ObjectID> {
+    // Look for "Object (0x<hex>,"
+    let start = err_str.find("Object (0x")?;
+    let hex_start = start + "Object (".len();
+    let hex_end = err_str[hex_start..].find(',')? + hex_start;
+    let hex_str = &err_str[hex_start..hex_end];
+    ObjectID::from_hex_literal(hex_str).ok()
 }

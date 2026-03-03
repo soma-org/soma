@@ -17,6 +17,7 @@ use types::crypto::DefaultHash;
 use types::error::{BlobError, BlobResult};
 use types::metadata::{Metadata, MetadataAPI};
 
+use crate::progress::DownloadProgress;
 use crate::{BlobPath, MAX_PART_SIZE, MIN_PART_SIZE};
 
 #[async_trait]
@@ -111,8 +112,13 @@ impl BlobEngine {
         dest: Arc<S>,
         blob_path: BlobPath,
         metadata: Metadata,
+        progress: Option<Arc<dyn DownloadProgress>>,
     ) -> BlobResult<()> {
         if dest.head(&blob_path.path()).await.is_ok() {
+            if let Some(p) = &progress {
+                p.update(metadata.size() as u64);
+                p.finish();
+            }
             return Ok(());
         }
 
@@ -139,6 +145,10 @@ impl BlobEngine {
             }
 
             dest.put(&blob_path.path(), bytes.into()).await.map_err(BlobError::ObjectStoreError)?;
+            if let Some(p) = &progress {
+                p.update(metadata.size() as u64);
+                p.finish();
+            }
         } else {
             let ranges = Self::generate_ranges(metadata.size() as u64, self.chunk_size)?;
             let num_parts = ranges.len();
@@ -178,9 +188,15 @@ impl BlobEngine {
                 dest.put_multipart(&blob_path.path()).await.map_err(BlobError::ObjectStoreError)?,
             );
 
-            let result =
-                Self::run_multipart_transfer(&mut guard, &mut rx, hasher, num_parts, &metadata)
-                    .await;
+            let result = Self::run_multipart_transfer(
+                &mut guard,
+                &mut rx,
+                hasher,
+                num_parts,
+                &metadata,
+                progress.as_ref(),
+            )
+            .await;
 
             driver.abort();
 
@@ -188,6 +204,10 @@ impl BlobEngine {
                 drop(guard);
                 let _ = driver.await;
                 return Err(e);
+            }
+
+            if let Some(p) = &progress {
+                p.finish();
             }
 
             guard.complete().await?;
@@ -208,6 +228,7 @@ impl BlobEngine {
         mut hasher: DefaultHash,
         num_parts: usize,
         metadata: &Metadata,
+        progress: Option<&Arc<dyn DownloadProgress>>,
     ) -> BlobResult<()> {
         let mut buffer: HashMap<
             usize,
@@ -252,6 +273,9 @@ impl BlobEngine {
 
                 hasher.update(&bytes);
                 total_downloaded += bytes.len() as u64;
+                if let Some(p) = &progress {
+                    p.update(total_downloaded);
+                }
                 let put_fut = guard.upload_mut().put_part(PutPayload::from_bytes(bytes));
                 put_join_set.spawn(async move {
                     let result = put_fut.await.map_err(BlobError::ObjectStoreError);
@@ -372,7 +396,7 @@ mod tests {
         let reader: Arc<dyn BlobReader> = Arc::new(ShortReader { data: short_data });
         let engine = BlobEngine::new(Arc::new(Semaphore::new(2)), MIN_PART_SIZE, 40).unwrap();
 
-        let err = engine.download(reader, dest, blob_path, metadata).await.unwrap_err();
+        let err = engine.download(reader, dest, blob_path, metadata, None).await.unwrap_err();
         assert!(
             matches!(err, BlobError::SizeMismatch { expected: 100, actual: 50 }),
             "expected SizeMismatch, got {err:?}"

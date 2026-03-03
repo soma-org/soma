@@ -23,6 +23,9 @@ pub mod wallet;
 // Shared parsing helpers used by model and submit commands
 pub(crate) mod parse_helpers;
 
+// Progress bar helpers for download commands and scoring server
+pub(crate) mod download_progress;
+
 // Re-export subcommand enums for use in soma_commands.rs
 pub use env::EnvCommand;
 pub use model::ModelCommand;

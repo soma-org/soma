@@ -113,8 +113,8 @@ Chain presets:
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `list_targets(status=None, epoch=None, limit=None)` | `ListTargetsResponse` | List targets with optional filters |
-| `get_targets(status=None, epoch=None, limit=None)` | `list[Target]` | Convenience wrapper returning target list directly |
+| `list_targets(status=None, claimable=False, epoch=None, limit=None)` | `ListTargetsResponse` | List targets (defaults to "open"). Pass `claimable=True` for claimable targets |
+| `get_targets(status=None, claimable=False, epoch=None, limit=None)` | `list[Target]` | Convenience wrapper returning target list directly (defaults to "open") |
 | `get_model_manifests(model_ids_or_target)` | `list[ModelManifest]` | Get model weight manifests by IDs or from a Target |
 
 #### Checkpoints

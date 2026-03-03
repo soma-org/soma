@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use blobs::BlobPath;
 use blobs::downloader::BlobDownloader;
+use blobs::progress::DownloadProgress;
 use burn::backend::NdArray;
 use burn::prelude::Backend;
 use burn::store::SafetensorsStore;
@@ -107,7 +108,12 @@ impl MockDownloader {
 impl BlobDownloader for MockDownloader {
     type Store = InMemory;
 
-    async fn download(&self, manifest: &Manifest, blob_path: BlobPath) -> BlobResult<()> {
+    async fn download(
+        &self,
+        manifest: &Manifest,
+        blob_path: BlobPath,
+        _progress: Option<Arc<dyn DownloadProgress>>,
+    ) -> BlobResult<()> {
         // Match real BlobEngine::download behavior: skip if already cached.
         if self.store.head(&blob_path.path()).await.is_ok() {
             return Ok(());
@@ -132,7 +138,12 @@ struct FailingDownloader;
 impl BlobDownloader for FailingDownloader {
     type Store = InMemory;
 
-    async fn download(&self, _manifest: &Manifest, _blob_path: BlobPath) -> BlobResult<()> {
+    async fn download(
+        &self,
+        _manifest: &Manifest,
+        _blob_path: BlobPath,
+        _progress: Option<Arc<dyn DownloadProgress>>,
+    ) -> BlobResult<()> {
         Err(BlobError::NetworkRequest("mock download failure".into()))
     }
 }
@@ -204,7 +215,7 @@ async fn runtime_single_model_returns_winner_zero() {
     let device = <B as Backend>::Device::default();
     let target_data = TensorData::from([1.0f32, 0.0, 0.0, 0.0]);
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
     let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
@@ -237,7 +248,7 @@ async fn runtime_selects_model_with_lowest_loss() {
     let device = <B as Backend>::Device::default();
     let target_data = TensorData::from([0.0f32, 1.0]);
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
     let input = CompetitionInput::new(data_path, model_paths, target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
@@ -259,7 +270,7 @@ async fn runtime_computes_cosine_distance_to_target() {
     let device = <B as Backend>::Device::default();
     let target_data = TensorData::from([0.0f32, 1.0]);
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
     let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
@@ -287,7 +298,7 @@ async fn runtime_returns_loss_and_embedding_from_winner() {
     let device = <B as Backend>::Device::default();
     let target_data = TensorData::from([1.0f32, 0.0]);
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
     let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let output = runtime.competition(input).await.unwrap();
 
@@ -312,7 +323,7 @@ async fn runtime_model_call_failure_propagates() {
     let device = <B as Backend>::Device::default();
     let target_data = TensorData::from([1.0f32, 0.0]);
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
     let input = CompetitionInput::new(data_path, vec![model_path], target_data, 0);
     let err = runtime.competition(input).await.unwrap_err();
 
@@ -339,7 +350,7 @@ async fn download_manifest_writes_to_store() {
     let model = Arc::new(MockModel::new(vec![]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store.clone(), downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store.clone(), downloader, 1, device, model, None);
 
     let manifest = make_manifest(checksum, data.len());
     let path = BlobPath::Data(1, checksum);
@@ -359,7 +370,7 @@ async fn download_manifest_propagates_download_error() {
     let model = Arc::new(MockModel::new(vec![]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
 
     let manifest = make_manifest(make_checksum(10), 100);
     let path = BlobPath::Data(1, make_checksum(10));
@@ -399,7 +410,7 @@ async fn manifest_runtime_downloads_then_runs() {
     ]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store, downloader, epoch, device, model);
+    let runtime = RuntimeV1::new(store, downloader, epoch, device, model, None);
 
     let data_manifest = make_manifest(data_checksum, data_content.len());
     let model_manifest_a = make_manifest(model_checksum_a, safetensor_bytes.len());
@@ -439,7 +450,7 @@ async fn manifest_runtime_uses_correct_blob_paths() {
     let model = Arc::new(MockModel::new(vec![make_output(&[1.0], 0.5)]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store.clone(), downloader, epoch, device, model);
+    let runtime = RuntimeV1::new(store.clone(), downloader, epoch, device, model, None);
 
     let input = ManifestCompetitionInput::new(
         make_manifest(data_checksum, data_content.len()),
@@ -465,7 +476,7 @@ async fn manifest_runtime_download_failure_propagates() {
     let model = Arc::new(MockModel::new(vec![]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
 
     let input = ManifestCompetitionInput::new(
         make_manifest(make_checksum(40), 100),
@@ -496,7 +507,7 @@ async fn manifest_runtime_model_failure_after_download_propagates() {
     let model = Arc::new(FailingModel);
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store, downloader, 1, device, model);
+    let runtime = RuntimeV1::new(store, downloader, 1, device, model, None);
 
     let input = ManifestCompetitionInput::new(
         make_manifest(data_checksum, 4),
@@ -552,7 +563,7 @@ async fn manifest_competition_double_call_with_encrypted_weights() {
     let model = Arc::new(MockModel::new(vec![make_output(&[1.0], 0.5), make_output(&[1.0], 0.5)]));
     let device = <B as Backend>::Device::default();
 
-    let runtime = RuntimeV1::new(store.clone(), downloader, epoch, device, model);
+    let runtime = RuntimeV1::new(store.clone(), downloader, epoch, device, model, None);
 
     let make_input = || {
         ManifestCompetitionInput::new(

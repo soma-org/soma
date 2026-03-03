@@ -37,7 +37,9 @@ faucet.workspace = true
 scoring = { workspace = true, features = ["server"] }
 admin.workspace = true
 runtime.workspace = true
+blobs.workspace = true
 axum.workspace = true
+indicatif.workspace = true
 clap_complete = "4"
 camino = "1.2.2"
 csv = "1.4.0"

@@ -19,11 +19,17 @@ use url::Url;
 
 use crate::BlobPath;
 use crate::engine::{BlobEngine, BlobReader};
+use crate::progress::DownloadProgress;
 
 #[async_trait]
 pub trait BlobDownloader: Send + Sync + 'static {
     type Store: ObjectStore;
-    async fn download(&self, manifest: &Manifest, blob_path: BlobPath) -> BlobResult<()>;
+    async fn download(
+        &self,
+        manifest: &Manifest,
+        blob_path: BlobPath,
+        progress: Option<Arc<dyn DownloadProgress>>,
+    ) -> BlobResult<()>;
 }
 
 pub struct HttpBlobDownloader<S: ObjectStore> {
@@ -64,11 +70,16 @@ impl<S: ObjectStore> HttpBlobDownloader<S> {
 #[async_trait]
 impl<S: ObjectStore> BlobDownloader for HttpBlobDownloader<S> {
     type Store = S;
-    async fn download(&self, manifest: &Manifest, blob_path: BlobPath) -> BlobResult<()> {
+    async fn download(
+        &self,
+        manifest: &Manifest,
+        blob_path: BlobPath,
+        progress: Option<Arc<dyn DownloadProgress>>,
+    ) -> BlobResult<()> {
         let reader =
             Arc::new(HttpReader { url: manifest.url().clone(), client: self.client.clone() });
         self.engine
-            .download(reader, self.dest.clone(), blob_path, manifest.metadata().clone())
+            .download(reader, self.dest.clone(), blob_path, manifest.metadata().clone(), progress)
             .await
     }
 }

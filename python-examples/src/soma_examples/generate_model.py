@@ -4,7 +4,9 @@ from soma_models.v1.flax import Model, ModelConfig
 
 
 async def run():
-    model = Model(ModelConfig(dropout_rate=0.0))
+    from flax import nnx
+
+    model = Model(ModelConfig(dropout_rate=0.0), rngs=nnx.Rngs(0))
     model.save_bytes()
 
 

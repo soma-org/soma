@@ -27,17 +27,21 @@ use super::submit::SubmitCommand;
 pub enum TargetCommand {
     /// List targets
     ///
-    /// Shows targets with optional filtering by status and epoch.
+    /// By default shows only "open" targets. Use --status to filter by other statuses,
+    /// or --claimable to show targets ready to claim rewards.
     #[clap(name = "list")]
     List {
-        /// Filter by status: "open", "filled", or "claimed"
+        /// Filter by status: "open", "filled", "claimed", or "expired"
         #[clap(long, short = 's')]
         status: Option<String>,
+        /// Show targets that are ready to claim (expired open + filled past audit window)
+        #[clap(long, conflicts_with = "status")]
+        claimable: bool,
         /// Filter by generation epoch
         #[clap(long, short = 'e')]
         epoch: Option<u64>,
-        /// Maximum number of targets to return (default: 50, max: 1000)
-        #[clap(long, default_value = "50")]
+        /// Maximum number of targets to return (default: 20, max: 1000)
+        #[clap(long, default_value = "20")]
         limit: u32,
     },
 
@@ -105,11 +109,18 @@ EXAMPLES:
 impl TargetCommand {
     pub async fn execute(self, context: &mut WalletContext) -> Result<TargetCommandResponse> {
         match self {
-            TargetCommand::List { status, epoch, limit } => {
+            TargetCommand::List { status, claimable, epoch, limit } => {
                 let client = context.get_client().await?;
 
+                // --claimable overrides status; otherwise default to "open"
+                let status_filter = if claimable {
+                    Some("claimable".to_string())
+                } else {
+                    Some(status.unwrap_or_else(|| "open".to_string()))
+                };
+
                 let mut request = ListTargetsRequest::default();
-                request.status_filter = status;
+                request.status_filter = status_filter;
                 request.epoch_filter = epoch;
                 request.page_size = Some(limit);
                 request.read_mask =
@@ -262,8 +273,16 @@ impl Display for TargetListOutput {
                 empty.clone(),
             ]);
             // Metadata row with labeled values
+            let status_display = match t.status.as_str() {
+                "open" => "Open".green().to_string(),
+                "filled" => "Filled".yellow().to_string(),
+                "claimed" => "Claimed".green().to_string(),
+                "expired" => "Expired".red().to_string(),
+                "claimable" => "Claimable".cyan().to_string(),
+                other => other.to_string(),
+            };
             builder.push_record([
-                format!("Status: {}", t.status),
+                format!("Status: {}", status_display),
                 format!("Models: {}", t.model_count),
                 format!("Reward: {}", crate::response::format_soma(t.reward_pool as u128)),
                 format!("Threshold: {}", t.distance_threshold),

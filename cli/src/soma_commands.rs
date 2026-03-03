@@ -1095,9 +1095,16 @@ impl SomaCommand {
                             runtime::ModelConfig::new()
                         };
 
+                        let progress_factory =
+                            crate::commands::download_progress::scoring_progress_factory();
                         let engine = std::sync::Arc::new(
-                            scoring::scoring::ScoringEngine::new(&data_dir, model_config, &device)
-                                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+                            scoring::scoring::ScoringEngine::new(
+                                &data_dir,
+                                model_config,
+                                &device,
+                                progress_factory,
+                            )
+                            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
                         );
 
                         print_banner("Scoring Service");
@@ -1344,9 +1351,15 @@ async fn start(
         fs::create_dir_all(&scoring_data_dir)?;
         let device = DeviceConfig::Wgpu;
 
+        let progress_factory = crate::commands::download_progress::scoring_progress_factory();
         let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(&scoring_data_dir, model_config, &device)
-                .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
+            scoring::scoring::ScoringEngine::new(
+                &scoring_data_dir,
+                model_config,
+                &device,
+                progress_factory,
+            )
+            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
         );
 
         tokio::spawn(async move {

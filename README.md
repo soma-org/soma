@@ -22,7 +22,7 @@
   <a href="https://docs.soma.org/getting-started/install">Getting Started</a> &middot;
   <a href="https://docs.soma.org/guides/model-development">Guides</a> &middot;
   <a href="https://docs.soma.org/concepts/targets">Concepts</a> &middot;
-  <a href="https://docs.soma.org/reference/glossary">Reference</a> &middot;
+  <a href="https://docs.soma.org/reference/cli/overview">Reference</a> &middot;
   <!-- TODO: Replace INVITE_CODE with actual Discord invite -->
   <a href="https://discord.gg/INVITE_CODE">Discord</a>
 </p>
@@ -31,14 +31,22 @@
 
 ## Overview
 
-The Internet has more compute, more data, and more minds than any single organization. SOMA coordinates these resources to train AI at scale. Instead of passing gradients, training is coordinated with competition: model weights are open, participants download and train them, and the best weights are rewarded. The bar keeps rising.
+SOMA is a network that trains a foundation model by coordinating small, specialized models across the Internet. Models train independently in parallel, compete, and integrate into a unified system. Participants share a universal objective: given any data, predict what comes next. The best weights are rewarded.
 
-- **Competitive Training** — Participants submit improved weights and compete on a universal objective: given any data, predict what comes next
-- **Moving Benchmark** — Participants submit data that continuously raises the bar for model evaluation. The result is a living benchmark that tracks the frontier, not a static leaderboard
-- **Specialization via Routing** — Participants report embeddings that capture their specialization. A lightweight router selects which models compete, incentivizing deep expertise while maintaining global cohesion
-- **BFT Consensus** — Coordination for rewards, training, and verification. [Mysticeti](https://arxiv.org/abs/2310.14821)-based DAG consensus with multi-leader support and sub-second finality
-- **GPU Accelerated** — Deterministic scoring runtime in Rust with native CUDA and WebGPU support
-- **Python SDK** — Async Python bindings via PyO3 for training models and submitting data
+Each model shares the same architecture and competes on a shared objective, learning any modality by training on raw bytes. The network routes submitted data to models, scores their performance, and distributes rewards. Transactions confirm in under 0.33s at 200,000+ TPS.
+
+- **Next-Byte Prediction** — Every model shares the same architecture and competes on a single objective: predict the next byte. Lowest loss wins
+- **Self-Benchmarking** — The network generates [targets](https://docs.soma.org/concepts/targets/) across embedding space each epoch. When one is hit, a new one spawns — continuously testing domains it hasn't mastered
+- **Competitive Data Submission** — Data submitters race to hit targets, scoring data against assigned models. First valid submission wins. Rewards split 50/50 between submitter and lowest-loss model
+- **[Mysticeti](https://arxiv.org/abs/2310.14821) Consensus** — Sub-0.33s finality, 200,000+ TPS
+
+### What You Can Do
+
+The network needs data, models, and validators. Each role earns $SOMA.
+
+- **Submit data.** The network generates [targets](https://docs.soma.org/concepts/targets/), points in embedding space. You find data that matches a target, score it against the network's models, and [submit](https://docs.soma.org/concepts/submitting/) on-chain. The first valid submission wins
+- **Train models.** You train the weights, [publish](https://docs.soma.org/concepts/models/#publishing-weights) them on-chain, and earn commission when your model's weights produce winning submissions
+- **Run a validator.** Validators run consensus, generate targets, and audit submissions. They earn 20% of epoch rewards
 
 ## Installation
 
@@ -83,7 +91,7 @@ Releases are built and published automatically via CI when a tag is pushed:
 ### Start a Local Network
 
 ```bash
-soma start localnet
+soma start localnet --force-regenesis
 ```
 
 This boots a local cluster with validators, a faucet, and a scoring service.
@@ -128,7 +136,7 @@ pip install soma-sdk
 ```python
 from soma_sdk import SomaClient, Keypair
 
-client = await SomaClient("http://localhost:9000", scoring_url="http://localhost:9124")
+client = await SomaClient(chain="localnet")
 keypair = Keypair.generate()
 
 # Find an open target and fetch its models
@@ -137,17 +145,28 @@ target = targets[0]
 manifests = await client.get_model_manifests(target)
 
 # Score data against the target's models — the scoring service picks a winner
-data = open("data.bin", "rb").read()
-score = await client.score(data=data, models=manifests, target_embedding=target.embedding)
+data = open("sample.bin", "rb").read()
+data_url = "https://your-storage.example.com/sample.bin"
+
+result = await client.score(
+    data_url=data_url,
+    models=manifests,
+    target_embedding=target.embedding,
+    data=data,
+    seed=0,
+)
 
 # Submit the winning result
+winning_model_id = target.model_ids[result.winner]
+
 await client.submit_data(
-    signer=keypair,
-    target_id=target.id,
-    data=data,
-    model_id=target.model_ids[score.winner],
-    embedding=score.embedding,
-    distance_score=score.distance[score.winner],
+    keypair,
+    target.id,
+    data,
+    data_url,
+    winning_model_id,
+    result.embedding,
+    result.distance[result.winner],
 )
 ```
 
@@ -157,12 +176,12 @@ See the [Python SDK reference](python-sdk/README.md) for the full API and [pytho
 
 | Resource | Link |
 |----------|------|
-| Getting Started | [Installation](https://docs.soma.org/getting-started/install), [Local Network](https://docs.soma.org/getting-started/local-network), [First Transaction](https://docs.soma.org/getting-started/first-transaction) |
-| Guides | [Model Development](https://docs.soma.org/guides/model-development), [Data Submission](https://docs.soma.org/guides/submitting-data), [Running a Validator](https://docs.soma.org/guides/running-validator) |
-| Concepts | [Targets](https://docs.soma.org/concepts/targets), [Model Competition](https://docs.soma.org/concepts/models), [Data Submission](https://docs.soma.org/concepts/data-submission), [Economics](https://docs.soma.org/concepts/economics) |
-| Reference | [Glossary](https://docs.soma.org/reference/glossary), [Further Reading](https://docs.soma.org/reference/reading), [Community](https://docs.soma.org/reference/community) |
-| Python SDK | [python-sdk/README.md](python-sdk/README.md) |
-| Model Architecture | [models/README.md](models/README.md) |
+| Getting Started | [Installation](https://docs.soma.org/getting-started/install/), [Quickstart](https://docs.soma.org/getting-started/quickstart/), [GPU Setup](https://docs.soma.org/getting-started/gpu-setup/) |
+| Guides | [Data Submission](https://docs.soma.org/guides/data-submission/), [Model Development](https://docs.soma.org/guides/model-development/), [Running a Validator](https://docs.soma.org/guides/validator/), [Local Network](https://docs.soma.org/guides/local-network/) |
+| Concepts | [Targets](https://docs.soma.org/concepts/targets/), [Data Submission](https://docs.soma.org/concepts/submitting/), [Models](https://docs.soma.org/concepts/models/), [Economics](https://docs.soma.org/concepts/economics/), [Network](https://docs.soma.org/concepts/network/) |
+| Reference | [CLI](https://docs.soma.org/reference/cli/overview/), [Python SDK](https://docs.soma.org/reference/sdk/overview/), [Models](https://docs.soma.org/reference/models/overview/), [Community](https://docs.soma.org/reference/community/) |
+| Python SDK (source) | [python-sdk/README.md](python-sdk/README.md) |
+| Model Architecture (source) | [models/README.md](models/README.md) |
 | SOMA Improvement Proposals | [soma-org/sips](https://github.com/soma-org/sips) |
 
 ## Contributing

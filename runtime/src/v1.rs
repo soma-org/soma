@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use blobs::BlobPath;
 use blobs::downloader::BlobDownloader;
 use blobs::loader::BlobLoader;
+use blobs::progress::ProgressFactory;
 use burn::Tensor;
 use burn::prelude::Backend;
 use ctr::Ctr128BE;
@@ -42,6 +43,7 @@ where
     epoch: EpochId,
     device: B::Device,
     model: Arc<M>,
+    progress: Option<Arc<dyn ProgressFactory>>,
 }
 
 impl<B, S, D, M> RuntimeV1<B, S, D, M>
@@ -57,8 +59,9 @@ where
         epoch: EpochId,
         device: B::Device,
         model: Arc<M>,
+        progress: Option<Arc<dyn ProgressFactory>>,
     ) -> Self {
-        Self { store, downloader, epoch, device, model }
+        Self { store, downloader, epoch, device, model, progress }
     }
 }
 
@@ -106,7 +109,10 @@ where
     }
 
     async fn download_manifest(&self, manifest: &Manifest, path: &BlobPath) -> RuntimeResult<()> {
-        self.downloader.download(manifest, path.clone()).await.map_err(RuntimeError::BlobError)?;
+        self.downloader
+            .download(manifest, path.clone(), None)
+            .await
+            .map_err(RuntimeError::BlobError)?;
         Ok(())
     }
 
@@ -123,16 +129,25 @@ where
 
         let mut join_set = JoinSet::new();
 
+        let data_progress =
+            self.progress.as_ref().map(|f| f.create("data", input.data().metadata().size() as u64));
         let downloader = self.downloader.clone();
         let data_manifest = input.data().clone();
         let data_path_clone = data_path.clone();
-        join_set.spawn(async move { downloader.download(&data_manifest, data_path_clone).await });
+        join_set.spawn(async move {
+            downloader.download(&data_manifest, data_path_clone, data_progress).await
+        });
 
         for (i, manifest) in input.models().iter().enumerate() {
+            let model_progress = self
+                .progress
+                .as_ref()
+                .map(|f| f.create(&format!("model {}", i), manifest.metadata().size() as u64));
             let downloader = self.downloader.clone();
             let manifest = manifest.clone();
             let path = model_paths[i].clone();
-            join_set.spawn(async move { downloader.download(&manifest, path).await });
+            join_set
+                .spawn(async move { downloader.download(&manifest, path, model_progress).await });
         }
 
         while let Some(result) = join_set.join_next().await {

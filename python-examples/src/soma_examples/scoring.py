@@ -50,9 +50,7 @@ async def run():
         # 3. Score via SomaClient's gRPC scoring
         print(f"\nScoring via {SCORING_URL} ...")
         try:
-            # Build a model manifest as a SimpleNamespace-compatible dict
-            from types import SimpleNamespace
-            manifest = SimpleNamespace(
+            manifest = SomaClient.model_manifest(
                 url=model_url,
                 encrypted_weights=encrypted_bytes,
                 decryption_key=decryption_key,

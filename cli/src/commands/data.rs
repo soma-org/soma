@@ -59,17 +59,16 @@ impl DataCommand {
         let output_path =
             self.output.unwrap_or_else(|| PathBuf::from(format!("{}.data", self.target_id)));
 
-        // Download submission data
-        eprintln!(
-            "Downloading submission data for target {} from {} validators...",
-            self.target_id,
-            proxy_client.validator_count()
-        );
-
+        // Download submission data with progress bar
+        let pb = super::download_progress::create_progress_bar();
         let data = proxy_client
-            .fetch_submission_data(&self.target_id)
+            .fetch_submission_data_with_progress(
+                &self.target_id,
+                super::download_progress::make_progress_callback(&pb),
+            )
             .await
             .map_err(|e| anyhow!("Failed to download submission data: {}", e))?;
+        pb.finish_and_clear();
 
         // Write to file
         let mut file = tokio::fs::File::create(&output_path)

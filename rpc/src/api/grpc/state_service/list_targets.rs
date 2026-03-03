@@ -30,15 +30,26 @@ pub fn list_targets(
     service: &RpcService,
     request: ListTargetsRequest,
 ) -> Result<ListTargetsResponse> {
+    // Get current epoch for computing "expired" status
+    let current_epoch =
+        service.reader.inner().get_latest_checkpoint().map(|cp| cp.epoch()).unwrap_or(0);
+
     // Validate status filter if provided
+    // Virtual statuses computed server-side:
+    // - "expired": Open targets with generation_epoch < current_epoch
+    // - "claimable": expired open targets + filled targets past audit window (current_epoch > fill_epoch + 1)
+    let status_filter_lower = request.status_filter.as_ref().map(|s| s.to_lowercase());
+    let is_expired_filter = status_filter_lower.as_deref() == Some("expired");
+    let is_claimable_filter = status_filter_lower.as_deref() == Some("claimable");
+
     let status_filter = request
         .status_filter
         .as_ref()
         .map(|s| match s.to_lowercase().as_str() {
-            "open" | "filled" | "claimed" => Ok(s.to_lowercase()),
+            "open" | "filled" | "claimed" | "expired" | "claimable" => Ok(s.to_lowercase()),
             _ => Err(FieldViolation::new("status_filter")
                 .with_description(format!(
-                    "invalid status_filter: '{}'. Must be 'open', 'filled', or 'claimed'",
+                    "invalid status_filter: '{}'. Must be 'open', 'filled', 'claimed', 'expired', or 'claimable'",
                     s
                 ))
                 .with_reason(ErrorReason::FieldInvalid)),
@@ -82,9 +93,21 @@ pub fn list_targets(
     // Get the cursor from page token if present
     let cursor = page_token.as_ref().map(|t| t.cursor.clone());
 
+    // Map virtual status filters to DB queries:
+    // - "expired" → query "open", post-filter by generation_epoch < current_epoch
+    // - "claimable" → query all (no DB filter), post-filter for both expired open + filled past audit
+    // - "open" → query "open", post-filter to exclude expired
+    let db_status_filter = if is_expired_filter {
+        Some("open".to_string())
+    } else if is_claimable_filter {
+        None // need both open + filled, so no DB-level status filter
+    } else {
+        status_filter.clone()
+    };
+
     // Iterate through targets using the index
     let mut iter = indexes
-        .targets_iter(status_filter.clone(), epoch_filter, cursor)
+        .targets_iter(db_status_filter, epoch_filter, cursor)
         .map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?;
 
     let mut targets = Vec::with_capacity(page_size);
@@ -114,8 +137,32 @@ pub fn list_targets(
             }
         };
 
+        // Compute virtual statuses
+        let is_expired = matches!(target.status, types::target::TargetStatus::Open)
+            && target.generation_epoch < current_epoch;
+        let is_filled_claimable = matches!(target.status, types::target::TargetStatus::Filled { fill_epoch } if current_epoch > fill_epoch + 1);
+        let is_claimable = is_expired || is_filled_claimable;
+
+        // Apply post-filters for virtual statuses
+        if is_expired_filter && !is_expired {
+            continue; // "expired" filter: skip non-expired targets
+        }
+        if is_claimable_filter && !is_claimable {
+            continue; // "claimable" filter: skip non-claimable targets
+        }
+        if status_filter.as_deref() == Some("open") && is_expired {
+            continue; // "open" filter: skip expired targets (only show truly open)
+        }
+
         // Convert to proto
-        let target_proto = target_to_proto_with_id(&target_info.target_id, &target, &read_mask);
+        let mut target_proto = target_to_proto_with_id(&target_info.target_id, &target, &read_mask);
+
+        // Override status for virtual statuses
+        if is_claimable && target_proto.status.is_some() {
+            target_proto.status = Some("claimable".to_string());
+        } else if is_expired && target_proto.status.is_some() {
+            target_proto.status = Some("expired".to_string());
+        }
 
         size_bytes += target_proto.encoded_len();
         targets.push(target_proto);

@@ -350,7 +350,7 @@ impl<S: ObjectStore> ProxyServer<S> {
         blob_path: BlobPath,
     ) -> Result<Bytes, ProxyError> {
         self.downloader
-            .download(manifest, blob_path.clone())
+            .download(manifest, blob_path.clone(), None)
             .await
             .map_err(|e| ProxyError::DownloadFailed(e.to_string()))?;
 

@@ -272,6 +272,39 @@ impl ProxyClient {
         self.fetch_with_retry_and_timeout(&format!("/model/{}", model_id), timeout).await
     }
 
+    /// Fetch model weights with streaming progress reporting.
+    ///
+    /// The callback receives `(bytes_downloaded_so_far, content_length)` after each chunk.
+    /// `content_length` is `None` if the server did not provide a Content-Length header.
+    pub async fn fetch_model_with_progress(
+        &self,
+        model_id: &ModelId,
+        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+    ) -> Result<Vec<u8>, ProxyError> {
+        self.fetch_with_retry_streaming(
+            &format!("/model/{}", model_id),
+            self.config.base_timeout,
+            &mut on_progress,
+        )
+        .await
+    }
+
+    /// Fetch submission data with streaming progress reporting.
+    ///
+    /// The callback receives `(bytes_downloaded_so_far, content_length)` after each chunk.
+    pub async fn fetch_submission_data_with_progress(
+        &self,
+        target_id: &TargetId,
+        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+    ) -> Result<Vec<u8>, ProxyError> {
+        self.fetch_with_retry_streaming(
+            &format!("/data/{}", target_id),
+            self.config.base_timeout,
+            &mut on_progress,
+        )
+        .await
+    }
+
     /// Internal method to fetch with retry across validators.
     async fn fetch_with_retry(&self, path: &str) -> Result<Vec<u8>, ProxyError> {
         self.fetch_with_retry_and_timeout(path, self.config.base_timeout).await
@@ -339,6 +372,86 @@ impl ProxyClient {
         let bytes = response.bytes().await.map_err(|e| ProxyError::NetworkError(e.to_string()))?;
 
         Ok(bytes.to_vec())
+    }
+
+    /// Internal method to fetch with retry and streaming progress.
+    async fn fetch_with_retry_streaming(
+        &self,
+        path: &str,
+        timeout: Duration,
+        on_progress: &mut (impl FnMut(u64, Option<u64>) + Send),
+    ) -> Result<Vec<u8>, ProxyError> {
+        let mut validators = self.validators.clone();
+        validators.shuffle(&mut rand::thread_rng());
+
+        let mut last_error = String::new();
+        let mut attempts = 0;
+
+        for validator in &validators {
+            attempts += 1;
+
+            let url = match validator.proxy_url.join(path) {
+                Ok(u) => u,
+                Err(e) => {
+                    last_error = format!("Invalid URL: {}", e);
+                    continue;
+                }
+            };
+
+            match self.fetch_from_url_streaming(&url, timeout, on_progress).await {
+                Ok(data) => {
+                    info!(
+                        "Successfully fetched {} bytes from validator {:?}",
+                        data.len(),
+                        validator.name
+                    );
+                    return Ok(data);
+                }
+                Err(e) => {
+                    warn!("Failed to fetch from validator {:?}: {}", validator.name, e);
+                    last_error = e.to_string();
+                }
+            }
+        }
+
+        Err(ProxyError::AllValidatorsFailed { attempts, last_error })
+    }
+
+    /// Fetch data from a specific URL with streaming progress.
+    async fn fetch_from_url_streaming(
+        &self,
+        url: &Url,
+        timeout: Duration,
+        on_progress: &mut (impl FnMut(u64, Option<u64>) + Send),
+    ) -> Result<Vec<u8>, ProxyError> {
+        let response = self
+            .http_client
+            .get(url.as_str())
+            .timeout(timeout)
+            .send()
+            .await
+            .map_err(|e| ProxyError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ProxyError::ValidatorError(status.as_u16(), body));
+        }
+
+        let content_length = response.content_length();
+        let mut buffer = Vec::with_capacity(content_length.unwrap_or(0) as usize);
+        let mut downloaded = 0u64;
+
+        use futures::StreamExt as _;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| ProxyError::NetworkError(e.to_string()))?;
+            buffer.extend_from_slice(&chunk);
+            downloaded += chunk.len() as u64;
+            on_progress(downloaded, content_length);
+        }
+
+        Ok(buffer)
     }
 }
 

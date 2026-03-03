@@ -11,6 +11,7 @@ use types::committee::Epoch;
 pub mod downloader;
 pub(crate) mod engine;
 pub mod loader;
+pub mod progress;
 pub mod transfer;
 
 /// Cloud providers typically require a minimum multipart part size except for the last part

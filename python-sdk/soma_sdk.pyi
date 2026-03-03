@@ -22,11 +22,19 @@ class Target:
     winning_model_id: Optional[str]
 
 class ModelManifest:
-    """Shape returned by ``SomaClient.get_model_manifests()`` items."""
+    """Model manifest accepted by ``SomaClient.score()`` and returned by
+    ``SomaClient.get_model_manifests()``.
+
+    Two shapes are accepted:
+    - From ``get_model_manifests()``: ``url``, ``checksum``, ``size``, ``decryption_key``
+    - For local scoring: ``url``, ``encrypted_weights``, ``decryption_key``
+      (checksum and size are derived from ``encrypted_weights``)
+    """
     url: str
     checksum: str
     size: int
     decryption_key: Optional[str]
+    encrypted_weights: Optional[bytes]
 
 class ScoreResult:
     """Shape returned by ``SomaClient.score()``."""
@@ -188,6 +196,11 @@ class TargetState:
     hits_ema: int
     reward_per_target: int
 
+class ModelRegistry:
+    """Model registry within SystemState."""
+    pending_models: dict[str, object]
+    models: dict[str, object]
+
 class SystemState:
     """Shape returned by ``SomaClient.get_latest_system_state()``."""
     epoch: int
@@ -196,7 +209,7 @@ class SystemState:
     parameters: SystemParameters
     epoch_start_timestamp_ms: int
     validator_report_records: dict[str, list[str]]
-    model_registry: object
+    model_registry: ModelRegistry
     emission_pool: EmissionPool
     target_state: TargetState
     safe_mode: bool
@@ -288,6 +301,16 @@ class SomaClient:
     def to_soma(shannons: int) -> float:
         """Convert shannons to SOMA."""
         ...
+    @staticmethod
+    def model_manifest(
+        url: str,
+        encrypted_weights: Optional[bytes] = None,
+        checksum: Optional[str] = None,
+        size: Optional[int] = None,
+        decryption_key: Optional[str] = None,
+    ) -> ModelManifest:
+        """Build a ModelManifest for use with ``score()``."""
+        ...
 
     # -- Chain & Node Info --
     async def get_chain_identifier(self) -> str: ...
@@ -315,6 +338,7 @@ class SomaClient:
     async def list_targets(
         self,
         status: Optional[str] = None,
+        claimable: bool = False,
         epoch: Optional[int] = None,
         limit: Optional[int] = None,
         read_mask: Optional[str] = None,
@@ -322,6 +346,7 @@ class SomaClient:
     async def get_targets(
         self,
         status: Optional[str] = None,
+        claimable: bool = False,
         epoch: Optional[int] = None,
         limit: Optional[int] = None,
     ) -> list[Target]: ...

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
+use blobs::progress::ProgressFactory;
 use burn::tensor::TensorData;
 use runtime::{ManifestCompetitionInput, ModelConfig, RuntimeAPI, build_runtime};
 use types::config::node_config::DeviceConfig;
@@ -16,8 +17,13 @@ pub struct ScoringEngine {
 }
 
 impl ScoringEngine {
-    pub fn new(data_dir: &Path, model_config: ModelConfig, device: &DeviceConfig) -> Result<Self> {
-        let runtime = build_runtime(device, data_dir, model_config)?;
+    pub fn new(
+        data_dir: &Path,
+        model_config: ModelConfig,
+        device: &DeviceConfig,
+        progress: Option<Arc<dyn ProgressFactory>>,
+    ) -> Result<Self> {
+        let runtime = build_runtime(device, data_dir, model_config, progress)?;
         Ok(Self { runtime })
     }
 

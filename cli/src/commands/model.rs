@@ -479,17 +479,16 @@ impl ModelCommand {
                 let output_path =
                     output.unwrap_or_else(|| PathBuf::from(format!("{}.weights", model_id)));
 
-                // Download model weights
-                eprintln!(
-                    "Downloading model {} from {} validators...",
-                    model_id,
-                    proxy_client.validator_count()
-                );
-
+                // Download model weights with progress bar
+                let pb = super::download_progress::create_progress_bar();
                 let data = proxy_client
-                    .fetch_model(&model_id)
+                    .fetch_model_with_progress(
+                        &model_id,
+                        super::download_progress::make_progress_callback(&pb),
+                    )
                     .await
                     .map_err(|e| anyhow!("Failed to download model: {}", e))?;
+                pb.finish_and_clear();
 
                 // Write to file
                 let mut file = tokio::fs::File::create(&output_path)

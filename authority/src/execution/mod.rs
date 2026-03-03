@@ -148,14 +148,32 @@ pub fn execute_transaction(
         match prepare_gas(&mut temporary_store, &kind, &signer, gas_payment, &*executor) {
             Ok(result) => result,
             Err((error_status, transaction_fee)) => {
-                // Gas preparation failed, return with error
+                // Gas preparation failed.
+                // If gas was actually deducted (fee > 0), the gas coin was modified
+                // in the temporary store. Use into_effects() to preserve those mutations
+                // so the object version advances and locks are released.
+                // If fee is 0 (e.g., coin had 0 balance), no mutations occurred.
+                let gas_object_id = temporary_store.gas_object_id;
+                if gas_object_id.is_some() && transaction_fee.total_fee > 0 {
+                    let (inner, effects) = temporary_store.into_effects(
+                        shared_object_refs,
+                        &tx_digest,
+                        transaction_dependencies,
+                        ExecutionStatus::Failure { error: error_status.clone() },
+                        epoch_id,
+                        transaction_fee,
+                        gas_object_id,
+                    );
+                    return (inner, effects, Some(ExecutionError::new(error_status, None)));
+                }
+                // smash_gas_coins itself failed — no objects modified, use error_result
                 return error_result(
                     tx_digest,
                     shared_object_refs,
                     transaction_dependencies,
                     epoch_id,
                     transaction_fee,
-                    None, // No gas object on failure
+                    None,
                     error_status,
                 );
             }

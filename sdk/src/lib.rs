@@ -422,6 +422,107 @@ impl SomaClient {
         Ok(response.effects)
     }
 
+    /// Build, sign, and execute a transaction with automatic retry on ObjectLockConflict.
+    ///
+    /// When a gas coin is locked by a previous transaction, this method excludes
+    /// the locked coin, rebuilds the transaction with fresh gas, and retries.
+    /// Gas is always auto-selected (not user-specified).
+    pub async fn sign_and_execute_with_retry(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        kind: TransactionKind,
+        label: &str,
+    ) -> Result<TransactionEffects, error::Error> {
+        const MAX_RETRIES: usize = 3;
+        let mut excluded_coins: std::collections::HashSet<ObjectID> = Default::default();
+
+        for attempt in 0..=MAX_RETRIES {
+            let tx_data = self
+                .build_transaction_data_excluding(sender, kind.clone(), &excluded_coins)
+                .await?;
+            match self.sign_and_execute(keypair, tx_data, label).await {
+                Ok(effects) => return Ok(effects),
+                Err(e) => {
+                    let err_str = e.to_string();
+                    let is_lock_conflict = err_str.contains("already locked")
+                        || err_str.contains("ObjectLockConflict");
+
+                    if !is_lock_conflict || attempt == MAX_RETRIES {
+                        return Err(e);
+                    }
+
+                    if let Some(obj_id) = Self::parse_locked_object_id(&err_str) {
+                        tracing::warn!(
+                            "Gas coin {} is locked, excluding and retrying {label} (attempt {}/{})",
+                            obj_id,
+                            attempt + 1,
+                            MAX_RETRIES
+                        );
+                        excluded_coins.insert(obj_id);
+                    } else {
+                        tracing::warn!(
+                            "Lock conflict on {label}, retrying with fresh coins (attempt {}/{})",
+                            attempt + 1,
+                            MAX_RETRIES
+                        );
+                    }
+                }
+            }
+        }
+        unreachable!()
+    }
+
+    /// Build transaction data, excluding specific coins from gas selection.
+    async fn build_transaction_data_excluding(
+        &self,
+        sender: SomaAddress,
+        kind: TransactionKind,
+        excluded: &std::collections::HashSet<ObjectID>,
+    ) -> Result<TransactionData, error::Error> {
+        use futures::TryStreamExt as _;
+
+        let mut request = ListOwnedObjectsRequest::default();
+        request.owner = Some(sender.to_string());
+        request.page_size = Some(100);
+        request.object_type = Some(rpc::types::ObjectType::Coin.into());
+
+        let stream = self.list_owned_objects(request).await;
+        tokio::pin!(stream);
+
+        let mut best: Option<(types::object::ObjectRef, u64)> = None;
+        while let Some(obj) =
+            stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
+        {
+            let obj_ref = obj.compute_object_reference();
+            if excluded.contains(&obj_ref.0) {
+                continue;
+            }
+            let balance = obj.as_coin().unwrap_or(0);
+            if best.as_ref().map_or(true, |(_, b)| balance > *b) {
+                best = Some((obj_ref, balance));
+            }
+        }
+
+        let (obj_ref, _) = best.ok_or_else(|| {
+            error::Error::DataError(format!(
+                "No available gas coin for address {sender} \
+                 (excluded {} locked coins)",
+                excluded.len()
+            ))
+        })?;
+        Ok(TransactionData::new(kind, sender, vec![obj_ref]))
+    }
+
+    /// Parse a locked object ID from an ObjectLockConflict error string.
+    fn parse_locked_object_id(err_str: &str) -> Option<ObjectID> {
+        let start = err_str.find("Object (0x")?;
+        let hex_start = start + "Object (".len();
+        let hex_end = err_str[hex_start..].find(',')? + hex_start;
+        let hex_str = &err_str[hex_start..hex_end];
+        ObjectID::from_hex_literal(hex_str).ok()
+    }
+
     // -------------------------------------------------------------------
     // gRPC service methods (behind grpc-services feature)
     // -------------------------------------------------------------------

@@ -481,6 +481,7 @@ impl SomaNode {
                     &scoring_data_dir,
                     model_config,
                     &config.scoring_device,
+                    None,
                 )
                 .context("Failed to create local ScoringEngine")?,
             );

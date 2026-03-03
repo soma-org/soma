@@ -72,7 +72,7 @@ impl<S: ObjectStore> BlobReader for StoreReader<S> {
 impl<Src: ObjectStore, Dst: ObjectStore> BlobTransfer for StoreTransfer<Src, Dst> {
     async fn transfer(&self, blob_path: BlobPath, metadata: Metadata) -> BlobResult<()> {
         let reader = Arc::new(StoreReader { store: self.source.clone(), path: blob_path.path() });
-        self.engine.download(reader, self.dest.clone(), blob_path, metadata).await
+        self.engine.download(reader, self.dest.clone(), blob_path, metadata, None).await
     }
 }
 

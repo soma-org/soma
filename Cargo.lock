@@ -525,7 +525,7 @@ checksum = "628d228f918ac3b82fe590352cc719d30664a0c13ca3a60266fe02c7132d480a"
 
 [[package]]
 name = "authority"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -834,7 +834,7 @@ checksum = "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1"
 
 [[package]]
 name = "bin-version"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "const-str 0.6.4",
  "git-version",
@@ -1851,7 +1851,7 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 
 [[package]]
 name = "cli"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "admin",
  "anyhow",
@@ -1860,6 +1860,7 @@ dependencies = [
  "bcs",
  "bin-version",
  "bip32",
+ "blobs",
  "camino",
  "chrono",
  "clap",
@@ -1870,6 +1871,7 @@ dependencies = [
  "faucet",
  "futures",
  "hex",
+ "indicatif",
  "inquire",
  "insta",
  "json_to_table",
@@ -2052,6 +2054,7 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
+ "unicode-width 0.2.0",
  "windows-sys 0.59.0",
 ]
 
@@ -2909,7 +2912,7 @@ dependencies = [
 
 [[package]]
 name = "data-ingestion"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3199,7 +3202,7 @@ checksum = "e1d926b4d407d372f141f93bb444696142c29d32962ccbd3531117cf3aa0bfa9"
 
 [[package]]
 name = "e2e-tests"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4817,6 +4820,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "indicatif"
+version = "0.17.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
+dependencies = [
+ "console",
+ "number_prefix",
+ "portable-atomic",
+ "unicode-width 0.2.0",
+ "web-time",
+]
+
+[[package]]
 name = "indoc"
 version = "2.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5795,7 +5811,7 @@ checksum = "df270209a7f04d62459240d890ecb792714d5db12c92937823574a09930276b4"
 
 [[package]]
 name = "node"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -6012,6 +6028,12 @@ checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "number_prefix"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "numpy"
@@ -6746,7 +6768,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-config"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bcs",
  "burn",
@@ -6762,7 +6784,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-config-macros"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7613,7 +7635,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -7626,7 +7648,7 @@ dependencies = [
  "bytes",
  "fastcrypto",
  "futures",
- "heck 0.5.0",
+ "heck 0.4.1",
  "http",
  "itertools 0.13.0",
  "prettyplease",
@@ -8033,6 +8055,7 @@ name = "scoring"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blobs",
  "burn",
  "fastcrypto",
  "hex",
@@ -8052,7 +8075,7 @@ dependencies = [
 
 [[package]]
 name = "sdk"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "admin",
  "aes",
@@ -8583,7 +8606,7 @@ dependencies = [
 
 [[package]]
 name = "soma-keys"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8604,7 +8627,7 @@ dependencies = [
 
 [[package]]
 name = "soma-sdk"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bcs",
  "fastcrypto",
@@ -8714,7 +8737,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "store"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "backoff",
  "bcs",
@@ -8736,7 +8759,7 @@ dependencies = [
 
 [[package]]
 name = "store-derive"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
@@ -8835,7 +8858,7 @@ dependencies = [
 
 [[package]]
 name = "sync"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9059,7 +9082,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test-cluster"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "bytes",
@@ -9923,7 +9946,7 @@ checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "types"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "arrgen",
@@ -10145,7 +10168,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bcs",
  "bytes",

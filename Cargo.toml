@@ -50,7 +50,7 @@ all = { level = "allow", priority = -1 }
 
 [workspace.package]
 # This version string will be inherited by sub crates.
-version = "0.1.7"
+version = "0.1.8"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -119,6 +119,7 @@ hyper-rustls = { version = "0.27", default-features = false, features = [
   "tls12",
 ] }
 cfg-if = "1.0.4"
+indicatif = "0.17"
 tempfile = "3.24.0"
 regex = "1.12"
 chrono = "0.4"

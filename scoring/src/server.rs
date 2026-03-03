@@ -109,7 +109,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let config = runtime::ModelConfig::new();
         let device = types::config::node_config::DeviceConfig::Cpu;
-        let engine = Arc::new(ScoringEngine::new(dir.path(), config, &device).expect("engine"));
+        let engine =
+            Arc::new(ScoringEngine::new(dir.path(), config, &device, None).expect("engine"));
         let svc = ScoringService::new(engine);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");

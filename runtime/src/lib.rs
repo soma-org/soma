@@ -7,6 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use blobs::BlobPath;
 use blobs::downloader::HttpBlobDownloader;
+use blobs::progress::ProgressFactory;
 use burn::backend::{Cuda, NdArray, Wgpu};
 use burn::tensor::TensorData;
 use models::v1::ModelRunner;
@@ -160,6 +161,7 @@ pub fn build_runtime(
     device: &DeviceConfig,
     data_dir: &Path,
     model_config: ModelConfig,
+    progress: Option<Arc<dyn ProgressFactory>>,
 ) -> anyhow::Result<Arc<dyn RuntimeAPI>> {
     let store = Arc::new(
         LocalFileSystem::new_with_prefix(data_dir)
@@ -179,15 +181,36 @@ pub fn build_runtime(
     match device {
         DeviceConfig::Cpu => {
             let model = Arc::new(ModelRunner::<NdArray>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
+            Ok(Arc::new(v1::RuntimeV1::new(
+                store,
+                downloader,
+                0,
+                Default::default(),
+                model,
+                progress,
+            )))
         }
         DeviceConfig::Wgpu => {
             let model = Arc::new(ModelRunner::<Wgpu>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
+            Ok(Arc::new(v1::RuntimeV1::new(
+                store,
+                downloader,
+                0,
+                Default::default(),
+                model,
+                progress,
+            )))
         }
         DeviceConfig::Cuda => {
             let model = Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(store, downloader, 0, Default::default(), model)))
+            Ok(Arc::new(v1::RuntimeV1::new(
+                store,
+                downloader,
+                0,
+                Default::default(),
+                model,
+                progress,
+            )))
         }
     }
 }
