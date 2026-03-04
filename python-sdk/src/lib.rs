@@ -223,6 +223,18 @@ struct EndOfEpochInfoObj {
     epoch_end_timestamp_ms: Option<u64>,
 }
 
+#[derive(serde::Serialize)]
+struct ActiveModelObj {
+    model_id: String,
+    owner: String,
+    embedding: Vec<f32>,
+    stake: f64,
+    commission_rate: u64,
+    next_epoch_commission_rate: u64,
+    commit_epoch: u64,
+    has_pending_update: bool,
+}
+
 /// Convert a proto Target to a TargetObj with snake_case fields and 0x-prefixed hex IDs.
 fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
     let hex_id = |s: Option<String>| -> Option<String> {
@@ -858,6 +870,43 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let state = client.get_latest_system_state().await.map_err(to_py_err)?;
             Ok(state.parameters().model_min_stake)
+        })
+    }
+
+    /// Get all active (revealed) models with decoded embeddings.
+    ///
+    /// Returns a list of objects, each with:
+    /// - ``model_id``, ``owner``: hex strings
+    /// - ``embedding``: list of floats (decoded from on-chain SomaTensor)
+    /// - ``stake``: float in SOMA (not shannons)
+    /// - ``commission_rate``, ``next_epoch_commission_rate``: basis points
+    /// - ``commit_epoch``: epoch when the model was committed
+    /// - ``has_pending_update``: whether a weight update is in flight
+    ///
+    /// Only models that have been revealed (have an embedding) are included.
+    fn get_active_models<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+            let registry = state.model_registry();
+
+            let mut results: Vec<Py<PyAny>> = Vec::new();
+            for (model_id, model) in &registry.active_models {
+                if let Some(ref emb) = model.embedding {
+                    let obj = ActiveModelObj {
+                        model_id: model_id.to_string(),
+                        owner: model.owner.to_string(),
+                        embedding: emb.to_vec(),
+                        stake: sdk::crypto_utils::to_soma(model.stake()),
+                        commission_rate: model.commission_rate,
+                        next_epoch_commission_rate: model.next_epoch_commission_rate,
+                        commit_epoch: model.commit_epoch,
+                        has_pending_update: model.has_pending_update(),
+                    };
+                    results.push(to_py_obj(&obj)?);
+                }
+            }
+            Ok(results)
         })
     }
 

@@ -843,3 +843,126 @@ asyncio.run(_test())
     ))
     .await;
 }
+
+/// Test `get_active_models`: commit model, reveal, then fetch active models.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_active_models() {
+    init_python();
+    let cluster = TestClusterBuilder::new().build().await;
+    let rpc_url = cluster.fullnode_handle.rpc_url.clone();
+    let (_, secret) = export_keypair_bech32(&cluster, 0);
+
+    // Stage 1: Commit model
+    run_python(format!(
+        r#"
+import asyncio, builtins
+from soma_sdk import SomaClient, Keypair
+
+async def _test():
+    client = await SomaClient("{rpc_url}")
+    kp = Keypair.from_secret_key("{secret}")
+    sender = kp.address()
+
+    raw = b"\x00" * 1024
+    encrypted, key = SomaClient.encrypt_weights(raw)
+
+    dim = await client.get_embedding_dim()
+    embedding = [0.1] * dim
+
+    await client.commit_model(
+        signer=kp,
+        weights_url="http://example.com/weights.enc",
+        encrypted_weights=encrypted,
+        decryption_key=key,
+        embedding=embedding,
+        commission_rate=1000,
+    )
+
+    state = await client.get_latest_system_state()
+    pending = vars(state.model_registry.pending_models)
+    model_id = next(
+        mid for mid, m in pending.items()
+        if m.owner == sender
+    )
+    builtins._model_id = model_id
+    builtins._key = key
+    builtins._embedding = embedding
+
+asyncio.run(_test())
+"#
+    ))
+    .await;
+
+    // Advance epoch so model can be revealed
+    cluster.trigger_reconfiguration().await;
+
+    // Stage 2: Reveal model
+    run_python(format!(
+        r#"
+import asyncio, builtins
+from soma_sdk import SomaClient, Keypair
+
+async def _test():
+    client = await SomaClient("{rpc_url}")
+    kp = Keypair.from_secret_key("{secret}")
+
+    await client.reveal_model(
+        signer=kp,
+        model_id=builtins._model_id,
+        decryption_key=builtins._key,
+        embedding=builtins._embedding,
+    )
+
+asyncio.run(_test())
+"#
+    ))
+    .await;
+
+    // Stage 3: Fetch active model embeddings and verify
+    run_python(format!(
+        r#"
+import asyncio, builtins
+from soma_sdk import SomaClient, Keypair
+
+async def _test():
+    client = await SomaClient("{rpc_url}")
+    kp = Keypair.from_secret_key("{secret}")
+    sender = kp.address()
+
+    models = await client.get_active_models()
+    assert len(models) >= 1, f"should have at least 1 active model, got {{len(models)}}"
+
+    # Find our model
+    our_model = next(m for m in models if m.model_id == builtins._model_id)
+
+    assert isinstance(our_model.model_id, str), "model_id should be a string"
+    assert isinstance(our_model.owner, str), "owner should be a string"
+    assert our_model.owner == sender, \
+        f"owner mismatch: {{our_model.owner}} != {{sender}}"
+
+    assert isinstance(our_model.embedding, list), "embedding should be a list"
+    dim = await client.get_embedding_dim()
+    assert len(our_model.embedding) == dim, \
+        f"embedding dim should be {{dim}}, got {{len(our_model.embedding)}}"
+
+    assert isinstance(our_model.stake, float), "stake should be a float"
+    assert our_model.stake > 0.0, f"stake should be positive, got {{our_model.stake}}"
+
+    # Verify embedding values are the ones we set (all 0.1)
+    for i, val in enumerate(our_model.embedding):
+        assert isinstance(val, float), f"embedding[{{i}}] should be float, got {{type(val).__name__}}"
+        assert abs(val - 0.1) < 1e-6, \
+            f"embedding[{{i}}] should be ~0.1, got {{val}}"
+
+    # Verify additional model fields
+    assert our_model.commission_rate == 1000, \
+        f"commission_rate should be 1000, got {{our_model.commission_rate}}"
+    assert isinstance(our_model.commit_epoch, int), "commit_epoch should be int"
+    assert isinstance(our_model.has_pending_update, bool), "has_pending_update should be bool"
+    assert our_model.has_pending_update is False, "should not have pending update"
+
+asyncio.run(_test())
+"#
+    ))
+    .await;
+}

@@ -10,6 +10,7 @@ from typing import Optional, Union
 
 class Target:
     """Shape returned by ``SomaClient.get_targets()`` items."""
+
     id: str
     status: str
     embedding: list[float]
@@ -30,14 +31,28 @@ class ModelManifest:
     - For local scoring: ``url``, ``encrypted_weights``, ``decryption_key``
       (checksum and size are derived from ``encrypted_weights``)
     """
+
     url: str
     checksum: str
     size: int
     decryption_key: Optional[str]
     encrypted_weights: Optional[bytes]
 
+class ActiveModel:
+    """Shape returned by items in ``SomaClient.get_active_models()``."""
+
+    model_id: str
+    owner: str
+    embedding: list[float]
+    stake: float
+    commission_rate: int
+    next_epoch_commission_rate: int
+    commit_epoch: int
+    has_pending_update: bool
+
 class ScoreResult:
     """Shape returned by ``SomaClient.score()``."""
+
     winner: int
     loss_score: list[float]
     embedding: list[float]
@@ -45,23 +60,27 @@ class ScoreResult:
 
 class FaucetCoinInfo:
     """Shape for individual coin info in faucet response."""
+
     amount: int
     id: str
     transfer_tx_digest: str
 
 class FaucetResponse:
     """Shape returned by ``SomaClient.request_faucet()``."""
+
     status: str
     coins_sent: list[FaucetCoinInfo]
 
 class ObjectRef:
     """Shape for object references (e.g. from ``list_owned_objects()``)."""
+
     id: str
     version: int
     digest: str
 
 class EpochInfo:
     """Shape returned by ``SomaClient.get_epoch()``."""
+
     epoch: int
     first_checkpoint_id: int
     epoch_start_timestamp_ms: int
@@ -69,11 +88,13 @@ class EpochInfo:
 
 class EndOfEpochInfo:
     """Shape for end-of-epoch info within EpochInfo."""
+
     last_checkpoint_id: int
     epoch_end_timestamp_ms: Optional[int]
 
 class TransactionEffects:
     """Shape returned by ``execute_transaction()``, ``simulate_transaction()``, ``get_transaction()``."""
+
     status: str
     gas_used: "GasUsed"
     transaction_digest: str
@@ -83,6 +104,7 @@ class TransactionEffects:
 
 class GasUsed:
     """Gas usage details within TransactionEffects."""
+
     computation_cost: int
     storage_cost: int
     storage_rebate: int
@@ -90,6 +112,7 @@ class GasUsed:
 
 class OwnedObjectRef:
     """Object reference with owner info within TransactionEffects."""
+
     id: str
     version: int
     digest: str
@@ -97,11 +120,13 @@ class OwnedObjectRef:
 
 class PoolTokenExchangeRate:
     """Exchange rate between SOMA and pool tokens at a given epoch."""
+
     soma_amount: int
     pool_token_amount: int
 
 class StakingPool:
     """Staking pool for a validator."""
+
     id: str
     activation_epoch: Optional[int]
     deactivation_epoch: Optional[int]
@@ -115,6 +140,7 @@ class StakingPool:
 
 class ValidatorMetadata:
     """Metadata for a validator."""
+
     soma_address: str
     protocol_pubkey: str
     network_pubkey: str
@@ -135,6 +161,7 @@ class ValidatorMetadata:
 
 class Validator:
     """A validator in the validator set."""
+
     metadata: ValidatorMetadata
     voting_power: int
     staking_pool: StakingPool
@@ -144,6 +171,7 @@ class Validator:
 
 class ValidatorSet:
     """The full validator set."""
+
     total_stake: int
     validators: list[Validator]
     pending_validators: list[Validator]
@@ -154,6 +182,7 @@ class ValidatorSet:
 
 class SystemParameters:
     """On-chain system parameters (protocol config)."""
+
     epoch_duration_ms: int
     validator_reward_allocation_bps: int
     model_min_stake: int
@@ -185,11 +214,13 @@ class SystemParameters:
 
 class EmissionPool:
     """Emission pool state."""
+
     balance: int
     emission_per_epoch: int
 
 class TargetState:
     """Target generation state."""
+
     distance_threshold: object
     targets_generated_this_epoch: int
     hits_this_epoch: int
@@ -198,11 +229,13 @@ class TargetState:
 
 class ModelRegistry:
     """Model registry within SystemState."""
+
     pending_models: dict[str, object]
     models: dict[str, object]
 
 class SystemState:
     """Shape returned by ``SomaClient.get_latest_system_state()``."""
+
     epoch: int
     protocol_version: int
     validators: ValidatorSet
@@ -218,6 +251,7 @@ class SystemState:
 
 class ListTargetsResponse:
     """Shape returned by ``SomaClient.list_targets()``."""
+
     targets: list[Target]
     next_page_token: Optional[str]
 
@@ -229,6 +263,7 @@ class CheckpointSummary:
         network_total_transactions: int
         content_digest: str
         timestamp_ms: int
+
     data: CheckpointData
 
 # ---------------------------------------------------------------------------
@@ -319,11 +354,14 @@ class SomaClient:
     async def get_architecture_version(self) -> int: ...
     async def get_embedding_dim(self) -> int: ...
     async def get_model_min_stake(self) -> int: ...
+    async def get_active_models(self) -> list[ActiveModel]: ...
     async def check_api_version(self) -> None: ...
 
     # -- Objects & State --
     async def get_object(self, object_id: str) -> ObjectRef: ...
-    async def get_object_with_version(self, object_id: str, version: int) -> ObjectRef: ...
+    async def get_object_with_version(
+        self, object_id: str, version: int
+    ) -> ObjectRef: ...
     async def get_balance(self, address: str) -> float: ...
     async def get_latest_system_state(self) -> SystemState: ...
     async def get_epoch(self, epoch: Optional[int] = None) -> EpochInfo: ...
@@ -357,11 +395,15 @@ class SomaClient:
 
     # -- Checkpoints --
     async def get_latest_checkpoint(self) -> CheckpointSummary: ...
-    async def get_checkpoint_summary(self, sequence_number: int) -> CheckpointSummary: ...
+    async def get_checkpoint_summary(
+        self, sequence_number: int
+    ) -> CheckpointSummary: ...
 
     # -- Transactions --
     async def execute_transaction(self, tx_bytes: bytes) -> TransactionEffects: ...
-    async def simulate_transaction(self, tx_data_bytes: bytes) -> TransactionEffects: ...
+    async def simulate_transaction(
+        self, tx_data_bytes: bytes
+    ) -> TransactionEffects: ...
     async def get_transaction(self, digest: str) -> TransactionEffects: ...
 
     # -- Scoring (requires scoring_url) --
