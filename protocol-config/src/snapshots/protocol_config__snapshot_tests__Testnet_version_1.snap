@@ -39,9 +39,9 @@ target_difficulty_adjustment_rate_bps: 1000
 target_max_distance_threshold: 2
 target_min_distance_threshold: 0.1
 target_initial_targets_per_epoch: 20
-target_submitter_reward_share_bps: 6900
-target_model_reward_share_bps: 3000
-target_claimer_incentive_bps: 100
+target_submitter_reward_share_bps: 4975
+target_model_reward_share_bps: 4975
+target_claimer_incentive_bps: 50
 submission_bond_per_byte: 10
 max_submission_data_size: 1048576
 execution_version: 0

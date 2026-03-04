@@ -53,7 +53,7 @@ reward_slashing_rate_bps:
 submission_bond_per_byte:
   u64: 10
 target_claimer_incentive_bps:
-  u64: 100
+  u64: 50
 target_difficulty_adjustment_rate_bps:
   u64: 1000
 target_embedding_dim:
@@ -73,13 +73,13 @@ target_max_distance_threshold:
 target_min_distance_threshold:
   BcsF32: 0.1
 target_model_reward_share_bps:
-  u64: 3000
+  u64: 4975
 target_models_per_target:
   u64: 3
 target_reward_allocation_bps:
   u64: 8000
 target_submitter_reward_share_bps:
-  u64: 6900
+  u64: 4975
 validator_reward_allocation_bps:
   u64: 7000
 write_object_fee:
