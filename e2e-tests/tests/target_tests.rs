@@ -87,7 +87,7 @@ async fn test_genesis_target_bootstrap() {
 
     // Verify we have an active model (model_id is auto-assigned at genesis)
     assert!(
-        !system_state.model_registry().active_models.is_empty(),
+        system_state.model_registry().active_models().next().is_some(),
         "Genesis model should be active"
     );
 
@@ -160,7 +160,7 @@ async fn test_genesis_target_bootstrap_3_models() {
 
     // Verify all 3 models are active
     assert_eq!(
-        system_state.model_registry().active_models.len(),
+        system_state.model_registry().active_models().count(),
         3,
         "All 3 genesis models should be active"
     );
@@ -187,7 +187,7 @@ async fn test_genesis_target_bootstrap_3_models() {
 
     info!(
         "test_genesis_target_bootstrap_3_models passed: {} models, {} targets",
-        system_state.model_registry().active_models.len(),
+        system_state.model_registry().active_models().count(),
         response.targets.len()
     );
 }
@@ -224,10 +224,10 @@ async fn test_submit_data_fills_target() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -343,10 +343,10 @@ async fn test_claim_rewards_after_audit_window() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
@@ -609,10 +609,10 @@ async fn test_submit_data_validation_errors() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
 
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();

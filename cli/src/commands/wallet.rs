@@ -12,10 +12,10 @@ use soma_keys::key_derive;
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::AccountKeystore;
 use types::base::SomaAddress;
-use types::crypto::SignatureScheme;
+use types::crypto::{EncodeDecodeBase64, SignatureScheme};
 
 use crate::response::{
-    ActiveAddressOutput, AddressesOutput, ClientCommandResponse, NewAddressOutput,
+    ActiveAddressOutput, AddressesOutput, ClientCommandResponse, ExportKeyOutput, NewAddressOutput,
     RemoveAddressOutput, SwitchOutput,
 };
 
@@ -93,6 +93,10 @@ pub enum WalletCommand {
         /// Address or alias to make active
         address: KeyIdentity,
     },
+
+    /// Export the private key of the active address
+    #[clap(name = "export")]
+    Export,
 }
 
 /// Execute the wallet command
@@ -171,6 +175,22 @@ pub async fn execute(
             context.config.save()?;
 
             Ok(ClientCommandResponse::Switch(SwitchOutput { address: Some(resolved), env: None }))
+        }
+
+        WalletCommand::Export => {
+            let address = context.active_address()?;
+            let alias = context.config.keystore.get_alias(&address).ok();
+            let skp = context.config.keystore.export(&address)?;
+            let key_scheme = skp.public().scheme().to_string();
+            let exported_private_key =
+                skp.encode().map_err(|_| anyhow!("Cannot encode keypair"))?;
+
+            Ok(ClientCommandResponse::ExportKey(ExportKeyOutput {
+                alias,
+                address,
+                key_scheme,
+                exported_private_key,
+            }))
         }
     }
 }

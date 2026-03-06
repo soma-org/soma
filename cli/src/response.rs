@@ -429,6 +429,7 @@ pub enum ClientCommandResponse {
     NewAddress(NewAddressOutput),
     RemoveAddress(RemoveAddressOutput),
     Switch(SwitchOutput),
+    ExportKey(ExportKeyOutput),
     ActiveEnv(Option<String>),
     Envs(EnvsOutput),
     NewEnv(NewEnvOutput),
@@ -484,6 +485,7 @@ impl Display for ClientCommandResponse {
             ClientCommandResponse::NewAddress(output) => write!(f, "{}", output),
             ClientCommandResponse::RemoveAddress(output) => write!(f, "{}", output),
             ClientCommandResponse::Switch(output) => write!(f, "{}", output),
+            ClientCommandResponse::ExportKey(output) => write!(f, "{}", output),
             ClientCommandResponse::ActiveEnv(env) => match env {
                 Some(e) => writeln!(f, "{}", e),
                 None => writeln!(f, "{}", "No active environment set".yellow()),
@@ -668,6 +670,51 @@ impl Display for SwitchOutput {
             writeln!(f, "{} Active environment → [{}]", "✓".green(), env.cyan())?;
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportKeyOutput {
+    pub alias: Option<String>,
+    pub address: SomaAddress,
+    pub key_scheme: String,
+    #[serde(rename = "privateKey")]
+    pub exported_private_key: String,
+}
+
+impl Display for ExportKeyOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", "Exported Private Key".cyan().bold())?;
+        writeln!(f)?;
+
+        let mut builder = TableBuilder::default();
+        if let Some(alias) = &self.alias {
+            builder.push_record(["Alias", alias]);
+        }
+        builder.push_record(["Address", &self.address.to_string()]);
+        builder.push_record(["Key Scheme", &self.key_scheme]);
+
+        let mut table = builder.build();
+        table.with(TableStyle::rounded());
+        table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
+        if self.alias.is_some() {
+            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
+        }
+        writeln!(f, "{}", table)?;
+
+        writeln!(f)?;
+        writeln!(f, "{}", "Private Key".bold())?;
+        let key_len = self.exported_private_key.len();
+        let box_width = key_len + 2;
+        writeln!(f, "╭{}╮", "─".repeat(box_width))?;
+        writeln!(f, "│ {} │", &self.exported_private_key)?;
+        writeln!(f, "╰{}╯", "─".repeat(box_width))?;
+        writeln!(f)?;
+        writeln!(
+            f,
+            "{}",
+            "⚠  DO NOT share this key with anyone! Store it securely.".yellow().bold()
+        )
     }
 }
 
