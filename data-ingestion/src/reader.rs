@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use types::checkpoints::CheckpointSequenceNumber;
-use types::full_checkpoint_content::CheckpointData;
+use types::full_checkpoint_content::{Checkpoint, CheckpointData};
 
 use crate::util::create_remote_store_client;
 
@@ -103,7 +103,7 @@ impl CheckpointReader {
         (reader, checkpoint_recv, processed_sender, exit_sender)
     }
 
-    /// Read local archive files
+    /// Read local archive files (supports both `.binpb.zst` and legacy `.chk` formats)
     async fn read_local_files(&self) -> Result<Vec<Arc<CheckpointData>>> {
         let mut archives = vec![];
         for offset in 0..100 {
@@ -113,16 +113,31 @@ impl CheckpointReader {
                 break;
             }
 
-            let file_path = self.path.join(format!("{}.chk", checkpoint_seq));
-            match fs::read(file_path) {
+            // Try new format first, fall back to legacy
+            let new_path = self.path.join(format!("{}.binpb.zst", checkpoint_seq));
+            let legacy_path = self.path.join(format!("{}.chk", checkpoint_seq));
+
+            match fs::read(&new_path) {
                 Ok(bytes) => {
-                    let archive_data: CheckpointData = bcs::from_bytes(&bytes)?;
-                    archives.push(Arc::new(archive_data));
+                    let checkpoint =
+                        rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
+                    let checkpoint_data: CheckpointData = checkpoint.into();
+                    archives.push(Arc::new(checkpoint_data));
                 }
-                Err(err) => match err.kind() {
-                    std::io::ErrorKind::NotFound => break,
-                    _ => return Err(err.into()),
-                },
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    // Fall back to legacy .chk format
+                    match fs::read(&legacy_path) {
+                        Ok(bytes) => {
+                            let archive_data: CheckpointData = bcs::from_bytes(&bytes)?;
+                            archives.push(Arc::new(archive_data));
+                        }
+                        Err(err) => match err.kind() {
+                            std::io::ErrorKind::NotFound => break,
+                            _ => return Err(err.into()),
+                        },
+                    }
+                }
+                Err(err) => return Err(err.into()),
             }
         }
         Ok(archives)
@@ -136,13 +151,29 @@ impl CheckpointReader {
         }
     }
 
-    /// Fetch from object store
+    /// Fetch from object store (supports both `.binpb.zst` and legacy `.chk` formats)
     async fn fetch_from_object_store(
         store: &dyn ObjectStore,
         checkpoint_seq: CheckpointSequenceNumber,
     ) -> Result<Arc<CheckpointData>> {
-        let path = Path::from(format!("{}.chk", checkpoint_seq));
-        let response = store.get(&path).await?;
+        // Try new format first
+        let new_path = Path::from(format!("{}.binpb.zst", checkpoint_seq));
+        match store.get(&new_path).await {
+            Ok(response) => {
+                let bytes = response.bytes().await?;
+                let checkpoint =
+                    rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
+                let checkpoint_data: CheckpointData = checkpoint.into();
+                return Ok(Arc::new(checkpoint_data));
+            }
+            Err(object_store::Error::NotFound { .. }) => {
+                // Fall back to legacy .chk format
+            }
+            Err(err) => return Err(err.into()),
+        }
+
+        let legacy_path = Path::from(format!("{}.chk", checkpoint_seq));
+        let response = store.get(&legacy_path).await?;
         let bytes = response.bytes().await?;
         let archive_data: CheckpointData = bcs::from_bytes(&bytes)?;
         Ok(Arc::new(archive_data))
@@ -254,7 +285,13 @@ impl CheckpointReader {
     }
 
     fn parse_checkpoint_seq(file_name: &std::ffi::OsStr) -> Option<CheckpointSequenceNumber> {
-        file_name.to_str().and_then(|s| s.strip_suffix(".chk")).and_then(|s| s.parse().ok())
+        file_name
+            .to_str()
+            .and_then(|s| {
+                s.strip_suffix(".binpb.zst")
+                    .or_else(|| s.strip_suffix(".chk"))
+            })
+            .and_then(|s| s.parse().ok())
     }
 
     /// Main run loop

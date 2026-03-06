@@ -467,6 +467,7 @@ pub struct TestClusterBuilder {
     validators: Option<Vec<ValidatorGenesisConfig>>,
     validator_supported_protocol_versions_config: ProtocolVersionsConfig,
     fullnode_run_with_range: Option<RunWithRange>,
+    data_ingestion_dir: Option<PathBuf>,
     /// When true, skip the mock scoring server and let validators start their own
     /// local scoring service (using CPU backend and small model for testing).
     use_local_scoring: bool,
@@ -481,6 +482,7 @@ impl TestClusterBuilder {
             validators: None,
             validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             fullnode_run_with_range: None,
+            data_ingestion_dir: None,
             use_local_scoring: false,
         }
     }
@@ -539,6 +541,11 @@ impl TestClusterBuilder {
 
     pub fn with_fullnode_run_with_range(mut self, run_with_range: RunWithRange) -> Self {
         self.fullnode_run_with_range = Some(run_with_range);
+        self
+    }
+
+    pub fn with_data_ingestion_dir(mut self, path: PathBuf) -> Self {
+        self.data_ingestion_dir = Some(path);
         self
     }
 
@@ -671,6 +678,10 @@ impl TestClusterBuilder {
 
         if let Some(run_with_range) = self.fullnode_run_with_range {
             builder = builder.with_fullnode_run_with_range(run_with_range);
+        }
+
+        if let Some(path) = self.data_ingestion_dir.take() {
+            builder = builder.with_data_ingestion_dir(path);
         }
 
         let mut swarm = builder.build();

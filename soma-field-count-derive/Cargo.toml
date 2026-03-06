@@ -1,0 +1,12 @@
+[package]
+name = "soma-field-count-derive"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn.workspace = true
+quote.workspace = true

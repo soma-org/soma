@@ -1,0 +1,42 @@
+[package]
+name = "indexer-framework"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+backoff.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+clap.workspace = true
+dashmap.workspace = true
+futures.workspace = true
+indexer-store-traits.workspace = true
+object_store.workspace = true
+prometheus.workspace = true
+rand.workspace = true
+rpc.workspace = true
+scoped-futures.workspace = true
+serde.workspace = true
+soma-field-count.workspace = true
+soma-futures.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+types.workspace = true
+url.workspace = true
+zstd.workspace = true
+
+[features]
+default = []
+postgres = ["dep:indexer-pg-db"]
+
+[dependencies.indexer-pg-db]
+workspace = true
+optional = true
+
+[lints]
+workspace = true

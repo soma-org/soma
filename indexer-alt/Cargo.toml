@@ -1,0 +1,26 @@
+[package]
+name = "indexer-alt"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+bcs.workspace = true
+clap.workspace = true
+diesel.workspace = true
+diesel-async = { workspace = true }
+indexer-alt-schema.workspace = true
+indexer-framework = { workspace = true, features = ["postgres"] }
+indexer-pg-db.workspace = true
+indexer-store-traits.workspace = true
+soma-field-count.workspace = true
+tokio.workspace = true
+prometheus.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+types.workspace = true
+
+[lints]
+workspace = true

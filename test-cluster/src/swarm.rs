@@ -373,6 +373,13 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             }
         }
 
+        // Apply data_ingestion_dir to all validator configs
+        if let Some(ref dir) = self.data_ingestion_dir {
+            for config in &mut network_config.validator_configs {
+                config.checkpoint_executor_config.data_ingestion_dir = Some(dir.clone());
+            }
+        }
+
         // Create validator nodes
         let mut nodes: HashMap<_, _> = network_config
             .validator_configs()

@@ -1,0 +1,170 @@
+// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Soma Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use serde::Deserialize;
+use serde::Serialize;
+use soma_futures::service::Service;
+use tokio::sync::mpsc;
+use tracing::info;
+
+use crate::config::ConcurrencyConfig;
+use crate::metrics::IndexerMetrics;
+use crate::pipeline::CommitterConfig;
+use crate::pipeline::Processor;
+use crate::pipeline::processor::processor;
+use crate::pipeline::sequential::committer::committer;
+use crate::store::Store;
+use crate::store::TransactionalStore;
+use crate::types::full_checkpoint_content::Checkpoint;
+
+mod committer;
+
+/// Handlers implement the logic for a given indexing pipeline: How to process checkpoint data (by
+/// implementing [Processor]) into rows for their table, how to combine multiple rows into a single
+/// DB operation, and then how to write those rows atomically to the database.
+///
+/// Sequential handlers can only be used in sequential pipelines, where checkpoint data is
+/// processed out-of-order, but then gathered and written in order. If multiple checkpoints are
+/// available, the pipeline will attempt to combine their writes taking advantage of batching to
+/// avoid emitting redundant writes.
+///
+/// Back-pressure is handled by setting a high watermark on the ingestion service: The pipeline
+/// notifies the ingestion service of the checkpoint it last successfully wrote to the database
+/// for, and in turn the ingestion service will only run ahead by its buffer size.
+#[async_trait]
+pub trait Handler: Processor {
+    type Store: TransactionalStore;
+
+    /// If at least this many rows are pending, the committer will commit them eagerly.
+    const MIN_EAGER_ROWS: usize = 50;
+
+    /// Maximum number of checkpoints to try and write in a single batch. The larger this number
+    /// is, the more chances the pipeline has to merge redundant writes, but the longer each write
+    /// transaction is likely to be.
+    const MAX_BATCH_CHECKPOINTS: usize = 5 * 60;
+
+    /// A type to combine multiple `Self::Value`-s into. This can be used to avoid redundant writes
+    /// by combining multiple rows into one (e.g. if one row supersedes another, the latter can be
+    /// omitted).
+    type Batch: Default + Send + Sync + 'static;
+
+    /// Add `values` from processing a checkpoint to the current `batch`. Checkpoints are
+    /// guaranteed to be presented to the batch in checkpoint order. The handler takes ownership
+    /// of the iterator and consumes all values.
+    fn batch(&self, batch: &mut Self::Batch, values: std::vec::IntoIter<Self::Value>);
+
+    /// Take a batch of values and commit them to the database, returning the number of rows
+    /// affected.
+    async fn commit<'a>(
+        &self,
+        batch: &Self::Batch,
+        conn: &mut <Self::Store as Store>::Connection<'a>,
+    ) -> anyhow::Result<usize>;
+}
+
+/// Configuration for a sequential pipeline
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct SequentialConfig {
+    /// Configuration for the writer, that makes forward progress.
+    pub committer: CommitterConfig,
+
+    /// How many checkpoints to hold back writes for.
+    pub checkpoint_lag: u64,
+
+    /// Processor concurrency. Defaults to adaptive scaling up to the number of CPUs.
+    pub fanout: Option<ConcurrencyConfig>,
+
+    /// Override for `Handler::MIN_EAGER_ROWS` (eager batch threshold).
+    pub min_eager_rows: Option<usize>,
+
+    /// Override for `Handler::MAX_BATCH_CHECKPOINTS` (checkpoints per write batch).
+    pub max_batch_checkpoints: Option<usize>,
+
+    /// Size of the channel between the processor and committer.
+    pub processor_channel_size: Option<usize>,
+}
+
+fn default_concurrency() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
+
+/// Start a new sequential (in-order) indexing pipeline, served by the handler, `H`. Starting
+/// strictly after the `watermark` (or from the beginning if no watermark was provided).
+///
+/// Each pipeline consists of a processor which takes checkpoint data and breaks it down into rows,
+/// ready for insertion, and a committer which orders the rows and combines them into batches to
+/// write to the database.
+///
+/// Commits are performed in checkpoint order, potentially involving multiple checkpoints at a
+/// time. The call to [Handler::commit] and the associated watermark update are performed in a
+/// transaction to ensure atomicity.
+///
+/// The pipeline can optionally be configured to lag behind the ingestion service by a fixed number
+/// of checkpoints (configured by `checkpoint_lag`).
+///
+/// Watermarks are also shared with the ingestion service, which is guaranteed to bound the
+/// checkpoint height it pre-fetches to some constant additive factor above the pipeline's
+/// watermark.
+pub(crate) fn pipeline<H: Handler + Send + Sync + 'static>(
+    handler: H,
+    next_checkpoint: u64,
+    config: SequentialConfig,
+    db: H::Store,
+    checkpoint_rx: mpsc::Receiver<Arc<Checkpoint>>,
+    commit_hi_tx: mpsc::UnboundedSender<(&'static str, u64)>,
+    metrics: Arc<IndexerMetrics>,
+) -> Service {
+    info!(
+        pipeline = H::NAME,
+        "Starting pipeline with config: {config:#?}",
+    );
+
+    let num_cpus = default_concurrency();
+
+    let concurrency = config
+        .fanout
+        .clone()
+        .unwrap_or(ConcurrencyConfig::Adaptive {
+            initial: 1,
+            min: 1,
+            max: num_cpus,
+            dead_band: None,
+        });
+    let min_eager_rows = config.min_eager_rows.unwrap_or(H::MIN_EAGER_ROWS);
+    let max_batch_checkpoints = config
+        .max_batch_checkpoints
+        .unwrap_or(H::MAX_BATCH_CHECKPOINTS);
+
+    let processor_channel_size = config.processor_channel_size.unwrap_or(num_cpus / 2);
+    let (processor_tx, committer_rx) = mpsc::channel(processor_channel_size);
+
+    let handler = Arc::new(handler);
+
+    let s_processor = processor(
+        handler.clone(),
+        checkpoint_rx,
+        processor_tx,
+        metrics.clone(),
+        concurrency,
+    );
+
+    let s_committer = committer::<H>(
+        handler,
+        config,
+        next_checkpoint,
+        committer_rx,
+        commit_hi_tx,
+        db,
+        metrics,
+        min_eager_rows,
+        max_batch_checkpoints,
+    );
+
+    s_processor.merge(s_committer)
+}

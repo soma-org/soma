@@ -28,6 +28,14 @@ members = [
   "faucet",
   "scoring",
   "admin",
+  "soma-field-count-derive",
+  "soma-field-count",
+  "soma-futures",
+  "indexer-store-traits",
+  "indexer-pg-db",
+  "indexer-framework",
+  "indexer-alt-schema",
+  "indexer-alt",
 ]
 
 
@@ -103,6 +111,14 @@ protocol-config = { path = "protocol-config" }
 faucet = { path = "faucet" }
 scoring = { path = "scoring", default-features = false }
 admin = { path = "admin" }
+soma-field-count-derive = { path = "soma-field-count-derive" }
+soma-field-count = { path = "soma-field-count" }
+soma-futures = { path = "soma-futures" }
+indexer-store-traits = { path = "indexer-store-traits" }
+indexer-pg-db = { path = "indexer-pg-db" }
+indexer-framework = { path = "indexer-framework" }
+indexer-alt-schema = { path = "indexer-alt-schema" }
+indexer-alt = { path = "indexer-alt" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }
@@ -239,6 +255,14 @@ axum = { version = "0.8", default-features = false, features = [
 ] }
 zstd = "0.13.3"
 
+syn = { version = "2", features = ["full"] }
+quote = "1"
+scoped-futures = "0.1"
+diesel = { version = "2.2", features = ["postgres", "r2d2", "serde_json", "chrono"] }
+diesel-async = { version = "0.5", features = ["postgres", "bb8"] }
+diesel_migrations = "2.2"
+bb8 = "0.8"
+prometheus = "0.13"
 clap = { version = "4.5", features = ["derive"] }
 tempdir = "0.3.7"
 arbtest = "0.3.2"

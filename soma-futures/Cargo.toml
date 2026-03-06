@@ -1,0 +1,16 @@
+[package]
+name = "soma-futures"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+futures.workspace = true
+tap.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "macros", "sync", "signal"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

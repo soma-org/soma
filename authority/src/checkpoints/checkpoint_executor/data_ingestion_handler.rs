@@ -4,6 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use rpc::utils::checkpoint_blob;
 use types::effects::TransactionEffectsAPI as _;
 use types::error::{SomaError, SomaResult};
 use types::full_checkpoint_content::{Checkpoint, CheckpointData, ExecutedTransaction, ObjectSet};
@@ -14,24 +15,24 @@ use crate::checkpoints::checkpoint_executor::{CheckpointExecutionData, Checkpoin
 
 pub(crate) fn store_checkpoint_locally(
     path: impl AsRef<Path>,
-    checkpoint_data: &CheckpointData,
+    checkpoint: &Checkpoint,
 ) -> SomaResult {
     let path = path.as_ref();
-    let file_name = format!("{}.chk", checkpoint_data.checkpoint_summary.sequence_number);
+    let file_name = format!("{}.binpb.zst", checkpoint.summary.sequence_number);
 
     std::fs::create_dir_all(path).map_err(|err| {
         SomaError::FileIOError(format!("failed to save full checkpoint content locally {:?}", err))
     })?;
 
-    bcs::to_bytes(&checkpoint_data)
-        .map_err(|_| SomaError::TransactionSerializationError {
-            error: "failed to serialize full checkpoint content".to_string(),
-        }) // Map the first error
-        .and_then(|blob| {
-            std::fs::write(path.join(file_name), blob).map_err(|_| {
-                SomaError::FileIOError("failed to save full checkpoint content locally".to_string())
-            })
-        })?;
+    let blob = checkpoint_blob::encode_checkpoint(checkpoint).map_err(|err| {
+        SomaError::TransactionSerializationError {
+            error: format!("failed to encode checkpoint as proto+zstd: {}", err),
+        }
+    })?;
+
+    std::fs::write(path.join(file_name), blob).map_err(|_| {
+        SomaError::FileIOError("failed to save full checkpoint content locally".to_string())
+    })?;
 
     Ok(())
 }

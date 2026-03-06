@@ -41,6 +41,7 @@ roaring = { version = "0.10.12", default-features = false }
 blake2 = "0.10.6"
 fastcrypto.workspace = true
 thiserror.workspace = true
+zstd = "0.13.3"
 
 # Optional server deps
 axum = { workspace = true, features = ["matched-path"], optional = true }
