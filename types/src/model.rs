@@ -38,90 +38,320 @@ pub struct PendingModelUpdate {
     pub commit_epoch: EpochId,
 }
 
-/// A registered model in the SOMA data submission system.
+// ---------------------------------------------------------------------------
+// Versioned Model enum
+// ---------------------------------------------------------------------------
+
+/// Versioned model envelope. Outer enum handles schema versioning.
+/// To evolve the schema, add `V2(ModelStateV2)`, etc.
 ///
-/// Models go through a commit-reveal lifecycle:
-/// - **Committed**: `decryption_key.is_none()` && `deactivation_epoch == None`
-/// - **Active**: `decryption_key.is_some()` && `deactivation_epoch == None`
-/// - **PendingUpdate**: Active with `pending_update.is_some()`
-/// - **Inactive**: `staking_pool.deactivation_epoch.is_some()`
-///
-/// No explicit `status` enum -- derive from field state (same pattern as validators).
-/// The `Model` struct does not store its own ID; it is identified by `ModelId`
-/// (an `ObjectID`) as the key in `ModelRegistry` maps.
+/// All serialization goes through this enum, so old nodes can deserialize
+/// models created before a schema upgrade by matching the variant tag.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ModelV1 {
-    /// Owner address (the account that committed/revealed this model)
+pub enum Model {
+    V1(ModelStateV1),
+}
+
+/// V1 model lifecycle state machine. Encodes states at the type level:
+///
+/// ```text
+/// CreateModel ──> CommitModel ──> RevealModel
+///   (Created)      (Pending)       (Active)
+///
+/// Active model update:
+/// CommitModel ──> RevealModel
+///   (sets pending_update on Active)
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub enum ModelStateV1 {
+    Created(CreatedModel),
+    Pending(PendingModel),
+    Active(ActiveModel),
+    Inactive(InactiveModel),
+}
+
+/// A model that has been created but not yet committed.
+/// Only economic setup (stake, commission) is done.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct CreatedModel {
     pub owner: SomaAddress,
-    /// Architecture version (must match protocol config at commit time)
     pub architecture_version: ArchitectureVersion,
-
-    // -- Commit state --
-    /// Manifest for the encrypted weights (URL + checksum + size). Set at commit time.
-    pub manifest: Manifest,
-    /// Commitment to the decrypted model weights
-    pub weights_commitment: ModelWeightsCommitment,
-    /// Commitment to the model embedding (hash of BCS-serialized SomaTensor)
-    pub embedding_commitment: EmbeddingCommitment,
-    /// Commitment to the decryption key (hash of key bytes), verified at reveal
-    pub decryption_key_commitment: DecryptionKeyCommitment,
-    /// Epoch in which CommitModel was executed
-    pub commit_epoch: EpochId,
-
-    // -- Reveal state (None while Committed) --
-    /// AES-256 decryption key, set when RevealModel is executed
-    pub decryption_key: Option<DecryptionKey>,
-
-    // -- Model embedding for stake-weighted KNN selection --
-    /// The model's embedding vector in the shared embedding space.
-    /// Used for stake-weighted KNN model selection: targets prefer nearby models
-    /// weighted by normalized stake (voting power). This encourages specialization
-    /// and reputation building within specific regions of the embedding space.
-    /// Set during reveal (verified against embedding_commitment from commit).
-    pub embedding: Option<SomaTensor>,
-
-    // -- Staking (reuses existing StakingPool, identical to validators) --
     pub staking_pool: StakingPool,
-
-    // -- Commission (mirrors validator commission) --
-    /// Current epoch commission rate in basis points (max 10000)
     pub commission_rate: u64,
-    /// Staged for next epoch
     pub next_epoch_commission_rate: u64,
+    pub create_epoch: EpochId,
+}
 
-    // -- Pending update (None if no update in flight) --
+/// A model that has been committed but not yet revealed.
+/// Cryptographic commitments are set; must reveal in commit_epoch + 1.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct PendingModel {
+    pub owner: SomaAddress,
+    pub architecture_version: ArchitectureVersion,
+    pub staking_pool: StakingPool,
+    pub commission_rate: u64,
+    pub next_epoch_commission_rate: u64,
+    pub manifest: Manifest,
+    pub weights_commitment: ModelWeightsCommitment,
+    pub embedding_commitment: EmbeddingCommitment,
+    pub decryption_key_commitment: DecryptionKeyCommitment,
+    pub commit_epoch: EpochId,
+}
+
+/// A fully revealed, active model eligible for target selection.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ActiveModel {
+    pub owner: SomaAddress,
+    pub architecture_version: ArchitectureVersion,
+    pub staking_pool: StakingPool,
+    pub commission_rate: u64,
+    pub next_epoch_commission_rate: u64,
+    pub manifest: Manifest,
+    pub weights_commitment: ModelWeightsCommitment,
+    pub embedding_commitment: EmbeddingCommitment,
+    pub decryption_key_commitment: DecryptionKeyCommitment,
+    /// AES-256 decryption key — always present on Active
+    pub decryption_key: DecryptionKey,
+    /// The model's embedding vector in the shared embedding space
+    pub embedding: SomaTensor,
+    /// Pending weight update (None if no update in flight)
     pub pending_update: Option<PendingModelUpdate>,
 }
 
-impl ModelV1 {
-    /// Returns true if this model is in the committed (pre-reveal) state.
-    pub fn is_committed(&self) -> bool {
-        self.decryption_key.is_none() && self.staking_pool.deactivation_epoch.is_none()
+/// A deactivated model. Pool kept alive for delegator withdrawals.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct InactiveModel {
+    pub owner: SomaAddress,
+    pub architecture_version: ArchitectureVersion,
+    pub staking_pool: StakingPool,
+    pub commission_rate: u64,
+    pub next_epoch_commission_rate: u64,
+    pub manifest: Manifest,
+    pub weights_commitment: ModelWeightsCommitment,
+    pub embedding_commitment: EmbeddingCommitment,
+    pub decryption_key_commitment: DecryptionKeyCommitment,
+    pub decryption_key: DecryptionKey,
+    pub embedding: SomaTensor,
+}
+
+// ---------------------------------------------------------------------------
+// Model impl — delegates through V1 to the inner state
+// ---------------------------------------------------------------------------
+
+impl Model {
+    /// Returns the owner address of this model regardless of state.
+    pub fn owner(&self) -> SomaAddress {
+        match self {
+            Model::V1(s) => s.owner(),
+        }
     }
 
-    /// Returns true if this model has been revealed and is active.
-    pub fn is_active(&self) -> bool {
-        self.decryption_key.is_some() && self.staking_pool.deactivation_epoch.is_none()
+    /// Get a reference to the staking pool.
+    pub fn staking_pool(&self) -> &StakingPool {
+        match self {
+            Model::V1(s) => s.staking_pool(),
+        }
     }
 
-    /// Returns true if this model has been deactivated (slashed or owner-deactivated).
-    pub fn is_inactive(&self) -> bool {
-        self.staking_pool.deactivation_epoch.is_some()
-    }
-
-    /// Returns true if this model has a pending weight update.
-    pub fn has_pending_update(&self) -> bool {
-        self.pending_update.is_some()
-    }
-
-    /// Returns true if this model is eligible for stake-weighted selection.
-    /// A model is selectable if it's active and has an embedding.
-    pub fn is_selectable(&self) -> bool {
-        self.is_active() && self.embedding.is_some()
+    /// Get a mutable reference to the staking pool.
+    pub fn staking_pool_mut(&mut self) -> &mut StakingPool {
+        match self {
+            Model::V1(s) => s.staking_pool_mut(),
+        }
     }
 
     /// Get the model's stake (soma_balance in the staking pool).
     pub fn stake(&self) -> u64 {
-        self.staking_pool.soma_balance
+        self.staking_pool().soma_balance
+    }
+
+    /// Architecture version.
+    pub fn architecture_version(&self) -> ArchitectureVersion {
+        match self {
+            Model::V1(s) => s.architecture_version(),
+        }
+    }
+
+    /// Commission rate.
+    pub fn commission_rate(&self) -> u64 {
+        match self {
+            Model::V1(s) => s.commission_rate(),
+        }
+    }
+
+    /// Next epoch commission rate.
+    pub fn next_epoch_commission_rate(&self) -> u64 {
+        match self {
+            Model::V1(s) => s.next_epoch_commission_rate(),
+        }
+    }
+
+    /// Returns true if this model is in Created state.
+    pub fn is_created(&self) -> bool {
+        matches!(self, Model::V1(ModelStateV1::Created(_)))
+    }
+
+    /// Returns true if this model is in Pending (committed, awaiting reveal) state.
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Model::V1(ModelStateV1::Pending(_)))
+    }
+
+    /// Returns true if this model is Active (revealed).
+    pub fn is_active(&self) -> bool {
+        matches!(self, Model::V1(ModelStateV1::Active(_)))
+    }
+
+    /// Returns true if this model is Inactive (deactivated/slashed).
+    pub fn is_inactive(&self) -> bool {
+        matches!(self, Model::V1(ModelStateV1::Inactive(_)))
+    }
+
+    /// Returns true if this model has a pending weight update.
+    pub fn has_pending_update(&self) -> bool {
+        match self {
+            Model::V1(ModelStateV1::Active(m)) => m.pending_update.is_some(),
+            _ => false,
+        }
+    }
+
+    /// Returns true if this model is eligible for stake-weighted selection.
+    pub fn is_selectable(&self) -> bool {
+        self.is_active()
+    }
+
+    /// Get the commit epoch (for Pending models).
+    pub fn commit_epoch(&self) -> Option<EpochId> {
+        match self {
+            Model::V1(ModelStateV1::Pending(m)) => Some(m.commit_epoch),
+            _ => None,
+        }
+    }
+
+    /// Get the create epoch (for Created models).
+    pub fn create_epoch(&self) -> Option<EpochId> {
+        match self {
+            Model::V1(ModelStateV1::Created(m)) => Some(m.create_epoch),
+            _ => None,
+        }
+    }
+
+    /// Get the embedding (only available on Active and Inactive models).
+    pub fn embedding(&self) -> Option<&SomaTensor> {
+        match self {
+            Model::V1(ModelStateV1::Active(m)) => Some(&m.embedding),
+            Model::V1(ModelStateV1::Inactive(m)) => Some(&m.embedding),
+            _ => None,
+        }
+    }
+
+    /// Get the manifest (available on Pending, Active, Inactive).
+    pub fn manifest(&self) -> Option<&Manifest> {
+        match self {
+            Model::V1(ModelStateV1::Pending(m)) => Some(&m.manifest),
+            Model::V1(ModelStateV1::Active(m)) => Some(&m.manifest),
+            Model::V1(ModelStateV1::Inactive(m)) => Some(&m.manifest),
+            _ => None,
+        }
+    }
+
+    /// Get the decryption key (only available on Active and Inactive models).
+    pub fn decryption_key(&self) -> Option<&DecryptionKey> {
+        match self {
+            Model::V1(ModelStateV1::Active(m)) => Some(&m.decryption_key),
+            Model::V1(ModelStateV1::Inactive(m)) => Some(&m.decryption_key),
+            _ => None,
+        }
+    }
+
+    /// Try to get a reference to the inner ActiveModel.
+    pub fn as_active(&self) -> Option<&ActiveModel> {
+        match self {
+            Model::V1(ModelStateV1::Active(m)) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Try to get a mutable reference to the inner ActiveModel.
+    pub fn as_active_mut(&mut self) -> Option<&mut ActiveModel> {
+        match self {
+            Model::V1(ModelStateV1::Active(m)) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Try to get a reference to the inner PendingModel.
+    pub fn as_pending(&self) -> Option<&PendingModel> {
+        match self {
+            Model::V1(ModelStateV1::Pending(m)) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Try to get a reference to the inner CreatedModel.
+    pub fn as_created(&self) -> Option<&CreatedModel> {
+        match self {
+            Model::V1(ModelStateV1::Created(m)) => Some(m),
+            _ => None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ModelStateV1 impl — shared accessors across all states
+// ---------------------------------------------------------------------------
+
+impl ModelStateV1 {
+    pub fn owner(&self) -> SomaAddress {
+        match self {
+            Self::Created(m) => m.owner,
+            Self::Pending(m) => m.owner,
+            Self::Active(m) => m.owner,
+            Self::Inactive(m) => m.owner,
+        }
+    }
+
+    pub fn staking_pool(&self) -> &StakingPool {
+        match self {
+            Self::Created(m) => &m.staking_pool,
+            Self::Pending(m) => &m.staking_pool,
+            Self::Active(m) => &m.staking_pool,
+            Self::Inactive(m) => &m.staking_pool,
+        }
+    }
+
+    pub fn staking_pool_mut(&mut self) -> &mut StakingPool {
+        match self {
+            Self::Created(m) => &mut m.staking_pool,
+            Self::Pending(m) => &mut m.staking_pool,
+            Self::Active(m) => &mut m.staking_pool,
+            Self::Inactive(m) => &mut m.staking_pool,
+        }
+    }
+
+    pub fn architecture_version(&self) -> ArchitectureVersion {
+        match self {
+            Self::Created(m) => m.architecture_version,
+            Self::Pending(m) => m.architecture_version,
+            Self::Active(m) => m.architecture_version,
+            Self::Inactive(m) => m.architecture_version,
+        }
+    }
+
+    pub fn commission_rate(&self) -> u64 {
+        match self {
+            Self::Created(m) => m.commission_rate,
+            Self::Pending(m) => m.commission_rate,
+            Self::Active(m) => m.commission_rate,
+            Self::Inactive(m) => m.commission_rate,
+        }
+    }
+
+    pub fn next_epoch_commission_rate(&self) -> u64 {
+        match self {
+            Self::Created(m) => m.next_epoch_commission_rate,
+            Self::Pending(m) => m.next_epoch_commission_rate,
+            Self::Active(m) => m.next_epoch_commission_rate,
+            Self::Inactive(m) => m.next_epoch_commission_rate,
+        }
     }
 }

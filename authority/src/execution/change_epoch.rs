@@ -124,7 +124,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 }
 
                 // Create initial targets for the new epoch if active models exist
-                if !state.model_registry().active_models.is_empty() {
+                if state.model_registry().has_active_models() {
                     let initial_targets = state.parameters().target_initial_targets_per_epoch;
                     let reward_per_target = state.target_state().reward_per_target;
                     let models_per_target = state.parameters().target_models_per_target;

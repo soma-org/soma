@@ -147,6 +147,11 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::ArithmeticOverflow => {
                 (ExecutionErrorKind::OtherError, Some("Arithmetic overflow in execution".into()))
             }
+            E::ModelNotCreated => (ExecutionErrorKind::ModelNotFound, None),
+            E::ModelInvalidState => (
+                ExecutionErrorKind::OtherError,
+                Some("Model in invalid state for this operation".into()),
+            ),
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
         };
 
@@ -552,23 +557,12 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
 
             // Model transactions
-            K::CommitModel(args) => Kind::CommitModel(CommitModel {
-                manifest: Some(args.manifest.into()),
-                weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
-                architecture_version: Some(args.architecture_version),
-                embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(
-                    args.decryption_key_commitment.into_inner().to_vec().into(),
-                ),
+            K::CreateModel(args) => Kind::CreateModel(CreateModel {
                 stake_amount: Some(args.stake_amount),
                 commission_rate: Some(args.commission_rate),
+                architecture_version: Some(args.architecture_version),
             }),
-            K::RevealModel(args) => Kind::RevealModel(RevealModel {
-                model_id: Some(args.model_id.to_string()),
-                decryption_key: Some(args.decryption_key.as_ref().to_vec().into()),
-                embedding: args.embedding.to_vec(),
-            }),
-            K::CommitModelUpdate(args) => Kind::CommitModelUpdate(CommitModelUpdate {
+            K::CommitModel(args) => Kind::CommitModel(CommitModel {
                 model_id: Some(args.model_id.to_string()),
                 manifest: Some(args.manifest.into()),
                 weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
@@ -577,7 +571,7 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                     args.decryption_key_commitment.into_inner().to_vec().into(),
                 ),
             }),
-            K::RevealModelUpdate(args) => Kind::RevealModelUpdate(RevealModelUpdate {
+            K::RevealModel(args) => Kind::RevealModel(RevealModel {
                 model_id: Some(args.model_id.to_string()),
                 decryption_key: Some(args.decryption_key.as_ref().to_vec().into()),
                 embedding: args.embedding.to_vec(),
@@ -1764,99 +1758,243 @@ impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
 // Model
 //
 
-impl TryFrom<types::model::ModelV1> for Model {
+impl TryFrom<types::model::Model> for Model {
     type Error = String;
 
-    fn try_from(domain: types::model::ModelV1) -> Result<Self, Self::Error> {
-        Ok(Model {
-            owner: Some(domain.owner.to_string()),
-            architecture_version: Some(domain.architecture_version),
-            manifest: Some(domain.manifest.into()),
-            weights_commitment: Some(domain.weights_commitment.into_inner().to_vec().into()),
-            embedding_commitment: Some(domain.embedding_commitment.into_inner().to_vec().into()),
-            decryption_key_commitment: Some(
-                domain.decryption_key_commitment.into_inner().to_vec().into(),
-            ),
-            commit_epoch: Some(domain.commit_epoch),
-            decryption_key: domain.decryption_key.map(|k| k.as_ref().to_vec().into()),
-            embedding: domain.embedding.map(|e| e.to_vec()).unwrap_or_default(),
-            staking_pool: Some(domain.staking_pool.try_into()?),
-            commission_rate: Some(domain.commission_rate),
-            next_epoch_commission_rate: Some(domain.next_epoch_commission_rate),
-            pending_update: domain.pending_update.map(Into::into),
-        })
+    fn try_from(domain: types::model::Model) -> Result<Self, Self::Error> {
+        use types::model::{Model as DomainModel, ModelStateV1};
+        let DomainModel::V1(state) = domain;
+        match state {
+            ModelStateV1::Created(m) => Ok(Model {
+                state: Some("created".into()),
+                owner: Some(m.owner.to_string()),
+                architecture_version: Some(m.architecture_version),
+                staking_pool: Some(m.staking_pool.try_into()?),
+                commission_rate: Some(m.commission_rate),
+                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
+                create_epoch: Some(m.create_epoch),
+                ..Default::default()
+            }),
+            ModelStateV1::Pending(m) => Ok(Model {
+                state: Some("pending".into()),
+                owner: Some(m.owner.to_string()),
+                architecture_version: Some(m.architecture_version),
+                manifest: Some(m.manifest.into()),
+                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
+                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(
+                    m.decryption_key_commitment.into_inner().to_vec().into(),
+                ),
+                commit_epoch: Some(m.commit_epoch),
+                staking_pool: Some(m.staking_pool.try_into()?),
+                commission_rate: Some(m.commission_rate),
+                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
+                ..Default::default()
+            }),
+            ModelStateV1::Active(m) => Ok(Model {
+                state: Some("active".into()),
+                owner: Some(m.owner.to_string()),
+                architecture_version: Some(m.architecture_version),
+                manifest: Some(m.manifest.into()),
+                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
+                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(
+                    m.decryption_key_commitment.into_inner().to_vec().into(),
+                ),
+                decryption_key: Some(m.decryption_key.as_ref().to_vec().into()),
+                embedding: m.embedding.to_vec(),
+                staking_pool: Some(m.staking_pool.try_into()?),
+                commission_rate: Some(m.commission_rate),
+                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
+                pending_update: m.pending_update.map(Into::into),
+                ..Default::default()
+            }),
+            ModelStateV1::Inactive(m) => Ok(Model {
+                state: Some("inactive".into()),
+                owner: Some(m.owner.to_string()),
+                architecture_version: Some(m.architecture_version),
+                manifest: Some(m.manifest.into()),
+                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
+                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
+                decryption_key_commitment: Some(
+                    m.decryption_key_commitment.into_inner().to_vec().into(),
+                ),
+                decryption_key: Some(m.decryption_key.as_ref().to_vec().into()),
+                embedding: m.embedding.to_vec(),
+                staking_pool: Some(m.staking_pool.try_into()?),
+                commission_rate: Some(m.commission_rate),
+                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
+                ..Default::default()
+            }),
+        }
     }
 }
 
-impl TryFrom<Model> for types::model::ModelV1 {
+impl TryFrom<Model> for types::model::Model {
     type Error = String;
 
     fn try_from(proto: Model) -> Result<Self, Self::Error> {
+        let state_str = proto.state.as_deref().ok_or("Missing state field on Model")?;
         let owner = proto
             .owner
             .ok_or("Missing owner")?
             .parse()
             .map_err(|_| "Invalid SomaAddress".to_string())?;
-
-        let manifest = proto.manifest.ok_or("Missing manifest")?;
-        let manifest: types::metadata::Manifest =
-            manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
-
-        let wt_bytes: Vec<u8> =
-            proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
-        let wt_array: [u8; 32] =
-            wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
-
-        let ec_bytes: Vec<u8> =
-            proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
-        let ec_array: [u8; 32] =
-            ec_bytes.try_into().map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
-
-        let dk_commit_bytes: Vec<u8> =
-            proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
-        let dk_commit_array: [u8; 32] = dk_commit_bytes
-            .try_into()
-            .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
-
-        let decryption_key = proto.decryption_key.map(|dk| {
-            let dk_vec: Vec<u8> = dk.into();
-            let dk_array: [u8; 32] = dk_vec.try_into().expect("decryption_key must be 32 bytes");
-            types::crypto::DecryptionKey::new(dk_array)
-        });
-
+        let architecture_version =
+            proto.architecture_version.ok_or("Missing architecture_version")?;
         let staking_pool = proto.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
+        let commission_rate = proto.commission_rate.ok_or("Missing commission_rate")?;
+        let next_epoch_commission_rate =
+            proto.next_epoch_commission_rate.ok_or("Missing next_epoch_commission_rate")?;
 
-        let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
+        match state_str {
+            "created" => Ok(types::model::Model::V1(types::model::ModelStateV1::Created(
+                types::model::CreatedModel {
+                    owner,
+                    architecture_version,
+                    staking_pool,
+                    commission_rate,
+                    next_epoch_commission_rate,
+                    create_epoch: proto.create_epoch.ok_or("Missing create_epoch")?,
+                },
+            ))),
+            "pending" => {
+                let manifest = proto.manifest.ok_or("Missing manifest")?;
+                let manifest: types::metadata::Manifest =
+                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
+                let wt_bytes: Vec<u8> =
+                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
+                let wt_array: [u8; 32] = wt_bytes
+                    .try_into()
+                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+                let ec_bytes: Vec<u8> =
+                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
+                let ec_array: [u8; 32] = ec_bytes
+                    .try_into()
+                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
+                let dk_commit_bytes: Vec<u8> = proto
+                    .decryption_key_commitment
+                    .ok_or("Missing decryption_key_commitment")?
+                    .into();
+                let dk_commit_array: [u8; 32] = dk_commit_bytes
+                    .try_into()
+                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
 
-        // Convert embedding from repeated float to Option<SomaTensor>
-        let embedding = if proto.embedding.is_empty() {
-            None
-        } else {
-            let dim = proto.embedding.len();
-            Some(types::tensor::SomaTensor::new(proto.embedding, vec![dim]))
-        };
+                Ok(types::model::Model::V1(types::model::ModelStateV1::Pending(
+                    types::model::PendingModel {
+                        owner,
+                        architecture_version,
+                        staking_pool,
+                        commission_rate,
+                        next_epoch_commission_rate,
+                        manifest,
+                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
+                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                            dk_commit_array,
+                        ),
+                        commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
+                    },
+                )))
+            }
+            "active" => {
+                let manifest = proto.manifest.ok_or("Missing manifest")?;
+                let manifest: types::metadata::Manifest =
+                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
+                let wt_bytes: Vec<u8> =
+                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
+                let wt_array: [u8; 32] = wt_bytes
+                    .try_into()
+                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+                let ec_bytes: Vec<u8> =
+                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
+                let ec_array: [u8; 32] = ec_bytes
+                    .try_into()
+                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
+                let dk_commit_bytes: Vec<u8> = proto
+                    .decryption_key_commitment
+                    .ok_or("Missing decryption_key_commitment")?
+                    .into();
+                let dk_commit_array: [u8; 32] = dk_commit_bytes
+                    .try_into()
+                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+                let dk_bytes: Vec<u8> =
+                    proto.decryption_key.ok_or("Missing decryption_key")?.into();
+                let dk_array: [u8; 32] = dk_bytes
+                    .try_into()
+                    .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
+                let dim = proto.embedding.len();
+                let embedding = types::tensor::SomaTensor::new(proto.embedding, vec![dim]);
+                let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
 
-        Ok(types::model::ModelV1 {
-            owner,
-            architecture_version: proto
-                .architecture_version
-                .ok_or("Missing architecture_version")?,
-            manifest,
-            weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
-            embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                dk_commit_array,
-            ),
-            commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
-            decryption_key,
-            embedding,
-            staking_pool,
-            commission_rate: proto.commission_rate.ok_or("Missing commission_rate")?,
-            next_epoch_commission_rate: proto
-                .next_epoch_commission_rate
-                .ok_or("Missing next_epoch_commission_rate")?,
-            pending_update,
-        })
+                Ok(types::model::Model::V1(types::model::ModelStateV1::Active(
+                    types::model::ActiveModel {
+                        owner,
+                        architecture_version,
+                        staking_pool,
+                        commission_rate,
+                        next_epoch_commission_rate,
+                        manifest,
+                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
+                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                            dk_commit_array,
+                        ),
+                        decryption_key: types::crypto::DecryptionKey::new(dk_array),
+                        embedding,
+                        pending_update,
+                    },
+                )))
+            }
+            "inactive" => {
+                let manifest = proto.manifest.ok_or("Missing manifest")?;
+                let manifest: types::metadata::Manifest =
+                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
+                let wt_bytes: Vec<u8> =
+                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
+                let wt_array: [u8; 32] = wt_bytes
+                    .try_into()
+                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
+                let ec_bytes: Vec<u8> =
+                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
+                let ec_array: [u8; 32] = ec_bytes
+                    .try_into()
+                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
+                let dk_commit_bytes: Vec<u8> = proto
+                    .decryption_key_commitment
+                    .ok_or("Missing decryption_key_commitment")?
+                    .into();
+                let dk_commit_array: [u8; 32] = dk_commit_bytes
+                    .try_into()
+                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
+                let dk_bytes: Vec<u8> =
+                    proto.decryption_key.ok_or("Missing decryption_key")?.into();
+                let dk_array: [u8; 32] = dk_bytes
+                    .try_into()
+                    .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
+                let dim = proto.embedding.len();
+                let embedding = types::tensor::SomaTensor::new(proto.embedding, vec![dim]);
+
+                Ok(types::model::Model::V1(types::model::ModelStateV1::Inactive(
+                    types::model::InactiveModel {
+                        owner,
+                        architecture_version,
+                        staking_pool,
+                        commission_rate,
+                        next_epoch_commission_rate,
+                        manifest,
+                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
+                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
+                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
+                            dk_commit_array,
+                        ),
+                        decryption_key: types::crypto::DecryptionKey::new(dk_array),
+                        embedding,
+                    },
+                )))
+            }
+            other => Err(format!("Unknown model state: {}", other)),
+        }
     }
 }
 
@@ -1870,17 +2008,8 @@ impl TryFrom<types::system_state::model_registry::ModelRegistry> for ModelRegist
     fn try_from(
         domain: types::system_state::model_registry::ModelRegistry,
     ) -> Result<Self, Self::Error> {
-        let active_models = domain
-            .active_models
-            .into_iter()
-            .map(|(id, model)| {
-                let proto_model: Model = model.try_into()?;
-                Ok((id.to_string(), proto_model))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let pending_models = domain
-            .pending_models
+        let models = domain
+            .models
             .into_iter()
             .map(|(id, model)| {
                 let proto_model: Model = model.try_into()?;
@@ -1894,15 +2023,6 @@ impl TryFrom<types::system_state::model_registry::ModelRegistry> for ModelRegist
             .map(|(pool_id, model_id)| (pool_id.to_string(), model_id.to_string()))
             .collect();
 
-        let inactive_models = domain
-            .inactive_models
-            .into_iter()
-            .map(|(id, model)| {
-                let proto_model: Model = model.try_into()?;
-                Ok((id.to_string(), proto_model))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
         let model_report_records = domain
             .model_report_records
             .into_iter()
@@ -1914,10 +2034,8 @@ impl TryFrom<types::system_state::model_registry::ModelRegistry> for ModelRegist
             .collect::<Result<BTreeMap<_, _>, String>>()?;
 
         Ok(ModelRegistry {
-            active_models,
-            pending_models,
+            models,
             staking_pool_mappings,
-            inactive_models,
             total_model_stake: Some(domain.total_model_stake),
             model_report_records,
         })
@@ -1928,22 +2046,12 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
     type Error = String;
 
     fn try_from(proto: ModelRegistry) -> Result<Self, Self::Error> {
-        let active_models = proto
-            .active_models
+        let models = proto
+            .models
             .into_iter()
             .map(|(k, v)| {
                 let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::ModelV1 = v.try_into()?;
-                Ok((id, model))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let pending_models = proto
-            .pending_models
-            .into_iter()
-            .map(|(k, v)| {
-                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::ModelV1 = v.try_into()?;
+                let model: types::model::Model = v.try_into()?;
                 Ok((id, model))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
@@ -1955,16 +2063,6 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
                 let pool_id = k.parse().map_err(|_| "Invalid ObjectID".to_string())?;
                 let model_id = v.parse().map_err(|_| "Invalid ModelId".to_string())?;
                 Ok((pool_id, model_id))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let inactive_models = proto
-            .inactive_models
-            .into_iter()
-            .map(|(k, v)| {
-                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::ModelV1 = v.try_into()?;
-                Ok((id, model))
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
 
@@ -1983,10 +2081,8 @@ impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegist
             .collect::<Result<BTreeMap<_, _>, String>>()?;
 
         Ok(types::system_state::model_registry::ModelRegistry {
-            active_models,
-            pending_models,
+            models,
             staking_pool_mappings,
-            inactive_models,
             total_model_stake: proto.total_model_stake.ok_or("Missing total_model_stake")?,
             model_report_records,
         })

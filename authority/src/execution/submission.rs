@@ -237,8 +237,9 @@ impl SubmissionExecutor {
         // Capture model owner at fill time - model must be active
         let model = state
             .model_registry()
-            .active_models
+            .models
             .get(&args.model_id)
+            .and_then(|m| m.as_active())
             .ok_or(ExecutionFailureStatus::ModelNotActive)?;
         target.winning_model_owner = Some(model.owner);
         target.bond_amount = required_bond; // Store bond on target for refund/forfeit
@@ -259,7 +260,7 @@ impl SubmissionExecutor {
 
         // 13. Spawn replacement target if there are active models and emission pool has funds
         let reward_per_target = state.target_state().reward_per_target;
-        if !state.model_registry().active_models.is_empty()
+        if state.model_registry().has_active_models()
             && state.emission_pool().balance >= reward_per_target
         {
             // Deduct reward from emission pool for the new target

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tests for model management transactions:
-//! CommitModel, DeactivateModel, SetModelCommissionRate, ReportModel.
+//! CreateModel, DeactivateModel, SetModelCommissionRate, ReportModel.
 //!
 //! Note: RevealModel requires a different epoch than the commit epoch,
 //! which is not testable in single-authority unit tests without epoch
-//! advancement. These tests focus on CommitModel parameter validation
+//! advancement. These tests focus on CreateModel parameter validation
 //! and model lifecycle operations that work within a single epoch.
 
 use std::sync::Arc;
@@ -14,16 +14,12 @@ use std::sync::Arc;
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::SYSTEM_STATE_OBJECT_ID;
 use types::base::SomaAddress;
-use types::checksum::Checksum;
-use types::crypto::{DIGEST_LENGTH, SomaKeyPair, get_key_pair};
-use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use types::crypto::{SomaKeyPair, get_key_pair};
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
 use types::error::SomaError;
-use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use types::object::{Object, ObjectID};
-use types::transaction::{CommitModelArgs, TransactionData, TransactionKind};
+use types::transaction::{CreateModelArgs, TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
-use url::Url;
 
 use crate::authority::AuthorityState;
 use crate::authority_test_utils::send_and_confirm_transaction_;
@@ -42,7 +38,7 @@ struct TransactionResult {
     coin_id: ObjectID,
 }
 
-async fn execute_commit_model(
+async fn execute_create_model(
     coin: Object,
     stake_amount: u64,
     architecture_version: Option<u64>,
@@ -61,18 +57,9 @@ async fn execute_commit_model(
         architecture_version.unwrap_or(system_state.parameters().model_architecture_version);
     let comm_rate = commission_rate.unwrap_or(1000); // 10% default
 
-    let url = Url::parse("https://example.com/model.bin").unwrap();
-    let metadata =
-        Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; DIGEST_LENGTH]), 1024));
-    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-
     let data = TransactionData::new(
-        TransactionKind::CommitModel(CommitModelArgs {
-            manifest,
-            weights_commitment: ModelWeightsCommitment::new([2u8; 32]),
+        TransactionKind::CreateModel(CreateModelArgs {
             architecture_version: arch_version,
-            embedding_commitment: EmbeddingCommitment::new([0u8; 32]),
-            decryption_key_commitment: DecryptionKeyCommitment::new([0u8; 32]),
             stake_amount,
             commission_rate: comm_rate,
         }),
@@ -80,7 +67,7 @@ async fn execute_commit_model(
         vec![coin_ref],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
-    // CommitModel modifies SystemState (shared object)
+    // CreateModel modifies SystemState (shared object)
     let txn_result = send_and_confirm_transaction_(&authority_state, None, tx, true)
         .await
         .map(|(_, effects)| effects);
@@ -89,16 +76,16 @@ async fn execute_commit_model(
 }
 
 // =============================================================================
-// CommitModel success
+// CreateModel success
 // =============================================================================
 
 #[tokio::test]
-async fn test_commit_model_success() {
+async fn test_create_model_success() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     // Need enough for min stake (1 SOMA = 1_000_000_000) + fees
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         1_000_000_000, // min stake
         None,          // use default architecture version
@@ -114,19 +101,22 @@ async fn test_commit_model_success() {
     // Should create a StakedSoma object (for the model's staking pool)
     assert!(!effects.created().is_empty(), "Should create at least one object (StakedSoma)");
 
-    // SystemState should be mutated (model added to pending)
+    // SystemState should be mutated (model added to models)
     let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|m| m.0.0).collect();
     assert!(
         mutated_ids.contains(&SYSTEM_STATE_OBJECT_ID),
-        "SystemState should be mutated during CommitModel"
+        "SystemState should be mutated during CreateModel"
     );
 
-    // Verify the model was added to pending_models in system state
+    // Verify the model was added to models in system state (Created state)
     let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
     assert!(
-        !system_state.model_registry().pending_models.is_empty(),
-        "Model should be in pending_models after commit"
+        !system_state.model_registry().models.is_empty(),
+        "Model should be in models after create"
     );
+    // The model should be in Created state (not yet committed)
+    let model = system_state.model_registry().models.values().next().unwrap();
+    assert!(model.is_created(), "Model should be in Created state after CreateModel");
 
     // Verify the gas coin balance was reduced by stake_amount + fees
     let gas_obj = res.authority_state.get_object(&res.coin_id).await.unwrap();
@@ -141,15 +131,15 @@ async fn test_commit_model_success() {
 }
 
 // =============================================================================
-// CommitModel parameter validation failures
+// CreateModel parameter validation failures
 // =============================================================================
 
 #[tokio::test]
-async fn test_commit_model_bad_architecture_version() {
+async fn test_create_model_bad_architecture_version() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         1_000_000_000,
         Some(999), // wrong version
@@ -164,11 +154,11 @@ async fn test_commit_model_bad_architecture_version() {
 }
 
 #[tokio::test]
-async fn test_commit_model_min_stake_not_met() {
+async fn test_create_model_min_stake_not_met() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 50_000_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         100, // way below min stake (1_000_000_000)
         None,
@@ -183,11 +173,11 @@ async fn test_commit_model_min_stake_not_met() {
 }
 
 #[tokio::test]
-async fn test_commit_model_commission_rate_too_high() {
+async fn test_create_model_commission_rate_too_high() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         1_000_000_000,
         None,
@@ -202,7 +192,7 @@ async fn test_commit_model_commission_rate_too_high() {
 }
 
 #[tokio::test]
-async fn test_commit_model_insufficient_gas() {
+async fn test_create_model_insufficient_gas() {
     // Balance below base fee should fail with InsufficientGas
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(
@@ -211,7 +201,7 @@ async fn test_commit_model_insufficient_gas() {
         500, // below base fee (1000)
     );
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         100, // below min_stake but gas check happens first
         None,
@@ -226,7 +216,7 @@ async fn test_commit_model_insufficient_gas() {
 }
 
 #[tokio::test]
-async fn test_commit_model_insufficient_balance_for_stake() {
+async fn test_create_model_insufficient_balance_for_stake() {
     // Balance covers base fee and min_stake validation passes, but not enough
     // for stake_amount + remaining fees after base fee deduction.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
@@ -234,7 +224,7 @@ async fn test_commit_model_insufficient_balance_for_stake() {
     // which is < stake (1B) + value_fee + write_fees
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1_000_010_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         1_000_000_000, // min stake — consumes nearly all balance
         None,
@@ -249,16 +239,16 @@ async fn test_commit_model_insufficient_balance_for_stake() {
 }
 
 // =============================================================================
-// CommitModel fee handling (half value fee, same as staking)
+// CreateModel fee handling (half value fee, same as staking)
 // =============================================================================
 
 #[tokio::test]
-async fn test_commit_model_half_value_fee() {
+async fn test_create_model_half_value_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 1_000_000_000u64;
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 2_000_000_000);
 
-    let res = execute_commit_model(
+    let res = execute_create_model(
         coin,
         stake_amount,
         None,
@@ -277,7 +267,7 @@ async fn test_commit_model_half_value_fee() {
     let expected_value_fee = (stake_amount * 5) / BPS_DENOMINATOR;
     assert_eq!(
         fee.value_fee, expected_value_fee,
-        "Model commit should have half value fee: got {}, expected {}",
+        "Model create should have half value fee: got {}, expected {}",
         fee.value_fee, expected_value_fee
     );
 }

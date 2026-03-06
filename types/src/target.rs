@@ -282,17 +282,14 @@ pub fn select_models_weighted_knn(
     target_embedding: &SomaTensor,
     count: u64,
 ) -> ExecutionResult<Vec<ModelId>> {
-    if model_registry.active_models.is_empty() {
+    if !model_registry.has_active_models() {
         return Err(ExecutionFailureStatus::NoActiveModels);
     }
 
     // Collect models that have embeddings for weighted selection
     let models_with_embeddings: Vec<(ModelId, SomaTensor, u64)> = model_registry
-        .active_models
-        .iter()
-        .filter_map(|(id, model)| {
-            model.embedding.as_ref().map(|emb| (*id, emb.clone(), model.stake()))
-        })
+        .active_models()
+        .map(|(id, model)| (*id, model.embedding.clone(), model.staking_pool.soma_balance))
         .collect();
 
     // If no models have embeddings, fall back to uniform selection
@@ -332,7 +329,7 @@ pub fn select_models_uniform(
     model_registry: &ModelRegistry,
     count: u64,
 ) -> ExecutionResult<Vec<ModelId>> {
-    let mut active: Vec<ModelId> = model_registry.active_models.keys().copied().collect();
+    let mut active: Vec<ModelId> = model_registry.active_models().map(|(id, _)| *id).collect();
     if active.is_empty() {
         return Err(ExecutionFailureStatus::NoActiveModels);
     }

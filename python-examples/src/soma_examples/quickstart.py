@@ -44,32 +44,33 @@ async def run():
         data_url = storage.upload("data.bin", test_data)
         print("Test data uploaded (1024 bytes)")
 
-        # -- Step 3: Commit model on-chain -------------------------------------
-        print("\n=== Step 3: Commit model ===")
+        # -- Step 3: Create model on-chain --------------------------------------
+        print("\n=== Step 3: Create model ===")
         embedding_dim = await client.get_embedding_dim()
         embedding = [0.1] * embedding_dim
+        model_id = await client.create_model(
+            signer=kp,
+            commission_rate=1000,  # 10%
+        )
+        print(f"Model created: {model_id}")
+
+        # -- Step 4: Commit model weights --------------------------------------
+        print("\n=== Step 4: Commit model weights ===")
         await client.commit_model(
             signer=kp,
+            model_id=model_id,
             weights_url=model_url,
             encrypted_weights=encrypted_bytes,
             decryption_key=decryption_key,
             embedding=embedding,
-            commission_rate=1000,  # 10%
         )
         print("Model committed")
 
-        # -- Step 4: Advance epoch, then reveal --------------------------------
-        print("\n=== Step 4: Advance epoch + reveal ===")
+        # -- Step 5: Advance epoch, then reveal --------------------------------
+        print("\n=== Step 5: Advance epoch + reveal ===")
         epoch = await client.advance_epoch()
         print(f"Epoch -> {epoch}")
 
-        # Discover the model_id from the pending models in system state
-        state = await client.get_latest_system_state()
-        pending = vars(state.model_registry.pending_models)
-        model_id = next(
-            mid for mid, m in pending.items()
-            if m.owner == sender
-        )
         await client.reveal_model(
             signer=kp,
             model_id=model_id,
@@ -78,13 +79,13 @@ async def run():
         )
         print(f"Model revealed: {model_id}")
 
-        # -- Step 5: Advance epoch (targets created at boundary) ---------------
-        print("\n=== Step 5: Advance epoch (targets generated) ===")
+        # -- Step 6: Advance epoch (targets created at boundary) ---------------
+        print("\n=== Step 6: Advance epoch (targets generated) ===")
         epoch = await client.advance_epoch()
         print(f"Epoch -> {epoch}")
 
-        # -- Step 6: Find target, fetch models from chain, score, submit -------
-        print("\n=== Step 6: Score + submit ===")
+        # -- Step 7: Find target, fetch models from chain, score, submit -------
+        print("\n=== Step 7: Score + submit ===")
         targets = await client.get_targets(status="open")
         target = next(t for t in targets if model_id in t.model_ids)
         print(f"Target: {target.id}  threshold={target.distance_threshold}")
@@ -117,13 +118,13 @@ async def run():
         )
         print("Data submitted")
 
-        # -- Step 7: Skip challenge window (2 epoch advances) ------------------
-        print("\n=== Step 7: Skip challenge window ===")
+        # -- Step 8: Skip challenge window (2 epoch advances) ------------------
+        print("\n=== Step 8: Skip challenge window ===")
         print(f"Epoch -> {await client.advance_epoch()}")
         print(f"Epoch -> {await client.advance_epoch()}")
 
-        # -- Step 8: Claim reward ----------------------------------------------
-        print("\n=== Step 8: Claim reward ===")
+        # -- Step 9: Claim reward ----------------------------------------------
+        print("\n=== Step 9: Claim reward ===")
         print(f"Target reward pool: {SomaClient.to_soma(target.reward_pool):.4f} SOMA")
         balance_before = await client.get_balance(sender)
         await client.claim_rewards(signer=kp, target_id=target.id)

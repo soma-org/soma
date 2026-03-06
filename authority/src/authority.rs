@@ -1644,18 +1644,11 @@ impl AuthorityState {
             system_state_balance += v.staking_pool.pending_stake as u128;
         }
 
-        // Model staking pools (active, pending, inactive)
-        for m in system_state.model_registry().active_models.values() {
-            system_state_balance += m.staking_pool.soma_balance as u128;
-            system_state_balance += m.staking_pool.pending_stake as u128;
-        }
-        for m in system_state.model_registry().pending_models.values() {
-            system_state_balance += m.staking_pool.soma_balance as u128;
-            system_state_balance += m.staking_pool.pending_stake as u128;
-        }
-        for m in system_state.model_registry().inactive_models.values() {
-            system_state_balance += m.staking_pool.soma_balance as u128;
-            system_state_balance += m.staking_pool.pending_stake as u128;
+        // Model staking pools (all states)
+        for model in system_state.model_registry().models.values() {
+            let pool = model.staking_pool();
+            system_state_balance += pool.soma_balance as u128;
+            system_state_balance += pool.pending_stake as u128;
         }
 
         // Iterate all live objects to sum coin and target balances

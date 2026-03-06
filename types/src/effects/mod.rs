@@ -765,6 +765,12 @@ pub enum ExecutionFailureStatus {
     #[error("Model is not in pending (committed) state.")]
     ModelNotPending,
 
+    #[error("Model is not in created state.")]
+    ModelNotCreated,
+
+    #[error("Model is not in a valid state for this operation.")]
+    ModelInvalidState,
+
     #[error("Model is already inactive.")]
     ModelAlreadyInactive,
 

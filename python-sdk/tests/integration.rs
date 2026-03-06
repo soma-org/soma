@@ -651,7 +651,7 @@ asyncio.run(_test())
 }
 
 /// Full model lifecycle (mirrors `quickstart.py`):
-/// commit → reveal → get_targets → get_model_manifests → score → submit → claim.
+/// create → commit → reveal → get_targets → get_model_manifests → score → submit → claim.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_model_lifecycle() {
     init_python();
@@ -660,7 +660,7 @@ async fn test_model_lifecycle() {
     let scoring_url = extract_scoring_url(&cluster);
     let (_, secret) = export_keypair_bech32(&cluster, 0);
 
-    // Stage 1: Commit model
+    // Stage 1: Create model, then commit weights
     run_python(format!(
         r#"
 import asyncio, builtins
@@ -677,24 +677,23 @@ async def _test():
     dim = await client.get_embedding_dim()
     embedding = [0.1] * dim
 
+    # Step 1: Create model (economic parameters)
+    model_id = await client.create_model(
+        signer=kp,
+        commission_rate=1000,
+    )
+    assert isinstance(model_id, str) and len(model_id) > 0, \
+        f"model_id should be non-empty string, got {{model_id!r}}"
+
+    # Step 2: Commit weights
     await client.commit_model(
         signer=kp,
+        model_id=model_id,
         weights_url="http://example.com/weights.enc",
         encrypted_weights=encrypted,
         decryption_key=key,
         embedding=embedding,
-        commission_rate=1000,
     )
-
-    # Discover model_id from pending models in system state
-    state = await client.get_latest_system_state()
-    pending = vars(state.model_registry.pending_models)
-    model_id = next(
-        mid for mid, m in pending.items()
-        if m.owner == sender
-    )
-    assert isinstance(model_id, str) and len(model_id) > 0, \
-        f"model_id should be non-empty string, got {{model_id!r}}"
 
     builtins._model_id = model_id
     builtins._key = key
@@ -844,7 +843,7 @@ asyncio.run(_test())
     .await;
 }
 
-/// Test `get_active_models`: commit model, reveal, then fetch active models.
+/// Test `get_active_models`: create → commit → reveal, then fetch active models.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_active_models() {
     init_python();
@@ -852,7 +851,7 @@ async fn test_active_models() {
     let rpc_url = cluster.fullnode_handle.rpc_url.clone();
     let (_, secret) = export_keypair_bech32(&cluster, 0);
 
-    // Stage 1: Commit model
+    // Stage 1: Create model, then commit weights
     run_python(format!(
         r#"
 import asyncio, builtins
@@ -869,21 +868,22 @@ async def _test():
     dim = await client.get_embedding_dim()
     embedding = [0.1] * dim
 
+    # Step 1: Create model
+    model_id = await client.create_model(
+        signer=kp,
+        commission_rate=1000,
+    )
+
+    # Step 2: Commit weights
     await client.commit_model(
         signer=kp,
+        model_id=model_id,
         weights_url="http://example.com/weights.enc",
         encrypted_weights=encrypted,
         decryption_key=key,
         embedding=embedding,
-        commission_rate=1000,
     )
 
-    state = await client.get_latest_system_state()
-    pending = vars(state.model_registry.pending_models)
-    model_id = next(
-        mid for mid, m in pending.items()
-        if m.owner == sender
-    )
     builtins._model_id = model_id
     builtins._key = key
     builtins._embedding = embedding

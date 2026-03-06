@@ -123,10 +123,9 @@ pub enum TransactionKind {
     },
 
     // Model transactions
+    CreateModel(CreateModelArgs),
     CommitModel(CommitModelArgs),
     RevealModel(RevealModelArgs),
-    CommitModelUpdate(CommitModelUpdateArgs),
-    RevealModelUpdate(RevealModelUpdateArgs),
     AddStakeToModel {
         model_id: Address,
         coin_ref: ObjectReference,
@@ -199,34 +198,23 @@ pub struct ModelWeightsManifest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct CommitModelArgs {
-    pub manifest: Manifest,
-    pub weights_commitment: Vec<u8>,
-    pub architecture_version: u64,
-    pub embedding_commitment: Vec<u8>,
-    pub decryption_key_commitment: Vec<u8>,
+pub struct CreateModelArgs {
     pub stake_amount: u64,
     pub commission_rate: u64,
+    pub architecture_version: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CommitModelArgs {
+    pub model_id: Address,
+    pub manifest: Manifest,
+    pub weights_commitment: Vec<u8>,
+    pub embedding_commitment: Vec<u8>,
+    pub decryption_key_commitment: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct RevealModelArgs {
-    pub model_id: Address,
-    pub decryption_key: Vec<u8>,
-    pub embedding: Vec<f32>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct CommitModelUpdateArgs {
-    pub model_id: Address,
-    pub manifest: Manifest,
-    pub weights_commitment: Vec<u8>,
-    pub embedding_commitment: Vec<u8>,
-    pub decryption_key_commitment: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct RevealModelUpdateArgs {
     pub model_id: Address,
     pub decryption_key: Vec<u8>,
     pub embedding: Vec<f32>,

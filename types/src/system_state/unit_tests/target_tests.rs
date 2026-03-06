@@ -11,8 +11,8 @@
 //! - Reward per target calculation
 
 use super::test_utils::{
-    advance_epoch_with_rewards, commit_model, commit_model_with_dim, create_test_system_state,
-    create_validators_with_stakes, reveal_model, reveal_model_with_dim,
+    advance_epoch_with_rewards, commit_model, commit_model_with_dim, create_model,
+    create_test_system_state, create_validators_with_stakes, reveal_model, reveal_model_with_dim,
 };
 use crate::base::SomaAddress;
 use crate::config::genesis_config::SHANNONS_PER_SOMA;
@@ -86,7 +86,8 @@ fn test_target_generation_single_model() {
     let owner = SomaAddress::random();
     let model_id = crate::model::ModelId::random();
     let stake = 10 * SHANNONS_PER_SOMA;
-    commit_model_with_dim(&mut system_state, owner, model_id, stake, 2048);
+    create_model(&mut system_state, owner, model_id, stake);
+    commit_model_with_dim(&mut system_state, owner, &model_id, 2048);
 
     // Advance epoch to reveal
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
@@ -132,7 +133,8 @@ fn test_target_generation_multiple_models() {
     for _ in 0..5 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model_with_dim(&mut system_state, owner, model_id, stake, 2048);
+        create_model(&mut system_state, owner, model_id, stake);
+        commit_model_with_dim(&mut system_state, owner, &model_id, 2048);
         model_ids.push(model_id);
     }
 
@@ -427,7 +429,8 @@ fn test_model_selection_uniqueness() {
     for _ in 0..10 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model(&mut system_state, owner, model_id, stake);
+        create_model(&mut system_state, owner, model_id, stake);
+        commit_model(&mut system_state, owner, &model_id);
         all_model_ids.push(model_id);
     }
 
@@ -462,16 +465,19 @@ fn test_model_selection_capped_to_available() {
     let owner = SomaAddress::random();
 
     // Add only 2 models
+    let mut model_ids = Vec::new();
     for _ in 0..2 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model(&mut system_state, owner, model_id, stake);
+        create_model(&mut system_state, owner, model_id, stake);
+        commit_model(&mut system_state, owner, &model_id);
+        model_ids.push(model_id);
     }
 
     // Advance epoch and reveal all models
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
-    for (model_id, _) in system_state.model_registry().pending_models.clone() {
-        reveal_model(&mut system_state, owner, &model_id);
+    for model_id in &model_ids {
+        reveal_model(&mut system_state, owner, model_id);
     }
 
     // Request 5 models but only 2 exist
@@ -490,16 +496,19 @@ fn test_model_selection_seed_affects_result() {
     let owner = SomaAddress::random();
 
     // Add 5 models
+    let mut model_ids = Vec::new();
     for _ in 0..5 {
         let model_id = crate::model::ModelId::random();
         let stake = 10 * SHANNONS_PER_SOMA;
-        commit_model(&mut system_state, owner, model_id, stake);
+        create_model(&mut system_state, owner, model_id, stake);
+        commit_model(&mut system_state, owner, &model_id);
+        model_ids.push(model_id);
     }
 
     // Advance epoch and reveal all models
     advance_epoch_with_rewards(&mut system_state, 0).unwrap();
-    for (model_id, _) in system_state.model_registry().pending_models.clone() {
-        reveal_model(&mut system_state, owner, &model_id);
+    for model_id in &model_ids {
+        reveal_model(&mut system_state, owner, model_id);
     }
 
     // Same seed = same selection

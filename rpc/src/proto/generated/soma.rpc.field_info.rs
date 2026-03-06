@@ -4921,6 +4921,18 @@ mod _field_impls {
             number: 13i32,
             message_fields: Some(PendingModelUpdate::FIELDS),
         };
+        pub const STATE_FIELD: &'static MessageField = &MessageField {
+            name: "state",
+            json_name: "state",
+            number: 14i32,
+            message_fields: None,
+        };
+        pub const CREATE_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "create_epoch",
+            json_name: "createEpoch",
+            number: 15i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Model {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -4937,6 +4949,8 @@ mod _field_impls {
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_COMMISSION_RATE_FIELD,
             Self::PENDING_UPDATE_FIELD,
+            Self::STATE_FIELD,
+            Self::CREATE_EPOCH_FIELD,
         ];
     }
     impl Model {
@@ -5011,30 +5025,26 @@ mod _field_impls {
             self.path.push(Model::PENDING_UPDATE_FIELD.name);
             PendingModelUpdateFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn state(mut self) -> String {
+            self.path.push(Model::STATE_FIELD.name);
+            self.finish()
+        }
+        pub fn create_epoch(mut self) -> String {
+            self.path.push(Model::CREATE_EPOCH_FIELD.name);
+            self.finish()
+        }
     }
     impl ModelRegistry {
-        pub const ACTIVE_MODELS_FIELD: &'static MessageField = &MessageField {
-            name: "active_models",
-            json_name: "activeModels",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const PENDING_MODELS_FIELD: &'static MessageField = &MessageField {
-            name: "pending_models",
-            json_name: "pendingModels",
-            number: 2i32,
+        pub const MODELS_FIELD: &'static MessageField = &MessageField {
+            name: "models",
+            json_name: "models",
+            number: 7i32,
             message_fields: None,
         };
         pub const STAKING_POOL_MAPPINGS_FIELD: &'static MessageField = &MessageField {
             name: "staking_pool_mappings",
             json_name: "stakingPoolMappings",
             number: 3i32,
-            message_fields: None,
-        };
-        pub const INACTIVE_MODELS_FIELD: &'static MessageField = &MessageField {
-            name: "inactive_models",
-            json_name: "inactiveModels",
-            number: 4i32,
             message_fields: None,
         };
         pub const TOTAL_MODEL_STAKE_FIELD: &'static MessageField = &MessageField {
@@ -5052,10 +5062,8 @@ mod _field_impls {
     }
     impl MessageFields for ModelRegistry {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::ACTIVE_MODELS_FIELD,
-            Self::PENDING_MODELS_FIELD,
+            Self::MODELS_FIELD,
             Self::STAKING_POOL_MAPPINGS_FIELD,
-            Self::INACTIVE_MODELS_FIELD,
             Self::TOTAL_MODEL_STAKE_FIELD,
             Self::MODEL_REPORT_RECORDS_FIELD,
         ];
@@ -5080,20 +5088,12 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn active_models(mut self) -> String {
-            self.path.push(ModelRegistry::ACTIVE_MODELS_FIELD.name);
-            self.finish()
-        }
-        pub fn pending_models(mut self) -> String {
-            self.path.push(ModelRegistry::PENDING_MODELS_FIELD.name);
+        pub fn models(mut self) -> String {
+            self.path.push(ModelRegistry::MODELS_FIELD.name);
             self.finish()
         }
         pub fn staking_pool_mappings(mut self) -> String {
             self.path.push(ModelRegistry::STAKING_POOL_MAPPINGS_FIELD.name);
-            self.finish()
-        }
-        pub fn inactive_models(mut self) -> String {
-            self.path.push(ModelRegistry::INACTIVE_MODELS_FIELD.name);
             self.finish()
         }
         pub fn total_model_stake(mut self) -> String {
@@ -5765,6 +5765,12 @@ mod _field_impls {
             number: 14i32,
             message_fields: Some(WithdrawStake::FIELDS),
         };
+        pub const CREATE_MODEL_FIELD: &'static MessageField = &MessageField {
+            name: "create_model",
+            json_name: "createModel",
+            number: 33i32,
+            message_fields: Some(CreateModel::FIELDS),
+        };
         pub const COMMIT_MODEL_FIELD: &'static MessageField = &MessageField {
             name: "commit_model",
             json_name: "commitModel",
@@ -5776,18 +5782,6 @@ mod _field_impls {
             json_name: "revealModel",
             number: 16i32,
             message_fields: Some(RevealModel::FIELDS),
-        };
-        pub const COMMIT_MODEL_UPDATE_FIELD: &'static MessageField = &MessageField {
-            name: "commit_model_update",
-            json_name: "commitModelUpdate",
-            number: 17i32,
-            message_fields: Some(CommitModelUpdate::FIELDS),
-        };
-        pub const REVEAL_MODEL_UPDATE_FIELD: &'static MessageField = &MessageField {
-            name: "reveal_model_update",
-            json_name: "revealModelUpdate",
-            number: 18i32,
-            message_fields: Some(RevealModelUpdate::FIELDS),
         };
         pub const ADD_STAKE_TO_MODEL_FIELD: &'static MessageField = &MessageField {
             name: "add_stake_to_model",
@@ -5884,10 +5878,9 @@ mod _field_impls {
             Self::TRANSFER_OBJECTS_FIELD,
             Self::ADD_STAKE_FIELD,
             Self::WITHDRAW_STAKE_FIELD,
+            Self::CREATE_MODEL_FIELD,
             Self::COMMIT_MODEL_FIELD,
             Self::REVEAL_MODEL_FIELD,
-            Self::COMMIT_MODEL_UPDATE_FIELD,
-            Self::REVEAL_MODEL_UPDATE_FIELD,
             Self::ADD_STAKE_TO_MODEL_FIELD,
             Self::SET_MODEL_COMMISSION_RATE_FIELD,
             Self::DEACTIVATE_MODEL_FIELD,
@@ -5983,6 +5976,10 @@ mod _field_impls {
             self.path.push(TransactionKind::WITHDRAW_STAKE_FIELD.name);
             WithdrawStakeFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn create_model(mut self) -> CreateModelFieldPathBuilder {
+            self.path.push(TransactionKind::CREATE_MODEL_FIELD.name);
+            CreateModelFieldPathBuilder::new_with_base(self.path)
+        }
         pub fn commit_model(mut self) -> CommitModelFieldPathBuilder {
             self.path.push(TransactionKind::COMMIT_MODEL_FIELD.name);
             CommitModelFieldPathBuilder::new_with_base(self.path)
@@ -5990,14 +5987,6 @@ mod _field_impls {
         pub fn reveal_model(mut self) -> RevealModelFieldPathBuilder {
             self.path.push(TransactionKind::REVEAL_MODEL_FIELD.name);
             RevealModelFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn commit_model_update(mut self) -> CommitModelUpdateFieldPathBuilder {
-            self.path.push(TransactionKind::COMMIT_MODEL_UPDATE_FIELD.name);
-            CommitModelUpdateFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn reveal_model_update(mut self) -> RevealModelUpdateFieldPathBuilder {
-            self.path.push(TransactionKind::REVEAL_MODEL_UPDATE_FIELD.name);
-            RevealModelUpdateFieldPathBuilder::new_with_base(self.path)
         }
         pub fn add_stake_to_model(mut self) -> AddStakeToModelFieldPathBuilder {
             self.path.push(TransactionKind::ADD_STAKE_TO_MODEL_FIELD.name);
@@ -7001,22 +6990,82 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl CommitModel {
-        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
-            name: "manifest",
-            json_name: "manifest",
+    impl CreateModel {
+        pub const STAKE_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "stake_amount",
+            json_name: "stakeAmount",
             number: 1i32,
-            message_fields: Some(Manifest::FIELDS),
+            message_fields: None,
         };
-        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_commitment",
-            json_name: "weightsCommitment",
+        pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
+            name: "commission_rate",
+            json_name: "commissionRate",
             number: 2i32,
             message_fields: None,
         };
         pub const ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
             name: "architecture_version",
             json_name: "architectureVersion",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for CreateModel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::STAKE_AMOUNT_FIELD,
+            Self::COMMISSION_RATE_FIELD,
+            Self::ARCHITECTURE_VERSION_FIELD,
+        ];
+    }
+    impl CreateModel {
+        pub fn path_builder() -> CreateModelFieldPathBuilder {
+            CreateModelFieldPathBuilder::new()
+        }
+    }
+    pub struct CreateModelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl CreateModelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn stake_amount(mut self) -> String {
+            self.path.push(CreateModel::STAKE_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn commission_rate(mut self) -> String {
+            self.path.push(CreateModel::COMMISSION_RATE_FIELD.name);
+            self.finish()
+        }
+        pub fn architecture_version(mut self) -> String {
+            self.path.push(CreateModel::ARCHITECTURE_VERSION_FIELD.name);
+            self.finish()
+        }
+    }
+    impl CommitModel {
+        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "model_id",
+            json_name: "modelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
+            name: "manifest",
+            json_name: "manifest",
+            number: 2i32,
+            message_fields: Some(Manifest::FIELDS),
+        };
+        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
+            name: "weights_commitment",
+            json_name: "weightsCommitment",
             number: 3i32,
             message_fields: None,
         };
@@ -7032,28 +7081,14 @@ mod _field_impls {
             number: 5i32,
             message_fields: None,
         };
-        pub const STAKE_AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "stake_amount",
-            json_name: "stakeAmount",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const COMMISSION_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "commission_rate",
-            json_name: "commissionRate",
-            number: 7i32,
-            message_fields: None,
-        };
     }
     impl MessageFields for CommitModel {
         const FIELDS: &'static [&'static MessageField] = &[
+            Self::MODEL_ID_FIELD,
             Self::MANIFEST_FIELD,
             Self::WEIGHTS_COMMITMENT_FIELD,
-            Self::ARCHITECTURE_VERSION_FIELD,
             Self::EMBEDDING_COMMITMENT_FIELD,
             Self::DECRYPTION_KEY_COMMITMENT_FIELD,
-            Self::STAKE_AMOUNT_FIELD,
-            Self::COMMISSION_RATE_FIELD,
         ];
     }
     impl CommitModel {
@@ -7076,6 +7111,10 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
+        pub fn model_id(mut self) -> String {
+            self.path.push(CommitModel::MODEL_ID_FIELD.name);
+            self.finish()
+        }
         pub fn manifest(mut self) -> ManifestFieldPathBuilder {
             self.path.push(CommitModel::MANIFEST_FIELD.name);
             ManifestFieldPathBuilder::new_with_base(self.path)
@@ -7084,24 +7123,12 @@ mod _field_impls {
             self.path.push(CommitModel::WEIGHTS_COMMITMENT_FIELD.name);
             self.finish()
         }
-        pub fn architecture_version(mut self) -> String {
-            self.path.push(CommitModel::ARCHITECTURE_VERSION_FIELD.name);
-            self.finish()
-        }
         pub fn embedding_commitment(mut self) -> String {
             self.path.push(CommitModel::EMBEDDING_COMMITMENT_FIELD.name);
             self.finish()
         }
         pub fn decryption_key_commitment(mut self) -> String {
             self.path.push(CommitModel::DECRYPTION_KEY_COMMITMENT_FIELD.name);
-            self.finish()
-        }
-        pub fn stake_amount(mut self) -> String {
-            self.path.push(CommitModel::STAKE_AMOUNT_FIELD.name);
-            self.finish()
-        }
-        pub fn commission_rate(mut self) -> String {
-            self.path.push(CommitModel::COMMISSION_RATE_FIELD.name);
             self.finish()
         }
     }
@@ -7162,148 +7189,6 @@ mod _field_impls {
         }
         pub fn embedding(mut self) -> String {
             self.path.push(RevealModel::EMBEDDING_FIELD.name);
-            self.finish()
-        }
-    }
-    impl CommitModelUpdate {
-        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
-            name: "model_id",
-            json_name: "modelId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const MANIFEST_FIELD: &'static MessageField = &MessageField {
-            name: "manifest",
-            json_name: "manifest",
-            number: 2i32,
-            message_fields: Some(Manifest::FIELDS),
-        };
-        pub const WEIGHTS_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "weights_commitment",
-            json_name: "weightsCommitment",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const EMBEDDING_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "embedding_commitment",
-            json_name: "embeddingCommitment",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const DECRYPTION_KEY_COMMITMENT_FIELD: &'static MessageField = &MessageField {
-            name: "decryption_key_commitment",
-            json_name: "decryptionKeyCommitment",
-            number: 5i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for CommitModelUpdate {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::MODEL_ID_FIELD,
-            Self::MANIFEST_FIELD,
-            Self::WEIGHTS_COMMITMENT_FIELD,
-            Self::EMBEDDING_COMMITMENT_FIELD,
-            Self::DECRYPTION_KEY_COMMITMENT_FIELD,
-        ];
-    }
-    impl CommitModelUpdate {
-        pub fn path_builder() -> CommitModelUpdateFieldPathBuilder {
-            CommitModelUpdateFieldPathBuilder::new()
-        }
-    }
-    pub struct CommitModelUpdateFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl CommitModelUpdateFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn model_id(mut self) -> String {
-            self.path.push(CommitModelUpdate::MODEL_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn manifest(mut self) -> ManifestFieldPathBuilder {
-            self.path.push(CommitModelUpdate::MANIFEST_FIELD.name);
-            ManifestFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn weights_commitment(mut self) -> String {
-            self.path.push(CommitModelUpdate::WEIGHTS_COMMITMENT_FIELD.name);
-            self.finish()
-        }
-        pub fn embedding_commitment(mut self) -> String {
-            self.path.push(CommitModelUpdate::EMBEDDING_COMMITMENT_FIELD.name);
-            self.finish()
-        }
-        pub fn decryption_key_commitment(mut self) -> String {
-            self.path.push(CommitModelUpdate::DECRYPTION_KEY_COMMITMENT_FIELD.name);
-            self.finish()
-        }
-    }
-    impl RevealModelUpdate {
-        pub const MODEL_ID_FIELD: &'static MessageField = &MessageField {
-            name: "model_id",
-            json_name: "modelId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const DECRYPTION_KEY_FIELD: &'static MessageField = &MessageField {
-            name: "decryption_key",
-            json_name: "decryptionKey",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const EMBEDDING_FIELD: &'static MessageField = &MessageField {
-            name: "embedding",
-            json_name: "embedding",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for RevealModelUpdate {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::MODEL_ID_FIELD,
-            Self::DECRYPTION_KEY_FIELD,
-            Self::EMBEDDING_FIELD,
-        ];
-    }
-    impl RevealModelUpdate {
-        pub fn path_builder() -> RevealModelUpdateFieldPathBuilder {
-            RevealModelUpdateFieldPathBuilder::new()
-        }
-    }
-    pub struct RevealModelUpdateFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl RevealModelUpdateFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn model_id(mut self) -> String {
-            self.path.push(RevealModelUpdate::MODEL_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn decryption_key(mut self) -> String {
-            self.path.push(RevealModelUpdate::DECRYPTION_KEY_FIELD.name);
-            self.finish()
-        }
-        pub fn embedding(mut self) -> String {
-            self.path.push(RevealModelUpdate::EMBEDDING_FIELD.name);
             self.finish()
         }
     }

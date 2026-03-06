@@ -308,9 +308,9 @@ pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
     println!("Models (ModelRegistry):");
     println!(
         "  Active: {}  Pending: {}  Inactive: {}",
-        registry.active_models.len(),
-        registry.pending_models.len(),
-        registry.inactive_models.len(),
+        registry.active_models().count(),
+        registry.pending_models().count(),
+        registry.inactive_models().count(),
     );
     println!(
         "  Total Model Stake: {} shannons ({} SOMA)",
@@ -319,19 +319,18 @@ pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
     );
     println!();
 
-    if !registry.active_models.is_empty() {
+    if registry.has_active_models() {
         println!("  Active Models:");
-        for (i, (id, model)) in registry.active_models.iter().enumerate() {
+        for (i, (id, model)) in registry.active_models().enumerate() {
             let stake = model.staking_pool.soma_balance;
             println!(
-                "    [{}] ID: {}  Owner: {}  Arch: {}  Commission: {} bps  Stake: {} SOMA  HasEmbedding: {}",
+                "    [{}] ID: {}  Owner: {}  Arch: {}  Commission: {} bps  Stake: {} SOMA",
                 i,
                 id,
                 model.owner,
                 model.architecture_version,
                 model.commission_rate,
                 stake / SHANNONS_PER_SOMA,
-                model.embedding.is_some(),
             );
         }
         println!();
@@ -403,11 +402,11 @@ pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
     println!("Diagnostics:");
     let mut ok = true;
 
-    if registry.active_models.is_empty() {
+    if !registry.has_active_models() {
         println!("  [WARN] No active models — targets cannot be generated without active models");
         ok = false;
     } else {
-        println!("  [OK]   {} active model(s) found", registry.active_models.len());
+        println!("  [OK]   {} active model(s) found", registry.active_model_count());
     }
 
     if params.target_initial_targets_per_epoch == 0 {
@@ -433,7 +432,7 @@ pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
         println!("  [OK]   Emission pool has sufficient balance");
     }
 
-    if target_objects.is_empty() && !registry.active_models.is_empty() {
+    if target_objects.is_empty() && registry.has_active_models() {
         println!(
             "  [FAIL] No target objects despite active models — targets were not generated at genesis"
         );
@@ -446,7 +445,7 @@ pub fn inspect_genesis_blob(path: &Path) -> Result<()> {
         println!();
         println!(
             "Genesis looks correct: {} models active, {} targets created",
-            registry.active_models.len(),
+            registry.active_model_count(),
             target_objects.len()
         );
     }

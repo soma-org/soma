@@ -340,10 +340,9 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         }
 
         // Model transactions
-        TransactionKind::CommitModel(_)
+        TransactionKind::CreateModel(_)
+        | TransactionKind::CommitModel(_)
         | TransactionKind::RevealModel(_)
-        | TransactionKind::CommitModelUpdate(_)
-        | TransactionKind::RevealModelUpdate(_)
         | TransactionKind::AddStakeToModel { .. }
         | TransactionKind::SetModelCommissionRate { .. }
         | TransactionKind::DeactivateModel { .. }

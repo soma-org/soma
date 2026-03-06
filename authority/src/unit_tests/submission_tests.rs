@@ -197,9 +197,9 @@ async fn build_authority_with_model() -> ModelTestSetup {
     let system_state = get_system_state(&genesis_objects).expect("SystemState must exist");
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
+        .map(|(id, _)| id)
         .expect("Should have at least one active model");
 
     // Find a genesis target
@@ -826,9 +826,9 @@ async fn test_report_submission_audit_window_enforced() {
     let system_state = get_system_state(&genesis_objects).expect("SystemState must exist");
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
+        .map(|(id, _)| id)
         .expect("Should have a genesis model");
 
     // Find a genesis target that includes our model

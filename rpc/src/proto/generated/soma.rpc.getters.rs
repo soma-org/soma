@@ -2934,6 +2934,8 @@ mod _getter_impls {
                 commission_rate: None,
                 next_epoch_commission_rate: None,
                 pending_update: None,
+                state: None,
+                create_epoch: None,
             }
         }
         #[doc(hidden)]
@@ -3050,14 +3052,20 @@ mod _getter_impls {
             self.pending_update = Some(field.into());
             self
         }
+        pub fn with_state(mut self, field: String) -> Self {
+            self.state = Some(field.into());
+            self
+        }
+        pub fn with_create_epoch(mut self, field: u64) -> Self {
+            self.create_epoch = Some(field.into());
+            self
+        }
     }
     impl ModelRegistry {
         pub const fn const_default() -> Self {
             Self {
-                active_models: std::collections::BTreeMap::new(),
-                pending_models: std::collections::BTreeMap::new(),
+                models: std::collections::BTreeMap::new(),
                 staking_pool_mappings: std::collections::BTreeMap::new(),
-                inactive_models: std::collections::BTreeMap::new(),
                 total_model_stake: None,
                 model_report_records: std::collections::BTreeMap::new(),
             }
@@ -3893,6 +3901,39 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::WithdrawStake(field.into()));
             self
         }
+        pub fn create_model(&self) -> &CreateModel {
+            if let Some(transaction_kind::Kind::CreateModel(field)) = &self.kind {
+                field as _
+            } else {
+                CreateModel::default_instance() as _
+            }
+        }
+        pub fn create_model_opt(&self) -> Option<&CreateModel> {
+            if let Some(transaction_kind::Kind::CreateModel(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn create_model_opt_mut(&mut self) -> Option<&mut CreateModel> {
+            if let Some(transaction_kind::Kind::CreateModel(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn create_model_mut(&mut self) -> &mut CreateModel {
+            if self.create_model_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::CreateModel(CreateModel::default()),
+                );
+            }
+            self.create_model_opt_mut().unwrap()
+        }
+        pub fn with_create_model(mut self, field: CreateModel) -> Self {
+            self.kind = Some(transaction_kind::Kind::CreateModel(field.into()));
+            self
+        }
         pub fn commit_model(&self) -> &CommitModel {
             if let Some(transaction_kind::Kind::CommitModel(field)) = &self.kind {
                 field as _
@@ -3957,80 +3998,6 @@ mod _getter_impls {
         }
         pub fn with_reveal_model(mut self, field: RevealModel) -> Self {
             self.kind = Some(transaction_kind::Kind::RevealModel(field.into()));
-            self
-        }
-        pub fn commit_model_update(&self) -> &CommitModelUpdate {
-            if let Some(transaction_kind::Kind::CommitModelUpdate(field)) = &self.kind {
-                field as _
-            } else {
-                CommitModelUpdate::default_instance() as _
-            }
-        }
-        pub fn commit_model_update_opt(&self) -> Option<&CommitModelUpdate> {
-            if let Some(transaction_kind::Kind::CommitModelUpdate(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn commit_model_update_opt_mut(&mut self) -> Option<&mut CommitModelUpdate> {
-            if let Some(transaction_kind::Kind::CommitModelUpdate(field)) = &mut self
-                .kind
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn commit_model_update_mut(&mut self) -> &mut CommitModelUpdate {
-            if self.commit_model_update_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::CommitModelUpdate(
-                        CommitModelUpdate::default(),
-                    ),
-                );
-            }
-            self.commit_model_update_opt_mut().unwrap()
-        }
-        pub fn with_commit_model_update(mut self, field: CommitModelUpdate) -> Self {
-            self.kind = Some(transaction_kind::Kind::CommitModelUpdate(field.into()));
-            self
-        }
-        pub fn reveal_model_update(&self) -> &RevealModelUpdate {
-            if let Some(transaction_kind::Kind::RevealModelUpdate(field)) = &self.kind {
-                field as _
-            } else {
-                RevealModelUpdate::default_instance() as _
-            }
-        }
-        pub fn reveal_model_update_opt(&self) -> Option<&RevealModelUpdate> {
-            if let Some(transaction_kind::Kind::RevealModelUpdate(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn reveal_model_update_opt_mut(&mut self) -> Option<&mut RevealModelUpdate> {
-            if let Some(transaction_kind::Kind::RevealModelUpdate(field)) = &mut self
-                .kind
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn reveal_model_update_mut(&mut self) -> &mut RevealModelUpdate {
-            if self.reveal_model_update_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::RevealModelUpdate(
-                        RevealModelUpdate::default(),
-                    ),
-                );
-            }
-            self.reveal_model_update_opt_mut().unwrap()
-        }
-        pub fn with_reveal_model_update(mut self, field: RevealModelUpdate) -> Self {
-            self.kind = Some(transaction_kind::Kind::RevealModelUpdate(field.into()));
             self
         }
         pub fn add_stake_to_model(&self) -> &AddStakeToModel {
@@ -5105,22 +5072,50 @@ mod _getter_impls {
             self
         }
     }
+    impl CreateModel {
+        pub const fn const_default() -> Self {
+            Self {
+                stake_amount: None,
+                commission_rate: None,
+                architecture_version: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: CreateModel = CreateModel::const_default();
+            &DEFAULT
+        }
+        pub fn with_stake_amount(mut self, field: u64) -> Self {
+            self.stake_amount = Some(field.into());
+            self
+        }
+        pub fn with_commission_rate(mut self, field: u64) -> Self {
+            self.commission_rate = Some(field.into());
+            self
+        }
+        pub fn with_architecture_version(mut self, field: u64) -> Self {
+            self.architecture_version = Some(field.into());
+            self
+        }
+    }
     impl CommitModel {
         pub const fn const_default() -> Self {
             Self {
+                model_id: None,
                 manifest: None,
                 weights_commitment: None,
-                architecture_version: None,
                 embedding_commitment: None,
                 decryption_key_commitment: None,
-                stake_amount: None,
-                commission_rate: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: CommitModel = CommitModel::const_default();
             &DEFAULT
+        }
+        pub fn with_model_id(mut self, field: String) -> Self {
+            self.model_id = Some(field.into());
+            self
         }
         pub fn manifest(&self) -> &Manifest {
             self.manifest
@@ -5145,10 +5140,6 @@ mod _getter_impls {
             self.weights_commitment = Some(field.into());
             self
         }
-        pub fn with_architecture_version(mut self, field: u64) -> Self {
-            self.architecture_version = Some(field.into());
-            self
-        }
         pub fn with_embedding_commitment(
             mut self,
             field: ::prost::bytes::Bytes,
@@ -5161,14 +5152,6 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.decryption_key_commitment = Some(field.into());
-            self
-        }
-        pub fn with_stake_amount(mut self, field: u64) -> Self {
-            self.stake_amount = Some(field.into());
-            self
-        }
-        pub fn with_commission_rate(mut self, field: u64) -> Self {
-            self.commission_rate = Some(field.into());
             self
         }
     }
@@ -5183,95 +5166,6 @@ mod _getter_impls {
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: RevealModel = RevealModel::const_default();
-            &DEFAULT
-        }
-        pub fn with_model_id(mut self, field: String) -> Self {
-            self.model_id = Some(field.into());
-            self
-        }
-        pub fn with_decryption_key(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.decryption_key = Some(field.into());
-            self
-        }
-        pub fn embedding(&self) -> &[f32] {
-            &self.embedding
-        }
-        pub fn embedding_mut(&mut self) -> &mut Vec<f32> {
-            &mut self.embedding
-        }
-        pub fn with_embedding(mut self, field: Vec<f32>) -> Self {
-            self.embedding = field;
-            self
-        }
-    }
-    impl CommitModelUpdate {
-        pub const fn const_default() -> Self {
-            Self {
-                model_id: None,
-                manifest: None,
-                weights_commitment: None,
-                embedding_commitment: None,
-                decryption_key_commitment: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: CommitModelUpdate = CommitModelUpdate::const_default();
-            &DEFAULT
-        }
-        pub fn with_model_id(mut self, field: String) -> Self {
-            self.model_id = Some(field.into());
-            self
-        }
-        pub fn manifest(&self) -> &Manifest {
-            self.manifest
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Manifest::default_instance() as _)
-        }
-        pub fn manifest_opt(&self) -> Option<&Manifest> {
-            self.manifest.as_ref().map(|field| field as _)
-        }
-        pub fn manifest_opt_mut(&mut self) -> Option<&mut Manifest> {
-            self.manifest.as_mut().map(|field| field as _)
-        }
-        pub fn manifest_mut(&mut self) -> &mut Manifest {
-            self.manifest.get_or_insert_default()
-        }
-        pub fn with_manifest(mut self, field: Manifest) -> Self {
-            self.manifest = Some(field.into());
-            self
-        }
-        pub fn with_weights_commitment(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.weights_commitment = Some(field.into());
-            self
-        }
-        pub fn with_embedding_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.embedding_commitment = Some(field.into());
-            self
-        }
-        pub fn with_decryption_key_commitment(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.decryption_key_commitment = Some(field.into());
-            self
-        }
-    }
-    impl RevealModelUpdate {
-        pub const fn const_default() -> Self {
-            Self {
-                model_id: None,
-                decryption_key: None,
-                embedding: Vec::new(),
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: RevealModelUpdate = RevealModelUpdate::const_default();
             &DEFAULT
         }
         pub fn with_model_id(mut self, field: String) -> Self {
