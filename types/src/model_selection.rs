@@ -7,9 +7,10 @@
 //! When creating targets, we use stake-weighted KNN to select models whose embeddings are close
 //! to the target embedding, with high-stake models receiving preference.
 //!
-//! **Scoring formula**: `weighted_score = distance² / voting_power`
+//! **Scoring formula**: `weighted_score = cosine_distance / voting_power`
 //!
-//! Where `voting_power` is the model's normalized stake (sums to 1.0 across all models),
+//! Where `cosine_distance = 1 - dot(normalize(a), normalize(b))` (range [0, 2]),
+//! and `voting_power` is the model's normalized stake (sums to 1.0 across all models),
 //! calculated the same way as validator voting power. This encourages:
 //! - Specialization: models that focus on specific regions of embedding space
 //! - Reputation building: models with more stake get priority for nearby targets
@@ -18,19 +19,20 @@
 
 use burn::backend::NdArray;
 use burn::prelude::Backend;
+use burn::tensor::linalg::cosine_similarity;
 use burn::tensor::{Tensor, TensorData};
 
 use crate::model::ModelId;
 use crate::tensor::SomaTensor;
 
-/// Result of model selection - contains model ID, raw distance², and weighted score.
+/// Result of model selection - contains model ID, cosine distance, and weighted score.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelMatch {
     /// The model ID
     pub model_id: ModelId,
-    /// Squared Euclidean distance to target
-    pub distance_sq: f32,
-    /// Stake-weighted score: distance² / voting_power
+    /// Cosine distance to target: 1 - dot(normalize(a), normalize(b)), range [0, 2]
+    pub cosine_distance: f32,
+    /// Stake-weighted score: cosine_distance / voting_power
     pub weighted_score: f32,
 }
 
@@ -99,10 +101,11 @@ impl<B: Backend> ModelSelectionData<B> {
     }
 }
 
-/// Compute normalized voting power from stakes.
+/// Compute normalized voting power from stakes using sqrt weighting.
 ///
-/// Uses the same proportional calculation as validator voting power,
-/// but normalizes to sum to 1.0 instead of TOTAL_VOTING_POWER.
+/// Applies sqrt to raw stakes before normalizing, providing diminishing returns
+/// on stake influence (similar to quadratic voting). This keeps directional
+/// relevance as the dominant factor in model selection while still rewarding stake.
 ///
 /// # Arguments
 /// * `stakes` - Raw stake amounts per model
@@ -111,28 +114,29 @@ impl<B: Backend> ModelSelectionData<B> {
 /// # Returns
 /// Tensor of voting powers that sum to 1.0
 fn compute_normalized_voting_power<B: Backend>(stakes: &[u64], device: &B::Device) -> Tensor<B, 1> {
-    let total_stake: u64 = stakes.iter().sum();
+    let sqrt_stakes: Vec<f64> = stakes.iter().map(|&s| (s as f64).sqrt()).collect();
+    let total_sqrt: f64 = sqrt_stakes.iter().sum();
 
-    if total_stake == 0 {
+    if total_sqrt == 0.0 {
         // Equal weight if no stake (shouldn't happen in practice)
         let equal_weight = 1.0 / stakes.len() as f32;
         let weights: Vec<f32> = vec![equal_weight; stakes.len()];
         return Tensor::<B, 1>::from_floats(weights.as_slice(), device);
     }
 
-    // Convert to f64 for precision, then to f32
     let weights: Vec<f32> =
-        stakes.iter().map(|&s| (s as f64 / total_stake as f64) as f32).collect();
+        sqrt_stakes.iter().map(|&s| (s / total_sqrt) as f32).collect();
 
     Tensor::<B, 1>::from_floats(weights.as_slice(), device)
 }
 
-/// Select top-k models based on stake-weighted distance to target.
+/// Select top-k models based on stake-weighted cosine distance to target.
 ///
 /// # Algorithm
-/// 1. Compute squared Euclidean distance from target to each model embedding
-/// 2. Weight by inverse voting power: `weighted_score = dist_sq / voting_power`
-/// 3. Select k models with lowest weighted scores
+/// 1. L2-normalize target and model embeddings
+/// 2. Compute cosine distance: `1 - dot(normalize(target), normalize(embedding))`
+/// 3. Weight by inverse voting power: `weighted_score = cosine_distance / voting_power`
+/// 4. Select k models with lowest weighted scores
 ///
 /// # Arguments
 /// * `target` - Target embedding as SomaTensor
@@ -155,7 +159,7 @@ pub fn select_models<B: Backend>(
 
     let k = k.min(num_models);
 
-    // Convert target to Burn tensor
+    // Convert target to Burn tensor and L2-normalize
     let target_vec = target.to_vec();
     assert_eq!(target_vec.len(), dim, "Target dimension must match model embeddings");
 
@@ -164,25 +168,25 @@ pub fn select_models<B: Backend>(
     // Shape: [1, dim] -> broadcast to [num_models, dim]
     let target_expanded = target_tensor.expand([num_models, dim]);
 
-    // Compute squared distances: ||target - embedding||²
-    let diff = target_expanded - data.embeddings.clone();
-    let dist_sq: Tensor<B, 1> = diff.clone().mul(diff).sum_dim(1).squeeze_dim(1);
+    // Cosine distance = 1 - cosine_similarity (uses L2 normalization internally)
+    let cos_sim: Tensor<B, 2> =
+        cosine_similarity(target_expanded, data.embeddings.clone(), 1, None);
+    let ones = Tensor::<B, 2>::ones_like(&cos_sim);
+    let cosine_dist: Tensor<B, 1> = (ones - cos_sim).squeeze_dim(1);
 
-    // Compute weighted scores: dist_sq / voting_power
-    // Add epsilon to avoid division by zero (though voting_power should never be zero)
+    // Compute weighted scores: cosine_distance / voting_power
     let eps = Tensor::<B, 1>::from_floats([1e-10], &data.device).expand([num_models]);
     let voting_power_safe = data.voting_power.clone().add(eps);
-    let weighted_scores = dist_sq.clone().div(voting_power_safe);
+    let weighted_scores = cosine_dist.clone().div(voting_power_safe);
 
     // Find indices of k smallest weighted scores
-    // Burn's argsort is ascending by default
     let sorted_indices = weighted_scores.clone().argsort(0);
 
     // Extract top-k indices and gather values
     let topk_indices: Vec<i64> =
         sorted_indices.slice(0..k).into_data().to_vec::<i64>().expect("indices should be i64");
 
-    let dist_sq_data: Vec<f32> = dist_sq.into_data().to_vec::<f32>().expect("f32");
+    let cosine_dist_data: Vec<f32> = cosine_dist.into_data().to_vec::<f32>().expect("f32");
     let weighted_data: Vec<f32> = weighted_scores.into_data().to_vec::<f32>().expect("f32");
 
     // Build results
@@ -192,7 +196,7 @@ pub fn select_models<B: Backend>(
             let idx = idx as usize;
             ModelMatch {
                 model_id: data.model_ids[idx],
-                distance_sq: dist_sq_data[idx],
+                cosine_distance: cosine_dist_data[idx],
                 weighted_score: weighted_data[idx],
             }
         })
@@ -262,16 +266,18 @@ mod tests {
         let models = vec![
             (make_model_id(0), SomaTensor::new(vec![0.0, 1.0], vec![2]), 100),
             (make_model_id(1), SomaTensor::new(vec![1.0, 0.0], vec![2]), 100),
-            (make_model_id(2), SomaTensor::new(vec![10.0, 10.0], vec![2]), 100),
+            (make_model_id(2), SomaTensor::new(vec![-1.0, -1.0], vec![2]), 100),
         ];
 
+        // Target at (0.5, 0.5) — same direction as models 0 and 1 (both at 45° away)
+        // Model 2 points opposite direction (cosine distance ≈ 2.0)
         let target = SomaTensor::new(vec![0.5, 0.5], vec![2]);
 
         let results = select_models_weighted(&target, models, 2);
 
         assert_eq!(results.len(), 2);
-        // Model 0 and 1 should be selected (closest to target)
-        // Model 2 is far away
+        // Model 0 and 1 should be selected (closest cosine distance)
+        // Model 2 points opposite direction
         let selected_ids: Vec<ModelId> = results.iter().map(|m| m.model_id).collect();
         assert!(selected_ids.contains(&make_model_id(0)));
         assert!(selected_ids.contains(&make_model_id(1)));
@@ -280,13 +286,14 @@ mod tests {
 
     #[test]
     fn test_stake_weighting() {
-        // Two models at same distance from target
+        // Two models at same cosine distance from target (orthogonal)
         let models = vec![
             (make_model_id(0), SomaTensor::new(vec![1.0, 0.0], vec![2]), 100),
             (make_model_id(1), SomaTensor::new(vec![-1.0, 0.0], vec![2]), 1000), // 10x stake
         ];
 
-        let target = SomaTensor::new(vec![0.0, 0.0], vec![2]);
+        // Target orthogonal to both models → cosine distance = 1.0 for both
+        let target = SomaTensor::new(vec![0.0, 1.0], vec![2]);
 
         let results = select_models_weighted(&target, models, 2);
 
@@ -295,10 +302,11 @@ mod tests {
         assert_eq!(results[0].model_id, make_model_id(1));
         assert_eq!(results[1].model_id, make_model_id(0));
 
-        // Verify the math:
-        // dist² = 1.0 for both
-        // voting_power: model 0 = 100/1100 = 0.0909, model 1 = 1000/1100 = 0.909
-        // weighted_score: model 0 = 1.0 / 0.0909 = 11.0, model 1 = 1.0 / 0.909 = 1.1
+        // Verify the math (sqrt weighting):
+        // cosine_distance = 1.0 for both (orthogonal)
+        // sqrt(100)=10, sqrt(1000)=31.62, total=41.62
+        // voting_power: model 0 = 10/41.62 = 0.240, model 1 = 31.62/41.62 = 0.760
+        // weighted_score: model 0 = 1.0 / 0.240 = 4.16, model 1 = 1.0 / 0.760 = 1.32
         assert!(results[0].weighted_score < results[1].weighted_score);
     }
 
@@ -314,20 +322,22 @@ mod tests {
 
     #[test]
     fn test_voting_power_proportional() {
-        let stakes = vec![100, 200, 700];
+        let stakes = vec![100, 400, 900];
         let device: <TestBackend as Backend>::Device = Default::default();
         let vp = compute_normalized_voting_power::<TestBackend>(&stakes, &device);
         let vp_vec: Vec<f32> = vp.into_data().to_vec::<f32>().expect("f32");
 
-        // 10%, 20%, 70%
-        assert!((vp_vec[0] - 0.1).abs() < 1e-6);
-        assert!((vp_vec[1] - 0.2).abs() < 1e-6);
-        assert!((vp_vec[2] - 0.7).abs() < 1e-6);
+        // sqrt(100)=10, sqrt(400)=20, sqrt(900)=30, total=60
+        // 10/60 = 1/6, 20/60 = 1/3, 30/60 = 1/2
+        let expected = [10.0 / 60.0, 20.0 / 60.0, 30.0 / 60.0];
+        assert!((vp_vec[0] - expected[0]).abs() < 1e-6);
+        assert!((vp_vec[1] - expected[1]).abs() < 1e-6);
+        assert!((vp_vec[2] - expected[2]).abs() < 1e-6);
     }
 
     #[test]
     fn test_empty_models() {
-        let target = SomaTensor::new(vec![0.0, 0.0], vec![2]);
+        let target = SomaTensor::new(vec![1.0, 0.0], vec![2]);
         let results = select_models_weighted(&target, vec![], 5);
         assert!(results.is_empty());
     }
@@ -335,11 +345,11 @@ mod tests {
     #[test]
     fn test_k_larger_than_models() {
         let models = vec![
-            (make_model_id(0), SomaTensor::new(vec![0.0, 0.0], vec![2]), 100),
+            (make_model_id(0), SomaTensor::new(vec![1.0, 0.0], vec![2]), 100),
             (make_model_id(1), SomaTensor::new(vec![1.0, 1.0], vec![2]), 100),
         ];
 
-        let target = SomaTensor::new(vec![0.0, 0.0], vec![2]);
+        let target = SomaTensor::new(vec![1.0, 0.0], vec![2]);
 
         // Request k=10 but only 2 models
         let results = select_models_weighted(&target, models, 10);
@@ -350,15 +360,15 @@ mod tests {
     fn test_model_selection_data_reuse() {
         let device = device();
         let models = vec![
-            (make_model_id(0), SomaTensor::new(vec![0.0, 0.0], vec![2]), 100),
+            (make_model_id(0), SomaTensor::new(vec![1.0, 1.0], vec![2]), 100),
             (make_model_id(1), SomaTensor::new(vec![1.0, 0.0], vec![2]), 100),
             (make_model_id(2), SomaTensor::new(vec![0.0, 1.0], vec![2]), 100),
         ];
 
         let data = ModelSelectionData::<TestBackend>::new(models, &device);
 
-        // Select for target at origin - should prefer model 0
-        let target1 = SomaTensor::new(vec![0.0, 0.0], vec![2]);
+        // Select for target at (1, 1) - should prefer model 0 (same direction)
+        let target1 = SomaTensor::new(vec![1.0, 1.0], vec![2]);
         let results1 = select_models(&target1, &data, 1);
         assert_eq!(results1[0].model_id, make_model_id(0));
 
@@ -377,40 +387,41 @@ mod tests {
     fn test_batch_select() {
         let device = device();
         let models = vec![
-            (make_model_id(0), SomaTensor::new(vec![0.0, 0.0], vec![2]), 100),
-            (make_model_id(1), SomaTensor::new(vec![1.0, 1.0], vec![2]), 100),
+            (make_model_id(0), SomaTensor::new(vec![1.0, 0.0], vec![2]), 100),
+            (make_model_id(1), SomaTensor::new(vec![0.0, 1.0], vec![2]), 100),
         ];
 
         let data = ModelSelectionData::<TestBackend>::new(models, &device);
 
         let targets = vec![
-            SomaTensor::new(vec![0.0, 0.0], vec![2]),
-            SomaTensor::new(vec![1.0, 1.0], vec![2]),
+            SomaTensor::new(vec![1.0, 0.0], vec![2]),
+            SomaTensor::new(vec![0.0, 1.0], vec![2]),
         ];
 
         let results = batch_select_models(&targets, &data, 1);
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0][0].model_id, make_model_id(0)); // Target at origin prefers model 0
-        assert_eq!(results[1][0].model_id, make_model_id(1)); // Target at (1,1) prefers model 1
+        assert_eq!(results[0][0].model_id, make_model_id(0)); // Target at (1,0) prefers model 0
+        assert_eq!(results[1][0].model_id, make_model_id(1)); // Target at (0,1) prefers model 1
     }
 
     #[test]
     fn test_distance_affects_selection() {
-        // Model with 10x stake but further away should lose to closer model
+        // Model 0: nearly same direction as target (small cosine distance), low stake
+        // Model 1: very different direction from target (large cosine distance), high stake
         let models = vec![
-            (make_model_id(0), SomaTensor::new(vec![0.1, 0.0], vec![2]), 100), // Close, low stake
-            (make_model_id(1), SomaTensor::new(vec![10.0, 0.0], vec![2]), 1000), // Far, high stake
+            (make_model_id(0), SomaTensor::new(vec![1.0, 0.1], vec![2]), 100), // Close direction, low stake
+            (make_model_id(1), SomaTensor::new(vec![-1.0, 0.1], vec![2]), 1000), // Opposite direction, high stake
         ];
 
-        let target = SomaTensor::new(vec![0.0, 0.0], vec![2]);
+        let target = SomaTensor::new(vec![1.0, 0.0], vec![2]);
         let results = select_models_weighted(&target, models, 2);
 
-        // Model 0: dist² = 0.01, voting_power = 100/1100 = 0.0909
-        //          weighted = 0.01 / 0.0909 = 0.11
-        // Model 1: dist² = 100, voting_power = 1000/1100 = 0.909
-        //          weighted = 100 / 0.909 = 110
-        // Model 0 should win despite lower stake because it's much closer
+        // Model 0: cosine_distance ≈ 0.005, voting_power = 100/1100 = 0.0909
+        //          weighted ≈ 0.005 / 0.0909 ≈ 0.055
+        // Model 1: cosine_distance ≈ 1.995, voting_power = 1000/1100 = 0.909
+        //          weighted ≈ 1.995 / 0.909 ≈ 2.195
+        // Model 0 should win despite lower stake because it's much closer in direction
         assert_eq!(results[0].model_id, make_model_id(0));
     }
 }

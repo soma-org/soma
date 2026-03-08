@@ -261,9 +261,10 @@ pub fn generate_target(
 #[cfg(feature = "ml")]
 /// Select models using stake-weighted KNN based on target embedding.
 ///
-/// Models are scored by: `weighted_score = distance² / voting_power`
-/// where voting_power is the model's normalized stake (sums to 1.0).
-/// Lower scores are better (closer distance and/or higher stake).
+/// Models are scored by: `weighted_score = cosine_distance / voting_power`
+/// where cosine_distance = 1 - dot(normalize(a), normalize(b)),
+/// and voting_power is the model's normalized stake (sums to 1.0).
+/// Lower scores are better (closer direction and/or higher stake).
 ///
 /// Falls back to uniform random selection if no models have embeddings.
 ///
