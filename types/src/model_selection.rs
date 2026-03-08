@@ -124,8 +124,7 @@ fn compute_normalized_voting_power<B: Backend>(stakes: &[u64], device: &B::Devic
         return Tensor::<B, 1>::from_floats(weights.as_slice(), device);
     }
 
-    let weights: Vec<f32> =
-        sqrt_stakes.iter().map(|&s| (s / total_sqrt) as f32).collect();
+    let weights: Vec<f32> = sqrt_stakes.iter().map(|&s| (s / total_sqrt) as f32).collect();
 
     Tensor::<B, 1>::from_floats(weights.as_slice(), device)
 }
