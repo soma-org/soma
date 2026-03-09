@@ -3,9 +3,8 @@ contact_links:
   - name: Documentation
     url: https://docs.soma.org
     about: Check the docs before creating an issue.
-  # TODO: Replace INVITE_CODE with actual Discord invite
   - name: Discord
-    url: https://discord.gg/INVITE_CODE
+    url: https://discord.gg/8Gs5faUdb5
     about: Ask questions and get help on Discord.
   - name: Security Vulnerability
     url: https://github.com/soma-org/soma/blob/main/SECURITY.md

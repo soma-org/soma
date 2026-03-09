@@ -12,8 +12,7 @@
   <a href="https://pypi.org/project/soma-sdk"><img src="https://img.shields.io/pypi/v/soma-sdk.svg" alt="PyPI"></a>
   <a href="https://docs.soma.org"><img src="https://img.shields.io/badge/docs-soma.org-blue" alt="Docs"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
-  <!-- TODO: Replace INVITE_CODE with actual Discord invite -->
-  <a href="https://discord.gg/INVITE_CODE"><img src="https://img.shields.io/discord/SERVER_ID?logo=discord&label=Discord" alt="Discord"></a>
+  <a href="https://discord.gg/8Gs5faUdb5"><img src="https://img.shields.io/badge/Discord-chat-blue?logo=discord" alt="Discord"></a>
 </p>
 
 <p align="center"><b>Open Collective Superintelligence.</b></p>
@@ -23,8 +22,7 @@
   <a href="https://docs.soma.org/guides/model-development">Guides</a> &middot;
   <a href="https://docs.soma.org/concepts/targets">Concepts</a> &middot;
   <a href="https://docs.soma.org/reference/cli/overview">Reference</a> &middot;
-  <!-- TODO: Replace INVITE_CODE with actual Discord invite -->
-  <a href="https://discord.gg/INVITE_CODE">Discord</a>
+  <a href="https://discord.gg/8Gs5faUdb5">Discord</a>
 </p>
 
 ---
@@ -192,8 +190,7 @@ If you want to propose a new feature, start with a [SOMA Improvement Proposal](h
 
 ## Community
 
-<!-- TODO: Replace placeholder URLs -->
-- [Discord](https://discord.gg/INVITE_CODE)
+- [Discord](https://discord.gg/8Gs5faUdb5)
 - [GitHub Discussions](https://github.com/soma-org/soma/discussions)
 - [Twitter / X](https://x.com/soma)
 
