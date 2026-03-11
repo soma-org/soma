@@ -3131,6 +3131,7 @@ mod _getter_impls {
                 winning_model_id: None,
                 winning_model_owner: None,
                 bond_amount: None,
+                data_url: None,
             }
         }
         #[doc(hidden)]
@@ -3196,6 +3197,10 @@ mod _getter_impls {
         }
         pub fn with_bond_amount(mut self, field: u64) -> Self {
             self.bond_amount = Some(field.into());
+            self
+        }
+        pub fn with_data_url(mut self, field: String) -> Self {
+            self.data_url = Some(field.into());
             self
         }
     }

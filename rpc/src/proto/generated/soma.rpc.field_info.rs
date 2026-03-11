@@ -5260,6 +5260,12 @@ mod _field_impls {
             number: 12i32,
             message_fields: None,
         };
+        pub const DATA_URL_FIELD: &'static MessageField = &MessageField {
+            name: "data_url",
+            json_name: "dataUrl",
+            number: 13i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Target {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5275,6 +5281,7 @@ mod _field_impls {
             Self::WINNING_MODEL_ID_FIELD,
             Self::WINNING_MODEL_OWNER_FIELD,
             Self::BOND_AMOUNT_FIELD,
+            Self::DATA_URL_FIELD,
         ];
     }
     impl Target {
@@ -5343,6 +5350,10 @@ mod _field_impls {
         }
         pub fn bond_amount(mut self) -> String {
             self.path.push(Target::BOND_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn data_url(mut self) -> String {
+            self.path.push(Target::DATA_URL_FIELD.name);
             self.finish()
         }
     }

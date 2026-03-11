@@ -245,6 +245,9 @@ message Target {
 
   // Bond amount held (in shannons, only present if filled)
   optional uint64 bond_amount = 12;
+
+  // Data URL from winning submission manifest (only present if filled)
+  optional string data_url = 13;
 }
 
 // A data submission to a target.

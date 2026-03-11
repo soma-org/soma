@@ -202,6 +202,7 @@ struct TargetObj {
     bond_amount: u64,
     submitter: Option<String>,
     winning_model_id: Option<String>,
+    data_url: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -256,6 +257,7 @@ fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
         bond_amount: t.bond_amount.unwrap_or(0),
         submitter: hex_id(t.submitter),
         winning_model_id: hex_id(t.winning_model_id),
+        data_url: t.data_url,
     }
 }
 
@@ -839,7 +841,7 @@ impl PySomaClient {
             }
             let effective_mask = read_mask.unwrap_or_else(|| {
                 "id,status,generation_epoch,reward_pool,embedding,model_ids,\
-                 distance_threshold,submitter,winning_model_id,bond_amount"
+                 distance_threshold,submitter,winning_model_id,bond_amount,data_url"
                     .to_string()
             });
             request.read_mask = Some(rpc::utils::field::FieldMask {
@@ -1099,26 +1101,57 @@ impl PySomaClient {
     // Proxy client methods (fetch model/data via fullnode proxy)
     // -------------------------------------------------------------------
 
-    /// Fetch model weights via the fullnode proxy.
+    /// Fetch model weights. Resolves the manifest URL via get_object, tries
+    /// direct download first, falls back to proxy.
     fn fetch_model<'py>(&self, py: Python<'py>, model_id: String) -> PyResult<Bound<'py, PyAny>> {
         let proxy = self.proxy_client.clone();
+        let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use types::metadata::ManifestAPI as _;
             let mid = model_id.parse::<types::model::ModelId>().map_err(to_py_val_err)?;
-            let data = proxy.fetch_model(&mid).await.map_err(to_py_err)?;
+
+            // Resolve manifest URL from system state model registry
+            let manifest_url = client.get_latest_system_state().await.ok().and_then(|state| {
+                let model = state.model_registry().models.get(&mid)?.clone();
+                Some(model.manifest()?.url().clone())
+            });
+
+            let data = if let Some(url) = manifest_url {
+                proxy.fetch_model_direct(&mid, &url, |_, _| {}).await.map_err(to_py_err)?
+            } else {
+                proxy.fetch_model(&mid).await.map_err(to_py_err)?
+            };
             Ok(Python::attach(|py| PyBytes::new(py, &data).unbind()))
         })
     }
 
-    /// Fetch submission data via the fullnode proxy.
+    /// Fetch submission data. Resolves the manifest URL via get_object, tries
+    /// direct download first, falls back to proxy.
     fn fetch_submission_data<'py>(
         &self,
         py: Python<'py>,
         target_id: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let proxy = self.proxy_client.clone();
+        let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use types::metadata::ManifestAPI as _;
             let tid = target_id.parse::<types::target::TargetId>().map_err(to_py_val_err)?;
-            let data = proxy.fetch_submission_data(&tid).await.map_err(to_py_err)?;
+
+            // Resolve manifest URL from the target object (BCS, client-side)
+            let manifest_url = client.get_object(tid).await.ok().and_then(|obj| {
+                let target: types::target::TargetV1 = bcs::from_bytes(obj.data.contents()).ok()?;
+                Some(target.winning_data_manifest?.manifest.url().clone())
+            });
+
+            let data = if let Some(url) = manifest_url {
+                proxy
+                    .fetch_submission_data_direct(&tid, &url, |_, _| {})
+                    .await
+                    .map_err(to_py_err)?
+            } else {
+                proxy.fetch_submission_data(&tid).await.map_err(to_py_err)?
+            };
             Ok(Python::attach(|py| PyBytes::new(py, &data).unbind()))
         })
     }

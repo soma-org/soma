@@ -384,16 +384,23 @@ impl ModelCommand {
             ModelCommand::Download { model_id, output } => {
                 let client = context.get_client().await?;
 
-                // Get system state to create proxy client
+                // Get system state to create proxy client and find model manifest
                 let system_state = client
                     .get_latest_system_state()
                     .await
                     .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
 
-                // Verify model exists
-                if find_model(&system_state, &model_id).is_none() {
-                    bail!("Model {} not found", model_id);
-                }
+                let registry = system_state.model_registry();
+                let model = registry
+                    .models
+                    .get(&model_id)
+                    .ok_or_else(|| anyhow!("Model {} not found", model_id))?;
+
+                // Get the manifest URL for direct download
+                let manifest_url = {
+                    use types::metadata::ManifestAPI as _;
+                    model.manifest().map(|m| m.url().clone())
+                };
 
                 // Create proxy client from system state
                 let proxy_client = ProxyClient::from_system_state(&system_state)
@@ -407,15 +414,26 @@ impl ModelCommand {
                 let output_path =
                     output.unwrap_or_else(|| PathBuf::from(format!("{}.weights", model_id)));
 
-                // Download model weights with progress bar
+                // Download: try direct URL first, fall back to proxy
                 let pb = super::download_progress::create_progress_bar();
-                let data = proxy_client
-                    .fetch_model_with_progress(
-                        &model_id,
-                        super::download_progress::make_progress_callback(&pb),
-                    )
-                    .await
-                    .map_err(|e| anyhow!("Failed to download model: {}", e))?;
+                let data = if let Some(url) = &manifest_url {
+                    proxy_client
+                        .fetch_model_direct(
+                            &model_id,
+                            url,
+                            super::download_progress::make_progress_callback(&pb),
+                        )
+                        .await
+                        .map_err(|e| anyhow!("Failed to download model: {}", e))?
+                } else {
+                    proxy_client
+                        .fetch_model_with_progress(
+                            &model_id,
+                            super::download_progress::make_progress_callback(&pb),
+                        )
+                        .await
+                        .map_err(|e| anyhow!("Failed to download model: {}", e))?
+                };
                 pb.finish_and_clear();
 
                 // Write to file

@@ -3744,6 +3744,9 @@ pub struct Target {
     /// Bond amount held (in shannons, only present if filled)
     #[prost(uint64, optional, tag = "12")]
     pub bond_amount: ::core::option::Option<u64>,
+    /// Data URL from winning submission manifest (only present if filled)
+    #[prost(string, optional, tag = "13")]
+    pub data_url: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// A data submission to a target.
 #[non_exhaustive]

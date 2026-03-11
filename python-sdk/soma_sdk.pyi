@@ -21,6 +21,7 @@ class Target:
     bond_amount: int
     submitter: Optional[str]
     winning_model_id: Optional[str]
+    data_url: Optional[str]
 
 class ModelManifest:
     """Model manifest accepted by ``SomaClient.score()`` and returned by
@@ -425,9 +426,13 @@ class SomaClient:
     # -- Faucet (requires faucet_url) --
     async def request_faucet(self, address: str) -> FaucetResponse: ...
 
-    # -- Proxy Client (fetch via fullnode proxy) --
-    async def fetch_model(self, model_id: str) -> bytes: ...
-    async def fetch_submission_data(self, target_id: str) -> bytes: ...
+    # -- Data Download (direct URL with proxy fallback) --
+    async def fetch_model(self, model_id: str) -> bytes:
+        """Fetch model weights. Tries direct URL first, falls back to proxy."""
+        ...
+    async def fetch_submission_data(self, target_id: str) -> bytes:
+        """Fetch submission data. Tries direct URL first, falls back to proxy."""
+        ...
 
     # -- Epoch Helpers --
     async def wait_for_next_epoch(self, timeout: float = 120.0) -> int: ...

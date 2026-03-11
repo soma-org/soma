@@ -148,8 +148,10 @@ impl ProxyClientConfig {
 pub struct ProxyClient {
     /// List of validators with proxy addresses
     validators: Vec<ValidatorProxyInfo>,
-    /// HTTP client (with connection pooling)
+    /// HTTP client for proxy requests (HTTP/2 prior knowledge)
     http_client: reqwest::Client,
+    /// HTTP client for direct URL downloads (auto-negotiated HTTP version)
+    direct_http_client: reqwest::Client,
     /// Configuration
     config: ProxyClientConfig,
 }
@@ -167,11 +169,19 @@ impl ProxyClient {
         let http_client = reqwest::Client::builder()
             .timeout(config.max_timeout)
             .pool_max_idle_per_host(10)
-            .http2_prior_knowledge() // Use HTTP/2 for better performance
+            .http2_prior_knowledge() // Use HTTP/2 for validator proxies
             .build()
             .map_err(|e| ProxyError::ClientBuildError(e.to_string()))?;
 
-        Ok(Self { validators, http_client, config })
+        // Separate client for direct URL downloads — no HTTP/2 prior knowledge
+        // since source URLs (R2, S3, etc.) typically serve HTTP/1.1.
+        let direct_http_client = reqwest::Client::builder()
+            .timeout(config.max_timeout)
+            .pool_max_idle_per_host(10)
+            .build()
+            .map_err(|e| ProxyError::ClientBuildError(e.to_string()))?;
+
+        Ok(Self { validators, http_client, direct_http_client, config })
     }
 
     /// Create a proxy client from SystemState.
@@ -305,6 +315,60 @@ impl ProxyClient {
         .await
     }
 
+    // =====================================================================
+    // Direct URL download with proxy fallback
+    // =====================================================================
+
+    /// Try downloading directly from a URL first, falling back to the proxy path.
+    ///
+    /// This is the preferred download method when the source URL is known (e.g.,
+    /// from a target's `winning_data_manifest` or a model's manifest). Direct
+    /// download avoids the validator proxy hop and its potential stall points.
+    pub async fn fetch_url_with_proxy_fallback(
+        &self,
+        url: &Url,
+        proxy_path: &str,
+        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+    ) -> Result<Vec<u8>, ProxyError> {
+        // Try direct URL first (using auto-negotiated HTTP client, not HTTP/2-only)
+        info!("Attempting direct download from {}", url);
+        match self.fetch_direct_streaming(url, self.config.base_timeout, &mut on_progress).await {
+            Ok(data) => {
+                info!("Direct download succeeded: {} bytes from {}", data.len(), url);
+                return Ok(data);
+            }
+            Err(e) => {
+                warn!("Direct download from {} failed: {}, falling back to proxy", url, e);
+            }
+        }
+
+        // Fall back to proxy
+        self.fetch_with_retry_streaming(proxy_path, self.config.base_timeout, &mut on_progress)
+            .await
+    }
+
+    /// Fetch submission data: try direct URL first, fall back to proxy.
+    pub async fn fetch_submission_data_direct(
+        &self,
+        target_id: &TargetId,
+        url: &Url,
+        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+    ) -> Result<Vec<u8>, ProxyError> {
+        self.fetch_url_with_proxy_fallback(url, &format!("/data/{}", target_id), &mut on_progress)
+            .await
+    }
+
+    /// Fetch model weights: try direct URL first, fall back to proxy.
+    pub async fn fetch_model_direct(
+        &self,
+        model_id: &ModelId,
+        url: &Url,
+        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
+    ) -> Result<Vec<u8>, ProxyError> {
+        self.fetch_url_with_proxy_fallback(url, &format!("/model/{}", model_id), &mut on_progress)
+            .await
+    }
+
     /// Internal method to fetch with retry across validators.
     async fn fetch_with_retry(&self, path: &str) -> Result<Vec<u8>, ProxyError> {
         self.fetch_with_retry_and_timeout(path, self.config.base_timeout).await
@@ -417,7 +481,47 @@ impl ProxyClient {
         Err(ProxyError::AllValidatorsFailed { attempts, last_error })
     }
 
-    /// Fetch data from a specific URL with streaming progress.
+    /// Fetch data directly from a URL with streaming progress (auto HTTP version).
+    ///
+    /// Uses `direct_http_client` which negotiates HTTP version automatically,
+    /// allowing downloads from HTTP/1.1 hosts (R2, S3, etc.).
+    async fn fetch_direct_streaming(
+        &self,
+        url: &Url,
+        timeout: Duration,
+        on_progress: &mut (impl FnMut(u64, Option<u64>) + Send),
+    ) -> Result<Vec<u8>, ProxyError> {
+        let response = self
+            .direct_http_client
+            .get(url.as_str())
+            .timeout(timeout)
+            .send()
+            .await
+            .map_err(|e| ProxyError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ProxyError::ValidatorError(status.as_u16(), body));
+        }
+
+        let content_length = response.content_length();
+        let mut buffer = Vec::with_capacity(content_length.unwrap_or(0) as usize);
+        let mut downloaded = 0u64;
+
+        use futures::StreamExt as _;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result.map_err(|e| ProxyError::NetworkError(e.to_string()))?;
+            buffer.extend_from_slice(&chunk);
+            downloaded += chunk.len() as u64;
+            on_progress(downloaded, content_length);
+        }
+
+        Ok(buffer)
+    }
+
+    /// Fetch data from a specific URL with streaming progress (HTTP/2 for proxies).
     async fn fetch_from_url_streaming(
         &self,
         url: &Url,

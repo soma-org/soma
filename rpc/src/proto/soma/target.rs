@@ -3,6 +3,7 @@
 
 //! Target proto conversions and merge implementations.
 
+use types::metadata::ManifestAPI as _;
 use types::target::{TargetStatus, TargetV1 as DomainTarget};
 
 use super::*;
@@ -71,6 +72,11 @@ impl Merge<&DomainTarget> for Target {
         if mask.contains(Self::BOND_AMOUNT_FIELD.name) {
             self.bond_amount = Some(source.bond_amount);
         }
+
+        if mask.contains(Self::DATA_URL_FIELD.name) {
+            self.data_url =
+                source.winning_data_manifest.as_ref().map(|m| m.manifest.url().to_string());
+        }
     }
 }
 
@@ -124,6 +130,10 @@ impl Merge<&Target> for Target {
 
         if mask.contains(Self::BOND_AMOUNT_FIELD.name) {
             self.bond_amount = source.bond_amount;
+        }
+
+        if mask.contains(Self::DATA_URL_FIELD.name) {
+            self.data_url = source.data_url.clone();
         }
     }
 }
