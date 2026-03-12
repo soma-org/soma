@@ -10,6 +10,7 @@ pub mod cp_sequence_numbers;
 pub mod epochs;
 pub mod objects;
 pub mod schema;
+pub mod soma;
 pub mod transactions;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");

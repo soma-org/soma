@@ -2,6 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod temp;
+
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::time::Duration;

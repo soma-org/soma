@@ -9,6 +9,8 @@ use indexer_framework::postgres::Db;
 use indexer_framework::pipeline::concurrent::ConcurrentConfig;
 
 pub mod handlers;
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 /// Register all indexer pipelines on the given indexer instance.
 ///
@@ -90,9 +92,25 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>) -> Result<()> {
         .context("Failed to register obj_info pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::coin_balance_buckets::CoinBalanceBuckets, config)
+        .concurrent_pipeline(handlers::coin_balance_buckets::CoinBalanceBuckets, config.clone())
         .await
         .context("Failed to register coin_balance_buckets pipeline")?;
+
+    // Soma-specific pipelines
+    indexer
+        .concurrent_pipeline(handlers::soma_targets::SomaTargets, config.clone())
+        .await
+        .context("Failed to register soma_targets pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_models::SomaModels, config.clone())
+        .await
+        .context("Failed to register soma_models pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_rewards::SomaRewards, config)
+        .await
+        .context("Failed to register soma_rewards pipeline")?;
 
     Ok(())
 }

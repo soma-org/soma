@@ -36,6 +36,9 @@ members = [
   "indexer-framework",
   "indexer-alt-schema",
   "indexer-alt",
+  "indexer-kvstore",
+  "soma-graphql",
+  "indexer-e2e-tests",
 ]
 
 
@@ -119,6 +122,8 @@ indexer-pg-db = { path = "indexer-pg-db" }
 indexer-framework = { path = "indexer-framework" }
 indexer-alt-schema = { path = "indexer-alt-schema" }
 indexer-alt = { path = "indexer-alt" }
+indexer-kvstore = { path = "indexer-kvstore" }
+soma-graphql = { path = "soma-graphql" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }
@@ -282,6 +287,11 @@ http = "1"
 http-body = "1"
 http-body-util = "0.1"
 
+async-graphql = { version = "7", features = ["dataloader", "tracing"] }
+async-graphql-axum = "7"
+governor = "0.8"
+gcp_auth = "0.12"
+toml = "0.8"
 pin-project-lite = "0.2.16"
 socket2 = { version = "0.5", features = ["all"] }
 axum-extra = { version = "0.12.5", features = ["query"] }

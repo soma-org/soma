@@ -167,6 +167,46 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_models (model_id, epoch) {
+        model_id -> Bytea,
+        epoch -> Int8,
+        status -> Text,
+        owner -> Bytea,
+        architecture_version -> Int8,
+        commit_epoch -> Int8,
+        stake -> Int8,
+        commission_rate -> Int8,
+        has_embedding -> Bool,
+        state_bcs -> Bytea,
+    }
+}
+
+diesel::table! {
+    soma_rewards (target_id) {
+        target_id -> Bytea,
+        cp_sequence_number -> Int8,
+        epoch -> Int8,
+        tx_digest -> Bytea,
+        balance_changes_bcs -> Bytea,
+    }
+}
+
+diesel::table! {
+    soma_targets (target_id, cp_sequence_number) {
+        target_id -> Bytea,
+        cp_sequence_number -> Int8,
+        epoch -> Int8,
+        status -> Text,
+        submitter -> Nullable<Bytea>,
+        winning_model_id -> Nullable<Bytea>,
+        reward_pool -> Int8,
+        bond_amount -> Int8,
+        report_count -> Int4,
+        state_bcs -> Bytea,
+    }
+}
+
+diesel::table! {
     watermarks (pipeline) {
         pipeline -> Text,
         epoch_hi_inclusive -> Int8,
@@ -191,6 +231,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     obj_info,
     obj_info_deletion_reference,
     obj_versions,
+    soma_models,
+    soma_rewards,
+    soma_targets,
     tx_affected_addresses,
     tx_affected_objects,
     tx_balance_changes,

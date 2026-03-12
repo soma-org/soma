@@ -183,7 +183,6 @@ async fn test_checkpoint_transactions_included() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    // Use AddStake which is the most reliable test workload
     let gas = test_cluster
         .wallet
         .get_one_gas_object_owned_by_address(sender)
@@ -192,10 +191,10 @@ async fn test_checkpoint_transactions_included() {
         .unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
+        TransactionKind::TransferCoin {
             coin: gas,
             amount: Some(1000),
-            validator: test_cluster.swarm.validator_addresses()[0],
+            recipient,
         },
         sender,
         vec![gas],
@@ -205,10 +204,11 @@ async fn test_checkpoint_transactions_included() {
     assert!(response.effects.status().is_ok());
     let expected_digest = *response.effects.transaction_digest();
 
-    // Poll checkpoint files until we find the transaction (up to 30 seconds)
+    // Poll checkpoint files until we find the transaction (up to 60 seconds).
+    // Checkpoint production + execution by the fullnode can take time in msim.
     let mut found_tx = false;
     let start = tokio::time::Instant::now();
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(60);
 
     while start.elapsed() < timeout && !found_tx {
         if let Ok(entries) = std::fs::read_dir(&ingestion_path) {

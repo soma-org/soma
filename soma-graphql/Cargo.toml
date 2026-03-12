@@ -1,0 +1,67 @@
+[package]
+name = "soma-graphql"
+version.workspace = true
+edition = "2021"
+
+[lib]
+name = "soma_graphql"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "soma-graphql"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace internal
+indexer-pg-db = { workspace = true }
+indexer-alt-schema = { workspace = true }
+
+# async-graphql
+async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
+
+# Web
+axum = { workspace = true }
+tower-http = { workspace = true }
+http = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Database
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bcs = { workspace = true }
+base64 = { workspace = true }
+bs58 = { workspace = true }
+hex = { workspace = true }
+
+# CLI / Config
+clap = { workspace = true }
+url = { workspace = true }
+toml = { workspace = true }
+
+# Utilities
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+indexer-pg-db = { workspace = true }
+indexer-alt-schema = { workspace = true }
+indexer-alt = { workspace = true }
+indexer-framework = { workspace = true }
+types = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+serde_json = { workspace = true }

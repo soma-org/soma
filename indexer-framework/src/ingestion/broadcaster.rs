@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use anyhow::Context;
 use futures::Stream;
-use futures::future::try_join_all;
 use soma_futures::service::Service;
 use soma_futures::stream::Break;
 use soma_futures::stream::TrySpawnStreamExt;
@@ -61,8 +60,6 @@ where
 
         let buffer_size = config.checkpoint_buffer_size as u64;
 
-        let subscribers = Arc::new(subscribers);
-
         // Track subscriber watermarks
         let mut subscribers_hi = HashMap::<&'static str, u64>::new();
 
@@ -71,7 +68,10 @@ where
         let (ingest_hi_tx, ingest_hi_rx) = watch::channel(initial_hi.saturating_add(buffer_size));
         let ingest_hi_rx = next_sequential_checkpoint.is_some().then_some(&ingest_hi_rx);
 
-        // Spawn a broadcaster task for the full range.
+        // Move subscribers directly into the ingestion task so that subscriber channels
+        // close as soon as all checkpoints have been broadcast. Previously, wrapping in
+        // Arc kept the original senders alive in this scope, which prevented processors
+        // (especially 0-row pipelines) from detecting stream closure promptly.
         let ingest_guard = ingest_and_broadcast_range(
             start_cp,
             end_cp,
@@ -79,7 +79,7 @@ where
             config.ingest_concurrency.clone(),
             ingest_hi_rx.cloned(),
             client,
-            subscribers.clone(),
+            subscribers,
             metrics.clone(),
         );
 
@@ -153,7 +153,7 @@ fn ingest_and_broadcast_range(
     ingest_concurrency: ConcurrencyConfig,
     ingest_hi_rx: Option<watch::Receiver<u64>>,
     client: IngestionClient,
-    subscribers: Arc<Vec<mpsc::Sender<Arc<Checkpoint>>>>,
+    subscribers: Vec<mpsc::Sender<Arc<Checkpoint>>>,
     metrics: Arc<IngestionMetrics>,
 ) -> TaskGuard<Result<(), Break<super::error::Error>>> {
     TaskGuard::new(tokio::spawn(async move {
@@ -169,7 +169,7 @@ fn ingest_and_broadcast_range(
                         Ok(checkpoint)
                     }
                 },
-                Arc::unwrap_or_clone(subscribers),
+                subscribers,
                 move |stats| {
                     report_metrics
                         .ingestion_concurrency_limit
@@ -183,13 +183,3 @@ fn ingest_and_broadcast_range(
     }))
 }
 
-/// Send a checkpoint to all subscribers.
-/// Returns an error if any subscriber's channel is closed.
-#[allow(dead_code)]
-async fn send_checkpoint(
-    checkpoint: Arc<Checkpoint>,
-    subscribers: &[mpsc::Sender<Arc<Checkpoint>>],
-) -> Result<Vec<()>, mpsc::error::SendError<Arc<Checkpoint>>> {
-    let futures = subscribers.iter().map(|s| s.send(checkpoint.clone()));
-    try_join_all(futures).await
-}
