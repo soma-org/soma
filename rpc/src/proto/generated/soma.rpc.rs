@@ -3609,10 +3609,11 @@ pub struct PoolTokenExchangeRate {
     pub pool_token_amount: ::core::option::Option<u64>,
 }
 /// A registered model in the data submission system.
-/// Status derived from fields (same pattern as validators):
-///    Committed: decryption_key absent, staking_pool.deactivation_epoch absent
-///    Active:    decryption_key present, staking_pool.deactivation_epoch absent
-///    Inactive:  staking_pool.deactivation_epoch present
+/// The `state` field indicates the lifecycle phase:
+///    "created":  on-chain stake + commission set, no weights committed yet
+///    "pending":  weights committed, awaiting reveal in next epoch
+///    "active":   fully revealed, eligible for target selection
+///    "inactive": deactivated or slashed, pool kept for withdrawals
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Model {
@@ -3634,10 +3635,10 @@ pub struct Model {
     pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(uint64, optional, tag = "7")]
     pub commit_epoch: ::core::option::Option<u64>,
-    /// 32-byte AES-256 key (absent while committed)
+    /// 32-byte AES-256 key (set at reveal)
     #[prost(bytes = "bytes", optional, tag = "8")]
     pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
-    /// Model embedding (absent while committed)
+    /// Model embedding (set at reveal)
     #[prost(float, repeated, tag = "9")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
     #[prost(message, optional, tag = "10")]
@@ -3648,20 +3649,20 @@ pub struct Model {
     pub next_epoch_commission_rate: ::core::option::Option<u64>,
     #[prost(message, optional, tag = "13")]
     pub pending_update: ::core::option::Option<PendingModelUpdate>,
+    /// "created" | "pending" | "active" | "inactive"
+    #[prost(string, optional, tag = "14")]
+    pub state: ::core::option::Option<::prost::alloc::string::String>,
+    /// epoch when CreateModel was executed
+    #[prost(uint64, optional, tag = "15")]
+    pub create_epoch: ::core::option::Option<u64>,
 }
 /// Registry of all models in the data submission system.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModelRegistry {
-    /// ModelId (ObjectID hex) -> Model
-    #[prost(btree_map = "string, message", tag = "1")]
-    pub active_models: ::prost::alloc::collections::BTreeMap<
-        ::prost::alloc::string::String,
-        Model,
-    >,
-    /// ModelId (ObjectID hex) -> Model
-    #[prost(btree_map = "string, message", tag = "2")]
-    pub pending_models: ::prost::alloc::collections::BTreeMap<
+    /// ModelId (ObjectID hex) -> Model (all states)
+    #[prost(btree_map = "string, message", tag = "7")]
+    pub models: ::prost::alloc::collections::BTreeMap<
         ::prost::alloc::string::String,
         Model,
     >,
@@ -3670,12 +3671,6 @@ pub struct ModelRegistry {
     pub staking_pool_mappings: ::prost::alloc::collections::BTreeMap<
         ::prost::alloc::string::String,
         ::prost::alloc::string::String,
-    >,
-    /// ModelId (ObjectID hex) -> Model
-    #[prost(btree_map = "string, message", tag = "4")]
-    pub inactive_models: ::prost::alloc::collections::BTreeMap<
-        ::prost::alloc::string::String,
-        Model,
     >,
     #[prost(uint64, optional, tag = "5")]
     pub total_model_stake: ::core::option::Option<u64>,
@@ -3749,6 +3744,9 @@ pub struct Target {
     /// Bond amount held (in shannons, only present if filled)
     #[prost(uint64, optional, tag = "12")]
     pub bond_amount: ::core::option::Option<u64>,
+    /// Data URL from winning submission manifest (only present if filled)
+    #[prost(string, optional, tag = "13")]
+    pub data_url: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// A data submission to a target.
 #[non_exhaustive]
@@ -3838,7 +3836,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3882,14 +3880,14 @@ pub mod transaction_kind {
         #[prost(message, tag = "14")]
         WithdrawStake(super::WithdrawStake),
         /// Model transactions
+        #[prost(message, tag = "33")]
+        CreateModel(super::CreateModel),
         #[prost(message, tag = "15")]
         CommitModel(super::CommitModel),
         #[prost(message, tag = "16")]
         RevealModel(super::RevealModel),
-        #[prost(message, tag = "17")]
-        CommitModelUpdate(super::CommitModelUpdate),
-        #[prost(message, tag = "18")]
-        RevealModelUpdate(super::RevealModelUpdate),
+        /// Field 17 was CommitModelUpdate (removed)
+        /// Field 18 was RevealModelUpdate (removed)
         #[prost(message, tag = "19")]
         AddStakeToModel(super::AddStakeToModel),
         #[prost(message, tag = "20")]
@@ -4078,7 +4076,7 @@ pub struct ManifestV1 {
     pub metadata: ::core::option::Option<Metadata>,
 }
 /// Model weights manifest: URL + metadata + decryption key.
-/// Used by RevealModel and RevealModelUpdate transactions, and by Model in system state.
+/// Used by RevealModel transaction and by Model in system state.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModelWeightsManifest {
@@ -4106,24 +4104,28 @@ pub struct PendingModelUpdate {
     pub commit_epoch: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CommitModel {
-    #[prost(message, optional, tag = "1")]
-    pub manifest: ::core::option::Option<Manifest>,
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct CreateModel {
+    #[prost(uint64, optional, tag = "1")]
+    pub stake_amount: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub commission_rate: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "3")]
     pub architecture_version: ::core::option::Option<u64>,
-    /// 32-byte hash of BCS-serialized embedding
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommitModel {
+    #[prost(string, optional, tag = "1")]
+    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "2")]
+    pub manifest: ::core::option::Option<Manifest>,
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "4")]
     pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    /// 32-byte hash of decryption key
     #[prost(bytes = "bytes", optional, tag = "5")]
     pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint64, optional, tag = "6")]
-    pub stake_amount: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "7")]
-    pub commission_rate: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4134,34 +4136,6 @@ pub struct RevealModel {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
     /// Full model embedding revealed here
-    #[prost(float, repeated, tag = "3")]
-    pub embedding: ::prost::alloc::vec::Vec<f32>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CommitModelUpdate {
-    #[prost(string, optional, tag = "1")]
-    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "2")]
-    pub manifest: ::core::option::Option<Manifest>,
-    #[prost(bytes = "bytes", optional, tag = "3")]
-    pub weights_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    /// 32-byte hash of BCS-serialized embedding
-    #[prost(bytes = "bytes", optional, tag = "4")]
-    pub embedding_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-    /// 32-byte hash of decryption key
-    #[prost(bytes = "bytes", optional, tag = "5")]
-    pub decryption_key_commitment: ::core::option::Option<::prost::bytes::Bytes>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RevealModelUpdate {
-    #[prost(string, optional, tag = "1")]
-    pub model_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// 32-byte AES-256 key
-    #[prost(bytes = "bytes", optional, tag = "2")]
-    pub decryption_key: ::core::option::Option<::prost::bytes::Bytes>,
-    /// Full updated model embedding
     #[prost(float, repeated, tag = "3")]
     pub embedding: ::prost::alloc::vec::Vec<f32>,
 }

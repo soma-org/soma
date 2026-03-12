@@ -354,6 +354,15 @@ impl Display for TargetInfoOutput {
                 ),
             ]);
         }
+        if let Some(manifest) = &t.winning_data_manifest {
+            use types::metadata::ManifestAPI as _;
+            use types::metadata::MetadataAPI as _;
+            builder.push_record(["Data URL", manifest.manifest.url().as_str()]);
+            builder.push_record([
+                "Data Size",
+                &format!("{} bytes", manifest.manifest.metadata().size()),
+            ]);
+        }
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());

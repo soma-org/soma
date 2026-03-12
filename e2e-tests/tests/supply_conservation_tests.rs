@@ -44,15 +44,15 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry().active_models.values() {
+    for (_, m) in ss.model_registry().active_models() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry().pending_models.values() {
+    for (_, m) in ss.model_registry().pending_models() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }
-    for m in ss.model_registry().inactive_models.values() {
+    for (_, m) in ss.model_registry().inactive_models() {
         staking += m.staking_pool.soma_balance as u128;
         staking += m.staking_pool.pending_stake as u128;
     }

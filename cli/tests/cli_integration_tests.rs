@@ -199,7 +199,6 @@ fn test_model_info_display() {
             status: ModelStatus::Active,
             architecture_version: 1,
             commission_rate: 500,
-            commit_epoch: 10,
             stake_balance: 1_000_000_000,
             has_pending_update: false,
         },

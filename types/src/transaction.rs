@@ -107,10 +107,9 @@ pub enum TransactionKind {
     },
 
     // Model transactions
+    CreateModel(CreateModelArgs),
     CommitModel(CommitModelArgs),
     RevealModel(RevealModelArgs),
-    CommitModelUpdate(CommitModelUpdateArgs),
-    RevealModelUpdate(RevealModelUpdateArgs),
     AddStakeToModel {
         model_id: ModelId,
         coin_ref: ObjectRef,
@@ -222,43 +221,35 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
+/// CreateModel: economic setup only (stake, commission, architecture).
+/// Returns model_id (derived from tx_digest). Model enters Created state.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct CreateModelArgs {
+    pub stake_amount: u64,
+    pub commission_rate: u64,
+    pub architecture_version: ArchitectureVersion,
+}
+
+/// CommitModel (unified): works on Created models (initial) and Active models (update).
+/// On Created: transitions to Pending, sets commit_epoch.
+/// On Active: sets/overwrites pending_update.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct CommitModelArgs {
+    pub model_id: ModelId,
     pub manifest: Manifest,
     pub weights_commitment: ModelWeightsCommitment,
-    pub architecture_version: ArchitectureVersion,
     /// Commitment (hash) of the model embedding for stake-weighted KNN selection.
     pub embedding_commitment: EmbeddingCommitment,
     /// Commitment (hash) of the decryption key, verified at reveal time.
     pub decryption_key_commitment: DecryptionKeyCommitment,
-    pub stake_amount: u64,
-    pub commission_rate: u64,
 }
 
+/// RevealModel (unified): works on Pending models (initial) and Active models with pending_update.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct RevealModelArgs {
     pub model_id: ModelId,
     pub decryption_key: DecryptionKey,
     /// Full model embedding, revealed after commit.
-    pub embedding: SomaTensor,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CommitModelUpdateArgs {
-    pub model_id: ModelId,
-    pub manifest: Manifest,
-    pub weights_commitment: ModelWeightsCommitment,
-    /// Commitment (hash) of the updated model embedding.
-    pub embedding_commitment: EmbeddingCommitment,
-    /// Commitment (hash) of the decryption key, verified at reveal time.
-    pub decryption_key_commitment: DecryptionKeyCommitment,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct RevealModelUpdateArgs {
-    pub model_id: ModelId,
-    pub decryption_key: DecryptionKey,
-    /// Full updated model embedding, revealed after commit.
     pub embedding: SomaTensor,
 }
 
@@ -328,10 +319,9 @@ impl TransactionKind {
     pub fn is_model_tx(&self) -> bool {
         matches!(
             self,
-            TransactionKind::CommitModel(_)
+            TransactionKind::CreateModel(_)
+                | TransactionKind::CommitModel(_)
                 | TransactionKind::RevealModel(_)
-                | TransactionKind::CommitModelUpdate(_)
-                | TransactionKind::RevealModelUpdate(_)
                 | TransactionKind::AddStakeToModel { .. }
                 | TransactionKind::SetModelCommissionRate { .. }
                 | TransactionKind::DeactivateModel { .. }

@@ -156,10 +156,11 @@ message PoolTokenExchangeRate {
 }
 
 // A registered model in the data submission system.
-// Status derived from fields (same pattern as validators):
-//   Committed: decryption_key absent, staking_pool.deactivation_epoch absent
-//   Active:    decryption_key present, staking_pool.deactivation_epoch absent
-//   Inactive:  staking_pool.deactivation_epoch present
+// The `state` field indicates the lifecycle phase:
+//   "created":  on-chain stake + commission set, no weights committed yet
+//   "pending":  weights committed, awaiting reveal in next epoch
+//   "active":   fully revealed, eligible for target selection
+//   "inactive": deactivated or slashed, pool kept for withdrawals
 message Model {
   optional string owner = 1;
   optional uint64 architecture_version = 2;
@@ -168,20 +169,20 @@ message Model {
   optional bytes embedding_commitment = 5;                // 32-byte hash of BCS-serialized embedding
   optional bytes decryption_key_commitment = 6;           // 32-byte hash of decryption key
   optional uint64 commit_epoch = 7;
-  optional bytes decryption_key = 8;                      // 32-byte AES-256 key (absent while committed)
-  repeated float embedding = 9;                           // Model embedding (absent while committed)
+  optional bytes decryption_key = 8;                      // 32-byte AES-256 key (set at reveal)
+  repeated float embedding = 9;                           // Model embedding (set at reveal)
   optional StakingPool staking_pool = 10;
   optional uint64 commission_rate = 11;
   optional uint64 next_epoch_commission_rate = 12;
   optional PendingModelUpdate pending_update = 13;
+  optional string state = 14;                             // "created" | "pending" | "active" | "inactive"
+  optional uint64 create_epoch = 15;                      // epoch when CreateModel was executed
 }
 
 // Registry of all models in the data submission system.
 message ModelRegistry {
-  map<string, Model> active_models = 1;              // ModelId (ObjectID hex) -> Model
-  map<string, Model> pending_models = 2;             // ModelId (ObjectID hex) -> Model
+  map<string, Model> models = 7;                     // ModelId (ObjectID hex) -> Model (all states)
   map<string, string> staking_pool_mappings = 3;     // pool ObjectID hex -> ModelId hex
-  map<string, Model> inactive_models = 4;            // ModelId (ObjectID hex) -> Model
   optional uint64 total_model_stake = 5;
   map<string, ReporterSet> model_report_records = 6; // ModelId hex -> reporter addresses
 }
@@ -244,6 +245,9 @@ message Target {
 
   // Bond amount held (in shannons, only present if filled)
   optional uint64 bond_amount = 12;
+
+  // Data URL from winning submission manifest (only present if filled)
+  optional string data_url = 13;
 }
 
 // A data submission to a target.

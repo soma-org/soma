@@ -342,9 +342,9 @@ impl AuditService {
         let state: types::system_state::SystemState =
             bcs::from_bytes(state_object.as_inner().data.contents()).map_err(|_| ())?;
 
-        let model = state.model_registry().active_models.get(model_id).ok_or(())?;
+        let model = state.model_registry().models.get(model_id).ok_or(())?;
 
-        Ok(model.manifest.clone())
+        Ok(model.manifest().ok_or(())?.clone())
     }
 
     /// Verify fraud by calling CompetitionAPI and checking results against claims.

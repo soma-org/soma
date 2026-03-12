@@ -12,14 +12,15 @@ use types::base::SomaAddress;
 use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
 use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
+use types::effects::TransactionEffectsAPI;
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
 use types::object::{ObjectID, ObjectRef, Version};
 use types::submission::SubmissionManifest;
 use types::tensor::SomaTensor;
 use types::transaction::{
-    AddValidatorArgs, ClaimRewardsArgs, CommitModelArgs, CommitModelUpdateArgs,
-    RemoveValidatorArgs, RevealModelArgs, RevealModelUpdateArgs, SubmitDataArgs, Transaction,
-    TransactionData, TransactionKind, UpdateValidatorMetadataArgs,
+    AddValidatorArgs, ClaimRewardsArgs, CommitModelArgs, CreateModelArgs, RemoveValidatorArgs,
+    RevealModelArgs, SubmitDataArgs, Transaction, TransactionData, TransactionKind,
+    UpdateValidatorMetadataArgs,
 };
 
 // ---------------------------------------------------------------------------
@@ -201,6 +202,7 @@ struct TargetObj {
     bond_amount: u64,
     submitter: Option<String>,
     winning_model_id: Option<String>,
+    data_url: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -255,6 +257,7 @@ fn proto_target_to_obj(t: rpc::proto::soma::Target) -> TargetObj {
         bond_amount: t.bond_amount.unwrap_or(0),
         submitter: hex_id(t.submitter),
         winning_model_id: hex_id(t.winning_model_id),
+        data_url: t.data_url,
     }
 }
 
@@ -838,7 +841,7 @@ impl PySomaClient {
             }
             let effective_mask = read_mask.unwrap_or_else(|| {
                 "id,status,generation_epoch,reward_pool,embedding,model_ids,\
-                 distance_threshold,submitter,winning_model_id,bond_amount"
+                 distance_threshold,submitter,winning_model_id,bond_amount,data_url"
                     .to_string()
             });
             request.read_mask = Some(rpc::utils::field::FieldMask {
@@ -891,20 +894,18 @@ impl PySomaClient {
             let registry = state.model_registry();
 
             let mut results: Vec<Py<PyAny>> = Vec::new();
-            for (model_id, model) in &registry.active_models {
-                if let Some(ref emb) = model.embedding {
-                    let obj = ActiveModelObj {
-                        model_id: model_id.to_string(),
-                        owner: model.owner.to_string(),
-                        embedding: emb.to_vec(),
-                        stake: sdk::crypto_utils::to_soma(model.stake()),
-                        commission_rate: model.commission_rate,
-                        next_epoch_commission_rate: model.next_epoch_commission_rate,
-                        commit_epoch: model.commit_epoch,
-                        has_pending_update: model.has_pending_update(),
-                    };
-                    results.push(to_py_obj(&obj)?);
-                }
+            for (model_id, model) in registry.active_models() {
+                let obj = ActiveModelObj {
+                    model_id: model_id.to_string(),
+                    owner: model.owner.to_string(),
+                    embedding: model.embedding.to_vec(),
+                    stake: sdk::crypto_utils::to_soma(model.staking_pool.soma_balance),
+                    commission_rate: model.commission_rate,
+                    next_epoch_commission_rate: model.next_epoch_commission_rate,
+                    commit_epoch: 0, // Active models don't have commit_epoch
+                    has_pending_update: model.pending_update.is_some(),
+                };
+                results.push(to_py_obj(&obj)?);
             }
             Ok(results)
         })
@@ -935,19 +936,17 @@ impl PySomaClient {
             let mut results: Vec<Py<PyAny>> = Vec::new();
             for id_str in &model_ids {
                 let id = id_str.parse::<ObjectID>().map_err(to_py_val_err)?;
-                let model =
-                    registry.active_models.get(&id).or_else(|| registry.inactive_models.get(&id));
+                let model = registry.models.get(&id);
                 if let Some(model) = model {
-                    let obj = ManifestObj {
-                        url: model.manifest.url().to_string(),
-                        checksum: Base58::encode(model.manifest.metadata().checksum().as_ref()),
-                        size: model.manifest.metadata().size(),
-                        decryption_key: model
-                            .decryption_key
-                            .as_ref()
-                            .map(|k| Base58::encode(k.as_bytes())),
-                    };
-                    results.push(to_py_obj(&obj)?);
+                    if let (Some(manifest), dk) = (model.manifest(), model.decryption_key()) {
+                        let obj = ManifestObj {
+                            url: manifest.url().to_string(),
+                            checksum: Base58::encode(manifest.metadata().checksum().as_ref()),
+                            size: manifest.metadata().size(),
+                            decryption_key: dk.map(|k| Base58::encode(k.as_bytes())),
+                        };
+                        results.push(to_py_obj(&obj)?);
+                    }
                 }
             }
             Ok(results)
@@ -1102,26 +1101,57 @@ impl PySomaClient {
     // Proxy client methods (fetch model/data via fullnode proxy)
     // -------------------------------------------------------------------
 
-    /// Fetch model weights via the fullnode proxy.
+    /// Fetch model weights. Resolves the manifest URL via get_object, tries
+    /// direct download first, falls back to proxy.
     fn fetch_model<'py>(&self, py: Python<'py>, model_id: String) -> PyResult<Bound<'py, PyAny>> {
         let proxy = self.proxy_client.clone();
+        let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use types::metadata::ManifestAPI as _;
             let mid = model_id.parse::<types::model::ModelId>().map_err(to_py_val_err)?;
-            let data = proxy.fetch_model(&mid).await.map_err(to_py_err)?;
+
+            // Resolve manifest URL from system state model registry
+            let manifest_url = client.get_latest_system_state().await.ok().and_then(|state| {
+                let model = state.model_registry().models.get(&mid)?.clone();
+                Some(model.manifest()?.url().clone())
+            });
+
+            let data = if let Some(url) = manifest_url {
+                proxy.fetch_model_direct(&mid, &url, |_, _| {}).await.map_err(to_py_err)?
+            } else {
+                proxy.fetch_model(&mid).await.map_err(to_py_err)?
+            };
             Ok(Python::attach(|py| PyBytes::new(py, &data).unbind()))
         })
     }
 
-    /// Fetch submission data via the fullnode proxy.
+    /// Fetch submission data. Resolves the manifest URL via get_object, tries
+    /// direct download first, falls back to proxy.
     fn fetch_submission_data<'py>(
         &self,
         py: Python<'py>,
         target_id: String,
     ) -> PyResult<Bound<'py, PyAny>> {
         let proxy = self.proxy_client.clone();
+        let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            use types::metadata::ManifestAPI as _;
             let tid = target_id.parse::<types::target::TargetId>().map_err(to_py_val_err)?;
-            let data = proxy.fetch_submission_data(&tid).await.map_err(to_py_err)?;
+
+            // Resolve manifest URL from the target object (BCS, client-side)
+            let manifest_url = client.get_object(tid).await.ok().and_then(|obj| {
+                let target: types::target::TargetV1 = bcs::from_bytes(obj.data.contents()).ok()?;
+                Some(target.winning_data_manifest?.manifest.url().clone())
+            });
+
+            let data = if let Some(url) = manifest_url {
+                proxy
+                    .fetch_submission_data_direct(&tid, &url, |_, _| {})
+                    .await
+                    .map_err(to_py_err)?
+            } else {
+                proxy.fetch_submission_data(&tid).await.map_err(to_py_err)?
+            };
             Ok(Python::attach(|py| PyBytes::new(py, &data).unbind()))
         })
     }
@@ -1201,23 +1231,68 @@ impl PySomaClient {
     // -------------------------------------------------------------------
 
     /// Commit a model: computes manifest, commitments, signs, and executes.
-    /// Returns the model_id as a hex string.
+    /// Create a new model: sets up economic parameters (stake, commission).
+    /// Returns the model_id as a string.
     /// `stake_amount` is in SOMA (e.g. `5.0`). If omitted, uses the network's minimum model stake.
-    #[pyo3(signature = (signer, weights_url, encrypted_weights, decryption_key, embedding, commission_rate, stake_amount=None))]
-    fn commit_model<'py>(
+    #[pyo3(signature = (signer, commission_rate, stake_amount=None))]
+    fn create_model<'py>(
         &self,
         py: Python<'py>,
         signer: &PyKeypair,
-        weights_url: String,
-        encrypted_weights: &[u8],
-        decryption_key: String,
-        embedding: Vec<f32>,
         commission_rate: u64,
         stake_amount: Option<f64>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         let kp = signer.inner.copy();
         let stake_shannons = stake_amount.map(sdk::crypto_utils::to_shannons);
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let architecture_version =
+                client.get_architecture_version().await.map_err(to_py_err)?;
+
+            let final_stake = match stake_shannons {
+                Some(s) => s,
+                None => {
+                    let state = client.get_latest_system_state().await.map_err(to_py_err)?;
+                    state.parameters().model_min_stake
+                }
+            };
+
+            let kind = TransactionKind::CreateModel(CreateModelArgs {
+                stake_amount: final_stake,
+                commission_rate,
+                architecture_version,
+            });
+            let effects = client
+                .sign_and_execute_with_retry(&kp, sender, kind, "CreateModel")
+                .await
+                .map_err(to_py_err)?;
+
+            // Derive model_id deterministically from the transaction digest.
+            // In execute_create_model, model_id is the first ObjectID::derive_id call
+            // (creation_num = 0).
+            let tx_digest = effects.transaction_digest_owned();
+            let model_id = ObjectID::derive_id(tx_digest, 0);
+            Ok(model_id.to_string())
+        })
+    }
+
+    /// Commit model weights (unified): works on Created (initial) and Active (update) models.
+    #[pyo3(signature = (signer, model_id, weights_url, encrypted_weights, decryption_key, embedding))]
+    fn commit_model<'py>(
+        &self,
+        py: Python<'py>,
+        signer: &PyKeypair,
+        model_id: String,
+        weights_url: String,
+        encrypted_weights: &[u8],
+        decryption_key: String,
+        embedding: Vec<f32>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        let model = parse_object_id(&model_id)?;
 
         let checksum_base58 = sdk::crypto_utils::commitment_base58(encrypted_weights);
         let weights_size = encrypted_weights.len();
@@ -1234,25 +1309,12 @@ impl PySomaClient {
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
-            let architecture_version =
-                client.get_architecture_version().await.map_err(to_py_err)?;
-
-            let final_stake = match stake_shannons {
-                Some(s) => s,
-                None => {
-                    let state = client.get_latest_system_state().await.map_err(to_py_err)?;
-                    state.parameters().model_min_stake
-                }
-            };
-
             let kind = TransactionKind::CommitModel(CommitModelArgs {
+                model_id: model,
                 manifest,
                 weights_commitment: ModelWeightsCommitment::new(wt_commitment),
                 embedding_commitment: EmbeddingCommitment::new(emb_commitment),
                 decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
-                architecture_version,
-                stake_amount: final_stake,
-                commission_rate,
             });
             client
                 .sign_and_execute_with_retry(&kp, sender, kind, "CommitModel")
@@ -1323,20 +1385,13 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
 
-            // Auto-fetch bond coin
-            let bond_coin = {
-                use futures::TryStreamExt as _;
-                let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-                request.owner = Some(sender.to_string());
-                request.page_size = Some(1);
-                request.object_type = Some(rpc::types::ObjectType::Coin.into());
-                let stream = client.list_owned_objects(request).await;
-                tokio::pin!(stream);
-                let obj = stream.try_next().await.map_err(to_py_err)?.ok_or_else(|| {
-                    PyRuntimeError::new_err(format!("No bond coin found for address {}", sender))
-                })?;
-                obj.compute_object_reference()
-            };
+            // Auto-fetch bond coin (richest available).
+            // On lock conflict the retry loop in sign_and_execute_with_retry
+            // will re-select a different coin automatically.
+            let bond_coin = client
+                .select_coin_excluding(sender, &Default::default())
+                .await
+                .map_err(to_py_err)?;
 
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
@@ -1552,80 +1607,6 @@ impl PySomaClient {
     // -------------------------------------------------------------------
     // High-level: Model Management
     // -------------------------------------------------------------------
-
-    /// Commit a model update: computes manifest and commitments, signs, and executes.
-    fn commit_model_update<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        model_id: String,
-        weights_url: String,
-        encrypted_weights: &[u8],
-        decryption_key: String,
-        embedding: Vec<f32>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let model = parse_object_id(&model_id)?;
-
-        let checksum_base58 = sdk::crypto_utils::commitment_base58(encrypted_weights);
-        let weights_size = encrypted_weights.len();
-        let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
-        let wt_commitment = sdk::crypto_utils::commitment(encrypted_weights);
-
-        let embedding_tensor = parse_embedding_vec(embedding)?;
-        let emb_bytes = bcs::to_bytes(&embedding_tensor)
-            .map_err(|e| PyValueError::new_err(format!("BCS encode embedding: {}", e)))?;
-        let emb_commitment = sdk::crypto_utils::commitment(&emb_bytes);
-
-        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
-        let dk_commitment = sdk::crypto_utils::commitment(&key_bytes);
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
-                model_id: model,
-                manifest,
-                weights_commitment: ModelWeightsCommitment::new(wt_commitment),
-                embedding_commitment: EmbeddingCommitment::new(emb_commitment),
-                decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
-            });
-            client
-                .sign_and_execute_with_retry(&kp, sender, kind, "CommitModelUpdate")
-                .await
-                .map_err(to_py_err)?;
-            Ok(())
-        })
-    }
-
-    /// Reveal a model update: provides decryption key and embedding, signs, and executes.
-    fn reveal_model_update<'py>(
-        &self,
-        py: Python<'py>,
-        signer: &PyKeypair,
-        model_id: String,
-        decryption_key: String,
-        embedding: Vec<f32>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let client = self.inner.clone();
-        let kp = signer.inner.copy();
-        let model = parse_object_id(&model_id)?;
-        let key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
-        let embedding_tensor = parse_embedding_vec(embedding)?;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let sender = kp.address();
-            let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
-                model_id: model,
-                decryption_key: DecryptionKey::new(key_bytes),
-                embedding: embedding_tensor,
-            });
-            client
-                .sign_and_execute_with_retry(&kp, sender, kind, "RevealModelUpdate")
-                .await
-                .map_err(to_py_err)?;
-            Ok(())
-        })
-    }
 
     /// Deactivate a model: signs and executes.
     fn deactivate_model<'py>(

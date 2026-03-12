@@ -21,13 +21,11 @@ use types::checksum::Checksum;
 use types::crypto::DecryptionKey;
 use types::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use types::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use types::model::{ArchitectureVersion, ModelId, ModelV1};
+use types::model::{ArchitectureVersion, Model, ModelId, ModelStateV1};
 use types::object::ObjectID;
 use types::system_state::{SystemState, SystemStateTrait as _};
 use types::tensor::SomaTensor;
-use types::transaction::{
-    CommitModelArgs, CommitModelUpdateArgs, RevealModelArgs, RevealModelUpdateArgs, TransactionKind,
-};
+use types::transaction::{CommitModelArgs, CreateModelArgs, RevealModelArgs, TransactionKind};
 
 use crate::client_commands::TxProcessingArgs;
 use crate::response::TransactionResponse;
@@ -35,34 +33,19 @@ use crate::response::TransactionResponse;
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 pub enum ModelCommand {
-    /// Commit a new model (phase 1 of commit-reveal)
+    /// Create a new model (step 1 of create-commit-reveal)
     ///
-    /// Registers a new model by committing its weight hashes and embedding
-    /// commitment. The model enters "pending" state and must be revealed in the
-    /// next epoch or the stake is slashed.
-    ///
-    /// Model ID and staking pool ID are auto-generated on chain. Commitments
-    /// are auto-computed from the weights file and embedding.
+    /// Sets up the model's economic parameters (stake, commission) and
+    /// creates the staking pool. Returns the model_id for subsequent
+    /// commit and reveal steps.
     #[clap(
-        name = "commit",
+        name = "create",
         after_help = "\
 EXAMPLES:
-    soma model commit --weights-url https://storage.example.com/weights.bin \\
-        --weights-file ./model.bin --embedding 0.1,0.2,0.3 --commission-rate 500"
+    soma model create --commission-rate 500
+    soma model create --stake-amount 100 --commission-rate 500"
     )]
-    Commit {
-        /// Path to the encrypted weights file
-        #[clap(long)]
-        weights_file: PathBuf,
-        /// URL where the encrypted weights are (or will be) hosted
-        #[clap(long)]
-        weights_url: String,
-        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
-        #[clap(long)]
-        embedding: String,
-        /// Hex-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
-        #[clap(long)]
-        decryption_key: String,
+    Create {
         /// Model architecture version (auto-fetched from chain if omitted)
         #[clap(long)]
         architecture_version: Option<ArchitectureVersion>,
@@ -76,81 +59,58 @@ EXAMPLES:
         tx_args: TxProcessingArgs,
     },
 
-    /// Reveal model weights (phase 2 of commit-reveal)
+    /// Commit model weights (step 2 of create-commit-reveal)
     ///
-    /// Must be called in the epoch following the commit. Provides the
-    /// decryption key and embedding vector. The model becomes active.
+    /// Works on both Created models (initial) and Active models (update).
+    /// Commitments are auto-computed from the weights file and embedding.
+    /// Must be revealed in the next epoch.
+    #[clap(
+        name = "commit",
+        after_help = "\
+EXAMPLES:
+    soma model commit 0xMODEL_ID \\
+        --weights-url https://storage.example.com/weights.bin \\
+        --weights-file ./model.bin --embedding 0.1,0.2,0.3"
+    )]
+    Commit {
+        /// Model ID to commit weights for
+        model_id: ObjectID,
+        /// Path to the encrypted weights file
+        #[clap(long)]
+        weights_file: PathBuf,
+        /// URL where the encrypted weights are (or will be) hosted
+        #[clap(long)]
+        weights_url: String,
+        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
+        #[clap(long, allow_hyphen_values = true)]
+        embedding: String,
+        /// Base58-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
+        #[clap(long)]
+        decryption_key: String,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+    },
+
+    /// Reveal model weights (step 3 of create-commit-reveal)
+    ///
+    /// Works on both Pending models (initial activation) and Active models
+    /// with a pending update. Must be called in the epoch following commit.
     #[clap(
         name = "reveal",
         after_help = "\
 EXAMPLES:
     soma model reveal 0xMODEL_ID \\
-        --decryption-key 0x123...456 \\
+        --decryption-key <base58-key> \\
         --embedding 0.1,0.2,0.3,0.4"
     )]
     Reveal {
         /// Model ID to reveal
         model_id: ObjectID,
-        /// Hex-encoded AES-256 decryption key (32 bytes)
+        /// Base58-encoded AES-256 decryption key (32 bytes)
         #[clap(long)]
         decryption_key: String,
         /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
-        #[clap(long)]
-        embedding: String,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-    },
-
-    /// Commit updated weights for an active model
-    ///
-    /// Commitments are auto-computed from the weights file and URL.
-    #[clap(
-        name = "update-commit",
-        after_help = "\
-EXAMPLES:
-    soma model update-commit 0xMODEL_ID \\
-        --weights-url https://storage.example.com/weights-v2.bin \\
-        --weights-file ./model-v2.bin \\
-        --embedding 0.1,0.2,0.3"
-    )]
-    UpdateCommit {
-        /// Model ID to update
-        model_id: ObjectID,
-        /// URL where the new encrypted weights are (or will be) hosted
-        #[clap(long)]
-        weights_url: String,
-        /// Path to the new encrypted weights file
-        #[clap(long)]
-        weights_file: PathBuf,
-        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
-        #[clap(long)]
-        embedding: String,
-        /// Hex-encoded AES-256 decryption key (32 bytes) — commitment is auto-computed
-        #[clap(long)]
-        decryption_key: String,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-    },
-
-    /// Reveal updated weights for an active model
-    ///
-    /// Provides the decryption key and embedding vector for a pending update.
-    #[clap(
-        name = "update-reveal",
-        after_help = "\
-EXAMPLES:
-    soma model update-reveal 0xMODEL_ID \\
-        --decryption-key 0x123...456 \\
-        --embedding 0.1,0.2,0.3,0.4"
-    )]
-    UpdateReveal {
-        /// Model ID to update
-        model_id: ObjectID,
-        /// Hex-encoded AES-256 decryption key (32 bytes)
-        #[clap(long)]
-        decryption_key: String,
-        /// Model embedding vector as comma-separated floats (e.g., "0.1,0.2,0.3,...")
-        #[clap(long)]
+        #[clap(long, allow_hyphen_values = true)]
         embedding: String,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
@@ -240,11 +200,7 @@ impl ModelCommand {
         let sender = context.active_address()?;
 
         match self {
-            ModelCommand::Commit {
-                weights_file,
-                weights_url,
-                embedding,
-                decryption_key,
+            ModelCommand::Create {
                 architecture_version,
                 stake_amount,
                 commission_rate,
@@ -253,25 +209,6 @@ impl ModelCommand {
                 if commission_rate > 10000 {
                     bail!("Commission rate cannot exceed 10000 (100%)");
                 }
-
-                // Auto-compute weights commitment from file
-                let (wt_commitment, checksum_base58, weights_size) =
-                    super::parse_helpers::read_and_hash_file(&weights_file)?;
-
-                // Build manifest from URL + file metadata
-                let manifest = build_manifest(&weights_url, &checksum_base58, weights_size)?;
-
-                // Parse embedding and compute commitment
-                let embedding_tensor = parse_embedding_tensor(&embedding)?;
-                let embedding_commitment = EmbeddingCommitment::new(sdk::crypto_utils::commitment(
-                    &bcs::to_bytes(&embedding_tensor).unwrap(),
-                ));
-
-                // Parse decryption key and compute commitment
-                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
-                let decryption_key_commitment = DecryptionKeyCommitment::new(
-                    sdk::crypto_utils::commitment(&decryption_key_bytes),
-                );
 
                 if commission_rate > 5000 {
                     eprintln!(
@@ -310,38 +247,32 @@ impl ModelCommand {
                     state.epoch_duration_ms(),
                 );
 
-                let kind = TransactionKind::CommitModel(CommitModelArgs {
-                    manifest,
-                    weights_commitment: ModelWeightsCommitment::new(wt_commitment),
-                    architecture_version,
-                    embedding_commitment,
-                    decryption_key_commitment,
+                let kind = TransactionKind::CreateModel(CreateModelArgs {
                     stake_amount: final_stake,
                     commission_rate,
+                    architecture_version,
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::CommitSuccess { inner: Box::new(result), next_epoch_hint })
-            }
 
-            ModelCommand::Reveal { model_id, decryption_key, embedding, tx_args } => {
-                let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
-                let embedding_tensor = parse_embedding_tensor(&embedding)?;
+                // Derive model_id from the transaction digest (same logic as
+                // execute_create_model: model_id = derive_id(tx_digest, 0)).
+                let model_id = match &result {
+                    ModelCommandResponse::Transaction(tx) => ObjectID::derive_id(tx.digest, 0),
+                    _ => ObjectID::ZERO,
+                };
 
-                let kind = TransactionKind::RevealModel(RevealModelArgs {
+                Ok(ModelCommandResponse::CreateSuccess {
                     model_id,
-                    decryption_key: DecryptionKey::new(decryption_key_bytes),
-                    embedding: embedding_tensor,
-                });
-
-                let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::RevealSuccess { model_id, inner: Box::new(result) })
+                    inner: Box::new(result),
+                    next_epoch_hint,
+                })
             }
 
-            ModelCommand::UpdateCommit {
+            ModelCommand::Commit {
                 model_id,
-                weights_url,
                 weights_file,
+                weights_url,
                 embedding,
                 decryption_key,
                 tx_args,
@@ -376,7 +307,7 @@ impl ModelCommand {
                     Err(_) => None,
                 };
 
-                let kind = TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
+                let kind = TransactionKind::CommitModel(CommitModelArgs {
                     model_id,
                     manifest,
                     weights_commitment: ModelWeightsCommitment::new(wt_commitment),
@@ -385,24 +316,21 @@ impl ModelCommand {
                 });
 
                 let result = execute_tx(context, sender, kind, tx_args).await?;
-                Ok(ModelCommandResponse::UpdateCommitSuccess {
-                    model_id,
-                    inner: Box::new(result),
-                    next_epoch_hint,
-                })
+                Ok(ModelCommandResponse::CommitSuccess { inner: Box::new(result), next_epoch_hint })
             }
 
-            ModelCommand::UpdateReveal { model_id, decryption_key, embedding, tx_args } => {
+            ModelCommand::Reveal { model_id, decryption_key, embedding, tx_args } => {
                 let decryption_key_bytes = parse_base58_32(&decryption_key, "decryption-key")?;
                 let embedding_tensor = parse_embedding_tensor(&embedding)?;
 
-                let kind = TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
+                let kind = TransactionKind::RevealModel(RevealModelArgs {
                     model_id,
                     decryption_key: DecryptionKey::new(decryption_key_bytes),
                     embedding: embedding_tensor,
                 });
 
-                execute_tx(context, sender, kind, tx_args).await
+                let result = execute_tx(context, sender, kind, tx_args).await?;
+                Ok(ModelCommandResponse::RevealSuccess { model_id, inner: Box::new(result) })
             }
 
             ModelCommand::Deactivate { model_id, tx_args } => {
@@ -456,16 +384,23 @@ impl ModelCommand {
             ModelCommand::Download { model_id, output } => {
                 let client = context.get_client().await?;
 
-                // Get system state to create proxy client
+                // Get system state to create proxy client and find model manifest
                 let system_state = client
                     .get_latest_system_state()
                     .await
                     .map_err(|e| anyhow!("Failed to get system state: {}", e.message()))?;
 
-                // Verify model exists
-                if find_model(&system_state, &model_id).is_none() {
-                    bail!("Model {} not found", model_id);
-                }
+                let registry = system_state.model_registry();
+                let model = registry
+                    .models
+                    .get(&model_id)
+                    .ok_or_else(|| anyhow!("Model {} not found", model_id))?;
+
+                // Get the manifest URL for direct download
+                let manifest_url = {
+                    use types::metadata::ManifestAPI as _;
+                    model.manifest().map(|m| m.url().clone())
+                };
 
                 // Create proxy client from system state
                 let proxy_client = ProxyClient::from_system_state(&system_state)
@@ -479,15 +414,26 @@ impl ModelCommand {
                 let output_path =
                     output.unwrap_or_else(|| PathBuf::from(format!("{}.weights", model_id)));
 
-                // Download model weights with progress bar
+                // Download: try direct URL first, fall back to proxy
                 let pb = super::download_progress::create_progress_bar();
-                let data = proxy_client
-                    .fetch_model_with_progress(
-                        &model_id,
-                        super::download_progress::make_progress_callback(&pb),
-                    )
-                    .await
-                    .map_err(|e| anyhow!("Failed to download model: {}", e))?;
+                let data = if let Some(url) = &manifest_url {
+                    proxy_client
+                        .fetch_model_direct(
+                            &model_id,
+                            url,
+                            super::download_progress::make_progress_callback(&pb),
+                        )
+                        .await
+                        .map_err(|e| anyhow!("Failed to download model: {}", e))?
+                } else {
+                    proxy_client
+                        .fetch_model_with_progress(
+                            &model_id,
+                            super::download_progress::make_progress_callback(&pb),
+                        )
+                        .await
+                        .map_err(|e| anyhow!("Failed to download model: {}", e))?
+                };
                 pb.finish_and_clear();
 
                 // Write to file
@@ -565,6 +511,7 @@ async fn execute_tx(
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum ModelStatus {
+    Created,
     Pending,
     Active,
     Inactive,
@@ -573,6 +520,7 @@ pub enum ModelStatus {
 impl Display for ModelStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ModelStatus::Created => write!(f, "{}", "Created".blue()),
             ModelStatus::Pending => write!(f, "{}", "Pending".yellow()),
             ModelStatus::Active => write!(f, "{}", "Active".green()),
             ModelStatus::Inactive => write!(f, "{}", "Inactive".red()),
@@ -587,20 +535,24 @@ pub struct ModelSummary {
     pub status: ModelStatus,
     pub architecture_version: ArchitectureVersion,
     pub commission_rate: u64,
-    pub commit_epoch: u64,
     pub stake_balance: u64,
     pub has_pending_update: bool,
 }
 
-fn model_to_summary(model_id: &ModelId, model: &ModelV1, status: ModelStatus) -> ModelSummary {
+fn model_to_summary(model_id: &ModelId, model: &Model) -> ModelSummary {
+    let status = match model {
+        Model::V1(ModelStateV1::Created(_)) => ModelStatus::Created,
+        Model::V1(ModelStateV1::Pending(_)) => ModelStatus::Pending,
+        Model::V1(ModelStateV1::Active(_)) => ModelStatus::Active,
+        Model::V1(ModelStateV1::Inactive(_)) => ModelStatus::Inactive,
+    };
     ModelSummary {
         model_id: *model_id,
-        owner: model.owner,
+        owner: model.owner(),
         status,
-        architecture_version: model.architecture_version,
-        commission_rate: model.commission_rate,
-        commit_epoch: model.commit_epoch,
-        stake_balance: model.staking_pool.soma_balance,
+        architecture_version: model.architecture_version(),
+        commission_rate: model.commission_rate(),
+        stake_balance: model.staking_pool().soma_balance,
         has_pending_update: model.has_pending_update(),
     }
 }
@@ -609,39 +561,14 @@ fn find_model(
     system_state: &SystemState,
     model_id: &ModelId,
 ) -> Option<(ModelStatus, ModelSummary)> {
-    if let Some(model) = system_state.model_registry().active_models.get(model_id) {
-        let summary = model_to_summary(model_id, model, ModelStatus::Active);
-        return Some((ModelStatus::Active, summary));
-    }
-
-    if let Some(model) = system_state.model_registry().pending_models.get(model_id) {
-        let summary = model_to_summary(model_id, model, ModelStatus::Pending);
-        return Some((ModelStatus::Pending, summary));
-    }
-
-    if let Some(model) = system_state.model_registry().inactive_models.get(model_id) {
-        let summary = model_to_summary(model_id, model, ModelStatus::Inactive);
-        return Some((ModelStatus::Inactive, summary));
-    }
-
-    None
+    let model = system_state.model_registry().models.get(model_id)?;
+    let summary = model_to_summary(model_id, model);
+    Some((summary.status, summary))
 }
 
 fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
     let registry = system_state.model_registry();
-    let mut models = Vec::new();
-
-    for (id, model) in &registry.active_models {
-        models.push(model_to_summary(id, model, ModelStatus::Active));
-    }
-    for (id, model) in &registry.pending_models {
-        models.push(model_to_summary(id, model, ModelStatus::Pending));
-    }
-    for (id, model) in &registry.inactive_models {
-        models.push(model_to_summary(id, model, ModelStatus::Inactive));
-    }
-
-    models
+    registry.models.iter().map(|(id, model)| model_to_summary(id, model)).collect()
 }
 
 // =============================================================================
@@ -652,6 +579,11 @@ fn list_all_models(system_state: &SystemState) -> Vec<ModelSummary> {
 #[serde(untagged)]
 pub enum ModelCommandResponse {
     Transaction(TransactionResponse),
+    CreateSuccess {
+        model_id: ObjectID,
+        inner: Box<ModelCommandResponse>,
+        next_epoch_hint: Option<String>,
+    },
     CommitSuccess {
         inner: Box<ModelCommandResponse>,
         next_epoch_hint: Option<String>,
@@ -659,11 +591,6 @@ pub enum ModelCommandResponse {
     RevealSuccess {
         model_id: ObjectID,
         inner: Box<ModelCommandResponse>,
-    },
-    UpdateCommitSuccess {
-        model_id: ObjectID,
-        inner: Box<ModelCommandResponse>,
-        next_epoch_hint: Option<String>,
     },
     SerializedTransaction {
         serialized_transaction: String,
@@ -700,6 +627,24 @@ impl Display for ModelCommandResponse {
             ModelCommandResponse::Transaction(tx_response) => {
                 write!(f, "{}", tx_response)
             }
+            ModelCommandResponse::CreateSuccess { model_id, inner, next_epoch_hint } => {
+                write!(f, "{}", inner)?;
+                writeln!(f)?;
+                writeln!(f, "  {}: {}", "Model ID".bold(), model_id)?;
+                writeln!(f)?;
+                writeln!(f, "  {}", "Next step: Commit your model weights.".cyan().bold())?;
+                if let Some(hint) = next_epoch_hint {
+                    writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
+                }
+                writeln!(f)?;
+                writeln!(f, "  Run:")?;
+                writeln!(f, "  {} {} \\", "soma model commit".bold(), model_id)?;
+                writeln!(f, "    --weights-file <path> \\")?;
+                writeln!(f, "    --weights-url <url> \\")?;
+                writeln!(f, "    --decryption-key <base58-key> \\")?;
+                writeln!(f, "    --embedding <f32,f32,...>")?;
+                Ok(())
+            }
             ModelCommandResponse::CommitSuccess { inner, next_epoch_hint } => {
                 write!(f, "{}", inner)?;
                 writeln!(f)?;
@@ -710,7 +655,7 @@ impl Display for ModelCommandResponse {
                 writeln!(f)?;
                 writeln!(f, "  In the {} epoch, run:", "next".bold())?;
                 writeln!(f, "  {} {} \\", "soma model reveal".bold(), "MODEL_ID")?;
-                writeln!(f, "    --decryption-key <hex> \\")?;
+                writeln!(f, "    --decryption-key <base58-key> \\")?;
                 writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())
             }
@@ -720,23 +665,9 @@ impl Display for ModelCommandResponse {
                 writeln!(
                     f,
                     "  {}",
-                    "Your model is now registered and accepting stakes.".green().bold()
+                    "Your model is now active and accepting stakes.".green().bold()
                 )?;
                 writeln!(f, "  View it: {} {}", "soma model info".bold(), model_id)?;
-                Ok(())
-            }
-            ModelCommandResponse::UpdateCommitSuccess { model_id, inner, next_epoch_hint } => {
-                write!(f, "{}", inner)?;
-                writeln!(f)?;
-                writeln!(f, "  {}", "Next step: Reveal the model update.".cyan().bold())?;
-                if let Some(hint) = next_epoch_hint {
-                    writeln!(f, "  {} {}", ">>".dimmed(), hint.yellow())?;
-                }
-                writeln!(f)?;
-                writeln!(f, "  In the {} epoch, run:", "next".bold())?;
-                writeln!(f, "  {} {} \\", "soma model update-reveal".bold(), model_id)?;
-                writeln!(f, "    --decryption-key <hex> \\")?;
-                writeln!(f, "    --embedding <f32,f32,...>")?;
                 Ok(())
             }
             ModelCommandResponse::SerializedTransaction { serialized_transaction } => {
@@ -777,7 +708,6 @@ impl Display for ModelInfoOutput {
         builder.push_record(["Architecture", &s.architecture_version.to_string()]);
         builder
             .push_record(["Commission Rate", &format!("{:.2}%", s.commission_rate as f64 / 100.0)]);
-        builder.push_record(["Commit Epoch", &s.commit_epoch.to_string()]);
         builder.push_record([
             "Stake Balance",
             &format!(
@@ -837,7 +767,7 @@ impl Display for ModelListOutput {
                 format!("Status: {}", s.status),
                 format!("Arch: {}", s.architecture_version),
                 format!("Stake: {}", crate::response::format_soma(s.stake_balance as u128)),
-                format!("Epoch: {}", s.commit_epoch),
+                format!("Update: {}", if s.has_pending_update { "Yes" } else { "No" }),
             ]);
         }
 

@@ -179,9 +179,9 @@ fn examine_models(genesis: &UnsignedGenesis) {
 
     println!(
         "Active: {}  Pending: {}  Inactive: {}",
-        registry.active_models.len(),
-        registry.pending_models.len(),
-        registry.inactive_models.len(),
+        registry.active_models().count(),
+        registry.pending_models().count(),
+        registry.inactive_models().count(),
     );
     println!(
         "Total Model Stake: {} shannons ({} SOMA)",
@@ -190,7 +190,7 @@ fn examine_models(genesis: &UnsignedGenesis) {
     );
     println!();
 
-    for (i, (id, model)) in registry.active_models.iter().enumerate() {
+    for (i, (id, model)) in registry.active_models().enumerate() {
         let stake = model.staking_pool.soma_balance;
         println!("[{}] Active Model", i);
         println!("  ID:               {}", id);
@@ -198,11 +198,11 @@ fn examine_models(genesis: &UnsignedGenesis) {
         println!("  Architecture:     {}", model.architecture_version);
         println!("  Commission Rate:  {} bps", model.commission_rate);
         println!("  Stake:            {} shannons ({} SOMA)", stake, stake / SHANNONS_PER_SOMA);
-        println!("  Has Embedding:    {}", model.embedding.is_some());
+        println!("  Has Embedding:    true");
         println!();
     }
 
-    for (i, (id, model)) in registry.pending_models.iter().enumerate() {
+    for (i, (id, model)) in registry.pending_models().enumerate() {
         println!("[{}] Pending Model  ID: {}  Owner: {}", i, id, model.owner);
     }
 

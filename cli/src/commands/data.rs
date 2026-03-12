@@ -16,8 +16,9 @@ use sdk::proxy_client::ProxyClient;
 use sdk::wallet_context::WalletContext;
 use serde::Serialize;
 use tokio::io::AsyncWriteExt;
+use types::metadata::ManifestAPI as _;
 use types::object::ObjectID;
-use types::target::TargetId;
+use types::target::{TargetId, TargetV1};
 
 /// Download submission data for a filled target
 ///
@@ -41,6 +42,19 @@ impl DataCommand {
     pub async fn execute(self, context: &mut WalletContext) -> Result<DataCommandResponse> {
         let client = context.get_client().await?;
 
+        // Read the target to get the manifest URL for direct download
+        let object = client
+            .get_object(self.target_id)
+            .await
+            .map_err(|e| anyhow!("Failed to get target object: {}", e))?;
+        let target: TargetV1 = bcs::from_bytes(object.data.contents())
+            .map_err(|e| anyhow!("Failed to deserialize target: {}", e))?;
+        let manifest_url = target.winning_data_manifest.as_ref().map(|m| m.manifest.url().clone());
+
+        if manifest_url.is_none() {
+            bail!("Target {} is not filled (no winning submission data)", self.target_id);
+        }
+
         // Get system state to create proxy client
         let system_state = client
             .get_latest_system_state()
@@ -59,11 +73,12 @@ impl DataCommand {
         let output_path =
             self.output.unwrap_or_else(|| PathBuf::from(format!("{}.data", self.target_id)));
 
-        // Download submission data with progress bar
+        // Download: try direct URL first, fall back to proxy
         let pb = super::download_progress::create_progress_bar();
         let data = proxy_client
-            .fetch_submission_data_with_progress(
+            .fetch_submission_data_direct(
                 &self.target_id,
+                manifest_url.as_ref().unwrap(),
                 super::download_progress::make_progress_callback(&pb),
             )
             .await

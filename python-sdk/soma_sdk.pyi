@@ -21,6 +21,7 @@ class Target:
     bond_amount: int
     submitter: Optional[str]
     winning_model_id: Optional[str]
+    data_url: Optional[str]
 
 class ModelManifest:
     """Model manifest accepted by ``SomaClient.score()`` and returned by
@@ -425,9 +426,13 @@ class SomaClient:
     # -- Faucet (requires faucet_url) --
     async def request_faucet(self, address: str) -> FaucetResponse: ...
 
-    # -- Proxy Client (fetch via fullnode proxy) --
-    async def fetch_model(self, model_id: str) -> bytes: ...
-    async def fetch_submission_data(self, target_id: str) -> bytes: ...
+    # -- Data Download (direct URL with proxy fallback) --
+    async def fetch_model(self, model_id: str) -> bytes:
+        """Fetch model weights. Tries direct URL first, falls back to proxy."""
+        ...
+    async def fetch_submission_data(self, target_id: str) -> bytes:
+        """Fetch submission data. Tries direct URL first, falls back to proxy."""
+        ...
 
     # -- Epoch Helpers --
     async def wait_for_next_epoch(self, timeout: float = 120.0) -> int: ...
@@ -448,23 +453,34 @@ class SomaClient:
         ...
 
     # -- High-level convenience methods (sign + execute) --
+    async def create_model(
+        self,
+        signer: Keypair,
+        commission_rate: int,
+        stake_amount: Optional[float] = None,
+    ) -> str:
+        """Create a new model (step 1). Returns the model_id."""
+        ...
     async def commit_model(
         self,
         signer: Keypair,
+        model_id: str,
         weights_url: str,
         encrypted_weights: bytes,
         decryption_key: str,
         embedding: list[float],
-        commission_rate: int,
-        stake_amount: Optional[float] = None,
-    ) -> str: ...
+    ) -> None:
+        """Commit model weights (step 2, unified for initial and update)."""
+        ...
     async def reveal_model(
         self,
         signer: Keypair,
         model_id: str,
         decryption_key: str,
         embedding: list[float],
-    ) -> None: ...
+    ) -> None:
+        """Reveal model weights (step 3, unified for initial and update)."""
+        ...
     async def submit_data(
         self,
         signer: Keypair,
@@ -522,22 +538,6 @@ class SomaClient:
     ) -> None: ...
 
     # -- High-level: Model Management --
-    async def commit_model_update(
-        self,
-        signer: Keypair,
-        model_id: str,
-        weights_url: str,
-        encrypted_weights: bytes,
-        decryption_key: str,
-        embedding: list[float],
-    ) -> None: ...
-    async def reveal_model_update(
-        self,
-        signer: Keypair,
-        model_id: str,
-        decryption_key: str,
-        embedding: list[float],
-    ) -> None: ...
     async def deactivate_model(
         self,
         signer: Keypair,

@@ -7,10 +7,9 @@ Manage models (commit, reveal, update, deactivate, query)
 Usage: soma model [OPTIONS] <COMMAND>
 
 Commands:
-  commit               Commit a new model (phase 1 of commit-reveal)
-  reveal               Reveal model weights (phase 2 of commit-reveal)
-  update-commit        Commit updated weights for an active model
-  update-reveal        Reveal updated weights for an active model
+  create               Create a new model (step 1 of create-commit-reveal)
+  commit               Commit model weights (step 2 of create-commit-reveal)
+  reveal               Reveal model weights (step 3 of create-commit-reveal)
   deactivate           Deactivate a model (owner only)
   info                 Display model information
   list                 List all registered models

@@ -261,9 +261,10 @@ pub fn generate_target(
 #[cfg(feature = "ml")]
 /// Select models using stake-weighted KNN based on target embedding.
 ///
-/// Models are scored by: `weighted_score = distance² / voting_power`
-/// where voting_power is the model's normalized stake (sums to 1.0).
-/// Lower scores are better (closer distance and/or higher stake).
+/// Models are scored by: `weighted_score = cosine_distance / voting_power`
+/// where cosine_distance = 1 - dot(normalize(a), normalize(b)),
+/// and voting_power is the model's normalized stake (sums to 1.0).
+/// Lower scores are better (closer direction and/or higher stake).
 ///
 /// Falls back to uniform random selection if no models have embeddings.
 ///
@@ -282,17 +283,14 @@ pub fn select_models_weighted_knn(
     target_embedding: &SomaTensor,
     count: u64,
 ) -> ExecutionResult<Vec<ModelId>> {
-    if model_registry.active_models.is_empty() {
+    if !model_registry.has_active_models() {
         return Err(ExecutionFailureStatus::NoActiveModels);
     }
 
     // Collect models that have embeddings for weighted selection
     let models_with_embeddings: Vec<(ModelId, SomaTensor, u64)> = model_registry
-        .active_models
-        .iter()
-        .filter_map(|(id, model)| {
-            model.embedding.as_ref().map(|emb| (*id, emb.clone(), model.stake()))
-        })
+        .active_models()
+        .map(|(id, model)| (*id, model.embedding.clone(), model.staking_pool.soma_balance))
         .collect();
 
     // If no models have embeddings, fall back to uniform selection
@@ -332,7 +330,7 @@ pub fn select_models_uniform(
     model_registry: &ModelRegistry,
     count: u64,
 ) -> ExecutionResult<Vec<ModelId>> {
-    let mut active: Vec<ModelId> = model_registry.active_models.keys().copied().collect();
+    let mut active: Vec<ModelId> = model_registry.active_models().map(|(id, _)| *id).collect();
     if active.is_empty() {
         return Err(ExecutionFailureStatus::NoActiveModels);
     }

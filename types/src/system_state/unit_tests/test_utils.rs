@@ -543,16 +543,44 @@ pub fn test_embedding_commitment(model_id: &ModelId, dim: usize) -> EmbeddingCom
     EmbeddingCommitment::new(bytes)
 }
 
-/// Commit a model into `pending_models`. Returns the StakedSomaV1 receipt.
-/// Uses a deterministic test URL derived from model_id to generate matching commitments.
-/// Embedding dimension defaults to 10 (matching `reveal_model`).
-pub fn commit_model(
+/// Create a model (economic setup only). Returns the StakedSomaV1 receipt.
+/// Model enters Created state; call `commit_model` next to transition to Pending.
+pub fn create_model(
     system_state: &mut SystemState,
     owner: SomaAddress,
     model_id: ModelId,
     stake_amount: u64,
 ) -> StakedSomaV1 {
-    commit_model_with_commission(system_state, owner, model_id, stake_amount, 0)
+    create_model_with_commission(system_state, owner, model_id, stake_amount, 0)
+}
+
+/// Create a model with a specified commission rate.
+pub fn create_model_with_commission(
+    system_state: &mut SystemState,
+    owner: SomaAddress,
+    model_id: ModelId,
+    stake_amount: u64,
+    commission_rate: u64,
+) -> StakedSomaV1 {
+    let staking_pool_id = ObjectID::random();
+
+    system_state
+        .request_create_model(
+            owner,
+            model_id,
+            system_state.parameters().model_architecture_version,
+            stake_amount,
+            commission_rate,
+            staking_pool_id,
+        )
+        .expect("Failed to create model")
+}
+
+/// Commit a model (unified): transitions Created -> Pending, or sets pending_update on Active.
+/// Uses a deterministic test URL derived from model_id to generate matching commitments.
+/// Embedding dimension defaults to 10 (matching `reveal_model`).
+pub fn commit_model(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
+    commit_model_with_dim(system_state, owner, model_id, 10);
 }
 
 /// Commit a model with a specified embedding dimension.
@@ -560,41 +588,14 @@ pub fn commit_model(
 pub fn commit_model_with_dim(
     system_state: &mut SystemState,
     owner: SomaAddress,
-    model_id: ModelId,
-    stake_amount: u64,
+    model_id: &ModelId,
     embedding_dim: usize,
-) -> StakedSomaV1 {
-    commit_model_full(system_state, owner, model_id, stake_amount, 0, embedding_dim)
-}
-
-/// Commit a model with a specified commission rate.
-/// Commitments are computed to match what `reveal_model` / `reveal_model_with_dim` will use
-/// (decryption key = `TEST_DECRYPTION_KEY`, embedding dim = 10).
-pub fn commit_model_with_commission(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: ModelId,
-    stake_amount: u64,
-    commission_rate: u64,
-) -> StakedSomaV1 {
-    commit_model_full(system_state, owner, model_id, stake_amount, commission_rate, 10)
-}
-
-/// Core commit helper with full control over commission rate and embedding dimension.
-pub fn commit_model_full(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: ModelId,
-    stake_amount: u64,
-    commission_rate: u64,
-    embedding_dim: usize,
-) -> StakedSomaV1 {
+) {
     let url_str = format!("https://example.com/models/{}", model_id);
     let manifest = make_manifest(&url_str);
     let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let embedding_commitment = test_embedding_commitment(&model_id, embedding_dim);
+    let embedding_commitment = test_embedding_commitment(model_id, embedding_dim);
     let decryption_key_commitment = test_decryption_key_commitment();
-    let staking_pool_id = ObjectID::random();
 
     system_state
         .request_commit_model(
@@ -602,12 +603,8 @@ pub fn commit_model_full(
             model_id,
             manifest,
             weights_commitment,
-            system_state.parameters().model_architecture_version,
             embedding_commitment,
             decryption_key_commitment,
-            stake_amount,
-            commission_rate,
-            staking_pool_id,
         )
         .expect("Failed to commit model")
 }
@@ -655,73 +652,6 @@ fn make_test_embedding(model_id: &ModelId, dim: usize) -> SomaTensor {
         .collect();
 
     SomaTensor::new(values, vec![dim])
-}
-
-/// Create the "update" embedding that `reveal_model_update_with_dim` will use.
-/// This is the base test embedding shifted by +0.1 on each element.
-fn make_update_embedding(model_id: &ModelId, dim: usize) -> SomaTensor {
-    let base = make_test_embedding(model_id, dim);
-    let updated: Vec<f32> = base.to_vec().iter().map(|v| v + 0.1).collect();
-    SomaTensor::new(updated, vec![dim])
-}
-
-/// Compute the `EmbeddingCommitment` for a model update (dim=10 by default).
-fn test_update_embedding_commitment(model_id: &ModelId, dim: usize) -> EmbeddingCommitment {
-    let embedding = make_update_embedding(model_id, dim);
-    let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
-    let mut hasher = DefaultHash::default();
-    hasher.update(&embedding_bytes);
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    EmbeddingCommitment::new(bytes)
-}
-
-/// Commit a model update for an active model.
-/// Uses a deterministic "update" URL derived from model_id.
-/// Commitments match what `reveal_model_update` will use.
-pub fn commit_model_update(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
-    let url_str = format!("https://example.com/models/{}/update", model_id);
-    let manifest = make_manifest(&url_str);
-    let weights_commitment = ModelWeightsCommitment::new([0xCC; 32]);
-    let embedding_commitment = test_update_embedding_commitment(model_id, 10);
-    let decryption_key_commitment = test_decryption_key_commitment();
-
-    system_state
-        .request_commit_model_update(
-            owner,
-            model_id,
-            manifest,
-            weights_commitment,
-            embedding_commitment,
-            decryption_key_commitment,
-        )
-        .expect("Failed to commit model update");
-}
-
-/// Reveal a pending model update.
-/// Uses a default 10-dimensional embedding.
-pub fn reveal_model_update(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
-    reveal_model_update_with_dim(system_state, owner, model_id, 10);
-}
-
-/// Reveal a pending model update with a specific embedding dimension.
-pub fn reveal_model_update_with_dim(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-    embedding_dim: usize,
-) {
-    let decryption_key = DecryptionKey::new([0xAA; 32]);
-    // Create a slightly different deterministic embedding for the update
-    let base_embedding = make_test_embedding(model_id, embedding_dim);
-    // Modify embedding slightly for the update version
-    let values = base_embedding.to_vec();
-    let updated_values: Vec<f32> = values.iter().map(|v| v + 0.1).collect();
-    let embedding = SomaTensor::new(updated_values, vec![embedding_dim]);
-
-    system_state
-        .request_reveal_model_update(owner, model_id, decryption_key, embedding)
-        .expect("Failed to reveal model update");
 }
 
 /// Stake to a model (any sender). Amount is in SOMA (not shannons).

@@ -667,10 +667,10 @@ impl GenesisBuilder {
 
         // Generate seed targets at genesis (after models are active)
         // Only generate targets if we have at least one active model
-        if !system_state.model_registry().active_models.is_empty() {
+        if system_state.model_registry().has_active_models() {
             tracing::info!(
                 "Genesis target generation: {} active models, emission_pool={}, target_initial_targets_per_epoch={}",
-                system_state.model_registry().active_models.len(),
+                system_state.model_registry().active_model_count(),
                 system_state.emission_pool().balance,
                 system_state.parameters().target_initial_targets_per_epoch,
             );

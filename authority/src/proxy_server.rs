@@ -301,11 +301,11 @@ impl<S: ObjectStore> ProxyServer<S> {
         // Look up model in registry
         let model = system_state
             .model_registry()
-            .active_models
+            .models
             .get(model_id)
             .ok_or(ProxyError::ModelNotFound(*model_id))?;
 
-        Ok(model.manifest.clone())
+        Ok(model.manifest().ok_or(ProxyError::ModelNotFound(*model_id))?.clone())
     }
 
     /// Fetch with singleflight pattern to deduplicate concurrent requests.

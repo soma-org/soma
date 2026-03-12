@@ -160,10 +160,10 @@ async fn test_shared_object_mutation_via_submit_data() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -393,10 +393,10 @@ async fn test_shared_object_status_transition_via_claim() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -567,10 +567,10 @@ async fn test_target_version_increments_on_mutations() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -776,10 +776,10 @@ async fn test_transaction_replay_idempotency() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -945,10 +945,10 @@ async fn test_racing_submitters_concurrent_shared_mutations() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 
@@ -1100,10 +1100,10 @@ async fn test_shared_object_dependency_tracking() {
     });
     let model_id = *system_state
         .model_registry()
-        .active_models
-        .keys()
+        .active_models()
         .next()
-        .expect("Should have at least one active model");
+        .expect("Should have at least one active model")
+        .0;
     let embedding_dim = system_state.parameters().target_embedding_dim as usize;
     let distance_threshold = system_state.target_state().distance_threshold.as_scalar();
 

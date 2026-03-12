@@ -415,7 +415,7 @@ fn test_genesis_creates_initial_targets() {
 
     // Model must be registered as active (model_id is auto-assigned)
     assert!(
-        !system_state.model_registry().active_models.is_empty(),
+        system_state.model_registry().has_active_models(),
         "Genesis model must be active in the model registry"
     );
 

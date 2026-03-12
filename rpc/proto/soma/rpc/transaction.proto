@@ -57,10 +57,11 @@ message TransactionKind {
     WithdrawStake withdraw_stake = 14;
 
     // Model transactions
+    CreateModel create_model = 33;
     CommitModel commit_model = 15;
     RevealModel reveal_model = 16;
-    CommitModelUpdate commit_model_update = 17;
-    RevealModelUpdate reveal_model_update = 18;
+    // Field 17 was CommitModelUpdate (removed)
+    // Field 18 was RevealModelUpdate (removed)
     AddStakeToModel add_stake_to_model = 19;
     SetModelCommissionRate set_model_commission_rate = 20;
     DeactivateModel deactivate_model = 21;
@@ -171,7 +172,7 @@ message ManifestV1 {
 }
 
 // Model weights manifest: URL + metadata + decryption key.
-// Used by RevealModel and RevealModelUpdate transactions, and by Model in system state.
+// Used by RevealModel transaction and by Model in system state.
 message ModelWeightsManifest {
   optional Manifest manifest = 1;
   optional bytes decryption_key = 2;     // 32-byte AES-256 key
@@ -188,14 +189,18 @@ message PendingModelUpdate {
 
 // Model transaction messages
 
-message CommitModel {
-  optional Manifest manifest = 1;
-  optional bytes weights_commitment = 2;
+message CreateModel {
+  optional uint64 stake_amount = 1;
+  optional uint64 commission_rate = 2;
   optional uint64 architecture_version = 3;
-  optional bytes embedding_commitment = 4;     // 32-byte hash of BCS-serialized embedding
-  optional bytes decryption_key_commitment = 5; // 32-byte hash of decryption key
-  optional uint64 stake_amount = 6;
-  optional uint64 commission_rate = 7;
+}
+
+message CommitModel {
+  optional string model_id = 1;
+  optional Manifest manifest = 2;
+  optional bytes weights_commitment = 3;
+  optional bytes embedding_commitment = 4;
+  optional bytes decryption_key_commitment = 5;
 }
 
 message RevealModel {
@@ -204,19 +209,6 @@ message RevealModel {
   repeated float embedding = 3;          // Full model embedding revealed here
 }
 
-message CommitModelUpdate {
-  optional string model_id = 1;
-  optional Manifest manifest = 2;
-  optional bytes weights_commitment = 3;
-  optional bytes embedding_commitment = 4;     // 32-byte hash of BCS-serialized embedding
-  optional bytes decryption_key_commitment = 5; // 32-byte hash of decryption key
-}
-
-message RevealModelUpdate {
-  optional string model_id = 1;
-  optional bytes decryption_key = 2;     // 32-byte AES-256 key
-  repeated float embedding = 3;          // Full updated model embedding
-}
 
 message AddStakeToModel {
   optional string model_id = 1;

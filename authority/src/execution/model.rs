@@ -62,8 +62,8 @@ impl ModelExecutor {
         Ok(())
     }
 
-    /// Execute CommitModel: validate parameters, split coin for stake, create StakedSoma.
-    fn execute_commit_model(
+    /// Execute CreateModel: validate parameters, split coin for stake, create StakedSoma.
+    fn execute_create_model(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
@@ -71,7 +71,7 @@ impl ModelExecutor {
         tx_digest: TransactionDigest,
         value_fee: u64,
     ) -> ExecutionResult<()> {
-        let TransactionKind::CommitModel(args) = kind else {
+        let TransactionKind::CreateModel(args) = kind else {
             return Err(ExecutionFailureStatus::InvalidTransactionType);
         };
 
@@ -93,9 +93,8 @@ impl ModelExecutor {
         }
 
         // Deduct stake_amount from the gas coin (implicit funding source).
-        // CommitModel doesn't take a separate coin_ref, so the gas coin is used.
         let gas_id = store.gas_object_id.ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from("No gas object set for CommitModel"))
+            ExecutionFailureStatus::SomaError(SomaError::from("No gas object set for CreateModel"))
         })?;
 
         let gas_object = store
@@ -120,15 +119,11 @@ impl ModelExecutor {
         let model_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
         let staking_pool_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
 
-        // Commit the model in system state (creates pending model + staking pool)
-        let staked_soma = state.request_commit_model(
+        // Create the model in system state (creates model + staking pool in Created state)
+        let staked_soma = state.request_create_model(
             signer,
             model_id,
-            args.manifest,
-            args.weights_commitment,
             args.architecture_version,
-            args.embedding_commitment,
-            args.decryption_key_commitment,
             args.stake_amount,
             args.commission_rate,
             staking_pool_id,
@@ -152,7 +147,32 @@ impl ModelExecutor {
         Self::save_system_state(store, state_object, &state)
     }
 
-    /// Execute RevealModel: verify sender is owner, delegate to system state.
+    /// Execute CommitModel (unified): works on Created (initial) and Active (update) models.
+    fn execute_commit_model(
+        &self,
+        store: &mut TemporaryStore,
+        signer: SomaAddress,
+        kind: TransactionKind,
+    ) -> ExecutionResult<()> {
+        let TransactionKind::CommitModel(args) = kind else {
+            return Err(ExecutionFailureStatus::InvalidTransactionType);
+        };
+
+        let (state_object, mut state) = Self::load_system_state(store)?;
+
+        state.request_commit_model(
+            signer,
+            &args.model_id,
+            args.manifest,
+            args.weights_commitment,
+            args.embedding_commitment,
+            args.decryption_key_commitment,
+        )?;
+
+        Self::save_system_state(store, state_object, &state)
+    }
+
+    /// Execute RevealModel (unified): works on Pending (initial) and Active with pending_update.
     fn execute_reveal_model(
         &self,
         store: &mut TemporaryStore,
@@ -166,54 +186,6 @@ impl ModelExecutor {
         let (state_object, mut state) = Self::load_system_state(store)?;
 
         state.request_reveal_model(signer, &args.model_id, args.decryption_key, args.embedding)?;
-
-        Self::save_system_state(store, state_object, &state)
-    }
-
-    /// Execute CommitModelUpdate: verify sender is owner, delegate to system state.
-    fn execute_commit_model_update(
-        &self,
-        store: &mut TemporaryStore,
-        signer: SomaAddress,
-        kind: TransactionKind,
-    ) -> ExecutionResult<()> {
-        let TransactionKind::CommitModelUpdate(args) = kind else {
-            return Err(ExecutionFailureStatus::InvalidTransactionType);
-        };
-
-        let (state_object, mut state) = Self::load_system_state(store)?;
-
-        state.request_commit_model_update(
-            signer,
-            &args.model_id,
-            args.manifest,
-            args.weights_commitment,
-            args.embedding_commitment,
-            args.decryption_key_commitment,
-        )?;
-
-        Self::save_system_state(store, state_object, &state)
-    }
-
-    /// Execute RevealModelUpdate: verify sender is owner, delegate to system state.
-    fn execute_reveal_model_update(
-        &self,
-        store: &mut TemporaryStore,
-        signer: SomaAddress,
-        kind: TransactionKind,
-    ) -> ExecutionResult<()> {
-        let TransactionKind::RevealModelUpdate(args) = kind else {
-            return Err(ExecutionFailureStatus::InvalidTransactionType);
-        };
-
-        let (state_object, mut state) = Self::load_system_state(store)?;
-
-        state.request_reveal_model_update(
-            signer,
-            &args.model_id,
-            args.decryption_key,
-            args.embedding,
-        )?;
 
         Self::save_system_state(store, state_object, &state)
     }
@@ -408,16 +380,11 @@ impl TransactionExecutor for ModelExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::CommitModel(_) => {
-                self.execute_commit_model(store, signer, kind, tx_digest, value_fee)
+            TransactionKind::CreateModel(_) => {
+                self.execute_create_model(store, signer, kind, tx_digest, value_fee)
             }
+            TransactionKind::CommitModel(_) => self.execute_commit_model(store, signer, kind),
             TransactionKind::RevealModel(_) => self.execute_reveal_model(store, signer, kind),
-            TransactionKind::CommitModelUpdate(_) => {
-                self.execute_commit_model_update(store, signer, kind)
-            }
-            TransactionKind::RevealModelUpdate(_) => {
-                self.execute_reveal_model_update(store, signer, kind)
-            }
             TransactionKind::AddStakeToModel { model_id, coin_ref, amount } => self
                 .execute_add_stake_to_model(
                     store, signer, model_id, coin_ref, amount, tx_digest, value_fee,
@@ -445,7 +412,7 @@ impl FeeCalculator for ModelExecutor {
         let value_fee_bps = store.fee_parameters.value_fee_bps / 2;
 
         match kind {
-            TransactionKind::CommitModel(args) => {
+            TransactionKind::CreateModel(args) => {
                 if args.stake_amount == 0 {
                     return 0;
                 }

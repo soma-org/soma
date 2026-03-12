@@ -422,16 +422,19 @@ impl SomaClient {
         Ok(response.effects)
     }
 
-    /// Build, sign, and execute a transaction with automatic retry on ObjectLockConflict.
+    /// Build, sign, and execute a transaction with automatic retry on coin conflicts.
     ///
-    /// When a gas coin is locked by a previous transaction, this method excludes
-    /// the locked coin, rebuilds the transaction with fresh gas, and retries.
-    /// Gas is always auto-selected (not user-specified).
+    /// Handles two conflict types that arise when coins are used concurrently:
+    /// - **ObjectLockConflict** / "already locked": another in-flight tx holds the lock
+    /// - **Stale version** / "not available for consumption": coin was already consumed
+    ///
+    /// On conflict the offending coin is excluded, gas and bond coins are
+    /// re-selected, and the transaction is retried (up to 3 times).
     pub async fn sign_and_execute_with_retry(
         &self,
         keypair: &keypair::Keypair,
         sender: SomaAddress,
-        kind: TransactionKind,
+        mut kind: TransactionKind,
         label: &str,
     ) -> Result<TransactionEffects, error::Error> {
         const MAX_RETRIES: usize = 3;
@@ -445,27 +448,43 @@ impl SomaClient {
                 Ok(effects) => return Ok(effects),
                 Err(e) => {
                     let err_str = e.to_string();
-                    let is_lock_conflict = err_str.contains("already locked")
-                        || err_str.contains("ObjectLockConflict");
+                    let is_coin_conflict = err_str.contains("already locked")
+                        || err_str.contains("ObjectLockConflict")
+                        || err_str.contains("not available for consumption");
 
-                    if !is_lock_conflict || attempt == MAX_RETRIES {
+                    if !is_coin_conflict || attempt == MAX_RETRIES {
                         return Err(e);
                     }
 
-                    if let Some(obj_id) = Self::parse_locked_object_id(&err_str) {
+                    if let Some(obj_id) = Self::parse_conflict_object_id(&err_str) {
                         tracing::warn!(
-                            "Gas coin {} is locked, excluding and retrying {label} (attempt {}/{})",
+                            "Coin {} conflict, excluding and retrying {label} (attempt {}/{})",
                             obj_id,
                             attempt + 1,
                             MAX_RETRIES
                         );
                         excluded_coins.insert(obj_id);
+
+                        // If the conflicting coin is the bond coin in SubmitData,
+                        // re-select it so the next attempt uses a different one.
+                        if let TransactionKind::SubmitData(ref mut args) = kind {
+                            if args.bond_coin.0 == obj_id {
+                                args.bond_coin =
+                                    self.select_coin_excluding(sender, &excluded_coins).await?;
+                            }
+                        }
                     } else {
                         tracing::warn!(
-                            "Lock conflict on {label}, retrying with fresh coins (attempt {}/{})",
+                            "Coin conflict on {label}, retrying with fresh coins (attempt {}/{})",
                             attempt + 1,
                             MAX_RETRIES
                         );
+                        // Can't parse the object ID — re-select bond coin unconditionally
+                        // so the retry has the best chance of succeeding.
+                        if let TransactionKind::SubmitData(ref mut args) = kind {
+                            args.bond_coin =
+                                self.select_coin_excluding(sender, &excluded_coins).await?;
+                        }
                     }
                 }
             }
@@ -514,8 +533,57 @@ impl SomaClient {
         Ok(TransactionData::new(kind, sender, vec![obj_ref]))
     }
 
-    /// Parse a locked object ID from an ObjectLockConflict error string.
-    fn parse_locked_object_id(err_str: &str) -> Option<ObjectID> {
+    /// Select the richest coin owned by `sender`, skipping coins in `excluded`.
+    ///
+    /// This is a standalone coin-selection helper for callers that need to embed
+    /// a coin reference in a [`TransactionKind`] (e.g. bond coins for
+    /// `SubmitData`). Gas coin selection is handled separately by
+    /// [`build_transaction_data_excluding`].
+    pub async fn select_coin_excluding(
+        &self,
+        sender: SomaAddress,
+        excluded: &std::collections::HashSet<ObjectID>,
+    ) -> Result<types::object::ObjectRef, error::Error> {
+        use futures::TryStreamExt as _;
+
+        let mut request = ListOwnedObjectsRequest::default();
+        request.owner = Some(sender.to_string());
+        request.page_size = Some(100);
+        request.object_type = Some(rpc::types::ObjectType::Coin.into());
+
+        let stream = self.list_owned_objects(request).await;
+        tokio::pin!(stream);
+
+        let mut best: Option<(types::object::ObjectRef, u64)> = None;
+        while let Some(obj) =
+            stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
+        {
+            let obj_ref = obj.compute_object_reference();
+            if excluded.contains(&obj_ref.0) {
+                continue;
+            }
+            let balance = obj.as_coin().unwrap_or(0);
+            if best.as_ref().map_or(true, |(_, b)| balance > *b) {
+                best = Some((obj_ref, balance));
+            }
+        }
+
+        let (obj_ref, _) = best.ok_or_else(|| {
+            error::Error::DataError(format!(
+                "No available coin for address {sender} \
+                 (excluded {} locked coins). \
+                 Ensure the address has multiple coins for concurrent submissions.",
+                excluded.len()
+            ))
+        })?;
+        Ok(obj_ref)
+    }
+
+    /// Parse an object ID from a coin conflict error string.
+    ///
+    /// Handles both lock conflicts (`"Object (0x..., ...) already locked"`)
+    /// and stale version errors (`"Object (0x..., ...) is not available"`).
+    fn parse_conflict_object_id(err_str: &str) -> Option<ObjectID> {
         let start = err_str.find("Object (0x")?;
         let hex_start = start + "Object (".len();
         let hex_end = err_str[hex_start..].find(',')? + hex_start;

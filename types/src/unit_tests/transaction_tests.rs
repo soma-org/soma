@@ -219,14 +219,20 @@ fn test_transaction_kind_classification() {
 
     // Model transactions
     let model_id = ModelId::random();
-    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        manifest: dummy_manifest(),
-        weights_commitment: ModelWeightsCommitment::random(),
-        architecture_version: 1,
-        embedding_commitment: EmbeddingCommitment::random(),
-        decryption_key_commitment: DecryptionKeyCommitment::random(),
+    let create_model = TransactionKind::CreateModel(CreateModelArgs {
         stake_amount: 1000,
         commission_rate: 100,
+        architecture_version: 1,
+    });
+    assert!(create_model.is_model_tx());
+    assert!(!create_model.is_staking_tx());
+
+    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
+        model_id,
+        manifest: dummy_manifest(),
+        weights_commitment: ModelWeightsCommitment::random(),
+        embedding_commitment: EmbeddingCommitment::random(),
+        decryption_key_commitment: DecryptionKeyCommitment::random(),
     });
     assert!(commit_model.is_model_tx());
     assert!(!commit_model.is_staking_tx());
@@ -409,28 +415,19 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         },
         TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
         // Model
-        TransactionKind::CommitModel(CommitModelArgs {
-            manifest: dummy_manifest(),
-            weights_commitment: ModelWeightsCommitment::random(),
-            architecture_version: 1,
-            embedding_commitment: EmbeddingCommitment::random(),
-            decryption_key_commitment: DecryptionKeyCommitment::random(),
+        TransactionKind::CreateModel(CreateModelArgs {
             stake_amount: 5000,
             commission_rate: 200,
+            architecture_version: 1,
         }),
-        TransactionKind::RevealModel(RevealModelArgs {
-            model_id,
-            decryption_key: DecryptionKey::new([0u8; 32]),
-            embedding: dummy_tensor(),
-        }),
-        TransactionKind::CommitModelUpdate(CommitModelUpdateArgs {
+        TransactionKind::CommitModel(CommitModelArgs {
             model_id,
             manifest: dummy_manifest(),
             weights_commitment: ModelWeightsCommitment::random(),
             embedding_commitment: EmbeddingCommitment::random(),
             decryption_key_commitment: DecryptionKeyCommitment::random(),
         }),
-        TransactionKind::RevealModelUpdate(RevealModelUpdateArgs {
+        TransactionKind::RevealModel(RevealModelArgs {
             model_id,
             decryption_key: DecryptionKey::new([0u8; 32]),
             embedding: dummy_tensor(),
@@ -461,8 +458,8 @@ fn test_all_tx_kinds_bcs_roundtrip() {
 
     assert_eq!(
         kinds.len(),
-        27,
-        "Expected 27 TransactionKind variants; if a new variant was added, update this test"
+        26,
+        "Expected 26 TransactionKind variants; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {
@@ -592,13 +589,11 @@ fn test_shared_input_objects() {
 
     // Model tx -> SystemState only
     let commit_model = TransactionKind::CommitModel(CommitModelArgs {
+        model_id: ModelId::random(),
         manifest: dummy_manifest(),
         weights_commitment: ModelWeightsCommitment::random(),
-        architecture_version: 1,
         embedding_commitment: EmbeddingCommitment::random(),
         decryption_key_commitment: DecryptionKeyCommitment::random(),
-        stake_amount: 1000,
-        commission_rate: 100,
     });
     let shared: Vec<_> = commit_model.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);

@@ -37,7 +37,10 @@ use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsC
 use crate::effects::ExecutionFailureStatus;
 use crate::error::{ExecutionResult, SomaError, SomaResult};
 use crate::metadata::Manifest;
-use crate::model::{ArchitectureVersion, ModelId, ModelV1, PendingModelUpdate};
+use crate::model::{
+    ActiveModel, ArchitectureVersion, CreatedModel, InactiveModel, Model, ModelId, ModelStateV1,
+    PendingModel, PendingModelUpdate,
+};
 use crate::multiaddr::Multiaddr;
 use crate::object::ObjectID;
 use crate::peer_id::PeerId;
@@ -429,24 +432,23 @@ impl SystemStateV1 {
             .exchange_rates
             .insert(0, staking::PoolTokenExchangeRate { soma_amount: 0, pool_token_amount: 0 });
 
-        let model = ModelV1 {
+        let model = Model::V1(ModelStateV1::Active(ActiveModel {
             owner,
             architecture_version,
             manifest,
             weights_commitment,
             embedding_commitment,
             decryption_key_commitment,
-            commit_epoch: 0,
-            decryption_key: Some(decryption_key),
-            embedding: Some(embedding),
+            decryption_key,
+            embedding,
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
             pending_update: None,
-        };
+        }));
 
-        self.model_registry.staking_pool_mappings.insert(model.staking_pool.id, model_id);
-        self.model_registry.active_models.insert(model_id, model);
+        self.model_registry.staking_pool_mappings.insert(model.staking_pool().id, model_id);
+        self.model_registry.models.insert(model_id, model);
     }
 
     /// Add stake to a genesis model. Mirrors `request_add_stake_at_genesis` for validators.
@@ -467,12 +469,13 @@ impl SystemStateV1 {
 
         let model = self
             .model_registry
-            .active_models
+            .models
             .get_mut(model_id)
             .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
-        let staked_soma = model.staking_pool.request_add_stake(amount, 0);
-        model.staking_pool.process_pending_stake();
+        let staking_pool = model.staking_pool_mut();
+        let staked_soma = staking_pool.request_add_stake(amount, 0);
+        staking_pool.process_pending_stake();
         self.model_registry.total_model_stake += amount;
 
         Ok(staked_soma)
@@ -503,28 +506,16 @@ impl SystemStateV1 {
             }
         }
 
-        // Then check model pools (active, pending, inactive)
+        // Then check model pools (any state)
         if let Some(model_id) = self.model_registry.staking_pool_mappings.get(&pool_id).cloned() {
-            // Check active models
-            if let Some(model) = self.model_registry.active_models.get_mut(&model_id) {
+            if let Some(model) = self.model_registry.models.get_mut(&model_id) {
+                let is_active = model.is_active();
                 let withdrawn_amount =
-                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
-                self.model_registry.total_model_stake =
-                    self.model_registry.total_model_stake.saturating_sub(withdrawn_amount);
-                return Ok(withdrawn_amount);
-            }
-
-            // Check pending models
-            if let Some(model) = self.model_registry.pending_models.get_mut(&model_id) {
-                let withdrawn_amount =
-                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
-                return Ok(withdrawn_amount);
-            }
-
-            // Check inactive models
-            if let Some(model) = self.model_registry.inactive_models.get_mut(&model_id) {
-                let withdrawn_amount =
-                    model.staking_pool.request_withdraw_stake(staked_soma, self.epoch);
+                    model.staking_pool_mut().request_withdraw_stake(staked_soma, self.epoch);
+                if is_active {
+                    self.model_registry.total_model_stake =
+                        self.model_registry.total_model_stake.saturating_sub(withdrawn_amount);
+                }
                 return Ok(withdrawn_amount);
             }
         }
@@ -617,35 +608,24 @@ impl SystemStateV1 {
     // Model Registry methods
     // -----------------------------------------------------------------------
 
-    /// Find a model by ID in active or pending registries (immutable).
-    pub fn find_model(&self, model_id: &ModelId) -> Option<&ModelV1> {
-        self.model_registry
-            .active_models
-            .get(model_id)
-            .or_else(|| self.model_registry.pending_models.get(model_id))
+    /// Find a model by ID in the registry (immutable).
+    pub fn find_model(&self, model_id: &ModelId) -> Option<&Model> {
+        self.model_registry.models.get(model_id)
     }
 
-    /// Find a model by ID in active or pending registries (mutable).
-    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut ModelV1> {
-        if self.model_registry.active_models.contains_key(model_id) {
-            return self.model_registry.active_models.get_mut(model_id);
-        }
-        self.model_registry.pending_models.get_mut(model_id)
+    /// Find a model by ID in the registry (mutable).
+    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut Model> {
+        self.model_registry.models.get_mut(model_id)
     }
 
-    /// Commit a new model (Phase 1 of commit-reveal).
-    /// Creates a pending model with a new StakingPool. Returns the StakedSomaV1 receipt.
-    #[allow(clippy::too_many_arguments)]
+    /// Create a new model (economic setup only).
+    /// Creates a model in Created state with staking pool. Returns the StakedSomaV1 receipt.
     #[allow(clippy::result_large_err)]
-    pub fn request_commit_model(
+    pub fn request_create_model(
         &mut self,
         owner: SomaAddress,
         model_id: ModelId,
-        manifest: Manifest,
-        weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
-        embedding_commitment: EmbeddingCommitment,
-        decryption_key_commitment: DecryptionKeyCommitment,
         stake_amount: u64,
         commission_rate: u64,
         staking_pool_id: ObjectID,
@@ -660,99 +640,27 @@ impl SystemStateV1 {
         // Pre-active pool: process stake immediately so soma_balance is set
         staking_pool.process_pending_stake();
 
-        let model = ModelV1 {
+        let model = Model::V1(ModelStateV1::Created(CreatedModel {
             owner,
             architecture_version,
-            manifest,
-            weights_commitment,
-            embedding_commitment,
-            decryption_key_commitment,
-            commit_epoch: self.epoch,
-            decryption_key: None,
-            embedding: None,
             staking_pool,
             commission_rate,
             next_epoch_commission_rate: commission_rate,
-            pending_update: None,
-        };
+            create_epoch: self.epoch,
+        }));
 
-        self.model_registry.pending_models.insert(model_id, model);
+        self.model_registry.models.insert(model_id, model);
         self.model_registry.staking_pool_mappings.insert(staking_pool_id, model_id);
 
         Ok(staked_soma)
     }
 
-    /// Reveal a pending model (Phase 2 of commit-reveal).
-    /// Moves model from pending to active. Provides the decryption key and full
-    /// embedding (verified against the embedding_commitment from commit).
+    /// Commit model (unified): works on Created models (initial) and Active models (update).
+    /// On Created: transitions to Pending, sets commit_epoch.
+    /// On Active: sets/overwrites pending_update.
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::result_large_err)]
-    pub fn request_reveal_model(
-        &mut self,
-        signer: SomaAddress,
-        model_id: &ModelId,
-        decryption_key: DecryptionKey,
-        embedding: SomaTensor,
-    ) -> ExecutionResult {
-        let model = self
-            .model_registry
-            .pending_models
-            .get(model_id)
-            .ok_or(ExecutionFailureStatus::ModelNotPending)?;
-
-        if model.owner != signer {
-            return Err(ExecutionFailureStatus::NotModelOwner);
-        }
-        if self.epoch != model.commit_epoch + 1 {
-            return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
-        }
-
-        // Verify decryption key commitment: hash(key_bytes) must match
-        let dk_hash = {
-            let mut hasher = DefaultHash::default();
-            hasher.update(decryption_key.as_ref());
-            hasher.finalize()
-        };
-        let expected_dk: [u8; 32] = model.decryption_key_commitment.into();
-        if dk_hash.as_ref() != expected_dk {
-            return Err(ExecutionFailureStatus::ModelDecryptionKeyCommitmentMismatch);
-        }
-
-        // Verify embedding commitment: hash(bcs(embedding)) must match
-        let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
-        let embedding_hash = {
-            let mut hasher = DefaultHash::default();
-            hasher.update(&embedding_bytes);
-            hasher.finalize()
-        };
-        let expected: [u8; 32] = model.embedding_commitment.into();
-        if embedding_hash.as_ref() != expected {
-            return Err(ExecutionFailureStatus::ModelEmbeddingCommitmentMismatch);
-        }
-
-        // Move from pending to active
-        let mut model = self.model_registry.pending_models.remove(model_id).unwrap();
-        model.decryption_key = Some(decryption_key);
-        model.embedding = Some(embedding);
-        model.staking_pool.activation_epoch = Some(self.epoch);
-
-        // Set initial exchange rate at activation
-        model.staking_pool.exchange_rates.insert(
-            self.epoch,
-            staking::PoolTokenExchangeRate {
-                soma_amount: model.staking_pool.soma_balance,
-                pool_token_amount: model.staking_pool.pool_token_balance,
-            },
-        );
-
-        self.model_registry.total_model_stake += model.staking_pool.soma_balance;
-        self.model_registry.active_models.insert(*model_id, model);
-
-        Ok(())
-    }
-
-    /// Commit an update to an active model's weights.
-    #[allow(clippy::result_large_err)]
-    pub fn request_commit_model_update(
+    pub fn request_commit_model(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
@@ -763,30 +671,60 @@ impl SystemStateV1 {
     ) -> ExecutionResult {
         let model = self
             .model_registry
-            .active_models
-            .get_mut(model_id)
-            .ok_or(ExecutionFailureStatus::ModelNotActive)?;
+            .models
+            .get(model_id)
+            .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
-        if model.owner != signer {
-            return Err(ExecutionFailureStatus::NotModelOwner);
+        match model {
+            Model::V1(ModelStateV1::Created(m)) => {
+                if m.owner != signer {
+                    return Err(ExecutionFailureStatus::NotModelOwner);
+                }
+                // Build PendingModel from CreatedModel + commit args
+                let created = match self.model_registry.models.remove(model_id).unwrap() {
+                    Model::V1(ModelStateV1::Created(c)) => c,
+                    _ => unreachable!(),
+                };
+                let pending = Model::V1(ModelStateV1::Pending(PendingModel {
+                    owner: created.owner,
+                    architecture_version: created.architecture_version,
+                    staking_pool: created.staking_pool,
+                    commission_rate: created.commission_rate,
+                    next_epoch_commission_rate: created.next_epoch_commission_rate,
+                    manifest,
+                    weights_commitment,
+                    embedding_commitment,
+                    decryption_key_commitment,
+                    commit_epoch: self.epoch,
+                }));
+                self.model_registry.models.insert(*model_id, pending);
+                Ok(())
+            }
+            Model::V1(ModelStateV1::Active(m)) => {
+                if m.owner != signer {
+                    return Err(ExecutionFailureStatus::NotModelOwner);
+                }
+                // Set/overwrite pending_update on the active model
+                let active = self.model_registry.models.get_mut(model_id).unwrap();
+                let active_model = active.as_active_mut().unwrap();
+                active_model.pending_update = Some(PendingModelUpdate {
+                    manifest,
+                    weights_commitment,
+                    embedding_commitment,
+                    decryption_key_commitment,
+                    commit_epoch: self.epoch,
+                });
+                Ok(())
+            }
+            _ => Err(ExecutionFailureStatus::ModelInvalidState),
         }
-
-        // Overwrite any existing pending update for this epoch
-        model.pending_update = Some(PendingModelUpdate {
-            manifest,
-            weights_commitment,
-            embedding_commitment,
-            decryption_key_commitment,
-            commit_epoch: self.epoch,
-        });
-
-        Ok(())
     }
 
-    /// Reveal a pending model update.
-    /// Provides the decryption key and full embedding (verified against commitment).
+    /// Reveal model (unified): works on Pending models (initial) and Active models with pending_update.
+    /// On Pending: activates staking pool, transitions to Active.
+    /// On Active with pending_update: applies update in-place, clears pending_update.
     #[allow(clippy::result_large_err)]
-    pub fn request_reveal_model_update(
+    pub fn request_reveal_model(
         &mut self,
         signer: SomaAddress,
         model_id: &ModelId,
@@ -795,57 +733,135 @@ impl SystemStateV1 {
     ) -> ExecutionResult {
         let model = self
             .model_registry
-            .active_models
-            .get_mut(model_id)
-            .ok_or(ExecutionFailureStatus::ModelNotActive)?;
+            .models
+            .get(model_id)
+            .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
-        if model.owner != signer {
-            return Err(ExecutionFailureStatus::NotModelOwner);
+        match model {
+            Model::V1(ModelStateV1::Pending(m)) => {
+                if m.owner != signer {
+                    return Err(ExecutionFailureStatus::NotModelOwner);
+                }
+                if self.epoch != m.commit_epoch + 1 {
+                    return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
+                }
+
+                // Verify decryption key commitment
+                Self::verify_decryption_key_commitment(
+                    &decryption_key,
+                    &m.decryption_key_commitment,
+                )?;
+                // Verify embedding commitment
+                Self::verify_embedding_commitment(&embedding, &m.embedding_commitment)?;
+
+                // Move from Pending to Active
+                let pending = match self.model_registry.models.remove(model_id).unwrap() {
+                    Model::V1(ModelStateV1::Pending(p)) => p,
+                    _ => unreachable!(),
+                };
+
+                let mut staking_pool = pending.staking_pool;
+                staking_pool.activation_epoch = Some(self.epoch);
+                // Set initial exchange rate at activation
+                staking_pool.exchange_rates.insert(
+                    self.epoch,
+                    staking::PoolTokenExchangeRate {
+                        soma_amount: staking_pool.soma_balance,
+                        pool_token_amount: staking_pool.pool_token_balance,
+                    },
+                );
+
+                let active = Model::V1(ModelStateV1::Active(ActiveModel {
+                    owner: pending.owner,
+                    architecture_version: pending.architecture_version,
+                    staking_pool,
+                    commission_rate: pending.commission_rate,
+                    next_epoch_commission_rate: pending.next_epoch_commission_rate,
+                    manifest: pending.manifest,
+                    weights_commitment: pending.weights_commitment,
+                    embedding_commitment: pending.embedding_commitment,
+                    decryption_key_commitment: pending.decryption_key_commitment,
+                    decryption_key,
+                    embedding,
+                    pending_update: None,
+                }));
+
+                self.model_registry.total_model_stake += active.stake();
+                self.model_registry.models.insert(*model_id, active);
+                Ok(())
+            }
+            Model::V1(ModelStateV1::Active(m)) => {
+                if m.owner != signer {
+                    return Err(ExecutionFailureStatus::NotModelOwner);
+                }
+                let pending = m
+                    .pending_update
+                    .as_ref()
+                    .ok_or(ExecutionFailureStatus::ModelNoPendingUpdate)?;
+
+                if self.epoch != pending.commit_epoch + 1 {
+                    return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
+                }
+
+                // Verify commitments against the pending update
+                Self::verify_decryption_key_commitment(
+                    &decryption_key,
+                    &pending.decryption_key_commitment,
+                )?;
+                Self::verify_embedding_commitment(&embedding, &pending.embedding_commitment)?;
+
+                // Apply the update in-place
+                let active_model =
+                    self.model_registry.models.get_mut(model_id).unwrap().as_active_mut().unwrap();
+                let pending = active_model.pending_update.take().unwrap();
+                active_model.manifest = pending.manifest;
+                active_model.weights_commitment = pending.weights_commitment;
+                active_model.embedding_commitment = pending.embedding_commitment;
+                active_model.decryption_key_commitment = pending.decryption_key_commitment;
+                active_model.embedding = embedding;
+                active_model.decryption_key = decryption_key;
+                Ok(())
+            }
+            _ => Err(ExecutionFailureStatus::ModelInvalidState),
         }
+    }
 
-        let pending =
-            model.pending_update.as_ref().ok_or(ExecutionFailureStatus::ModelNoPendingUpdate)?;
-
-        if self.epoch != pending.commit_epoch + 1 {
-            return Err(ExecutionFailureStatus::ModelRevealEpochMismatch);
-        }
-
-        // Verify decryption key commitment
+    /// Verify decryption key commitment: hash(key_bytes) must match.
+    fn verify_decryption_key_commitment(
+        decryption_key: &DecryptionKey,
+        commitment: &DecryptionKeyCommitment,
+    ) -> ExecutionResult {
         let dk_hash = {
             let mut hasher = DefaultHash::default();
             hasher.update(decryption_key.as_ref());
             hasher.finalize()
         };
-        let expected_dk: [u8; 32] = pending.decryption_key_commitment.into();
-        if dk_hash.as_ref() != expected_dk {
+        let expected: [u8; 32] = (*commitment).into();
+        if dk_hash.as_ref() != expected {
             return Err(ExecutionFailureStatus::ModelDecryptionKeyCommitmentMismatch);
         }
+        Ok(())
+    }
 
-        // Verify embedding commitment
-        let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
+    /// Verify embedding commitment: hash(bcs(embedding)) must match.
+    fn verify_embedding_commitment(
+        embedding: &SomaTensor,
+        commitment: &EmbeddingCommitment,
+    ) -> ExecutionResult {
+        let embedding_bytes = bcs::to_bytes(embedding).expect("BCS serialization cannot fail");
         let embedding_hash = {
             let mut hasher = DefaultHash::default();
             hasher.update(&embedding_bytes);
             hasher.finalize()
         };
-        let expected: [u8; 32] = pending.embedding_commitment.into();
+        let expected: [u8; 32] = (*commitment).into();
         if embedding_hash.as_ref() != expected {
             return Err(ExecutionFailureStatus::ModelEmbeddingCommitmentMismatch);
         }
-
-        // Apply the update
-        let pending = model.pending_update.take().unwrap();
-        model.manifest = pending.manifest;
-        model.weights_commitment = pending.weights_commitment;
-        model.embedding_commitment = pending.embedding_commitment;
-        model.decryption_key_commitment = pending.decryption_key_commitment;
-        model.embedding = Some(embedding);
-        model.decryption_key = Some(decryption_key);
-
         Ok(())
     }
 
-    /// Add stake to a model (any sender).
+    /// Add stake to a model (any sender). Works on Created, Pending, and Active models.
     #[allow(clippy::result_large_err)]
     pub fn request_add_stake_to_model(
         &mut self,
@@ -860,26 +876,24 @@ impl SystemStateV1 {
 
         let current_epoch = self.epoch;
 
-        // Look up the model directly in active or pending registries
-        let (is_active, model) =
-            if let Some(m) = self.model_registry.active_models.get_mut(model_id) {
-                (true, m)
-            } else if let Some(m) = self.model_registry.pending_models.get_mut(model_id) {
-                (false, m)
-            } else {
-                return Err(ExecutionFailureStatus::ModelNotFound);
-            };
+        let model = self
+            .model_registry
+            .models
+            .get_mut(model_id)
+            .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
         if model.is_inactive() {
             return Err(ExecutionFailureStatus::ModelAlreadyInactive);
         }
 
+        let is_active = model.is_active();
         let stake_activation_epoch = current_epoch + 1;
-        let staked_soma = model.staking_pool.request_add_stake(amount, stake_activation_epoch);
+        let staking_pool = model.staking_pool_mut();
+        let staked_soma = staking_pool.request_add_stake(amount, stake_activation_epoch);
 
         // If pool is preactive, process stake immediately
-        if model.staking_pool.is_preactive() {
-            model.staking_pool.process_pending_stake();
+        if staking_pool.is_preactive() {
+            staking_pool.process_pending_stake();
         }
 
         let pool_id = staked_soma.pool_id;
@@ -895,7 +909,7 @@ impl SystemStateV1 {
         Ok(staked_soma)
     }
 
-    /// Set model commission rate (staged for next epoch).
+    /// Set model commission rate (staged for next epoch). Active models only.
     #[allow(clippy::result_large_err)]
     pub fn request_set_model_commission_rate(
         &mut self,
@@ -909,19 +923,21 @@ impl SystemStateV1 {
 
         let model = self
             .model_registry
-            .active_models
+            .models
             .get_mut(model_id)
-            .ok_or(ExecutionFailureStatus::ModelNotActive)?;
+            .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
-        if model.owner != signer {
+        let active = model.as_active_mut().ok_or(ExecutionFailureStatus::ModelNotActive)?;
+
+        if active.owner != signer {
             return Err(ExecutionFailureStatus::NotModelOwner);
         }
 
-        model.next_epoch_commission_rate = new_rate;
+        active.next_epoch_commission_rate = new_rate;
         Ok(())
     }
 
-    /// Deactivate a model (owner voluntary withdrawal).
+    /// Deactivate a model (owner voluntary withdrawal). Active models only.
     #[allow(clippy::result_large_err)]
     pub fn request_deactivate_model(
         &mut self,
@@ -930,21 +946,44 @@ impl SystemStateV1 {
     ) -> ExecutionResult {
         let model = self
             .model_registry
-            .active_models
+            .models
             .get(model_id)
-            .ok_or(ExecutionFailureStatus::ModelNotActive)?;
+            .ok_or(ExecutionFailureStatus::ModelNotFound)?;
 
-        if model.owner != signer {
+        let active = model.as_active().ok_or(ExecutionFailureStatus::ModelNotActive)?;
+
+        if active.owner != signer {
             return Err(ExecutionFailureStatus::NotModelOwner);
         }
 
-        let mut model = self.model_registry.active_models.remove(model_id).unwrap();
+        // Remove active model and convert to inactive
+        let old_model = self.model_registry.models.remove(model_id).unwrap();
+        let active = match old_model {
+            Model::V1(ModelStateV1::Active(a)) => a,
+            _ => unreachable!(),
+        };
 
         self.model_registry.total_model_stake =
-            self.model_registry.total_model_stake.saturating_sub(model.staking_pool.soma_balance);
+            self.model_registry.total_model_stake.saturating_sub(active.staking_pool.soma_balance);
 
-        model.staking_pool.deactivation_epoch = Some(self.epoch);
-        self.model_registry.inactive_models.insert(*model_id, model);
+        let mut staking_pool = active.staking_pool;
+        staking_pool.deactivation_epoch = Some(self.epoch);
+
+        let inactive = Model::V1(ModelStateV1::Inactive(InactiveModel {
+            owner: active.owner,
+            architecture_version: active.architecture_version,
+            staking_pool,
+            commission_rate: active.commission_rate,
+            next_epoch_commission_rate: active.next_epoch_commission_rate,
+            manifest: active.manifest,
+            weights_commitment: active.weights_commitment,
+            embedding_commitment: active.embedding_commitment,
+            decryption_key_commitment: active.decryption_key_commitment,
+            decryption_key: active.decryption_key,
+            embedding: active.embedding,
+        }));
+
+        self.model_registry.models.insert(*model_id, inactive);
 
         // Clean up report records for this model
         self.model_registry.model_report_records.remove(model_id);
@@ -959,7 +998,7 @@ impl SystemStateV1 {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
-        if !self.model_registry.active_models.contains_key(model_id) {
+        if !self.model_registry.is_active(model_id) {
             return Err(ExecutionFailureStatus::ModelNotActive);
         }
 
@@ -975,13 +1014,11 @@ impl SystemStateV1 {
         reporter: SomaAddress,
         model_id: &ModelId,
     ) -> ExecutionResult {
-        // Validate reporter is an active validator
         if !self.validators.is_active_validator(reporter) {
             return Err(ExecutionFailureStatus::NotAValidator);
         }
 
-        // Validate model is still active (can only undo reports on active models)
-        if !self.model_registry.active_models.contains_key(model_id) {
+        if !self.model_registry.is_active(model_id) {
             return Err(ExecutionFailureStatus::ModelNotActive);
         }
 
@@ -1006,22 +1043,22 @@ impl SystemStateV1 {
     ///
     /// Called from `advance_epoch` after validator processing. Performs:
     /// 1. Report processing: 2f+1 quorum → slash at `model_tally_slash_rate_bps`, move to inactive
-    /// 2. Pending reveal timeout: slash unrevealed models at `model_reveal_slash_rate_bps`, move to inactive
-    /// 3. Pending update cancellation: clear unrevealed updates (no slash)
-    /// 4. Commission rate adjustment: `commission_rate = next_epoch_commission_rate`
-    /// 5. Staking pool processing: `process_pending_stakes_and_withdraws(new_epoch)`
+    /// 2. Created model timeout: slash models that didn't commit in time
+    /// 3. Pending reveal timeout: slash unrevealed models at `model_reveal_slash_rate_bps`, move to inactive
+    /// 4. Pending update cancellation: clear unrevealed updates (no slash)
+    /// 5. Commission rate adjustment: `commission_rate = next_epoch_commission_rate`
+    /// 6. Staking pool processing: `process_pending_stakes_and_withdraws(new_epoch)`
     fn advance_epoch_models(&mut self, new_epoch: u64) {
         let prev_epoch = new_epoch - 1;
         let tally_slash_rate = self.parameters.model_tally_slash_rate_bps;
         let reveal_slash_rate = self.parameters.model_reveal_slash_rate_bps;
 
         // --- Step 1: Process model report records (2f+1 quorum slash) ---
-        // Mirrors validator report processing: compute_slashed_validators pattern.
         let quorum_threshold = crate::committee::QUORUM_THRESHOLD;
         let mut slashed_model_ids: Vec<ModelId> = Vec::new();
 
         for (model_id, reporters) in &self.model_registry.model_report_records {
-            if self.model_registry.active_models.contains_key(model_id) {
+            if self.model_registry.is_active(model_id) {
                 let reporter_votes = self
                     .validators
                     .sum_voting_power_by_addresses(&reporters.iter().cloned().collect());
@@ -1032,99 +1069,178 @@ impl SystemStateV1 {
         }
 
         for model_id in &slashed_model_ids {
-            if let Some(mut model) = self.model_registry.active_models.remove(model_id) {
-                // Save original balance before slashing (for accurate total_model_stake deduction)
-                let original_balance = model.staking_pool.soma_balance;
+            if let Some(model) = self.model_registry.models.remove(&model_id) {
+                if let Model::V1(ModelStateV1::Active(active)) = model {
+                    let original_balance = active.staking_pool.soma_balance;
+                    let slash_amount = (original_balance as u128 * tally_slash_rate as u128
+                        / BPS_DENOMINATOR as u128) as u64;
 
-                // Slash stake: reduce soma_balance by tally_slash_rate_bps
-                let slash_amount = (original_balance as u128 * tally_slash_rate as u128
-                    / BPS_DENOMINATOR as u128) as u64;
-                model.staking_pool.soma_balance = original_balance.saturating_sub(slash_amount);
+                    let mut staking_pool = active.staking_pool;
+                    staking_pool.soma_balance = original_balance.saturating_sub(slash_amount);
+                    staking_pool.deactivation_epoch = Some(new_epoch);
 
-                // Remove the model's full original stake from the total
-                self.model_registry.total_model_stake =
-                    self.model_registry.total_model_stake.saturating_sub(original_balance);
+                    self.model_registry.total_model_stake =
+                        self.model_registry.total_model_stake.saturating_sub(original_balance);
 
-                model.staking_pool.deactivation_epoch = Some(new_epoch);
-                self.model_registry.inactive_models.insert(*model_id, model);
+                    let inactive = Model::V1(ModelStateV1::Inactive(InactiveModel {
+                        owner: active.owner,
+                        architecture_version: active.architecture_version,
+                        staking_pool,
+                        commission_rate: active.commission_rate,
+                        next_epoch_commission_rate: active.next_epoch_commission_rate,
+                        manifest: active.manifest,
+                        weights_commitment: active.weights_commitment,
+                        embedding_commitment: active.embedding_commitment,
+                        decryption_key_commitment: active.decryption_key_commitment,
+                        decryption_key: active.decryption_key,
+                        embedding: active.embedding,
+                    }));
+                    self.model_registry.models.insert(*model_id, inactive);
 
-                info!(
-                    "Model {:?} slashed (tally quorum): {} shannons at {}bps",
-                    model_id, slash_amount, tally_slash_rate
-                );
-            }
-        }
-
-        // Clear all report records (mirrors validator pattern)
-        self.model_registry.model_report_records.clear();
-
-        // --- Step 2: Process pending reveal timeouts ---
-        // Models committed in epoch N must be revealed by the end of epoch N+1.
-        // At the boundary entering new_epoch, any model with commit_epoch < prev_epoch
-        // has missed its reveal window.
-        let mut unrevealed_ids: Vec<ModelId> = Vec::new();
-        for (model_id, model) in &self.model_registry.pending_models {
-            // The reveal must happen during (commit_epoch + 1). We are now transitioning
-            // to new_epoch, so the previous epoch (prev_epoch) just ended. If the model
-            // was committed in an epoch <= prev_epoch - 1, the reveal window has passed.
-            if model.commit_epoch < prev_epoch {
-                unrevealed_ids.push(*model_id);
-            }
-        }
-
-        for model_id in &unrevealed_ids {
-            if let Some(mut model) = self.model_registry.pending_models.remove(model_id) {
-                // Slash stake at reveal_slash_rate_bps
-                let slash_amount = (model.staking_pool.soma_balance as u128
-                    * reveal_slash_rate as u128
-                    / BPS_DENOMINATOR as u128) as u64;
-                model.staking_pool.soma_balance =
-                    model.staking_pool.soma_balance.saturating_sub(slash_amount);
-
-                model.staking_pool.deactivation_epoch = Some(new_epoch);
-                self.model_registry.inactive_models.insert(*model_id, model);
-
-                info!(
-                    "Model {:?} slashed (unrevealed): {} shannons at {}bps",
-                    model_id, slash_amount, reveal_slash_rate
-                );
-            }
-        }
-
-        // --- Step 3: Process pending update cancellations ---
-        // Updates committed in epoch N must be revealed by the end of epoch N+1.
-        // Cancel any expired pending updates (no slash).
-        for model in self.model_registry.active_models.values_mut() {
-            if let Some(pending) = &model.pending_update {
-                if pending.commit_epoch < prev_epoch {
                     info!(
-                        "Model pending update cancelled (unrevealed, committed epoch {})",
-                        pending.commit_epoch
+                        "Model {:?} slashed (tally quorum): {} shannons at {}bps",
+                        model_id, slash_amount, tally_slash_rate
                     );
-                    model.pending_update = None;
                 }
             }
         }
 
-        // --- Step 4: Adjust commission rates ---
-        for model in self.model_registry.active_models.values_mut() {
-            model.commission_rate = model.next_epoch_commission_rate;
+        // Clear all report records
+        self.model_registry.model_report_records.clear();
+
+        // --- Step 2: Process Created model timeouts ---
+        // Created models that didn't commit within create_epoch + 1 are slashed.
+        let stale_created_ids: Vec<ModelId> = self
+            .model_registry
+            .created_models()
+            .filter(|(_, m)| m.create_epoch + 1 < new_epoch)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for model_id in &stale_created_ids {
+            if let Some(model) = self.model_registry.models.remove(model_id) {
+                if let Model::V1(ModelStateV1::Created(created)) = model {
+                    let slash_amount = (created.staking_pool.soma_balance as u128
+                        * reveal_slash_rate as u128
+                        / BPS_DENOMINATOR as u128) as u64;
+
+                    let mut staking_pool = created.staking_pool;
+                    staking_pool.soma_balance =
+                        staking_pool.soma_balance.saturating_sub(slash_amount);
+                    staking_pool.deactivation_epoch = Some(new_epoch);
+
+                    // Created models need a placeholder manifest/commitments/key/embedding
+                    // for the InactiveModel struct. Use defaults.
+                    // Actually, Created models that timeout should just be removed entirely
+                    // since they never had any commits. But we keep the pool for withdrawals.
+                    // We'll use a minimal inactive representation.
+                    // For now, we keep the staking pool in a special entry.
+                    // Since InactiveModel requires fields the Created model doesn't have,
+                    // we just remove the model entirely. The staking pool mapping stays
+                    // so delegators can still withdraw.
+                    // Actually, let's keep it simple: just remove from registry.
+                    // The pool mapping still allows withdrawals via staking_pool_mappings.
+                    info!(
+                        "Model {:?} slashed (created, didn't commit): {} shannons at {}bps",
+                        model_id, slash_amount, reveal_slash_rate
+                    );
+                    // We can't easily create an InactiveModel without manifest/key/embedding.
+                    // Instead, keep the Created model but mark the pool as deactivated.
+                    let deactivated =
+                        Model::V1(ModelStateV1::Created(CreatedModel { staking_pool, ..created }));
+                    self.model_registry.models.insert(*model_id, deactivated);
+                }
+            }
         }
 
-        // --- Step 5: Process model staking pools ---
-        for model in self.model_registry.active_models.values_mut() {
-            model.staking_pool.process_pending_stakes_and_withdraws(new_epoch);
+        // --- Step 3: Process pending reveal timeouts ---
+        let unrevealed_ids: Vec<ModelId> = self
+            .model_registry
+            .pending_models()
+            .filter(|(_, m)| m.commit_epoch < prev_epoch)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for model_id in &unrevealed_ids {
+            if let Some(model) = self.model_registry.models.remove(model_id) {
+                if let Model::V1(ModelStateV1::Pending(pending)) = model {
+                    let slash_amount = (pending.staking_pool.soma_balance as u128
+                        * reveal_slash_rate as u128
+                        / BPS_DENOMINATOR as u128) as u64;
+
+                    let mut staking_pool = pending.staking_pool;
+                    staking_pool.soma_balance =
+                        staking_pool.soma_balance.saturating_sub(slash_amount);
+                    staking_pool.deactivation_epoch = Some(new_epoch);
+
+                    // Pending models have a manifest but no key/embedding yet.
+                    // We need a placeholder for InactiveModel. Use default key/embedding.
+                    let inactive = Model::V1(ModelStateV1::Inactive(InactiveModel {
+                        owner: pending.owner,
+                        architecture_version: pending.architecture_version,
+                        staking_pool,
+                        commission_rate: pending.commission_rate,
+                        next_epoch_commission_rate: pending.next_epoch_commission_rate,
+                        manifest: pending.manifest,
+                        weights_commitment: pending.weights_commitment,
+                        embedding_commitment: pending.embedding_commitment,
+                        decryption_key_commitment: pending.decryption_key_commitment,
+                        decryption_key: DecryptionKey::new([0u8; 32]),
+                        embedding: SomaTensor::new(vec![], vec![0]),
+                    }));
+                    self.model_registry.models.insert(*model_id, inactive);
+
+                    info!(
+                        "Model {:?} slashed (unrevealed): {} shannons at {}bps",
+                        model_id, slash_amount, reveal_slash_rate
+                    );
+                }
+            }
         }
 
-        // Also process pending model pools (they may have accumulated stake)
-        for model in self.model_registry.pending_models.values_mut() {
-            model.staking_pool.process_pending_stake_withdraw();
-            model.staking_pool.process_pending_stake();
+        // --- Step 4: Process pending update cancellations ---
+        for model in self.model_registry.models.values_mut() {
+            if let Some(active) = model.as_active_mut() {
+                if let Some(pending) = &active.pending_update {
+                    if pending.commit_epoch < prev_epoch {
+                        info!(
+                            "Model pending update cancelled (unrevealed, committed epoch {})",
+                            pending.commit_epoch
+                        );
+                        active.pending_update = None;
+                    }
+                }
+            }
+        }
+
+        // --- Step 5: Adjust commission rates for active models ---
+        for model in self.model_registry.models.values_mut() {
+            if let Some(active) = model.as_active_mut() {
+                active.commission_rate = active.next_epoch_commission_rate;
+            }
+        }
+
+        // --- Step 6: Process model staking pools ---
+        for model in self.model_registry.models.values_mut() {
+            match model {
+                Model::V1(ModelStateV1::Active(active)) => {
+                    active.staking_pool.process_pending_stakes_and_withdraws(new_epoch);
+                }
+                Model::V1(ModelStateV1::Pending(pending)) => {
+                    pending.staking_pool.process_pending_stake_withdraw();
+                    pending.staking_pool.process_pending_stake();
+                }
+                Model::V1(ModelStateV1::Created(created)) => {
+                    created.staking_pool.process_pending_stake_withdraw();
+                    created.staking_pool.process_pending_stake();
+                }
+                _ => {}
+            }
         }
 
         // Recompute total_model_stake from active models
         self.model_registry.total_model_stake =
-            self.model_registry.active_models.values().map(|m| m.staking_pool.soma_balance).sum();
+            self.model_registry.active_models().map(|(_, m)| m.staking_pool.soma_balance).sum();
     }
 
     #[allow(clippy::result_large_err)]
@@ -1756,43 +1872,56 @@ impl SystemState {
         }
     }
 
-    pub fn find_model(&self, model_id: &ModelId) -> Option<&ModelV1> {
+    pub fn find_model(&self, model_id: &ModelId) -> Option<&Model> {
         match self {
             Self::V1(v1) => v1.find_model(model_id),
         }
     }
 
-    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut ModelV1> {
+    pub fn find_model_mut(&mut self, model_id: &ModelId) -> Option<&mut Model> {
         match self {
             Self::V1(v1) => v1.find_model_mut(model_id),
         }
     }
 
-    pub fn request_commit_model(
+    pub fn request_create_model(
         &mut self,
         owner: SomaAddress,
         model_id: ModelId,
-        manifest: Manifest,
-        weights_commitment: ModelWeightsCommitment,
         architecture_version: ArchitectureVersion,
-        embedding_commitment: EmbeddingCommitment,
-        decryption_key_commitment: DecryptionKeyCommitment,
-        stake_amount: u64,
         commission_rate: u64,
+        stake_amount: u64,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult<StakedSomaV1> {
         match self {
-            Self::V1(v1) => v1.request_commit_model(
+            Self::V1(v1) => v1.request_create_model(
                 owner,
+                model_id,
+                architecture_version,
+                commission_rate,
+                stake_amount,
+                staking_pool_id,
+            ),
+        }
+    }
+
+    pub fn request_commit_model(
+        &mut self,
+        signer: SomaAddress,
+        model_id: &ModelId,
+        manifest: Manifest,
+        weights_commitment: ModelWeightsCommitment,
+        embedding_commitment: EmbeddingCommitment,
+        decryption_key_commitment: DecryptionKeyCommitment,
+    ) -> ExecutionResult {
+        match self {
+            Self::V1(v1) => v1.request_commit_model(
+                signer,
                 model_id,
                 manifest,
                 weights_commitment,
-                architecture_version,
                 embedding_commitment,
                 decryption_key_commitment,
-                stake_amount,
-                commission_rate,
-                staking_pool_id,
             ),
         }
     }
@@ -1806,41 +1935,6 @@ impl SystemState {
     ) -> ExecutionResult {
         match self {
             Self::V1(v1) => v1.request_reveal_model(signer, model_id, decryption_key, embedding),
-        }
-    }
-
-    pub fn request_commit_model_update(
-        &mut self,
-        signer: SomaAddress,
-        model_id: &ModelId,
-        manifest: Manifest,
-        weights_commitment: ModelWeightsCommitment,
-        embedding_commitment: EmbeddingCommitment,
-        decryption_key_commitment: DecryptionKeyCommitment,
-    ) -> ExecutionResult {
-        match self {
-            Self::V1(v1) => v1.request_commit_model_update(
-                signer,
-                model_id,
-                manifest,
-                weights_commitment,
-                embedding_commitment,
-                decryption_key_commitment,
-            ),
-        }
-    }
-
-    pub fn request_reveal_model_update(
-        &mut self,
-        signer: SomaAddress,
-        model_id: &ModelId,
-        decryption_key: DecryptionKey,
-        embedding: SomaTensor,
-    ) -> ExecutionResult {
-        match self {
-            Self::V1(v1) => {
-                v1.request_reveal_model_update(signer, model_id, decryption_key, embedding)
-            }
         }
     }
 
