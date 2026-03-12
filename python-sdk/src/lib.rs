@@ -1385,20 +1385,13 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
 
-            // Auto-fetch bond coin
-            let bond_coin = {
-                use futures::TryStreamExt as _;
-                let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-                request.owner = Some(sender.to_string());
-                request.page_size = Some(1);
-                request.object_type = Some(rpc::types::ObjectType::Coin.into());
-                let stream = client.list_owned_objects(request).await;
-                tokio::pin!(stream);
-                let obj = stream.try_next().await.map_err(to_py_err)?.ok_or_else(|| {
-                    PyRuntimeError::new_err(format!("No bond coin found for address {}", sender))
-                })?;
-                obj.compute_object_reference()
-            };
+            // Auto-fetch bond coin (richest available).
+            // On lock conflict the retry loop in sign_and_execute_with_retry
+            // will re-select a different coin automatically.
+            let bond_coin = client
+                .select_coin_excluding(sender, &Default::default())
+                .await
+                .map_err(to_py_err)?;
 
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
