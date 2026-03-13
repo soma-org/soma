@@ -5,6 +5,7 @@
 mod bigtable;
 pub mod config;
 mod handlers;
+pub mod kv_rpc;
 mod rate_limiter;
 pub mod tables;
 
@@ -24,12 +25,18 @@ use indexer_framework::pipeline::concurrent::ConcurrentConfig;
 
 use crate::rate_limiter::CompositeRateLimiter;
 use crate::rate_limiter::RateLimiter;
+use bytes::Bytes;
+use types::object::ObjectID;
+use types::committee::EpochId;
 use types::crypto::AuthorityStrongQuorumSignInfo;
+use types::digests::CheckpointDigest;
 use types::digests::TransactionDigest;
 use types::effects::TransactionEffects;
 use types::checkpoints::CheckpointContents;
 use types::checkpoints::CheckpointSequenceNumber;
 use types::checkpoints::CheckpointSummary;
+use types::object::Object;
+use types::storage::ObjectKey;
 use types::transaction::Transaction;
 
 pub use crate::bigtable::client::BigTableClient;
@@ -149,10 +156,18 @@ pub trait KeyValueStoreReader {
         &mut self,
         sequence_numbers: &[CheckpointSequenceNumber],
     ) -> Result<Vec<CheckpointData>>;
+    async fn get_checkpoint_by_digest(
+        &mut self,
+        digest: CheckpointDigest,
+    ) -> Result<Option<CheckpointData>>;
     async fn get_transactions(
         &mut self,
         transactions: &[TransactionDigest],
     ) -> Result<Vec<TransactionData>>;
+    async fn get_objects(&mut self, keys: &[ObjectKey]) -> Result<Vec<Object>>;
+    async fn get_latest_object(&mut self, object_id: &ObjectID) -> Result<Option<Object>>;
+    async fn get_epoch(&mut self, epoch_id: EpochId) -> Result<Option<EpochData>>;
+    async fn get_latest_epoch(&mut self) -> Result<Option<EpochData>>;
     async fn get_watermark(&mut self) -> Result<Option<Watermark>> {
         self.get_watermark_for_pipelines(&WATERMARK_PIPELINES).await
     }
@@ -183,6 +198,22 @@ impl KeyValueStoreReader for BigTableClient {
         Ok(checkpoints)
     }
 
+    async fn get_checkpoint_by_digest(
+        &mut self,
+        digest: CheckpointDigest,
+    ) -> Result<Option<CheckpointData>> {
+        let key = tables::checkpoints_by_digest::encode_key(&digest);
+        let rows = self
+            .multi_get(tables::checkpoints_by_digest::NAME, vec![key], None)
+            .await?;
+        let Some((_, row)) = rows.into_iter().next() else {
+            return Ok(None);
+        };
+        let seq = tables::checkpoints_by_digest::decode(&row)?;
+        let mut checkpoints = self.get_checkpoints(&[seq]).await?;
+        Ok(checkpoints.pop())
+    }
+
     async fn get_transactions(
         &mut self,
         transactions: &[TransactionDigest],
@@ -199,6 +230,70 @@ impl KeyValueStoreReader for BigTableClient {
             result.push(tables::transactions::decode(&row)?);
         }
         Ok(result)
+    }
+
+    async fn get_objects(&mut self, keys: &[ObjectKey]) -> Result<Vec<Object>> {
+        let bt_keys = keys.iter().map(tables::objects::encode_key).collect();
+        let mut result = vec![];
+        for (_, row) in self
+            .multi_get(tables::objects::NAME, bt_keys, None)
+            .await?
+        {
+            result.push(tables::objects::decode(&row)?);
+        }
+        Ok(result)
+    }
+
+    async fn get_latest_object(&mut self, object_id: &ObjectID) -> Result<Option<Object>> {
+        // Objects are keyed by (object_id, version) with version as big-endian u64.
+        // To find the latest version, reverse scan with the object_id prefix.
+        let mut start_key = object_id.to_vec();
+        start_key.extend(0u64.to_be_bytes());
+        let mut end_key = object_id.to_vec();
+        end_key.extend(u64::MAX.to_be_bytes());
+
+        let rows = self
+            .range_scan(
+                tables::objects::NAME,
+                Some(Bytes::from(start_key)),
+                Some(Bytes::from(end_key)),
+                1,
+                true, // reversed — get latest version first
+            )
+            .await?;
+
+        match rows.into_iter().next() {
+            Some((_, row)) => Ok(Some(tables::objects::decode(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn get_epoch(&mut self, epoch_id: EpochId) -> Result<Option<EpochData>> {
+        let key = tables::epochs::encode_key(epoch_id);
+        let rows = self
+            .multi_get(tables::epochs::NAME, vec![key], None)
+            .await?;
+        match rows.into_iter().next() {
+            Some((_, row)) => Ok(Some(tables::epochs::decode(&row)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn get_latest_epoch(&mut self) -> Result<Option<EpochData>> {
+        let rows = self
+            .range_scan(
+                tables::epochs::NAME,
+                None,
+                Some(tables::epochs::encode_key_upper_bound()),
+                1,
+                true, // reversed — get latest epoch first
+            )
+            .await?;
+
+        match rows.into_iter().next() {
+            Some((_, row)) => Ok(Some(tables::epochs::decode(&row)?)),
+            None => Ok(None),
+        }
     }
 
     async fn get_watermark_for_pipelines(
@@ -391,5 +486,69 @@ impl From<Watermark> for indexer_store_traits::CommitterWatermark {
             tx_hi: w.tx_hi,
             timestamp_ms_hi_inclusive: w.timestamp_ms_hi_inclusive,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// KvLoader — thread-safe, `&self` interface for GraphQL BCS content lookups
+// ---------------------------------------------------------------------------
+
+/// A thread-safe interface for loading BCS content from a KV store (BigTable).
+///
+/// Unlike [`KeyValueStoreReader`] (which takes `&mut self`), this trait takes `&self`
+/// and is intended for use from async-graphql resolvers that share data via `Arc`.
+/// Implementations must handle interior mutability / cloning internally.
+#[async_trait]
+pub trait KvLoader: Send + Sync {
+    async fn get_checkpoint(&self, seq: CheckpointSequenceNumber) -> Result<Option<CheckpointData>>;
+    async fn get_transaction(&self, digest: &TransactionDigest) -> Result<Option<TransactionData>>;
+    async fn get_object(&self, id: &ObjectID, version: u64) -> Result<Option<Object>>;
+    async fn get_epoch(&self, epoch_id: EpochId) -> Result<Option<EpochData>>;
+    async fn get_watermark(&self) -> Result<Option<Watermark>>;
+}
+
+/// `BigTableClient`-backed [`KvLoader`] implementation.
+///
+/// Each method clones the inner `BigTableClient` (cheap — just a tonic `Channel`)
+/// and calls the corresponding `KeyValueStoreReader` method on the clone.
+pub struct BigTableKvLoader {
+    client: BigTableClient,
+}
+
+impl BigTableKvLoader {
+    pub fn new(client: BigTableClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl KvLoader for BigTableKvLoader {
+    async fn get_checkpoint(&self, seq: CheckpointSequenceNumber) -> Result<Option<CheckpointData>> {
+        let mut c = self.client.clone();
+        let results = c.get_checkpoints(&[seq]).await?;
+        Ok(results.into_iter().next())
+    }
+
+    async fn get_transaction(&self, digest: &TransactionDigest) -> Result<Option<TransactionData>> {
+        let mut c = self.client.clone();
+        let results = c.get_transactions(&[*digest]).await?;
+        Ok(results.into_iter().next())
+    }
+
+    async fn get_object(&self, id: &ObjectID, version: u64) -> Result<Option<Object>> {
+        let mut c = self.client.clone();
+        let key = ObjectKey(*id, types::object::Version::from_u64(version));
+        let results = c.get_objects(&[key]).await?;
+        Ok(results.into_iter().next())
+    }
+
+    async fn get_epoch(&self, epoch_id: EpochId) -> Result<Option<EpochData>> {
+        let mut c = self.client.clone();
+        c.get_epoch(epoch_id).await
+    }
+
+    async fn get_watermark(&self) -> Result<Option<Watermark>> {
+        let mut c = self.client.clone();
+        KeyValueStoreReader::get_watermark(&mut c).await
     }
 }

@@ -3,6 +3,7 @@
 
 pub mod address;
 pub mod aggregates;
+pub mod available_range;
 pub mod balance_change;
 pub mod checkpoint;
 pub mod epoch;

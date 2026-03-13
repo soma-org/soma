@@ -23,6 +23,12 @@ pub struct GraphQlConfig {
     pub db_connection_timeout_ms: u64,
     /// Database statement timeout in milliseconds.
     pub db_statement_timeout_ms: Option<u64>,
+    /// BigTable instance ID. When set, BCS content is read from BigTable.
+    pub bigtable_instance: Option<String>,
+    /// GCP project ID for BigTable.
+    pub bigtable_project: Option<String>,
+    /// Path to GCP credentials JSON for BigTable.
+    pub bigtable_credentials: Option<String>,
 }
 
 impl Default for GraphQlConfig {
@@ -36,6 +42,9 @@ impl Default for GraphQlConfig {
             db_pool_size: 30,
             db_connection_timeout_ms: 30_000,
             db_statement_timeout_ms: Some(30_000),
+            bigtable_instance: None,
+            bigtable_project: None,
+            bigtable_credentials: None,
         }
     }
 }

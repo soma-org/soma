@@ -97,7 +97,7 @@ impl OffchainCluster {
         .await
         .context("Failed to create indexer")?;
 
-        setup_indexer(&mut indexer)
+        setup_indexer(&mut indexer, indexer_alt::PruningConfig::default())
             .await
             .context("Failed to register pipelines")?;
 
@@ -123,7 +123,7 @@ impl OffchainCluster {
             .context("Failed to create PgReader for GraphQL")?,
         );
 
-        let schema = build_schema(pg_reader, GraphQlConfig::default());
+        let schema = build_schema(pg_reader, GraphQlConfig::default(), None);
         let app = build_router(AppState { schema });
         let listener = tokio::net::TcpListener::bind(graphql_listen_address)
             .await

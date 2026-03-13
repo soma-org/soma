@@ -75,6 +75,7 @@ diesel::table! {
         object_id -> Bytea,
         object_version -> Int8,
         serialized_object -> Nullable<Bytea>,
+        cp_sequence_number -> Int8,
     }
 }
 

@@ -25,6 +25,7 @@ pub struct StoredObject {
     pub object_id: Vec<u8>,
     pub object_version: i64,
     pub serialized_object: Option<Vec<u8>>,
+    pub cp_sequence_number: i64,
 }
 
 #[derive(

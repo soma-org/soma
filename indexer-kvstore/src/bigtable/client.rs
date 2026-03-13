@@ -496,7 +496,7 @@ impl BigTableClient {
     }
 
     /// Scan a range of rows.
-    pub(crate) async fn range_scan(
+    pub async fn range_scan(
         &mut self,
         table_name: &str,
         start_key: Option<Bytes>,

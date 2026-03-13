@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -136,6 +137,12 @@ pub struct PrunerConfig {
 
     /// The max number of tasks to run in parallel for pruning.
     pub prune_concurrency: u64,
+
+    /// Optional external watermark floor (e.g., BigTable's checkpoint_hi). When set,
+    /// `reader_lo` will never exceed `floor + 1`, ensuring data is not pruned from
+    /// Postgres before the external store has confirmed indexing it.
+    #[serde(skip)]
+    pub external_watermark_floor: Option<Arc<AtomicU64>>,
 }
 
 /// Values ready to be written to the database.
@@ -166,6 +173,7 @@ impl Default for PrunerConfig {
             retention: 4_000_000,
             max_chunk_size: 2_000,
             prune_concurrency: 1,
+            external_watermark_floor: None,
         }
     }
 }

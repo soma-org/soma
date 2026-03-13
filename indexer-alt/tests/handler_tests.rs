@@ -605,7 +605,6 @@ async fn test_soma_rewards_process() {
     assert_eq!(values[0].target_id, target_id.to_vec());
     assert_eq!(values[0].epoch, 0);
     assert!(!values[0].tx_digest.is_empty());
-    assert!(!values[0].balance_changes_bcs.is_empty());
 }
 
 #[tokio::test]

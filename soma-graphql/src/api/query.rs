@@ -16,6 +16,7 @@ use diesel_async::RunQueryDsl;
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
 use crate::api::types::aggregates::{ModelAggregates, RewardAggregates, TargetAggregates};
+use crate::api::types::available_range::AvailableRange;
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
 use crate::api::types::epoch_state::EpochState;
@@ -29,12 +30,33 @@ use crate::api::types::transaction::Transaction;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
 
+use indexer_kvstore::KvLoader;
+
+/// Try to get the KvLoader from the GraphQL context. Returns None if not configured.
+fn kv_loader<'a>(ctx: &'a Context<'a>) -> Option<&'a Arc<dyn KvLoader>> {
+    ctx.data::<Arc<dyn KvLoader>>().ok()
+}
+
 pub struct Query;
 
 #[Object]
 impl Query {
     /// The chain identifier (base58 hash of genesis checkpoint summary).
     async fn chain_identifier(&self, ctx: &Context<'_>) -> Result<String> {
+        // BigTable path: read genesis checkpoint from KvLoader
+        if let Some(kv) = kv_loader(ctx) {
+            if let Some(cp) = kv
+                .get_checkpoint(0)
+                .await
+                .map_err(|e| Error::new(e.to_string()))?
+            {
+                let bytes =
+                    bcs::to_bytes(&cp.summary).map_err(|e| Error::new(e.to_string()))?;
+                return Ok(bs58::encode(&bytes).into_string());
+            }
+        }
+
+        // Postgres fallback
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
@@ -74,12 +96,13 @@ impl Query {
 
         use indexer_alt_schema::schema::{cp_sequence_numbers, kv_checkpoints};
 
+        // "Latest" discovery always uses cp_sequence_numbers (never pruned).
         let seq = match sequence_number {
             Some(s) => s,
             None => {
-                kv_checkpoints::table
-                    .select(kv_checkpoints::sequence_number)
-                    .order(kv_checkpoints::sequence_number.desc())
+                cp_sequence_numbers::table
+                    .select(cp_sequence_numbers::cp_sequence_number)
+                    .order(cp_sequence_numbers::cp_sequence_number.desc())
                     .first::<i64>(conn.deref_mut())
                     .await
                     .optional()
@@ -88,6 +111,41 @@ impl Query {
             }
         };
 
+        // Metadata from cp_sequence_numbers (never pruned).
+        let cp_info: Option<(i64, i64)> = cp_sequence_numbers::table
+            .select((cp_sequence_numbers::epoch, cp_sequence_numbers::tx_lo))
+            .filter(cp_sequence_numbers::cp_sequence_number.eq(seq))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        // BigTable path: read BCS content from KvLoader
+        if let Some(kv) = kv_loader(ctx) {
+            let cp = kv
+                .get_checkpoint(seq as u64)
+                .await
+                .map_err(|e| Error::new(e.to_string()))?;
+
+            let Some(cp) = cp else {
+                return Ok(None);
+            };
+
+            return Ok(Some(Checkpoint {
+                sequence_number: seq,
+                checkpoint_summary_bcs: bcs::to_bytes(&cp.summary)
+                    .map_err(|e| Error::new(e.to_string()))?,
+                checkpoint_contents_bcs: bcs::to_bytes(&cp.contents)
+                    .map_err(|e| Error::new(e.to_string()))?,
+                validator_signatures_bcs: bcs::to_bytes(&cp.signatures)
+                    .map_err(|e| Error::new(e.to_string()))?,
+                epoch: cp_info.map(|(e, _)| e),
+                tx_lo: cp_info.map(|(_, t)| t),
+                timestamp_ms: None,
+            }));
+        }
+
+        // Postgres fallback
         let stored: Option<indexer_alt_schema::checkpoints::StoredCheckpoint> =
             kv_checkpoints::table
                 .filter(kv_checkpoints::sequence_number.eq(seq))
@@ -99,14 +157,6 @@ impl Query {
         let Some(stored) = stored else {
             return Ok(None);
         };
-
-        let cp_info: Option<(i64, i64)> = cp_sequence_numbers::table
-            .select((cp_sequence_numbers::epoch, cp_sequence_numbers::tx_lo))
-            .filter(cp_sequence_numbers::cp_sequence_number.eq(seq))
-            .first(conn.deref_mut())
-            .await
-            .optional()
-            .map_err(|e| Error::new(e.to_string()))?;
 
         Ok(Some(Checkpoint {
             sequence_number: stored.sequence_number,
@@ -125,12 +175,36 @@ impl Query {
         ctx: &Context<'_>,
         digest: String,
     ) -> Result<Option<Transaction>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
         let digest_bytes = bs58::decode(&digest)
             .into_vec()
             .map_err(|e| Error::new(format!("Invalid digest: {e}")))?;
+
+        // BigTable path
+        if let Some(kv) = kv_loader(ctx) {
+            let arr: [u8; 32] = digest_bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::new("Digest must be 32 bytes"))?;
+            let tx_digest = types::digests::TransactionDigest::new(arr);
+            let tx = kv
+                .get_transaction(&tx_digest)
+                .await
+                .map_err(|e| Error::new(e.to_string()))?;
+
+            return Ok(tx.map(|t| Transaction {
+                tx_digest: digest_bytes,
+                cp_sequence_number: t.checkpoint_number as i64,
+                timestamp_ms: t.timestamp as i64,
+                raw_transaction_bcs: bcs::to_bytes(&t.transaction).unwrap_or_default(),
+                raw_effects_bcs: bcs::to_bytes(&t.effects).unwrap_or_default(),
+                user_signatures_bcs: bcs::to_bytes(t.transaction.tx_signatures())
+                    .unwrap_or_default(),
+            }));
+        }
+
+        // Postgres fallback
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
 
         use indexer_alt_schema::schema::kv_transactions;
         let stored: Option<indexer_alt_schema::transactions::StoredTransaction> =
@@ -167,6 +241,7 @@ impl Query {
 
         use indexer_alt_schema::schema::{kv_objects, obj_info, obj_versions};
 
+        // Version discovery from obj_versions (Tier C, never pruned)
         let ver = match version {
             Some(v) => v,
             None => {
@@ -182,18 +257,7 @@ impl Query {
             }
         };
 
-        let stored: Option<indexer_alt_schema::objects::StoredObject> = kv_objects::table
-            .filter(kv_objects::object_id.eq(&id_bytes))
-            .filter(kv_objects::object_version.eq(ver))
-            .first(conn.deref_mut())
-            .await
-            .optional()
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let Some(stored) = stored else {
-            return Ok(None);
-        };
-
+        // Metadata from obj_info (Tier C, never pruned)
         let info: Option<indexer_alt_schema::objects::StoredObjInfo> = obj_info::table
             .filter(obj_info::object_id.eq(&id_bytes))
             .order(obj_info::cp_sequence_number.desc())
@@ -214,6 +278,39 @@ impl Query {
         let object_type = info
             .as_ref()
             .and_then(|i| i.module.as_ref().cloned());
+
+        // BCS content: BigTable path
+        if let Some(kv) = kv_loader(ctx) {
+            let obj_id = types::object::ObjectID::from_bytes(&id_bytes)
+                .map_err(|e| Error::new(e.to_string()))?;
+            let obj = kv
+                .get_object(&obj_id, ver as u64)
+                .await
+                .map_err(|e| Error::new(e.to_string()))?;
+
+            return Ok(Some(GqlObject {
+                object_id: id_bytes,
+                object_version: ver,
+                serialized_object_bcs: obj
+                    .map(|o| bcs::to_bytes(&o).unwrap_or_default()),
+                owner_kind: owner_kind.map(String::from),
+                owner_id: info.and_then(|i| i.owner_id),
+                object_type,
+            }));
+        }
+
+        // Postgres fallback for BCS content
+        let stored: Option<indexer_alt_schema::objects::StoredObject> = kv_objects::table
+            .filter(kv_objects::object_id.eq(&id_bytes))
+            .filter(kv_objects::object_version.eq(ver))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        let Some(stored) = stored else {
+            return Ok(None);
+        };
 
         Ok(Some(GqlObject {
             object_id: stored.object_id,
@@ -240,14 +337,15 @@ impl Query {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
-        use indexer_alt_schema::schema::{kv_epoch_ends, kv_epoch_starts};
+        use indexer_alt_schema::schema::{cp_sequence_numbers, kv_epoch_ends, kv_epoch_starts};
 
+        // "Latest" epoch discovery uses cp_sequence_numbers (never pruned).
         let epoch_num = match epoch_id {
             Some(e) => e,
             None => {
-                kv_epoch_starts::table
-                    .select(kv_epoch_starts::epoch)
-                    .order(kv_epoch_starts::epoch.desc())
+                cp_sequence_numbers::table
+                    .select(cp_sequence_numbers::epoch)
+                    .order(cp_sequence_numbers::epoch.desc())
                     .first::<i64>(conn.deref_mut())
                     .await
                     .optional()
@@ -256,6 +354,34 @@ impl Query {
             }
         };
 
+        // BigTable path
+        if let Some(kv) = kv_loader(ctx) {
+            let epoch_data = kv
+                .get_epoch(epoch_num as u64)
+                .await
+                .map_err(|e| Error::new(e.to_string()))?;
+
+            let Some(ed) = epoch_data else {
+                return Ok(None);
+            };
+
+            return Ok(Some(Epoch {
+                epoch: ed.epoch.unwrap_or(epoch_num as u64) as i64,
+                protocol_version: ed.protocol_version.unwrap_or(0) as i64,
+                cp_lo: ed.start_checkpoint.unwrap_or(0) as i64,
+                start_timestamp_ms: ed.start_timestamp_ms.unwrap_or(0) as i64,
+                reference_gas_price: ed.reference_gas_price.unwrap_or(0) as i64,
+                system_state_bcs: ed.system_state_bcs.unwrap_or_default(),
+                cp_hi: ed.cp_hi.map(|v| v as i64),
+                tx_hi: ed.tx_hi.map(|v| v as i64),
+                end_timestamp_ms: ed.end_timestamp_ms.map(|v| v as i64),
+                safe_mode: ed.safe_mode,
+                total_stake: None,
+                total_gas_fees: None,
+            }));
+        }
+
+        // Postgres fallback
         let start: Option<indexer_alt_schema::epochs::StoredEpochStart> = kv_epoch_starts::table
             .filter(kv_epoch_starts::epoch.eq(epoch_num))
             .first(conn.deref_mut())
@@ -908,6 +1034,7 @@ impl Query {
         }
 
         // Step 2: For each coin object, get the latest version from obj_versions.
+        let kv = kv_loader(ctx);
         let mut total: i64 = 0;
         for oid in &coin_object_ids {
             let version: Option<i64> = obj_versions::table
@@ -921,23 +1048,32 @@ impl Query {
 
             let Some(ver) = version else { continue };
 
-            // Step 3: Load serialized_object from kv_objects.
-            let serialized: Option<Option<Vec<u8>>> = kv_objects::table
-                .select(kv_objects::serialized_object)
-                .filter(kv_objects::object_id.eq(oid))
-                .filter(kv_objects::object_version.eq(ver))
-                .first(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?;
+            // Step 3: Load serialized_object (BigTable or Postgres).
+            let bytes: Option<Vec<u8>> = if let Some(kv) = kv {
+                let obj_id = types::object::ObjectID::from_bytes(oid.as_slice())
+                    .map_err(|e| Error::new(e.to_string()))?;
+                let obj: Option<types::object::Object> = kv
+                    .get_object(&obj_id, ver as u64)
+                    .await
+                    .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
+                obj.and_then(|o| bcs::to_bytes(&o).ok())
+            } else {
+                let serialized: Option<Option<Vec<u8>>> = kv_objects::table
+                    .select(kv_objects::serialized_object)
+                    .filter(kv_objects::object_id.eq(oid))
+                    .filter(kv_objects::object_version.eq(ver))
+                    .first(conn.deref_mut())
+                    .await
+                    .optional()
+                    .map_err(|e| Error::new(e.to_string()))?;
+                serialized.flatten()
+            };
 
-            if let Some(Some(bytes)) = serialized {
+            if let Some(bytes) = bytes {
                 // BCS-deserialize: a Coin object's balance is a u64 at the end of the
-                // serialized object. We use bcs to try to extract just the u64 value.
-                // The Coin<T> Move struct serializes as: id (32 bytes UID) + balance (u64 LE).
-                // UID = { id: { bytes: address } } which is 32 bytes for the address.
+                // serialized object. The Coin<T> Move struct serializes as:
+                // id (32 bytes UID) + balance (u64 LE).
                 if bytes.len() >= 40 {
-                    // The balance is the last 8 bytes of the BCS-serialized Coin
                     let balance_bytes: [u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
                     let value = u64::from_le_bytes(balance_bytes) as i64;
                     total = total.saturating_add(value);
@@ -1213,6 +1349,45 @@ impl Query {
             .into_iter()
             .map(|(a, b, c)| model_from_row(a, b, c))
             .collect())
+    }
+
+    /// The range of checkpoints for which index-backed queries have complete data.
+    async fn available_range(&self, ctx: &Context<'_>) -> Result<AvailableRange> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::cp_sequence_numbers;
+        use indexer_pg_db::watermarks;
+
+        // Read watermarks for a representative prunable pipeline (Tier B).
+        let wm: Option<(i64, i64)> = watermarks::table
+            .select((watermarks::reader_lo, watermarks::checkpoint_hi_inclusive))
+            .filter(watermarks::pipeline.eq("kv_checkpoints"))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        match wm {
+            Some((reader_lo, checkpoint_hi)) => Ok(AvailableRange {
+                first: reader_lo,
+                last: checkpoint_hi,
+            }),
+            None => {
+                // No watermark = no pruning = everything available
+                let max_cp: Option<i64> = cp_sequence_numbers::table
+                    .select(cp_sequence_numbers::cp_sequence_number)
+                    .order(cp_sequence_numbers::cp_sequence_number.desc())
+                    .first(conn.deref_mut())
+                    .await
+                    .optional()
+                    .map_err(|e| Error::new(e.to_string()))?;
+                Ok(AvailableRange {
+                    first: 0,
+                    last: max_cp.unwrap_or(0),
+                })
+            }
+        }
     }
 }
 

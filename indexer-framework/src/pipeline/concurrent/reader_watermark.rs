@@ -65,8 +65,21 @@ pub(super) fn reader_watermark<H: Handler + 'static>(
             };
 
             // Calculate the new reader watermark based on the current high watermark.
-            let new_reader_lo =
+            let mut new_reader_lo =
                 (current.checkpoint_hi_inclusive as u64 + 1).saturating_sub(config.retention);
+
+            // Zero-gap guarantee: clamp reader_lo against the external watermark floor
+            // (e.g., BigTable's checkpoint_hi) so we never prune data that the external
+            // store hasn't confirmed indexing yet.
+            if let Some(floor) = &config.external_watermark_floor {
+                let bt_hi = floor.load(std::sync::atomic::Ordering::Relaxed);
+                if bt_hi > 0 {
+                    new_reader_lo = new_reader_lo.min(bt_hi + 1);
+                } else {
+                    // External store hasn't reported yet — don't allow any pruning.
+                    new_reader_lo = 0;
+                }
+            }
 
             if new_reader_lo <= current.reader_lo as u64 {
                 debug!(

@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     .await
     .context("Failed to create indexer")?;
 
-    indexer_alt::setup_indexer(&mut indexer)
+    indexer_alt::setup_indexer(&mut indexer, indexer_alt::PruningConfig::default())
         .await
         .context("Failed to setup indexer pipelines")?;
 

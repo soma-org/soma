@@ -21,6 +21,8 @@ use crate::api::query::Query;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
 
+pub use indexer_kvstore::KvLoader;
+
 pub type SomaSchema = Schema<Query, EmptyMutation, EmptySubscription>;
 
 /// Application state shared across all handlers.
@@ -30,11 +32,21 @@ pub struct AppState {
 }
 
 /// Build the async-graphql schema with all context data attached.
-pub fn build_schema(pg: Arc<PgReader>, config: GraphQlConfig) -> SomaSchema {
-    Schema::build(Query, EmptyMutation, EmptySubscription)
+///
+/// When `kv` is provided, resolvers read BCS content from BigTable instead of
+/// Postgres `kv_*` tables, making Postgres pruning invisible to clients.
+pub fn build_schema(
+    pg: Arc<PgReader>,
+    config: GraphQlConfig,
+    kv: Option<Arc<dyn KvLoader>>,
+) -> SomaSchema {
+    let mut builder = Schema::build(Query, EmptyMutation, EmptySubscription)
         .data(pg)
-        .data(config)
-        .finish()
+        .data(config);
+    if let Some(kv) = kv {
+        builder = builder.data(kv);
+    }
+    builder.finish()
 }
 
 /// Build the axum router.

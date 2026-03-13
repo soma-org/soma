@@ -74,7 +74,7 @@ async fn setup() -> TestContext {
     );
 
     let config = GraphQlConfig::default();
-    let schema = build_schema(pg, config);
+    let schema = build_schema(pg, config, None);
 
     TestContext {
         schema,

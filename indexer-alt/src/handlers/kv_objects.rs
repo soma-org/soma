@@ -7,6 +7,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
+use diesel::ExpressionMethods;
+use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
@@ -23,6 +25,8 @@ impl Processor for KvObjects {
     type Value = StoredObject;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
+        let cp_sequence_number = checkpoint.summary.sequence_number as i64;
+
         let deleted_objects = checkpoint
             .eventually_removed_object_refs_post_version()
             .into_iter()
@@ -31,6 +35,7 @@ impl Processor for KvObjects {
                     object_id: id.to_vec(),
                     object_version: version.value() as i64,
                     serialized_object: None,
+                    cp_sequence_number,
                 })
             });
 
@@ -44,6 +49,7 @@ impl Processor for KvObjects {
                     serialized_object: Some(bcs::to_bytes(o).with_context(|| {
                         format!("Serializing object {id} version {}", version.value())
                     })?),
+                    cp_sequence_number,
                 })
             })
         });
@@ -65,5 +71,20 @@ impl Handler for KvObjects {
             .on_conflict_do_nothing()
             .execute(conn)
             .await?)
+    }
+
+    async fn prune<'a>(
+        &self,
+        from: u64,
+        to_exclusive: u64,
+        conn: &mut Connection<'a>,
+    ) -> Result<usize> {
+        Ok(diesel::delete(
+            kv_objects::table
+                .filter(kv_objects::cp_sequence_number.ge(from as i64))
+                .filter(kv_objects::cp_sequence_number.lt(to_exclusive as i64)),
+        )
+        .execute(conn)
+        .await?)
     }
 }

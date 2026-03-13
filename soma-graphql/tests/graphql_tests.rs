@@ -21,6 +21,7 @@ use diesel_async::RunQueryDsl;
 use serde_json::Value;
 
 use indexer_alt_schema::checkpoints::StoredCheckpoint;
+use indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
 use indexer_alt_schema::epochs::{StoredEpochEnd, StoredEpochStart};
 use indexer_alt_schema::soma::{
     StoredEpochState, StoredModel, StoredReward, StoredRewardBalance, StoredStakedSoma,
@@ -77,7 +78,7 @@ async fn setup() -> TestContext {
     );
 
     let config = GraphQlConfig::default();
-    let schema = build_schema(pg, config);
+    let schema = build_schema(pg, config, None);
 
     TestContext {
         schema,
@@ -247,7 +248,7 @@ async fn test_checkpoint_latest() {
     let ctx = setup().await;
 
     let mut conn = ctx.db.connect().await.unwrap();
-    use indexer_alt_schema::schema::kv_checkpoints;
+    use indexer_alt_schema::schema::{cp_sequence_numbers, kv_checkpoints};
 
     for seq in [0i64, 1, 2] {
         diesel::insert_into(kv_checkpoints::table)
@@ -256,6 +257,15 @@ async fn test_checkpoint_latest() {
                 checkpoint_summary: vec![seq as u8],
                 checkpoint_contents: vec![],
                 validator_signatures: vec![],
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+        diesel::insert_into(cp_sequence_numbers::table)
+            .values(&StoredCpSequenceNumbers {
+                cp_sequence_number: seq,
+                tx_lo: seq * 10,
+                epoch: 0,
             })
             .execute(conn.deref_mut())
             .await
@@ -442,7 +452,7 @@ async fn test_epoch_latest() {
     let ctx = setup().await;
 
     let mut conn = ctx.db.connect().await.unwrap();
-    use indexer_alt_schema::schema::kv_epoch_starts;
+    use indexer_alt_schema::schema::{cp_sequence_numbers, kv_epoch_starts};
 
     for e in 0..3i64 {
         diesel::insert_into(kv_epoch_starts::table)
@@ -453,6 +463,16 @@ async fn test_epoch_latest() {
                 start_timestamp_ms: 1_000_000 + e * 1000,
                 reference_gas_price: 1000,
                 system_state: vec![],
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+        // Seed cp_sequence_numbers so "latest epoch" discovery works.
+        diesel::insert_into(cp_sequence_numbers::table)
+            .values(&StoredCpSequenceNumbers {
+                cp_sequence_number: e * 100,
+                tx_lo: 0,
+                epoch: e,
             })
             .execute(conn.deref_mut())
             .await
