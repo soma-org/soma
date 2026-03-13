@@ -473,6 +473,25 @@ impl TemporaryStore {
         self.execution_results.written_objects.insert(id, object);
     }
 
+    /// Ensure all mutable input objects appear in `written_objects`, even if they
+    /// were not modified by execution. This guarantees that their versions are
+    /// bumped by `update_object_version_and_prev_tx`, which makes the old
+    /// epoch-store locks stale and prevents permanent `ObjectLockConflict` errors
+    /// after failed transactions.
+    ///
+    /// Ported from Sui's `TemporaryStore::ensure_active_inputs_mutated`.
+    pub fn ensure_active_inputs_mutated(&mut self) {
+        let mut to_be_updated = vec![];
+        for id in self.mutable_input_refs.keys() {
+            if !self.execution_results.modified_objects.contains(id) {
+                to_be_updated.push(self.input_objects[id].clone());
+            }
+        }
+        for object in to_be_updated {
+            self.mutate_input_object(object);
+        }
+    }
+
     // check that every object read is owned directly or indirectly by sender, sponsor,
     // or a shared object input
     pub fn check_ownership_invariants(

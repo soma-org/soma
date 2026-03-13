@@ -985,3 +985,76 @@ async fn test_undo_report_submission_no_prior_report() {
         Err(_) => {}
     }
 }
+
+// =============================================================================
+// Lock release tests (execution_version >= 1)
+// =============================================================================
+
+#[tokio::test]
+async fn test_bond_coin_version_bumped_on_target_not_open() {
+    // When a SubmitData transaction fails with TargetNotOpen, the bond coin
+    // must still have its version bumped so the epoch-store lock becomes stale.
+    // This test verifies the ensure_active_inputs_mutated() fix.
+    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    let gas_id = ObjectID::random();
+    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 50_000_000);
+    let gas_ref = gas.compute_object_reference();
+
+    let bond_id = ObjectID::random();
+    let bond = Object::with_id_owner_coin_for_testing(bond_id, sender, 50_000_000);
+    let bond_ref = bond.compute_object_reference();
+
+    let authority_state = TestAuthorityBuilder::new().build().await;
+    authority_state.insert_genesis_object(gas).await;
+    authority_state.insert_genesis_object(bond).await;
+
+    let submitter: SomaAddress = get_key_pair::<Ed25519KeyPair>().0;
+    let model_id = ObjectID::random();
+    let target_id = ObjectID::random();
+    let target_obj =
+        make_filled_target(target_id, vec![model_id], 10, 0.5, 1_000_000, 0, 0, submitter, 10_000);
+    authority_state.insert_genesis_object(target_obj).await;
+
+    let data = TransactionData::new(
+        TransactionKind::SubmitData(SubmitDataArgs {
+            target_id,
+            data_manifest: test_manifest(1024),
+            model_id,
+            embedding: SomaTensor::zeros(vec![10]),
+            distance_score: SomaTensor::scalar(0.1),
+            loss_score: SomaTensor::new(vec![0.5], vec![1]),
+            bond_coin: bond_ref,
+        }),
+        sender,
+        vec![gas_ref],
+    );
+    let tx = to_sender_signed_transaction(data, &key);
+    let (_, effects) =
+        send_and_confirm_transaction_(&authority_state, None, tx, true).await.unwrap();
+
+    // Transaction should have failed with TargetNotOpen
+    assert!(effects.status().is_err(), "Should fail: target is filled");
+
+    // The bond coin must appear in the mutated list with an advanced version.
+    // This proves ensure_active_inputs_mutated() wrote it to written_objects.
+    let mutated_ids: Vec<ObjectID> = effects.mutated().iter().map(|(oref, _)| oref.0).collect();
+    assert!(
+        mutated_ids.contains(&bond_id),
+        "Bond coin should be in mutated set even on failure (version bump for lock release). \
+         Mutated: {:?}",
+        mutated_ids,
+    );
+
+    // Bond coin version in effects should be greater than the input version.
+    let mutated = effects.mutated();
+    let bond_mutated = mutated
+        .iter()
+        .find(|(oref, _)| oref.0 == bond_id)
+        .expect("Bond coin must be in mutated set");
+    assert!(
+        bond_mutated.0.1.value() > bond_ref.1.value(),
+        "Bond coin version should advance: was v{}, now v{}",
+        bond_ref.1.value(),
+        bond_mutated.0.1.value(),
+    );
+}
