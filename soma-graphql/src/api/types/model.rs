@@ -228,6 +228,7 @@ impl Model {
     }
 
     /// Targets assigned to this model.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn targets(
         &self,
         ctx: &Context<'_>,

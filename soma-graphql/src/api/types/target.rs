@@ -132,93 +132,36 @@ impl Target {
     }
 
     /// Addresses that have filed fraud reports against this target.
+    #[graphql(complexity = 10)]
     async fn reporters(&self, ctx: &Context<'_>) -> Result<Vec<SomaAddress>> {
-        use std::ops::DerefMut;
-        use std::sync::Arc;
+        use async_graphql::dataloader::DataLoader;
+        use crate::loaders::{TargetReporterKey, TargetReportersLoader};
 
-        use diesel::ExpressionMethods;
-        use diesel::QueryDsl;
-        use diesel_async::RunQueryDsl;
-
-        use crate::db::PgReader;
-
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_target_reports;
-
-        // Get reporters at the latest checkpoint for this target
-        let reporters: Vec<Vec<u8>> = soma_target_reports::table
-            .select(soma_target_reports::reporter)
-            .filter(soma_target_reports::target_id.eq(&self.target_id))
-            .filter(soma_target_reports::cp_sequence_number.eq(self.cp_sequence_number))
-            .load(conn.deref_mut())
+        let loader = ctx.data::<DataLoader<TargetReportersLoader>>()?;
+        let key = TargetReporterKey {
+            target_id: self.target_id.clone(),
+            cp_sequence_number: self.cp_sequence_number,
+        };
+        let reporters = loader
+            .load_one(key)
             .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
+            .map_err(|e| Error::new(e.to_string()))?
+            .unwrap_or_default();
         Ok(reporters.into_iter().map(SomaAddress).collect())
     }
 
     /// The reward claim for this target (if claimed).
+    #[graphql(complexity = 10)]
     async fn reward(&self, ctx: &Context<'_>) -> Result<Option<super::reward::Reward>> {
-        use std::ops::DerefMut;
-        use std::sync::Arc;
+        use async_graphql::dataloader::DataLoader;
+        use crate::loaders::TargetRewardLoader;
 
-        use diesel::ExpressionMethods;
-        use diesel::OptionalExtension;
-        use diesel::QueryDsl;
-        use diesel_async::RunQueryDsl;
-
-        use crate::db::PgReader;
-
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::{soma_reward_balances, soma_rewards};
-
-        type RewardRow = (Vec<u8>, i64, i64, Vec<u8>);
-
-        let reward_row: Option<RewardRow> = soma_rewards::table
-            .select((
-                soma_rewards::target_id,
-                soma_rewards::cp_sequence_number,
-                soma_rewards::epoch,
-                soma_rewards::tx_digest,
-            ))
-            .filter(soma_rewards::target_id.eq(&self.target_id))
-            .first(conn.deref_mut())
-            .await
-            .optional()
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let Some(row) = reward_row else {
-            return Ok(None);
-        };
-
-        type BalanceRow = (Vec<u8>, i64);
-
-        let balance_rows: Vec<BalanceRow> = soma_reward_balances::table
-            .select((
-                soma_reward_balances::recipient,
-                soma_reward_balances::amount,
-            ))
-            .filter(soma_reward_balances::target_id.eq(&self.target_id))
-            .load(conn.deref_mut())
+        let loader = ctx.data::<DataLoader<TargetRewardLoader>>()?;
+        let reward = loader
+            .load_one(self.target_id.clone())
             .await
             .map_err(|e| Error::new(e.to_string()))?;
-
-        let balances = balance_rows
-            .into_iter()
-            .map(|(recipient, amount)| super::reward::RewardBalance { recipient, amount })
-            .collect();
-
-        Ok(Some(super::reward::Reward {
-            target_id: row.0,
-            cp_sequence_number: row.1,
-            epoch: row.2,
-            tx_digest: row.3,
-            balances,
-        }))
+        Ok(reward)
     }
 }
 

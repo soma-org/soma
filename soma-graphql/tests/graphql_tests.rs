@@ -2844,3 +2844,276 @@ async fn test_reward_aggregates() {
     assert_eq!(agg["totalCount"], 3);
     assert_eq!(agg["totalAmount"], "6400");
 }
+
+// ---------------------------------------------------------------------------
+// Query depth limit
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_query_depth_limit_rejected() {
+    let ctx = setup().await;
+
+    // Default max_query_depth is 10. A normal query should succeed.
+    let query = "{ serviceConfig { maxPageSize defaultPageSize maxQueryDepth } }";
+    let resp = async_graphql::Schema::execute(&ctx.schema, query).await;
+    assert!(resp.errors.is_empty(), "normal-depth query should succeed");
+
+    // Build a query exceeding depth 10 via __type introspection nesting.
+    let deep_query = r#"{
+        __type(name: "Query") {
+            fields {
+                type {
+                    ofType {
+                        ofType {
+                            ofType {
+                                ofType {
+                                    ofType {
+                                        ofType {
+                                            ofType {
+                                                name
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }"#;
+    let resp = async_graphql::Schema::execute(&ctx.schema, deep_query).await;
+    assert!(
+        !resp.errors.is_empty(),
+        "deep query should be rejected by depth limit"
+    );
+    let err_msg = resp.errors[0].message.to_lowercase();
+    assert!(
+        err_msg.contains("nested") || err_msg.contains("depth"),
+        "error should mention depth limit, got: {err_msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Query complexity limit
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_query_complexity_limit_rejected() {
+    let ctx = setup().await;
+
+    // Default max_query_complexity is 1000.
+    // targets(first: 50) has complexity = 5 + 50 * child_complexity.
+    // Each Target field is 1, and with ~20 fields + reporters(10) + reward(10) ≈ 40.
+    // 5 + 50 * 40 = 2005, which should exceed 1000.
+    let query = r#"{
+        targets(first: 50) {
+            edges {
+                node {
+                    targetId
+                    epoch
+                    status
+                    submitter
+                    winningModelId
+                    rewardPool
+                    bondAmount
+                    reportCount
+                    winningDistanceScore
+                    winningLossScore
+                    winningModelOwner
+                    fillEpoch
+                    distanceThreshold
+                    modelIds
+                    winningDataUrl
+                    winningDataChecksum
+                    winningDataSize
+                    reporters
+                    reward {
+                        epoch
+                        balances {
+                            recipient
+                            amount
+                        }
+                    }
+                }
+            }
+        }
+    }"#;
+
+    let resp = async_graphql::Schema::execute(&ctx.schema, query).await;
+    assert!(
+        !resp.errors.is_empty(),
+        "high-complexity query should be rejected"
+    );
+    let err_msg = resp.errors[0].message.to_lowercase();
+    assert!(
+        err_msg.contains("complex"),
+        "error should mention complexity, got: {err_msg}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DataLoader batch: reporters across multiple targets
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_targets_batch_reporters() {
+    let ctx = setup().await;
+    let mut conn = ctx.db.connect().await.unwrap();
+    use indexer_alt_schema::schema::{soma_target_reports, soma_targets};
+
+    // Seed 3 targets with distinct reporters
+    for i in 0..3u8 {
+        let mut target_id = vec![0u8; 32];
+        target_id[0] = i;
+
+        diesel::insert_into(soma_targets::table)
+            .values(&StoredTarget {
+                target_id: target_id.clone(),
+                cp_sequence_number: 5,
+                epoch: 1,
+                status: "Filled".to_string(),
+                submitter: None,
+                winning_model_id: None,
+                reward_pool: 1000,
+                bond_amount: 0,
+                report_count: 2,
+                state_bcs: vec![],
+                winning_distance_score: None,
+                winning_loss_score: None,
+                winning_model_owner: None,
+                fill_epoch: None,
+                distance_threshold: 0.5,
+                model_ids_json: "[]".to_string(),
+                winning_data_url: None,
+                winning_data_checksum: None,
+                winning_data_size: None,
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+
+        // Each target gets 2 reporters
+        for r in 0..2u8 {
+            let mut reporter = vec![0u8; 32];
+            reporter[0] = i;
+            reporter[1] = r;
+            diesel::insert_into(soma_target_reports::table)
+                .values(&StoredTargetReport {
+                    target_id: target_id.clone(),
+                    cp_sequence_number: 5,
+                    reporter,
+                })
+                .execute(conn.deref_mut())
+                .await
+                .unwrap();
+        }
+    }
+
+    // Query all 3 targets and their reporters
+    let json = execute(
+        &ctx.schema,
+        r#"{ targets(first: 3) { edges { node { targetId reporters } } } }"#,
+    )
+    .await;
+
+    let edges = json["data"]["targets"]["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 3);
+    for edge in edges {
+        let reporters = edge["node"]["reporters"].as_array().unwrap();
+        assert_eq!(reporters.len(), 2, "each target should have 2 reporters");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DataLoader batch: rewards across multiple targets
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn test_targets_batch_rewards() {
+    let ctx = setup().await;
+    let mut conn = ctx.db.connect().await.unwrap();
+    use indexer_alt_schema::schema::{soma_reward_balances, soma_rewards, soma_targets};
+
+    // Seed 3 claimed targets with rewards and balances
+    for i in 0..3u8 {
+        let mut target_id = vec![0u8; 32];
+        target_id[0] = i;
+        let mut tx_digest = vec![0u8; 32];
+        tx_digest[0] = i;
+
+        diesel::insert_into(soma_targets::table)
+            .values(&StoredTarget {
+                target_id: target_id.clone(),
+                cp_sequence_number: 5,
+                epoch: 1,
+                status: "Claimed".to_string(),
+                submitter: Some(vec![0xDD; 32]),
+                winning_model_id: Some(vec![0xCC; 32]),
+                reward_pool: 5000,
+                bond_amount: 100,
+                report_count: 0,
+                state_bcs: vec![],
+                winning_distance_score: Some(0.1),
+                winning_loss_score: Some(0.05),
+                winning_model_owner: None,
+                fill_epoch: Some(1),
+                distance_threshold: 0.5,
+                model_ids_json: "[]".to_string(),
+                winning_data_url: None,
+                winning_data_checksum: None,
+                winning_data_size: None,
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+
+        diesel::insert_into(soma_rewards::table)
+            .values(&StoredReward {
+                target_id: target_id.clone(),
+                cp_sequence_number: 5,
+                epoch: 1,
+                tx_digest: tx_digest.clone(),
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+
+        // Each reward has 1 balance row
+        let mut recipient = vec![0u8; 32];
+        recipient[0] = i;
+        diesel::insert_into(soma_reward_balances::table)
+            .values(&StoredRewardBalance {
+                target_id: target_id.clone(),
+                cp_sequence_number: 5,
+                epoch: 1,
+                tx_digest,
+                recipient,
+                amount: (i as i64 + 1) * 1000,
+            })
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+    }
+
+    // Query all 3 targets with nested rewards
+    let json = execute(
+        &ctx.schema,
+        r#"{ targets(first: 3) { edges { node { targetId reward { epoch balances { recipient amount } } } } } }"#,
+    )
+    .await;
+
+    let edges = json["data"]["targets"]["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 3);
+    for edge in edges {
+        let reward = &edge["node"]["reward"];
+        assert!(!reward.is_null(), "each target should have a reward");
+        assert_eq!(reward["epoch"], "1");
+        let balances = reward["balances"].as_array().unwrap();
+        assert_eq!(balances.len(), 1, "each reward should have 1 balance");
+    }
+}

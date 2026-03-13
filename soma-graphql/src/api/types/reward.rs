@@ -6,6 +6,7 @@ use async_graphql::*;
 use crate::api::scalars::{BigInt, Digest, SomaAddress};
 
 /// A single balance change from a reward claim.
+#[derive(Clone)]
 pub struct RewardBalance {
     pub recipient: Vec<u8>,
     pub amount: i64,
@@ -25,6 +26,7 @@ impl RewardBalance {
 }
 
 /// A reward claim event — derived from ClaimRewards transactions.
+#[derive(Clone)]
 pub struct Reward {
     pub target_id: Vec<u8>,
     pub cp_sequence_number: i64,

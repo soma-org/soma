@@ -473,6 +473,7 @@ impl Query {
     }
 
     /// Query targets with pagination and optional filters.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn targets(
         &self,
         ctx: &Context<'_>,
@@ -643,6 +644,7 @@ impl Query {
     }
 
     /// Query models with pagination and optional filters.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn models(
         &self,
         ctx: &Context<'_>,
@@ -887,6 +889,7 @@ impl Query {
     }
 
     /// Query staked SOMA positions owned by a given address, with pagination.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn staked_somas(
         &self,
         ctx: &Context<'_>,

@@ -6,9 +6,11 @@
 pub mod api;
 pub mod config;
 pub mod db;
+pub mod loaders;
 
 use std::sync::Arc;
 
+use async_graphql::dataloader::DataLoader;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::extract::State;
@@ -20,6 +22,7 @@ use tower_http::cors::CorsLayer;
 use crate::api::query::Query;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
+use crate::loaders::{TargetReportersLoader, TargetRewardLoader};
 
 pub use indexer_kvstore::KvLoader;
 
@@ -40,9 +43,22 @@ pub fn build_schema(
     config: GraphQlConfig,
     kv: Option<Arc<dyn KvLoader>>,
 ) -> SomaSchema {
+    let reporters_loader = DataLoader::new(
+        TargetReportersLoader { pg: pg.clone() },
+        tokio::spawn,
+    );
+    let reward_loader = DataLoader::new(
+        TargetRewardLoader { pg: pg.clone() },
+        tokio::spawn,
+    );
+
     let mut builder = Schema::build(Query, EmptyMutation, EmptySubscription)
         .data(pg)
-        .data(config);
+        .data(config.clone())
+        .data(reporters_loader)
+        .data(reward_loader)
+        .limit_depth(config.max_query_depth)
+        .limit_complexity(config.max_query_complexity);
     if let Some(kv) = kv {
         builder = builder.data(kv);
     }

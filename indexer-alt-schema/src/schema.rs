@@ -193,7 +193,6 @@ diesel::table! {
         commit_epoch -> Int8,
         stake -> Int8,
         commission_rate -> Int8,
-        has_embedding -> Bool,
         next_epoch_commission_rate -> Int8,
         staking_pool_id -> Bytea,
         activation_epoch -> Nullable<Int8>,
@@ -208,16 +207,11 @@ diesel::table! {
         manifest_checksum -> Nullable<Bytea>,
         manifest_size -> Nullable<Int8>,
         weights_commitment -> Nullable<Bytea>,
-        embedding_commitment -> Nullable<Bytea>,
-        decryption_key_commitment -> Nullable<Bytea>,
-        decryption_key -> Nullable<Bytea>,
         has_pending_update -> Bool,
         pending_manifest_url -> Nullable<Text>,
         pending_manifest_checksum -> Nullable<Bytea>,
         pending_manifest_size -> Nullable<Int8>,
         pending_weights_commitment -> Nullable<Bytea>,
-        pending_embedding_commitment -> Nullable<Bytea>,
-        pending_decryption_key_commitment -> Nullable<Bytea>,
         pending_commit_epoch -> Nullable<Int8>,
     }
 }
@@ -239,14 +233,6 @@ diesel::table! {
         cp_sequence_number -> Int8,
         epoch -> Int8,
         tx_digest -> Bytea,
-    }
-}
-
-diesel::table! {
-    soma_target_models (target_id, cp_sequence_number, model_id) {
-        target_id -> Bytea,
-        cp_sequence_number -> Int8,
-        model_id -> Bytea,
     }
 }
 
@@ -280,7 +266,6 @@ diesel::table! {
         reward_pool -> Int8,
         bond_amount -> Int8,
         report_count -> Int4,
-        state_bcs -> Bytea,
         winning_distance_score -> Nullable<Float8>,
         winning_loss_score -> Nullable<Float8>,
         winning_model_owner -> Nullable<Bytea>,
@@ -323,7 +308,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     soma_reward_balances,
     soma_rewards,
     soma_staked_soma,
-    soma_target_models,
     soma_target_reports,
     soma_targets,
     tx_affected_addresses,
