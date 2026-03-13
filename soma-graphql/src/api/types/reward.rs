@@ -3,7 +3,26 @@
 
 use async_graphql::*;
 
-use crate::api::scalars::{Base64, BigInt, Digest, SomaAddress};
+use crate::api::scalars::{BigInt, Digest, SomaAddress};
+
+/// A single balance change from a reward claim.
+pub struct RewardBalance {
+    pub recipient: Vec<u8>,
+    pub amount: i64,
+}
+
+#[Object]
+impl RewardBalance {
+    /// The address that received (or sent) funds.
+    async fn recipient(&self) -> SomaAddress {
+        SomaAddress(self.recipient.clone())
+    }
+
+    /// The balance change amount (positive = received, negative = sent).
+    async fn amount(&self) -> BigInt {
+        BigInt(self.amount)
+    }
+}
 
 /// A reward claim event — derived from ClaimRewards transactions.
 pub struct Reward {
@@ -11,7 +30,7 @@ pub struct Reward {
     pub cp_sequence_number: i64,
     pub epoch: i64,
     pub tx_digest: Vec<u8>,
-    pub balance_changes_bcs: Vec<u8>,
+    pub balances: Vec<RewardBalance>,
 }
 
 #[Object]
@@ -36,8 +55,8 @@ impl Reward {
         Digest(self.tx_digest.clone())
     }
 
-    /// BCS-serialized balance changes showing who received what.
-    async fn balance_changes_bcs(&self) -> Base64 {
-        Base64(self.balance_changes_bcs.clone())
+    /// Per-recipient balance changes from this reward claim.
+    async fn balances(&self) -> &[RewardBalance] {
+        &self.balances
     }
 }

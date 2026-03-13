@@ -11,10 +11,12 @@ bcs.workspace = true
 clap.workspace = true
 diesel.workspace = true
 diesel-async = { workspace = true }
+hex.workspace = true
 indexer-alt-schema.workspace = true
 indexer-framework = { workspace = true, features = ["postgres"] }
 indexer-pg-db.workspace = true
 indexer-store-traits.workspace = true
+serde_json.workspace = true
 soma-field-count.workspace = true
 tokio.workspace = true
 prometheus.workspace = true

@@ -8,31 +8,127 @@ use anyhow::Result;
 use anyhow::bail;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::schema::soma_models;
+use indexer_alt_schema::soma::StoredModel;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use types::model::ModelId;
-use types::model::ModelV1;
+use types::metadata::{ManifestAPI, MetadataAPI};
+use types::model::{Model, ModelId, ModelStateV1};
 use types::system_state::{SystemStateTrait as _, get_system_state};
 use types::transaction::TransactionKind;
-use indexer_alt_schema::schema::soma_models;
-use indexer_alt_schema::soma::StoredModel;
 
 pub struct SomaModels;
 
-fn stored_model(model_id: ModelId, model: &ModelV1, epoch: i64, status: &str) -> Result<StoredModel> {
+fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredModel> {
+    let status = match model {
+        Model::V1(ModelStateV1::Created(_)) => "created",
+        Model::V1(ModelStateV1::Pending(_)) => "pending",
+        Model::V1(ModelStateV1::Active(_)) => "active",
+        Model::V1(ModelStateV1::Inactive(_)) => "inactive",
+    };
+
+    // commit_epoch: meaningful for Pending; for Created use create_epoch; otherwise 0
+    let commit_epoch = model
+        .commit_epoch()
+        .or(model.create_epoch())
+        .unwrap_or(0) as i64;
+
+    // StakingPool fields
+    let pool = model.staking_pool();
+    let exchange_rates_json =
+        serde_json::to_string(&pool.exchange_rates).unwrap_or_else(|_| "{}".to_string());
+
+    // Manifest fields (available on Pending/Active/Inactive)
+    let (manifest_url, manifest_checksum, manifest_size) = match model.manifest() {
+        Some(m) => {
+            let url = m.url().to_string();
+            let meta = m.metadata();
+            let checksum = meta.checksum().as_ref().to_vec();
+            let size = meta.size() as i64;
+            (Some(url), Some(checksum), Some(size))
+        }
+        None => (None, None, None),
+    };
+
+    // Commitment digests (available on Pending/Active/Inactive)
+    let (weights_commitment, embedding_commitment, decryption_key_commitment) = match model {
+        Model::V1(ModelStateV1::Pending(m)) => (
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
+        ),
+        Model::V1(ModelStateV1::Active(m)) => (
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
+        ),
+        Model::V1(ModelStateV1::Inactive(m)) => (
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
+            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
+        ),
+        _ => (None, None, None),
+    };
+
+    // Pending model update fields (only on Active models with a pending update)
+    let (pu_url, pu_checksum, pu_size, pu_wc, pu_ec, pu_dkc, pu_epoch) =
+        match model.as_active().and_then(|a| a.pending_update.as_ref()) {
+            Some(pu) => {
+                let m = &pu.manifest;
+                let url = m.url().to_string();
+                let meta = m.metadata();
+                (
+                    Some(url),
+                    Some(meta.checksum().as_ref().to_vec()),
+                    Some(meta.size() as i64),
+                    Some(AsRef::<[u8]>::as_ref(&pu.weights_commitment).to_vec()),
+                    Some(AsRef::<[u8]>::as_ref(&pu.embedding_commitment).to_vec()),
+                    Some(AsRef::<[u8]>::as_ref(&pu.decryption_key_commitment).to_vec()),
+                    Some(pu.commit_epoch as i64),
+                )
+            }
+            None => (None, None, None, None, None, None, None),
+        };
+
     Ok(StoredModel {
         model_id: model_id.to_vec(),
         epoch,
         status: status.to_string(),
-        owner: model.owner.to_vec(),
-        architecture_version: model.architecture_version as i64,
-        commit_epoch: model.commit_epoch as i64,
+        owner: model.owner().to_vec(),
+        architecture_version: model.architecture_version() as i64,
+        commit_epoch,
         stake: model.stake() as i64,
-        commission_rate: model.commission_rate as i64,
-        has_embedding: model.embedding.is_some(),
-        state_bcs: bcs::to_bytes(model).context("Serializing ModelV1")?,
+        commission_rate: model.commission_rate() as i64,
+        has_embedding: model.embedding().is_some(),
+        next_epoch_commission_rate: model.next_epoch_commission_rate() as i64,
+        staking_pool_id: pool.id.to_vec(),
+        activation_epoch: pool.activation_epoch.map(|e| e as i64),
+        deactivation_epoch: pool.deactivation_epoch.map(|e| e as i64),
+        rewards_pool: pool.rewards_pool as i64,
+        pool_token_balance: pool.pool_token_balance as i64,
+        pending_stake: pool.pending_stake as i64,
+        pending_total_soma_withdraw: pool.pending_total_soma_withdraw as i64,
+        pending_pool_token_withdraw: pool.pending_pool_token_withdraw as i64,
+        exchange_rates_json,
+        manifest_url,
+        manifest_checksum,
+        manifest_size,
+        weights_commitment,
+        embedding_commitment,
+        decryption_key_commitment,
+        decryption_key: model
+            .decryption_key()
+            .map(|k| AsRef::<[u8]>::as_ref(k).to_vec()),
+        has_pending_update: model.has_pending_update(),
+        pending_manifest_url: pu_url,
+        pending_manifest_checksum: pu_checksum,
+        pending_manifest_size: pu_size,
+        pending_weights_commitment: pu_wc,
+        pending_embedding_commitment: pu_ec,
+        pending_decryption_key_commitment: pu_dkc,
+        pending_commit_epoch: pu_epoch,
     })
 }
 
@@ -76,14 +172,8 @@ impl Processor for SomaModels {
         let epoch = system_state.epoch() as i64;
 
         let mut values = vec![];
-        for (model_id, model) in &registry.active_models {
-            values.push(stored_model(*model_id, model, epoch, "active")?);
-        }
-        for (model_id, model) in &registry.pending_models {
-            values.push(stored_model(*model_id, model, epoch, "pending")?);
-        }
-        for (model_id, model) in &registry.inactive_models {
-            values.push(stored_model(*model_id, model, epoch, "inactive")?);
+        for (model_id, model) in &registry.models {
+            values.push(stored_model(*model_id, model, epoch)?);
         }
         Ok(values)
     }

@@ -17,7 +17,7 @@ pub fn encode_key(model_id: &[u8], epoch: u64) -> Vec<u8> {
     key
 }
 
-/// Stores full BCS-serialized ModelV1.
+/// Stores full BCS-serialized Model.
 pub fn encode(state_bcs: &[u8]) -> [(&'static str, Bytes); 1] {
     [(DEFAULT_COLUMN, Bytes::from(state_bcs.to_vec()))]
 }

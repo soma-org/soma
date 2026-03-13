@@ -21,7 +21,7 @@ use crate::digests::{
 use crate::effects::object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use crate::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsV1};
 use crate::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
-use crate::model::{ModelId, ModelV1};
+use crate::model::ModelId;
 use crate::object::{Object, ObjectData, ObjectID, ObjectType, Owner, Version, OBJECT_START_VERSION};
 use crate::system_state::{SystemState, SystemStateTrait as _};
 use crate::target::{TargetId, TargetStatus, TargetV1};

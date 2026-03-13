@@ -47,25 +47,7 @@ impl Processor for SomaModelsPipeline {
 
         let mut entries = vec![];
 
-        for (model_id, model) in &registry.active_models {
-            let state_bcs = bcs::to_bytes(model)?;
-            let entry = tables::make_entry(
-                tables::models::encode_key(&model_id.to_vec(), epoch),
-                tables::models::encode(&state_bcs),
-                Some(timestamp_ms),
-            );
-            entries.push(entry);
-        }
-        for (model_id, model) in &registry.pending_models {
-            let state_bcs = bcs::to_bytes(model)?;
-            let entry = tables::make_entry(
-                tables::models::encode_key(&model_id.to_vec(), epoch),
-                tables::models::encode(&state_bcs),
-                Some(timestamp_ms),
-            );
-            entries.push(entry);
-        }
-        for (model_id, model) in &registry.inactive_models {
+        for (model_id, model) in &registry.models {
             let state_bcs = bcs::to_bytes(model)?;
             let entry = tables::make_entry(
                 tables::models::encode_key(&model_id.to_vec(), epoch),

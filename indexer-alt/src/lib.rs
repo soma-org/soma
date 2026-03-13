@@ -108,9 +108,34 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>) -> Result<()> {
         .context("Failed to register soma_models pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_rewards::SomaRewards, config)
+        .concurrent_pipeline(handlers::soma_rewards::SomaRewards, config.clone())
         .await
         .context("Failed to register soma_rewards pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_reward_balances::SomaRewardBalances, config.clone())
+        .await
+        .context("Failed to register soma_reward_balances pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_target_models::SomaTargetModels, config.clone())
+        .await
+        .context("Failed to register soma_target_models pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_staked_soma::SomaStakedSoma, config.clone())
+        .await
+        .context("Failed to register soma_staked_soma pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_epoch_state::SomaEpochState, config.clone())
+        .await
+        .context("Failed to register soma_epoch_state pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_target_reports::SomaTargetReports, config)
+        .await
+        .context("Failed to register soma_target_reports pipeline")?;
 
     Ok(())
 }
