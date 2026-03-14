@@ -373,6 +373,13 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
             }
         }
 
+        // Apply data_ingestion_dir to all validator configs
+        if let Some(ref dir) = self.data_ingestion_dir {
+            for config in &mut network_config.validator_configs {
+                config.checkpoint_executor_config.data_ingestion_dir = Some(dir.clone());
+            }
+        }
+
         // Create validator nodes
         let mut nodes: HashMap<_, _> = network_config
             .validator_configs()
@@ -420,7 +427,14 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     builder = builder.with_run_with_range(run_with_range);
                 }
 
-                let fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
+                let mut fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
+
+                // Apply data_ingestion_dir to fullnode config (fullnodes write all
+                // checkpoint files since they always use the synced-checkpoint path)
+                if let Some(ref dir) = self.data_ingestion_dir {
+                    fullnode_config.checkpoint_executor_config.data_ingestion_dir =
+                        Some(dir.clone());
+                }
 
                 info!(
                     "SwarmBuilder configuring fullnode {} ({})",

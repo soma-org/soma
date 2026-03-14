@@ -59,6 +59,7 @@ bincode.workspace = true
 once_cell = { version = "1.21.3" }
 axum.workspace = true
 hex = "0.4"
+rpc.workspace = true
 sdk.workspace = true
 runtime.workspace = true
 scoring = { workspace = true, default-features = false }

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod _serde;
+pub mod checkpoint_blob;
 pub mod field;
 pub mod merge;
 pub mod rpc_proto_conversions;

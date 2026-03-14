@@ -1,0 +1,8 @@
+[package]
+name = "soma-field-count"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+soma-field-count-derive = { path = "../soma-field-count-derive" }

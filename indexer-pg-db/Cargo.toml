@@ -1,0 +1,25 @@
+[package]
+name = "indexer-pg-db"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+diesel = { workspace = true, features = ["postgres", "r2d2"] }
+diesel-async = { workspace = true, features = ["postgres", "bb8", "async-connection-wrapper"] }
+diesel_migrations.workspace = true
+bb8.workspace = true
+indexer-store-traits.workspace = true
+prometheus.workspace = true
+scoped-futures.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tempfile.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

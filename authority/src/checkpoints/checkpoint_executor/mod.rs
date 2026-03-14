@@ -530,15 +530,15 @@ impl CheckpointExecutor {
         .expect("failed to load checkpoint data");
 
         if self.state.rpc_index.is_some() || self.config.data_ingestion_dir.is_some() {
-            let checkpoint_data = checkpoint.clone().into();
             // Index the checkpoint. this is done out of order and is not written and committed to the
             // DB until later (committing must be done in-order)
             if let Some(rpc_index) = &self.state.rpc_index {
+                let checkpoint_data = checkpoint.clone().into();
                 rpc_index.index_checkpoint(&checkpoint_data);
             }
 
             if let Some(path) = &self.config.data_ingestion_dir {
-                store_checkpoint_locally(path, &checkpoint_data)
+                store_checkpoint_locally(path, &checkpoint)
                     .expect("failed to store checkpoint locally");
             }
         }

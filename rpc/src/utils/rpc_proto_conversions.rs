@@ -677,7 +677,9 @@ impl From<types::consensus::ConsensusCommitPrologueV1> for ConsensusCommitProlog
             epoch: Some(value.epoch),
             round: Some(value.round),
             commit_timestamp: Some(crate::proto::timestamp_ms_to_proto(value.commit_timestamp_ms)),
-            ..Default::default()
+            consensus_commit_digest: Some(value.consensus_commit_digest.to_string()),
+            additional_state_digest: Some(value.additional_state_digest.to_string()),
+            sub_dag_index: value.sub_dag_index,
         }
     }
 }

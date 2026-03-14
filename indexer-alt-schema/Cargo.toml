@@ -1,0 +1,15 @@
+[package]
+name = "indexer-alt-schema"
+version.workspace = true
+license = "Apache-2.0"
+edition = "2024"
+
+[dependencies]
+bcs.workspace = true
+diesel = { workspace = true, features = ["postgres", "64-column-tables"] }
+diesel_migrations.workspace = true
+serde = { workspace = true, features = ["derive"] }
+soma-field-count.workspace = true
+
+[lints]
+workspace = true

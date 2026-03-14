@@ -456,10 +456,16 @@ impl SomaClient {
                         return Err(e);
                     }
 
+                    // Exponential backoff: 1s, 2s, 4s between retries to
+                    // avoid bursting through RPC rate limits.
+                    let backoff = Duration::from_secs(1 << attempt);
+                    tokio::time::sleep(backoff).await;
+
                     if let Some(obj_id) = Self::parse_conflict_object_id(&err_str) {
                         tracing::warn!(
-                            "Coin {} conflict, excluding and retrying {label} (attempt {}/{})",
+                            "Coin {} conflict, excluding and retrying {label} in {:?} (attempt {}/{})",
                             obj_id,
+                            backoff,
                             attempt + 1,
                             MAX_RETRIES
                         );
@@ -475,7 +481,8 @@ impl SomaClient {
                         }
                     } else {
                         tracing::warn!(
-                            "Coin conflict on {label}, retrying with fresh coins (attempt {}/{})",
+                            "Coin conflict on {label}, retrying with fresh coins in {:?} (attempt {}/{})",
+                            backoff,
                             attempt + 1,
                             MAX_RETRIES
                         );
