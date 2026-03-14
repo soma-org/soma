@@ -15,7 +15,6 @@ pub struct Model {
     pub commit_epoch: i64,
     pub stake: i64,
     pub commission_rate: i64,
-    pub has_embedding: bool,
     pub next_epoch_commission_rate: i64,
     pub staking_pool_id: Vec<u8>,
     pub activation_epoch: Option<i64>,
@@ -30,16 +29,11 @@ pub struct Model {
     pub manifest_checksum: Option<Vec<u8>>,
     pub manifest_size: Option<i64>,
     pub weights_commitment: Option<Vec<u8>>,
-    pub embedding_commitment: Option<Vec<u8>>,
-    pub decryption_key_commitment: Option<Vec<u8>>,
-    pub decryption_key: Option<Vec<u8>>,
     pub has_pending_update: bool,
     pub pending_manifest_url: Option<String>,
     pub pending_manifest_checksum: Option<Vec<u8>>,
     pub pending_manifest_size: Option<i64>,
     pub pending_weights_commitment: Option<Vec<u8>>,
-    pub pending_embedding_commitment: Option<Vec<u8>>,
-    pub pending_decryption_key_commitment: Option<Vec<u8>>,
     pub pending_commit_epoch: Option<i64>,
 }
 
@@ -83,11 +77,6 @@ impl Model {
     /// Commission rate in basis points.
     async fn commission_rate(&self) -> BigInt {
         BigInt(self.commission_rate)
-    }
-
-    /// Whether the model has revealed its embedding.
-    async fn has_embedding(&self) -> bool {
-        self.has_embedding
     }
 
     /// Next epoch's commission rate in basis points.
@@ -160,25 +149,6 @@ impl Model {
         self.weights_commitment.as_ref().map(|c| Base64(c.clone()))
     }
 
-    /// Blake2b commitment of the model embedding.
-    async fn embedding_commitment(&self) -> Option<Base64> {
-        self.embedding_commitment
-            .as_ref()
-            .map(|c| Base64(c.clone()))
-    }
-
-    /// Blake2b commitment of the decryption key.
-    async fn decryption_key_commitment(&self) -> Option<Base64> {
-        self.decryption_key_commitment
-            .as_ref()
-            .map(|c| Base64(c.clone()))
-    }
-
-    /// AES-256 decryption key for encrypted weights (only revealed models).
-    async fn decryption_key(&self) -> Option<Base64> {
-        self.decryption_key.as_ref().map(|k| Base64(k.clone()))
-    }
-
     /// Whether this model has a pending weight update.
     async fn has_pending_update(&self) -> bool {
         self.has_pending_update
@@ -208,26 +178,12 @@ impl Model {
             .map(|c| Base64(c.clone()))
     }
 
-    /// Embedding commitment for the pending update.
-    async fn pending_embedding_commitment(&self) -> Option<Base64> {
-        self.pending_embedding_commitment
-            .as_ref()
-            .map(|c| Base64(c.clone()))
-    }
-
-    /// Decryption key commitment for the pending update.
-    async fn pending_decryption_key_commitment(&self) -> Option<Base64> {
-        self.pending_decryption_key_commitment
-            .as_ref()
-            .map(|c| Base64(c.clone()))
-    }
-
     /// The epoch when the pending update was committed.
     async fn pending_commit_epoch(&self) -> Option<BigInt> {
         self.pending_commit_epoch.map(BigInt)
     }
 
-    /// Targets assigned to this model.
+    /// Targets won by this model.
     #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn targets(
         &self,
@@ -252,19 +208,7 @@ impl Model {
             .min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
-        use indexer_alt_schema::schema::{soma_target_models, soma_targets};
-
-        // Get target IDs assigned to this model
-        let target_ids: Vec<Vec<u8>> = soma_target_models::table
-            .select(soma_target_models::target_id)
-            .filter(soma_target_models::model_id.eq(&self.model_id))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        if target_ids.is_empty() {
-            return Ok(async_graphql::connection::Connection::new(false, false));
-        }
+        use indexer_alt_schema::schema::soma_targets;
 
         type RowA = (
             Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>,
@@ -311,7 +255,7 @@ impl Model {
                     soma_targets::winning_data_size,
                 ),
             ))
-            .filter(soma_targets::target_id.eq_any(&target_ids))
+            .filter(soma_targets::winning_model_id.eq(&self.model_id))
             .order(soma_targets::cp_sequence_number.desc())
             .limit(limit + 1)
             .into_boxed();
@@ -368,8 +312,6 @@ pub struct ModelFilter {
     pub status: Option<String>,
     /// Filter by owner address (hex with optional 0x prefix).
     pub owner: Option<String>,
-    /// Filter by whether the model has an embedding.
-    pub has_embedding: Option<bool>,
     /// Filter by minimum stake (inclusive).
     pub min_stake: Option<i64>,
     /// Filter by maximum stake (inclusive).

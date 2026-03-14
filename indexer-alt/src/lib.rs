@@ -28,8 +28,9 @@ pub(crate) mod test_utils;
 /// - **Tier B (Indexes)**: `tx_digests`, `tx_affected_*`, `tx_balance_changes`,
 ///   `tx_kinds`, `tx_calls`. No BigTable equivalent — pruning shrinks the queryable
 ///   window for historical index-backed queries.
-/// - **Tier C (Never prune)**: `cp_sequence_numbers`, `obj_versions`, `obj_info`,
-///   `coin_balance_buckets`, and all `soma_*` tables.
+/// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`, `coin_balance_buckets`.
+///   Prunable — only latest versions needed for explorer, BigTable has historical BCS.
+/// - **Tier C (Never prune)**: `cp_sequence_numbers` and all `soma_*` tables.
 #[derive(Debug, Clone, Default)]
 pub struct PruningConfig {
     /// Tier A: KV content tables (data duplicated in BigTable). Default: None (disabled).
@@ -130,23 +131,23 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register tx_kinds pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::tx_calls::TxCalls, index_config)
+        .concurrent_pipeline(handlers::tx_calls::TxCalls, index_config.clone())
         .await
         .context("Failed to register tx_calls pipeline")?;
 
-    // --- Tier C: State tables (never pruned) ---
+    // --- Tier B+: Object state tables (prunable — BigTable has historical BCS) ---
     indexer
-        .concurrent_pipeline(handlers::obj_versions::ObjVersions, no_prune.clone())
+        .concurrent_pipeline(handlers::obj_versions::ObjVersions, index_config.clone())
         .await
         .context("Failed to register obj_versions pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::obj_info::ObjInfo, no_prune.clone())
+        .concurrent_pipeline(handlers::obj_info::ObjInfo, index_config.clone())
         .await
         .context("Failed to register obj_info pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::coin_balance_buckets::CoinBalanceBuckets, no_prune.clone())
+        .concurrent_pipeline(handlers::coin_balance_buckets::CoinBalanceBuckets, index_config.clone())
         .await
         .context("Failed to register coin_balance_buckets pipeline")?;
 
@@ -170,11 +171,6 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .concurrent_pipeline(handlers::soma_reward_balances::SomaRewardBalances, no_prune.clone())
         .await
         .context("Failed to register soma_reward_balances pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_target_models::SomaTargetModels, no_prune.clone())
-        .await
-        .context("Failed to register soma_target_models pipeline")?;
 
     indexer
         .concurrent_pipeline(handlers::soma_staked_soma::SomaStakedSoma, no_prune.clone())

@@ -180,6 +180,4 @@ pub struct TargetFilter {
     pub fill_epoch: Option<i64>,
     /// Filter by winning model owner (hex with optional 0x prefix).
     pub winning_model_owner: Option<String>,
-    /// Filter by assigned model ID — returns targets that include this model (hex with optional 0x prefix).
-    pub model_id: Option<String>,
 }

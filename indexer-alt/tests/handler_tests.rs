@@ -518,7 +518,6 @@ async fn test_soma_targets_process() {
     assert!(values[0].submitter.is_none());
     assert!(values[0].winning_model_id.is_none());
     assert_eq!(values[0].report_count, 0);
-    assert!(!values[0].state_bcs.is_empty());
 }
 
 #[tokio::test]

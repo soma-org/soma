@@ -571,19 +571,6 @@ impl Query {
                     .map_err(|e| Error::new(format!("Invalid winning_model_owner: {e}")))?;
                 query = query.filter(soma_targets::winning_model_owner.eq(bytes));
             }
-            if let Some(ref mid_hex) = filter.model_id {
-                use indexer_alt_schema::schema::soma_target_models;
-                let hex = mid_hex.strip_prefix("0x").unwrap_or(mid_hex);
-                let bytes = hex::decode(hex)
-                    .map_err(|e| Error::new(format!("Invalid model_id: {e}")))?;
-                query = query.filter(
-                    soma_targets::target_id.eq_any(
-                        soma_target_models::table
-                            .select(soma_target_models::target_id)
-                            .filter(soma_target_models::model_id.eq(bytes)),
-                    ),
-                );
-            }
         }
 
         if let Some(acp) = after_cp {
@@ -699,9 +686,6 @@ impl Query {
                 let bytes = hex::decode(hex)
                     .map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
                 query = query.filter(soma_models::owner.eq(bytes));
-            }
-            if let Some(he) = filter.has_embedding {
-                query = query.filter(soma_models::has_embedding.eq(he));
             }
             if let Some(min) = filter.min_stake {
                 query = query.filter(soma_models::stake.ge(min));
@@ -1431,7 +1415,7 @@ fn target_from_row(a: TargetRowA, b: TargetRowB) -> Target {
 // Model row types — nested tuples to stay within Diesel's 16-element limit
 // ---------------------------------------------------------------------------
 
-/// First 14 columns of soma_models.
+/// First 13 columns of soma_models.
 type ModelRowA = (
     Vec<u8>,
     i64,
@@ -1441,7 +1425,6 @@ type ModelRowA = (
     i64,
     i64,
     i64,
-    bool,
     i64,
     Vec<u8>,
     Option<i64>,
@@ -1449,7 +1432,7 @@ type ModelRowA = (
     i64,
 );
 
-/// Middle 13 columns of soma_models.
+/// Middle 10 columns of soma_models.
 type ModelRowB = (
     i64,
     i64,
@@ -1460,19 +1443,14 @@ type ModelRowB = (
     Option<Vec<u8>>,
     Option<i64>,
     Option<Vec<u8>>,
-    Option<Vec<u8>>,
-    Option<Vec<u8>>,
-    Option<Vec<u8>>,
     bool,
 );
 
-/// Last 7 columns of soma_models (pending update fields).
+/// Last 5 columns of soma_models (pending update fields).
 type ModelRowC = (
     Option<String>,
     Option<Vec<u8>>,
     Option<i64>,
-    Option<Vec<u8>>,
-    Option<Vec<u8>>,
     Option<Vec<u8>>,
     Option<i64>,
 );
@@ -1487,7 +1465,6 @@ fn model_select() -> (
         indexer_alt_schema::schema::soma_models::commit_epoch,
         indexer_alt_schema::schema::soma_models::stake,
         indexer_alt_schema::schema::soma_models::commission_rate,
-        indexer_alt_schema::schema::soma_models::has_embedding,
         indexer_alt_schema::schema::soma_models::next_epoch_commission_rate,
         indexer_alt_schema::schema::soma_models::staking_pool_id,
         indexer_alt_schema::schema::soma_models::activation_epoch,
@@ -1504,9 +1481,6 @@ fn model_select() -> (
         indexer_alt_schema::schema::soma_models::manifest_checksum,
         indexer_alt_schema::schema::soma_models::manifest_size,
         indexer_alt_schema::schema::soma_models::weights_commitment,
-        indexer_alt_schema::schema::soma_models::embedding_commitment,
-        indexer_alt_schema::schema::soma_models::decryption_key_commitment,
-        indexer_alt_schema::schema::soma_models::decryption_key,
         indexer_alt_schema::schema::soma_models::has_pending_update,
     ),
     (
@@ -1514,8 +1488,6 @@ fn model_select() -> (
         indexer_alt_schema::schema::soma_models::pending_manifest_checksum,
         indexer_alt_schema::schema::soma_models::pending_manifest_size,
         indexer_alt_schema::schema::soma_models::pending_weights_commitment,
-        indexer_alt_schema::schema::soma_models::pending_embedding_commitment,
-        indexer_alt_schema::schema::soma_models::pending_decryption_key_commitment,
         indexer_alt_schema::schema::soma_models::pending_commit_epoch,
     ),
 ) {
@@ -1530,7 +1502,6 @@ fn model_select() -> (
             soma_models::commit_epoch,
             soma_models::stake,
             soma_models::commission_rate,
-            soma_models::has_embedding,
             soma_models::next_epoch_commission_rate,
             soma_models::staking_pool_id,
             soma_models::activation_epoch,
@@ -1547,9 +1518,6 @@ fn model_select() -> (
             soma_models::manifest_checksum,
             soma_models::manifest_size,
             soma_models::weights_commitment,
-            soma_models::embedding_commitment,
-            soma_models::decryption_key_commitment,
-            soma_models::decryption_key,
             soma_models::has_pending_update,
         ),
         (
@@ -1557,8 +1525,6 @@ fn model_select() -> (
             soma_models::pending_manifest_checksum,
             soma_models::pending_manifest_size,
             soma_models::pending_weights_commitment,
-            soma_models::pending_embedding_commitment,
-            soma_models::pending_decryption_key_commitment,
             soma_models::pending_commit_epoch,
         ),
     )
@@ -1574,12 +1540,11 @@ fn model_from_row(a: ModelRowA, b: ModelRowB, c: ModelRowC) -> Model {
         commit_epoch: a.5,
         stake: a.6,
         commission_rate: a.7,
-        has_embedding: a.8,
-        next_epoch_commission_rate: a.9,
-        staking_pool_id: a.10,
-        activation_epoch: a.11,
-        deactivation_epoch: a.12,
-        rewards_pool: a.13,
+        next_epoch_commission_rate: a.8,
+        staking_pool_id: a.9,
+        activation_epoch: a.10,
+        deactivation_epoch: a.11,
+        rewards_pool: a.12,
         pool_token_balance: b.0,
         pending_stake: b.1,
         pending_total_soma_withdraw: b.2,
@@ -1589,16 +1554,11 @@ fn model_from_row(a: ModelRowA, b: ModelRowB, c: ModelRowC) -> Model {
         manifest_checksum: b.6,
         manifest_size: b.7,
         weights_commitment: b.8,
-        embedding_commitment: b.9,
-        decryption_key_commitment: b.10,
-        decryption_key: b.11,
-        has_pending_update: b.12,
+        has_pending_update: b.9,
         pending_manifest_url: c.0,
         pending_manifest_checksum: c.1,
         pending_manifest_size: c.2,
         pending_weights_commitment: c.3,
-        pending_embedding_commitment: c.4,
-        pending_decryption_key_commitment: c.5,
-        pending_commit_epoch: c.6,
+        pending_commit_epoch: c.4,
     }
 }

@@ -25,7 +25,7 @@ use indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
 use indexer_alt_schema::epochs::{StoredEpochEnd, StoredEpochStart};
 use indexer_alt_schema::soma::{
     StoredEpochState, StoredModel, StoredReward, StoredRewardBalance, StoredStakedSoma,
-    StoredTarget, StoredTargetModel, StoredTargetReport,
+    StoredTarget, StoredTargetReport,
 };
 use indexer_alt_schema::transactions::{StoredTransaction, StoredTxDigest};
 use indexer_pg_db::DbArgs;
@@ -97,7 +97,6 @@ fn test_model(model_id: Vec<u8>, epoch: i64) -> StoredModel {
         commit_epoch: 0,
         stake: 0,
         commission_rate: 0,
-        has_embedding: false,
         next_epoch_commission_rate: 0,
         staking_pool_id: vec![0; 32],
         activation_epoch: None,
@@ -112,16 +111,11 @@ fn test_model(model_id: Vec<u8>, epoch: i64) -> StoredModel {
         manifest_checksum: None,
         manifest_size: None,
         weights_commitment: None,
-        embedding_commitment: None,
-        decryption_key_commitment: None,
-        decryption_key: None,
         has_pending_update: false,
         pending_manifest_url: None,
         pending_manifest_checksum: None,
         pending_manifest_size: None,
         pending_weights_commitment: None,
-        pending_embedding_commitment: None,
-        pending_decryption_key_commitment: None,
         pending_commit_epoch: None,
     }
 }
@@ -514,7 +508,7 @@ async fn test_target_lookup() {
             reward_pool: 5000,
             bond_amount: 0,
             report_count: 0,
-            state_bcs: vec![1, 2, 3],
+
             winning_distance_score: None,
             winning_loss_score: None,
             winning_model_owner: None,
@@ -572,7 +566,7 @@ async fn test_target_returns_latest_version() {
                 reward_pool: 5000,
                 bond_amount: 0,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: if status == "Filled" { Some(0.123) } else { None },
                 winning_loss_score: if status == "Filled" { Some(0.456) } else { None },
                 winning_model_owner: None,
@@ -626,7 +620,7 @@ async fn test_targets_pagination() {
                 reward_pool: 1000,
                 bond_amount: 0,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: None,
                 winning_loss_score: None,
                 winning_model_owner: None,
@@ -692,7 +686,7 @@ async fn test_targets_filter_by_status() {
                 reward_pool: 1000,
                 bond_amount: 0,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: None,
                 winning_loss_score: None,
                 winning_model_owner: None,
@@ -775,7 +769,7 @@ async fn test_target_denormalized_scores() {
             reward_pool: 10000,
             bond_amount: 500,
             report_count: 0,
-            state_bcs: vec![],
+
             winning_distance_score: Some(0.15),
             winning_loss_score: Some(0.042),
             winning_model_owner: Some(model_owner.clone()),
@@ -832,7 +826,7 @@ async fn test_target_null_scores_when_open() {
             reward_pool: 5000,
             bond_amount: 0,
             report_count: 0,
-            state_bcs: vec![],
+
             winning_distance_score: None,
             winning_loss_score: None,
             winning_model_owner: None,
@@ -890,7 +884,7 @@ async fn test_targets_filter_by_submitter() {
                 reward_pool: 1000,
                 bond_amount: 100,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.1),
                 winning_loss_score: Some(0.05),
                 winning_model_owner: None,
@@ -945,7 +939,7 @@ async fn test_targets_filter_by_winning_model_id() {
                 reward_pool: 2000,
                 bond_amount: 200,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.2),
                 winning_loss_score: Some(0.08),
                 winning_model_owner: None,
@@ -1001,7 +995,7 @@ async fn test_targets_filter_by_fill_epoch() {
                 reward_pool: 1000,
                 bond_amount: 100,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.1),
                 winning_loss_score: Some(0.05),
                 winning_model_owner: Some(vec![0xEE; 32]),
@@ -1056,7 +1050,7 @@ async fn test_targets_filter_by_winning_model_owner() {
                 reward_pool: 1000,
                 bond_amount: 100,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.1),
                 winning_loss_score: Some(0.05),
                 winning_model_owner: Some(owner.clone()),
@@ -1116,7 +1110,7 @@ async fn test_targets_combined_filters() {
                 reward_pool: 1000,
                 bond_amount: 100,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.1),
                 winning_loss_score: Some(0.05),
                 winning_model_owner: None,
@@ -1164,7 +1158,6 @@ async fn test_models_by_epoch() {
         m.commit_epoch = 2;
         m.stake = 100_000;
         m.commission_rate = 500;
-        m.has_embedding = true;
         diesel::insert_into(soma_models::table)
             .values(&m)
             .execute(conn.deref_mut())
@@ -1174,7 +1167,7 @@ async fn test_models_by_epoch() {
 
     let json = execute(
         &ctx.schema,
-        r#"{ models(epoch: 5) { edges { node { epoch status hasEmbedding stake } } } }"#,
+        r#"{ models(epoch: 5) { edges { node { epoch status stake } } } }"#,
     )
     .await;
 
@@ -1183,7 +1176,6 @@ async fn test_models_by_epoch() {
     for edge in edges {
         assert_eq!(edge["node"]["epoch"], "5");
         assert_eq!(edge["node"]["status"], "active");
-        assert_eq!(edge["node"]["hasEmbedding"], true);
         assert_eq!(edge["node"]["stake"], "100000");
     }
 }
@@ -1452,9 +1444,6 @@ async fn test_schema_sdl_has_expected_types() {
     assert!(sdl.contains("exchangeRatesJson"));
     assert!(sdl.contains("manifestUrl"));
     assert!(sdl.contains("weightsCommitment"));
-    assert!(sdl.contains("embeddingCommitment"));
-    assert!(sdl.contains("decryptionKeyCommitment"));
-    assert!(sdl.contains("decryptionKey"));
     assert!(sdl.contains("hasPendingUpdate"));
 
     // Verify Model no longer exposes stateBcs (Epoch still has systemStateBcs)
@@ -1504,8 +1493,6 @@ async fn test_schema_sdl_has_expected_types() {
     assert!(sdl.contains("pendingManifestChecksum"));
     assert!(sdl.contains("pendingManifestSize"));
     assert!(sdl.contains("pendingWeightsCommitment"));
-    assert!(sdl.contains("pendingEmbeddingCommitment"));
-    assert!(sdl.contains("pendingDecryptionKeyCommitment"));
     assert!(sdl.contains("pendingCommitEpoch"));
 
     // Target nested resolvers
@@ -1588,9 +1575,6 @@ async fn test_model_denormalized_fields() {
     let owner = vec![0xCD; 32];
     let pool_id = vec![0xEF; 32];
     let weights = vec![0x11; 32];
-    let embedding = vec![0x22; 32];
-    let dk_commit = vec![0x33; 32];
-    let dk = vec![0x44; 32];
     let checksum = vec![0x55; 16];
 
     let mut conn = ctx.db.connect().await.unwrap();
@@ -1605,7 +1589,6 @@ async fn test_model_denormalized_fields() {
         commit_epoch: 7,
         stake: 500_000,
         commission_rate: 1000,
-        has_embedding: true,
         next_epoch_commission_rate: 1200,
         staking_pool_id: pool_id.clone(),
         activation_epoch: Some(3),
@@ -1620,16 +1603,11 @@ async fn test_model_denormalized_fields() {
         manifest_checksum: Some(checksum.clone()),
         manifest_size: Some(1024000),
         weights_commitment: Some(weights.clone()),
-        embedding_commitment: Some(embedding.clone()),
-        decryption_key_commitment: Some(dk_commit.clone()),
-        decryption_key: Some(dk.clone()),
         has_pending_update: true,
         pending_manifest_url: None,
         pending_manifest_checksum: None,
         pending_manifest_size: None,
         pending_weights_commitment: None,
-        pending_embedding_commitment: None,
-        pending_decryption_key_commitment: None,
         pending_commit_epoch: None,
     };
     diesel::insert_into(soma_models::table)
@@ -1641,13 +1619,12 @@ async fn test_model_denormalized_fields() {
     let query = format!(
         r#"{{ model(modelId: "{}") {{
             modelId epoch status owner architectureVersion commitEpoch
-            stake commissionRate hasEmbedding nextEpochCommissionRate
+            stake commissionRate nextEpochCommissionRate
             stakingPoolId activationEpoch deactivationEpoch rewardsPool
             poolTokenBalance pendingStake pendingTotalSomaWithdraw
             pendingPoolTokenWithdraw exchangeRatesJson
             manifestUrl manifestChecksum manifestSize
-            weightsCommitment embeddingCommitment decryptionKeyCommitment
-            decryptionKey hasPendingUpdate
+            weightsCommitment hasPendingUpdate
         }} }}"#,
         model_id_hex
     );
@@ -1662,7 +1639,6 @@ async fn test_model_denormalized_fields() {
     assert_eq!(m["commitEpoch"], "7");
     assert_eq!(m["stake"], "500000");
     assert_eq!(m["commissionRate"], "1000");
-    assert_eq!(m["hasEmbedding"], true);
     assert_eq!(m["nextEpochCommissionRate"], "1200");
     assert_eq!(m["stakingPoolId"], format!("0x{}", hex::encode(&pool_id)));
     assert_eq!(m["activationEpoch"], "3");
@@ -1680,9 +1656,6 @@ async fn test_model_denormalized_fields() {
     assert_eq!(m["manifestChecksum"], b64.encode(&checksum));
     assert_eq!(m["manifestSize"], "1024000");
     assert_eq!(m["weightsCommitment"], b64.encode(&weights));
-    assert_eq!(m["embeddingCommitment"], b64.encode(&embedding));
-    assert_eq!(m["decryptionKeyCommitment"], b64.encode(&dk_commit));
-    assert_eq!(m["decryptionKey"], b64.encode(&dk));
     assert_eq!(m["hasPendingUpdate"], true);
 }
 
@@ -1971,83 +1944,6 @@ async fn test_reward_filter_by_recipient() {
     assert_eq!(rewards[0]["targetId"], target_a_hex);
 }
 
-// ---------------------------------------------------------------------------
-// targets: filter by assigned model ID (join table)
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore]
-async fn test_targets_filter_by_assigned_model_id() {
-    let ctx = setup().await;
-
-    let model_a = vec![0xAA; 32];
-    let model_b = vec![0xBB; 32];
-    let model_a_hex = format!("0x{}", hex::encode(&model_a));
-
-    let mut conn = ctx.db.connect().await.unwrap();
-    use indexer_alt_schema::schema::{soma_target_models, soma_targets};
-
-    // 3 targets: target_0 assigned model_a, target_1 assigned model_b, target_2 assigned model_a
-    for i in 0..3u8 {
-        let mut tid = vec![0u8; 32];
-        tid[0] = i;
-        diesel::insert_into(soma_targets::table)
-            .values(&StoredTarget {
-                target_id: tid.clone(),
-                cp_sequence_number: i as i64,
-                epoch: 1,
-                status: "Open".to_string(),
-                submitter: Some(vec![0xDD; 32]),
-                winning_model_id: None,
-                reward_pool: 1000,
-                bond_amount: 100,
-                report_count: 0,
-                state_bcs: vec![],
-                winning_distance_score: None,
-                winning_loss_score: None,
-                winning_model_owner: None,
-                fill_epoch: None,
-                distance_threshold: 0.5,
-                model_ids_json: "[]".to_string(),
-                winning_data_url: None,
-                winning_data_checksum: None,
-                winning_data_size: None,
-            })
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
-
-        let assigned_model = if i == 1 { &model_b } else { &model_a };
-        diesel::insert_into(soma_target_models::table)
-            .values(&StoredTargetModel {
-                target_id: tid,
-                cp_sequence_number: i as i64,
-                model_id: assigned_model.clone(),
-            })
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
-    }
-
-    let query = format!(
-        r#"{{ targets(filter: {{ modelId: "{}" }}) {{ edges {{ node {{ targetId }} }} }} }}"#,
-        model_a_hex
-    );
-    let json = execute(&ctx.schema, &query).await;
-
-    let edges = json["data"]["targets"]["edges"].as_array().unwrap();
-    assert_eq!(edges.len(), 2);
-
-    // Verify neither is target_1 (which was assigned model_b)
-    let target_1_hex = format!("0x{}", hex::encode({
-        let mut t = vec![0u8; 32];
-        t[0] = 1;
-        t
-    }));
-    for edge in edges {
-        assert_ne!(edge["node"]["targetId"], target_1_hex);
-    }
-}
 
 // ===========================================================================
 // Phase 2: New feature tests
@@ -2303,7 +2199,7 @@ async fn test_target_aggregates() {
                 reward_pool: rp,
                 bond_amount: 0,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: None,
                 winning_loss_score: None,
                 winning_model_owner: None,
@@ -2424,8 +2320,6 @@ async fn test_pending_model_update_fields() {
     let model_b_hex = format!("0x{}", hex::encode(&model_b));
     let pending_checksum = vec![0xFF; 32];
     let pending_wc = vec![0x11; 32];
-    let pending_ec = vec![0x22; 32];
-    let pending_dkc = vec![0x33; 32];
 
     let mut conn = ctx.db.connect().await.unwrap();
     use indexer_alt_schema::schema::soma_models;
@@ -2437,8 +2331,6 @@ async fn test_pending_model_update_fields() {
     ma.pending_manifest_checksum = Some(pending_checksum.clone());
     ma.pending_manifest_size = Some(99999);
     ma.pending_weights_commitment = Some(pending_wc.clone());
-    ma.pending_embedding_commitment = Some(pending_ec.clone());
-    ma.pending_decryption_key_commitment = Some(pending_dkc.clone());
     ma.pending_commit_epoch = Some(6);
 
     diesel::insert_into(soma_models::table)
@@ -2459,7 +2351,7 @@ async fn test_pending_model_update_fields() {
 
     // Query model A
     let query = format!(
-        r#"{{ model(modelId: "{}") {{ hasPendingUpdate pendingManifestUrl pendingManifestChecksum pendingManifestSize pendingWeightsCommitment pendingEmbeddingCommitment pendingDecryptionKeyCommitment pendingCommitEpoch }} }}"#,
+        r#"{{ model(modelId: "{}") {{ hasPendingUpdate pendingManifestUrl pendingManifestChecksum pendingManifestSize pendingWeightsCommitment pendingCommitEpoch }} }}"#,
         model_a_hex
     );
     let json = execute(&ctx.schema, &query).await;
@@ -2469,13 +2361,11 @@ async fn test_pending_model_update_fields() {
     assert_eq!(m["pendingManifestChecksum"], b64.encode(&pending_checksum));
     assert_eq!(m["pendingManifestSize"], "99999");
     assert_eq!(m["pendingWeightsCommitment"], b64.encode(&pending_wc));
-    assert_eq!(m["pendingEmbeddingCommitment"], b64.encode(&pending_ec));
-    assert_eq!(m["pendingDecryptionKeyCommitment"], b64.encode(&pending_dkc));
     assert_eq!(m["pendingCommitEpoch"], "6");
 
     // Query model B: all pending fields null
     let query = format!(
-        r#"{{ model(modelId: "{}") {{ hasPendingUpdate pendingManifestUrl pendingManifestChecksum pendingManifestSize pendingWeightsCommitment pendingEmbeddingCommitment pendingDecryptionKeyCommitment pendingCommitEpoch }} }}"#,
+        r#"{{ model(modelId: "{}") {{ hasPendingUpdate pendingManifestUrl pendingManifestChecksum pendingManifestSize pendingWeightsCommitment pendingCommitEpoch }} }}"#,
         model_b_hex
     );
     let json = execute(&ctx.schema, &query).await;
@@ -2485,8 +2375,6 @@ async fn test_pending_model_update_fields() {
     assert!(m["pendingManifestChecksum"].is_null());
     assert!(m["pendingManifestSize"].is_null());
     assert!(m["pendingWeightsCommitment"].is_null());
-    assert!(m["pendingEmbeddingCommitment"].is_null());
-    assert!(m["pendingDecryptionKeyCommitment"].is_null());
     assert!(m["pendingCommitEpoch"].is_null());
 }
 
@@ -2531,7 +2419,7 @@ async fn test_target_reporters() {
             reward_pool: 5000,
             bond_amount: 0,
             report_count: 3,
-            state_bcs: vec![],
+
             winning_distance_score: None,
             winning_loss_score: None,
             winning_model_owner: None,
@@ -2626,7 +2514,7 @@ async fn test_model_history() {
 }
 
 // ---------------------------------------------------------------------------
-// Model.targets nested resolver
+// Model.targets nested resolver (uses winning_model_id)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -2640,7 +2528,7 @@ async fn test_model_targets_resolver() {
     let target_b = vec![0x22; 32];
 
     let mut conn = ctx.db.connect().await.unwrap();
-    use indexer_alt_schema::schema::{soma_models, soma_target_models, soma_targets};
+    use indexer_alt_schema::schema::{soma_models, soma_targets};
 
     // Seed model
     diesel::insert_into(soma_models::table)
@@ -2649,40 +2537,28 @@ async fn test_model_targets_resolver() {
         .await
         .unwrap();
 
-    // Seed 2 targets
+    // Seed 2 targets won by this model
     for (tid, cp) in [(&target_a, 1i64), (&target_b, 2)] {
         diesel::insert_into(soma_targets::table)
             .values(&StoredTarget {
                 target_id: tid.clone(),
                 cp_sequence_number: cp,
                 epoch: 1,
-                status: "Open".to_string(),
-                submitter: None,
-                winning_model_id: None,
+                status: "Filled".to_string(),
+                submitter: Some(vec![0xDD; 32]),
+                winning_model_id: Some(model_id.clone()),
                 reward_pool: 1000,
                 bond_amount: 0,
                 report_count: 0,
-                state_bcs: vec![],
-                winning_distance_score: None,
-                winning_loss_score: None,
+                winning_distance_score: Some(0.1),
+                winning_loss_score: Some(0.05),
                 winning_model_owner: None,
-                fill_epoch: None,
+                fill_epoch: Some(1),
                 distance_threshold: 0.5,
                 model_ids_json: "[]".to_string(),
                 winning_data_url: None,
                 winning_data_checksum: None,
                 winning_data_size: None,
-            })
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
-
-        // Link target to model
-        diesel::insert_into(soma_target_models::table)
-            .values(&StoredTargetModel {
-                target_id: tid.clone(),
-                cp_sequence_number: cp,
-                model_id: model_id.clone(),
             })
             .execute(conn.deref_mut())
             .await
@@ -2728,7 +2604,7 @@ async fn test_target_reward_resolver() {
             reward_pool: 5000,
             bond_amount: 100,
             report_count: 0,
-            state_bcs: vec![],
+
             winning_distance_score: Some(0.1),
             winning_loss_score: Some(0.05),
             winning_model_owner: None,
@@ -2981,7 +2857,7 @@ async fn test_targets_batch_reporters() {
                 reward_pool: 1000,
                 bond_amount: 0,
                 report_count: 2,
-                state_bcs: vec![],
+
                 winning_distance_score: None,
                 winning_loss_score: None,
                 winning_model_owner: None,
@@ -3057,7 +2933,7 @@ async fn test_targets_batch_rewards() {
                 reward_pool: 5000,
                 bond_amount: 100,
                 report_count: 0,
-                state_bcs: vec![],
+
                 winning_distance_score: Some(0.1),
                 winning_loss_score: Some(0.05),
                 winning_model_owner: None,

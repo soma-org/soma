@@ -52,28 +52,22 @@ fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredMo
         None => (None, None, None),
     };
 
-    // Commitment digests (available on Pending/Active/Inactive)
-    let (weights_commitment, embedding_commitment, decryption_key_commitment) = match model {
-        Model::V1(ModelStateV1::Pending(m)) => (
-            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
-        ),
-        Model::V1(ModelStateV1::Active(m)) => (
-            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
-        ),
-        Model::V1(ModelStateV1::Inactive(m)) => (
-            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.embedding_commitment).to_vec()),
-            Some(AsRef::<[u8]>::as_ref(&m.decryption_key_commitment).to_vec()),
-        ),
-        _ => (None, None, None),
+    // Weights commitment (available on Pending/Active/Inactive)
+    let weights_commitment = match model {
+        Model::V1(ModelStateV1::Pending(m)) => {
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec())
+        }
+        Model::V1(ModelStateV1::Active(m)) => {
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec())
+        }
+        Model::V1(ModelStateV1::Inactive(m)) => {
+            Some(AsRef::<[u8]>::as_ref(&m.weights_commitment).to_vec())
+        }
+        _ => None,
     };
 
     // Pending model update fields (only on Active models with a pending update)
-    let (pu_url, pu_checksum, pu_size, pu_wc, pu_ec, pu_dkc, pu_epoch) =
+    let (pu_url, pu_checksum, pu_size, pu_wc, pu_epoch) =
         match model.as_active().and_then(|a| a.pending_update.as_ref()) {
             Some(pu) => {
                 let m = &pu.manifest;
@@ -84,12 +78,10 @@ fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredMo
                     Some(meta.checksum().as_ref().to_vec()),
                     Some(meta.size() as i64),
                     Some(AsRef::<[u8]>::as_ref(&pu.weights_commitment).to_vec()),
-                    Some(AsRef::<[u8]>::as_ref(&pu.embedding_commitment).to_vec()),
-                    Some(AsRef::<[u8]>::as_ref(&pu.decryption_key_commitment).to_vec()),
                     Some(pu.commit_epoch as i64),
                 )
             }
-            None => (None, None, None, None, None, None, None),
+            None => (None, None, None, None, None),
         };
 
     Ok(StoredModel {
@@ -101,7 +93,6 @@ fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredMo
         commit_epoch,
         stake: model.stake() as i64,
         commission_rate: model.commission_rate() as i64,
-        has_embedding: model.embedding().is_some(),
         next_epoch_commission_rate: model.next_epoch_commission_rate() as i64,
         staking_pool_id: pool.id.to_vec(),
         activation_epoch: pool.activation_epoch.map(|e| e as i64),
@@ -116,18 +107,11 @@ fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredMo
         manifest_checksum,
         manifest_size,
         weights_commitment,
-        embedding_commitment,
-        decryption_key_commitment,
-        decryption_key: model
-            .decryption_key()
-            .map(|k| AsRef::<[u8]>::as_ref(k).to_vec()),
         has_pending_update: model.has_pending_update(),
         pending_manifest_url: pu_url,
         pending_manifest_checksum: pu_checksum,
         pending_manifest_size: pu_size,
         pending_weights_commitment: pu_wc,
-        pending_embedding_commitment: pu_ec,
-        pending_decryption_key_commitment: pu_dkc,
         pending_commit_epoch: pu_epoch,
     })
 }

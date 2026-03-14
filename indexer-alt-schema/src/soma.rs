@@ -9,7 +9,6 @@ use crate::schema::soma_models;
 use crate::schema::soma_reward_balances;
 use crate::schema::soma_rewards;
 use crate::schema::soma_staked_soma;
-use crate::schema::soma_target_models;
 use crate::schema::soma_target_reports;
 use crate::schema::soma_targets;
 
@@ -26,7 +25,6 @@ pub struct StoredTarget {
     pub reward_pool: i64,
     pub bond_amount: i64,
     pub report_count: i32,
-    pub state_bcs: Vec<u8>,
     pub winning_distance_score: Option<f64>,
     pub winning_loss_score: Option<f64>,
     pub winning_model_owner: Option<Vec<u8>>,
@@ -50,7 +48,6 @@ pub struct StoredModel {
     pub commit_epoch: i64,
     pub stake: i64,
     pub commission_rate: i64,
-    pub has_embedding: bool,
     pub next_epoch_commission_rate: i64,
     pub staking_pool_id: Vec<u8>,
     pub activation_epoch: Option<i64>,
@@ -65,16 +62,11 @@ pub struct StoredModel {
     pub manifest_checksum: Option<Vec<u8>>,
     pub manifest_size: Option<i64>,
     pub weights_commitment: Option<Vec<u8>>,
-    pub embedding_commitment: Option<Vec<u8>>,
-    pub decryption_key_commitment: Option<Vec<u8>>,
-    pub decryption_key: Option<Vec<u8>>,
     pub has_pending_update: bool,
     pub pending_manifest_url: Option<String>,
     pub pending_manifest_checksum: Option<Vec<u8>>,
     pub pending_manifest_size: Option<i64>,
     pub pending_weights_commitment: Option<Vec<u8>>,
-    pub pending_embedding_commitment: Option<Vec<u8>>,
-    pub pending_decryption_key_commitment: Option<Vec<u8>>,
     pub pending_commit_epoch: Option<i64>,
 }
 
@@ -132,12 +124,4 @@ pub struct StoredRewardBalance {
     pub tx_digest: Vec<u8>,
     pub recipient: Vec<u8>,
     pub amount: i64,
-}
-
-#[derive(Insertable, Debug, Clone, FieldCount)]
-#[diesel(table_name = soma_target_models)]
-pub struct StoredTargetModel {
-    pub target_id: Vec<u8>,
-    pub cp_sequence_number: i64,
-    pub model_id: Vec<u8>,
 }

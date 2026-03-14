@@ -25,7 +25,6 @@ pub mod soma_models;
 pub mod soma_reward_balances;
 pub mod soma_rewards;
 pub mod soma_staked_soma;
-pub mod soma_target_models;
 pub mod soma_target_reports;
 pub mod soma_targets;
 pub mod tx_affected_addresses;

@@ -82,7 +82,6 @@ impl Processor for SomaTargets {
                         reward_pool: target.reward_pool as i64,
                         bond_amount: target.bond_amount as i64,
                         report_count: target.submission_reports.len() as i32,
-                        state_bcs: bcs::to_bytes(&target)?,
                         winning_distance_score,
                         winning_loss_score,
                         winning_model_owner: target.winning_model_owner.map(|a| a.to_vec()),
