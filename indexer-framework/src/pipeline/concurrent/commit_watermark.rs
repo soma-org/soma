@@ -49,8 +49,7 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
     task: Option<String>,
     metrics: Arc<IndexerMetrics>,
 ) -> Service {
-    let pipeline_task =
-        pipeline_task(H::NAME, task.as_deref(), <H::Store as Store>::DELIMITER);
+    let pipeline_task = pipeline_task(H::NAME, task.as_deref(), <H::Store as Store>::DELIMITER);
     Service::new().spawn_aborting(async move {
         // To correctly update the watermark, the task tracks the watermark it last tried to write
         // and the watermark parts for any checkpoints that have been written since then
@@ -69,10 +68,7 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
             &metrics.watermark_checkpoint_in_db,
         );
 
-        info!(
-            pipeline = H::NAME,
-            next_checkpoint, "Starting commit watermark task"
-        );
+        info!(pipeline = H::NAME, next_checkpoint, "Starting commit watermark task");
 
         let mut next_wake = tokio::time::Instant::now();
         let mut pending_watermark = None;
@@ -105,10 +101,8 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
             // Advance the watermark through contiguous precommitted entries on every
             // iteration, not just when the DB write timer fires. This ensures commit_hi
             // feedback reaches the broadcaster immediately.
-            let guard = metrics
-                .watermark_gather_latency
-                .with_label_values(&[H::NAME])
-                .start_timer();
+            let guard =
+                metrics.watermark_gather_latency.with_label_values(&[H::NAME]).start_timer();
 
             while let Some(pending) = precommitted.first_entry() {
                 let part = pending.get();
@@ -134,10 +128,7 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
                     // of a backfill, where the initial checkpoint has been overridden.
                     Ordering::Greater => {
                         // Track how many we see to make sure it doesn't grow without bound.
-                        metrics
-                            .total_watermarks_out_of_order
-                            .with_label_values(&[H::NAME])
-                            .inc();
+                        metrics.total_watermarks_out_of_order.with_label_values(&[H::NAME]).inc();
 
                         pending.remove();
                     }
@@ -147,10 +138,7 @@ pub(super) fn commit_watermark<H: Handler + 'static>(
             let elapsed = guard.stop_and_record();
 
             if let Some(ref watermark) = pending_watermark {
-                metrics
-                    .watermark_epoch
-                    .with_label_values(&[H::NAME])
-                    .set(watermark.epoch as i64);
+                metrics.watermark_epoch.with_label_values(&[H::NAME]).set(watermark.epoch as i64);
 
                 metrics
                     .watermark_checkpoint
@@ -246,24 +234,15 @@ async fn write_watermark<H: Handler>(
     metrics: &IndexerMetrics,
 ) -> Result<(), ()> {
     let Ok(mut conn) = store.connect().await else {
-        warn!(
-            pipeline = H::NAME,
-            "Commit watermark task failed to get connection for DB"
-        );
+        warn!(pipeline = H::NAME, "Commit watermark task failed to get connection for DB");
         return Err(());
     };
 
-    let guard = metrics
-        .watermark_commit_latency
-        .with_label_values(&[H::NAME])
-        .start_timer();
+    let guard = metrics.watermark_commit_latency.with_label_values(&[H::NAME]).start_timer();
 
     // TODO: If initial_watermark is empty, when we update watermark
     // for the first time, we should also update the low watermark.
-    match conn
-        .set_committer_watermark(pipeline_task, *watermark)
-        .await
-    {
+    match conn.set_committer_watermark(pipeline_task, *watermark).await {
         Err(e) => {
             let elapsed = guard.stop_and_record();
             error!(
@@ -280,15 +259,10 @@ async fn write_watermark<H: Handler>(
 
             logger.log::<H>(watermark, elapsed);
 
-            checkpoint_lag_reporter.report_lag(
-                watermark.checkpoint_hi_inclusive,
-                watermark.timestamp_ms_hi_inclusive,
-            );
+            checkpoint_lag_reporter
+                .report_lag(watermark.checkpoint_hi_inclusive, watermark.timestamp_ms_hi_inclusive);
 
-            metrics
-                .watermark_epoch_in_db
-                .with_label_values(&[H::NAME])
-                .set(watermark.epoch as i64);
+            metrics.watermark_epoch_in_db.with_label_values(&[H::NAME]).set(watermark.epoch as i64);
 
             metrics
                 .watermark_transaction_in_db

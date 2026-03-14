@@ -43,10 +43,7 @@ pub(super) fn reader_watermark<H: Handler + 'static>(
             poll.tick().await;
 
             let Ok(mut conn) = store.connect().await else {
-                warn!(
-                    pipeline = H::NAME,
-                    "Reader watermark task failed to get connection for DB"
-                );
+                warn!(pipeline = H::NAME, "Reader watermark task failed to get connection for DB");
                 continue;
             };
 
@@ -91,10 +88,7 @@ pub(super) fn reader_watermark<H: Handler + 'static>(
                 continue;
             }
 
-            metrics
-                .watermark_reader_lo
-                .with_label_values(&[H::NAME])
-                .set(new_reader_lo as i64);
+            metrics.watermark_reader_lo.with_label_values(&[H::NAME]).set(new_reader_lo as i64);
 
             let Ok(updated) = conn.set_reader_watermark(H::NAME, new_reader_lo).await else {
                 warn!(pipeline = H::NAME, "Failed to update reader watermark");

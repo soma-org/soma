@@ -83,8 +83,8 @@ pub trait TransactionalStore: Store {
     where
         T: Send + 'a,
         F: for<'r> FnOnce(
-            &'r mut Self::Connection<'_>,
-        ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<T>>
+                &'r mut Self::Connection<'_>,
+            ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<T>>
             + Send
             + 'a;
 }
@@ -120,28 +120,18 @@ impl CommitterWatermark {
         tx_hi: u64,
         timestamp_ms_hi_inclusive: u64,
     ) -> Self {
-        Self {
-            epoch,
-            checkpoint_hi_inclusive,
-            tx_hi,
-            timestamp_ms_hi_inclusive,
-        }
+        Self { epoch, checkpoint_hi_inclusive, tx_hi, timestamp_ms_hi_inclusive }
     }
 
     pub fn timestamp(&self) -> DateTime<Utc> {
-        DateTime::from_timestamp_millis(self.timestamp_ms_hi_inclusive as i64)
-            .unwrap_or_default()
+        DateTime::from_timestamp_millis(self.timestamp_ms_hi_inclusive as i64).unwrap_or_default()
     }
 }
 
 impl PrunerWatermark {
     /// Returns the range of checkpoints that can be pruned [pruner_hi, reader_lo).
     pub fn prunable_range(&self) -> Option<std::ops::Range<u64>> {
-        if self.pruner_hi < self.reader_lo {
-            Some(self.pruner_hi..self.reader_lo)
-        } else {
-            None
-        }
+        if self.pruner_hi < self.reader_lo { Some(self.pruner_hi..self.reader_lo) } else { None }
     }
 }
 

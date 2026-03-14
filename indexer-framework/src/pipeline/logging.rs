@@ -28,11 +28,7 @@ pub(crate) struct WatermarkLogger {
 
 impl WatermarkLogger {
     pub fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            timer: Instant::now(),
-            prev_watermark: None,
-        }
+        Self { name, timer: Instant::now(), prev_watermark: None }
     }
 
     pub fn log<H: Processor>(
@@ -95,9 +91,6 @@ impl From<&CommitterWatermark> for LoggerWatermark {
 
 impl LoggerWatermark {
     pub fn checkpoint(checkpoint: u64) -> Self {
-        Self {
-            checkpoint: checkpoint as i64,
-            transaction: None,
-        }
+        Self { checkpoint: checkpoint as i64, transaction: None }
     }
 }

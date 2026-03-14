@@ -43,10 +43,7 @@ async fn wait_for_checkpoint_file(
         }
         sleep(Duration::from_millis(100)).await;
     }
-    panic!(
-        "Timeout waiting for .binpb.zst checkpoint file with seq >= {} in {:?}",
-        min_seq, dir
-    );
+    panic!("Timeout waiting for .binpb.zst checkpoint file with seq >= {} in {:?}", min_seq, dir);
 }
 
 /// Read and decode a checkpoint from a .binpb.zst file.
@@ -64,29 +61,19 @@ async fn test_checkpoint_binpb_zst_format() {
     let ingestion_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     // Execute a transaction to generate checkpoint data
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1000),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
         sender,
         vec![gas],
     );
@@ -127,10 +114,8 @@ async fn test_checkpoint_roundtrip() {
     let ingestion_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
-    let _test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let _test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     // Wait for genesis checkpoint
     let (file_path, seq) =
@@ -141,21 +126,14 @@ async fn test_checkpoint_roundtrip() {
     let checkpoint = checkpoint_blob::decode_checkpoint(&raw_bytes).expect("Failed to decode");
 
     // Re-encode and decode again
-    let re_encoded =
-        checkpoint_blob::encode_checkpoint(&checkpoint).expect("Failed to re-encode");
+    let re_encoded = checkpoint_blob::encode_checkpoint(&checkpoint).expect("Failed to re-encode");
     let checkpoint2 =
         checkpoint_blob::decode_checkpoint(&re_encoded).expect("Failed to decode roundtrip");
 
     // Verify key fields match
-    assert_eq!(
-        checkpoint.summary.sequence_number,
-        checkpoint2.summary.sequence_number
-    );
+    assert_eq!(checkpoint.summary.sequence_number, checkpoint2.summary.sequence_number);
     assert_eq!(checkpoint.summary.epoch, checkpoint2.summary.epoch);
-    assert_eq!(
-        checkpoint.transactions.len(),
-        checkpoint2.transactions.len()
-    );
+    assert_eq!(checkpoint.transactions.len(), checkpoint2.transactions.len());
     assert_eq!(
         checkpoint.summary.network_total_transactions,
         checkpoint2.summary.network_total_transactions
@@ -183,19 +161,11 @@ async fn test_checkpoint_transactions_included() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1000),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
         sender,
         vec![gas],
     );

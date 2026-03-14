@@ -119,8 +119,7 @@ impl CheckpointReader {
 
             match fs::read(&new_path) {
                 Ok(bytes) => {
-                    let checkpoint =
-                        rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
+                    let checkpoint = rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
                     let checkpoint_data: CheckpointData = checkpoint.into();
                     archives.push(Arc::new(checkpoint_data));
                 }
@@ -161,8 +160,7 @@ impl CheckpointReader {
         match store.get(&new_path).await {
             Ok(response) => {
                 let bytes = response.bytes().await?;
-                let checkpoint =
-                    rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
+                let checkpoint = rpc::utils::checkpoint_blob::decode_checkpoint(&bytes)?;
                 let checkpoint_data: CheckpointData = checkpoint.into();
                 return Ok(Arc::new(checkpoint_data));
             }
@@ -287,10 +285,7 @@ impl CheckpointReader {
     fn parse_checkpoint_seq(file_name: &std::ffi::OsStr) -> Option<CheckpointSequenceNumber> {
         file_name
             .to_str()
-            .and_then(|s| {
-                s.strip_suffix(".binpb.zst")
-                    .or_else(|| s.strip_suffix(".chk"))
-            })
+            .and_then(|s| s.strip_suffix(".binpb.zst").or_else(|| s.strip_suffix(".chk")))
             .and_then(|s| s.parse().ok())
     }
 

@@ -24,33 +24,28 @@ use crate::ingestion::error::Error;
 use crate::pipeline::Processor;
 
 /// Histogram buckets for the distribution of checkpoint fetching latencies.
-const INGESTION_LATENCY_SEC_BUCKETS: &[f64] = &[
-    0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
-    100.0,
-];
+const INGESTION_LATENCY_SEC_BUCKETS: &[f64] =
+    &[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0];
 
 /// Histogram buckets for the distribution of checkpoint lag.
 const LAG_SEC_BUCKETS: &[f64] = &[
-    0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85,
-    0.9, 0.95, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 50.0, 100.0, 1000.0,
+    0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9,
+    0.95, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 50.0, 100.0, 1000.0,
 ];
 
 /// Histogram buckets for the distribution of latencies for processing a checkpoint.
-const PROCESSING_LATENCY_SEC_BUCKETS: &[f64] = &[
-    0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
-    100.0,
-];
+const PROCESSING_LATENCY_SEC_BUCKETS: &[f64] =
+    &[0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0];
 
 /// Histogram buckets for the distribution of latencies for writing to the database.
 const DB_UPDATE_LATENCY_SEC_BUCKETS: &[f64] = &[
-    0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0,
-    1000.0, 2000.0, 5000.0, 10000.0,
+    0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0,
+    2000.0, 5000.0, 10000.0,
 ];
 
 /// Histogram buckets for the distribution of batch sizes (number of rows) written to the database.
 const BATCH_SIZE_BUCKETS: &[f64] = &[
-    1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0,
-    20000.0,
+    1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
 ];
 
 /// Metrics specific to the ingestion service.
@@ -249,9 +244,7 @@ impl IngestionMetrics {
     ) -> backoff::Error<Error> {
         warn!(checkpoint, reason, "Retrying due to error: {error}");
 
-        self.total_ingested_transient_retries
-            .with_label_values(&[reason])
-            .inc();
+        self.total_ingested_transient_retries.with_label_values(&[reason]).inc();
 
         backoff::Error::transient(error)
     }
@@ -456,14 +449,13 @@ impl IndexerMetrics {
                 registry,
             )
             .unwrap(),
-            latest_watermarked_checkpoint_timestamp_lag_ms:
-                register_int_gauge_vec_with_registry!(
-                    name("latest_watermarked_checkpoint_timestamp_lag_ms"),
-                    "Lag of latest watermarked checkpoint, in milliseconds",
-                    &["pipeline"],
-                    registry,
-                )
-                .unwrap(),
+            latest_watermarked_checkpoint_timestamp_lag_ms: register_int_gauge_vec_with_registry!(
+                name("latest_watermarked_checkpoint_timestamp_lag_ms"),
+                "Lag of latest watermarked checkpoint, in milliseconds",
+                &["pipeline"],
+                registry,
+            )
+            .unwrap(),
             watermarked_checkpoint_timestamp_lag: register_histogram_vec_with_registry!(
                 name("watermarked_checkpoint_timestamp_lag"),
                 "Checkpoint timestamp lag at watermark time, in seconds",
@@ -674,15 +666,13 @@ impl CheckpointLagMetricReporter {
 
     pub fn report_lag(&self, cp_sequence_number: u64, checkpoint_timestamp_ms: u64) {
         let lag = chrono::Utc::now().timestamp_millis() - checkpoint_timestamp_ms as i64;
-        self.checkpoint_time_lag_histogram
-            .observe((lag as f64) / 1000.0);
+        self.checkpoint_time_lag_histogram.observe((lag as f64) / 1000.0);
 
         let prev = self
             .latest_reported_checkpoint
             .fetch_max(cp_sequence_number, std::sync::atomic::Ordering::Relaxed);
         if cp_sequence_number > prev {
-            self.latest_checkpoint_sequence_number_gauge
-                .set(cp_sequence_number as i64);
+            self.latest_checkpoint_sequence_number_gauge.set(cp_sequence_number as i64);
             self.latest_checkpoint_time_lag_gauge.set(lag);
         }
     }

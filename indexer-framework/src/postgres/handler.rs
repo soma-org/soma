@@ -40,10 +40,8 @@ pub trait Handler: Processor<Value: FieldCount> {
 
     /// Take a chunk of values and commit them to the database, returning the number of rows
     /// affected.
-    async fn commit<'a>(
-        values: &[Self::Value],
-        conn: &mut Connection<'a>,
-    ) -> anyhow::Result<usize>;
+    async fn commit<'a>(values: &[Self::Value], conn: &mut Connection<'a>)
+    -> anyhow::Result<usize>;
 
     /// Clean up data between checkpoints `_from` and `_to_exclusive` (exclusive) in the database,
     /// returning the number of rows affected. This function is optional, and defaults to not
@@ -61,11 +59,7 @@ pub trait Handler: Processor<Value: FieldCount> {
 /// Calculate the maximum number of rows that can be inserted in a single batch,
 /// given the number of fields per row.
 const fn max_chunk_rows<T: FieldCount>() -> usize {
-    if T::FIELD_COUNT == 0 {
-        i16::MAX as usize
-    } else {
-        i16::MAX as usize / T::FIELD_COUNT
-    }
+    if T::FIELD_COUNT == 0 { i16::MAX as usize } else { i16::MAX as usize / T::FIELD_COUNT }
 }
 
 /// Blanket implementation of the framework's Handler trait for any type implementing the

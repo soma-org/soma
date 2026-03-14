@@ -166,9 +166,7 @@ mod tests {
             with_slow_future_monitor(StuckFuture, Duration::from_millis(200), || c.increment());
 
         // Use a timeout to prevent the test from hanging
-        timeout(Duration::from_secs(2), monitored)
-            .await
-            .unwrap_err();
+        timeout(Duration::from_secs(2), monitored).await.unwrap_err();
         assert_eq!(c.count(), 1);
     }
 }

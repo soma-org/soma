@@ -2,8 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use rpc::utils::checkpoint_blob::decode_checkpoint;
 use rpc::utils::checkpoint_blob::DecodeError;
+use rpc::utils::checkpoint_blob::decode_checkpoint;
 
 use crate::types::full_checkpoint_content::Checkpoint;
 

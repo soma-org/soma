@@ -58,11 +58,7 @@ pub(super) fn committer<H: Handler + 'static>(
         match ReceiverStream::new(rx)
             .try_for_each_spawned(
                 config.write_concurrency,
-                |BatchedRows {
-                     batch,
-                     batch_len,
-                     watermark,
-                 }| {
+                |BatchedRows { batch, batch_len, watermark }| {
                     let batch = Arc::new(batch);
                     let handler = handler.clone();
                     let tx = tx.clone();

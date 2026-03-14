@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::base::{ExecutionDigests, SomaAddress};
 use crate::checkpoints::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber, CheckpointSummary,
@@ -15,17 +16,16 @@ use crate::checkpoints::{
 };
 use crate::committee::{Committee, EpochId};
 use crate::crypto::AuthorityKeyPair;
-use crate::digests::{
-    CheckpointDigest, ObjectDigest, TransactionDigest, TransactionEffectsDigest,
-};
+use crate::digests::{CheckpointDigest, ObjectDigest, TransactionDigest, TransactionEffectsDigest};
 use crate::effects::object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use crate::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsV1};
 use crate::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
 use crate::model::ModelId;
-use crate::object::{Object, ObjectData, ObjectID, ObjectType, Owner, Version, OBJECT_START_VERSION};
+use crate::object::{
+    OBJECT_START_VERSION, Object, ObjectData, ObjectID, ObjectType, Owner, Version,
+};
 use crate::system_state::{SystemState, SystemStateTrait as _};
 use crate::target::{TargetId, TargetStatus, TargetV1};
-use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::tensor::SomaTensor;
 use crate::transaction::{
     ChangeEpoch, ClaimRewardsArgs, GenesisTransaction, TransactionData, TransactionKind,
@@ -90,8 +90,7 @@ impl TestCheckpointBuilder {
         if epoch > 0 {
             // Rebuild committee with correct epoch
             let (committee, keypairs) = Committee::new_simple_test_committee_of_size(4);
-            let voting_rights: BTreeMap<_, _> =
-                committee.voting_rights.iter().cloned().collect();
+            let voting_rights: BTreeMap<_, _> = committee.voting_rights.iter().cloned().collect();
             let authorities: BTreeMap<_, _> =
                 committee.authorities.iter().map(|(k, v)| (*k, v.clone())).collect();
             self.committee = Committee::new(epoch, voting_rights, authorities);
@@ -154,14 +153,24 @@ impl TestCheckpointBuilder {
         // Gas coin for sender (mutated, pre-existing)
         let gas_input = Object::with_id_owner_coin_for_testing(gas_id, sender, 1_000_000);
         let gas_output = Object::new(
-            ObjectData::new_with_id(gas_id, ObjectType::Coin, version, bcs::to_bytes(&999_000u64).unwrap()),
+            ObjectData::new_with_id(
+                gas_id,
+                ObjectType::Coin,
+                version,
+                bcs::to_bytes(&999_000u64).unwrap(),
+            ),
             Owner::AddressOwner(sender),
             tx_digest,
         );
 
         // New coin for recipient (created)
         let coin_output = Object::new(
-            ObjectData::new_with_id(coin_id, ObjectType::Coin, version, bcs::to_bytes(&amount).unwrap()),
+            ObjectData::new_with_id(
+                coin_id,
+                ObjectType::Coin,
+                version,
+                bcs::to_bytes(&amount).unwrap(),
+            ),
             Owner::AddressOwner(recipient),
             tx_digest,
         );
@@ -240,9 +249,7 @@ impl TestCheckpointBuilder {
 
         // System transaction that creates the target
         let tx_data = TransactionData::new(
-            TransactionKind::Genesis(crate::transaction::GenesisTransaction {
-                objects: vec![],
-            }),
+            TransactionKind::Genesis(crate::transaction::GenesisTransaction { objects: vec![] }),
             SomaAddress::default(),
             vec![],
         );
@@ -253,9 +260,7 @@ impl TestCheckpointBuilder {
                 input_state: ObjectIn::NotExist,
                 output_state: ObjectOut::ObjectWrite((
                     ObjectDigest::random(),
-                    Owner::Shared {
-                        initial_shared_version: OBJECT_START_VERSION,
-                    },
+                    Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                 )),
                 id_operation: IDOperation::Created,
             },
@@ -296,9 +301,7 @@ impl TestCheckpointBuilder {
         );
 
         let tx_data = TransactionData::new(
-            TransactionKind::Genesis(crate::transaction::GenesisTransaction {
-                objects: vec![],
-            }),
+            TransactionKind::Genesis(crate::transaction::GenesisTransaction { objects: vec![] }),
             SomaAddress::default(),
             vec![],
         );
@@ -309,9 +312,7 @@ impl TestCheckpointBuilder {
                 input_state: ObjectIn::NotExist,
                 output_state: ObjectOut::ObjectWrite((
                     ObjectDigest::random(),
-                    Owner::Shared {
-                        initial_shared_version: OBJECT_START_VERSION,
-                    },
+                    Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                 )),
                 id_operation: IDOperation::Created,
             },
@@ -353,7 +354,12 @@ impl TestCheckpointBuilder {
         let gas_input = Object::with_id_owner_coin_for_testing(gas_id, sender, 1_000_000);
         let final_balance = (1_000_000i128 + sender_amount) as u64;
         let gas_output = Object::new(
-            ObjectData::new_with_id(gas_id, ObjectType::Coin, version, bcs::to_bytes(&final_balance).unwrap()),
+            ObjectData::new_with_id(
+                gas_id,
+                ObjectType::Coin,
+                version,
+                bcs::to_bytes(&final_balance).unwrap(),
+            ),
             Owner::AddressOwner(sender),
             tx_digest,
         );
@@ -416,17 +422,11 @@ impl TestCheckpointBuilder {
 
         let system_bytes = bcs::to_bytes(&system_state).expect("serialize SystemState");
         let system_id = SYSTEM_STATE_OBJECT_ID;
-        let data = ObjectData::new_with_id(
-            system_id,
-            ObjectType::SystemState,
-            version,
-            system_bytes,
-        );
+        let data =
+            ObjectData::new_with_id(system_id, ObjectType::SystemState, version, system_bytes);
         let system_obj = Object::new(
             data,
-            Owner::Shared {
-                initial_shared_version: OBJECT_START_VERSION,
-            },
+            Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
             tx_digest,
         );
 
@@ -448,9 +448,7 @@ impl TestCheckpointBuilder {
                 input_state: ObjectIn::NotExist,
                 output_state: ObjectOut::ObjectWrite((
                     ObjectDigest::random(),
-                    Owner::Shared {
-                        initial_shared_version: OBJECT_START_VERSION,
-                    },
+                    Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                 )),
                 id_operation: IDOperation::Created,
             },
@@ -488,17 +486,11 @@ impl TestCheckpointBuilder {
 
             let system_bytes = bcs::to_bytes(&system_state).expect("serialize SystemState");
             let system_id = SYSTEM_STATE_OBJECT_ID;
-            let data = ObjectData::new_with_id(
-                system_id,
-                ObjectType::SystemState,
-                version,
-                system_bytes,
-            );
+            let data =
+                ObjectData::new_with_id(system_id, ObjectType::SystemState, version, system_bytes);
             let system_obj = Object::new(
                 data,
-                Owner::Shared {
-                    initial_shared_version: OBJECT_START_VERSION,
-                },
+                Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                 tx_digest,
             );
 
@@ -514,9 +506,7 @@ impl TestCheckpointBuilder {
                     input_state: ObjectIn::NotExist,
                     output_state: ObjectOut::ObjectWrite((
                         ObjectDigest::random(),
-                        Owner::Shared {
-                            initial_shared_version: OBJECT_START_VERSION,
-                        },
+                        Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
                     )),
                     id_operation: IDOperation::Created,
                 },
@@ -604,12 +594,7 @@ impl TestCheckpointBuilder {
             });
         }
 
-        Checkpoint {
-            summary: certified,
-            contents,
-            transactions: executed_transactions,
-            object_set,
-        }
+        Checkpoint { summary: certified, contents, transactions: executed_transactions, object_set }
     }
 }
 

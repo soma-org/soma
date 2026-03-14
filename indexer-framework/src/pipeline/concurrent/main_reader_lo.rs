@@ -27,10 +27,7 @@ pub(super) fn track_main_reader_lo<H: Handler + 'static>(
 ) -> Service {
     Service::new().spawn_aborting(async move {
         let Some(reader_interval) = reader_interval else {
-            info!(
-                pipeline = H::NAME,
-                "Not a tasked indexer, skipping main reader lo task"
-            );
+            info!(pipeline = H::NAME, "Not a tasked indexer, skipping main reader lo task");
             reader_lo.set(AtomicU64::new(0)).ok();
             return Ok(());
         };

@@ -140,10 +140,8 @@ pub(super) fn collector<H: Handler + 'static>(
 
             // === FLUSHING: send batches until pending is drained ===
             loop {
-                let guard = metrics
-                    .collector_gather_latency
-                    .with_label_values(&[H::NAME])
-                    .start_timer();
+                let guard =
+                    metrics.collector_gather_latency.with_label_values(&[H::NAME]).start_timer();
 
                 let mut batch = H::Batch::default();
                 let mut watermark = Vec::new();
@@ -186,10 +184,7 @@ pub(super) fn collector<H: Handler + 'static>(
                     "Gathered batch",
                 );
 
-                metrics
-                    .total_collector_batches_created
-                    .with_label_values(&[H::NAME])
-                    .inc();
+                metrics.total_collector_batches_created.with_label_values(&[H::NAME]).inc();
 
                 metrics
                     .collector_batch_size
@@ -198,16 +193,9 @@ pub(super) fn collector<H: Handler + 'static>(
 
                 pending_rows -= batch_len;
 
-                let batched_rows = BatchedRows {
-                    batch,
-                    batch_len,
-                    watermark,
-                };
+                let batched_rows = BatchedRows { batch, batch_len, watermark };
                 if tx.send(batched_rows).await.is_err() {
-                    info!(
-                        pipeline = H::NAME,
-                        "Committer closed channel, stopping collector"
-                    );
+                    info!(pipeline = H::NAME, "Committer closed channel, stopping collector");
                     return Ok(());
                 }
 

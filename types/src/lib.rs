@@ -44,9 +44,9 @@ pub mod supported_protocol_versions;
 pub mod sync;
 pub mod system_state;
 pub mod target;
-pub mod test_checkpoint_data_builder;
 pub mod temporary_store;
 pub mod tensor;
+pub mod test_checkpoint_data_builder;
 #[cfg(feature = "tls")]
 pub mod tls;
 pub mod traffic_control;

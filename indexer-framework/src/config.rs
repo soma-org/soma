@@ -63,12 +63,7 @@ impl From<ConcurrencyConfig> for RuntimeConcurrencyConfig {
     fn from(config: ConcurrencyConfig) -> Self {
         match config {
             ConcurrencyConfig::Fixed { value } => Self::fixed(value),
-            ConcurrencyConfig::Adaptive {
-                initial,
-                min,
-                max,
-                dead_band,
-            } => {
+            ConcurrencyConfig::Adaptive { initial, min, max, dead_band } => {
                 let mut c = Self::adaptive(initial, min, max);
                 if let Some([low, high]) = dead_band {
                     c = c.with_dead_band(low, high);

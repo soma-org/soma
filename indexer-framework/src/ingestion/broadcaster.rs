@@ -171,15 +171,10 @@ fn ingest_and_broadcast_range(
                 },
                 subscribers,
                 move |stats| {
-                    report_metrics
-                        .ingestion_concurrency_limit
-                        .set(stats.limit as i64);
-                    report_metrics
-                        .ingestion_concurrency_inflight
-                        .set(stats.inflight as i64);
+                    report_metrics.ingestion_concurrency_limit.set(stats.limit as i64);
+                    report_metrics.ingestion_concurrency_inflight.set(stats.inflight as i64);
                 },
             )
             .await
     }))
 }
-

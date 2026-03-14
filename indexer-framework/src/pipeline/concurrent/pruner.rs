@@ -55,9 +55,7 @@ impl PendingRanges {
     }
 
     fn iter(&self) -> impl Iterator<Item = (u64, u64)> + '_ {
-        self.ranges
-            .iter()
-            .map(|(from, to_exclusive)| (*from, *to_exclusive))
+        self.ranges.iter().map(|(from, to_exclusive)| (*from, *to_exclusive))
     }
 
     /// Remove the range from the pending_prune_ranges.
@@ -101,10 +99,7 @@ pub(super) fn pruner<H: Handler + Send + Sync + 'static>(
             return Ok(());
         };
 
-        info!(
-            pipeline = H::NAME,
-            "Starting pruner with config: {:?}", config
-        );
+        info!(pipeline = H::NAME, "Starting pruner with config: {:?}", config);
 
         // The pruner can pause for a while, waiting for the delay imposed by the
         // `pruner_timestamp` to expire. In that case, the period between ticks should not be
@@ -130,10 +125,7 @@ pub(super) fn pruner<H: Handler + Send + Sync + 'static>(
                     .start_timer();
 
                 let Ok(mut conn) = store.connect().await else {
-                    warn!(
-                        pipeline = H::NAME,
-                        "Pruner failed to connect, while fetching watermark"
-                    );
+                    warn!(pipeline = H::NAME, "Pruner failed to connect, while fetching watermark");
                     continue;
                 };
 
@@ -180,11 +172,7 @@ pub(super) fn pruner<H: Handler + Send + Sync + 'static>(
                 }
             }
 
-            debug!(
-                pipeline = H::NAME,
-                "Number of chunks to prune: {}",
-                pending_prune_ranges.len()
-            );
+            debug!(pipeline = H::NAME, "Number of chunks to prune: {}", pending_prune_ranges.len());
 
             // (4) Prune chunk by chunk to avoid the task waiting on a long-running database
             // transaction. Spawn all tasks in parallel, but limit the number of concurrent tasks.
@@ -278,15 +266,9 @@ async fn prune_task_impl<H: Handler + Send + Sync + 'static>(
     from: u64,
     to_exclusive: u64,
 ) -> Result<(), anyhow::Error> {
-    metrics
-        .total_pruner_chunks_attempted
-        .with_label_values(&[H::NAME])
-        .inc();
+    metrics.total_pruner_chunks_attempted.with_label_values(&[H::NAME]).inc();
 
-    let guard = metrics
-        .pruner_delete_latency
-        .with_label_values(&[H::NAME])
-        .start_timer();
+    let guard = metrics.pruner_delete_latency.with_label_values(&[H::NAME]).start_timer();
 
     let mut conn = db.connect().await?;
 
@@ -304,15 +286,9 @@ async fn prune_task_impl<H: Handler + Send + Sync + 'static>(
         }
     };
 
-    metrics
-        .total_pruner_chunks_deleted
-        .with_label_values(&[H::NAME])
-        .inc();
+    metrics.total_pruner_chunks_deleted.with_label_values(&[H::NAME]).inc();
 
-    metrics
-        .total_pruner_rows_deleted
-        .with_label_values(&[H::NAME])
-        .inc_by(affected as u64);
+    metrics.total_pruner_rows_deleted.with_label_values(&[H::NAME]).inc_by(affected as u64);
 
     Ok(())
 }

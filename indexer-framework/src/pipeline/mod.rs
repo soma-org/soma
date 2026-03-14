@@ -126,17 +126,10 @@ impl WatermarkPart {
 
     /// Record that `rows` have been taken from this part.
     pub(crate) fn take(&mut self, rows: usize) -> WatermarkPart {
-        debug_assert!(
-            self.batch_rows >= rows,
-            "Can't take more rows than are available"
-        );
+        debug_assert!(self.batch_rows >= rows, "Can't take more rows than are available");
 
         self.batch_rows -= rows;
-        WatermarkPart {
-            watermark: self.watermark,
-            batch_rows: rows,
-            total_rows: self.total_rows,
-        }
+        WatermarkPart { watermark: self.watermark, batch_rows: rows, total_rows: self.total_rows }
     }
 }
 

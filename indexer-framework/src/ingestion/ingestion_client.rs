@@ -147,24 +147,18 @@ impl StoreIngestionClient {
 #[async_trait]
 impl IngestionClientTrait for StoreIngestionClient {
     async fn fetch(&self, checkpoint: u64) -> FetchResult {
-        let path = object_store::path::Path::from(format!(
-            "{}.binpb.zst",
-            checkpoint
-        ));
+        let path = object_store::path::Path::from(format!("{}.binpb.zst", checkpoint));
 
         match self.store.get(&path).await {
             Ok(result) => {
-                let bytes = result.bytes().await.map_err(|e| FetchError::Transient {
-                    reason: "read_bytes",
-                    error: e.into(),
-                })?;
+                let bytes = result
+                    .bytes()
+                    .await
+                    .map_err(|e| FetchError::Transient { reason: "read_bytes", error: e.into() })?;
                 Ok(FetchData::Raw(bytes))
             }
             Err(object_store::Error::NotFound { .. }) => Err(FetchError::NotFound),
-            Err(e) => Err(FetchError::Transient {
-                reason: "object_store",
-                error: e.into(),
-            }),
+            Err(e) => Err(FetchError::Transient { reason: "object_store", error: e.into() }),
         }
     }
 }
@@ -236,11 +230,7 @@ impl IngestionClient {
             metrics.latest_ingested_checkpoint_timestamp_lag_ms.clone(),
             metrics.latest_ingested_checkpoint.clone(),
         );
-        IngestionClient {
-            client,
-            metrics,
-            checkpoint_lag_reporter,
-        }
+        IngestionClient { client, metrics, checkpoint_lag_reporter }
     }
 
     /// Fetch checkpoint data by sequence number.
@@ -335,24 +325,15 @@ impl IngestionClient {
         let data = backoff::future::retry(backoff, request).await?;
         let elapsed = guard.stop_and_record();
 
-        debug!(
-            checkpoint,
-            elapsed_ms = elapsed * 1000.0,
-            "Fetched checkpoint"
-        );
+        debug!(checkpoint, elapsed_ms = elapsed * 1000.0, "Fetched checkpoint");
 
-        self.checkpoint_lag_reporter
-            .report_lag(checkpoint, data.summary.timestamp_ms);
+        self.checkpoint_lag_reporter.report_lag(checkpoint, data.summary.timestamp_ms);
 
         self.metrics.total_ingested_checkpoints.inc();
 
-        self.metrics
-            .total_ingested_transactions
-            .inc_by(data.transactions.len() as u64);
+        self.metrics.total_ingested_transactions.inc_by(data.transactions.len() as u64);
 
-        self.metrics
-            .total_ingested_objects
-            .inc_by(data.object_set.len() as u64);
+        self.metrics.total_ingested_objects.inc_by(data.object_set.len() as u64);
 
         Ok(Arc::new(data))
     }

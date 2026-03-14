@@ -29,7 +29,15 @@ pub struct StoredObject {
 }
 
 #[derive(
-    Insertable, Selectable, Debug, Clone, PartialEq, Eq, FieldCount, Queryable, QueryableByName,
+    Insertable,
+    Selectable,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    FieldCount,
+    Queryable,
+    QueryableByName
 )]
 #[diesel(table_name = obj_versions, primary_key(object_id, object_version))]
 pub struct StoredObjVersion {

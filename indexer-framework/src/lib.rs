@@ -28,10 +28,10 @@ use crate::pipeline::sequential::SequentialConfig;
 use crate::pipeline::sequential::{self};
 
 pub use anyhow::Result;
-pub use soma_field_count::FieldCount;
-pub use soma_futures::service;
 /// External users access the store trait through framework::store
 pub use indexer_store_traits as store;
+pub use soma_field_count::FieldCount;
+pub use soma_futures::service;
 pub use types;
 
 pub mod config;
@@ -161,10 +161,7 @@ pub(crate) struct Task {
 
 impl TaskArgs {
     pub fn tasked(task: String, reader_interval_ms: u64) -> Self {
-        Self {
-            task: Some(task),
-            reader_interval_ms: Some(reader_interval_ms),
-        }
+        Self { task: Some(task), reader_interval_ms: Some(reader_interval_ms) }
     }
 
     fn into_task(self) -> Option<Task> {
@@ -195,12 +192,7 @@ impl<S: store::Store> Indexer<S> {
         metrics_prefix: Option<&str>,
         registry: &Registry,
     ) -> Result<Self> {
-        let IndexerArgs {
-            first_checkpoint,
-            last_checkpoint,
-            pipeline,
-            task,
-        } = indexer_args;
+        let IndexerArgs { first_checkpoint, last_checkpoint, pipeline, task } = indexer_args;
 
         let metrics = IndexerMetrics::new(metrics_prefix, registry);
 
@@ -248,11 +240,10 @@ impl<S: store::Store> Indexer<S> {
 
     /// The pipelines that this indexer will run.
     pub fn pipelines(&self) -> impl Iterator<Item = &'static str> + '_ {
-        self.added_pipelines.iter().copied().filter(|p| {
-            self.enabled_pipelines
-                .as_ref()
-                .is_none_or(|e| e.contains(*p))
-        })
+        self.added_pipelines
+            .iter()
+            .copied()
+            .filter(|p| self.enabled_pipelines.as_ref().is_none_or(|e| e.contains(*p)))
     }
 
     /// The minimum next checkpoint across all sequential pipelines. This value is used to
@@ -313,10 +304,7 @@ impl<S: store::Store> Indexer<S> {
 
         let mut service = self
             .ingestion_service
-            .run(
-                self.first_ingestion_checkpoint..=last_checkpoint,
-                self.next_sequential_checkpoint,
-            )
+            .run(self.first_ingestion_checkpoint..=last_checkpoint, self.next_sequential_checkpoint)
             .await
             .context("Failed to start ingestion service")?;
 
@@ -336,11 +324,7 @@ impl<S: store::Store> Indexer<S> {
     ///
     /// Returns `Ok(None)` if the pipeline is disabled.
     async fn add_pipeline<P: Processor + 'static>(&mut self) -> Result<Option<u64>> {
-        ensure!(
-            self.added_pipelines.insert(P::NAME),
-            "Pipeline {:?} already added",
-            P::NAME,
-        );
+        ensure!(self.added_pipelines.insert(P::NAME), "Pipeline {:?} already added", P::NAME,);
 
         if let Some(enabled_pipelines) = &mut self.enabled_pipelines {
             if !enabled_pipelines.remove(P::NAME) {
@@ -349,17 +333,10 @@ impl<S: store::Store> Indexer<S> {
             }
         }
 
-        let mut conn = self
-            .store
-            .connect()
-            .await
-            .context("Failed to establish connection to store")?;
+        let mut conn =
+            self.store.connect().await.context("Failed to establish connection to store")?;
 
-        let pt = pipeline_task(
-            P::NAME,
-            self.task.as_ref().map(|t| t.task.as_str()),
-            S::DELIMITER,
-        );
+        let pt = pipeline_task(P::NAME, self.task.as_ref().map(|t| t.task.as_str()), S::DELIMITER);
 
         let checkpoint_hi_inclusive = conn
             .init_watermark(&pt, self.default_next_checkpoint)
@@ -408,8 +385,7 @@ impl<T: store::TransactionalStore> Indexer<T> {
 
         // Track the minimum next_checkpoint across all sequential pipelines
         self.next_sequential_checkpoint = Some(
-            self.next_sequential_checkpoint
-                .map_or(next_checkpoint, |n| n.min(next_checkpoint)),
+            self.next_sequential_checkpoint.map_or(next_checkpoint, |n| n.min(next_checkpoint)),
         );
 
         let (checkpoint_rx, commit_hi_tx) = self.ingestion_service.subscribe();

@@ -61,8 +61,6 @@ mod tests {
         // When the guard is dropped, the task should be aborted, cleaning up its future, which
         // will close the receiving side of the channel.
         drop(guard);
-        tokio::time::timeout(Duration::from_millis(100), tx.closed())
-            .await
-            .unwrap();
+        tokio::time::timeout(Duration::from_millis(100), tx.closed()).await.unwrap();
     }
 }

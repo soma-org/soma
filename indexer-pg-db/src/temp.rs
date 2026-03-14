@@ -65,11 +65,7 @@ impl TempDb {
                 "-l",
                 log_file.to_str().unwrap(),
                 "-o",
-                &format!(
-                    "-p {} -k {} -h ''",
-                    port,
-                    dir.path().to_str().unwrap()
-                ),
+                &format!("-p {} -k {} -h ''", port, dir.path().to_str().unwrap()),
                 "start",
             ])
             .stdout(Stdio::piped())
@@ -104,10 +100,7 @@ impl TempDb {
                 if let Ok(mut f) = std::fs::File::open(&log_file) {
                     let _ = f.read_to_string(&mut log);
                 }
-                panic!(
-                    "Postgres did not become ready within 30s.\nLog:\n{}",
-                    log
-                );
+                panic!("Postgres did not become ready within 30s.\nLog:\n{}", log);
             }
 
             std::thread::sleep(Duration::from_millis(100));
@@ -115,13 +108,7 @@ impl TempDb {
 
         // Create the test database
         let output = Command::new("createdb")
-            .args([
-                "-h",
-                &socket_dir,
-                "-p",
-                &port.to_string(),
-                "indexer_test",
-            ])
+            .args(["-h", &socket_dir, "-p", &port.to_string(), "indexer_test"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -163,13 +150,7 @@ impl Drop for TempDb {
         let data_dir = self.data_dir();
         // pg_ctl stop -m immediate
         let _ = Command::new("pg_ctl")
-            .args([
-                "-D",
-                data_dir.to_str().unwrap(),
-                "-m",
-                "immediate",
-                "stop",
-            ])
+            .args(["-D", data_dir.to_str().unwrap(), "-m", "immediate", "stop"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();

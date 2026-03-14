@@ -303,10 +303,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty() {
         // The empty service should exit immediately.
-        Service::new()
-            .wait_for_shutdown(GRACE, std::future::pending)
-            .await
-            .unwrap();
+        Service::new().wait_for_shutdown(GRACE, std::future::pending).await.unwrap();
     }
 
     #[tokio::test]
@@ -336,9 +333,7 @@ mod tests {
         // Sending the signal allows the task to complete successfully, which allows the service to
         // exit, and at that point, the second channel should be closed too.
         atx.send(()).unwrap();
-        svc.wait_for_shutdown(GRACE, std::future::pending)
-            .await
-            .unwrap();
+        svc.wait_for_shutdown(GRACE, std::future::pending).await.unwrap();
         assert!(btx.is_closed());
     }
 
@@ -364,13 +359,13 @@ mod tests {
         let srx = Arc::new(Notify::new());
         let stx = srx.clone();
 
-        let svc = Service::new()
-            .with_shutdown_signal(async move { atx.send(()).unwrap() })
-            .spawn(async move {
+        let svc = Service::new().with_shutdown_signal(async move { atx.send(()).unwrap() }).spawn(
+            async move {
                 arx.await?;
                 btx.send(()).unwrap();
                 Ok(())
-            });
+            },
+        );
 
         // The service is now running in the background.
         let handle =
@@ -437,9 +432,7 @@ mod tests {
 
         // A secondary task and a primary task.
         let snd = Service::new().spawn_aborting(async move { Ok(brx.await?) });
-        let svc = Service::new()
-            .spawn(async move { Ok(arx.await?) })
-            .attach(snd);
+        let svc = Service::new().spawn(async move { Ok(arx.await?) }).attach(snd);
 
         let handle = tokio::spawn(svc.wait_for_shutdown(GRACE, std::future::pending));
 
@@ -462,9 +455,7 @@ mod tests {
             Ok(())
         });
 
-        let svc = Service::new()
-            .spawn(async move { Ok(arx.await?) })
-            .attach(snd);
+        let svc = Service::new().spawn(async move { Ok(arx.await?) }).attach(snd);
 
         let handle = tokio::spawn(svc.wait_for_shutdown(GRACE, std::future::pending));
 
@@ -485,9 +476,7 @@ mod tests {
 
         // A secondary task that fails, with a primary task.
         let snd = Service::new().spawn(async move { bail!("boom") });
-        let svc = Service::new()
-            .spawn_aborting(async move { Ok(arx.await?) })
-            .attach(snd);
+        let svc = Service::new().spawn_aborting(async move { Ok(arx.await?) }).attach(snd);
 
         // Run the service -- it should fail immediately because the secondary task failed,
         // cleaning up the primary task.
@@ -503,9 +492,7 @@ mod tests {
 
         // A secondary task that fails, with a primary task.
         let snd = Service::new().spawn(async move { panic!("boom") });
-        let svc = Service::new()
-            .spawn_aborting(async move { Ok(arx.await?) })
-            .attach(snd);
+        let svc = Service::new().spawn_aborting(async move { Ok(arx.await?) }).attach(snd);
 
         // When the service runs, the panic from the secondary task will be propagated.
         let _ = svc.wait_for_shutdown(GRACE, std::future::pending).await;
@@ -521,17 +508,15 @@ mod tests {
         let stx = srx.clone();
 
         // A secondary task with a shutdown signal.
-        let snd = Service::new()
-            .with_shutdown_signal(async move { atx.send(()).unwrap() })
-            .spawn(async move {
+        let snd = Service::new().with_shutdown_signal(async move { atx.send(()).unwrap() }).spawn(
+            async move {
                 let _crx = crx;
                 Ok(arx.await?)
-            });
+            },
+        );
 
         // A primary task which aborts when signalled to shutdown.
-        let svc = Service::new()
-            .spawn_aborting(async move { Ok(brx.await?) })
-            .attach(snd);
+        let svc = Service::new().spawn_aborting(async move { Ok(brx.await?) }).attach(snd);
 
         // The service is now running in the background.
         let handle =
@@ -703,12 +688,12 @@ mod tests {
         let srx = Arc::new(Notify::new());
         let stx = srx.clone();
 
-        let svc = Service::new()
-            .with_shutdown_signal(async move { atx.send(()).unwrap() })
-            .spawn(async move {
+        let svc = Service::new().with_shutdown_signal(async move { atx.send(()).unwrap() }).spawn(
+            async move {
                 arx.await?;
                 panic!("boom")
-            });
+            },
+        );
 
         // The service is now running in the background.
         let handle =

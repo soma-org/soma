@@ -80,14 +80,7 @@ impl IngestionService {
 
         let subscribers = Vec::new();
         let (commit_hi_tx, commit_hi_rx) = mpsc::unbounded_channel();
-        Ok(Self {
-            config,
-            ingestion_client,
-            commit_hi_tx,
-            commit_hi_rx,
-            subscribers,
-            metrics,
-        })
+        Ok(Self { config, ingestion_client, commit_hi_tx, commit_hi_rx, subscribers, metrics })
     }
 
     /// The ingestion client this service uses to fetch checkpoints.
@@ -105,10 +98,7 @@ impl IngestionService {
     /// Returns the channel to receive checkpoints from and the channel to send commit_hi values to.
     pub fn subscribe(
         &mut self,
-    ) -> (
-        mpsc::Receiver<Arc<Checkpoint>>,
-        mpsc::UnboundedSender<(&'static str, u64)>,
-    ) {
+    ) -> (mpsc::Receiver<Arc<Checkpoint>>, mpsc::UnboundedSender<(&'static str, u64)>) {
         let (sender, receiver) = mpsc::channel(self.config.checkpoint_buffer_size);
         self.subscribers.push(sender);
         (receiver, self.commit_hi_tx.clone())

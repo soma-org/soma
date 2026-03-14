@@ -93,10 +93,7 @@ pub(super) fn processor<P: Processor>(
                         };
 
                         let values = backoff::future::retry(backoff, || async {
-                            processor
-                                .process(&checkpoint)
-                                .await
-                                .map_err(backoff::Error::transient)
+                            processor.process(&checkpoint).await.map_err(backoff::Error::transient)
                         })
                         .await?;
 

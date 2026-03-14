@@ -102,10 +102,7 @@ impl Connection for MockConnection<'_> {
                 .map(|w| w.checkpoint_hi_inclusive));
         };
 
-        let &MockWatermark {
-            checkpoint_hi_inclusive,
-            ..
-        } = self
+        let &MockWatermark { checkpoint_hi_inclusive, .. } = self
             .0
             .watermarks
             .entry(pipeline_task.to_string())
@@ -154,19 +151,12 @@ impl Connection for MockConnection<'_> {
     ) -> Result<Option<PrunerWatermark>, anyhow::Error> {
         let watermark = self.0.watermarks.get(pipeline);
         Ok(watermark.map(|w| {
-            let now_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64;
+            let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
             let elapsed_since_pruner_timestamp = now_ms.saturating_sub(w.pruner_timestamp);
             let wait_for = delay
                 .checked_sub(Duration::from_millis(elapsed_since_pruner_timestamp))
                 .unwrap_or(Duration::ZERO);
-            PrunerWatermark {
-                pruner_hi: w.pruner_hi,
-                reader_lo: w.reader_lo,
-                wait_for,
-            }
+            PrunerWatermark { pruner_hi: w.pruner_hi, reader_lo: w.reader_lo, wait_for }
         }))
     }
 
@@ -176,22 +166,14 @@ impl Connection for MockConnection<'_> {
         watermark: CommitterWatermark,
     ) -> anyhow::Result<bool> {
         // Check if we should simulate a commit failure
-        let prev = self
-            .0
-            .commit_watermark_failures
-            .attempts
-            .fetch_add(1, Ordering::Relaxed);
+        let prev = self.0.commit_watermark_failures.attempts.fetch_add(1, Ordering::Relaxed);
         ensure!(
             prev >= self.0.commit_watermark_failures.failures,
             "Commit failed, remaining failures: {}",
             self.0.commit_watermark_failures.failures - prev
         );
 
-        let mut wm = self
-            .0
-            .watermarks
-            .entry(pipeline_task.to_string())
-            .or_default();
+        let mut wm = self.0.watermarks.entry(pipeline_task.to_string()).or_default();
 
         wm.epoch = watermark.epoch;
         wm.checkpoint_hi_inclusive = watermark.checkpoint_hi_inclusive;
@@ -222,10 +204,8 @@ impl Connection for MockConnection<'_> {
 
         let mut curr = self.0.watermarks.get_mut(pipeline).unwrap();
         curr.reader_lo = reader_lo;
-        curr.pruner_timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        curr.pruner_timestamp =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         Ok(true)
     }
 
@@ -276,16 +256,13 @@ impl TransactionalStore for MockStore {
     where
         T: Send + 'a,
         F: for<'r> FnOnce(
-            &'r mut Self::Connection<'_>,
-        ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<T>>
+                &'r mut Self::Connection<'_>,
+            ) -> ScopedBoxFuture<'a, 'r, anyhow::Result<T>>
             + Send
             + 'a,
     {
         // Check if we should simulate a transaction failure
-        let prev = self
-            .transaction_failures
-            .attempts
-            .fetch_add(1, Ordering::Relaxed);
+        let prev = self.transaction_failures.attempts.fetch_add(1, Ordering::Relaxed);
         if prev < self.transaction_failures.failures {
             return Err(anyhow::anyhow!(
                 "Transaction failed, remaining failures: {}",
@@ -315,10 +292,7 @@ impl MockStore {
         }
 
         // Check for commit failure simulation
-        let prev = self
-            .commit_failures
-            .attempts
-            .fetch_add(1, Ordering::Relaxed);
+        let prev = self.commit_failures.attempts.fetch_add(1, Ordering::Relaxed);
         ensure!(
             prev >= self.commit_failures.failures,
             "Transaction failed, remaining failures: {}",
@@ -347,10 +321,7 @@ impl MockStore {
         }
 
         // Check for commit failure simulation
-        let prev = self
-            .commit_failures
-            .attempts
-            .fetch_add(1, Ordering::Relaxed);
+        let prev = self.commit_failures.attempts.fetch_add(1, Ordering::Relaxed);
         ensure!(
             prev >= self.commit_failures.failures,
             "Transaction failed, remaining failures: {}",
@@ -395,28 +366,20 @@ impl MockStore {
 
     /// Helper to configure connection failure simulation
     pub fn with_connection_failures(self, attempts: usize) -> Self {
-        self.connection_failure
-            .lock()
-            .unwrap()
-            .connection_failure_attempts = attempts;
+        self.connection_failure.lock().unwrap().connection_failure_attempts = attempts;
         self
     }
 
     /// Helper to configure transaction failure simulation
     pub fn with_transaction_failures(mut self, failures: usize) -> Self {
-        self.transaction_failures = Arc::new(Failures {
-            failures,
-            attempts: AtomicUsize::new(0),
-        });
+        self.transaction_failures = Arc::new(Failures { failures, attempts: AtomicUsize::new(0) });
         self
     }
 
     /// Helper to configure commit watermark failure simulation
     pub fn with_commit_watermark_failures(mut self, failures: usize) -> Self {
-        self.commit_watermark_failures = Arc::new(Failures {
-            failures,
-            attempts: AtomicUsize::new(0),
-        });
+        self.commit_watermark_failures =
+            Arc::new(Failures { failures, attempts: AtomicUsize::new(0) });
         self
     }
 
@@ -434,22 +397,14 @@ impl MockStore {
 
     /// Helper to configure prune failure simulation for a specific range
     pub fn with_prune_failures(self, from: u64, to_exclusive: u64, failures: usize) -> Self {
-        self.prune_failure_attempts.insert(
-            (from, to_exclusive),
-            Failures {
-                failures,
-                attempts: AtomicUsize::new(0),
-            },
-        );
+        self.prune_failure_attempts
+            .insert((from, to_exclusive), Failures { failures, attempts: AtomicUsize::new(0) });
         self
     }
 
     /// Helper to configure commit failure simulation
     pub fn with_commit_failures(mut self, failures: usize) -> Self {
-        self.commit_failures = Arc::new(Failures {
-            failures,
-            attempts: AtomicUsize::new(0),
-        });
+        self.commit_failures = Arc::new(Failures { failures, attempts: AtomicUsize::new(0) });
         self
     }
 
@@ -463,8 +418,7 @@ impl MockStore {
         pipeline_task: &str,
         data: std::collections::HashMap<u64, Vec<u64>>,
     ) -> Self {
-        self.data
-            .insert(pipeline_task.to_string(), DashMap::from_iter(data));
+        self.data.insert(pipeline_task.to_string(), DashMap::from_iter(data));
         self
     }
 

@@ -91,23 +91,11 @@ struct BroadcastSender<T>(Arc<Vec<mpsc::Sender<T>>>);
 
 impl ConcurrencyConfig {
     pub fn fixed(n: usize) -> Self {
-        Self {
-            initial: n,
-            min: n,
-            max: n,
-            dead_band_low: 0.6,
-            dead_band_high: 0.85,
-        }
+        Self { initial: n, min: n, max: n, dead_band_low: 0.6, dead_band_high: 0.85 }
     }
 
     pub fn adaptive(initial: usize, min: usize, max: usize) -> Self {
-        Self {
-            initial,
-            min,
-            max,
-            dead_band_low: 0.6,
-            dead_band_high: 0.85,
-        }
+        Self { initial, min, max, dead_band_low: 0.6, dead_band_high: 0.85 }
     }
 
     pub fn with_dead_band(mut self, low: f64, high: f64) -> Self {
@@ -368,9 +356,10 @@ where
             }
         };
 
-        for join_result in completed.into_iter().chain(std::iter::from_fn(|| {
-            tasks.join_next().now_or_never().flatten()
-        })) {
+        for join_result in completed
+            .into_iter()
+            .chain(std::iter::from_fn(|| tasks.join_next().now_or_never().flatten()))
+        {
             match join_result {
                 Ok(Ok(spawn_epoch)) => {
                     let fill = sender.fill();
@@ -399,10 +388,7 @@ where
             }
         }
 
-        report(ConcurrencyStats {
-            limit,
-            inflight: tasks.len(),
-        });
+        report(ConcurrencyStats { limit, inflight: tasks.len() });
     }
 
     if let Some(e) = error { Err(e) } else { Ok(()) }

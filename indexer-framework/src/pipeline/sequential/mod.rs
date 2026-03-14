@@ -89,9 +89,7 @@ pub struct SequentialConfig {
 }
 
 fn default_concurrency() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
 }
 
 /// Start a new sequential (in-order) indexing pipeline, served by the handler, `H`. Starting
@@ -120,39 +118,26 @@ pub(crate) fn pipeline<H: Handler + Send + Sync + 'static>(
     commit_hi_tx: mpsc::UnboundedSender<(&'static str, u64)>,
     metrics: Arc<IndexerMetrics>,
 ) -> Service {
-    info!(
-        pipeline = H::NAME,
-        "Starting pipeline with config: {config:#?}",
-    );
+    info!(pipeline = H::NAME, "Starting pipeline with config: {config:#?}",);
 
     let num_cpus = default_concurrency();
 
-    let concurrency = config
-        .fanout
-        .clone()
-        .unwrap_or(ConcurrencyConfig::Adaptive {
-            initial: 1,
-            min: 1,
-            max: num_cpus,
-            dead_band: None,
-        });
+    let concurrency = config.fanout.clone().unwrap_or(ConcurrencyConfig::Adaptive {
+        initial: 1,
+        min: 1,
+        max: num_cpus,
+        dead_band: None,
+    });
     let min_eager_rows = config.min_eager_rows.unwrap_or(H::MIN_EAGER_ROWS);
-    let max_batch_checkpoints = config
-        .max_batch_checkpoints
-        .unwrap_or(H::MAX_BATCH_CHECKPOINTS);
+    let max_batch_checkpoints = config.max_batch_checkpoints.unwrap_or(H::MAX_BATCH_CHECKPOINTS);
 
     let processor_channel_size = config.processor_channel_size.unwrap_or(num_cpus / 2);
     let (processor_tx, committer_rx) = mpsc::channel(processor_channel_size);
 
     let handler = Arc::new(handler);
 
-    let s_processor = processor(
-        handler.clone(),
-        checkpoint_rx,
-        processor_tx,
-        metrics.clone(),
-        concurrency,
-    );
+    let s_processor =
+        processor(handler.clone(), checkpoint_rx, processor_tx, metrics.clone(), concurrency);
 
     let s_committer = committer::<H>(
         handler,

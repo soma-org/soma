@@ -179,9 +179,7 @@ impl Default for PrunerConfig {
 }
 
 fn default_concurrency() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
 }
 
 /// Start a new concurrent (out-of-order) indexing pipeline served by the handler, `H`.
@@ -194,10 +192,7 @@ pub(crate) fn pipeline<H: Handler + Send + Sync + 'static>(
     checkpoint_rx: mpsc::Receiver<Arc<Checkpoint>>,
     metrics: Arc<IndexerMetrics>,
 ) -> Service {
-    info!(
-        pipeline = H::NAME,
-        "Starting pipeline with config: {config:#?}",
-    );
+    info!(pipeline = H::NAME, "Starting pipeline with config: {config:#?}",);
 
     let ConcurrentConfig {
         committer: committer_config,
@@ -234,13 +229,8 @@ pub(crate) fn pipeline<H: Handler + Send + Sync + 'static>(
 
     let handler = Arc::new(handler);
 
-    let s_processor = processor(
-        handler.clone(),
-        checkpoint_rx,
-        processor_tx,
-        metrics.clone(),
-        concurrency,
-    );
+    let s_processor =
+        processor(handler.clone(), checkpoint_rx, processor_tx, metrics.clone(), concurrency);
 
     let s_collector = collector::<H>(
         handler.clone(),

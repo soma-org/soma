@@ -12,23 +12,23 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Utc;
+use diesel::ExpressionMethods;
+use diesel::OptionalExtension;
 use diesel::migration::MigrationSource;
 use diesel::migration::MigrationVersion;
 use diesel::pg::Pg;
 use diesel::prelude::*;
 use diesel::sql_types::BigInt;
-use diesel::ExpressionMethods;
-use diesel::OptionalExtension;
-use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
-use diesel_async::pooled_connection::bb8::Pool;
-use diesel_async::pooled_connection::bb8::PooledConnection;
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::AsyncConnection;
 use diesel_async::AsyncPgConnection;
 use diesel_async::RunQueryDsl;
-use diesel_migrations::embed_migrations;
+use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::pooled_connection::bb8::Pool;
+use diesel_async::pooled_connection::bb8::PooledConnection;
 use diesel_migrations::EmbeddedMigrations;
 use diesel_migrations::MigrationHarness;
+use diesel_migrations::embed_migrations;
 use indexer_store_traits as store;
 use scoped_futures::ScopedBoxFuture;
 use tracing::info;
@@ -155,12 +155,7 @@ impl Db {
         let finished: Vec<MigrationVersion<'static>> = tokio::task::spawn_blocking(move || {
             wrapper
                 .run_pending_migrations(merged)
-                .map(|versions| {
-                    versions
-                        .iter()
-                        .map(MigrationVersion::as_owned)
-                        .collect::<Vec<_>>()
-                })
+                .map(|versions| versions.iter().map(MigrationVersion::as_owned).collect::<Vec<_>>())
         })
         .await?
         .map_err(|e| anyhow!("Failed to run migrations: {:?}", e))?;
@@ -183,9 +178,7 @@ impl Db {
                 EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
             END LOOP;
         END $$;";
-        diesel::sql_query(drop_all_tables)
-            .execute(conn.deref_mut())
-            .await?;
+        diesel::sql_query(drop_all_tables).execute(conn.deref_mut()).await?;
 
         let drop_all_procedures = "
         DO $$ DECLARE
@@ -198,9 +191,7 @@ impl Db {
                 EXECUTE 'DROP PROCEDURE IF EXISTS ' || quote_ident(r.proname) || '(' || r.argtypes || ') CASCADE';
             END LOOP;
         END $$;";
-        diesel::sql_query(drop_all_procedures)
-            .execute(conn.deref_mut())
-            .await?;
+        diesel::sql_query(drop_all_procedures).execute(conn.deref_mut()).await?;
 
         let drop_all_functions = "
         DO $$ DECLARE
@@ -213,9 +204,7 @@ impl Db {
                 EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.proname) || '(' || r.argtypes || ') CASCADE';
             END LOOP;
         END $$;";
-        diesel::sql_query(drop_all_functions)
-            .execute(conn.deref_mut())
-            .await?;
+        diesel::sql_query(drop_all_functions).execute(conn.deref_mut()).await?;
 
         info!("Database cleared.");
         Ok(())
@@ -337,11 +326,7 @@ impl store::Connection for Connection<'_> {
             } else {
                 Duration::ZERO
             };
-            store::PrunerWatermark {
-                wait_for,
-                reader_lo: lo as u64,
-                pruner_hi: hi as u64,
-            }
+            store::PrunerWatermark { wait_for, reader_lo: lo as u64, pruner_hi: hi as u64 }
         }))
     }
 
@@ -361,22 +346,21 @@ impl store::Connection for Connection<'_> {
             pruner_hi: 0,
         };
 
-        let rows_affected =
-            diesel::query_dsl::methods::FilterDsl::filter(
-                diesel::insert_into(watermarks::table)
-                    .values(&stored)
-                    .on_conflict(watermarks::pipeline)
-                    .do_update()
-                    .set((
-                        watermarks::epoch_hi_inclusive.eq(stored.epoch_hi_inclusive),
-                        watermarks::checkpoint_hi_inclusive.eq(stored.checkpoint_hi_inclusive),
-                        watermarks::tx_hi.eq(stored.tx_hi),
-                        watermarks::timestamp_ms_hi_inclusive.eq(stored.timestamp_ms_hi_inclusive),
-                    )),
-                watermarks::checkpoint_hi_inclusive.lt(stored.checkpoint_hi_inclusive),
-            )
-            .execute(self.deref_mut())
-            .await?;
+        let rows_affected = diesel::query_dsl::methods::FilterDsl::filter(
+            diesel::insert_into(watermarks::table)
+                .values(&stored)
+                .on_conflict(watermarks::pipeline)
+                .do_update()
+                .set((
+                    watermarks::epoch_hi_inclusive.eq(stored.epoch_hi_inclusive),
+                    watermarks::checkpoint_hi_inclusive.eq(stored.checkpoint_hi_inclusive),
+                    watermarks::tx_hi.eq(stored.tx_hi),
+                    watermarks::timestamp_ms_hi_inclusive.eq(stored.timestamp_ms_hi_inclusive),
+                )),
+            watermarks::checkpoint_hi_inclusive.lt(stored.checkpoint_hi_inclusive),
+        )
+        .execute(self.deref_mut())
+        .await?;
 
         Ok(rows_affected > 0)
     }
@@ -442,9 +426,7 @@ impl<'a> Connection<'a> {
     async fn transaction<'b, T, F>(&mut self, f: F) -> anyhow::Result<T>
     where
         T: Send + 'b,
-        F: for<'r> FnOnce(
-                &'r mut Connection<'_>,
-            ) -> ScopedBoxFuture<'b, 'r, anyhow::Result<T>>
+        F: for<'r> FnOnce(&'r mut Connection<'_>) -> ScopedBoxFuture<'b, 'r, anyhow::Result<T>>
             + Send
             + 'b,
     {
@@ -512,13 +494,10 @@ async fn create_pool(
                 conn: &mut AsyncPgConnection,
             ) -> Result<(), diesel_async::pooled_connection::PoolError> {
                 if let Some(timeout) = self.statement_timeout {
-                    diesel::sql_query(format!(
-                        "SET statement_timeout = {}",
-                        timeout.as_millis()
-                    ))
-                    .execute(conn)
-                    .await
-                    .map_err(diesel_async::pooled_connection::PoolError::QueryError)?;
+                    diesel::sql_query(format!("SET statement_timeout = {}", timeout.as_millis()))
+                        .execute(conn)
+                        .await
+                        .map_err(diesel_async::pooled_connection::PoolError::QueryError)?;
                 }
 
                 if self.read_only {
@@ -535,10 +514,7 @@ async fn create_pool(
         let pool = Pool::builder()
             .max_size(args.db_connection_pool_size)
             .connection_timeout(args.connection_timeout())
-            .connection_customizer(Box::new(SessionInit {
-                read_only,
-                statement_timeout,
-            }))
+            .connection_customizer(Box::new(SessionInit { read_only, statement_timeout }))
             .build(manager)
             .await?;
 
