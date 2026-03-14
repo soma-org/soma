@@ -839,6 +839,7 @@ impl SomaCommand {
                     epoch,
                     epoch_start_timestamp_ms,
                     epoch_duration_ms,
+                    protocol_version,
                     balance,
                     server_unreachable,
                 ) = match context.get_client().await {
@@ -849,6 +850,7 @@ impl SomaCommand {
                         let epoch = state.as_ref().map(|s| s.epoch());
                         let epoch_start_ms = state.as_ref().map(|s| s.epoch_start_timestamp_ms());
                         let epoch_dur_ms = state.as_ref().map(|s| s.epoch_duration_ms());
+                        let protocol_version = client.get_protocol_version().await.ok();
                         let balance = if let Some(addr) = &active_address {
                             client.get_balance(addr).await.ok()
                         } else {
@@ -862,11 +864,12 @@ impl SomaCommand {
                             epoch,
                             epoch_start_ms,
                             epoch_dur_ms,
+                            protocol_version,
                             balance,
                             unreachable,
                         )
                     }
-                    Err(_) => (None, None, None, None, None, None, true),
+                    Err(_) => (None, None, None, None, None, None, None, true),
                 };
 
                 let next_epoch_in = epoch_start_timestamp_ms
@@ -882,6 +885,7 @@ impl SomaCommand {
                     epoch_start_timestamp_ms,
                     epoch_duration_ms,
                     next_epoch_in,
+                    protocol_version,
                     active_address: active_address.map(|a| a.to_string()),
                     balance,
                     server_reachable: !server_unreachable,

@@ -15,7 +15,7 @@ pub use tensor::{BcsF32, Dtype, SomaTensor};
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 1;
+pub const MAX_PROTOCOL_VERSION: u64 = 2;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -394,6 +394,13 @@ impl ProtocolConfig {
                                         // new_constant: None,
         };
         if version.0 >= 2 {
+            // V2: Bump execution_version to fix permanent object lock on
+            // failed transactions. `ensure_active_inputs_mutated()` is now
+            // called so that all mutable owned inputs get their version
+            // bumped even when execution fails, releasing epoch-store locks.
+            cfg.execution_version = Some(1);
+        }
+        if version.0 >= 3 {
             panic!("unsupported version {:?}", version);
         }
 

@@ -155,6 +155,9 @@ pub fn execute_transaction(
                 // If fee is 0 (e.g., coin had 0 balance), no mutations occurred.
                 let gas_object_id = temporary_store.gas_object_id;
                 if gas_object_id.is_some() && transaction_fee.total_fee > 0 {
+                    if temporary_store.execution_version >= 1 {
+                        temporary_store.ensure_active_inputs_mutated();
+                    }
                     let (inner, effects) = temporary_store.into_effects(
                         shared_object_refs,
                         &tx_digest,
@@ -183,6 +186,9 @@ pub fn execute_transaction(
     if let Err(early_error) = execution_params {
         // Simply use the temporary store's built-in conversion
         // The gas object changes from prepare_gas are already in the store
+        if temporary_store.execution_version >= 1 {
+            temporary_store.ensure_active_inputs_mutated();
+        }
         let (inner, effects) = temporary_store.into_effects(
             shared_object_refs,
             &tx_digest,
@@ -297,6 +303,12 @@ pub fn execute_transaction(
                 execution_error = Some(ExecutionError::new(err, None));
             }
         }
+    }
+
+    // Before generating effects, ensure all mutable inputs are written
+    // so their versions advance and epoch-store locks become stale.
+    if temporary_store.execution_version >= 1 {
+        temporary_store.ensure_active_inputs_mutated();
     }
 
     // Generate effects
@@ -446,6 +458,9 @@ fn handle_shared_object_transaction(
         let execution_status =
             ExecutionStatus::Failure { error: ExecutionFailureStatus::SomaError(err.clone()) };
 
+        if temporary_store.execution_version >= 1 {
+            temporary_store.ensure_active_inputs_mutated();
+        }
         let (inner, effects) = temporary_store.into_effects(
             shared_object_refs,
             &tx_digest,
@@ -489,6 +504,9 @@ fn handle_shared_object_transaction(
             // Return with failure status but keep gas changes
             let execution_status = ExecutionStatus::Failure { error: err.clone() };
 
+            if temporary_store.execution_version >= 1 {
+                temporary_store.ensure_active_inputs_mutated();
+            }
             let (inner, effects) = temporary_store.into_effects(
                 shared_object_refs,
                 &tx_digest,
@@ -523,6 +541,9 @@ fn handle_shared_object_transaction(
             // Return with failure status but keep gas changes
             let execution_status = ExecutionStatus::Failure { error: err.clone() };
 
+            if temporary_store.execution_version >= 1 {
+                temporary_store.ensure_active_inputs_mutated();
+            }
             let (inner, effects) = temporary_store.into_effects(
                 shared_object_refs,
                 &tx_digest,

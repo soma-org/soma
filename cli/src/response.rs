@@ -1134,6 +1134,8 @@ pub struct StatusOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_epoch_in: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol_version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub active_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub balance: Option<u64>,
@@ -1156,6 +1158,9 @@ impl Display for StatusOutput {
         }
         if let Some(hint) = &self.next_epoch_in {
             builder.push_record(["Next Epoch", hint]);
+        }
+        if let Some(pv) = self.protocol_version {
+            builder.push_record(["Protocol Version", &pv.to_string()]);
         }
         if let Some(ref addr) = self.active_address {
             builder.push_record(["Active Address", addr]);
