@@ -26,12 +26,7 @@ impl Processor for SomaStakedSoma {
     type Value = StoredStakedSoma;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, object_set, .. } = checkpoint.as_ref();
 
         let cp_sequence_number = summary.sequence_number as i64;
         let input_objects = checkpoint_input_objects(checkpoint)?;

@@ -30,10 +30,7 @@ fn stored_model(model_id: ModelId, model: &Model, epoch: i64) -> Result<StoredMo
     };
 
     // commit_epoch: meaningful for Pending; for Created use create_epoch; otherwise 0
-    let commit_epoch = model
-        .commit_epoch()
-        .or(model.create_epoch())
-        .unwrap_or(0) as i64;
+    let commit_epoch = model.commit_epoch().or(model.create_epoch()).unwrap_or(0) as i64;
 
     // StakingPool fields
     let pool = model.staking_pool();
@@ -123,12 +120,7 @@ impl Processor for SomaModels {
     type Value = StoredModel;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            transactions,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, transactions, object_set, .. } = checkpoint.as_ref();
 
         // Only process epoch-boundary checkpoints (genesis or end-of-epoch)
         if summary.sequence_number != 0 && summary.end_of_epoch_data.is_none() {
@@ -144,7 +136,8 @@ impl Processor for SomaModels {
             &transactions[0]
         } else {
             // End-of-epoch: find the ChangeEpoch transaction
-            transactions.iter()
+            transactions
+                .iter()
                 .find(|tx| matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_)))
                 .context("No ChangeEpoch tx in end-of-epoch checkpoint")?
         };

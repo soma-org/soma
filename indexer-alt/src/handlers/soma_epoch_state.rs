@@ -26,12 +26,7 @@ impl Processor for SomaEpochState {
     type Value = StoredEpochState;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            transactions,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, transactions, object_set, .. } = checkpoint.as_ref();
 
         // Only process epoch-boundary checkpoints
         if summary.sequence_number != 0 && summary.end_of_epoch_data.is_none() {

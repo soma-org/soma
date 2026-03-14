@@ -11,17 +11,14 @@ use crate::KeyValueStoreReader;
 
 use super::KvRpcServer;
 
-pub const READ_MASK_DEFAULT: &str =
-    "epoch,first_checkpoint,last_checkpoint,start,end";
+pub const READ_MASK_DEFAULT: &str = "epoch,first_checkpoint,last_checkpoint,start,end";
 
 pub async fn get_epoch(
     server: &KvRpcServer,
     request: GetEpochRequest,
 ) -> Result<GetEpochResponse, RpcError> {
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Epoch>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -33,18 +30,13 @@ pub async fn get_epoch(
     let mut client = server.client.clone();
 
     let epoch_data = match request.epoch {
-        Some(epoch_id) => client
-            .get_epoch(epoch_id)
-            .await?
-            .ok_or_else(|| {
-                RpcError::new(
-                    rpc_tonic::Code::NotFound,
-                    format!("Epoch {epoch_id} not found"),
-                )
-            })?,
-        None => client.get_latest_epoch().await?.ok_or_else(|| {
-            RpcError::new(rpc_tonic::Code::NotFound, "No epoch data available")
+        Some(epoch_id) => client.get_epoch(epoch_id).await?.ok_or_else(|| {
+            RpcError::new(rpc_tonic::Code::NotFound, format!("Epoch {epoch_id} not found"))
         })?,
+        None => client
+            .get_latest_epoch()
+            .await?
+            .ok_or_else(|| RpcError::new(rpc_tonic::Code::NotFound, "No epoch data available"))?,
     };
 
     let mut message = Epoch::default();

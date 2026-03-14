@@ -32,7 +32,7 @@ use indexer_pg_db::DbArgs;
 
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
-use soma_graphql::{build_schema, SomaSchema};
+use soma_graphql::{SomaSchema, build_schema};
 
 // ---------------------------------------------------------------------------
 // Test setup helpers
@@ -59,9 +59,7 @@ async fn setup() -> TestContext {
     .await
     .expect("DB pool");
 
-    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS))
-        .await
-        .expect("migrations");
+    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS)).await.expect("migrations");
 
     // Read-mode PgReader for GraphQL
     let pg = Arc::new(
@@ -80,11 +78,7 @@ async fn setup() -> TestContext {
     let config = GraphQlConfig::default();
     let schema = build_schema(pg, config, None);
 
-    TestContext {
-        schema,
-        db,
-        _temp: temp,
-    }
+    TestContext { schema, db, _temp: temp }
 }
 
 fn test_model(model_id: Vec<u8>, epoch: i64) -> StoredModel {
@@ -123,11 +117,7 @@ fn test_model(model_id: Vec<u8>, epoch: i64) -> StoredModel {
 async fn execute(schema: &SomaSchema, query: &str) -> Value {
     let resp = schema.execute(query).await;
     let json = serde_json::to_value(&resp).unwrap();
-    assert!(
-        resp.errors.is_empty(),
-        "GraphQL errors: {:?}",
-        resp.errors
-    );
+    assert!(resp.errors.is_empty(), "GraphQL errors: {:?}", resp.errors);
     json
 }
 
@@ -139,11 +129,9 @@ async fn execute(schema: &SomaSchema, query: &str) -> Value {
 #[ignore]
 async fn test_service_config() {
     let ctx = setup().await;
-    let json = execute(
-        &ctx.schema,
-        "{ serviceConfig { maxPageSize defaultPageSize maxQueryDepth } }",
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, "{ serviceConfig { maxPageSize defaultPageSize maxQueryDepth } }")
+            .await;
 
     let sc = &json["data"]["serviceConfig"];
     assert_eq!(sc["maxPageSize"], 50);
@@ -224,11 +212,9 @@ async fn test_checkpoint_by_sequence_number() {
         .await
         .unwrap();
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ checkpoint(sequenceNumber: 5) { sequenceNumber epoch txLo } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ checkpoint(sequenceNumber: 5) { sequenceNumber epoch txLo } }"#)
+            .await;
 
     let cp = &json["data"]["checkpoint"];
     assert_eq!(cp["sequenceNumber"], "5");
@@ -256,21 +242,13 @@ async fn test_checkpoint_latest() {
             .await
             .unwrap();
         diesel::insert_into(cp_sequence_numbers::table)
-            .values(&StoredCpSequenceNumbers {
-                cp_sequence_number: seq,
-                tx_lo: seq * 10,
-                epoch: 0,
-            })
+            .values(&StoredCpSequenceNumbers { cp_sequence_number: seq, tx_lo: seq * 10, epoch: 0 })
             .execute(conn.deref_mut())
             .await
             .unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ checkpoint { sequenceNumber } }"#,
-    )
-    .await;
+    let json = execute(&ctx.schema, r#"{ checkpoint { sequenceNumber } }"#).await;
 
     assert_eq!(json["data"]["checkpoint"]["sequenceNumber"], "2");
 }
@@ -280,11 +258,8 @@ async fn test_checkpoint_latest() {
 async fn test_checkpoint_not_found() {
     let ctx = setup().await;
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ checkpoint(sequenceNumber: 999) { sequenceNumber } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ checkpoint(sequenceNumber: 999) { sequenceNumber } }"#).await;
 
     assert!(json["data"]["checkpoint"].is_null());
 }
@@ -318,16 +293,11 @@ async fn test_transaction_by_digest() {
         .await
         .unwrap();
 
-    let query = format!(
-        r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#,
-        digest_b58
-    );
+    let query =
+        format!(r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#, digest_b58);
     let json = execute(&ctx.schema, &query).await;
 
-    assert_eq!(
-        json["data"]["transaction"]["checkpointSequenceNumber"],
-        "7"
-    );
+    assert_eq!(json["data"]["transaction"]["checkpointSequenceNumber"], "7");
 }
 
 #[tokio::test]
@@ -335,10 +305,8 @@ async fn test_transaction_by_digest() {
 async fn test_transaction_not_found() {
     let ctx = setup().await;
     let fake_digest = bs58::encode(&[0u8; 32]).into_string();
-    let query = format!(
-        r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#,
-        fake_digest
-    );
+    let query =
+        format!(r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#, fake_digest);
     let json = execute(&ctx.schema, &query).await;
     assert!(json["data"]["transaction"].is_null());
 }
@@ -463,21 +431,13 @@ async fn test_epoch_latest() {
             .unwrap();
         // Seed cp_sequence_numbers so "latest epoch" discovery works.
         diesel::insert_into(cp_sequence_numbers::table)
-            .values(&StoredCpSequenceNumbers {
-                cp_sequence_number: e * 100,
-                tx_lo: 0,
-                epoch: e,
-            })
+            .values(&StoredCpSequenceNumbers { cp_sequence_number: e * 100, tx_lo: 0, epoch: e })
             .execute(conn.deref_mut())
             .await
             .unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ epoch { epochId } }"#,
-    )
-    .await;
+    let json = execute(&ctx.schema, r#"{ epoch { epochId } }"#).await;
 
     assert_eq!(json["data"]["epoch"]["epochId"], "2");
 }
@@ -557,11 +517,7 @@ async fn test_target_returns_latest_version() {
                 cp_sequence_number: cp,
                 epoch: 1,
                 status: status.to_string(),
-                submitter: if status == "Filled" {
-                    Some(vec![0xCC; 32])
-                } else {
-                    None
-                },
+                submitter: if status == "Filled" { Some(vec![0xCC; 32]) } else { None },
                 winning_model_id: None,
                 reward_pool: 5000,
                 bond_amount: 0,
@@ -582,10 +538,7 @@ async fn test_target_returns_latest_version() {
             .unwrap();
     }
 
-    let query = format!(
-        r#"{{ target(targetId: "{}") {{ status submitter }} }}"#,
-        target_hex
-    );
+    let query = format!(r#"{{ target(targetId: "{}") {{ status submitter }} }}"#, target_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let t = &json["data"]["target"];
@@ -729,10 +682,7 @@ async fn test_targets_empty_result() {
     let edges = json["data"]["targets"]["edges"].as_array().unwrap();
     assert!(edges.is_empty());
     assert_eq!(json["data"]["targets"]["pageInfo"]["hasNextPage"], false);
-    assert_eq!(
-        json["data"]["targets"]["pageInfo"]["hasPreviousPage"],
-        false
-    );
+    assert_eq!(json["data"]["targets"]["pageInfo"]["hasPreviousPage"], false);
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,11 +1042,7 @@ async fn test_targets_combined_filters() {
     use indexer_alt_schema::schema::soma_targets;
 
     // 3 targets: model_a in epochs 5 and 6, model_b in epoch 5
-    for (i, model, fe) in [
-        (0u8, &model_a, 5i64),
-        (1, &vec![0xBB; 32], 5),
-        (2, &model_a, 6),
-    ] {
+    for (i, model, fe) in [(0u8, &model_a, 5i64), (1, &vec![0xBB; 32], 5), (2, &model_a, 6)] {
         let mut id = vec![0u8; 32];
         id[0] = i;
         diesel::insert_into(soma_targets::table)
@@ -1158,18 +1104,12 @@ async fn test_models_by_epoch() {
         m.commit_epoch = 2;
         m.stake = 100_000;
         m.commission_rate = 500;
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ models(epoch: 5) { edges { node { epoch status stake } } } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ models(epoch: 5) { edges { node { epoch status stake } } } }"#)
+            .await;
 
     let edges = json["data"]["models"]["edges"].as_array().unwrap();
     assert_eq!(edges.len(), 3);
@@ -1200,11 +1140,7 @@ async fn test_models_latest_epoch() {
     }
 
     // No epoch param → returns latest (epoch 5)
-    let json = execute(
-        &ctx.schema,
-        r#"{ models { edges { node { epoch } } } }"#,
-    )
-    .await;
+    let json = execute(&ctx.schema, r#"{ models { edges { node { epoch } } } }"#).await;
 
     let edges = json["data"]["models"]["edges"].as_array().unwrap();
     assert_eq!(edges.len(), 1);
@@ -1277,11 +1213,7 @@ async fn test_rewards_by_epoch() {
             .unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ rewards(epoch: 2) { targetId epoch } }"#,
-    )
-    .await;
+    let json = execute(&ctx.schema, r#"{ rewards(epoch: 2) { targetId epoch } }"#).await;
 
     let rewards = json["data"]["rewards"].as_array().unwrap();
     assert_eq!(rewards.len(), 3);
@@ -1317,10 +1249,7 @@ async fn test_rewards_filter_by_target() {
             .unwrap();
     }
 
-    let query = format!(
-        r#"{{ rewards(epoch: 1, targetId: "{}") {{ targetId }} }}"#,
-        target_a_hex
-    );
+    let query = format!(r#"{{ rewards(epoch: 1, targetId: "{}") {{ targetId }} }}"#, target_a_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let rewards = json["data"]["rewards"].as_array().unwrap();
@@ -1365,10 +1294,7 @@ async fn test_address_transactions() {
             .unwrap();
 
         diesel::insert_into(tx_digests::table)
-            .values(&StoredTxDigest {
-                tx_sequence_number: seq,
-                tx_digest: vec![seq as u8; 32],
-            })
+            .values(&StoredTxDigest { tx_sequence_number: seq, tx_digest: vec![seq as u8; 32] })
             .execute(conn.deref_mut())
             .await
             .unwrap();
@@ -1523,18 +1449,12 @@ async fn test_model_single_lookup() {
     for epoch in [3i64, 5] {
         let mut m = test_model(model_id.clone(), epoch);
         m.stake = epoch * 1000;
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     // Lookup with specific epoch
-    let query = format!(
-        r#"{{ model(modelId: "{}", epoch: 3) {{ modelId epoch stake }} }}"#,
-        model_id_hex
-    );
+    let query =
+        format!(r#"{{ model(modelId: "{}", epoch: 3) {{ modelId epoch stake }} }}"#, model_id_hex);
     let json = execute(&ctx.schema, &query).await;
     let model = &json["data"]["model"];
     assert_eq!(model["modelId"], model_id_hex);
@@ -1542,10 +1462,7 @@ async fn test_model_single_lookup() {
     assert_eq!(model["stake"], "3000");
 
     // Lookup without epoch → latest (epoch 5)
-    let query = format!(
-        r#"{{ model(modelId: "{}") {{ epoch stake }} }}"#,
-        model_id_hex
-    );
+    let query = format!(r#"{{ model(modelId: "{}") {{ epoch stake }} }}"#, model_id_hex);
     let json = execute(&ctx.schema, &query).await;
     let model = &json["data"]["model"];
     assert_eq!(model["epoch"], "5");
@@ -1553,10 +1470,7 @@ async fn test_model_single_lookup() {
 
     // Lookup non-existent model
     let fake_hex = format!("0x{}", hex::encode(vec![0xFF; 32]));
-    let query = format!(
-        r#"{{ model(modelId: "{}") {{ epoch }} }}"#,
-        fake_hex
-    );
+    let query = format!(r#"{{ model(modelId: "{}") {{ epoch }} }}"#, fake_hex);
     let json = execute(&ctx.schema, &query).await;
     assert!(json["data"]["model"].is_null());
 }
@@ -1610,11 +1524,7 @@ async fn test_model_denormalized_fields() {
         pending_weights_commitment: None,
         pending_commit_epoch: None,
     };
-    diesel::insert_into(soma_models::table)
-        .values(&m)
-        .execute(conn.deref_mut())
-        .await
-        .unwrap();
+    diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
 
     let query = format!(
         r#"{{ model(modelId: "{}") {{
@@ -1676,11 +1586,7 @@ async fn test_model_filter_by_status() {
         id[0] = i;
         let mut m = test_model(id, 1);
         m.status = status.to_string();
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     let json = execute(
@@ -1717,11 +1623,7 @@ async fn test_model_filter_by_owner() {
         id[0] = i;
         let mut m = test_model(id, 1);
         m.owner = owner.clone();
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     let query = format!(
@@ -1754,11 +1656,7 @@ async fn test_model_filter_by_stake_range() {
         id[0] = i;
         let mut m = test_model(id, 1);
         m.stake = stake;
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     // min_stake only
@@ -1839,11 +1737,9 @@ async fn test_reward_balances() {
             .unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ rewards(epoch: 5) { targetId balances { recipient amount } } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ rewards(epoch: 5) { targetId balances { recipient amount } } }"#)
+            .await;
 
     let rewards = json["data"]["rewards"].as_array().unwrap();
     assert_eq!(rewards.len(), 1);
@@ -1851,25 +1747,18 @@ async fn test_reward_balances() {
     assert_eq!(balances.len(), 2);
 
     // Check both balances are present (order may vary)
-    let recipients: Vec<&str> = balances
-        .iter()
-        .map(|b| b["recipient"].as_str().unwrap())
-        .collect();
+    let recipients: Vec<&str> = balances.iter().map(|b| b["recipient"].as_str().unwrap()).collect();
     assert!(recipients.contains(&recipient_a_hex.as_str()));
     assert!(recipients.contains(&recipient_b_hex.as_str()));
 
     // Check the positive amount
-    let a_bal = balances
-        .iter()
-        .find(|b| b["recipient"].as_str().unwrap() == recipient_a_hex)
-        .unwrap();
+    let a_bal =
+        balances.iter().find(|b| b["recipient"].as_str().unwrap() == recipient_a_hex).unwrap();
     assert_eq!(a_bal["amount"], "1000");
 
     // Check the negative amount
-    let b_bal = balances
-        .iter()
-        .find(|b| b["recipient"].as_str().unwrap() == recipient_b_hex)
-        .unwrap();
+    let b_bal =
+        balances.iter().find(|b| b["recipient"].as_str().unwrap() == recipient_b_hex).unwrap();
     assert_eq!(b_bal["amount"], "-200");
 }
 
@@ -1933,17 +1822,14 @@ async fn test_reward_filter_by_recipient() {
         .await
         .unwrap();
 
-    let query = format!(
-        r#"{{ rewards(epoch: 3, recipient: "{}") {{ targetId }} }}"#,
-        recipient_hex
-    );
+    let query =
+        format!(r#"{{ rewards(epoch: 3, recipient: "{}") {{ targetId }} }}"#, recipient_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let rewards = json["data"]["rewards"].as_array().unwrap();
     assert_eq!(rewards.len(), 1);
     assert_eq!(rewards[0]["targetId"], target_a_hex);
 }
-
 
 // ===========================================================================
 // Phase 2: New feature tests
@@ -1953,7 +1839,12 @@ async fn test_reward_filter_by_recipient() {
 // StakedSoma query
 // ---------------------------------------------------------------------------
 
-fn test_staked_soma(id: Vec<u8>, owner: Vec<u8>, pool_id: Vec<u8>, principal: i64) -> StoredStakedSoma {
+fn test_staked_soma(
+    id: Vec<u8>,
+    owner: Vec<u8>,
+    pool_id: Vec<u8>,
+    principal: i64,
+) -> StoredStakedSoma {
     StoredStakedSoma {
         staked_soma_id: id,
         cp_sequence_number: 1,
@@ -2047,10 +1938,7 @@ async fn test_staked_soma_tombstone() {
         .unwrap();
 
     // Single lookup should return null (tombstone supersedes)
-    let query = format!(
-        r#"{{ stakedSoma(id: "{}") {{ stakedSomaId }} }}"#,
-        id_hex
-    );
+    let query = format!(r#"{{ stakedSoma(id: "{}") {{ stakedSomaId }} }}"#, id_hex);
     let json = execute(&ctx.schema, &query).await;
     assert!(json["data"]["stakedSoma"].is_null());
 
@@ -2144,17 +2032,15 @@ async fn test_model_aggregates() {
     use indexer_alt_schema::schema::soma_models;
 
     // 3 models at epoch 5: A (active, 10000), B (active, 20000), C (pending, 5000)
-    for (i, status, stake) in [(0u8, "active", 10000i64), (1, "active", 20000), (2, "pending", 5000)] {
+    for (i, status, stake) in
+        [(0u8, "active", 10000i64), (1, "active", 20000), (2, "pending", 5000)]
+    {
         let mut id = vec![0u8; 32];
         id[0] = i;
         let mut m = test_model(id, 5);
         m.status = status.to_string();
         m.stake = stake;
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     let json = execute(
@@ -2333,11 +2219,7 @@ async fn test_pending_model_update_fields() {
     ma.pending_weights_commitment = Some(pending_wc.clone());
     ma.pending_commit_epoch = Some(6);
 
-    diesel::insert_into(soma_models::table)
-        .values(&ma)
-        .execute(conn.deref_mut())
-        .await
-        .unwrap();
+    diesel::insert_into(soma_models::table).values(&ma).execute(conn.deref_mut()).await.unwrap();
 
     // Model B: no pending update
     diesel::insert_into(soma_models::table)
@@ -2383,11 +2265,7 @@ async fn test_pending_model_update_fields() {
 // ---------------------------------------------------------------------------
 
 fn test_target_report(target_id: Vec<u8>, reporter: Vec<u8>) -> StoredTargetReport {
-    StoredTargetReport {
-        target_id,
-        cp_sequence_number: 5,
-        reporter,
-    }
+    StoredTargetReport { target_id, cp_sequence_number: 5, reporter }
 }
 
 #[tokio::test]
@@ -2443,10 +2321,7 @@ async fn test_target_reporters() {
             .unwrap();
     }
 
-    let query = format!(
-        r#"{{ target(targetId: "{}") {{ reportCount reporters }} }}"#,
-        target_hex
-    );
+    let query = format!(r#"{{ target(targetId: "{}") {{ reportCount reporters }} }}"#, target_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let t = &json["data"]["target"];
@@ -2479,18 +2354,11 @@ async fn test_model_history() {
     for (epoch, stake) in [(1i64, 100i64), (3, 500), (5, 1200)] {
         let mut m = test_model(model_id.clone(), epoch);
         m.stake = stake;
-        diesel::insert_into(soma_models::table)
-            .values(&m)
-            .execute(conn.deref_mut())
-            .await
-            .unwrap();
+        diesel::insert_into(soma_models::table).values(&m).execute(conn.deref_mut()).await.unwrap();
     }
 
     // Full history
-    let query = format!(
-        r#"{{ modelHistory(modelId: "{}") {{ epoch stake }} }}"#,
-        model_id_hex
-    );
+    let query = format!(r#"{{ modelHistory(modelId: "{}") {{ epoch stake }} }}"#, model_id_hex);
     let json = execute(&ctx.schema, &query).await;
     let history = json["data"]["modelHistory"].as_array().unwrap();
     assert_eq!(history.len(), 3);
@@ -2710,11 +2578,8 @@ async fn test_reward_aggregates() {
             .unwrap();
     }
 
-    let json = execute(
-        &ctx.schema,
-        r#"{ rewardAggregates(epoch: 5) { totalCount totalAmount } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ rewardAggregates(epoch: 5) { totalCount totalAmount } }"#).await;
 
     let agg = &json["data"]["rewardAggregates"];
     assert_eq!(agg["totalCount"], 3);
@@ -2760,10 +2625,7 @@ async fn test_query_depth_limit_rejected() {
         }
     }"#;
     let resp = async_graphql::Schema::execute(&ctx.schema, deep_query).await;
-    assert!(
-        !resp.errors.is_empty(),
-        "deep query should be rejected by depth limit"
-    );
+    assert!(!resp.errors.is_empty(), "deep query should be rejected by depth limit");
     let err_msg = resp.errors[0].message.to_lowercase();
     assert!(
         err_msg.contains("nested") || err_msg.contains("depth"),
@@ -2819,15 +2681,9 @@ async fn test_query_complexity_limit_rejected() {
     }"#;
 
     let resp = async_graphql::Schema::execute(&ctx.schema, query).await;
-    assert!(
-        !resp.errors.is_empty(),
-        "high-complexity query should be rejected"
-    );
+    assert!(!resp.errors.is_empty(), "high-complexity query should be rejected");
     let err_msg = resp.errors[0].message.to_lowercase();
-    assert!(
-        err_msg.contains("complex"),
-        "error should mention complexity, got: {err_msg}"
-    );
+    assert!(err_msg.contains("complex"), "error should mention complexity, got: {err_msg}");
 }
 
 // ---------------------------------------------------------------------------
@@ -2890,11 +2746,9 @@ async fn test_targets_batch_reporters() {
     }
 
     // Query all 3 targets and their reporters
-    let json = execute(
-        &ctx.schema,
-        r#"{ targets(first: 3) { edges { node { targetId reporters } } } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ targets(first: 3) { edges { node { targetId reporters } } } }"#)
+            .await;
 
     let edges = json["data"]["targets"]["edges"].as_array().unwrap();
     assert_eq!(edges.len(), 3);

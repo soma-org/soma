@@ -7,13 +7,13 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::objects::StoredObjVersion;
+use indexer_alt_schema::schema::obj_versions;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::effects::TransactionEffectsAPI;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::objects::StoredObjVersion;
-use indexer_alt_schema::schema::obj_versions;
 
 pub struct ObjVersions;
 
@@ -24,11 +24,7 @@ impl Processor for ObjVersions {
     type Value = StoredObjVersion;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, .. } = checkpoint.as_ref();
 
         let cp_sequence_number = summary.sequence_number as i64;
 

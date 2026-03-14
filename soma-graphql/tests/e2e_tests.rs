@@ -25,12 +25,12 @@ use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::ObjectID;
 use types::target::TargetStatus;
-use types::test_checkpoint_data_builder::{test_filled_target, test_target, TestCheckpointBuilder};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_filled_target, test_target};
 
 use indexer_alt::handlers::*;
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
-use soma_graphql::{build_schema, SomaSchema};
+use soma_graphql::{SomaSchema, build_schema};
 
 // ---------------------------------------------------------------------------
 // Test setup helpers
@@ -56,9 +56,7 @@ async fn setup() -> TestContext {
     .await
     .expect("DB pool");
 
-    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS))
-        .await
-        .expect("migrations");
+    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS)).await.expect("migrations");
 
     let pg = Arc::new(
         PgReader::new(
@@ -76,21 +74,13 @@ async fn setup() -> TestContext {
     let config = GraphQlConfig::default();
     let schema = build_schema(pg, config, None);
 
-    TestContext {
-        schema,
-        db,
-        _temp: temp,
-    }
+    TestContext { schema, db, _temp: temp }
 }
 
 async fn execute(schema: &SomaSchema, query: &str) -> Value {
     let resp = schema.execute(query).await;
     let json = serde_json::to_value(&resp).unwrap();
-    assert!(
-        resp.errors.is_empty(),
-        "GraphQL errors: {:?}",
-        resp.errors
-    );
+    assert!(resp.errors.is_empty(), "GraphQL errors: {:?}", resp.errors);
     json
 }
 
@@ -119,43 +109,27 @@ async fn test_e2e_transfer_coin_to_graphql_transaction() {
 
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
-    let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(0)
-            .add_transfer_coin(sender, recipient, 5000)
-            .build(),
-    );
+    let checkpoint =
+        Arc::new(TestCheckpointBuilder::new(0).add_transfer_coin(sender, recipient, 5000).build());
 
     // Process and commit through indexer handlers
     process_and_commit(&kv_transactions::KvTransactions, &checkpoint, &ctx.db).await;
     process_and_commit(&tx_digests::TxDigests, &checkpoint, &ctx.db).await;
     process_and_commit(&kv_checkpoints::KvCheckpoints, &checkpoint, &ctx.db).await;
-    process_and_commit(
-        &cp_sequence_numbers::CpSequenceNumbers,
-        &checkpoint,
-        &ctx.db,
-    )
-    .await;
+    process_and_commit(&cp_sequence_numbers::CpSequenceNumbers, &checkpoint, &ctx.db).await;
 
     // Verify via GraphQL: fetch the transaction by its digest
     let tx = &checkpoint.transactions[0];
     let digest_b58 = bs58::encode(tx.transaction.digest().inner()).into_string();
 
-    let query = format!(
-        r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#,
-        digest_b58
-    );
+    let query =
+        format!(r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#, digest_b58);
     let json = execute(&ctx.schema, &query).await;
-    assert_eq!(
-        json["data"]["transaction"]["checkpointSequenceNumber"],
-        "0"
-    );
+    assert_eq!(json["data"]["transaction"]["checkpointSequenceNumber"], "0");
 
     // Verify checkpoint query works too
-    let json = execute(
-        &ctx.schema,
-        r#"{ checkpoint(sequenceNumber: 0) { sequenceNumber epoch } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ checkpoint(sequenceNumber: 0) { sequenceNumber epoch } }"#).await;
     assert_eq!(json["data"]["checkpoint"]["sequenceNumber"], "0");
     assert_eq!(json["data"]["checkpoint"]["epoch"], "0");
 }
@@ -170,7 +144,8 @@ async fn test_e2e_target_indexing_to_graphql() {
     let ctx = setup().await;
 
     let target = test_target(1, TargetStatus::Open, 10_000);
-    let checkpoint = Arc::new(TestCheckpointBuilder::new(5).with_epoch(1).add_target(target).build());
+    let checkpoint =
+        Arc::new(TestCheckpointBuilder::new(5).with_epoch(1).add_target(target).build());
 
     // Process through soma_targets handler
     let values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
@@ -180,10 +155,8 @@ async fn test_e2e_target_indexing_to_graphql() {
     let target_id_hex = format!("0x{}", hex::encode(&values[0].target_id));
 
     // Query via GraphQL
-    let query = format!(
-        r#"{{ target(targetId: "{}") {{ status epoch rewardPool }} }}"#,
-        target_id_hex
-    );
+    let query =
+        format!(r#"{{ target(targetId: "{}") {{ status epoch rewardPool }} }}"#, target_id_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let t = &json["data"]["target"];
@@ -208,21 +181,15 @@ async fn test_e2e_targets_pagination_and_filter() {
     let filled_target = test_filled_target(0, 0, submitter, model_id, 8000, 1000);
 
     let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(10)
-            .add_target(open_target)
-            .add_target(filled_target)
-            .build(),
+        TestCheckpointBuilder::new(10).add_target(open_target).add_target(filled_target).build(),
     );
 
     let values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
     assert_eq!(values.len(), 2);
 
     // Query all targets
-    let json = execute(
-        &ctx.schema,
-        r#"{ targets { edges { node { status rewardPool } } } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ targets { edges { node { status rewardPool } } } }"#).await;
     let edges = json["data"]["targets"]["edges"].as_array().unwrap();
     assert_eq!(edges.len(), 2);
 
@@ -255,16 +222,11 @@ async fn test_e2e_rewards_to_graphql() {
             .build(),
     );
 
-    let values =
-        process_and_commit(&soma_rewards::SomaRewards, &checkpoint, &ctx.db).await;
+    let values = process_and_commit(&soma_rewards::SomaRewards, &checkpoint, &ctx.db).await;
     assert_eq!(values.len(), 1);
 
     // Query via GraphQL
-    let json = execute(
-        &ctx.schema,
-        r#"{ rewards(epoch: 2) { epoch txDigest } }"#,
-    )
-    .await;
+    let json = execute(&ctx.schema, r#"{ rewards(epoch: 2) { epoch txDigest } }"#).await;
 
     let rewards = json["data"]["rewards"].as_array().unwrap();
     assert_eq!(rewards.len(), 1);
@@ -292,12 +254,7 @@ async fn test_e2e_address_transactions() {
 
     // Process through the handlers that the address query depends on
     process_and_commit(&tx_digests::TxDigests, &checkpoint, &ctx.db).await;
-    process_and_commit(
-        &tx_affected_addresses::TxAffectedAddresses,
-        &checkpoint,
-        &ctx.db,
-    )
-    .await;
+    process_and_commit(&tx_affected_addresses::TxAffectedAddresses, &checkpoint, &ctx.db).await;
 
     // Query sender's transactions via GraphQL
     let sender_hex = format!("0x{}", hex::encode(sender.to_inner()));
@@ -307,9 +264,7 @@ async fn test_e2e_address_transactions() {
     );
     let json = execute(&ctx.schema, &query).await;
 
-    let edges = json["data"]["address"]["transactions"]["edges"]
-        .as_array()
-        .unwrap();
+    let edges = json["data"]["address"]["transactions"]["edges"].as_array().unwrap();
     // Sender is affected in both transactions
     assert_eq!(edges.len(), 2);
 }
@@ -326,15 +281,11 @@ async fn test_e2e_object_to_graphql() {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
 
-    let checkpoint = Arc::new(
-        TestCheckpointBuilder::new(0)
-            .add_transfer_coin(sender, recipient, 5000)
-            .build(),
-    );
+    let checkpoint =
+        Arc::new(TestCheckpointBuilder::new(0).add_transfer_coin(sender, recipient, 5000).build());
 
     // Process through kv_objects, obj_info, obj_versions handlers
-    let kv_values =
-        process_and_commit(&kv_objects::KvObjects, &checkpoint, &ctx.db).await;
+    let kv_values = process_and_commit(&kv_objects::KvObjects, &checkpoint, &ctx.db).await;
     process_and_commit(&obj_info::ObjInfo, &checkpoint, &ctx.db).await;
     process_and_commit(&obj_versions::ObjVersions, &checkpoint, &ctx.db).await;
 
@@ -347,10 +298,7 @@ async fn test_e2e_object_to_graphql() {
 
     // Query the first object via GraphQL
     let obj_id_hex = format!("0x{}", hex::encode(&kv_values[0].object_id));
-    let query = format!(
-        r#"{{ object(id: "{}") {{ objectId version ownerKind }} }}"#,
-        obj_id_hex
-    );
+    let query = format!(r#"{{ object(id: "{}") {{ objectId version ownerKind }} }}"#, obj_id_hex);
     let json = execute(&ctx.schema, &query).await;
 
     let obj = &json["data"]["object"];
@@ -381,58 +329,34 @@ async fn test_e2e_full_checkpoint_flow() {
 
     // Run all relevant handlers
     process_and_commit(&kv_checkpoints::KvCheckpoints, &checkpoint, &ctx.db).await;
-    process_and_commit(
-        &cp_sequence_numbers::CpSequenceNumbers,
-        &checkpoint,
-        &ctx.db,
-    )
-    .await;
+    process_and_commit(&cp_sequence_numbers::CpSequenceNumbers, &checkpoint, &ctx.db).await;
     process_and_commit(&kv_transactions::KvTransactions, &checkpoint, &ctx.db).await;
     process_and_commit(&tx_digests::TxDigests, &checkpoint, &ctx.db).await;
     process_and_commit(&kv_objects::KvObjects, &checkpoint, &ctx.db).await;
     process_and_commit(&obj_info::ObjInfo, &checkpoint, &ctx.db).await;
     process_and_commit(&obj_versions::ObjVersions, &checkpoint, &ctx.db).await;
-    process_and_commit(
-        &tx_affected_addresses::TxAffectedAddresses,
-        &checkpoint,
-        &ctx.db,
-    )
-    .await;
-    process_and_commit(
-        &tx_affected_objects::TxAffectedObjects,
-        &checkpoint,
-        &ctx.db,
-    )
-    .await;
+    process_and_commit(&tx_affected_addresses::TxAffectedAddresses, &checkpoint, &ctx.db).await;
+    process_and_commit(&tx_affected_objects::TxAffectedObjects, &checkpoint, &ctx.db).await;
     process_and_commit(&tx_kinds::TxKinds, &checkpoint, &ctx.db).await;
-    let target_values =
-        process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
+    let target_values = process_and_commit(&soma_targets::SomaTargets, &checkpoint, &ctx.db).await;
 
     // Verify checkpoint queryable
-    let json = execute(
-        &ctx.schema,
-        r#"{ checkpoint(sequenceNumber: 0) { sequenceNumber epoch } }"#,
-    )
-    .await;
+    let json =
+        execute(&ctx.schema, r#"{ checkpoint(sequenceNumber: 0) { sequenceNumber epoch } }"#).await;
     assert_eq!(json["data"]["checkpoint"]["sequenceNumber"], "0");
 
     // Verify transaction queryable
     let tx = &checkpoint.transactions[0];
     let digest_b58 = bs58::encode(tx.transaction.digest().inner()).into_string();
-    let query = format!(
-        r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#,
-        digest_b58
-    );
+    let query =
+        format!(r#"{{ transaction(digest: "{}") {{ checkpointSequenceNumber }} }}"#, digest_b58);
     let json = execute(&ctx.schema, &query).await;
     assert!(!json["data"]["transaction"].is_null());
 
     // Verify target queryable
     assert!(!target_values.is_empty());
     let target_id_hex = format!("0x{}", hex::encode(&target_values[0].target_id));
-    let query = format!(
-        r#"{{ target(targetId: "{}") {{ status rewardPool }} }}"#,
-        target_id_hex
-    );
+    let query = format!(r#"{{ target(targetId: "{}") {{ status rewardPool }} }}"#, target_id_hex);
     let json = execute(&ctx.schema, &query).await;
     assert_eq!(json["data"]["target"]["status"], "open");
     assert_eq!(json["data"]["target"]["rewardPool"], "7500");
@@ -444,9 +368,7 @@ async fn test_e2e_full_checkpoint_flow() {
         sender_hex
     );
     let json = execute(&ctx.schema, &query).await;
-    let edges = json["data"]["address"]["transactions"]["edges"]
-        .as_array()
-        .unwrap();
+    let edges = json["data"]["address"]["transactions"]["edges"].as_array().unwrap();
     assert!(!edges.is_empty());
 
     // Verify chain identifier returns the encoded summary

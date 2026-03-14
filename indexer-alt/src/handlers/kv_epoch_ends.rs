@@ -12,13 +12,13 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::epochs::StoredEpochEnd;
+use indexer_alt_schema::schema::kv_epoch_ends;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
 use types::transaction::TransactionKind;
-use indexer_alt_schema::epochs::StoredEpochEnd;
-use indexer_alt_schema::schema::kv_epoch_ends;
 
 use crate::handlers::cp_sequence_numbers::epoch_interval;
 
@@ -31,20 +31,17 @@ impl Processor for KvEpochEnds {
     type Value = StoredEpochEnd;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            transactions,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, transactions, .. } = checkpoint.as_ref();
 
         let Some(end_of_epoch) = summary.end_of_epoch_data.as_ref() else {
             return Ok(vec![]);
         };
 
         // Find the ChangeEpoch transaction
-        let Some(_transaction) = transactions.iter().find(|tx| {
-            matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_))
-        }) else {
+        let Some(_transaction) = transactions
+            .iter()
+            .find(|tx| matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_)))
+        else {
             bail!(
                 "Failed to get ChangeEpoch transaction in checkpoint {} with EndOfEpochData",
                 summary.sequence_number,
@@ -100,10 +97,8 @@ impl Handler for KvEpochEnds {
         to_exclusive: u64,
         conn: &mut Connection<'a>,
     ) -> Result<usize> {
-        let Range {
-            start: from_epoch,
-            end: to_epoch,
-        } = epoch_interval(conn, from..to_exclusive).await?;
+        let Range { start: from_epoch, end: to_epoch } =
+            epoch_interval(conn, from..to_exclusive).await?;
         if from_epoch < to_epoch {
             let filter = kv_epoch_ends::table
                 .filter(kv_epoch_ends::epoch.between(from_epoch as i64, to_epoch as i64 - 1));

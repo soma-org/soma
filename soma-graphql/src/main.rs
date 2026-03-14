@@ -11,7 +11,7 @@ use url::Url;
 
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
-use soma_graphql::{build_router, build_schema, AppState, KvLoader};
+use soma_graphql::{AppState, KvLoader, build_router, build_schema};
 
 use indexer_kvstore::{BigTableClient, BigTableKvLoader};
 

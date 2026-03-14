@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::schema::tx_digests;
+use indexer_alt_schema::transactions::StoredTxDigest;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::schema::tx_digests;
-use indexer_alt_schema::transactions::StoredTxDigest;
 
 use crate::handlers::cp_sequence_numbers::tx_interval;
 
@@ -28,11 +28,7 @@ impl Processor for TxDigests {
     type Value = StoredTxDigest;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, .. } = checkpoint.as_ref();
 
         let first_tx = summary.network_total_transactions as usize - transactions.len();
 
@@ -66,10 +62,7 @@ impl Handler for TxDigests {
         to_exclusive: u64,
         conn: &mut Connection<'a>,
     ) -> Result<usize> {
-        let Range {
-            start: from_tx,
-            end: to_tx,
-        } = tx_interval(conn, from..to_exclusive).await?;
+        let Range { start: from_tx, end: to_tx } = tx_interval(conn, from..to_exclusive).await?;
         let filter = tx_digests::table
             .filter(tx_digests::tx_sequence_number.between(from_tx as i64, to_tx as i64 - 1));
 

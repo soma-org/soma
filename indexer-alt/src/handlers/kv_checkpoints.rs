@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::checkpoints::StoredCheckpoint;
+use indexer_alt_schema::schema::kv_checkpoints;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::checkpoints::StoredCheckpoint;
-use indexer_alt_schema::schema::kv_checkpoints;
 
 pub struct KvCheckpoints;
 
@@ -26,11 +26,7 @@ impl Processor for KvCheckpoints {
     type Value = StoredCheckpoint;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            contents,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, contents, .. } = checkpoint.as_ref();
 
         let sequence_number = summary.sequence_number as i64;
 
@@ -70,9 +66,8 @@ impl Handler for KvCheckpoints {
         to_exclusive: u64,
         conn: &mut Connection<'a>,
     ) -> Result<usize> {
-        let filter = kv_checkpoints::table.filter(
-            kv_checkpoints::sequence_number.between(from as i64, to_exclusive as i64 - 1),
-        );
+        let filter = kv_checkpoints::table
+            .filter(kv_checkpoints::sequence_number.between(from as i64, to_exclusive as i64 - 1));
 
         Ok(diesel::delete(filter).execute(conn).await?)
     }

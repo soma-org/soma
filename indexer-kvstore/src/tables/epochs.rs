@@ -46,22 +46,10 @@ pub fn encode_start(
 ) -> Vec<(&'static str, Bytes)> {
     vec![
         (col::EPOCH, Bytes::from(epoch.to_be_bytes().to_vec())),
-        (
-            col::PROTOCOL_VERSION,
-            Bytes::from(protocol_version.to_be_bytes().to_vec()),
-        ),
-        (
-            col::START_TIMESTAMP,
-            Bytes::from(start_timestamp_ms.to_be_bytes().to_vec()),
-        ),
-        (
-            col::START_CHECKPOINT,
-            Bytes::from(start_checkpoint.to_be_bytes().to_vec()),
-        ),
-        (
-            col::REFERENCE_GAS_PRICE,
-            Bytes::from(reference_gas_price.to_be_bytes().to_vec()),
-        ),
+        (col::PROTOCOL_VERSION, Bytes::from(protocol_version.to_be_bytes().to_vec())),
+        (col::START_TIMESTAMP, Bytes::from(start_timestamp_ms.to_be_bytes().to_vec())),
+        (col::START_CHECKPOINT, Bytes::from(start_checkpoint.to_be_bytes().to_vec())),
+        (col::REFERENCE_GAS_PRICE, Bytes::from(reference_gas_price.to_be_bytes().to_vec())),
         (col::SYSTEM_STATE, Bytes::from(system_state_bcs.to_vec())),
     ]
 }
@@ -77,21 +65,12 @@ pub fn encode_end(
     epoch_commitments: &[u8],
 ) -> Vec<(&'static str, Bytes)> {
     vec![
-        (
-            col::END_TIMESTAMP,
-            Bytes::from(end_timestamp_ms.to_be_bytes().to_vec()),
-        ),
-        (
-            col::END_CHECKPOINT,
-            Bytes::from(end_checkpoint.to_be_bytes().to_vec()),
-        ),
+        (col::END_TIMESTAMP, Bytes::from(end_timestamp_ms.to_be_bytes().to_vec())),
+        (col::END_CHECKPOINT, Bytes::from(end_checkpoint.to_be_bytes().to_vec())),
         (col::CP_HI, Bytes::from(cp_hi.to_be_bytes().to_vec())),
         (col::TX_HI, Bytes::from(tx_hi.to_be_bytes().to_vec())),
         (col::SAFE_MODE, Bytes::from(vec![u8::from(safe_mode)])),
-        (
-            col::EPOCH_COMMITMENTS,
-            Bytes::from(epoch_commitments.to_vec()),
-        ),
+        (col::EPOCH_COMMITMENTS, Bytes::from(epoch_commitments.to_vec())),
     ]
 }
 
@@ -104,7 +83,9 @@ pub fn decode(row: &[(Bytes, Bytes)]) -> Result<EpochData> {
             b"pv" => data.protocol_version = Some(u64::from_be_bytes(value.as_ref().try_into()?)),
             b"st" => data.start_timestamp_ms = Some(u64::from_be_bytes(value.as_ref().try_into()?)),
             b"sc" => data.start_checkpoint = Some(u64::from_be_bytes(value.as_ref().try_into()?)),
-            b"rg" => data.reference_gas_price = Some(u64::from_be_bytes(value.as_ref().try_into()?)),
+            b"rg" => {
+                data.reference_gas_price = Some(u64::from_be_bytes(value.as_ref().try_into()?))
+            }
             b"ss" => data.system_state_bcs = Some(value.to_vec()),
             b"et" => data.end_timestamp_ms = Some(u64::from_be_bytes(value.as_ref().try_into()?)),
             b"ec" => data.end_checkpoint = Some(u64::from_be_bytes(value.as_ref().try_into()?)),

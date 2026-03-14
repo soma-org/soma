@@ -9,9 +9,9 @@ use std::time::Duration;
 use anyhow::Context;
 use anyhow::Result;
 use indexer_framework::Indexer;
-use indexer_framework::postgres::Db;
 use indexer_framework::pipeline::concurrent::ConcurrentConfig;
 use indexer_framework::pipeline::concurrent::PrunerConfig;
+use indexer_framework::postgres::Db;
 use tokio::task::JoinHandle;
 use tracing::warn;
 
@@ -64,10 +64,7 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
     };
 
     // Tier B: Index tables — prunable with longer retention, no BigTable backup.
-    let index_config = ConcurrentConfig {
-        pruner: pruning.index_pruner,
-        ..Default::default()
-    };
+    let index_config = ConcurrentConfig { pruner: pruning.index_pruner, ..Default::default() };
 
     // Tier C: Never prune.
     let no_prune = ConcurrentConfig::default();
@@ -111,7 +108,10 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register tx_digests pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::tx_affected_addresses::TxAffectedAddresses, index_config.clone())
+        .concurrent_pipeline(
+            handlers::tx_affected_addresses::TxAffectedAddresses,
+            index_config.clone(),
+        )
         .await
         .context("Failed to register tx_affected_addresses pipeline")?;
 
@@ -147,7 +147,10 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register obj_info pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::coin_balance_buckets::CoinBalanceBuckets, index_config.clone())
+        .concurrent_pipeline(
+            handlers::coin_balance_buckets::CoinBalanceBuckets,
+            index_config.clone(),
+        )
         .await
         .context("Failed to register coin_balance_buckets pipeline")?;
 

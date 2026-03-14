@@ -31,10 +31,8 @@ async fn test_transfer_coin_indexed() {
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
     // Start a real network
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     // Start the off-chain indexer stack
     let registry = prometheus::Registry::new();
@@ -46,19 +44,11 @@ async fn test_transfer_coin_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1000),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
         sender,
         vec![gas],
     );
@@ -85,27 +75,16 @@ async fn test_transfer_coin_indexed() {
     assert!(tx_count > 0, "Transaction not found in kv_transactions");
 
     // Verify tx_digests has entries
-    let digest_count: i64 = tx_digests::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let digest_count: i64 = tx_digests::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(digest_count > 0, "No entries in tx_digests");
 
     // Verify kv_checkpoints has at least 1 row
-    let cp_count: i64 = kv_checkpoints::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let cp_count: i64 = kv_checkpoints::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(cp_count > 0, "No entries in kv_checkpoints");
 
     // Verify cp_sequence_numbers has rows
-    let seq_count: i64 = cp_sequence_numbers::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let seq_count: i64 =
+        cp_sequence_numbers::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(seq_count > 0, "No entries in cp_sequence_numbers");
 
     // Verify tx_affected_addresses has sender
@@ -115,17 +94,11 @@ async fn test_transfer_coin_indexed() {
         .get_result(conn.deref_mut())
         .await
         .unwrap();
-    assert!(
-        addr_count > 0,
-        "Sender not found in tx_affected_addresses"
-    );
+    assert!(addr_count > 0, "Sender not found in tx_affected_addresses");
 
     // Verify tx_balance_changes has entries
-    let bal_count: i64 = tx_balance_changes::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let bal_count: i64 =
+        tx_balance_changes::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(bal_count > 0, "No entries in tx_balance_changes");
 
     tracing::info!("test_transfer_coin_indexed passed");
@@ -140,10 +113,8 @@ async fn test_watermarks_advance() {
     let ingestion_dir = tempfile::tempdir().unwrap();
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
@@ -156,19 +127,11 @@ async fn test_watermarks_advance() {
     let recipient = addresses[1];
 
     for _ in 0..3 {
-        let gas = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
-            .unwrap();
+        let gas =
+            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
         let tx_data = TransactionData::new(
-            TransactionKind::TransferCoin {
-                coin: gas,
-                amount: Some(100),
-                recipient,
-            },
+            TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
             sender,
             vec![gas],
         );
@@ -196,16 +159,9 @@ async fn test_watermarks_advance() {
 
     // Verify cp_sequence_numbers has multiple rows
     let mut conn = cluster.db().connect().await.unwrap();
-    let seq_count: i64 = cp_sequence_numbers::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        seq_count >= 3,
-        "Expected >= 3 cp_sequence_numbers rows, got {}",
-        seq_count
-    );
+    let seq_count: i64 =
+        cp_sequence_numbers::table.count().get_result(conn.deref_mut()).await.unwrap();
+    assert!(seq_count >= 3, "Expected >= 3 cp_sequence_numbers rows, got {}", seq_count);
 
     tracing::info!("test_watermarks_advance passed");
 }
@@ -219,10 +175,8 @@ async fn test_objects_indexed() {
     let ingestion_dir = tempfile::tempdir().unwrap();
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
@@ -233,19 +187,11 @@ async fn test_objects_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(500),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
         sender,
         vec![gas],
     );
@@ -261,27 +207,15 @@ async fn test_objects_indexed() {
     let mut conn = cluster.db().connect().await.unwrap();
 
     // Verify kv_objects has rows
-    let obj_count: i64 = kv_objects::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let obj_count: i64 = kv_objects::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(obj_count > 0, "No entries in kv_objects");
 
     // Verify obj_versions has rows
-    let ver_count: i64 = obj_versions::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let ver_count: i64 = obj_versions::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(ver_count > 0, "No entries in obj_versions");
 
     // Verify obj_info has rows
-    let info_count: i64 = obj_info::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let info_count: i64 = obj_info::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(info_count > 0, "No entries in obj_info");
 
     tracing::info!("test_objects_indexed passed");
@@ -296,10 +230,8 @@ async fn test_graphql_queries_indexed_data() {
     let ingestion_dir = tempfile::tempdir().unwrap();
     let ingestion_path = ingestion_dir.path().to_path_buf();
 
-    let test_cluster = TestClusterBuilder::new()
-        .with_data_ingestion_dir(ingestion_path.clone())
-        .build()
-        .await;
+    let test_cluster =
+        TestClusterBuilder::new().with_data_ingestion_dir(ingestion_path.clone()).build().await;
 
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(&ingestion_path, IndexerArgs::default(), &registry)
@@ -310,19 +242,11 @@ async fn test_graphql_queries_indexed_data() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(500),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
         sender,
         vec![gas],
     );
@@ -395,19 +319,11 @@ async fn test_epoch_boundary_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .unwrap();
+    let gas =
+        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(100),
-            recipient,
-        },
+        TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
         sender,
         vec![gas],
     );
@@ -430,10 +346,7 @@ async fn test_epoch_boundary_indexed() {
         .get_result(conn.deref_mut())
         .await
         .unwrap();
-    assert!(
-        epoch_start_count > 0,
-        "Expected kv_epoch_starts entry for epoch 0"
-    );
+    assert!(epoch_start_count > 0, "Expected kv_epoch_starts entry for epoch 0");
 
     // Wait longer for epoch to actually end (epoch_duration_ms = 10s)
     // Poll for epoch 0 end entry
@@ -455,10 +368,7 @@ async fn test_epoch_boundary_indexed() {
     })
     .await;
 
-    assert!(
-        epoch_end_found.is_ok(),
-        "kv_epoch_ends entry for epoch 0 not found within timeout"
-    );
+    assert!(epoch_end_found.is_ok(), "kv_epoch_ends entry for epoch 0 not found within timeout");
 
     tracing::info!("test_epoch_boundary_indexed passed");
 }

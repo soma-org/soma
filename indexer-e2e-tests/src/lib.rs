@@ -28,7 +28,7 @@ use indexer_pg_db::{Db, DbArgs};
 use rpc::utils::checkpoint_blob;
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
-use soma_graphql::{build_router, build_schema, AppState};
+use soma_graphql::{AppState, build_router, build_schema};
 use tokio::time::interval;
 use types::full_checkpoint_content::Checkpoint;
 
@@ -251,11 +251,9 @@ impl Drop for OffchainCluster {
 ///
 /// Used for [`TestCheckpointBuilder`]-based tests where checkpoint data is synthetic.
 pub fn write_checkpoint_file(dir: &Path, checkpoint: &Checkpoint) {
-    let bytes = checkpoint_blob::encode_checkpoint(checkpoint).expect("Failed to encode checkpoint");
-    let path = dir.join(format!(
-        "{}.binpb.zst",
-        checkpoint.summary.sequence_number
-    ));
+    let bytes =
+        checkpoint_blob::encode_checkpoint(checkpoint).expect("Failed to encode checkpoint");
+    let path = dir.join(format!("{}.binpb.zst", checkpoint.summary.sequence_number));
     std::fs::write(path, bytes).expect("Failed to write checkpoint file");
 }
 

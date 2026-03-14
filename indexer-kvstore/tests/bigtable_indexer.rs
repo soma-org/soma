@@ -12,14 +12,14 @@ mod emulator;
 
 use std::time::Duration;
 
-use indexer_kvstore::{
-    BigTableClient, BigTableIndexer, BigTableStore, IndexerConfig, KeyValueStoreReader,
-    PipelineLayer,
-};
 use indexer_framework::IndexerArgs;
 use indexer_framework::ingestion::ClientArgs;
 use indexer_framework::ingestion::ingestion_client::IngestionClientArgs;
 use indexer_framework::pipeline::CommitterConfig;
+use indexer_kvstore::{
+    BigTableClient, BigTableIndexer, BigTableStore, IndexerConfig, KeyValueStoreReader,
+    PipelineLayer,
+};
 use rpc::utils::checkpoint_blob;
 use types::base::SomaAddress;
 use types::object::ObjectType;
@@ -35,10 +35,7 @@ fn write_checkpoint_file(
 ) {
     let bytes =
         checkpoint_blob::encode_checkpoint(checkpoint).expect("Failed to encode checkpoint");
-    let path = dir.join(format!(
-        "{}.binpb.zst",
-        checkpoint.summary.sequence_number
-    ));
+    let path = dir.join(format!("{}.binpb.zst", checkpoint.summary.sequence_number));
     std::fs::write(path, bytes).expect("Failed to write checkpoint file");
 }
 
@@ -51,10 +48,7 @@ async fn wait_for_watermark(
     let start = std::time::Instant::now();
     loop {
         if start.elapsed() > timeout_duration {
-            panic!(
-                "Timed out waiting for watermark to reach checkpoint {}",
-                expected_checkpoint
-            );
+            panic!("Timed out waiting for watermark to reach checkpoint {}", expected_checkpoint);
         }
         if let Ok(Some(wm)) = client.get_watermark().await {
             if wm.checkpoint_hi_inclusive >= expected_checkpoint {
@@ -82,9 +76,7 @@ async fn test_bigtable_indexer_e2e() {
 
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
-    let cp1 = TestCheckpointBuilder::new(1)
-        .add_transfer_coin(sender, recipient, 5000)
-        .build();
+    let cp1 = TestCheckpointBuilder::new(1).add_transfer_coin(sender, recipient, 5000).build();
 
     // 2. Write checkpoint files to disk
     write_checkpoint_file(dir, &cp0);
@@ -92,9 +84,7 @@ async fn test_bigtable_indexer_e2e() {
 
     // 3. Start BigTable emulator and create tables
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
 
     // 4. Create BigTable store
     let client = emulator::client(emu.host()).await.unwrap();
@@ -117,10 +107,7 @@ async fn test_bigtable_indexer_e2e() {
 
     let bigtable_indexer = BigTableIndexer::new(
         store,
-        IndexerArgs {
-            last_checkpoint: Some(1),
-            ..Default::default()
-        },
+        IndexerArgs { last_checkpoint: Some(1), ..Default::default() },
         client_args,
         Default::default(),
         committer,
@@ -173,11 +160,7 @@ async fn test_bigtable_indexer_e2e() {
     assert_eq!(objects[0].id(), obj.id());
 
     // 11. Verify epoch data
-    let epoch = reader
-        .get_epoch(0)
-        .await
-        .unwrap()
-        .expect("epoch 0 should exist");
+    let epoch = reader.get_epoch(0).await.unwrap().expect("epoch 0 should exist");
     assert_eq!(epoch.epoch, Some(0));
     assert!(epoch.system_state_bcs.is_some(), "should have system state");
 
@@ -188,14 +171,9 @@ async fn test_bigtable_indexer_e2e() {
         .flat_map(|tx| tx.output_objects(&cp0.object_set))
         .find(|o| *o.type_() == ObjectType::Target)
         .expect("cp0 should have a target");
-    let target_key =
-        indexer_kvstore::tables::targets::encode_key(&target_obj.id().to_vec());
+    let target_key = indexer_kvstore::tables::targets::encode_key(&target_obj.id().to_vec());
     let target_rows = reader
-        .multi_get(
-            indexer_kvstore::tables::targets::NAME,
-            vec![target_key],
-            None,
-        )
+        .multi_get(indexer_kvstore::tables::targets::NAME, vec![target_key], None)
         .await
         .unwrap();
     assert_eq!(target_rows.len(), 1, "should have 1 target row");

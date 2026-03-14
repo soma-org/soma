@@ -10,7 +10,7 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use futures::future::try_join_all;
 use indexer_kvstore::BigTableClient;
 use tokio::process::Command as TokioCommand;
@@ -37,16 +37,11 @@ fn cbtemulator_path() -> Result<PathBuf> {
         .context("failed to run `gcloud info`")?;
 
     if !output.status.success() {
-        bail!(
-            "`gcloud info` failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        bail!("`gcloud info` failed: {}", String::from_utf8_lossy(&output.stderr));
     }
 
-    let sdk_root = String::from_utf8(output.stdout)
-        .context("non-UTF-8 gcloud output")?
-        .trim()
-        .to_string();
+    let sdk_root =
+        String::from_utf8(output.stdout).context("non-UTF-8 gcloud output")?.trim().to_string();
 
     let path = PathBuf::from(sdk_root).join("platform/bigtable-emulator/cbtemulator");
     assert!(
@@ -105,9 +100,7 @@ impl BigTableEmulator {
         let host;
         loop {
             let mut line = String::new();
-            let n = reader
-                .read_line(&mut line)
-                .context("reading cbtemulator stdout")?;
+            let n = reader.read_line(&mut line).context("reading cbtemulator stdout")?;
             if n == 0 {
                 bail!("cbtemulator exited before printing listen address");
             }
@@ -131,11 +124,7 @@ impl BigTableEmulator {
             }
         });
 
-        Ok(Self {
-            child,
-            host,
-            _stdout_drain: drain,
-        })
+        Ok(Self { child, host, _stdout_drain: drain })
     }
 
     pub fn host(&self) -> &str {
@@ -160,28 +149,16 @@ pub async fn create_tables(host: &str, instance_id: &str) -> Result<()> {
         .iter()
         .map(|table| {
             TokioCommand::new("cbt")
-                .args([
-                    "-instance",
-                    instance_id,
-                    "-project",
-                    "emulator",
-                    "createtable",
-                    table,
-                ])
+                .args(["-instance", instance_id, "-project", "emulator", "createtable", table])
                 .env("BIGTABLE_EMULATOR_HOST", host)
                 .output()
         })
         .collect();
 
-    let results = try_join_all(create_futs)
-        .await
-        .context("cbt createtable commands failed")?;
+    let results = try_join_all(create_futs).await.context("cbt createtable commands failed")?;
     for result in &results {
         if !result.status.success() {
-            bail!(
-                "cbt createtable failed: {}",
-                String::from_utf8_lossy(&result.stderr)
-            );
+            bail!("cbt createtable failed: {}", String::from_utf8_lossy(&result.stderr));
         }
     }
 
@@ -204,15 +181,10 @@ pub async fn create_tables(host: &str, instance_id: &str) -> Result<()> {
         })
         .collect();
 
-    let results = try_join_all(family_futs)
-        .await
-        .context("cbt createfamily commands failed")?;
+    let results = try_join_all(family_futs).await.context("cbt createfamily commands failed")?;
     for result in &results {
         if !result.status.success() {
-            bail!(
-                "cbt createfamily failed: {}",
-                String::from_utf8_lossy(&result.stderr)
-            );
+            bail!("cbt createfamily failed: {}", String::from_utf8_lossy(&result.stderr));
         }
     }
 

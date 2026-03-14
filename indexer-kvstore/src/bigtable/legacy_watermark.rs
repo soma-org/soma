@@ -15,10 +15,7 @@ pub(crate) struct LegacyWatermarkTracker {
 
 impl LegacyWatermarkTracker {
     pub fn new() -> Self {
-        Self {
-            watermarks: HashMap::with_capacity(ALL_PIPELINE_NAMES.len()),
-            last_written: None,
-        }
+        Self { watermarks: HashMap::with_capacity(ALL_PIPELINE_NAMES.len()), last_written: None }
     }
 
     /// Record a pipeline's latest checkpoint_hi_inclusive.

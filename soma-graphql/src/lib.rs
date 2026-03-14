@@ -13,10 +13,10 @@ use std::sync::Arc;
 use async_graphql::dataloader::DataLoader;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::Router;
 use axum::extract::State;
 use axum::response::Html;
 use axum::routing::{get, post};
-use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::api::query::Query;
@@ -43,14 +43,8 @@ pub fn build_schema(
     config: GraphQlConfig,
     kv: Option<Arc<dyn KvLoader>>,
 ) -> SomaSchema {
-    let reporters_loader = DataLoader::new(
-        TargetReportersLoader { pg: pg.clone() },
-        tokio::spawn,
-    );
-    let reward_loader = DataLoader::new(
-        TargetRewardLoader { pg: pg.clone() },
-        tokio::spawn,
-    );
+    let reporters_loader = DataLoader::new(TargetReportersLoader { pg: pg.clone() }, tokio::spawn);
+    let reward_loader = DataLoader::new(TargetRewardLoader { pg: pg.clone() }, tokio::spawn);
 
     let mut builder = Schema::build(Query, EmptyMutation, EmptySubscription)
         .data(pg)
@@ -75,10 +69,7 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn graphql_handler(
-    State(state): State<AppState>,
-    req: GraphQLRequest,
-) -> GraphQLResponse {
+async fn graphql_handler(State(state): State<AppState>, req: GraphQLRequest) -> GraphQLResponse {
     state.schema.execute(req.into_inner()).await.into()
 }
 

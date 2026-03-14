@@ -7,14 +7,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::objects::{StoredObjInfo, StoredOwnerKind};
+use indexer_alt_schema::schema::obj_info;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::effects::TransactionEffectsAPI;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::Owner;
-use indexer_alt_schema::objects::{StoredObjInfo, StoredOwnerKind};
-use indexer_alt_schema::schema::obj_info;
 
 use crate::handlers::checkpoint_input_objects;
 
@@ -27,12 +27,7 @@ impl Processor for ObjInfo {
     type Value = StoredObjInfo;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, object_set, .. } = checkpoint.as_ref();
 
         let cp_sequence_number = summary.sequence_number as i64;
         let input_objects = checkpoint_input_objects(checkpoint)?;

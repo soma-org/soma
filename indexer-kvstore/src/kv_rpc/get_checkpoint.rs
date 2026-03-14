@@ -20,9 +20,7 @@ pub async fn get_checkpoint(
     request: GetCheckpointRequest,
 ) -> Result<GetCheckpointResponse, RpcError> {
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
         read_mask.validate::<Checkpoint>().map_err(|path| {
             FieldViolation::new("read_mask")
                 .with_description(format!("invalid read_mask path: {path}"))
@@ -36,9 +34,7 @@ pub async fn get_checkpoint(
     let checkpoint_data = match request.checkpoint_id {
         Some(CheckpointId::SequenceNumber(s)) => {
             let mut results = client.get_checkpoints(&[s]).await?;
-            results
-                .pop()
-                .ok_or(CheckpointNotFoundError::sequence_number(s))?
+            results.pop().ok_or(CheckpointNotFoundError::sequence_number(s))?
         }
         Some(CheckpointId::Digest(digest_str)) => {
             let digest = digest_str.parse::<Digest>().map_err(|e| {
@@ -55,29 +51,19 @@ pub async fn get_checkpoint(
         }
         None => {
             // Latest checkpoint: use watermark to find the highest sequence number
-            let wm = client
-                .get_watermark()
-                .await?
-                .ok_or_else(RpcError::not_found)?;
+            let wm = client.get_watermark().await?.ok_or_else(RpcError::not_found)?;
             let mut results = client.get_checkpoints(&[wm.checkpoint_hi_inclusive]).await?;
             results
                 .pop()
-                .ok_or(CheckpointNotFoundError::sequence_number(
-                    wm.checkpoint_hi_inclusive,
-                ))?
+                .ok_or(CheckpointNotFoundError::sequence_number(wm.checkpoint_hi_inclusive))?
         }
         _ => {
             // Future checkpoint_id variants - treat as latest
-            let wm = client
-                .get_watermark()
-                .await?
-                .ok_or_else(RpcError::not_found)?;
+            let wm = client.get_watermark().await?.ok_or_else(RpcError::not_found)?;
             let mut results = client.get_checkpoints(&[wm.checkpoint_hi_inclusive]).await?;
             results
                 .pop()
-                .ok_or(CheckpointNotFoundError::sequence_number(
-                    wm.checkpoint_hi_inclusive,
-                ))?
+                .ok_or(CheckpointNotFoundError::sequence_number(wm.checkpoint_hi_inclusive))?
         }
     };
 
@@ -90,8 +76,7 @@ pub async fn get_checkpoint(
             )
         })?;
 
-    let sdk_signature: rpc::types::ValidatorAggregatedSignature =
-        checkpoint_data.signatures.into();
+    let sdk_signature: rpc::types::ValidatorAggregatedSignature = checkpoint_data.signatures.into();
 
     let sdk_contents: rpc::types::CheckpointContents =
         checkpoint_data.contents.try_into().map_err(|e| {

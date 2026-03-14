@@ -12,14 +12,14 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::epochs::StoredEpochStart;
+use indexer_alt_schema::schema::kv_epoch_starts;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
 use types::system_state::{SystemStateTrait as _, get_system_state};
 use types::transaction::TransactionKind;
-use indexer_alt_schema::epochs::StoredEpochStart;
-use indexer_alt_schema::schema::kv_epoch_starts;
 
 use crate::handlers::cp_sequence_numbers::epoch_interval;
 
@@ -32,12 +32,7 @@ impl Processor for KvEpochStarts {
     type Value = StoredEpochStart;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            transactions,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, transactions, object_set, .. } = checkpoint.as_ref();
 
         // Epoch start info comes from the last checkpoint of the *previous* epoch, which
         // contains the ChangeEpoch transaction whose output objects include the new system state.
@@ -52,9 +47,8 @@ impl Processor for KvEpochStarts {
 
             // Collect output objects for system state lookup
             let output_objects: Vec<_> = tx.output_objects(object_set).cloned().collect();
-            let system_state = get_system_state(&output_objects.as_slice()).context(
-                "Failed to find system state object in genesis transaction outputs",
-            )?;
+            let system_state = get_system_state(&output_objects.as_slice())
+                .context("Failed to find system state object in genesis transaction outputs")?;
 
             return Ok(vec![StoredEpochStart {
                 epoch: system_state.epoch() as i64,
@@ -73,9 +67,10 @@ impl Processor for KvEpochStarts {
         }
 
         // Find the ChangeEpoch transaction
-        let Some(tx) = transactions.iter().find(|tx| {
-            matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_))
-        }) else {
+        let Some(tx) = transactions
+            .iter()
+            .find(|tx| matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_)))
+        else {
             bail!(
                 "Failed to get ChangeEpoch transaction in checkpoint {} with EndOfEpochData",
                 summary.sequence_number,
@@ -121,10 +116,8 @@ impl Handler for KvEpochStarts {
         to_exclusive: u64,
         conn: &mut Connection<'a>,
     ) -> Result<usize> {
-        let Range {
-            start: from_epoch,
-            end: to_epoch,
-        } = epoch_interval(conn, from..to_exclusive).await?;
+        let Range { start: from_epoch, end: to_epoch } =
+            epoch_interval(conn, from..to_exclusive).await?;
         if from_epoch < to_epoch {
             let filter = kv_epoch_starts::table
                 .filter(kv_epoch_starts::epoch.between(from_epoch as i64, to_epoch as i64 - 1));

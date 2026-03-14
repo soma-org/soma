@@ -59,11 +59,7 @@ where
         config: &ConcurrentLayer,
         rate_limiter: Arc<CompositeRateLimiter>,
     ) -> Self {
-        Self {
-            processor,
-            max_rows: config.max_rows.unwrap_or(DEFAULT_MAX_ROWS),
-            rate_limiter,
-        }
+        Self { processor, max_rows: config.max_rows.unwrap_or(DEFAULT_MAX_ROWS), rate_limiter }
     }
 }
 
@@ -128,11 +124,7 @@ where
 
         self.rate_limiter.acquire(count).await;
 
-        match conn
-            .client()
-            .write_entries(P::TABLE, entries_to_write)
-            .await
-        {
+        match conn.client().write_entries(P::TABLE, entries_to_write).await {
             Ok(()) => Ok(count),
             Err(e) => {
                 if let Some(partial) = e.downcast_ref::<PartialWriteError>() {

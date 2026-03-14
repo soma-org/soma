@@ -161,9 +161,7 @@ impl Model {
 
     /// Checksum of the pending weight update file.
     async fn pending_manifest_checksum(&self) -> Option<Base64> {
-        self.pending_manifest_checksum
-            .as_ref()
-            .map(|c| Base64(c.clone()))
+        self.pending_manifest_checksum.as_ref().map(|c| Base64(c.clone()))
     }
 
     /// Size of the pending weight update file in bytes.
@@ -173,9 +171,7 @@ impl Model {
 
     /// Weights commitment for the pending update.
     async fn pending_weights_commitment(&self) -> Option<Base64> {
-        self.pending_weights_commitment
-            .as_ref()
-            .map(|c| Base64(c.clone()))
+        self.pending_weights_commitment.as_ref().map(|c| Base64(c.clone()))
     }
 
     /// The epoch when the pending update was committed.
@@ -203,20 +199,22 @@ impl Model {
 
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit = first
-            .unwrap_or(config.default_page_size)
-            .min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         use indexer_alt_schema::schema::soma_targets;
 
-        type RowA = (
-            Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>,
-            i64, i64, i32,
-        );
+        type RowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
         type RowB = (
-            Option<f64>, Option<f64>, Option<Vec<u8>>, Option<i64>,
-            f64, String, Option<String>, Option<Vec<u8>>, Option<i64>,
+            Option<f64>,
+            Option<f64>,
+            Option<Vec<u8>>,
+            Option<i64>,
+            f64,
+            String,
+            Option<String>,
+            Option<Vec<u8>>,
+            Option<i64>,
         );
 
         let after_cp: Option<i64> = match &after {
@@ -264,10 +262,8 @@ impl Model {
             query = query.filter(soma_targets::cp_sequence_number.lt(acp));
         }
 
-        let results: Vec<(RowA, RowB)> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let results: Vec<(RowA, RowB)> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
         let has_next = results.len() as i64 > limit;
         let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();

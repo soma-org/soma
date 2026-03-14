@@ -14,28 +14,28 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use prometheus::Registry;
-use serde::Deserialize;
-use serde::Serialize;
 use indexer_framework::Indexer;
 use indexer_framework::IndexerArgs;
 use indexer_framework::ingestion::ClientArgs;
 use indexer_framework::pipeline::CommitterConfig;
 use indexer_framework::pipeline::concurrent::ConcurrentConfig;
+use prometheus::Registry;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::rate_limiter::CompositeRateLimiter;
 use crate::rate_limiter::RateLimiter;
 use bytes::Bytes;
-use types::object::ObjectID;
+use types::checkpoints::CheckpointContents;
+use types::checkpoints::CheckpointSequenceNumber;
+use types::checkpoints::CheckpointSummary;
 use types::committee::EpochId;
 use types::crypto::AuthorityStrongQuorumSignInfo;
 use types::digests::CheckpointDigest;
 use types::digests::TransactionDigest;
 use types::effects::TransactionEffects;
-use types::checkpoints::CheckpointContents;
-use types::checkpoints::CheckpointSequenceNumber;
-use types::checkpoints::CheckpointSummary;
 use types::object::Object;
+use types::object::ObjectID;
 use types::storage::ObjectKey;
 use types::transaction::Transaction;
 
@@ -96,9 +96,7 @@ const WATERMARK_PIPELINES: [&str; 9] = ALL_PIPELINE_NAMES;
 static WRITE_LEGACY_DATA: OnceLock<bool> = OnceLock::new();
 
 pub fn set_write_legacy_data(value: bool) {
-    WRITE_LEGACY_DATA
-        .set(value)
-        .expect("write_legacy_data already set");
+    WRITE_LEGACY_DATA.set(value).expect("write_legacy_data already set");
 }
 
 pub fn write_legacy_data() -> bool {
@@ -183,16 +181,9 @@ impl KeyValueStoreReader for BigTableClient {
         &mut self,
         sequence_numbers: &[CheckpointSequenceNumber],
     ) -> Result<Vec<CheckpointData>> {
-        let keys = sequence_numbers
-            .iter()
-            .copied()
-            .map(tables::checkpoints::encode_key)
-            .collect();
+        let keys = sequence_numbers.iter().copied().map(tables::checkpoints::encode_key).collect();
         let mut checkpoints = vec![];
-        for (_, row) in self
-            .multi_get(tables::checkpoints::NAME, keys, None)
-            .await?
-        {
+        for (_, row) in self.multi_get(tables::checkpoints::NAME, keys, None).await? {
             checkpoints.push(tables::checkpoints::decode(&row)?);
         }
         Ok(checkpoints)
@@ -203,9 +194,7 @@ impl KeyValueStoreReader for BigTableClient {
         digest: CheckpointDigest,
     ) -> Result<Option<CheckpointData>> {
         let key = tables::checkpoints_by_digest::encode_key(&digest);
-        let rows = self
-            .multi_get(tables::checkpoints_by_digest::NAME, vec![key], None)
-            .await?;
+        let rows = self.multi_get(tables::checkpoints_by_digest::NAME, vec![key], None).await?;
         let Some((_, row)) = rows.into_iter().next() else {
             return Ok(None);
         };
@@ -218,15 +207,9 @@ impl KeyValueStoreReader for BigTableClient {
         &mut self,
         transactions: &[TransactionDigest],
     ) -> Result<Vec<TransactionData>> {
-        let keys = transactions
-            .iter()
-            .map(tables::transactions::encode_key)
-            .collect();
+        let keys = transactions.iter().map(tables::transactions::encode_key).collect();
         let mut result = vec![];
-        for (_, row) in self
-            .multi_get(tables::transactions::NAME, keys, None)
-            .await?
-        {
+        for (_, row) in self.multi_get(tables::transactions::NAME, keys, None).await? {
             result.push(tables::transactions::decode(&row)?);
         }
         Ok(result)
@@ -235,10 +218,7 @@ impl KeyValueStoreReader for BigTableClient {
     async fn get_objects(&mut self, keys: &[ObjectKey]) -> Result<Vec<Object>> {
         let bt_keys = keys.iter().map(tables::objects::encode_key).collect();
         let mut result = vec![];
-        for (_, row) in self
-            .multi_get(tables::objects::NAME, bt_keys, None)
-            .await?
-        {
+        for (_, row) in self.multi_get(tables::objects::NAME, bt_keys, None).await? {
             result.push(tables::objects::decode(&row)?);
         }
         Ok(result)
@@ -270,9 +250,7 @@ impl KeyValueStoreReader for BigTableClient {
 
     async fn get_epoch(&mut self, epoch_id: EpochId) -> Result<Option<EpochData>> {
         let key = tables::epochs::encode_key(epoch_id);
-        let rows = self
-            .multi_get(tables::epochs::NAME, vec![key], None)
-            .await?;
+        let rows = self.multi_get(tables::epochs::NAME, vec![key], None).await?;
         match rows.into_iter().next() {
             Some((_, row)) => Ok(Some(tables::epochs::decode(&row)?)),
             None => Ok(None),
@@ -300,14 +278,10 @@ impl KeyValueStoreReader for BigTableClient {
         &mut self,
         pipelines: &[&str],
     ) -> Result<Option<Watermark>> {
-        let keys: Vec<Vec<u8>> = pipelines
-            .iter()
-            .map(|name| tables::watermarks::encode_key(name))
-            .collect();
+        let keys: Vec<Vec<u8>> =
+            pipelines.iter().map(|name| tables::watermarks::encode_key(name)).collect();
 
-        let rows = self
-            .multi_get(tables::watermark_alt_legacy::NAME, keys, None)
-            .await?;
+        let rows = self.multi_get(tables::watermark_alt_legacy::NAME, keys, None).await?;
 
         if rows.len() != pipelines.len() {
             return Ok(None);
@@ -337,15 +311,9 @@ impl BigTableIndexer {
         pipeline: PipelineLayer,
         registry: &Registry,
     ) -> Result<Self> {
-        let mut indexer = Indexer::new(
-            store,
-            indexer_args,
-            client_args,
-            ingestion_config.into(),
-            None,
-            registry,
-        )
-        .await?;
+        let mut indexer =
+            Indexer::new(store, indexer_args, client_args, ingestion_config.into(), None, registry)
+                .await?;
 
         let global = config.total_max_rows_per_second.map(RateLimiter::new);
         let base_rps = config.max_rows_per_second;
@@ -365,11 +333,7 @@ impl BigTableIndexer {
             Arc::new(CompositeRateLimiter::new(limiters))
         }
 
-        let base = ConcurrentConfig {
-            committer,
-            pruner: None,
-            ..Default::default()
-        };
+        let base = ConcurrentConfig { committer, pruner: None, ..Default::default() };
 
         indexer
             .concurrent_pipeline(
@@ -500,7 +464,8 @@ impl From<Watermark> for indexer_store_traits::CommitterWatermark {
 /// Implementations must handle interior mutability / cloning internally.
 #[async_trait]
 pub trait KvLoader: Send + Sync {
-    async fn get_checkpoint(&self, seq: CheckpointSequenceNumber) -> Result<Option<CheckpointData>>;
+    async fn get_checkpoint(&self, seq: CheckpointSequenceNumber)
+    -> Result<Option<CheckpointData>>;
     async fn get_transaction(&self, digest: &TransactionDigest) -> Result<Option<TransactionData>>;
     async fn get_object(&self, id: &ObjectID, version: u64) -> Result<Option<Object>>;
     async fn get_epoch(&self, epoch_id: EpochId) -> Result<Option<EpochData>>;
@@ -523,7 +488,10 @@ impl BigTableKvLoader {
 
 #[async_trait]
 impl KvLoader for BigTableKvLoader {
-    async fn get_checkpoint(&self, seq: CheckpointSequenceNumber) -> Result<Option<CheckpointData>> {
+    async fn get_checkpoint(
+        &self,
+        seq: CheckpointSequenceNumber,
+    ) -> Result<Option<CheckpointData>> {
         let mut c = self.client.clone();
         let results = c.get_checkpoints(&[seq]).await?;
         Ok(results.into_iter().next())

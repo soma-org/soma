@@ -6,9 +6,9 @@
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use types::checkpoints::CheckpointSequenceNumber;
 use types::digests::TransactionDigest;
 use types::effects::TransactionEffects;
-use types::checkpoints::CheckpointSequenceNumber;
 use types::transaction::Transaction;
 
 use crate::TransactionData;
@@ -40,18 +40,9 @@ pub fn encode(
     Ok(vec![
         (col::EFFECTS, Bytes::from(bcs::to_bytes(effects)?)),
         (col::TIMESTAMP, Bytes::from(bcs::to_bytes(&timestamp_ms)?)),
-        (
-            col::CHECKPOINT_NUMBER,
-            Bytes::from(bcs::to_bytes(&checkpoint_number)?),
-        ),
-        (
-            col::DATA,
-            Bytes::from(bcs::to_bytes(&transaction.data().intent_message().value)?),
-        ),
-        (
-            col::SIGNATURES,
-            Bytes::from(bcs::to_bytes(transaction.data().tx_signatures())?),
-        ),
+        (col::CHECKPOINT_NUMBER, Bytes::from(bcs::to_bytes(&checkpoint_number)?)),
+        (col::DATA, Bytes::from(bcs::to_bytes(&transaction.data().intent_message().value)?)),
+        (col::SIGNATURES, Bytes::from(bcs::to_bytes(transaction.data().tx_signatures())?)),
         (col::BALANCE_CHANGES, Bytes::from(balance_changes_bcs.to_vec())),
     ])
 }

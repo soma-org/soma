@@ -46,12 +46,7 @@ pub struct KvRpcServer {
 
 impl KvRpcServer {
     pub fn new(client: BigTableClient) -> Self {
-        Self {
-            client,
-            chain_id: None,
-            server_version: None,
-            cache: Arc::new(RwLock::new(None)),
-        }
+        Self { client, chain_id: None, server_version: None, cache: Arc::new(RwLock::new(None)) }
     }
 
     pub fn with_chain_id(mut self, chain_id: String) -> Self {
@@ -86,10 +81,7 @@ impl KvRpcServer {
 
         let (health_reporter, health_service) = tonic_health::server::health_reporter();
         health_reporter
-            .set_service_status(
-                "soma.rpc.LedgerService",
-                tonic_health::ServingStatus::Serving,
-            )
+            .set_service_status("soma.rpc.LedgerService", tonic_health::ServingStatus::Serving)
             .await;
 
         let reflection = tonic_reflection::server::Builder::configure()
@@ -108,10 +100,8 @@ impl KvRpcServer {
 /// Route a tonic 0.13 gRPC service under `/{service_name}/{*rest}`.
 fn route_service<S>(router: axum::Router, svc: S) -> axum::Router
 where
-    S: tower::Service<
-            axum::extract::Request,
-            Error = Infallible,
-        > + NamedService
+    S: tower::Service<axum::extract::Request, Error = Infallible>
+        + NamedService
         + Clone
         + Send
         + Sync
@@ -133,10 +123,7 @@ impl LedgerService for KvRpcServer {
             return Ok(Response::new(cached));
         }
 
-        get_service_info::build_response(self)
-            .await
-            .map(Response::new)
-            .map_err(Into::into)
+        get_service_info::build_response(self).await.map(Response::new).map_err(Into::into)
     }
 
     async fn get_checkpoint(

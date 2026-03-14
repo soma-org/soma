@@ -34,9 +34,7 @@ impl CommitterLayer {
         CommitterConfig {
             write_concurrency: self.write_concurrency.unwrap_or(base.write_concurrency),
             collect_interval_ms: self.collect_interval_ms.unwrap_or(base.collect_interval_ms),
-            watermark_interval_ms: self
-                .watermark_interval_ms
-                .unwrap_or(base.watermark_interval_ms),
+            watermark_interval_ms: self.watermark_interval_ms.unwrap_or(base.watermark_interval_ms),
             watermark_interval_jitter_ms: self
                 .watermark_interval_jitter_ms
                 .unwrap_or(base.watermark_interval_jitter_ms),

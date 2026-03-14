@@ -44,10 +44,7 @@ impl BigTableStore {
         } else {
             None
         };
-        Self {
-            client,
-            legacy_watermark_tracker,
-        }
+        Self { client, legacy_watermark_tracker }
     }
 }
 
@@ -89,11 +86,7 @@ impl Connection for BigTableConnection<'_> {
         &mut self,
         pipeline_task: &str,
     ) -> Result<Option<CommitterWatermark>> {
-        Ok(self
-            .client
-            .get_pipeline_watermark(pipeline_task)
-            .await?
-            .map(Into::into))
+        Ok(self.client.get_pipeline_watermark(pipeline_task).await?.map(Into::into))
     }
 
     async fn set_committer_watermark(
@@ -102,15 +95,12 @@ impl Connection for BigTableConnection<'_> {
         watermark: CommitterWatermark,
     ) -> Result<bool> {
         let pipeline_watermark: Watermark = watermark.into();
-        self.client
-            .set_pipeline_watermark(pipeline_task, &pipeline_watermark)
-            .await?;
+        self.client.set_pipeline_watermark(pipeline_task, &pipeline_watermark).await?;
 
         // Legacy dual-write support
         if let Some(ref tracker) = self.legacy_watermark_tracker {
-            let pipeline_name = pipeline_task
-                .split_once('@')
-                .map_or(pipeline_task, |(name, _)| name);
+            let pipeline_name =
+                pipeline_task.split_once('@').map_or(pipeline_task, |(name, _)| name);
 
             let maybe_update = {
                 let mut guard = tracker.lock().expect("legacy tracker lock poisoned");
@@ -121,21 +111,13 @@ impl Connection for BigTableConnection<'_> {
                 let next_checkpoint = min + 1;
                 let entry = tables::make_entry(
                     vec![0u8],
-                    [(
-                        tables::DEFAULT_COLUMN,
-                        Bytes::from(next_checkpoint.to_be_bytes().to_vec()),
-                    )],
+                    [(tables::DEFAULT_COLUMN, Bytes::from(next_checkpoint.to_be_bytes().to_vec()))],
                     Some(next_checkpoint),
                 );
-                if let Err(e) = self
-                    .client
-                    .write_entries(tables::watermark_alt_legacy::NAME, [entry])
-                    .await
+                if let Err(e) =
+                    self.client.write_entries(tables::watermark_alt_legacy::NAME, [entry]).await
                 {
-                    tracker
-                        .lock()
-                        .expect("legacy tracker lock poisoned")
-                        .rollback(min, prev);
+                    tracker.lock().expect("legacy tracker lock poisoned").rollback(min, prev);
                     return Err(e);
                 }
             }

@@ -23,12 +23,7 @@ impl Processor for EpochStartPipeline {
     type Value = Entry;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> anyhow::Result<Vec<Self::Value>> {
-        let Checkpoint {
-            summary,
-            transactions,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { summary, transactions, object_set, .. } = checkpoint.as_ref();
 
         // Only process genesis or end-of-epoch checkpoints
         if summary.sequence_number != 0 && summary.end_of_epoch_data.is_none() {
@@ -38,9 +33,10 @@ impl Processor for EpochStartPipeline {
         let (start_checkpoint, tx) = if summary.sequence_number == 0 {
             (0u64, &transactions[0])
         } else {
-            let Some(tx) = transactions.iter().find(|tx| {
-                matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_))
-            }) else {
+            let Some(tx) = transactions
+                .iter()
+                .find(|tx| matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_)))
+            else {
                 bail!(
                     "No ChangeEpoch tx in checkpoint {} with EndOfEpochData",
                     summary.sequence_number,
@@ -50,8 +46,8 @@ impl Processor for EpochStartPipeline {
         };
 
         let output_objects: Vec<_> = tx.output_objects(object_set).cloned().collect();
-        let system_state = get_system_state(&output_objects.as_slice())
-            .context("Failed to find system state")?;
+        let system_state =
+            get_system_state(&output_objects.as_slice()).context("Failed to find system state")?;
 
         let epoch = system_state.epoch();
         let protocol_version = system_state.protocol_version();

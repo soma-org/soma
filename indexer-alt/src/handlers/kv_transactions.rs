@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::schema::kv_transactions;
+use indexer_alt_schema::transactions::StoredTransaction;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::schema::kv_transactions;
-use indexer_alt_schema::transactions::StoredTransaction;
 
 pub struct KvTransactions;
 
@@ -26,11 +26,7 @@ impl Processor for KvTransactions {
     type Value = StoredTransaction;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, .. } = checkpoint.as_ref();
 
         let cp_sequence_number = summary.sequence_number as i64;
         let timestamp_ms = summary.timestamp_ms as i64;
@@ -42,8 +38,7 @@ impl Processor for KvTransactions {
             let raw_transaction =
                 bcs::to_bytes(&tx.transaction).context("Serializing transaction")?;
 
-            let raw_effects =
-                bcs::to_bytes(&tx.effects).context("Serializing effects")?;
+            let raw_effects = bcs::to_bytes(&tx.effects).context("Serializing effects")?;
 
             // Soma has no events, store empty bytes
             let events = vec![];

@@ -19,12 +19,7 @@ pub const READ_MASK_DEFAULT: &str = "object_id,version,digest";
 
 pub async fn get_object(
     server: &KvRpcServer,
-    GetObjectRequest {
-        object_id,
-        version,
-        read_mask,
-        ..
-    }: GetObjectRequest,
+    GetObjectRequest { object_id, version, read_mask, .. }: GetObjectRequest,
 ) -> Result<GetObjectResponse, RpcError> {
     let read_mask = validate_read_mask(read_mask)?;
 
@@ -45,11 +40,7 @@ pub async fn get_object(
 
 pub async fn batch_get_objects(
     server: &KvRpcServer,
-    BatchGetObjectsRequest {
-        requests,
-        read_mask,
-        ..
-    }: BatchGetObjectsRequest,
+    BatchGetObjectsRequest { requests, read_mask, .. }: BatchGetObjectsRequest,
 ) -> Result<BatchGetObjectsResponse, RpcError> {
     let read_mask = validate_read_mask(read_mask)?;
 
@@ -110,9 +101,7 @@ async fn get_object_impl(
         let object_key =
             types::storage::ObjectKey(core_object_id, types::object::Version::from_u64(version));
         let mut results = client.get_objects(&[object_key]).await?;
-        results.pop().ok_or_else(|| {
-            ObjectNotFoundError::new_with_version(object_id, version)
-        })?
+        results.pop().ok_or_else(|| ObjectNotFoundError::new_with_version(object_id, version))?
     } else {
         client
             .get_latest_object(&core_object_id)
@@ -122,10 +111,7 @@ async fn get_object_impl(
 
     // Convert core Object to SDK Object
     let sdk_object: rpc::types::Object = core_object.try_into().map_err(|e| {
-        RpcError::new(
-            rpc_tonic::Code::Internal,
-            format!("failed to convert object: {e}"),
-        )
+        RpcError::new(rpc_tonic::Code::Internal, format!("failed to convert object: {e}"))
     })?;
 
     let mut message = Object::default();

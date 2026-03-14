@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use diesel::ExpressionMethods;
 use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::objects::StoredObject;
+use indexer_alt_schema::schema::kv_objects;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::objects::StoredObject;
-use indexer_alt_schema::schema::kv_objects;
 
 pub struct KvObjects;
 
@@ -54,9 +54,7 @@ impl Processor for KvObjects {
             })
         });
 
-        deleted_objects
-            .chain(created_objects)
-            .collect::<Result<Vec<_>, _>>()
+        deleted_objects.chain(created_objects).collect::<Result<Vec<_>, _>>()
     }
 }
 

@@ -46,8 +46,7 @@ impl Loader<TargetReporterKey> for TargetReportersLoader {
 
         let mut conn = self.pg.connect().await.map_err(|e| Arc::new(e.into()))?;
 
-        let all_target_ids: Vec<&[u8]> =
-            keys.iter().map(|k| k.target_id.as_slice()).collect();
+        let all_target_ids: Vec<&[u8]> = keys.iter().map(|k| k.target_id.as_slice()).collect();
 
         let rows: Vec<(Vec<u8>, i64, Vec<u8>)> = soma_target_reports::table
             .select((
@@ -62,10 +61,7 @@ impl Loader<TargetReporterKey> for TargetReportersLoader {
 
         let mut map: HashMap<TargetReporterKey, Vec<Vec<u8>>> = HashMap::new();
         for (tid, cp, reporter) in rows {
-            let key = TargetReporterKey {
-                target_id: tid,
-                cp_sequence_number: cp,
-            };
+            let key = TargetReporterKey { target_id: tid, cp_sequence_number: cp };
             // Only include rows matching requested keys (filter out cross-matches)
             if keys.contains(&key) {
                 map.entry(key).or_default().push(reporter);
@@ -88,10 +84,7 @@ impl Loader<Vec<u8>> for TargetRewardLoader {
     type Value = Reward;
     type Error = Arc<anyhow::Error>;
 
-    async fn load(
-        &self,
-        keys: &[Vec<u8>],
-    ) -> Result<HashMap<Vec<u8>, Self::Value>, Self::Error> {
+    async fn load(&self, keys: &[Vec<u8>]) -> Result<HashMap<Vec<u8>, Self::Value>, Self::Error> {
         use indexer_alt_schema::schema::{soma_reward_balances, soma_rewards};
 
         let mut conn = self.pg.connect().await.map_err(|e| Arc::new(e.into()))?;
@@ -128,10 +121,7 @@ impl Loader<Vec<u8>> for TargetRewardLoader {
         // Group balances by target_id
         let mut balances_map: HashMap<Vec<u8>, Vec<RewardBalance>> = HashMap::new();
         for (tid, recipient, amount) in balance_rows {
-            balances_map
-                .entry(tid)
-                .or_default()
-                .push(RewardBalance { recipient, amount });
+            balances_map.entry(tid).or_default().push(RewardBalance { recipient, amount });
         }
 
         // Build reward map
@@ -140,13 +130,7 @@ impl Loader<Vec<u8>> for TargetRewardLoader {
             let balances = balances_map.remove(&target_id).unwrap_or_default();
             map.insert(
                 target_id.clone(),
-                Reward {
-                    target_id,
-                    cp_sequence_number,
-                    epoch,
-                    tx_digest,
-                    balances,
-                },
+                Reward { target_id, cp_sequence_number, epoch, tx_digest, balances },
             );
         }
 

@@ -91,11 +91,8 @@ pub fn checkpoint_input_objects(
 pub fn affected_addresses(
     effects: &types::effects::TransactionEffects,
 ) -> impl Iterator<Item = SomaAddress> {
-    effects
-        .all_changed_objects()
-        .into_iter()
-        .filter_map(|(_, owner, _)| match owner {
-            Owner::AddressOwner(address) => Some(address),
-            _ => None,
-        })
+    effects.all_changed_objects().into_iter().filter_map(|(_, owner, _)| match owner {
+        Owner::AddressOwner(address) => Some(address),
+        _ => None,
+    })
 }

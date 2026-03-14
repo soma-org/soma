@@ -25,10 +25,7 @@ impl RateLimiter {
         let burst =
             NonZeroU32::new(max_rows_per_second as u32).expect("max_rows_per_second must be > 0");
         let quota = Quota::per_second(burst);
-        Arc::new(Self {
-            limiter: GovRateLimiter::direct(quota),
-            burst,
-        })
+        Arc::new(Self { limiter: GovRateLimiter::direct(quota), burst })
     }
 
     async fn acquire(&self, count: usize) {
@@ -52,9 +49,7 @@ impl CompositeRateLimiter {
 
     #[cfg(test)]
     pub(crate) fn noop() -> Self {
-        Self {
-            limiters: Vec::new(),
-        }
+        Self { limiters: Vec::new() }
     }
 
     /// Acquire `count` tokens from every underlying limiter concurrently.

@@ -6,14 +6,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::schema::soma_targets;
+use indexer_alt_schema::soma::StoredTarget;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
 use types::metadata::{ManifestAPI, MetadataAPI};
 use types::target::TargetStatus;
-use indexer_alt_schema::schema::soma_targets;
-use indexer_alt_schema::soma::StoredTarget;
 
 pub struct SomaTargets;
 
@@ -36,10 +36,8 @@ impl Processor for SomaTargets {
                         TargetStatus::Claimed => "claimed".to_string(),
                     };
 
-                    let winning_distance_score = target
-                        .winning_distance_score
-                        .as_ref()
-                        .map(|t| t.as_scalar() as f64);
+                    let winning_distance_score =
+                        target.winning_distance_score.as_ref().map(|t| t.as_scalar() as f64);
                     let winning_loss_score = target
                         .winning_loss_score
                         .as_ref()

@@ -74,18 +74,14 @@ impl Address {
         };
 
         // Build a map for fast lookup
-        let digest_map: std::collections::HashMap<i64, Vec<u8>> =
-            digests.into_iter().collect();
+        let digest_map: std::collections::HashMap<i64, Vec<u8>> = digests.into_iter().collect();
 
         let mut connection = Connection::new(has_previous, has_next);
         for seq in seq_nums {
             if let Some(digest) = digest_map.get(&seq) {
                 connection.edges.push(Edge::new(
                     seq.to_string(),
-                    TransactionRef {
-                        tx_sequence_number: seq,
-                        tx_digest: digest.clone(),
-                    },
+                    TransactionRef { tx_sequence_number: seq, tx_digest: digest.clone() },
                 ));
             }
         }

@@ -6,8 +6,8 @@
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use types::crypto::AuthorityStrongQuorumSignInfo;
 use types::checkpoints::{CheckpointContents, CheckpointSequenceNumber, CheckpointSummary};
+use types::crypto::AuthorityStrongQuorumSignInfo;
 
 use crate::CheckpointData;
 

@@ -5,9 +5,9 @@
 use anyhow::Context;
 use anyhow::Result;
 use clap::Parser;
+use indexer_framework::Indexer;
 use indexer_framework::IndexerArgs;
 use indexer_framework::ingestion::{ClientArgs, IngestionConfig};
-use indexer_framework::Indexer;
 use indexer_framework::postgres::{Db, DbArgs};
 use tracing::info;
 
@@ -38,9 +38,7 @@ async fn main() -> Result<()> {
     let registry = prometheus::Registry::new();
 
     let db = Db::for_write(
-        args.database_url
-            .parse()
-            .context("Failed to parse DATABASE_URL")?,
+        args.database_url.parse().context("Failed to parse DATABASE_URL")?,
         DbArgs::default(),
     )
     .await

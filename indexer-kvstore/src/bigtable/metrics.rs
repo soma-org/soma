@@ -28,12 +28,8 @@ pub(crate) struct KvMetrics {
 
 impl KvMetrics {
     pub(crate) fn new(registry: &Registry) -> Arc<Self> {
-        let latency_buckets = prometheus::exponential_buckets(1.0, 1.6, 24)
-            .unwrap()
-            .to_vec();
-        let batch_buckets = prometheus::exponential_buckets(1.0, 1.6, 20)
-            .unwrap()
-            .to_vec();
+        let latency_buckets = prometheus::exponential_buckets(1.0, 1.6, 24).unwrap().to_vec();
+        let batch_buckets = prometheus::exponential_buckets(1.0, 1.6, 20).unwrap().to_vec();
 
         Arc::new(Self {
             kv_get_success: register_int_counter_vec_with_registry!(

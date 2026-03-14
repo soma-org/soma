@@ -46,17 +46,13 @@ fn genesis_checkpoint() -> Checkpoint {
 fn transfer_checkpoint() -> Checkpoint {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
-    TestCheckpointBuilder::new(1)
-        .add_transfer_coin(sender, recipient, 1000)
-        .build()
+    TestCheckpointBuilder::new(1).add_transfer_coin(sender, recipient, 1000).build()
 }
 
 /// Helper to start emulator and create tables.
 async fn setup() -> (emulator::BigTableEmulator, BigTableClient) {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let client = emulator::client(emu.host()).await.unwrap();
     (emu, client)
 }
@@ -69,14 +65,8 @@ async fn test_checkpoint_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = genesis_checkpoint();
-    let entries = CheckpointsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::checkpoints::NAME, entries)
-        .await
-        .unwrap();
+    let entries = CheckpointsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::checkpoints::NAME, entries).await.unwrap();
 
     let mut results = client.get_checkpoints(&[0]).await.unwrap();
     assert_eq!(results.len(), 1);
@@ -95,17 +85,11 @@ async fn test_checkpoint_by_digest_roundtrip() {
     let arc = Arc::new(cp.clone());
 
     let entries = CheckpointsPipeline.process(&arc).await.unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::checkpoints::NAME, entries)
-        .await
-        .unwrap();
+    client.write_entries(indexer_kvstore::tables::checkpoints::NAME, entries).await.unwrap();
 
     let entries = CheckpointsByDigestPipeline.process(&arc).await.unwrap();
     client
-        .write_entries(
-            indexer_kvstore::tables::checkpoints_by_digest::NAME,
-            entries,
-        )
+        .write_entries(indexer_kvstore::tables::checkpoints_by_digest::NAME, entries)
         .await
         .unwrap();
 
@@ -125,14 +109,8 @@ async fn test_transaction_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = transfer_checkpoint();
-    let entries = TransactionsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::transactions::NAME, entries)
-        .await
-        .unwrap();
+    let entries = TransactionsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::transactions::NAME, entries).await.unwrap();
 
     let tx_digest = cp.contents.iter().next().unwrap().transaction;
     let results = client.get_transactions(&[tx_digest]).await.unwrap();
@@ -148,14 +126,8 @@ async fn test_object_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = transfer_checkpoint();
-    let entries = ObjectsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::objects::NAME, entries)
-        .await
-        .unwrap();
+    let entries = ObjectsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::objects::NAME, entries).await.unwrap();
 
     let first_tx = &cp.transactions[0];
     let output_objects: Vec<_> = first_tx.output_objects(&cp.object_set).collect();
@@ -176,24 +148,15 @@ async fn test_latest_object_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = transfer_checkpoint();
-    let entries = ObjectsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::objects::NAME, entries)
-        .await
-        .unwrap();
+    let entries = ObjectsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::objects::NAME, entries).await.unwrap();
 
     let first_tx = &cp.transactions[0];
     let output_objects: Vec<_> = first_tx.output_objects(&cp.object_set).collect();
     let obj = output_objects[0];
 
-    let latest = client
-        .get_latest_object(&obj.id())
-        .await
-        .unwrap()
-        .expect("latest object not found");
+    let latest =
+        client.get_latest_object(&obj.id()).await.unwrap().expect("latest object not found");
     assert_eq!(latest.id(), obj.id());
 }
 
@@ -205,20 +168,10 @@ async fn test_epoch_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = genesis_checkpoint();
-    let entries = EpochStartPipeline
-        .process(&Arc::new(cp))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::epochs::NAME, entries)
-        .await
-        .unwrap();
+    let entries = EpochStartPipeline.process(&Arc::new(cp)).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::epochs::NAME, entries).await.unwrap();
 
-    let epoch_data = client
-        .get_epoch(0)
-        .await
-        .unwrap()
-        .expect("epoch 0 not found");
+    let epoch_data = client.get_epoch(0).await.unwrap().expect("epoch 0 not found");
     assert_eq!(epoch_data.epoch, Some(0));
     assert!(epoch_data.system_state_bcs.is_some());
 }
@@ -238,20 +191,10 @@ async fn test_epoch_end_roundtrip() {
         .add_change_epoch(system_state)
         .build();
 
-    let entries = EpochEndPipeline
-        .process(&Arc::new(cp))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::epochs::NAME, entries)
-        .await
-        .unwrap();
+    let entries = EpochEndPipeline.process(&Arc::new(cp)).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::epochs::NAME, entries).await.unwrap();
 
-    let epoch_data = client
-        .get_epoch(0)
-        .await
-        .unwrap()
-        .expect("epoch 0 not found after end");
+    let epoch_data = client.get_epoch(0).await.unwrap().expect("epoch 0 not found after end");
     assert!(epoch_data.end_checkpoint.is_some());
 }
 
@@ -263,20 +206,10 @@ async fn test_latest_epoch_roundtrip() {
     let (_emu, mut client) = setup().await;
 
     let cp = genesis_checkpoint();
-    let entries = EpochStartPipeline
-        .process(&Arc::new(cp))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::epochs::NAME, entries)
-        .await
-        .unwrap();
+    let entries = EpochStartPipeline.process(&Arc::new(cp)).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::epochs::NAME, entries).await.unwrap();
 
-    let latest = client
-        .get_latest_epoch()
-        .await
-        .unwrap()
-        .expect("should find latest epoch");
+    let latest = client.get_latest_epoch().await.unwrap().expect("should find latest epoch");
     assert_eq!(latest.epoch, Some(0));
 }
 
@@ -289,14 +222,8 @@ async fn test_soma_targets_roundtrip() {
 
     let target = test_target(0, TargetStatus::Open, 1000);
     let cp = TestCheckpointBuilder::new(1).add_target(target).build();
-    let entries = SomaTargetsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::targets::NAME, entries)
-        .await
-        .unwrap();
+    let entries = SomaTargetsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::targets::NAME, entries).await.unwrap();
 
     // Read back via multi_get on targets table
     let first_tx = &cp.transactions[0];
@@ -307,10 +234,8 @@ async fn test_soma_targets_roundtrip() {
         .expect("should have a target object");
 
     let key = indexer_kvstore::tables::targets::encode_key(&target_obj.id().to_vec());
-    let results = client
-        .multi_get(indexer_kvstore::tables::targets::NAME, vec![key], None)
-        .await
-        .unwrap();
+    let results =
+        client.multi_get(indexer_kvstore::tables::targets::NAME, vec![key], None).await.unwrap();
     assert_eq!(results.len(), 1, "should find 1 target row");
 }
 
@@ -323,27 +248,17 @@ async fn test_soma_rewards_roundtrip() {
 
     let sender = SomaAddress::random();
     let target_id = types::object::ObjectID::random();
-    let cp = TestCheckpointBuilder::new(1)
-        .add_claim_rewards(sender, target_id, 500)
-        .build();
-    let entries = SomaRewardsPipeline
-        .process(&Arc::new(cp.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::rewards::NAME, entries)
-        .await
-        .unwrap();
+    let cp = TestCheckpointBuilder::new(1).add_claim_rewards(sender, target_id, 500).build();
+    let entries = SomaRewardsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::rewards::NAME, entries).await.unwrap();
 
     let tx_digest = cp.contents.iter().next().unwrap().transaction;
     let key = indexer_kvstore::tables::rewards::encode_key(
         &target_id.to_vec(),
         &tx_digest.inner().to_vec(),
     );
-    let results = client
-        .multi_get(indexer_kvstore::tables::rewards::NAME, vec![key], None)
-        .await
-        .unwrap();
+    let results =
+        client.multi_get(indexer_kvstore::tables::rewards::NAME, vec![key], None).await.unwrap();
     assert_eq!(results.len(), 1, "should find 1 reward row");
 }
 
@@ -362,11 +277,7 @@ async fn test_watermark_roundtrip() {
     };
     set_watermarks(&mut client, &wm).await;
 
-    let read_wm = client
-        .get_watermark()
-        .await
-        .unwrap()
-        .expect("watermark should exist");
+    let read_wm = client.get_watermark().await.unwrap().expect("watermark should exist");
     assert_eq!(read_wm.epoch_hi_inclusive, 5);
     assert_eq!(read_wm.checkpoint_hi_inclusive, 100);
     assert_eq!(read_wm.tx_hi, 500);
@@ -382,14 +293,8 @@ async fn test_multi_checkpoint_batch() {
 
     for seq in 0..3u64 {
         let cp = TestCheckpointBuilder::new(seq).build();
-        let entries = CheckpointsPipeline
-            .process(&Arc::new(cp))
-            .await
-            .unwrap();
-        client
-            .write_entries(indexer_kvstore::tables::checkpoints::NAME, entries)
-            .await
-            .unwrap();
+        let entries = CheckpointsPipeline.process(&Arc::new(cp)).await.unwrap();
+        client.write_entries(indexer_kvstore::tables::checkpoints::NAME, entries).await.unwrap();
     }
 
     let results = client.get_checkpoints(&[0, 1, 2]).await.unwrap();

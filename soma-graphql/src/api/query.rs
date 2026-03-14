@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use async_graphql::connection::{Connection, Edge};
 use async_graphql::{Context, Error, Object, Result};
-use diesel::dsl::count_star;
 use diesel::ExpressionMethods;
 use diesel::NullableExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::QueryDsl;
+use diesel::dsl::count_star;
 use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::BigInt;
@@ -45,13 +45,8 @@ impl Query {
     async fn chain_identifier(&self, ctx: &Context<'_>) -> Result<String> {
         // BigTable path: read genesis checkpoint from KvLoader
         if let Some(kv) = kv_loader(ctx) {
-            if let Some(cp) = kv
-                .get_checkpoint(0)
-                .await
-                .map_err(|e| Error::new(e.to_string()))?
-            {
-                let bytes =
-                    bcs::to_bytes(&cp.summary).map_err(|e| Error::new(e.to_string()))?;
+            if let Some(cp) = kv.get_checkpoint(0).await.map_err(|e| Error::new(e.to_string()))? {
+                let bytes = bcs::to_bytes(&cp.summary).map_err(|e| Error::new(e.to_string()))?;
                 return Ok(bs58::encode(&bytes).into_string());
             }
         }
@@ -99,16 +94,14 @@ impl Query {
         // "Latest" discovery always uses cp_sequence_numbers (never pruned).
         let seq = match sequence_number {
             Some(s) => s,
-            None => {
-                cp_sequence_numbers::table
-                    .select(cp_sequence_numbers::cp_sequence_number)
-                    .order(cp_sequence_numbers::cp_sequence_number.desc())
-                    .first::<i64>(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?
-                    .ok_or_else(|| Error::new("No checkpoints found"))?
-            }
+            None => cp_sequence_numbers::table
+                .select(cp_sequence_numbers::cp_sequence_number)
+                .order(cp_sequence_numbers::cp_sequence_number.desc())
+                .first::<i64>(conn.deref_mut())
+                .await
+                .optional()
+                .map_err(|e| Error::new(e.to_string()))?
+                .ok_or_else(|| Error::new("No checkpoints found"))?,
         };
 
         // Metadata from cp_sequence_numbers (never pruned).
@@ -122,10 +115,7 @@ impl Query {
 
         // BigTable path: read BCS content from KvLoader
         if let Some(kv) = kv_loader(ctx) {
-            let cp = kv
-                .get_checkpoint(seq as u64)
-                .await
-                .map_err(|e| Error::new(e.to_string()))?;
+            let cp = kv.get_checkpoint(seq as u64).await.map_err(|e| Error::new(e.to_string()))?;
 
             let Some(cp) = cp else {
                 return Ok(None);
@@ -170,11 +160,7 @@ impl Query {
     }
 
     /// Look up a transaction by digest (base58).
-    async fn transaction(
-        &self,
-        ctx: &Context<'_>,
-        digest: String,
-    ) -> Result<Option<Transaction>> {
+    async fn transaction(&self, ctx: &Context<'_>, digest: String) -> Result<Option<Transaction>> {
         let digest_bytes = bs58::decode(&digest)
             .into_vec()
             .map_err(|e| Error::new(format!("Invalid digest: {e}")))?;
@@ -186,10 +172,7 @@ impl Query {
                 .try_into()
                 .map_err(|_| Error::new("Digest must be 32 bytes"))?;
             let tx_digest = types::digests::TransactionDigest::new(arr);
-            let tx = kv
-                .get_transaction(&tx_digest)
-                .await
-                .map_err(|e| Error::new(e.to_string()))?;
+            let tx = kv.get_transaction(&tx_digest).await.map_err(|e| Error::new(e.to_string()))?;
 
             return Ok(tx.map(|t| Transaction {
                 tx_digest: digest_bytes,
@@ -244,17 +227,15 @@ impl Query {
         // Version discovery from obj_versions (Tier C, never pruned)
         let ver = match version {
             Some(v) => v,
-            None => {
-                obj_versions::table
-                    .select(obj_versions::object_version)
-                    .filter(obj_versions::object_id.eq(&id_bytes))
-                    .order(obj_versions::object_version.desc())
-                    .first::<i64>(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?
-                    .ok_or_else(|| Error::new("Object not found"))?
-            }
+            None => obj_versions::table
+                .select(obj_versions::object_version)
+                .filter(obj_versions::object_id.eq(&id_bytes))
+                .order(obj_versions::object_version.desc())
+                .first::<i64>(conn.deref_mut())
+                .await
+                .optional()
+                .map_err(|e| Error::new(e.to_string()))?
+                .ok_or_else(|| Error::new("Object not found"))?,
         };
 
         // Metadata from obj_info (Tier C, never pruned)
@@ -275,24 +256,19 @@ impl Query {
             })
         });
 
-        let object_type = info
-            .as_ref()
-            .and_then(|i| i.module.as_ref().cloned());
+        let object_type = info.as_ref().and_then(|i| i.module.as_ref().cloned());
 
         // BCS content: BigTable path
         if let Some(kv) = kv_loader(ctx) {
             let obj_id = types::object::ObjectID::from_bytes(&id_bytes)
                 .map_err(|e| Error::new(e.to_string()))?;
-            let obj = kv
-                .get_object(&obj_id, ver as u64)
-                .await
-                .map_err(|e| Error::new(e.to_string()))?;
+            let obj =
+                kv.get_object(&obj_id, ver as u64).await.map_err(|e| Error::new(e.to_string()))?;
 
             return Ok(Some(GqlObject {
                 object_id: id_bytes,
                 object_version: ver,
-                serialized_object_bcs: obj
-                    .map(|o| bcs::to_bytes(&o).unwrap_or_default()),
+                serialized_object_bcs: obj.map(|o| bcs::to_bytes(&o).unwrap_or_default()),
                 owner_kind: owner_kind.map(String::from),
                 owner_id: info.and_then(|i| i.owner_id),
                 object_type,
@@ -327,9 +303,7 @@ impl Query {
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
         let addr_bytes =
             hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
-        Ok(Address {
-            address: addr_bytes,
-        })
+        Ok(Address { address: addr_bytes })
     }
 
     /// Look up an epoch by ID. Returns the latest if omitted.
@@ -342,24 +316,20 @@ impl Query {
         // "Latest" epoch discovery uses cp_sequence_numbers (never pruned).
         let epoch_num = match epoch_id {
             Some(e) => e,
-            None => {
-                cp_sequence_numbers::table
-                    .select(cp_sequence_numbers::epoch)
-                    .order(cp_sequence_numbers::epoch.desc())
-                    .first::<i64>(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?
-                    .ok_or_else(|| Error::new("No epochs found"))?
-            }
+            None => cp_sequence_numbers::table
+                .select(cp_sequence_numbers::epoch)
+                .order(cp_sequence_numbers::epoch.desc())
+                .first::<i64>(conn.deref_mut())
+                .await
+                .optional()
+                .map_err(|e| Error::new(e.to_string()))?
+                .ok_or_else(|| Error::new("No epochs found"))?,
         };
 
         // BigTable path
         if let Some(kv) = kv_loader(ctx) {
-            let epoch_data = kv
-                .get_epoch(epoch_num as u64)
-                .await
-                .map_err(|e| Error::new(e.to_string()))?;
+            let epoch_data =
+                kv.get_epoch(epoch_num as u64).await.map_err(|e| Error::new(e.to_string()))?;
 
             let Some(ed) = epoch_data else {
                 return Ok(None);
@@ -428,13 +398,17 @@ impl Query {
         use indexer_alt_schema::schema::soma_targets;
 
         // Split into nested tuples to stay within Diesel's 16-element tuple limit.
-        type RowA = (
-            Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>,
-            i64, i64, i32,
-        );
+        type RowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
         type RowB = (
-            Option<f64>, Option<f64>, Option<Vec<u8>>, Option<i64>,
-            f64, String, Option<String>, Option<Vec<u8>>, Option<i64>,
+            Option<f64>,
+            Option<f64>,
+            Option<Vec<u8>>,
+            Option<i64>,
+            f64,
+            String,
+            Option<String>,
+            Option<Vec<u8>>,
+            Option<i64>,
         );
 
         let stored: Option<(RowA, RowB)> = soma_targets::table
@@ -483,9 +457,7 @@ impl Query {
     ) -> Result<Connection<String, Target>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit = first
-            .unwrap_or(config.default_page_size)
-            .min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         use indexer_alt_schema::schema::soma_targets;
@@ -496,22 +468,25 @@ impl Query {
                 if parts.len() != 2 {
                     return Err(Error::new("Invalid cursor format"));
                 }
-                let cp: i64 = parts[1]
-                    .parse()
-                    .map_err(|e| Error::new(format!("Invalid cursor cp: {e}")))?;
+                let cp: i64 =
+                    parts[1].parse().map_err(|e| Error::new(format!("Invalid cursor cp: {e}")))?;
                 Some(cp)
             }
             None => None,
         };
 
         // Split into nested tuples to stay within Diesel's 16-element tuple limit.
-        type RowA = (
-            Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>,
-            i64, i64, i32,
-        );
+        type RowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
         type RowB = (
-            Option<f64>, Option<f64>, Option<Vec<u8>>, Option<i64>,
-            f64, String, Option<String>, Option<Vec<u8>>, Option<i64>,
+            Option<f64>,
+            Option<f64>,
+            Option<Vec<u8>>,
+            Option<i64>,
+            f64,
+            String,
+            Option<String>,
+            Option<Vec<u8>>,
+            Option<i64>,
         );
 
         let mut query = soma_targets::table
@@ -577,10 +552,8 @@ impl Query {
             query = query.filter(soma_targets::cp_sequence_number.lt(acp));
         }
 
-        let results: Vec<(RowA, RowB)> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let results: Vec<(RowA, RowB)> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
         let has_next = results.len() as i64 > limit;
         let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
@@ -642,9 +615,7 @@ impl Query {
     ) -> Result<Connection<String, Model>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit = first
-            .unwrap_or(config.default_page_size)
-            .min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         use indexer_alt_schema::schema::soma_models;
@@ -695,10 +666,8 @@ impl Query {
             }
         }
 
-        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
         let has_next = results.len() as i64 > limit;
         let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
@@ -707,9 +676,7 @@ impl Query {
         let mut connection = Connection::new(has_previous, has_next);
         for (a, b, c) in nodes {
             let cursor = hex::encode(&a.0);
-            connection
-                .edges
-                .push(Edge::new(cursor, model_from_row(a, b, c)));
+            connection.edges.push(Edge::new(cursor, model_from_row(a, b, c)));
         }
 
         Ok(connection)
@@ -771,10 +738,8 @@ impl Query {
             query = query.filter(soma_rewards::target_id.eq_any(ids));
         }
 
-        let reward_rows: Vec<RewardRow> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let reward_rows: Vec<RewardRow> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
         if reward_rows.is_empty() {
             return Ok(vec![]);
@@ -801,10 +766,7 @@ impl Query {
         let mut balance_map: std::collections::HashMap<Vec<u8>, Vec<RewardBalance>> =
             std::collections::HashMap::new();
         for (tid, recipient, amount) in balance_rows {
-            balance_map
-                .entry(tid)
-                .or_default()
-                .push(RewardBalance { recipient, amount });
+            balance_map.entry(tid).or_default().push(RewardBalance { recipient, amount });
         }
 
         Ok(reward_rows
@@ -820,11 +782,7 @@ impl Query {
     }
 
     /// Look up a staked SOMA position by its object ID.
-    async fn staked_soma(
-        &self,
-        ctx: &Context<'_>,
-        id: String,
-    ) -> Result<Option<StakedSoma>> {
+    async fn staked_soma(&self, ctx: &Context<'_>, id: String) -> Result<Option<StakedSoma>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
@@ -834,14 +792,7 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_staked_soma;
 
-        type Row = (
-            Vec<u8>,
-            i64,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-            Option<i64>,
-            Option<i64>,
-        );
+        type Row = (Vec<u8>, i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, Option<i64>);
 
         let stored: Option<Row> = soma_staked_soma::table
             .select((
@@ -883,14 +834,12 @@ impl Query {
     ) -> Result<Connection<String, StakedSoma>> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
-        let limit = first
-            .unwrap_or(config.default_page_size)
-            .min(config.max_page_size) as i64;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
         let owner_hex = owner.strip_prefix("0x").unwrap_or(&owner);
-        let owner_bytes =
-            hex::decode(owner_hex).map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
+        let owner_bytes = hex::decode(owner_hex)
+            .map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
 
         use indexer_alt_schema::schema::soma_staked_soma;
 
@@ -899,14 +848,7 @@ impl Query {
             .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
             .transpose()?;
 
-        type Row = (
-            Vec<u8>,
-            i64,
-            Option<Vec<u8>>,
-            Option<Vec<u8>>,
-            Option<i64>,
-            Option<i64>,
-        );
+        type Row = (Vec<u8>, i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, Option<i64>);
 
         // Step 1: Find staked_soma_ids that have ever been owned by this address.
         let mut id_query = soma_staked_soma::table
@@ -919,10 +861,8 @@ impl Query {
             id_query = id_query.filter(soma_staked_soma::staked_soma_id.gt(aid));
         }
 
-        let candidate_ids: Vec<Vec<u8>> = id_query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let candidate_ids: Vec<Vec<u8>> =
+            id_query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
         if candidate_ids.is_empty() {
             return Ok(Connection::new(false, false));
@@ -1039,10 +979,10 @@ impl Query {
             let bytes: Option<Vec<u8>> = if let Some(kv) = kv {
                 let obj_id = types::object::ObjectID::from_bytes(oid.as_slice())
                     .map_err(|e| Error::new(e.to_string()))?;
-                let obj: Option<types::object::Object> = kv
-                    .get_object(&obj_id, ver as u64)
-                    .await
-                    .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
+                let obj: Option<types::object::Object> =
+                    kv.get_object(&obj_id, ver as u64)
+                        .await
+                        .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
                 obj.and_then(|o| bcs::to_bytes(&o).ok())
             } else {
                 let serialized: Option<Option<Vec<u8>>> = kv_objects::table
@@ -1122,18 +1062,9 @@ impl Query {
             .map_err(|e| Error::new(e.to_string()))?;
 
         let total_stake = total_stake.unwrap_or(0);
-        let avg_stake = if total_count > 0 {
-            total_stake as f64 / total_count as f64
-        } else {
-            0.0
-        };
+        let avg_stake = if total_count > 0 { total_stake as f64 / total_count as f64 } else { 0.0 };
 
-        Ok(ModelAggregates {
-            total_count,
-            total_stake,
-            avg_stake,
-            active_count,
-        })
+        Ok(ModelAggregates { total_count, total_stake, avg_stake, active_count })
     }
 
     /// Aggregate statistics for targets at a given epoch (or latest).
@@ -1208,11 +1139,7 @@ impl Query {
     }
 
     /// Aggregate statistics for rewards at a given epoch.
-    async fn reward_aggregates(
-        &self,
-        ctx: &Context<'_>,
-        epoch: i64,
-    ) -> Result<RewardAggregates> {
+    async fn reward_aggregates(&self, ctx: &Context<'_>, epoch: i64) -> Result<RewardAggregates> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;
 
@@ -1236,10 +1163,7 @@ impl Query {
             .await
             .map_err(|e| Error::new(e.to_string()))?;
 
-        Ok(RewardAggregates {
-            total_count,
-            total_amount: total_amount.unwrap_or(0),
-        })
+        Ok(RewardAggregates { total_count, total_amount: total_amount.unwrap_or(0) })
     }
 
     /// Look up the epoch state for a given epoch (or latest).
@@ -1327,15 +1251,10 @@ impl Query {
             query = query.filter(soma_models::epoch.le(to));
         }
 
-        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> = query
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let results: Vec<(ModelRowA, ModelRowB, ModelRowC)> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
 
-        Ok(results
-            .into_iter()
-            .map(|(a, b, c)| model_from_row(a, b, c))
-            .collect())
+        Ok(results.into_iter().map(|(a, b, c)| model_from_row(a, b, c)).collect())
     }
 
     /// The range of checkpoints for which index-backed queries have complete data.
@@ -1356,10 +1275,9 @@ impl Query {
             .map_err(|e| Error::new(e.to_string()))?;
 
         match wm {
-            Some((reader_lo, checkpoint_hi)) => Ok(AvailableRange {
-                first: reader_lo,
-                last: checkpoint_hi,
-            }),
+            Some((reader_lo, checkpoint_hi)) => {
+                Ok(AvailableRange { first: reader_lo, last: checkpoint_hi })
+            }
             None => {
                 // No watermark = no pruning = everything available
                 let max_cp: Option<i64> = cp_sequence_numbers::table
@@ -1369,23 +1287,24 @@ impl Query {
                     .await
                     .optional()
                     .map_err(|e| Error::new(e.to_string()))?;
-                Ok(AvailableRange {
-                    first: 0,
-                    last: max_cp.unwrap_or(0),
-                })
+                Ok(AvailableRange { first: 0, last: max_cp.unwrap_or(0) })
             }
         }
     }
 }
 
 /// Convert nested tuple rows into a Target.
-type TargetRowA = (
-    Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>,
-    i64, i64, i32,
-);
+type TargetRowA = (Vec<u8>, i64, i64, String, Option<Vec<u8>>, Option<Vec<u8>>, i64, i64, i32);
 type TargetRowB = (
-    Option<f64>, Option<f64>, Option<Vec<u8>>, Option<i64>,
-    f64, String, Option<String>, Option<Vec<u8>>, Option<i64>,
+    Option<f64>,
+    Option<f64>,
+    Option<Vec<u8>>,
+    Option<i64>,
+    f64,
+    String,
+    Option<String>,
+    Option<Vec<u8>>,
+    Option<i64>,
 );
 
 fn target_from_row(a: TargetRowA, b: TargetRowB) -> Target {
@@ -1447,13 +1366,7 @@ type ModelRowB = (
 );
 
 /// Last 5 columns of soma_models (pending update fields).
-type ModelRowC = (
-    Option<String>,
-    Option<Vec<u8>>,
-    Option<i64>,
-    Option<Vec<u8>>,
-    Option<i64>,
-);
+type ModelRowC = (Option<String>, Option<Vec<u8>>, Option<i64>, Option<Vec<u8>>, Option<i64>);
 
 fn model_select() -> (
     (

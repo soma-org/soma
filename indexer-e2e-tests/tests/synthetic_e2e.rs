@@ -20,7 +20,9 @@ use indexer_e2e_tests::{OffchainCluster, write_checkpoint_file};
 use indexer_framework::IndexerArgs;
 use types::base::SomaAddress;
 use types::target::TargetStatus;
-use types::test_checkpoint_data_builder::{TestCheckpointBuilder, default_test_system_state, test_target, test_filled_target};
+use types::test_checkpoint_data_builder::{
+    TestCheckpointBuilder, default_test_system_state, test_filled_target, test_target,
+};
 
 /// Verify soma_targets pipeline works through the real indexer framework.
 #[tokio::test(flavor = "multi_thread")]
@@ -46,10 +48,7 @@ async fn test_soma_targets_through_pipeline() {
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(
         dir,
-        IndexerArgs {
-            last_checkpoint: Some(0),
-            ..Default::default()
-        },
+        IndexerArgs { last_checkpoint: Some(0), ..Default::default() },
         &registry,
     )
     .await
@@ -63,39 +62,18 @@ async fn test_soma_targets_through_pipeline() {
     let mut conn = cluster.db().connect().await.unwrap();
 
     // Verify soma_targets has a row
-    let target_count: i64 = soma_targets::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        target_count > 0,
-        "Expected at least 1 row in soma_targets"
-    );
+    let target_count: i64 = soma_targets::table.count().get_result(conn.deref_mut()).await.unwrap();
+    assert!(target_count > 0, "Expected at least 1 row in soma_targets");
 
     // Verify the target has the correct status
-    let statuses: Vec<String> = soma_targets::table
-        .select(soma_targets::status)
-        .load(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        statuses.contains(&"open".to_string()),
-        "Expected an open target, got: {:?}",
-        statuses
-    );
+    let statuses: Vec<String> =
+        soma_targets::table.select(soma_targets::status).load(conn.deref_mut()).await.unwrap();
+    assert!(statuses.contains(&"open".to_string()), "Expected an open target, got: {:?}", statuses);
 
     // Verify reward_pool
-    let pools: Vec<i64> = soma_targets::table
-        .select(soma_targets::reward_pool)
-        .load(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        pools.contains(&5_000_000),
-        "Expected reward_pool = 5000000, got: {:?}",
-        pools
-    );
+    let pools: Vec<i64> =
+        soma_targets::table.select(soma_targets::reward_pool).load(conn.deref_mut()).await.unwrap();
+    assert!(pools.contains(&5_000_000), "Expected reward_pool = 5000000, got: {:?}", pools);
 
     tracing::info!("test_soma_targets_through_pipeline passed");
 }
@@ -124,10 +102,7 @@ async fn test_soma_rewards_through_pipeline() {
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(
         dir,
-        IndexerArgs {
-            last_checkpoint: Some(0),
-            ..Default::default()
-        },
+        IndexerArgs { last_checkpoint: Some(0), ..Default::default() },
         &registry,
     )
     .await
@@ -141,26 +116,13 @@ async fn test_soma_rewards_through_pipeline() {
     let mut conn = cluster.db().connect().await.unwrap();
 
     // Verify soma_rewards has a row
-    let reward_count: i64 = soma_rewards::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        reward_count > 0,
-        "Expected at least 1 row in soma_rewards"
-    );
+    let reward_count: i64 = soma_rewards::table.count().get_result(conn.deref_mut()).await.unwrap();
+    assert!(reward_count > 0, "Expected at least 1 row in soma_rewards");
 
     // Verify the target_id matches
-    let target_ids: Vec<Vec<u8>> = soma_rewards::table
-        .select(soma_rewards::target_id)
-        .load(conn.deref_mut())
-        .await
-        .unwrap();
-    assert!(
-        target_ids.contains(&target_id.to_vec()),
-        "Expected target_id in soma_rewards"
-    );
+    let target_ids: Vec<Vec<u8>> =
+        soma_rewards::table.select(soma_rewards::target_id).load(conn.deref_mut()).await.unwrap();
+    assert!(target_ids.contains(&target_id.to_vec()), "Expected target_id in soma_rewards");
 
     tracing::info!("test_soma_rewards_through_pipeline passed");
 }
@@ -201,10 +163,7 @@ async fn test_multi_checkpoint_with_targets() {
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(
         dir,
-        IndexerArgs {
-            last_checkpoint: Some(1),
-            ..Default::default()
-        },
+        IndexerArgs { last_checkpoint: Some(1), ..Default::default() },
         &registry,
     )
     .await
@@ -226,22 +185,13 @@ async fn test_multi_checkpoint_with_targets() {
         .await
         .unwrap();
 
-    assert_eq!(
-        target_rows.len(),
-        2,
-        "Expected 2 target versions, got {}",
-        target_rows.len()
-    );
+    assert_eq!(target_rows.len(), 2, "Expected 2 target versions, got {}", target_rows.len());
     assert_eq!(target_rows[0].1, "open");
     assert_eq!(target_rows[1].1, "filled");
 
     // Verify watermarks are all at checkpoint 1
     let latest = cluster.latest_checkpoint().await.unwrap();
-    assert_eq!(
-        latest,
-        Some(1),
-        "All watermarks should be at checkpoint 1"
-    );
+    assert_eq!(latest, Some(1), "All watermarks should be at checkpoint 1");
 
     tracing::info!("test_multi_checkpoint_with_targets passed");
 }
@@ -270,10 +220,7 @@ async fn test_indexer_exits_after_last_checkpoint() {
     let registry = prometheus::Registry::new();
     let cluster = OffchainCluster::new(
         dir,
-        IndexerArgs {
-            last_checkpoint: Some(0),
-            ..Default::default()
-        },
+        IndexerArgs { last_checkpoint: Some(0), ..Default::default() },
         &registry,
     )
     .await
@@ -286,18 +233,10 @@ async fn test_indexer_exits_after_last_checkpoint() {
 
     let mut conn = cluster.db().connect().await.unwrap();
 
-    let cp_count: i64 = kv_checkpoints::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let cp_count: i64 = kv_checkpoints::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert_eq!(cp_count, 1, "Expected exactly 1 checkpoint");
 
-    let tx_count: i64 = tx_digests::table
-        .count()
-        .get_result(conn.deref_mut())
-        .await
-        .unwrap();
+    let tx_count: i64 = tx_digests::table.count().get_result(conn.deref_mut()).await.unwrap();
     assert!(tx_count > 0, "Expected at least 1 tx_digest");
 
     tracing::info!("test_indexer_exits_after_last_checkpoint passed");

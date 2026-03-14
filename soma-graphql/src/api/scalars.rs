@@ -11,11 +11,8 @@ pub struct Base64(pub Vec<u8>);
 impl ScalarType for Base64 {
     fn parse(value: Value) -> InputValueResult<Self> {
         if let Value::String(s) = &value {
-            let bytes = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                s,
-            )
-            .map_err(InputValueError::custom)?;
+            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, s)
+                .map_err(InputValueError::custom)?;
             Ok(Base64(bytes))
         } else {
             Err(InputValueError::expected_type(value))
@@ -23,10 +20,7 @@ impl ScalarType for Base64 {
     }
 
     fn to_value(&self) -> Value {
-        Value::String(base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &self.0,
-        ))
+        Value::String(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &self.0))
     }
 }
 
@@ -43,9 +37,7 @@ impl ScalarType for BigInt {
                 Ok(BigInt(n))
             }
             Value::Number(n) => {
-                let n = n.as_i64().ok_or_else(|| {
-                    InputValueError::custom("Expected integer")
-                })?;
+                let n = n.as_i64().ok_or_else(|| InputValueError::custom("Expected integer"))?;
                 Ok(BigInt(n))
             }
             _ => Err(InputValueError::expected_type(value)),
@@ -86,9 +78,7 @@ pub struct Digest(pub Vec<u8>);
 impl ScalarType for Digest {
     fn parse(value: Value) -> InputValueResult<Self> {
         if let Value::String(s) = &value {
-            let bytes = bs58::decode(s)
-                .into_vec()
-                .map_err(InputValueError::custom)?;
+            let bytes = bs58::decode(s).into_vec().map_err(InputValueError::custom)?;
             Ok(Digest(bytes))
         } else {
             Err(InputValueError::expected_type(value))
@@ -109,14 +99,14 @@ impl ScalarType for DateTime {
     fn parse(value: Value) -> InputValueResult<Self> {
         match &value {
             Value::String(s) => {
-                let dt = chrono::DateTime::parse_from_rfc3339(s)
-                    .map_err(InputValueError::custom)?;
+                let dt =
+                    chrono::DateTime::parse_from_rfc3339(s).map_err(InputValueError::custom)?;
                 Ok(DateTime(dt.timestamp_millis()))
             }
             Value::Number(n) => {
-                let ms = n.as_i64().ok_or_else(|| {
-                    InputValueError::custom("Expected integer timestamp_ms")
-                })?;
+                let ms = n
+                    .as_i64()
+                    .ok_or_else(|| InputValueError::custom("Expected integer timestamp_ms"))?;
                 Ok(DateTime(ms))
             }
             _ => Err(InputValueError::expected_type(value)),

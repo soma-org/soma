@@ -39,16 +39,12 @@ pub async fn get_transaction(
         })?;
 
     let read_mask = {
-        let read_mask = request
-            .read_mask
-            .unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
-        read_mask
-            .validate::<ExecutedTransaction>()
-            .map_err(|path| {
-                FieldViolation::new("read_mask")
-                    .with_description(format!("invalid read_mask path: {path}"))
-                    .with_reason(ErrorReason::FieldInvalid)
-            })?;
+        let read_mask = request.read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
+        read_mask.validate::<ExecutedTransaction>().map_err(|path| {
+            FieldViolation::new("read_mask")
+                .with_description(format!("invalid read_mask path: {path}"))
+                .with_reason(ErrorReason::FieldInvalid)
+        })?;
         FieldMaskTree::from(read_mask)
     };
 
@@ -57,10 +53,7 @@ pub async fn get_transaction(
 
     let mut results = client.get_transactions(&[core_digest]).await?;
     let tx_data = results.pop().ok_or_else(|| {
-        RpcError::new(
-            rpc_tonic::Code::NotFound,
-            format!("Transaction {core_digest} not found"),
-        )
+        RpcError::new(rpc_tonic::Code::NotFound, format!("Transaction {core_digest} not found"))
     })?;
 
     let transaction = transaction_to_response(tx_data, &read_mask)?;
@@ -69,19 +62,15 @@ pub async fn get_transaction(
 
 pub async fn batch_get_transactions(
     server: &KvRpcServer,
-    BatchGetTransactionsRequest {
-        digests, read_mask, ..
-    }: BatchGetTransactionsRequest,
+    BatchGetTransactionsRequest { digests, read_mask, .. }: BatchGetTransactionsRequest,
 ) -> Result<BatchGetTransactionsResponse, RpcError> {
     let read_mask = {
         let read_mask = read_mask.unwrap_or_else(|| FieldMask::from_str(READ_MASK_DEFAULT));
-        read_mask
-            .validate::<ExecutedTransaction>()
-            .map_err(|path| {
-                FieldViolation::new("read_mask")
-                    .with_description(format!("invalid read_mask path: {path}"))
-                    .with_reason(ErrorReason::FieldInvalid)
-            })?;
+        read_mask.validate::<ExecutedTransaction>().map_err(|path| {
+            FieldViolation::new("read_mask")
+                .with_description(format!("invalid read_mask path: {path}"))
+                .with_reason(ErrorReason::FieldInvalid)
+        })?;
         FieldMaskTree::from(read_mask)
     };
 
@@ -98,8 +87,7 @@ pub async fn batch_get_transactions(
                             .with_reason(ErrorReason::FieldInvalid),
                     )
                 })?;
-                let core_digest =
-                    types::digests::TransactionDigest::new(digest.into_inner());
+                let core_digest = types::digests::TransactionDigest::new(digest.into_inner());
                 let mut tx_results = client.get_transactions(&[core_digest]).await?;
                 let tx_data = tx_results.pop().ok_or_else(|| {
                     RpcError::new(
@@ -131,18 +119,12 @@ fn transaction_to_response(
     // Convert core types to SDK types
     let sdk_signed_tx: rpc::types::SignedTransaction =
         source.transaction.clone().try_into().map_err(|e| {
-            RpcError::new(
-                rpc_tonic::Code::Internal,
-                format!("failed to convert transaction: {e}"),
-            )
+            RpcError::new(rpc_tonic::Code::Internal, format!("failed to convert transaction: {e}"))
         })?;
 
     let sdk_effects: rpc::types::TransactionEffects =
         source.effects.clone().try_into().map_err(|e| {
-            RpcError::new(
-                rpc_tonic::Code::Internal,
-                format!("failed to convert effects: {e}"),
-            )
+            RpcError::new(rpc_tonic::Code::Internal, format!("failed to convert effects: {e}"))
         })?;
 
     if mask.contains(ExecutedTransaction::DIGEST_FIELD.name) {

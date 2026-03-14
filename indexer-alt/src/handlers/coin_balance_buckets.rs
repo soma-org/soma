@@ -7,14 +7,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::objects::{StoredCoinBalanceBucket, StoredCoinOwnerKind};
+use indexer_alt_schema::schema::coin_balance_buckets;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::effects::TransactionEffectsAPI;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::{Object, ObjectType, Owner};
-use indexer_alt_schema::objects::{StoredCoinBalanceBucket, StoredCoinOwnerKind};
-use indexer_alt_schema::schema::coin_balance_buckets;
 
 use crate::handlers::checkpoint_input_objects;
 
@@ -22,11 +22,7 @@ pub struct CoinBalanceBuckets;
 
 /// Compute the balance bucket using log10 of the coin balance.
 fn get_coin_balance_bucket(balance: u64) -> i16 {
-    if balance == 0 {
-        0
-    } else {
-        balance.ilog10() as i16
-    }
+    if balance == 0 { 0 } else { balance.ilog10() as i16 }
 }
 
 /// Determine the CoinOwnerKind for a Soma Owner.
@@ -61,12 +57,7 @@ impl Processor for CoinBalanceBuckets {
     type Value = StoredCoinBalanceBucket;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
-        let Checkpoint {
-            transactions,
-            summary,
-            object_set,
-            ..
-        } = checkpoint.as_ref();
+        let Checkpoint { transactions, summary, object_set, .. } = checkpoint.as_ref();
 
         let cp_sequence_number = summary.sequence_number as i64;
         let checkpoint_input_objects = checkpoint_input_objects(checkpoint)?;
@@ -107,7 +98,11 @@ impl Processor for CoinBalanceBuckets {
                             let old_balance = old.as_coin()?;
                             let old_bucket = get_coin_balance_bucket(old_balance);
                             let (old_kind, old_id, _) = coin_data(old)?;
-                            Some(old_bucket != new_bucket || old_kind != owner_kind || old_id != owner_id)
+                            Some(
+                                old_bucket != new_bucket
+                                    || old_kind != owner_kind
+                                    || old_id != owner_id,
+                            )
                         })
                         .unwrap_or(true); // If no old object, it's new
 

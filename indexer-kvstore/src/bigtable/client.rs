@@ -140,9 +140,7 @@ impl BigTableClient {
         channel_pool_size: Option<usize>,
         credentials_path: Option<String>,
     ) -> Result<Self> {
-        let pool_size = channel_pool_size
-            .unwrap_or(DEFAULT_CHANNEL_POOL_SIZE)
-            .max(1);
+        let pool_size = channel_pool_size.unwrap_or(DEFAULT_CHANNEL_POOL_SIZE).max(1);
         let policy = if is_read_only {
             "https://www.googleapis.com/auth/bigtable.data.readonly"
         } else {
@@ -168,11 +166,8 @@ impl BigTableClient {
         let channel = if pool_size > 1 {
             let (channel, tx) = Channel::balance_channel::<usize>(64);
             for i in 0..pool_size {
-                tx.try_send(tonic::transport::channel::Change::Insert(
-                    i,
-                    endpoint.clone(),
-                ))
-                .expect("channel balancer dropped");
+                tx.try_send(tonic::transport::channel::Change::Insert(i, endpoint.clone()))
+                    .expect("channel balancer dropped");
             }
             channel
         } else {
@@ -201,11 +196,7 @@ impl BigTableClient {
         let pipeline_key = tables::watermarks::encode_key(pipeline);
 
         let rows = self
-            .multi_get(
-                tables::watermark_alt_legacy::NAME,
-                vec![pipeline_key.clone()],
-                None,
-            )
+            .multi_get(tables::watermark_alt_legacy::NAME, vec![pipeline_key.clone()], None)
             .await?;
 
         for (key, row) in rows {
@@ -397,10 +388,7 @@ impl BigTableClient {
             return result;
         };
 
-        metrics
-            .kv_get_batch_size
-            .with_label_values(&labels)
-            .observe(num_keys_requested as f64);
+        metrics.kv_get_batch_size.with_label_values(&labels).observe(num_keys_requested as f64);
 
         if num_keys_requested > rows.len() {
             metrics
@@ -409,15 +397,9 @@ impl BigTableClient {
                 .inc_by((num_keys_requested - rows.len()) as u64);
         }
 
-        metrics
-            .kv_get_success
-            .with_label_values(&labels)
-            .inc_by(rows.len() as u64);
+        metrics.kv_get_success.with_label_values(&labels).inc_by(rows.len() as u64);
 
-        metrics
-            .kv_get_latency_ms
-            .with_label_values(&labels)
-            .observe(elapsed_ms);
+        metrics.kv_get_latency_ms.with_label_values(&labels).observe(elapsed_ms);
 
         if num_keys_requested > 0 {
             metrics
@@ -437,10 +419,8 @@ impl BigTableClient {
         if let Some(StatsView::FullReadStatsView(view)) =
             request_stats.as_ref().and_then(|r| r.stats_view.as_ref())
         {
-            if let Some(latency) = view
-                .request_latency_stats
-                .as_ref()
-                .and_then(|s| s.frontend_server_latency)
+            if let Some(latency) =
+                view.request_latency_stats.as_ref().and_then(|s| s.frontend_server_latency)
             {
                 if latency.seconds < 0 || latency.nanos < 0 {
                     return;
@@ -470,14 +450,10 @@ impl BigTableClient {
         keys: Vec<Vec<u8>>,
         filter: Option<RowFilter>,
     ) -> Result<Vec<(Bytes, Vec<(Bytes, Bytes)>)>> {
-        let version_filter = RowFilter {
-            filter: Some(Filter::CellsPerColumnLimitFilter(1)),
-        };
+        let version_filter = RowFilter { filter: Some(Filter::CellsPerColumnLimitFilter(1)) };
         let filter = Some(match filter {
             Some(filter) => RowFilter {
-                filter: Some(Filter::Chain(Chain {
-                    filters: vec![filter, version_filter],
-                })),
+                filter: Some(Filter::Chain(Chain { filters: vec![filter, version_filter] })),
             },
             None => version_filter,
         });
@@ -505,9 +481,8 @@ impl BigTableClient {
         reversed: bool,
     ) -> Result<Vec<(Bytes, Vec<(Bytes, Bytes)>)>> {
         let start_time = Instant::now();
-        let result = self
-            .range_scan_internal(table_name, start_key, end_key, limit, reversed)
-            .await;
+        let result =
+            self.range_scan_internal(table_name, start_key, end_key, limit, reversed).await;
         let elapsed_ms = start_time.elapsed().as_millis() as f64;
         let labels = [&self.client_name, table_name];
         match &self.metrics {
@@ -517,10 +492,7 @@ impl BigTableClient {
                     if result.is_empty() {
                         metrics.kv_scan_not_found.with_label_values(&labels).inc();
                     }
-                    metrics
-                        .kv_scan_latency_ms
-                        .with_label_values(&labels)
-                        .observe(elapsed_ms);
+                    metrics.kv_scan_latency_ms.with_label_values(&labels).observe(elapsed_ms);
                     Ok(result)
                 }
                 Err(e) => {
@@ -544,16 +516,11 @@ impl BigTableClient {
             start_key: start_key.map(StartKey::StartKeyClosed),
             end_key: end_key.map(EndKey::EndKeyClosed),
         };
-        let filter = Some(RowFilter {
-            filter: Some(Filter::CellsPerColumnLimitFilter(1)),
-        });
+        let filter = Some(RowFilter { filter: Some(Filter::CellsPerColumnLimitFilter(1)) });
         let request = ReadRowsRequest {
             table_name: format!("{}{}", self.table_prefix, table_name),
             rows_limit: limit,
-            rows: Some(RowSet {
-                row_keys: vec![],
-                row_ranges: vec![range],
-            }),
+            rows: Some(RowSet { row_keys: vec![], row_ranges: vec![range] }),
             filter,
             reversed,
             request_stats_view: 2,
@@ -565,11 +532,7 @@ impl BigTableClient {
 
 impl std::fmt::Display for PartialWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "partial write: {} entries failed",
-            self.failed_keys.len()
-        )?;
+        write!(f, "partial write: {} entries failed", self.failed_keys.len())?;
         for failed in &self.failed_keys {
             write!(f, "\n  code {}: {}", failed.code, failed.message)?;
         }

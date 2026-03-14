@@ -45,8 +45,6 @@ impl Object {
 
     /// BCS-serialized object data. Null if the object was deleted.
     async fn serialized_object_bcs(&self) -> Option<Base64> {
-        self.serialized_object_bcs
-            .as_ref()
-            .map(|b| Base64(b.clone()))
+        self.serialized_object_bcs.as_ref().map(|b| Base64(b.clone()))
     }
 }

@@ -10,12 +10,12 @@ use anyhow::bail;
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
+use indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
+use indexer_alt_schema::schema::cp_sequence_numbers;
 use indexer_framework::pipeline::Processor;
 use indexer_framework::postgres::Connection;
 use indexer_framework::postgres::handler::Handler;
 use types::full_checkpoint_content::Checkpoint;
-use indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
-use indexer_alt_schema::schema::cp_sequence_numbers;
 
 pub struct CpSequenceNumbers;
 
@@ -31,11 +31,7 @@ impl Processor for CpSequenceNumbers {
 
         let tx_lo = network_total_transactions - checkpoint.transactions.len() as i64;
         let epoch = checkpoint.summary.epoch as i64;
-        Ok(vec![StoredCpSequenceNumbers {
-            cp_sequence_number,
-            tx_lo,
-            epoch,
-        }])
+        Ok(vec![StoredCpSequenceNumbers { cp_sequence_number, tx_lo, epoch }])
     }
 }
 
@@ -54,10 +50,7 @@ impl Handler for CpSequenceNumbers {
 pub async fn tx_interval(conn: &mut Connection<'_>, cps: Range<u64>) -> Result<Range<u64>> {
     let result = get_range(conn, cps).await?;
 
-    Ok(Range {
-        start: result.0.tx_lo as u64,
-        end: result.1.tx_lo as u64,
-    })
+    Ok(Range { start: result.0.tx_lo as u64, end: result.1.tx_lo as u64 })
 }
 
 /// Returns the epochs of the given checkpoint range. `start` is the epoch of the first checkpoint
@@ -65,10 +58,7 @@ pub async fn tx_interval(conn: &mut Connection<'_>, cps: Range<u64>) -> Result<R
 pub async fn epoch_interval(conn: &mut Connection<'_>, cps: Range<u64>) -> Result<Range<u64>> {
     let result = get_range(conn, cps).await?;
 
-    Ok(Range {
-        start: result.0.epoch as u64,
-        end: result.1.epoch as u64,
-    })
+    Ok(Range { start: result.0.epoch as u64, end: result.1.epoch as u64 })
 }
 
 /// Gets the tx and epoch mappings for the given checkpoint range.
@@ -76,15 +66,10 @@ pub(crate) async fn get_range(
     conn: &mut Connection<'_>,
     cps: Range<u64>,
 ) -> Result<(StoredCpSequenceNumbers, StoredCpSequenceNumbers)> {
-    let Range {
-        start: from_cp,
-        end: to_cp,
-    } = cps;
+    let Range { start: from_cp, end: to_cp } = cps;
 
     if from_cp >= to_cp {
-        bail!(format!(
-            "Invalid checkpoint range: `from` {from_cp} must be less than `to` {to_cp}"
-        ));
+        bail!(format!("Invalid checkpoint range: `from` {from_cp} must be less than `to` {to_cp}"));
     }
 
     let results = cp_sequence_numbers::table
@@ -95,21 +80,11 @@ pub(crate) async fn get_range(
         .await
         .map_err(anyhow::Error::from)?;
 
-    let Some(from) = results
-        .iter()
-        .find(|cp| cp.cp_sequence_number == from_cp as i64)
-    else {
-        bail!(format!(
-            "No checkpoint mapping found for checkpoint {from_cp}"
-        ));
+    let Some(from) = results.iter().find(|cp| cp.cp_sequence_number == from_cp as i64) else {
+        bail!(format!("No checkpoint mapping found for checkpoint {from_cp}"));
     };
-    let Some(to) = results
-        .iter()
-        .find(|cp| cp.cp_sequence_number == to_cp as i64)
-    else {
-        bail!(format!(
-            "No checkpoint mapping found for checkpoint {to_cp}"
-        ));
+    let Some(to) = results.iter().find(|cp| cp.cp_sequence_number == to_cp as i64) else {
+        bail!(format!("No checkpoint mapping found for checkpoint {to_cp}"));
     };
 
     Ok((from.clone(), to.clone()))

@@ -56,9 +56,7 @@ impl Target {
 
     /// The model used in the winning submission (if any).
     async fn winning_model_id(&self) -> Option<SomaAddress> {
-        self.winning_model_id
-            .as_ref()
-            .map(|id| SomaAddress(id.clone()))
+        self.winning_model_id.as_ref().map(|id| SomaAddress(id.clone()))
     }
 
     /// The pre-allocated reward amount (shannons).
@@ -88,9 +86,7 @@ impl Target {
 
     /// The owner of the winning model at fill time.
     async fn winning_model_owner(&self) -> Option<SomaAddress> {
-        self.winning_model_owner
-            .as_ref()
-            .map(|a| SomaAddress(a.clone()))
+        self.winning_model_owner.as_ref().map(|a| SomaAddress(a.clone()))
     }
 
     /// The epoch in which this target was filled (if filled or claimed).
@@ -121,9 +117,7 @@ impl Target {
 
     /// Checksum of the winning submission's data.
     async fn winning_data_checksum(&self) -> Option<Base64> {
-        self.winning_data_checksum
-            .as_ref()
-            .map(|c| Base64(c.clone()))
+        self.winning_data_checksum.as_ref().map(|c| Base64(c.clone()))
     }
 
     /// Size of the winning submission's data in bytes.
@@ -134,33 +128,28 @@ impl Target {
     /// Addresses that have filed fraud reports against this target.
     #[graphql(complexity = 10)]
     async fn reporters(&self, ctx: &Context<'_>) -> Result<Vec<SomaAddress>> {
-        use async_graphql::dataloader::DataLoader;
         use crate::loaders::{TargetReporterKey, TargetReportersLoader};
+        use async_graphql::dataloader::DataLoader;
 
         let loader = ctx.data::<DataLoader<TargetReportersLoader>>()?;
         let key = TargetReporterKey {
             target_id: self.target_id.clone(),
             cp_sequence_number: self.cp_sequence_number,
         };
-        let reporters = loader
-            .load_one(key)
-            .await
-            .map_err(|e| Error::new(e.to_string()))?
-            .unwrap_or_default();
+        let reporters =
+            loader.load_one(key).await.map_err(|e| Error::new(e.to_string()))?.unwrap_or_default();
         Ok(reporters.into_iter().map(SomaAddress).collect())
     }
 
     /// The reward claim for this target (if claimed).
     #[graphql(complexity = 10)]
     async fn reward(&self, ctx: &Context<'_>) -> Result<Option<super::reward::Reward>> {
-        use async_graphql::dataloader::DataLoader;
         use crate::loaders::TargetRewardLoader;
+        use async_graphql::dataloader::DataLoader;
 
         let loader = ctx.data::<DataLoader<TargetRewardLoader>>()?;
-        let reward = loader
-            .load_one(self.target_id.clone())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
+        let reward =
+            loader.load_one(self.target_id.clone()).await.map_err(|e| Error::new(e.to_string()))?;
         Ok(reward)
     }
 }

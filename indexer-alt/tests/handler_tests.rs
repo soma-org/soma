@@ -23,7 +23,7 @@ use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::ObjectID;
 use types::target::TargetStatus;
-use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_target, test_filled_target};
+use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_filled_target, test_target};
 
 use indexer_alt::handlers::*;
 
@@ -43,9 +43,7 @@ async fn setup() -> (indexer_pg_db::Db, indexer_pg_db::temp::TempDb) {
     )
     .await
     .expect("DB pool");
-    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS))
-        .await
-        .expect("migrations");
+    db.run_migrations(Some(&indexer_alt_schema::MIGRATIONS)).await.expect("migrations");
     (db, temp)
 }
 
@@ -68,10 +66,7 @@ fn simple_checkpoint() -> Checkpoint {
 #[ignore]
 async fn test_cp_sequence_numbers_process() {
     let cp = Arc::new(simple_checkpoint());
-    let values = cp_sequence_numbers::CpSequenceNumbers
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = cp_sequence_numbers::CpSequenceNumbers.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].cp_sequence_number, 1);
     assert_eq!(values[0].epoch, 0);
@@ -82,15 +77,10 @@ async fn test_cp_sequence_numbers_process() {
 async fn test_cp_sequence_numbers_commit() {
     let (db, _temp) = setup().await;
     let cp = Arc::new(simple_checkpoint());
-    let values = cp_sequence_numbers::CpSequenceNumbers
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = cp_sequence_numbers::CpSequenceNumbers.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = cp_sequence_numbers::CpSequenceNumbers::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = cp_sequence_numbers::CpSequenceNumbers::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -116,9 +106,7 @@ async fn test_tx_digests_commit() {
     let values = tx_digests::TxDigests.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = tx_digests::TxDigests::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = tx_digests::TxDigests::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -146,9 +134,7 @@ async fn test_kv_checkpoints_commit() {
     let values = kv_checkpoints::KvCheckpoints.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -160,10 +146,7 @@ async fn test_kv_checkpoints_commit() {
 #[ignore]
 async fn test_kv_transactions_process() {
     let cp = Arc::new(simple_checkpoint());
-    let values = kv_transactions::KvTransactions
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = kv_transactions::KvTransactions.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
     assert!(!values[0].tx_digest.is_empty());
     assert!(!values[0].raw_transaction.is_empty());
@@ -177,15 +160,10 @@ async fn test_kv_transactions_process() {
 async fn test_kv_transactions_commit() {
     let (db, _temp) = setup().await;
     let cp = Arc::new(simple_checkpoint());
-    let values = kv_transactions::KvTransactions
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = kv_transactions::KvTransactions.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = kv_transactions::KvTransactions::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = kv_transactions::KvTransactions::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -216,9 +194,7 @@ async fn test_kv_objects_commit() {
     let values = kv_objects::KvObjects.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = kv_objects::KvObjects::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = kv_objects::KvObjects::commit(&values, &mut conn).await.unwrap();
     assert!(rows >= 2);
 }
 
@@ -262,10 +238,7 @@ async fn test_tx_affected_addresses_process() {
             .add_transfer_coin(sender, recipient, 50_000)
             .build(),
     );
-    let values = tx_affected_addresses::TxAffectedAddresses
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_affected_addresses::TxAffectedAddresses.process(&cp).await.unwrap();
     // Should include sender + recipient
     assert!(values.len() >= 2);
     // All should reference tx_sequence_number 0
@@ -287,15 +260,11 @@ async fn test_tx_affected_addresses_commit() {
             .add_transfer_coin(sender, recipient, 50_000)
             .build(),
     );
-    let values = tx_affected_addresses::TxAffectedAddresses
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_affected_addresses::TxAffectedAddresses.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = tx_affected_addresses::TxAffectedAddresses::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows =
+        tx_affected_addresses::TxAffectedAddresses::commit(&values, &mut conn).await.unwrap();
     assert!(rows >= 2);
 }
 
@@ -307,10 +276,7 @@ async fn test_tx_affected_addresses_commit() {
 #[ignore]
 async fn test_tx_affected_objects_process() {
     let cp = Arc::new(simple_checkpoint());
-    let values = tx_affected_objects::TxAffectedObjects
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_affected_objects::TxAffectedObjects.process(&cp).await.unwrap();
     // At least 2 objects affected (gas coin + transferred coin)
     assert!(values.len() >= 2);
 }
@@ -320,15 +286,10 @@ async fn test_tx_affected_objects_process() {
 async fn test_tx_affected_objects_commit() {
     let (db, _temp) = setup().await;
     let cp = Arc::new(simple_checkpoint());
-    let values = tx_affected_objects::TxAffectedObjects
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_affected_objects::TxAffectedObjects.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = tx_affected_objects::TxAffectedObjects::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = tx_affected_objects::TxAffectedObjects::commit(&values, &mut conn).await.unwrap();
     assert!(rows >= 2);
 }
 
@@ -340,10 +301,7 @@ async fn test_tx_affected_objects_commit() {
 #[ignore]
 async fn test_tx_balance_changes_process() {
     let cp = Arc::new(simple_checkpoint());
-    let values = tx_balance_changes::TxBalanceChanges
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_balance_changes::TxBalanceChanges.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
     assert!(!values[0].balance_changes.is_empty());
 }
@@ -353,15 +311,10 @@ async fn test_tx_balance_changes_process() {
 async fn test_tx_balance_changes_commit() {
     let (db, _temp) = setup().await;
     let cp = Arc::new(simple_checkpoint());
-    let values = tx_balance_changes::TxBalanceChanges
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = tx_balance_changes::TxBalanceChanges.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = tx_balance_changes::TxBalanceChanges::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = tx_balance_changes::TxBalanceChanges::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -425,9 +378,7 @@ async fn test_obj_versions_commit() {
     let values = obj_versions::ObjVersions.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = obj_versions::ObjVersions::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = obj_versions::ObjVersions::commit(&values, &mut conn).await.unwrap();
     assert!(rows >= 2);
 }
 
@@ -455,9 +406,7 @@ async fn test_obj_info_commit() {
     let values = obj_info::ObjInfo.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = obj_info::ObjInfo::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = obj_info::ObjInfo::commit(&values, &mut conn).await.unwrap();
     assert!(!values.is_empty());
     assert_eq!(rows, values.len());
 }
@@ -470,10 +419,7 @@ async fn test_obj_info_commit() {
 #[ignore]
 async fn test_coin_balance_buckets_process() {
     let cp = Arc::new(simple_checkpoint());
-    let values = coin_balance_buckets::CoinBalanceBuckets
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = coin_balance_buckets::CoinBalanceBuckets.process(&cp).await.unwrap();
     // Should detect the coins created
     assert!(!values.is_empty());
 }
@@ -483,15 +429,10 @@ async fn test_coin_balance_buckets_process() {
 async fn test_coin_balance_buckets_commit() {
     let (db, _temp) = setup().await;
     let cp = Arc::new(simple_checkpoint());
-    let values = coin_balance_buckets::CoinBalanceBuckets
-        .process(&cp)
-        .await
-        .unwrap();
+    let values = coin_balance_buckets::CoinBalanceBuckets.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = coin_balance_buckets::CoinBalanceBuckets::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = coin_balance_buckets::CoinBalanceBuckets::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, values.len());
 }
 
@@ -504,10 +445,7 @@ async fn test_coin_balance_buckets_commit() {
 async fn test_soma_targets_process() {
     let target = test_target(0, TargetStatus::Open, 1_000_000);
     let cp = Arc::new(
-        TestCheckpointBuilder::new(1)
-            .with_network_total_transactions(1)
-            .add_target(target)
-            .build(),
+        TestCheckpointBuilder::new(1).with_network_total_transactions(1).add_target(target).build(),
     );
     let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
@@ -527,19 +465,13 @@ async fn test_soma_targets_filled() {
     let model_id = ObjectID::random();
     let target = test_filled_target(0, 0, submitter, model_id, 500_000, 10_000);
     let cp = Arc::new(
-        TestCheckpointBuilder::new(2)
-            .with_network_total_transactions(1)
-            .add_target(target)
-            .build(),
+        TestCheckpointBuilder::new(2).with_network_total_transactions(1).add_target(target).build(),
     );
     let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].status, "filled");
     assert_eq!(values[0].submitter.as_ref().unwrap(), &submitter.to_vec());
-    assert_eq!(
-        values[0].winning_model_id.as_ref().unwrap(),
-        &model_id.to_vec()
-    );
+    assert_eq!(values[0].winning_model_id.as_ref().unwrap(), &model_id.to_vec());
     assert_eq!(values[0].bond_amount, 10_000);
 }
 
@@ -558,17 +490,12 @@ async fn test_soma_targets_commit() {
     let (db, _temp) = setup().await;
     let target = test_target(0, TargetStatus::Open, 1_000_000);
     let cp = Arc::new(
-        TestCheckpointBuilder::new(1)
-            .with_network_total_transactions(1)
-            .add_target(target)
-            .build(),
+        TestCheckpointBuilder::new(1).with_network_total_transactions(1).add_target(target).build(),
     );
     let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = soma_targets::SomaTargets::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = soma_targets::SomaTargets::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -629,9 +556,7 @@ async fn test_soma_rewards_commit() {
     let values = soma_rewards::SomaRewards.process(&cp).await.unwrap();
 
     let mut conn = db.connect().await.unwrap();
-    let rows = soma_rewards::SomaRewards::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows = soma_rewards::SomaRewards::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows, 1);
 }
 
@@ -648,15 +573,11 @@ async fn test_idempotent_commit() {
     let values = kv_checkpoints::KvCheckpoints.process(&cp).await.unwrap();
     let mut conn = db.connect().await.unwrap();
 
-    let rows1 = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows1 = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows1, 1);
 
     // Second commit should succeed but insert 0 new rows
-    let rows2 = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn)
-        .await
-        .unwrap();
+    let rows2 = kv_checkpoints::KvCheckpoints::commit(&values, &mut conn).await.unwrap();
     assert_eq!(rows2, 0);
 }
 
@@ -688,17 +609,11 @@ async fn test_multiple_transactions() {
     assert_eq!(digests[1].tx_sequence_number, 9);
 
     // kv_transactions should have 2 entries
-    let txs = kv_transactions::KvTransactions
-        .process(&cp)
-        .await
-        .unwrap();
+    let txs = kv_transactions::KvTransactions.process(&cp).await.unwrap();
     assert_eq!(txs.len(), 2);
 
     // cp_sequence_numbers should have 1 entry
-    let cps = cp_sequence_numbers::CpSequenceNumbers
-        .process(&cp)
-        .await
-        .unwrap();
+    let cps = cp_sequence_numbers::CpSequenceNumbers.process(&cp).await.unwrap();
     assert_eq!(cps.len(), 1);
     assert_eq!(cps[0].tx_lo, 8);
     assert_eq!(cps[0].epoch, 1);

@@ -17,8 +17,8 @@ use indexer_kvstore::{
     BigTableClient, CheckpointsByDigestPipeline, CheckpointsPipeline, EpochStartPipeline,
     ObjectsPipeline, TransactionsPipeline, Watermark,
 };
-use rpc::proto::soma::ledger_service_client::LedgerServiceClient;
 use rpc::proto::soma::get_checkpoint_request::CheckpointId;
+use rpc::proto::soma::ledger_service_client::LedgerServiceClient;
 use rpc::proto::soma::{
     GetCheckpointRequest, GetEpochRequest, GetObjectRequest, GetServiceInfoRequest,
     GetTransactionRequest,
@@ -43,9 +43,7 @@ fn genesis_checkpoint() -> Checkpoint {
 fn transfer_checkpoint() -> Checkpoint {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
-    TestCheckpointBuilder::new(1)
-        .add_transfer_coin(sender, recipient, 1000)
-        .build()
+    TestCheckpointBuilder::new(1).add_transfer_coin(sender, recipient, 1000).build()
 }
 
 /// Seed the emulator with genesis + transfer checkpoints and set watermarks.
@@ -58,39 +56,21 @@ async fn seed_data(client: &mut BigTableClient) -> (Checkpoint, Checkpoint) {
     for cp in [&cp0, &cp1] {
         let arc = Arc::new(cp.clone());
         let entries = CheckpointsPipeline.process(&arc).await.unwrap();
-        client
-            .write_entries(indexer_kvstore::tables::checkpoints::NAME, entries)
-            .await
-            .unwrap();
+        client.write_entries(indexer_kvstore::tables::checkpoints::NAME, entries).await.unwrap();
         let entries = CheckpointsByDigestPipeline.process(&arc).await.unwrap();
         client
-            .write_entries(
-                indexer_kvstore::tables::checkpoints_by_digest::NAME,
-                entries,
-            )
+            .write_entries(indexer_kvstore::tables::checkpoints_by_digest::NAME, entries)
             .await
             .unwrap();
         let entries = TransactionsPipeline.process(&arc).await.unwrap();
-        client
-            .write_entries(indexer_kvstore::tables::transactions::NAME, entries)
-            .await
-            .unwrap();
+        client.write_entries(indexer_kvstore::tables::transactions::NAME, entries).await.unwrap();
         let entries = ObjectsPipeline.process(&arc).await.unwrap();
-        client
-            .write_entries(indexer_kvstore::tables::objects::NAME, entries)
-            .await
-            .unwrap();
+        client.write_entries(indexer_kvstore::tables::objects::NAME, entries).await.unwrap();
     }
 
     // Write epoch start for genesis
-    let entries = EpochStartPipeline
-        .process(&Arc::new(cp0.clone()))
-        .await
-        .unwrap();
-    client
-        .write_entries(indexer_kvstore::tables::epochs::NAME, entries)
-        .await
-        .unwrap();
+    let entries = EpochStartPipeline.process(&Arc::new(cp0.clone())).await.unwrap();
+    client.write_entries(indexer_kvstore::tables::epochs::NAME, entries).await.unwrap();
 
     // Set watermarks
     let wm = Watermark {
@@ -134,9 +114,7 @@ async fn start_server(
 #[ignore]
 async fn test_get_service_info() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (_cp0, _cp1) = seed_data(&mut client).await;
@@ -144,11 +122,8 @@ async fn test_get_service_info() {
     let server_client = emulator::client(emu.host()).await.unwrap();
     let mut grpc_client = start_server(server_client).await;
 
-    let response = grpc_client
-        .get_service_info(GetServiceInfoRequest::default())
-        .await
-        .unwrap()
-        .into_inner();
+    let response =
+        grpc_client.get_service_info(GetServiceInfoRequest::default()).await.unwrap().into_inner();
 
     assert_eq!(response.chain_id.as_deref(), Some("test-chain"));
     assert_eq!(response.checkpoint_height, Some(1));
@@ -161,9 +136,7 @@ async fn test_get_service_info() {
 #[ignore]
 async fn test_get_checkpoint_by_seq() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (cp0, _cp1) = seed_data(&mut client).await;
@@ -183,10 +156,7 @@ async fn test_get_checkpoint_by_seq() {
 
     let checkpoint = response.checkpoint.expect("checkpoint should be present");
     assert_eq!(checkpoint.sequence_number, Some(0));
-    assert_eq!(
-        checkpoint.digest.as_deref(),
-        Some(cp0.summary.digest().to_string().as_str())
-    );
+    assert_eq!(checkpoint.digest.as_deref(), Some(cp0.summary.digest().to_string().as_str()));
 }
 
 // ---------- GetCheckpoint by digest ----------
@@ -195,9 +165,7 @@ async fn test_get_checkpoint_by_seq() {
 #[ignore]
 async fn test_get_checkpoint_by_digest() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (cp0, _cp1) = seed_data(&mut client).await;
@@ -208,8 +176,7 @@ async fn test_get_checkpoint_by_digest() {
     let response = grpc_client
         .get_checkpoint({
             let mut r = GetCheckpointRequest::default();
-            r.checkpoint_id =
-                Some(CheckpointId::Digest(cp0.summary.digest().to_string()));
+            r.checkpoint_id = Some(CheckpointId::Digest(cp0.summary.digest().to_string()));
             r
         })
         .await
@@ -226,9 +193,7 @@ async fn test_get_checkpoint_by_digest() {
 #[ignore]
 async fn test_get_transaction() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (_cp0, cp1) = seed_data(&mut client).await;
@@ -241,17 +206,10 @@ async fn test_get_transaction() {
     let mut request = GetTransactionRequest::default();
     request.digest = Some(tx_digest.to_string());
 
-    let response = grpc_client
-        .get_transaction(request)
-        .await
-        .unwrap()
-        .into_inner();
+    let response = grpc_client.get_transaction(request).await.unwrap().into_inner();
 
     let transaction = response.transaction.expect("transaction should be present");
-    assert_eq!(
-        transaction.digest.as_deref(),
-        Some(tx_digest.to_string().as_str())
-    );
+    assert_eq!(transaction.digest.as_deref(), Some(tx_digest.to_string().as_str()));
 }
 
 // ---------- GetObject ----------
@@ -260,9 +218,7 @@ async fn test_get_transaction() {
 #[ignore]
 async fn test_get_object() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (_cp0, cp1) = seed_data(&mut client).await;
@@ -279,17 +235,10 @@ async fn test_get_object() {
     request.object_id = Some(obj.id().to_string());
     request.version = Some(obj.version().value());
 
-    let response = grpc_client
-        .get_object(request)
-        .await
-        .unwrap()
-        .into_inner();
+    let response = grpc_client.get_object(request).await.unwrap().into_inner();
 
     let object = response.object.expect("object should be present");
-    assert_eq!(
-        object.object_id.as_deref(),
-        Some(obj.id().to_string().as_str())
-    );
+    assert_eq!(object.object_id.as_deref(), Some(obj.id().to_string().as_str()));
 }
 
 // ---------- GetEpoch ----------
@@ -298,9 +247,7 @@ async fn test_get_object() {
 #[ignore]
 async fn test_get_epoch() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
 
     let (_cp0, _cp1) = seed_data(&mut client).await;
@@ -311,11 +258,7 @@ async fn test_get_epoch() {
     let mut request = GetEpochRequest::default();
     request.epoch = Some(0);
 
-    let response = grpc_client
-        .get_epoch(request)
-        .await
-        .unwrap()
-        .into_inner();
+    let response = grpc_client.get_epoch(request).await.unwrap().into_inner();
 
     let epoch = response.epoch.expect("epoch should be present");
     assert_eq!(epoch.epoch, Some(0));
@@ -327,9 +270,7 @@ async fn test_get_epoch() {
 #[ignore]
 async fn test_not_found_checkpoint() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
     seed_data(&mut client).await;
 
@@ -352,9 +293,7 @@ async fn test_not_found_checkpoint() {
 #[ignore]
 async fn test_not_found_transaction() {
     let emu = emulator::BigTableEmulator::start().unwrap();
-    emulator::create_tables(emu.host(), emulator::INSTANCE_ID)
-        .await
-        .unwrap();
+    emulator::create_tables(emu.host(), emulator::INSTANCE_ID).await.unwrap();
     let mut client = emulator::client(emu.host()).await.unwrap();
     seed_data(&mut client).await;
 
@@ -365,10 +304,7 @@ async fn test_not_found_transaction() {
     let mut request = GetTransactionRequest::default();
     request.digest = Some(fake_digest.to_string());
 
-    let err = grpc_client
-        .get_transaction(request)
-        .await
-        .unwrap_err();
+    let err = grpc_client.get_transaction(request).await.unwrap_err();
 
     assert_eq!(err.code(), rpc_tonic::Code::NotFound);
 }

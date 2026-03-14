@@ -6,8 +6,8 @@
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use types::digests::CheckpointDigest;
 use types::checkpoints::CheckpointSequenceNumber;
+use types::digests::CheckpointDigest;
 
 use crate::tables::DEFAULT_COLUMN;
 
@@ -18,10 +18,7 @@ pub fn encode_key(digest: &CheckpointDigest) -> Vec<u8> {
 }
 
 pub fn encode(sequence_number: CheckpointSequenceNumber) -> [(&'static str, Bytes); 1] {
-    [(
-        DEFAULT_COLUMN,
-        Bytes::from(sequence_number.to_be_bytes().to_vec()),
-    )]
+    [(DEFAULT_COLUMN, Bytes::from(sequence_number.to_be_bytes().to_vec()))]
 }
 
 pub fn decode(row: &[(Bytes, Bytes)]) -> Result<CheckpointSequenceNumber> {

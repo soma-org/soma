@@ -28,9 +28,11 @@ impl Processor for EpochEndPipeline {
             return Ok(vec![]);
         };
 
-        let Some(_transaction) = checkpoint.transactions.iter().find(|tx| {
-            matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_))
-        }) else {
+        let Some(_transaction) = checkpoint
+            .transactions
+            .iter()
+            .find(|tx| matches!(tx.transaction.kind(), TransactionKind::ChangeEpoch(_)))
+        else {
             bail!(
                 "No ChangeEpoch tx in checkpoint {} with EndOfEpochData",
                 summary.sequence_number,
