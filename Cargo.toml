@@ -61,7 +61,7 @@ all = { level = "allow", priority = -1 }
 
 [workspace.package]
 # This version string will be inherited by sub crates.
-version = "0.1.13"
+version = "0.1.14"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -263,7 +263,12 @@ zstd = "0.13.3"
 syn = { version = "2", features = ["full"] }
 quote = "1"
 scoped-futures = "0.1"
-diesel = { version = "2.2", features = ["postgres", "r2d2", "serde_json", "chrono"] }
+diesel = { version = "2.2", features = [
+  "postgres",
+  "r2d2",
+  "serde_json",
+  "chrono",
+] }
 diesel-async = { version = "0.5", features = ["postgres", "bb8"] }
 diesel_migrations = "2.2"
 bb8 = "0.8"
