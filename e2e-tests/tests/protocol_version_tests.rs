@@ -7,7 +7,7 @@
 //! Tests:
 //! 1. test_validator_panics_on_unsupported_protocol_version — genesis at unsupported version panics
 //! 2. test_protocol_version_upgrade — all validators upgrade from v1 to v2
-//! 3. test_protocol_version_upgrade_no_quorum — upgrade fails without 75% quorum
+//! 3. test_protocol_version_upgrade_no_quorum — upgrade to MAX_ALLOWED fails without 75% quorum
 //! 4. test_protocol_version_upgrade_one_laggard — upgrade succeeds with 75% quorum, laggard shuts down
 //! 5. test_protocol_version_upgrade_with_shutdown_validator — upgrade succeeds with stopped validator
 //! 6. test_protocol_version_upgrade_insufficient_support — 25% support can't upgrade
@@ -75,8 +75,8 @@ async fn test_protocol_version_upgrade() {
     info!("Protocol version upgraded to {} successfully", system_state.protocol_version());
 }
 
-/// Validators 0,1 support only v1; validators 2,3 support v1-v2.
-/// 50% < 75% quorum, so upgrade should NOT happen.
+/// Validators 0,1 support only up to MAX; validators 2,3 support up to MAX_ALLOWED.
+/// 50% < 75% quorum, so upgrade to MAX_ALLOWED should NOT happen.
 #[cfg(msim)]
 #[msim::sim_test]
 async fn test_protocol_version_upgrade_no_quorum() {
@@ -86,10 +86,10 @@ async fn test_protocol_version_upgrade_no_quorum() {
         .with_epoch_duration_ms(20_000)
         .with_supported_protocol_version_callback(Arc::new(|idx, _name| {
             if idx < 2 {
-                // Validators 0, 1: only support v1
-                SupportedProtocolVersions::new_for_testing(1, 1)
+                // Validators 0, 1: only support up to current MAX
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX.as_u64())
             } else {
-                // Validators 2, 3: support v1-v2
+                // Validators 2, 3: support up to MAX_ALLOWED (fake next version)
                 SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             }
         }))
@@ -99,14 +99,18 @@ async fn test_protocol_version_upgrade_no_quorum() {
     // Wait for an epoch transition
     test_cluster.wait_for_epoch(None).await;
 
-    // Protocol version should remain at 1
+    // Protocol version should remain at MAX — 50% is below 2/3 quorum for upgrade
     let version = test_cluster.highest_protocol_version();
-    assert_eq!(version.as_u64(), 1, "Protocol version should remain at 1 without quorum");
+    assert_eq!(
+        version.as_u64(),
+        ProtocolVersion::MAX.as_u64(),
+        "Protocol version should remain at MAX without quorum"
+    );
 
-    info!("Protocol version correctly stayed at 1 without upgrade quorum");
+    info!("Protocol version correctly stayed at {} without upgrade quorum", version.as_u64());
 }
 
-/// Validators 0,1,2 support v1-v2; validator 3 only supports v1.
+/// Validators 0,1,2 support up to MAX_ALLOWED; validator 3 only supports up to MAX.
 /// 75% (3/4) exceeds the 2/3 BFT quorum threshold, so upgrade succeeds.
 /// (In msim, buffer_stake_for_protocol_upgrade_bps=0, so only 2/3 quorum is needed.)
 #[cfg(msim)]
@@ -118,11 +122,11 @@ async fn test_protocol_version_upgrade_one_laggard() {
         .with_epoch_duration_ms(20_000)
         .with_supported_protocol_version_callback(Arc::new(|idx, _name| {
             if idx < 3 {
-                // Validators 0, 1, 2: support v1-v2
+                // Validators 0, 1, 2: support up to MAX_ALLOWED (fake next version)
                 SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             } else {
-                // Validator 3: only supports v1 (laggard)
-                SupportedProtocolVersions::new_for_testing(1, 1)
+                // Validator 3: only supports up to MAX (laggard)
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX.as_u64())
             }
         }))
         .build()
@@ -189,7 +193,7 @@ async fn test_protocol_version_upgrade_with_shutdown_validator() {
     info!("Validator 0 caught up to protocol version {}", target.as_u64());
 }
 
-/// Only 1/4 validators support v2. Even with buffer_stake=0, 25% < 66.7% quorum,
+/// Only 1/4 validators support MAX_ALLOWED. Even with buffer_stake=0, 25% < 66.7% quorum,
 /// so the upgrade should not happen.
 #[cfg(msim)]
 #[msim::sim_test]
@@ -200,10 +204,11 @@ async fn test_protocol_version_upgrade_insufficient_support() {
         .with_epoch_duration_ms(20_000)
         .with_supported_protocol_version_callback(Arc::new(|idx, _name| {
             if idx == 0 {
-                // Only validator 0 supports v2
+                // Only validator 0 supports MAX_ALLOWED
                 SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX_ALLOWED.as_u64())
             } else {
-                SupportedProtocolVersions::new_for_testing(1, 1)
+                // Others only support up to current MAX
+                SupportedProtocolVersions::new_for_testing(1, ProtocolVersion::MAX.as_u64())
             }
         }))
         .build()
@@ -212,9 +217,13 @@ async fn test_protocol_version_upgrade_insufficient_support() {
     // Wait for an epoch transition
     test_cluster.wait_for_epoch(None).await;
 
-    // Protocol version should remain at 1 — 25% is well below 2/3 quorum
+    // Protocol version should remain at MAX — 25% is well below 2/3 quorum
     let version = test_cluster.highest_protocol_version();
-    assert_eq!(version.as_u64(), 1, "Protocol version should remain at 1 with only 25% support");
+    assert_eq!(
+        version.as_u64(),
+        ProtocolVersion::MAX.as_u64(),
+        "Protocol version should remain at MAX with only 25% support"
+    );
 
-    info!("Protocol version correctly stayed at 1 with insufficient support");
+    info!("Protocol version correctly stayed at {} with insufficient support", version.as_u64());
 }
