@@ -5146,7 +5146,7 @@ checksum = "964de6e86d545b246d84badc0fef527924ace5134f30641c203ef52ba83f58d5"
 
 [[package]]
 name = "indexer-alt"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5172,7 +5172,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-alt-schema"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "bcs",
  "diesel",
@@ -5183,7 +5183,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-e2e-tests"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "axum",
@@ -5209,7 +5209,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-framework"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5240,7 +5240,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-kvstore"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5280,7 +5280,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-pg-db"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5301,7 +5301,7 @@ dependencies = [
 
 [[package]]
 name = "indexer-store-traits"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9357,14 +9357,14 @@ dependencies = [
 
 [[package]]
 name = "soma-field-count"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "soma-field-count-derive",
 ]
 
 [[package]]
 name = "soma-field-count-derive"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -9372,7 +9372,7 @@ dependencies = [
 
 [[package]]
 name = "soma-futures"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "futures",
@@ -9384,7 +9384,7 @@ dependencies = [
 
 [[package]]
 name = "soma-graphql"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-graphql",
