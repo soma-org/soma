@@ -14,6 +14,7 @@ use serde::Serialize;
 use soma_field_count::FieldCount;
 
 use crate::schema::kv_transactions;
+use crate::schema::soma_tx_details;
 use crate::schema::tx_affected_addresses;
 use crate::schema::tx_affected_objects;
 use crate::schema::tx_balance_changes;
@@ -105,6 +106,19 @@ pub enum StoredKind {
 pub struct StoredTxKind {
     pub tx_sequence_number: i64,
     pub tx_kind: StoredKind,
+}
+
+#[derive(Insertable, Debug, Clone, FieldCount, Queryable)]
+#[diesel(table_name = soma_tx_details)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct StoredTxDetail {
+    pub tx_sequence_number: i64,
+    pub tx_digest: Vec<u8>,
+    pub kind: String,
+    pub sender: Vec<u8>,
+    pub epoch: i64,
+    pub timestamp_ms: i64,
+    pub metadata_json: Option<String>,
 }
 
 impl<DB: Backend> serialize::ToSql<SmallInt, DB> for StoredKind

@@ -73,6 +73,80 @@ impl TargetAggregates {
     }
 }
 
+/// Aggregate score statistics for filled targets at a given epoch.
+pub struct TargetScoreAggregates {
+    pub avg_loss_score: Option<f64>,
+    pub avg_distance_score: Option<f64>,
+    pub total_data_size: i64,
+    pub filled_count: i64,
+}
+
+#[Object]
+impl TargetScoreAggregates {
+    /// Average loss score across filled targets.
+    async fn avg_loss_score(&self) -> Option<f64> {
+        self.avg_loss_score
+    }
+
+    /// Average distance score across filled targets.
+    async fn avg_distance_score(&self) -> Option<f64> {
+        self.avg_distance_score
+    }
+
+    /// Total data size across all filled submissions (bytes).
+    async fn total_data_size(&self) -> BigInt {
+        BigInt(self.total_data_size)
+    }
+
+    /// Number of filled targets.
+    async fn filled_count(&self) -> i32 {
+        self.filled_count as i32
+    }
+}
+
+/// Aggregate statistics for a data submitter.
+pub struct SubmitterStats {
+    pub submitter: Vec<u8>,
+    pub target_count: i64,
+    pub avg_distance_score: Option<f64>,
+    pub avg_loss_score: Option<f64>,
+    pub total_reward: i64,
+    pub total_data_size: i64,
+}
+
+#[Object]
+impl SubmitterStats {
+    /// Submitter address.
+    async fn submitter(&self) -> crate::api::scalars::SomaAddress {
+        crate::api::scalars::SomaAddress(self.submitter.clone())
+    }
+
+    /// Number of targets filled by this submitter.
+    async fn target_count(&self) -> i32 {
+        self.target_count as i32
+    }
+
+    /// Average distance score across filled targets.
+    async fn avg_distance_score(&self) -> Option<f64> {
+        self.avg_distance_score
+    }
+
+    /// Average loss score across filled targets.
+    async fn avg_loss_score(&self) -> Option<f64> {
+        self.avg_loss_score
+    }
+
+    /// Total reward earned (shannons).
+    async fn total_reward(&self) -> BigInt {
+        BigInt(self.total_reward)
+    }
+
+    /// Total data size submitted (bytes).
+    async fn total_data_size(&self) -> BigInt {
+        BigInt(self.total_data_size)
+    }
+}
+
 /// Aggregate statistics for rewards at a given epoch.
 pub struct RewardAggregates {
     pub total_count: i64,

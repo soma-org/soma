@@ -11,6 +11,7 @@ use url::Url;
 
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
+use soma_graphql::subscriptions::{SubscriptionChannels, spawn_pg_listener};
 use soma_graphql::{AppState, KvLoader, build_router, build_schema};
 
 use indexer_kvstore::{BigTableClient, BigTableKvLoader};
@@ -78,12 +79,17 @@ async fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let schema = build_schema(pg, config, kv);
+    // Set up subscription channels and Postgres LISTEN/NOTIFY listener
+    let sub_channels = SubscriptionChannels::new(1024);
+    spawn_pg_listener(args.database_url.clone(), sub_channels.clone());
+
+    let schema = build_schema(pg, config, kv, sub_channels);
     let state = AppState { schema };
     let router = build_router(state);
 
     let listener = TcpListener::bind(&listen_address).await?;
     info!("Soma GraphQL server listening on {}", listen_address);
+    info!("WebSocket subscriptions available at ws://{}/graphql/ws", listen_address);
     axum::serve(listener, router).await?;
 
     Ok(())

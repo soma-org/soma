@@ -11,6 +11,7 @@ use crate::schema::soma_rewards;
 use crate::schema::soma_staked_soma;
 use crate::schema::soma_target_reports;
 use crate::schema::soma_targets;
+use crate::schema::soma_validators;
 
 #[derive(Insertable, Debug, Clone, FieldCount)]
 #[diesel(table_name = soma_targets)]
@@ -124,4 +125,22 @@ pub struct StoredRewardBalance {
     pub tx_digest: Vec<u8>,
     pub recipient: Vec<u8>,
     pub amount: i64,
+}
+
+#[derive(Insertable, Debug, Clone, FieldCount)]
+#[diesel(table_name = soma_validators)]
+#[diesel(treat_none_as_default_value = false)]
+pub struct StoredValidator {
+    pub address: Vec<u8>,
+    pub epoch: i64,
+    pub voting_power: i64,
+    pub commission_rate: i64,
+    pub next_epoch_commission_rate: i64,
+    pub staking_pool_id: Vec<u8>,
+    pub stake: i64,
+    pub pending_stake: i64,
+    pub name: Option<String>,
+    pub network_address: Option<String>,
+    pub proxy_address: Option<String>,
+    pub protocol_pubkey: Option<Vec<u8>>,
 }

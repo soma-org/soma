@@ -279,6 +279,35 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_validators (address, epoch) {
+        address -> Bytea,
+        epoch -> Int8,
+        voting_power -> Int8,
+        commission_rate -> Int8,
+        next_epoch_commission_rate -> Int8,
+        staking_pool_id -> Bytea,
+        stake -> Int8,
+        pending_stake -> Int8,
+        name -> Nullable<Text>,
+        network_address -> Nullable<Text>,
+        proxy_address -> Nullable<Text>,
+        protocol_pubkey -> Nullable<Bytea>,
+    }
+}
+
+diesel::table! {
+    soma_tx_details (tx_sequence_number) {
+        tx_sequence_number -> Int8,
+        tx_digest -> Bytea,
+        kind -> Text,
+        sender -> Bytea,
+        epoch -> Int8,
+        timestamp_ms -> Int8,
+        metadata_json -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     watermarks (pipeline) {
         pipeline -> Text,
         epoch_hi_inclusive -> Int8,
@@ -310,6 +339,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     soma_staked_soma,
     soma_target_reports,
     soma_targets,
+    soma_validators,
+    soma_tx_details,
     tx_affected_addresses,
     tx_affected_objects,
     tx_balance_changes,

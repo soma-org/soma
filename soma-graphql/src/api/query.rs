@@ -15,7 +15,9 @@ use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
-use crate::api::types::aggregates::{ModelAggregates, RewardAggregates, TargetAggregates};
+use crate::api::types::aggregates::{
+    ModelAggregates, RewardAggregates, SubmitterStats, TargetAggregates, TargetScoreAggregates,
+};
 use crate::api::types::available_range::AvailableRange;
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
@@ -27,6 +29,9 @@ use crate::api::types::service_config::ServiceConfig;
 use crate::api::types::staked_soma::StakedSoma;
 use crate::api::types::target::{Target, TargetFilter};
 use crate::api::types::transaction::Transaction;
+use crate::api::types::transaction_detail::TransactionDetail;
+use crate::api::types::validator::Validator;
+use crate::api::types::network_metrics::NetworkMetrics;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
 
@@ -823,23 +828,39 @@ impl Query {
         }
     }
 
-    /// Query staked SOMA positions owned by a given address, with pagination.
+    /// Query staked SOMA positions with pagination. Filter by owner and/or poolId.
     #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
     async fn staked_somas(
         &self,
         ctx: &Context<'_>,
-        owner: String,
+        owner: Option<String>,
+        pool_id: Option<String>,
         first: Option<i32>,
         after: Option<String>,
     ) -> Result<Connection<String, StakedSoma>> {
+        if owner.is_none() && pool_id.is_none() {
+            return Err(Error::new("At least one of owner or poolId must be provided"));
+        }
+
         let pg: &Arc<PgReader> = ctx.data()?;
         let config: &GraphQlConfig = ctx.data()?;
         let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
         let mut conn = pg.connect().await?;
 
-        let owner_hex = owner.strip_prefix("0x").unwrap_or(&owner);
-        let owner_bytes = hex::decode(owner_hex)
-            .map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
+        let owner_bytes: Option<Vec<u8>> = owner
+            .as_deref()
+            .map(|o| {
+                let hex = o.strip_prefix("0x").unwrap_or(o);
+                hex::decode(hex).map_err(|e| Error::new(format!("Invalid owner address: {e}")))
+            })
+            .transpose()?;
+        let pool_bytes: Option<Vec<u8>> = pool_id
+            .as_deref()
+            .map(|p| {
+                let hex = p.strip_prefix("0x").unwrap_or(p);
+                hex::decode(hex).map_err(|e| Error::new(format!("Invalid pool ID: {e}")))
+            })
+            .transpose()?;
 
         use indexer_alt_schema::schema::soma_staked_soma;
 
@@ -850,12 +871,18 @@ impl Query {
 
         type Row = (Vec<u8>, i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, Option<i64>);
 
-        // Step 1: Find staked_soma_ids that have ever been owned by this address.
+        // Step 1: Find staked_soma_ids matching owner and/or pool_id.
         let mut id_query = soma_staked_soma::table
             .select(soma_staked_soma::staked_soma_id)
-            .filter(soma_staked_soma::owner.eq(&owner_bytes))
             .distinct()
             .into_boxed();
+
+        if let Some(ref ob) = owner_bytes {
+            id_query = id_query.filter(soma_staked_soma::owner.eq(ob));
+        }
+        if let Some(ref pb) = pool_bytes {
+            id_query = id_query.filter(soma_staked_soma::pool_id.eq(pb));
+        }
 
         if let Some(ref aid) = after_id {
             id_query = id_query.filter(soma_staked_soma::staked_soma_id.gt(aid));
@@ -1257,6 +1284,268 @@ impl Query {
         Ok(results.into_iter().map(|(a, b, c)| model_from_row(a, b, c)).collect())
     }
 
+    /// Query transactions with pagination and optional kind filter.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn transactions(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        kind: Option<String>,
+        sender: Option<String>,
+        epoch: Option<i64>,
+    ) -> Result<Connection<String, TransactionDetail>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_tx_details;
+
+        let after_seq: Option<i64> = after
+            .as_deref()
+            .map(|s| s.parse().map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
+            .transpose()?;
+
+        type Row = (i64, Vec<u8>, String, Vec<u8>, i64, i64, Option<String>);
+
+        let mut query = soma_tx_details::table
+            .select((
+                soma_tx_details::tx_sequence_number,
+                soma_tx_details::tx_digest,
+                soma_tx_details::kind,
+                soma_tx_details::sender,
+                soma_tx_details::epoch,
+                soma_tx_details::timestamp_ms,
+                soma_tx_details::metadata_json,
+            ))
+            .order(soma_tx_details::tx_sequence_number.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(ref kind_filter) = kind {
+            query = query.filter(soma_tx_details::kind.eq(kind_filter));
+        }
+        if let Some(ref sender_hex) = sender {
+            let hex = sender_hex.strip_prefix("0x").unwrap_or(sender_hex);
+            let bytes =
+                hex::decode(hex).map_err(|e| Error::new(format!("Invalid sender address: {e}")))?;
+            query = query.filter(soma_tx_details::sender.eq(bytes));
+        }
+        if let Some(e) = epoch {
+            query = query.filter(soma_tx_details::epoch.eq(e));
+        }
+        if let Some(seq) = after_seq {
+            query = query.filter(soma_tx_details::tx_sequence_number.lt(seq));
+        }
+
+        let results: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        let has_next = results.len() as i64 > limit;
+        let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for row in nodes {
+            let cursor = row.0.to_string();
+            connection.edges.push(Edge::new(
+                cursor,
+                TransactionDetail {
+                    tx_sequence_number: row.0,
+                    tx_digest: row.1,
+                    kind: row.2,
+                    sender: row.3,
+                    epoch: row.4,
+                    timestamp_ms: row.5,
+                    metadata_json: row.6,
+                },
+            ));
+        }
+
+        Ok(connection)
+    }
+
+    /// Aggregate score statistics for filled targets at a given epoch (or all epochs).
+    async fn target_score_aggregates(
+        &self,
+        ctx: &Context<'_>,
+        epoch: Option<i64>,
+    ) -> Result<TargetScoreAggregates> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_targets;
+
+        // Load filled targets, deduplicate by target_id (keep latest cp).
+        type Row = (Vec<u8>, i64, Option<f64>, Option<f64>, i64, Option<i64>);
+
+        let mut query = soma_targets::table
+            .select((
+                soma_targets::target_id,
+                soma_targets::cp_sequence_number,
+                soma_targets::winning_loss_score,
+                soma_targets::winning_distance_score,
+                soma_targets::reward_pool,
+                soma_targets::winning_data_size,
+            ))
+            .filter(soma_targets::status.eq("filled"))
+            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
+            .into_boxed();
+
+        if let Some(e) = epoch {
+            query = query.filter(soma_targets::epoch.eq(e));
+        }
+
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        let mut seen = std::collections::HashSet::new();
+        let mut loss_sum = 0.0_f64;
+        let mut loss_count = 0_i64;
+        let mut dist_sum = 0.0_f64;
+        let mut dist_count = 0_i64;
+        let mut total_data_size = 0_i64;
+        let mut filled_count = 0_i64;
+
+        for (tid, _cp, loss, dist, _rp, data_size) in &rows {
+            if !seen.insert(tid.clone()) {
+                continue;
+            }
+            filled_count += 1;
+            if let Some(l) = loss {
+                loss_sum += l;
+                loss_count += 1;
+            }
+            if let Some(d) = dist {
+                dist_sum += d;
+                dist_count += 1;
+            }
+            if let Some(ds) = data_size {
+                total_data_size = total_data_size.saturating_add(*ds);
+            }
+        }
+
+        Ok(TargetScoreAggregates {
+            avg_loss_score: if loss_count > 0 { Some(loss_sum / loss_count as f64) } else { None },
+            avg_distance_score: if dist_count > 0 {
+                Some(dist_sum / dist_count as f64)
+            } else {
+                None
+            },
+            total_data_size,
+            filled_count,
+        })
+    }
+
+    /// Leaderboard of data submitters, ranked by number of filled targets.
+    #[graphql(complexity = "10 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn submitter_leaderboard(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        epoch: Option<i64>,
+    ) -> Result<Connection<String, SubmitterStats>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_targets;
+
+        // Load all filled targets, deduplicate by target_id, then aggregate by submitter.
+        type Row = (Vec<u8>, i64, Option<Vec<u8>>, Option<f64>, Option<f64>, i64, Option<i64>);
+
+        let mut query = soma_targets::table
+            .select((
+                soma_targets::target_id,
+                soma_targets::cp_sequence_number,
+                soma_targets::submitter,
+                soma_targets::winning_distance_score,
+                soma_targets::winning_loss_score,
+                soma_targets::reward_pool,
+                soma_targets::winning_data_size,
+            ))
+            .filter(soma_targets::status.eq("filled"))
+            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
+            .into_boxed();
+
+        if let Some(e) = epoch {
+            query = query.filter(soma_targets::epoch.eq(e));
+        }
+
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        // Deduplicate by target_id, aggregate by submitter
+        let mut seen = std::collections::HashSet::new();
+        let mut submitter_map: std::collections::HashMap<
+            Vec<u8>,
+            (i64, f64, i64, f64, i64, i64, i64),
+        > = std::collections::HashMap::new();
+        // Value: (target_count, dist_sum, dist_count, loss_sum, loss_count, total_reward, total_data_size)
+
+        for (tid, _cp, submitter, dist, loss, rp, data_size) in &rows {
+            if !seen.insert(tid.clone()) {
+                continue;
+            }
+            let Some(sub) = submitter else { continue };
+            let entry = submitter_map.entry(sub.clone()).or_default();
+            entry.0 += 1;
+            if let Some(d) = dist {
+                entry.1 += d;
+                entry.2 += 1;
+            }
+            if let Some(l) = loss {
+                entry.3 += l;
+                entry.4 += 1;
+            }
+            entry.5 = entry.5.saturating_add(*rp);
+            if let Some(ds) = data_size {
+                entry.6 = entry.6.saturating_add(*ds);
+            }
+        }
+
+        // Sort by target_count desc
+        let mut entries: Vec<_> = submitter_map.into_iter().collect();
+        entries.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+
+        // Apply cursor pagination
+        let after_addr: Option<Vec<u8>> = after
+            .as_deref()
+            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
+            .transpose()?;
+
+        let start_idx = match &after_addr {
+            Some(addr) => entries.iter().position(|(k, _)| k == addr).map(|i| i + 1).unwrap_or(0),
+            None => 0,
+        };
+
+        let page: Vec<_> = entries.into_iter().skip(start_idx).take(limit as usize + 1).collect();
+        let has_next = page.len() as i64 > limit;
+        let nodes: Vec<_> = page.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for (sub, (tc, ds, dc, ls, lc, tr, tds)) in nodes {
+            let cursor = hex::encode(&sub);
+            connection.edges.push(Edge::new(
+                cursor,
+                SubmitterStats {
+                    submitter: sub,
+                    target_count: tc,
+                    avg_distance_score: if dc > 0 { Some(ds / dc as f64) } else { None },
+                    avg_loss_score: if lc > 0 { Some(ls / lc as f64) } else { None },
+                    total_reward: tr,
+                    total_data_size: tds,
+                },
+            ));
+        }
+
+        Ok(connection)
+    }
+
     /// The range of checkpoints for which index-backed queries have complete data.
     async fn available_range(&self, ctx: &Context<'_>) -> Result<AvailableRange> {
         let pg: &Arc<PgReader> = ctx.data()?;
@@ -1290,6 +1579,356 @@ impl Query {
                 Ok(AvailableRange { first: 0, last: max_cp.unwrap_or(0) })
             }
         }
+    }
+
+    /// Query objects owned by an address.
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn objects(
+        &self,
+        ctx: &Context<'_>,
+        owner: String,
+        first: Option<i32>,
+        after: Option<String>,
+    ) -> Result<Connection<String, GqlObject>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        let owner_hex = owner.strip_prefix("0x").unwrap_or(&owner);
+        let owner_bytes =
+            hex::decode(owner_hex).map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
+
+        use indexer_alt_schema::schema::obj_info;
+
+        // Cursor format: "hex_object_id"
+        let after_bytes: Option<Vec<u8>> = after
+            .as_deref()
+            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
+            .transpose()?;
+
+        // Query obj_info for objects owned by this address.
+        // Deduplicate by object_id (keep latest cp_sequence_number per object).
+        type Row = (Vec<u8>, i64, Option<i16>, Option<Vec<u8>>, Option<Vec<u8>>, Option<String>, Option<String>);
+
+        let rows: Vec<Row> = obj_info::table
+            .select((
+                obj_info::object_id,
+                obj_info::cp_sequence_number,
+                obj_info::owner_kind,
+                obj_info::owner_id,
+                obj_info::package,
+                obj_info::module,
+                obj_info::name,
+            ))
+            .filter(obj_info::owner_id.eq(&owner_bytes))
+            .filter(obj_info::owner_kind.eq(1_i16)) // Address-owned
+            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        // Deduplicate: keep only the latest cp_sequence_number per object_id.
+        // Filter out deleted objects (owner_id becomes None in latest row).
+        let mut seen = std::collections::HashSet::new();
+        let mut deduped: Vec<Row> = Vec::new();
+        for row in rows {
+            if seen.insert(row.0.clone()) {
+                deduped.push(row);
+            }
+        }
+
+        // Apply cursor pagination
+        let start_idx = match &after_bytes {
+            Some(id) => deduped.iter().position(|r| r.0 == *id).map(|i| i + 1).unwrap_or(0),
+            None => 0,
+        };
+
+        let page: Vec<_> = deduped.into_iter().skip(start_idx).take(limit as usize + 1).collect();
+        let has_next = page.len() as i64 > limit;
+        let nodes: Vec<_> = page.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for row in nodes {
+            let cursor = hex::encode(&row.0);
+            let owner_kind_str = row.2.map(|k| match k {
+                0 => "Immutable",
+                1 => "Address",
+                2 => "Object",
+                3 => "Shared",
+                _ => "Unknown",
+            });
+            let object_type = row.5.clone(); // module as type
+            connection.edges.push(Edge::new(
+                cursor,
+                GqlObject {
+                    object_id: row.0,
+                    object_version: 0, // Not tracked in obj_info
+                    serialized_object_bcs: None,
+                    owner_kind: owner_kind_str.map(String::from),
+                    owner_id: row.3,
+                    object_type,
+                },
+            ));
+        }
+
+        Ok(connection)
+    }
+
+    /// Query validators at a given epoch (or latest).
+    #[graphql(complexity = "5 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn validators(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        epoch: Option<i64>,
+    ) -> Result<Connection<String, Validator>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_validators;
+
+        // Epoch discovery: use provided epoch or latest
+        let epoch_num = match epoch {
+            Some(e) => e,
+            None => soma_validators::table
+                .select(soma_validators::epoch)
+                .order(soma_validators::epoch.desc())
+                .first::<i64>(conn.deref_mut())
+                .await
+                .optional()
+                .map_err(|e| Error::new(e.to_string()))?
+                .ok_or_else(|| Error::new("No validators found"))?,
+        };
+
+        // Cursor: hex-encoded address
+        let after_bytes: Option<Vec<u8>> = after
+            .as_deref()
+            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
+            .transpose()?;
+
+        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>, Option<String>);
+
+        let mut query = soma_validators::table
+            .select((
+                soma_validators::address,
+                soma_validators::epoch,
+                soma_validators::voting_power,
+                soma_validators::commission_rate,
+                soma_validators::next_epoch_commission_rate,
+                soma_validators::staking_pool_id,
+                soma_validators::stake,
+                soma_validators::pending_stake,
+                soma_validators::name,
+                soma_validators::network_address,
+                soma_validators::proxy_address,
+            ))
+            .filter(soma_validators::epoch.eq(epoch_num))
+            .order(soma_validators::stake.desc())
+            .limit(limit + 1)
+            .into_boxed();
+
+        if let Some(ref addr) = after_bytes {
+            // For cursor pagination with ordering by stake, we need position-based cursoring.
+            // We'll use address as cursor and skip past it.
+            query = query.filter(soma_validators::address.gt(addr));
+        }
+
+        let results: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        let has_next = results.len() as i64 > limit;
+        let nodes: Vec<_> = results.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for row in nodes {
+            let cursor = hex::encode(&row.0);
+            connection.edges.push(Edge::new(
+                cursor,
+                Validator {
+                    address: row.0,
+                    epoch: row.1,
+                    voting_power: row.2,
+                    commission_rate: row.3,
+                    next_epoch_commission_rate: row.4,
+                    staking_pool_id: row.5,
+                    stake: row.6,
+                    pending_stake: row.7,
+                    name: row.8,
+                    network_address: row.9,
+                    proxy_address: row.10,
+                },
+            ));
+        }
+
+        Ok(connection)
+    }
+
+    /// Look up a single validator by address at a given epoch (or latest).
+    async fn validator(
+        &self,
+        ctx: &Context<'_>,
+        address: String,
+        epoch: Option<i64>,
+    ) -> Result<Option<Validator>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
+        let addr_bytes =
+            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_validators;
+
+        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>, Option<String>);
+
+        let mut query = soma_validators::table
+            .select((
+                soma_validators::address,
+                soma_validators::epoch,
+                soma_validators::voting_power,
+                soma_validators::commission_rate,
+                soma_validators::next_epoch_commission_rate,
+                soma_validators::staking_pool_id,
+                soma_validators::stake,
+                soma_validators::pending_stake,
+                soma_validators::name,
+                soma_validators::network_address,
+                soma_validators::proxy_address,
+            ))
+            .filter(soma_validators::address.eq(&addr_bytes))
+            .order(soma_validators::epoch.desc())
+            .limit(1)
+            .into_boxed();
+
+        if let Some(e) = epoch {
+            query = query.filter(soma_validators::epoch.eq(e));
+        }
+
+        let result: Option<Row> = query
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(result.map(|row| Validator {
+            address: row.0,
+            epoch: row.1,
+            voting_power: row.2,
+            commission_rate: row.3,
+            next_epoch_commission_rate: row.4,
+            staking_pool_id: row.5,
+            stake: row.6,
+            pending_stake: row.7,
+            name: row.8,
+            network_address: row.9,
+            proxy_address: row.10,
+        }))
+    }
+
+    /// Network-wide metrics (TPS, totals).
+    async fn network_metrics(&self, ctx: &Context<'_>) -> Result<NetworkMetrics> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::{cp_sequence_numbers, kv_checkpoints, soma_validators};
+
+        // Total transactions: txLo of latest checkpoint
+        let latest_cp: Option<(i64, i64)> = cp_sequence_numbers::table
+            .select((cp_sequence_numbers::cp_sequence_number, cp_sequence_numbers::tx_lo))
+            .order(cp_sequence_numbers::cp_sequence_number.desc())
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        let (total_checkpoints, total_transactions) = match latest_cp {
+            Some((cp, tx_lo)) => (cp + 1, tx_lo),
+            None => (0, 0),
+        };
+
+        // Total validators at latest epoch
+        let latest_validator_epoch: Option<i64> = soma_validators::table
+            .select(soma_validators::epoch)
+            .order(soma_validators::epoch.desc())
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        let total_validators = match latest_validator_epoch {
+            Some(e) => soma_validators::table
+                .filter(soma_validators::epoch.eq(e))
+                .count()
+                .get_result::<i64>(conn.deref_mut())
+                .await
+                .map_err(|e| Error::new(e.to_string()))?,
+            None => 0,
+        };
+
+        // TPS: computed from last 10 checkpoints' timestamps.
+        // Checkpoint timestamps may be null on testnet, so this is best-effort.
+        let recent_cps: Vec<(i64, i64)> = cp_sequence_numbers::table
+            .select((cp_sequence_numbers::cp_sequence_number, cp_sequence_numbers::tx_lo))
+            .order(cp_sequence_numbers::cp_sequence_number.desc())
+            .limit(11)
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        // Try to get timestamps from kv_checkpoints to compute TPS
+        let tps: Option<f64> = if recent_cps.len() >= 2 {
+            // Get checkpoint summaries and try to extract timestamps
+            let cp_seqs: Vec<i64> = recent_cps.iter().map(|(cp, _)| *cp).collect();
+            let summaries: Vec<(i64, Vec<u8>)> = kv_checkpoints::table
+                .select((kv_checkpoints::sequence_number, kv_checkpoints::checkpoint_summary))
+                .filter(kv_checkpoints::sequence_number.eq_any(&cp_seqs))
+                .order(kv_checkpoints::sequence_number.desc())
+                .load(conn.deref_mut())
+                .await
+                .map_err(|e| Error::new(e.to_string()))?;
+
+            // Try to deserialize and get timestamps
+            let mut timed_cps: Vec<(i64, u64)> = Vec::new();
+            for (seq, bcs_data) in &summaries {
+                if let Ok(summary) = bcs::from_bytes::<types::checkpoints::CheckpointSummary>(bcs_data) {
+                    if summary.timestamp_ms > 0 {
+                        // Find tx_lo for this checkpoint
+                        if let Some((_, tx_lo)) = recent_cps.iter().find(|(cp, _)| cp == seq) {
+                            timed_cps.push((*tx_lo, summary.timestamp_ms));
+                        }
+                    }
+                }
+            }
+
+            if timed_cps.len() >= 2 {
+                let newest = &timed_cps[0];
+                let oldest = &timed_cps[timed_cps.len() - 1];
+                let tx_diff = (newest.0 as f64) - (oldest.0 as f64);
+                let time_diff_secs = (newest.1 as f64 - oldest.1 as f64) / 1000.0;
+                if time_diff_secs > 0.0 {
+                    Some(tx_diff / time_diff_secs)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(NetworkMetrics {
+            tps,
+            total_transactions,
+            total_checkpoints,
+            total_validators,
+        })
     }
 }
 

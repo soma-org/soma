@@ -30,6 +30,7 @@ use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_filled_tar
 use indexer_alt::handlers::*;
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
+use soma_graphql::subscriptions::SubscriptionChannels;
 use soma_graphql::{SomaSchema, build_schema};
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ async fn setup() -> TestContext {
     );
 
     let config = GraphQlConfig::default();
-    let schema = build_schema(pg, config, None);
+    let schema = build_schema(pg, config, None, SubscriptionChannels::new(16));
 
     TestContext { schema, db, _temp: temp }
 }

@@ -15,3 +15,6 @@ pub mod service_config;
 pub mod staked_soma;
 pub mod target;
 pub mod transaction;
+pub mod transaction_detail;
+pub mod validator;
+pub mod network_metrics;

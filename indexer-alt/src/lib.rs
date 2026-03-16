@@ -186,9 +186,19 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_epoch_state pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_target_reports::SomaTargetReports, no_prune)
+        .concurrent_pipeline(handlers::soma_target_reports::SomaTargetReports, no_prune.clone())
         .await
         .context("Failed to register soma_target_reports pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_tx_details::SomaTxDetails, no_prune.clone())
+        .await
+        .context("Failed to register soma_tx_details pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune)
+        .await
+        .context("Failed to register soma_validators pipeline")?;
 
     Ok(())
 }
