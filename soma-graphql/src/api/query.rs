@@ -23,6 +23,7 @@ use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
 use crate::api::types::epoch_state::EpochState;
 use crate::api::types::model::{Model, ModelFilter};
+use crate::api::types::network_metrics::NetworkMetrics;
 use crate::api::types::object::Object as GqlObject;
 use crate::api::types::reward::{Reward, RewardBalance};
 use crate::api::types::service_config::ServiceConfig;
@@ -31,7 +32,6 @@ use crate::api::types::target::{Target, TargetFilter};
 use crate::api::types::transaction::Transaction;
 use crate::api::types::transaction_detail::TransactionDetail;
 use crate::api::types::validator::Validator;
-use crate::api::types::network_metrics::NetworkMetrics;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
 
@@ -1596,8 +1596,8 @@ impl Query {
         let mut conn = pg.connect().await?;
 
         let owner_hex = owner.strip_prefix("0x").unwrap_or(&owner);
-        let owner_bytes =
-            hex::decode(owner_hex).map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
+        let owner_bytes = hex::decode(owner_hex)
+            .map_err(|e| Error::new(format!("Invalid owner address: {e}")))?;
 
         use indexer_alt_schema::schema::obj_info;
 
@@ -1609,7 +1609,15 @@ impl Query {
 
         // Query obj_info for objects owned by this address.
         // Deduplicate by object_id (keep latest cp_sequence_number per object).
-        type Row = (Vec<u8>, i64, Option<i16>, Option<Vec<u8>>, Option<Vec<u8>>, Option<String>, Option<String>);
+        type Row = (
+            Vec<u8>,
+            i64,
+            Option<i16>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            Option<String>,
+            Option<String>,
+        );
 
         let rows: Vec<Row> = obj_info::table
             .select((
@@ -1711,7 +1719,19 @@ impl Query {
             .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
             .transpose()?;
 
-        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>, Option<String>);
+        type Row = (
+            Vec<u8>,
+            i64,
+            i64,
+            i64,
+            i64,
+            Vec<u8>,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        );
 
         let mut query = soma_validators::table
             .select((
@@ -1785,7 +1805,19 @@ impl Query {
 
         use indexer_alt_schema::schema::soma_validators;
 
-        type Row = (Vec<u8>, i64, i64, i64, i64, Vec<u8>, i64, i64, Option<String>, Option<String>, Option<String>);
+        type Row = (
+            Vec<u8>,
+            i64,
+            i64,
+            i64,
+            i64,
+            Vec<u8>,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        );
 
         let mut query = soma_validators::table
             .select((
@@ -1896,7 +1928,9 @@ impl Query {
             // Try to deserialize and get timestamps
             let mut timed_cps: Vec<(i64, u64)> = Vec::new();
             for (seq, bcs_data) in &summaries {
-                if let Ok(summary) = bcs::from_bytes::<types::checkpoints::CheckpointSummary>(bcs_data) {
+                if let Ok(summary) =
+                    bcs::from_bytes::<types::checkpoints::CheckpointSummary>(bcs_data)
+                {
                     if summary.timestamp_ms > 0 {
                         // Find tx_lo for this checkpoint
                         if let Some((_, tx_lo)) = recent_cps.iter().find(|(cp, _)| cp == seq) {
@@ -1911,11 +1945,7 @@ impl Query {
                 let oldest = &timed_cps[timed_cps.len() - 1];
                 let tx_diff = (newest.0 as f64) - (oldest.0 as f64);
                 let time_diff_secs = (newest.1 as f64 - oldest.1 as f64) / 1000.0;
-                if time_diff_secs > 0.0 {
-                    Some(tx_diff / time_diff_secs)
-                } else {
-                    None
-                }
+                if time_diff_secs > 0.0 { Some(tx_diff / time_diff_secs) } else { None }
             } else {
                 None
             }
@@ -1923,12 +1953,7 @@ impl Query {
             None
         };
 
-        Ok(NetworkMetrics {
-            tps,
-            total_transactions,
-            total_checkpoints,
-            total_validators,
-        })
+        Ok(NetworkMetrics { tps, total_transactions, total_checkpoints, total_validators })
     }
 }
 

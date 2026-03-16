@@ -28,6 +28,7 @@ use indexer_pg_db::{Db, DbArgs};
 use rpc::utils::checkpoint_blob;
 use soma_graphql::config::GraphQlConfig;
 use soma_graphql::db::PgReader;
+use soma_graphql::subscriptions::SubscriptionChannels;
 use soma_graphql::{AppState, build_router, build_schema};
 use tokio::time::interval;
 use types::full_checkpoint_content::Checkpoint;
@@ -123,7 +124,8 @@ impl OffchainCluster {
             .context("Failed to create PgReader for GraphQL")?,
         );
 
-        let schema = build_schema(pg_reader, GraphQlConfig::default(), None);
+        let schema =
+            build_schema(pg_reader, GraphQlConfig::default(), None, SubscriptionChannels::new(16));
         let app = build_router(AppState { schema });
         let listener = tokio::net::TcpListener::bind(graphql_listen_address)
             .await

@@ -247,10 +247,7 @@ fn dispatch_notification(
                 target_id: format!("0x{}", json["target_id"].as_str().unwrap_or("")),
                 epoch: json["epoch"].as_i64().unwrap_or(0),
                 fill_epoch: json["fill_epoch"].as_i64(),
-                winning_model_id: format!(
-                    "0x{}",
-                    json["winning_model_id"].as_str().unwrap_or("")
-                ),
+                winning_model_id: format!("0x{}", json["winning_model_id"].as_str().unwrap_or("")),
                 submitter: format!("0x{}", json["submitter"].as_str().unwrap_or("")),
                 reward_pool: json["reward_pool"].as_i64().unwrap_or(0),
             });
@@ -367,10 +364,7 @@ impl Subscription {
     }
 
     /// Stream of epoch changes.
-    async fn new_epoch(
-        &self,
-        ctx: &Context<'_>,
-    ) -> impl futures::Stream<Item = EpochEvent> {
+    async fn new_epoch(&self, ctx: &Context<'_>) -> impl futures::Stream<Item = EpochEvent> {
         let channels = ctx.data_unchecked::<SubscriptionChannels>();
         let mut rx = channels.new_epoch.subscribe();
         async_stream::stream! {
