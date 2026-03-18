@@ -190,7 +190,10 @@ impl AuthorityPerpetualTables {
         object_key: &ObjectKey,
         store_object: StoreObject,
     ) -> Result<Option<Object>, SomaError> {
-        Ok(Some(self.construct_object(store_object)?))
+        match store_object {
+            StoreObject::Value(_) => Ok(Some(self.construct_object(store_object)?)),
+            StoreObject::Deleted => Ok(None),
+        }
     }
 
     pub fn object_reference(
