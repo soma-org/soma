@@ -112,17 +112,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             ),
             E::EmbeddingDimensionMismatch { expected, actual } => (
                 ExecutionErrorKind::EmbeddingDimensionMismatch,
-                Some(ErrorDetails::OtherError(format!(
-                    "expected={}, actual={}",
-                    expected, actual
-                ))),
+                Some(ErrorDetails::OtherError(format!("expected={}, actual={}", expected, actual))),
             ),
             E::DistanceExceedsThreshold { score, threshold } => (
                 ExecutionErrorKind::DistanceExceedsThreshold,
-                Some(ErrorDetails::OtherError(format!(
-                    "score={}, threshold={}",
-                    score, threshold
-                ))),
+                Some(ErrorDetails::OtherError(format!("score={}, threshold={}", score, threshold))),
             ),
             E::InsufficientBond { required, provided } => (
                 ExecutionErrorKind::InsufficientBond,
@@ -342,21 +336,16 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                     }
                     (model_id, target_id)
                 } else {
-                    (
-                        crate::types::Address::new([0u8; 32]),
-                        crate::types::Address::new([0u8; 32]),
-                    )
+                    (crate::types::Address::new([0u8; 32]), crate::types::Address::new([0u8; 32]))
                 };
                 Ok(Self::ModelNotInTarget { model_id, target_id })
             }
             K::EmbeddingDimensionMismatch => {
-                let (expected, actual) =
-                    parse_two_u64s(&value.error_details, "expected", "actual");
+                let (expected, actual) = parse_two_u64s(&value.error_details, "expected", "actual");
                 Ok(Self::EmbeddingDimensionMismatch { expected, actual })
             }
             K::DistanceExceedsThreshold => {
-                let (score, threshold) =
-                    parse_two_f32s(&value.error_details, "score", "threshold");
+                let (score, threshold) = parse_two_f32s(&value.error_details, "score", "threshold");
                 Ok(Self::DistanceExceedsThreshold { score, threshold })
             }
             K::InsufficientBond => {
@@ -387,8 +376,7 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::OtherError(msg))
             }
             K::DataExceedsMaxSize => {
-                let (size, max_size) =
-                    parse_two_u64s(&value.error_details, "size", "max_size");
+                let (size, max_size) = parse_two_u64s(&value.error_details, "size", "max_size");
                 Ok(Self::DataExceedsMaxSize { size, max_size })
             }
 

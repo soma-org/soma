@@ -124,7 +124,10 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
             E::TargetExpired { generation_epoch, current_epoch } => (
                 ExecutionErrorKind::TargetExpired,
-                Some(format!("generation_epoch={}, current_epoch={}", generation_epoch, current_epoch)),
+                Some(format!(
+                    "generation_epoch={}, current_epoch={}",
+                    generation_epoch, current_epoch
+                )),
             ),
             E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
             E::AuditWindowOpen { fill_epoch, current_epoch } => (
@@ -174,8 +177,7 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
 
         message.set_kind(kind);
         if let Some(detail_str) = details {
-            message.error_details =
-                Some(execution_error::ErrorDetails::OtherError(detail_str));
+            message.error_details = Some(execution_error::ErrorDetails::OtherError(detail_str));
         }
         message
     }

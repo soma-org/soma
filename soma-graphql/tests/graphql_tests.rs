@@ -2000,10 +2000,15 @@ async fn test_balance_query() {
             .unwrap();
     }
 
-    // Seed kv_objects: Coin BCS = 32-byte UID + 8-byte balance (u64 LE)
+    // Seed kv_objects with BCS-serialized Object (matches indexer kv_objects handler)
     for (oid, ver, balance) in [(&obj_a, 1i64, 5000u64), (&obj_b, 1, 3000)] {
-        let mut serialized = vec![0u8; 32]; // UID placeholder
-        serialized.extend_from_slice(&balance.to_le_bytes());
+        use types::digests::TransactionDigest;
+        use types::object::{Object, ObjectID, Owner};
+
+        let object_id = ObjectID::from_bytes(oid.as_slice()).unwrap();
+        let owner = Owner::AddressOwner(types::base::SomaAddress::from_bytes(&addr).unwrap());
+        let obj = Object::new_coin(object_id, balance, owner, TransactionDigest::ZERO);
+        let serialized = bcs::to_bytes(&obj).unwrap();
         diesel::insert_into(kv_objects::table)
             .values(&(
                 kv_objects::object_id.eq(oid),
