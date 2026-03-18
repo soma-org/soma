@@ -415,7 +415,8 @@ impl SomaClient {
             .map_err(|e| error::Error::GrpcError(e.to_string()))?;
         if !response.effects.status().is_ok() {
             return Err(error::Error::TransactionFailed(format!(
-                "{label} failed: {:?}",
+                "{label} failed (digest: {}): {:?}",
+                response.effects.transaction_digest(),
                 response.effects.status()
             )));
         }
@@ -516,7 +517,10 @@ impl SomaClient {
         let stream = self.list_owned_objects(request).await;
         tokio::pin!(stream);
 
-        let mut best: Option<(types::object::ObjectRef, u64)> = None;
+        // Collect ALL non-excluded coins so that `smash_gas` can merge them
+        // into one primary coin, giving the transaction access to the full
+        // balance (matching the CLI's TransactionBuilder behaviour).
+        let mut coins: Vec<(types::object::ObjectRef, u64)> = Vec::new();
         while let Some(obj) =
             stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
         {
@@ -525,19 +529,22 @@ impl SomaClient {
                 continue;
             }
             let balance = obj.as_coin().unwrap_or(0);
-            if best.as_ref().map_or(true, |(_, b)| balance > *b) {
-                best = Some((obj_ref, balance));
-            }
+            coins.push((obj_ref, balance));
         }
 
-        let (obj_ref, _) = best.ok_or_else(|| {
-            error::Error::DataError(format!(
+        if coins.is_empty() {
+            return Err(error::Error::DataError(format!(
                 "No available gas coin for address {sender} \
                  (excluded {} locked coins)",
                 excluded.len()
-            ))
-        })?;
-        Ok(TransactionData::new(kind, sender, vec![obj_ref]))
+            )));
+        }
+
+        // Sort richest-first so the primary gas coin (first element) has the
+        // highest balance and matches what auto_fetch_coin would pick.
+        coins.sort_by(|a, b| b.1.cmp(&a.1));
+        let gas_payment: Vec<_> = coins.into_iter().map(|(r, _)| r).collect();
+        Ok(TransactionData::new(kind, sender, gas_payment))
     }
 
     /// Select the richest coin owned by `sender`, skipping coins in `excluded`.

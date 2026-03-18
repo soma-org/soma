@@ -186,16 +186,6 @@ impl From<u64> for BalanceIndexInfo {
 }
 
 impl BalanceIndexInfo {
-    fn invert(self) -> Self {
-        // Check for potential overflow when negating i128::MIN
-        assert!(
-            self.balance_delta != i128::MIN,
-            "Cannot invert balance_delta: would overflow i128"
-        );
-
-        Self { balance_delta: -self.balance_delta }
-    }
-
     fn merge_delta(&mut self, other: &Self) {
         self.balance_delta += other.balance_delta;
     }
@@ -284,25 +274,6 @@ struct IndexStoreTables {
 }
 
 impl IndexStoreTables {
-    fn track_coin_balance_change(
-        object: &Object,
-        owner: &SomaAddress,
-        is_removal: bool,
-        balance_changes: &mut HashMap<BalanceKey, BalanceIndexInfo>,
-    ) -> Result<(), StorageError> {
-        if let Some(value) = object.as_coin() {
-            let key = BalanceKey { owner: *owner };
-
-            let mut delta = BalanceIndexInfo::from(value);
-            if is_removal {
-                delta = delta.invert();
-            }
-
-            balance_changes.entry(key).or_default().merge_delta(&delta);
-        }
-        Ok(())
-    }
-
     fn open_with_index_options<P: Into<PathBuf>>(
         path: P,
         // index_options: IndexStoreOptions,
@@ -546,17 +517,25 @@ impl IndexStoreTables {
         let mut balance_changes: HashMap<BalanceKey, BalanceIndexInfo> = HashMap::new();
 
         for tx in &checkpoint.transactions {
-            // determine changes from removed objects
+            // Compute balance deltas using derive_balance_changes (same approach as SUI).
+            // This correctly handles all cases: created, mutated, deleted coins.
+            let tx_balance_changes = types::balance_change::derive_balance_changes(
+                &tx.effects,
+                &tx.input_objects,
+                &tx.output_objects,
+            );
+            for change in tx_balance_changes {
+                let key = BalanceKey { owner: change.address };
+                balance_changes
+                    .entry(key)
+                    .or_default()
+                    .merge_delta(&BalanceIndexInfo { balance_delta: change.amount });
+            }
+
+            // Update owner and target indexes for removed objects
             for removed_object in tx.removed_objects_pre_version() {
                 match removed_object.owner() {
-                    Owner::AddressOwner(owner) => {
-                        Self::track_coin_balance_change(
-                            removed_object,
-                            owner,
-                            true,
-                            &mut balance_changes,
-                        )?;
-
+                    Owner::AddressOwner(_) => {
                         let owner_key = OwnerIndexKey::from_object(removed_object);
                         batch.delete_batch(&self.owner, [owner_key])?;
                     }
@@ -579,7 +558,7 @@ impl IndexStoreTables {
                 }
             }
 
-            // determine changes from changed objects
+            // Update owner and target indexes for changed objects
             for (object, old_object) in tx.changed_objects() {
                 // Handle target index updates for Target objects
                 if object.type_() == &ObjectType::Target {
@@ -615,14 +594,7 @@ impl IndexStoreTables {
 
                 if let Some(old_object) = old_object {
                     match old_object.owner() {
-                        Owner::AddressOwner(owner) => {
-                            Self::track_coin_balance_change(
-                                old_object,
-                                owner,
-                                true,
-                                &mut balance_changes,
-                            )?;
-
+                        Owner::AddressOwner(_) => {
                             let owner_key = OwnerIndexKey::from_object(old_object);
                             batch.delete_batch(&self.owner, [owner_key])?;
                         }
@@ -632,13 +604,7 @@ impl IndexStoreTables {
                 }
 
                 match object.owner() {
-                    Owner::AddressOwner(owner) => {
-                        Self::track_coin_balance_change(
-                            object,
-                            owner,
-                            false,
-                            &mut balance_changes,
-                        )?;
+                    Owner::AddressOwner(_) => {
                         let owner_key = OwnerIndexKey::from_object(object);
                         let owner_info = OwnerIndexInfo::new(object);
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;

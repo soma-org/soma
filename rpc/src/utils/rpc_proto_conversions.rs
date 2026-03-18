@@ -122,24 +122,41 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             E::NoActiveModels => (ExecutionErrorKind::NoActiveModels, None),
             E::TargetNotFound => (ExecutionErrorKind::TargetNotFound, None),
             E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
-            E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
+            E::TargetExpired { generation_epoch, current_epoch } => (
+                ExecutionErrorKind::TargetExpired,
+                Some(format!("generation_epoch={}, current_epoch={}", generation_epoch, current_epoch)),
+            ),
             E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
-            E::AuditWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::AuditWindowOpen { fill_epoch, current_epoch } => (
+                ExecutionErrorKind::ChallengeWindowOpen,
+                Some(format!("fill_epoch={}, current_epoch={}", fill_epoch, current_epoch)),
+            ),
             E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
             // Submission errors
-            E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
-            E::EmbeddingDimensionMismatch { .. } => {
-                (ExecutionErrorKind::EmbeddingDimensionMismatch, None)
-            }
-            E::DistanceExceedsThreshold { .. } => {
-                (ExecutionErrorKind::DistanceExceedsThreshold, None)
-            }
-            E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
+            E::ModelNotInTarget { model_id, target_id } => (
+                ExecutionErrorKind::ModelNotInTarget,
+                Some(format!("model_id={}, target_id={}", model_id, target_id)),
+            ),
+            E::EmbeddingDimensionMismatch { expected, actual } => (
+                ExecutionErrorKind::EmbeddingDimensionMismatch,
+                Some(format!("expected={}, actual={}", expected, actual)),
+            ),
+            E::DistanceExceedsThreshold { score, threshold } => (
+                ExecutionErrorKind::DistanceExceedsThreshold,
+                Some(format!("score={}, threshold={}", score, threshold)),
+            ),
+            E::InsufficientBond { required, provided } => (
+                ExecutionErrorKind::InsufficientBond,
+                Some(format!("required={}, provided={}", required, provided)),
+            ),
             E::InsufficientEmissionBalance => {
                 (ExecutionErrorKind::InsufficientEmissionBalance, None)
             }
             // Audit errors
-            E::AuditWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
+            E::AuditWindowClosed { fill_epoch, current_epoch } => (
+                ExecutionErrorKind::ChallengeWindowClosed,
+                Some(format!("fill_epoch={}, current_epoch={}", fill_epoch, current_epoch)),
+            ),
             E::DataExceedsMaxSize { size, max_size } => (
                 ExecutionErrorKind::DataExceedsMaxSize,
                 Some(format!("size={}, max_size={}", size, max_size)),
@@ -156,6 +173,10 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
         };
 
         message.set_kind(kind);
+        if let Some(detail_str) = details {
+            message.error_details =
+                Some(execution_error::ErrorDetails::OtherError(detail_str));
+        }
         message
     }
 }

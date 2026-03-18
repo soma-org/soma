@@ -85,26 +85,64 @@ impl From<crate::types::ExecutionError> for ExecutionError {
             E::NoActiveModels => (ExecutionErrorKind::NoActiveModels, None),
             E::TargetNotFound => (ExecutionErrorKind::TargetNotFound, None),
             E::TargetNotOpen => (ExecutionErrorKind::TargetNotOpen, None),
-            E::TargetExpired { .. } => (ExecutionErrorKind::TargetExpired, None),
+            E::TargetExpired { generation_epoch, current_epoch } => (
+                ExecutionErrorKind::TargetExpired,
+                Some(ErrorDetails::OtherError(format!(
+                    "generation_epoch={}, current_epoch={}",
+                    generation_epoch, current_epoch
+                ))),
+            ),
             E::TargetNotFilled => (ExecutionErrorKind::TargetNotFilled, None),
-            E::AuditWindowOpen { .. } => (ExecutionErrorKind::ChallengeWindowOpen, None),
+            E::AuditWindowOpen { fill_epoch, current_epoch } => (
+                ExecutionErrorKind::ChallengeWindowOpen,
+                Some(ErrorDetails::OtherError(format!(
+                    "fill_epoch={}, current_epoch={}",
+                    fill_epoch, current_epoch
+                ))),
+            ),
             E::TargetAlreadyClaimed => (ExecutionErrorKind::TargetAlreadyClaimed, None),
 
             // Submission errors
-            E::ModelNotInTarget { .. } => (ExecutionErrorKind::ModelNotInTarget, None),
-            E::EmbeddingDimensionMismatch { .. } => {
-                (ExecutionErrorKind::EmbeddingDimensionMismatch, None)
-            }
-            E::DistanceExceedsThreshold { .. } => {
-                (ExecutionErrorKind::DistanceExceedsThreshold, None)
-            }
-            E::InsufficientBond { .. } => (ExecutionErrorKind::InsufficientBond, None),
+            E::ModelNotInTarget { model_id, target_id } => (
+                ExecutionErrorKind::ModelNotInTarget,
+                Some(ErrorDetails::OtherError(format!(
+                    "model_id={}, target_id={}",
+                    model_id, target_id
+                ))),
+            ),
+            E::EmbeddingDimensionMismatch { expected, actual } => (
+                ExecutionErrorKind::EmbeddingDimensionMismatch,
+                Some(ErrorDetails::OtherError(format!(
+                    "expected={}, actual={}",
+                    expected, actual
+                ))),
+            ),
+            E::DistanceExceedsThreshold { score, threshold } => (
+                ExecutionErrorKind::DistanceExceedsThreshold,
+                Some(ErrorDetails::OtherError(format!(
+                    "score={}, threshold={}",
+                    score, threshold
+                ))),
+            ),
+            E::InsufficientBond { required, provided } => (
+                ExecutionErrorKind::InsufficientBond,
+                Some(ErrorDetails::OtherError(format!(
+                    "required={}, provided={}",
+                    required, provided
+                ))),
+            ),
             E::InsufficientEmissionBalance => {
                 (ExecutionErrorKind::InsufficientEmissionBalance, None)
             }
 
             // Audit errors
-            E::AuditWindowClosed { .. } => (ExecutionErrorKind::ChallengeWindowClosed, None),
+            E::AuditWindowClosed { fill_epoch, current_epoch } => (
+                ExecutionErrorKind::ChallengeWindowClosed,
+                Some(ErrorDetails::OtherError(format!(
+                    "fill_epoch={}, current_epoch={}",
+                    fill_epoch, current_epoch
+                ))),
+            ),
             E::DataExceedsMaxSize { size, max_size } => (
                 ExecutionErrorKind::DataExceedsMaxSize,
                 Some(ErrorDetails::OtherError(format!("size={}, max_size={}", size, max_size))),
@@ -271,28 +309,68 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             K::NoActiveModels => Ok(Self::NoActiveModels),
             K::TargetNotFound => Ok(Self::TargetNotFound),
             K::TargetNotOpen => Ok(Self::TargetNotOpen),
-            K::TargetExpired => Ok(Self::TargetExpired { generation_epoch: 0, current_epoch: 0 }),
+            K::TargetExpired => {
+                let (generation_epoch, current_epoch) =
+                    parse_two_u64s(&value.error_details, "generation_epoch", "current_epoch");
+                Ok(Self::TargetExpired { generation_epoch, current_epoch })
+            }
             K::TargetNotFilled => Ok(Self::TargetNotFilled),
-            K::ChallengeWindowOpen => Ok(Self::AuditWindowOpen { fill_epoch: 0, current_epoch: 0 }),
+            K::ChallengeWindowOpen => {
+                let (fill_epoch, current_epoch) =
+                    parse_two_u64s(&value.error_details, "fill_epoch", "current_epoch");
+                Ok(Self::AuditWindowOpen { fill_epoch, current_epoch })
+            }
             K::TargetAlreadyClaimed => Ok(Self::TargetAlreadyClaimed),
 
             // Submission errors
-            K::ModelNotInTarget => Ok(Self::ModelNotInTarget {
-                model_id: crate::types::Address::new([0u8; 32]),
-                target_id: crate::types::Address::new([0u8; 32]),
-            }),
+            K::ModelNotInTarget => {
+                let (model_id, target_id) = if let Some(ErrorDetails::OtherError(details)) =
+                    &value.error_details
+                {
+                    let mut model_id = crate::types::Address::new([0u8; 32]);
+                    let mut target_id = crate::types::Address::new([0u8; 32]);
+                    for part in details.split(", ") {
+                        if let Some(v) = part.strip_prefix("model_id=") {
+                            if let Ok(addr) = v.parse() {
+                                model_id = addr;
+                            }
+                        } else if let Some(v) = part.strip_prefix("target_id=") {
+                            if let Ok(addr) = v.parse() {
+                                target_id = addr;
+                            }
+                        }
+                    }
+                    (model_id, target_id)
+                } else {
+                    (
+                        crate::types::Address::new([0u8; 32]),
+                        crate::types::Address::new([0u8; 32]),
+                    )
+                };
+                Ok(Self::ModelNotInTarget { model_id, target_id })
+            }
             K::EmbeddingDimensionMismatch => {
-                Ok(Self::EmbeddingDimensionMismatch { expected: 0, actual: 0 })
+                let (expected, actual) =
+                    parse_two_u64s(&value.error_details, "expected", "actual");
+                Ok(Self::EmbeddingDimensionMismatch { expected, actual })
             }
             K::DistanceExceedsThreshold => {
-                Ok(Self::DistanceExceedsThreshold { score: 0.0, threshold: 0.0 })
+                let (score, threshold) =
+                    parse_two_f32s(&value.error_details, "score", "threshold");
+                Ok(Self::DistanceExceedsThreshold { score, threshold })
             }
-            K::InsufficientBond => Ok(Self::InsufficientBond { required: 0, provided: 0 }),
+            K::InsufficientBond => {
+                let (required, provided) =
+                    parse_two_u64s(&value.error_details, "required", "provided");
+                Ok(Self::InsufficientBond { required, provided })
+            }
             K::InsufficientEmissionBalance => Ok(Self::InsufficientEmissionBalance),
 
             // Audit errors
             K::ChallengeWindowClosed => {
-                Ok(Self::AuditWindowClosed { fill_epoch: 0, current_epoch: 0 })
+                let (fill_epoch, current_epoch) =
+                    parse_two_u64s(&value.error_details, "fill_epoch", "current_epoch");
+                Ok(Self::AuditWindowClosed { fill_epoch, current_epoch })
             }
             // Legacy challenge proto variants map to OtherError
             K::InsufficientChallengerBond
@@ -308,7 +386,11 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                     .unwrap_or_else(|| "Legacy challenge error".to_string());
                 Ok(Self::OtherError(msg))
             }
-            K::DataExceedsMaxSize => Ok(Self::DataExceedsMaxSize { size: 0, max_size: 0 }),
+            K::DataExceedsMaxSize => {
+                let (size, max_size) =
+                    parse_two_u64s(&value.error_details, "size", "max_size");
+                Ok(Self::DataExceedsMaxSize { size, max_size })
+            }
 
             K::InsufficientCoinBalance => Ok(Self::InsufficientCoinBalance),
             K::CoinBalanceOverflow => Ok(Self::CoinBalanceOverflow),
@@ -333,5 +415,49 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::OtherError(msg))
             }
         }
+    }
+}
+
+/// Parse two u64 values from an `ErrorDetails::OtherError` string of the form "key1=val1, key2=val2".
+fn parse_two_u64s(
+    details: &Option<execution_error::ErrorDetails>,
+    key1: &str,
+    key2: &str,
+) -> (u64, u64) {
+    if let Some(execution_error::ErrorDetails::OtherError(s)) = details {
+        let mut v1 = 0u64;
+        let mut v2 = 0u64;
+        for part in s.split(", ") {
+            if let Some(v) = part.strip_prefix(&format!("{}=", key1)) {
+                v1 = v.parse().unwrap_or(0);
+            } else if let Some(v) = part.strip_prefix(&format!("{}=", key2)) {
+                v2 = v.parse().unwrap_or(0);
+            }
+        }
+        (v1, v2)
+    } else {
+        (0, 0)
+    }
+}
+
+/// Parse two f32 values from an `ErrorDetails::OtherError` string of the form "key1=val1, key2=val2".
+fn parse_two_f32s(
+    details: &Option<execution_error::ErrorDetails>,
+    key1: &str,
+    key2: &str,
+) -> (f32, f32) {
+    if let Some(execution_error::ErrorDetails::OtherError(s)) = details {
+        let mut v1 = 0.0f32;
+        let mut v2 = 0.0f32;
+        for part in s.split(", ") {
+            if let Some(v) = part.strip_prefix(&format!("{}=", key1)) {
+                v1 = v.parse().unwrap_or(0.0);
+            } else if let Some(v) = part.strip_prefix(&format!("{}=", key2)) {
+                v2 = v.parse().unwrap_or(0.0);
+            }
+        }
+        (v1, v2)
+    } else {
+        (0.0, 0.0)
     }
 }

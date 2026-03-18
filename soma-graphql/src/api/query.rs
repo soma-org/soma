@@ -987,7 +987,7 @@ impl Query {
             return Ok(BigInt(0));
         }
 
-        // Step 2: For each coin object, get the latest version from obj_versions.
+        // Step 2: For each coin object, get the latest version and extract balance.
         let kv = kv_loader(ctx);
         let mut total: i64 = 0;
         for oid in &coin_object_ids {
@@ -1002,15 +1002,15 @@ impl Query {
 
             let Some(ver) = version else { continue };
 
-            // Step 3: Load serialized_object (BigTable or Postgres).
-            let bytes: Option<Vec<u8>> = if let Some(kv) = kv {
+            // Step 3: Load object and extract coin balance.
+            let balance: Option<u64> = if let Some(kv) = kv {
                 let obj_id = types::object::ObjectID::from_bytes(oid.as_slice())
                     .map_err(|e| Error::new(e.to_string()))?;
                 let obj: Option<types::object::Object> =
                     kv.get_object(&obj_id, ver as u64)
                         .await
                         .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
-                obj.and_then(|o| bcs::to_bytes(&o).ok())
+                obj.and_then(|o| o.as_coin())
             } else {
                 let serialized: Option<Option<Vec<u8>>> = kv_objects::table
                     .select(kv_objects::serialized_object)
@@ -1020,18 +1020,14 @@ impl Query {
                     .await
                     .optional()
                     .map_err(|e| Error::new(e.to_string()))?;
-                serialized.flatten()
+                serialized
+                    .flatten()
+                    .and_then(|bytes| bcs::from_bytes::<types::object::Object>(&bytes).ok())
+                    .and_then(|obj| obj.as_coin())
             };
 
-            if let Some(bytes) = bytes {
-                // BCS-deserialize: a Coin object's balance is a u64 at the end of the
-                // serialized object. The Coin<T> Move struct serializes as:
-                // id (32 bytes UID) + balance (u64 LE).
-                if bytes.len() >= 40 {
-                    let balance_bytes: [u8; 8] = bytes[bytes.len() - 8..].try_into().unwrap();
-                    let value = u64::from_le_bytes(balance_bytes) as i64;
-                    total = total.saturating_add(value);
-                }
+            if let Some(value) = balance {
+                total = total.saturating_add(value as i64);
             }
         }
 
@@ -1292,6 +1288,7 @@ impl Query {
         first: Option<i32>,
         after: Option<String>,
         kind: Option<String>,
+        exclude_kind: Option<String>,
         sender: Option<String>,
         epoch: Option<i64>,
     ) -> Result<Connection<String, TransactionDetail>> {
@@ -1325,6 +1322,9 @@ impl Query {
 
         if let Some(ref kind_filter) = kind {
             query = query.filter(soma_tx_details::kind.eq(kind_filter));
+        }
+        if let Some(ref exclude) = exclude_kind {
+            query = query.filter(soma_tx_details::kind.ne(exclude));
         }
         if let Some(ref sender_hex) = sender {
             let hex = sender_hex.strip_prefix("0x").unwrap_or(sender_hex);

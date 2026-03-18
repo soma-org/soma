@@ -94,7 +94,7 @@ class EndOfEpochInfo:
     epoch_end_timestamp_ms: Optional[int]
 
 class TransactionEffects:
-    """Shape returned by ``execute_transaction()``, ``simulate_transaction()``, ``get_transaction()``."""
+    """Shape returned by transaction methods (``execute_transaction()``, ``submit_data()``, etc.)."""
 
     status: str
     gas_used: "GasUsed"
@@ -469,7 +469,7 @@ class SomaClient:
         encrypted_weights: bytes,
         decryption_key: str,
         embedding: list[float],
-    ) -> None:
+    ) -> TransactionEffects:
         """Commit model weights (step 2, unified for initial and update)."""
         ...
     async def reveal_model(
@@ -478,7 +478,7 @@ class SomaClient:
         model_id: str,
         decryption_key: str,
         embedding: list[float],
-    ) -> None:
+    ) -> TransactionEffects:
         """Reveal model weights (step 3, unified for initial and update)."""
         ...
     async def submit_data(
@@ -491,12 +491,12 @@ class SomaClient:
         embedding: list[float],
         distance_score: float,
         loss_score: list[float],
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def claim_rewards(
         self,
         signer: Keypair,
         target_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
 
     # -- High-level: Coin & Object --
     async def transfer_coin(
@@ -504,19 +504,19 @@ class SomaClient:
         signer: Keypair,
         recipient: str,
         amount: float,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def transfer_objects(
         self,
         signer: Keypair,
         recipient: str,
         object_ids: list[str],
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def pay_coins(
         self,
         signer: Keypair,
         recipients: list[str],
         amounts: list[float],
-    ) -> None: ...
+    ) -> TransactionEffects: ...
 
     # -- High-level: Staking --
     async def add_stake(
@@ -524,53 +524,67 @@ class SomaClient:
         signer: Keypair,
         validator: str,
         amount: Optional[float] = None,
-    ) -> None: ...
+    ) -> TransactionEffects:
+        """Add stake to a validator.
+
+        Args:
+            amount: Amount in SOMA (e.g. ``5.0``), **not** shannons.
+                    If omitted, stakes the entire coin.
+        """
+        ...
     async def withdraw_stake(
         self,
         signer: Keypair,
         staked_soma_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def add_stake_to_model(
         self,
         signer: Keypair,
         model_id: str,
         amount: Optional[float] = None,
-    ) -> None: ...
+    ) -> TransactionEffects:
+        """Add stake to a model.
+
+        Args:
+            amount: Amount in SOMA (e.g. ``5.0``), **not** shannons.
+                    If omitted, stakes the entire coin.
+        """
+        ...
 
     # -- High-level: Model Management --
     async def deactivate_model(
         self,
         signer: Keypair,
         model_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def set_model_commission_rate(
         self,
         signer: Keypair,
         model_id: str,
         new_rate: int,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def report_model(
         self,
         signer: Keypair,
         model_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def undo_report_model(
         self,
         signer: Keypair,
         model_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
 
     # -- High-level: Submission --
     async def report_submission(
         self,
         signer: Keypair,
         target_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def undo_report_submission(
         self,
         signer: Keypair,
         target_id: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
 
     # -- High-level: Validator Management --
     async def add_validator(
@@ -584,12 +598,12 @@ class SomaClient:
         p2p_address: bytes,
         primary_address: bytes,
         proxy_address: bytes,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def remove_validator(
         self,
         signer: Keypair,
         pubkey_bytes: bytes,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def update_validator_metadata(
         self,
         signer: Keypair,
@@ -601,19 +615,19 @@ class SomaClient:
         next_epoch_worker_pubkey: Optional[bytes] = None,
         next_epoch_network_pubkey: Optional[bytes] = None,
         next_epoch_proof_of_possession: Optional[bytes] = None,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def set_validator_commission_rate(
         self,
         signer: Keypair,
         new_rate: int,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def report_validator(
         self,
         signer: Keypair,
         reportee: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...
     async def undo_report_validator(
         self,
         signer: Keypair,
         reportee: str,
-    ) -> None: ...
+    ) -> TransactionEffects: ...

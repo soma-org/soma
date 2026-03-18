@@ -1316,11 +1316,11 @@ impl PySomaClient {
                 embedding_commitment: EmbeddingCommitment::new(emb_commitment),
                 decryption_key_commitment: DecryptionKeyCommitment::new(dk_commitment),
             });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "CommitModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1347,11 +1347,11 @@ impl PySomaClient {
                 decryption_key: DecryptionKey::new(key_bytes),
                 embedding: embedding_tensor,
             });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "RevealModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1393,6 +1393,13 @@ impl PySomaClient {
                 .await
                 .map_err(to_py_err)?;
 
+            eprintln!(
+                "[soma-sdk] SubmitData: bond_coin=({}, v{}, {})",
+                bond_coin.0,
+                bond_coin.1.value(),
+                bond_coin.2,
+            );
+
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
                 data_manifest: manifest,
@@ -1402,11 +1409,11 @@ impl PySomaClient {
                 loss_score: loss_score_tensor,
                 bond_coin,
             });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "SubmitData")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1423,11 +1430,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: target });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "ClaimRewards")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1456,11 +1463,11 @@ impl PySomaClient {
                 amount: Some(shannons),
                 recipient: recipient_addr,
             };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "TransferCoin")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1485,11 +1492,11 @@ impl PySomaClient {
             }
             let kind =
                 TransactionKind::TransferObjects { objects: obj_refs, recipient: recipient_addr };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "TransferObjects")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1516,11 +1523,11 @@ impl PySomaClient {
                 amounts: Some(shannons),
                 recipients: recipient_addrs,
             };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "PayCoins")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1547,11 +1554,11 @@ impl PySomaClient {
             let coin_ref = auto_fetch_coin(&client, sender).await?;
             let kind =
                 TransactionKind::AddStake { address: validator_addr, coin_ref, amount: shannons };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "AddStake")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1569,11 +1576,11 @@ impl PySomaClient {
             let sender = kp.address();
             let staked_ref = auto_fetch_object_ref(&client, staked_id).await?;
             let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "WithdrawStake")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1596,11 +1603,11 @@ impl PySomaClient {
             let coin_ref = auto_fetch_coin(&client, sender).await?;
             let kind =
                 TransactionKind::AddStakeToModel { model_id: model, coin_ref, amount: shannons };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "AddStakeToModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1621,11 +1628,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::DeactivateModel { model_id: model };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "DeactivateModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1643,11 +1650,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::SetModelCommissionRate { model_id: model, new_rate };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "SetModelCommissionRate")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1664,11 +1671,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::ReportModel { model_id: model };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "ReportModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1685,11 +1692,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::UndoReportModel { model_id: model };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "UndoReportModel")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1710,11 +1717,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::ReportSubmission { target_id: target };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "ReportSubmission")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1731,11 +1738,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::UndoReportSubmission { target_id: target };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "UndoReportSubmission")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1771,11 +1778,11 @@ impl PySomaClient {
                 primary_address,
                 proxy_address,
             });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "AddValidator")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1791,11 +1798,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "RemoveValidator")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1838,11 +1845,11 @@ impl PySomaClient {
                 next_epoch_network_pubkey,
                 next_epoch_proof_of_possession,
             });
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "UpdateValidatorMetadata")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1858,11 +1865,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::SetCommissionRate { new_rate };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "SetCommissionRate")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1879,11 +1886,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::ReportValidator { reportee: reportee_addr };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "ReportValidator")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 
@@ -1900,11 +1907,11 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
             let kind = TransactionKind::UndoReportValidator { reportee: reportee_addr };
-            client
+            let effects = client
                 .sign_and_execute_with_retry(&kp, sender, kind, "UndoReportValidator")
                 .await
                 .map_err(to_py_err)?;
-            Ok(())
+            to_py_obj(&effects)
         })
     }
 }
