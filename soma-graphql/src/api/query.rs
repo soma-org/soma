@@ -968,15 +968,18 @@ impl Query {
                 continue;
             }
             seen.insert(row.0.clone());
-            // Filter out tombstones (owner IS NULL in later row means deleted)
-            if row.2.is_some() {
-                deduped.push(StakedSoma {
-                    staked_soma_id: row.0,
-                    owner: row.2.unwrap(),
-                    pool_id: row.3.unwrap_or_default(),
-                    stake_activation_epoch: row.4.unwrap_or(0),
-                    principal: row.5.unwrap_or(0),
-                });
+            // Filter out tombstones (owner IS NULL) and ownership changes
+            // (latest row for this ID may show a different owner after transfer)
+            if let Some(ref current_owner) = row.2 {
+                if owner_bytes.as_ref().map_or(true, |ob| current_owner == ob) {
+                    deduped.push(StakedSoma {
+                        staked_soma_id: row.0,
+                        owner: current_owner.clone(),
+                        pool_id: row.3.unwrap_or_default(),
+                        stake_activation_epoch: row.4.unwrap_or(0),
+                        principal: row.5.unwrap_or(0),
+                    });
+                }
             }
         }
 
@@ -1027,6 +1030,32 @@ impl Query {
                 coin_object_ids.push(oid.clone());
             }
         }
+
+        if coin_object_ids.is_empty() {
+            return Ok(BigInt(0));
+        }
+
+        // Step 1.5: Verify each candidate is still owned by this address.
+        // The owner-filtered query above may return stale rows for coins that
+        // were transferred to another address at a later checkpoint.
+        let verify_rows: Vec<(Vec<u8>, Option<Vec<u8>>)> = obj_info::table
+            .select((obj_info::object_id, obj_info::owner_id))
+            .filter(obj_info::object_id.eq_any(&coin_object_ids))
+            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
+            .load(conn.deref_mut())
+            .await
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        let mut still_owned = std::collections::HashSet::new();
+        let mut seen_verify = std::collections::HashSet::new();
+        for (oid, owner) in &verify_rows {
+            if seen_verify.insert(oid.clone()) {
+                if owner.as_deref() == Some(addr_bytes.as_slice()) {
+                    still_owned.insert(oid.clone());
+                }
+            }
+        }
+        coin_object_ids.retain(|oid| still_owned.contains(oid));
 
         if coin_object_ids.is_empty() {
             return Ok(BigInt(0));

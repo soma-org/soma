@@ -2025,6 +2025,92 @@ async fn test_balance_query() {
     assert_eq!(json["data"]["balance"], "8000");
 }
 
+/// Regression: coins transferred to another address must not be double-counted.
+#[tokio::test]
+#[ignore]
+async fn test_balance_excludes_transferred_coins() {
+    let ctx = setup().await;
+
+    let addr_a = vec![0xAA; 32];
+    let addr_b = vec![0xBB; 32];
+    let addr_a_hex = format!("0x{}", hex::encode(&addr_a));
+    let addr_b_hex = format!("0x{}", hex::encode(&addr_b));
+
+    let coin_id = vec![0xC1; 32];
+
+    let mut conn = ctx.db.connect().await.unwrap();
+    use indexer_alt_schema::schema::{kv_objects, obj_info, obj_versions};
+
+    // Coin owned by A at checkpoint 10
+    diesel::insert_into(obj_info::table)
+        .values(&(
+            obj_info::object_id.eq(&coin_id),
+            obj_info::cp_sequence_number.eq(10i64),
+            obj_info::owner_kind.eq(Some(1i16)),
+            obj_info::owner_id.eq(Some(&addr_a)),
+            obj_info::module.eq(Some("Coin")),
+            obj_info::name.eq(Some("Coin")),
+        ))
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // Coin transferred to B at checkpoint 20
+    diesel::insert_into(obj_info::table)
+        .values(&(
+            obj_info::object_id.eq(&coin_id),
+            obj_info::cp_sequence_number.eq(20i64),
+            obj_info::owner_kind.eq(Some(1i16)),
+            obj_info::owner_id.eq(Some(&addr_b)),
+            obj_info::module.eq(Some("Coin")),
+            obj_info::name.eq(Some("Coin")),
+        ))
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // obj_versions: version 2 at checkpoint 20 (latest)
+    diesel::insert_into(obj_versions::table)
+        .values(&(
+            obj_versions::object_id.eq(&coin_id),
+            obj_versions::object_version.eq(2i64),
+            obj_versions::cp_sequence_number.eq(20i64),
+        ))
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // kv_objects: serialized coin owned by B with balance 5000
+    {
+        use types::digests::TransactionDigest;
+        use types::object::{Object, ObjectID, Owner};
+
+        let object_id = ObjectID::from_bytes(coin_id.as_slice()).unwrap();
+        let owner = Owner::AddressOwner(types::base::SomaAddress::from_bytes(&addr_b).unwrap());
+        let obj = Object::new_coin(object_id, 5000, owner, TransactionDigest::ZERO);
+        let serialized = bcs::to_bytes(&obj).unwrap();
+        diesel::insert_into(kv_objects::table)
+            .values(&(
+                kv_objects::object_id.eq(&coin_id),
+                kv_objects::object_version.eq(2i64),
+                kv_objects::serialized_object.eq(Some(&serialized)),
+            ))
+            .execute(conn.deref_mut())
+            .await
+            .unwrap();
+    }
+
+    // A's balance must be 0 — coin was transferred away
+    let query_a = format!(r#"{{ balance(address: "{}") }}"#, addr_a_hex);
+    let json_a = execute(&ctx.schema, &query_a).await;
+    assert_eq!(json_a["data"]["balance"], "0");
+
+    // B's balance must be 5000
+    let query_b = format!(r#"{{ balance(address: "{}") }}"#, addr_b_hex);
+    let json_b = execute(&ctx.schema, &query_b).await;
+    assert_eq!(json_b["data"]["balance"], "5000");
+}
+
 // ---------------------------------------------------------------------------
 // Model aggregates
 // ---------------------------------------------------------------------------
