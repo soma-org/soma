@@ -281,20 +281,29 @@ impl WalletContext {
         Ok(self.get_gas_objects_sorted_by_balance(address).await?.into_iter().next())
     }
 
-    /// Return all coins owned by `address`, sorted richest-first.
+    /// Return up to `MAX_GAS_COINS` coins owned by `address`, sorted
+    /// richest-first.
     ///
-    /// When the resulting vector is used as the `gas_payment` for a
-    /// transaction, `smash_gas` will merge all the dust coins into the
-    /// primary (richest) coin, keeping the address tidy.
+    /// Caps the number of coins fetched to avoid excessive RPC pagination
+    /// (addresses with thousands of dust coins would otherwise require
+    /// dozens of page requests). When the resulting vector is used as the
+    /// `gas_payment` for a transaction, `smash_gas` will merge the
+    /// included coins into the primary, gradually cleaning up dust over
+    /// successive transactions.
     pub async fn get_gas_objects_sorted_by_balance(
         &self,
         address: SomaAddress,
     ) -> anyhow::Result<Vec<ObjectRef>> {
+        /// Maximum number of coins to fetch for gas payment / smashing.
+        /// Matches the server's max page size (1000) so all coins
+        /// fit in a single RPC call for smash_gas to merge.
+        const MAX_GAS_COINS: usize = 1000;
+
         let client = self.get_client().await?;
 
         let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
         request.owner = Some(address.to_string());
-        request.page_size = Some(100);
+        request.page_size = Some(1000);
         request.object_type = Some((ObjectType::Coin).into());
         request.read_mask = Some(FieldMask::from_paths([
             "object_id",
@@ -314,6 +323,9 @@ impl WalletContext {
             let balance = object.as_coin().unwrap_or(0);
             let obj_ref = object.compute_object_reference();
             coins.push((obj_ref, balance));
+            if coins.len() >= MAX_GAS_COINS {
+                break;
+            }
         }
 
         // Sort descending by balance so the richest coin is first.

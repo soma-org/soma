@@ -363,7 +363,8 @@ async fn execute_tx(
     tx_args: TxProcessingArgs,
 ) -> Result<ValidatorCommandResponse> {
     let result =
-        crate::client_commands::execute_or_serialize(context, sender, kind, None, tx_args).await?;
+        crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args)
+            .await?;
 
     // Convert ClientCommandResponse to ValidatorCommandResponse
     match result {

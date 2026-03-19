@@ -37,9 +37,8 @@ pub async fn execute(
         .map(|r| context.get_identity_address(Some(r)))
         .collect::<Result<Vec<_>>>()?;
 
-    // Get coin references
-    let user_specified_coins = coins.is_some();
-    let coin_refs = match coins {
+    // Get coin references and gas payment in a single fetch.
+    let (coin_refs, gas_payment) = match coins {
         Some(coin_ids) => {
             ensure!(!coin_ids.is_empty(), "At least one input coin is required");
             let mut refs = Vec::new();
@@ -50,28 +49,25 @@ pub async fn execute(
                     .map_err(|e| anyhow!("Failed to get coin {}: {}", coin_id, e.message()))?;
                 refs.push(coin.compute_object_reference());
             }
-            refs
+            let gas = vec![refs[0]];
+            (refs, gas)
         }
         None => {
-            // Auto-select all coins sorted richest-first. The first will be
-            // used as the primary gas coin; any dust coins are included so
-            // smash_gas can merge them.
-            let gas_objects = context.get_gas_objects_sorted_by_balance(sender).await?;
-            if gas_objects.is_empty() {
+            // Fetch all coins once. They serve as both the pay-coins input
+            // and the gas_payment, so smash_gas can merge dust.
+            let all_coins = context.get_gas_objects_sorted_by_balance(sender).await?;
+            if all_coins.is_empty() {
                 bail!("No coins found for address {}", sender);
             }
-            gas_objects
+            (all_coins.clone(), all_coins)
         }
     };
 
     let kind = TransactionKind::PayCoins {
-        coins: coin_refs.clone(),
+        coins: coin_refs,
         amounts: Some(amounts),
         recipients: recipient_addresses,
     };
 
-    // When auto-selecting, pass None so TransactionBuilder includes all
-    // coins as gas_payment and smash_gas merges dust.
-    let explicit_gas = if user_specified_coins { Some(coin_refs[0]) } else { None };
-    crate::client_commands::execute_or_serialize(context, sender, kind, explicit_gas, tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
 }

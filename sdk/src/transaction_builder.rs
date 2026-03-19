@@ -25,29 +25,28 @@ impl<'a> TransactionBuilder<'a> {
     }
 
     /// Build unsigned transaction data for a given kind.
-    /// Returns the TransactionData which can be serialized or signed.
+    ///
+    /// If `gas_payment` is non-empty, uses the provided coins directly
+    /// (avoiding an RPC call). If empty, auto-fetches all coins sorted
+    /// richest-first so that `smash_gas` can merge dust.
     pub async fn build_transaction_data(
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas: Option<ObjectRef>,
+        gas_payment: Vec<ObjectRef>,
     ) -> Result<TransactionData> {
-        let gas_payment = match gas {
-            Some(gas_ref) => vec![gas_ref],
-            None => {
-                // Fetch all coins sorted richest-first. Using them all as
-                // gas_payment lets smash_gas merge dust coins into the
-                // primary coin, keeping the address clean.
-                let coins = self.context.get_gas_objects_sorted_by_balance(sender).await?;
-                if coins.is_empty() {
-                    return Err(anyhow!(
-                        "No gas object found for address {}. \
-                         Please ensure the address has coins.",
-                        sender
-                    ));
-                }
-                coins
+        let gas_payment = if gas_payment.is_empty() {
+            let coins = self.context.get_gas_objects_sorted_by_balance(sender).await?;
+            if coins.is_empty() {
+                return Err(anyhow!(
+                    "No gas object found for address {}. \
+                     Please ensure the address has coins.",
+                    sender
+                ));
             }
+            coins
+        } else {
+            gas_payment
         };
 
         Ok(TransactionData::new(kind, sender, gas_payment))
@@ -58,9 +57,9 @@ impl<'a> TransactionBuilder<'a> {
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas: Option<ObjectRef>,
+        gas_payment: Vec<ObjectRef>,
     ) -> Result<Transaction> {
-        let tx_data = self.build_transaction_data(sender, kind, gas).await?;
+        let tx_data = self.build_transaction_data(sender, kind, gas_payment).await?;
         let tx = self.context.sign_transaction(&tx_data).await;
         Ok(tx)
     }
@@ -71,9 +70,9 @@ impl<'a> TransactionBuilder<'a> {
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas: Option<ObjectRef>,
+        gas_payment: Vec<ObjectRef>,
     ) -> Result<String> {
-        let tx_data = self.build_transaction_data(sender, kind, gas).await?;
+        let tx_data = self.build_transaction_data(sender, kind, gas_payment).await?;
         let bytes = bcs::to_bytes(&tx_data)?;
         Ok(fastcrypto::encoding::Base64::encode(&bytes))
     }

@@ -427,6 +427,25 @@ impl<R: rand::RngCore + rand::CryptoRng> SwarmBuilder<R> {
                     builder = builder.with_run_with_range(run_with_range);
                 }
 
+                // Apply supported protocol versions to fullnode.
+                // Fullnodes must follow the network, so for PerValidator configs
+                // they always support up to MAX_ALLOWED (they don't vote on upgrades).
+                // Without this, fullnodes default to MAX which may be behind
+                // MAX_ALLOWED in msim, causing them to shut down during upgrade tests.
+                let fullnode_versions = match &self.supported_protocol_versions_config {
+                    ProtocolVersionsConfig::Default => None,
+                    ProtocolVersionsConfig::Global(v) => Some(*v),
+                    ProtocolVersionsConfig::PerValidator(_) => {
+                        Some(SupportedProtocolVersions::new_for_testing(
+                            1,
+                            ProtocolVersion::MAX_ALLOWED.as_u64(),
+                        ))
+                    }
+                };
+                if let Some(versions) = fullnode_versions {
+                    builder = builder.with_supported_protocol_versions(versions);
+                }
+
                 let mut fullnode_config = builder.build(genesis.clone(), seed_peers.clone());
 
                 // Apply data_ingestion_dir to fullnode config (fullnodes write all

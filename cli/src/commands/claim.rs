@@ -35,9 +35,14 @@ impl ClaimCommand {
 
         let kind = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: self.target_id });
 
-        let result =
-            crate::client_commands::execute_or_serialize(context, sender, kind, None, self.tx_args)
-                .await?;
+        let result = crate::client_commands::execute_or_serialize(
+            context,
+            sender,
+            kind,
+            vec![],
+            self.tx_args,
+        )
+        .await?;
 
         // Convert ClientCommandResponse to ClaimCommandResponse
         match result {

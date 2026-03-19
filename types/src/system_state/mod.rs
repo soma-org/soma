@@ -1288,6 +1288,17 @@ impl SystemStateV1 {
                 next_protocol_config.build_system_parameters(Some(self.parameters.value_fee_bps));
         }
 
+        // V3 migration: reset stuck difficulty state
+        if self.protocol_version < 3 && next_protocol_version >= 3 {
+            info!(
+                "V3 migration: resetting difficulty (threshold={}, ema={})",
+                self.target_state.distance_threshold, self.target_state.hits_ema
+            );
+            self.target_state.distance_threshold =
+                self.parameters.target_initial_distance_threshold.clone();
+            self.target_state.hits_ema = 0;
+        }
+
         // Get reward_slashing_rate from protocol config
         let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
@@ -1318,7 +1329,10 @@ impl SystemStateV1 {
         // to maintain supply conservation.
         self.emission_pool.balance = self.emission_pool.balance.saturating_add(remainder);
 
-        // 5. Advance target state for new epoch (difficulty adjustment + reward calculation)
+        // 5. Update protocol version before target processing so V3 gating works
+        self.protocol_version = next_protocol_version;
+
+        // 6. Advance target state for new epoch (difficulty adjustment + reward calculation)
         self.advance_epoch_targets();
 
         // 9. Process validator rewards (minimal - just for consensus participation)
@@ -1333,8 +1347,6 @@ impl SystemStateV1 {
 
         // 10. Process model registry epoch boundary logic
         self.advance_epoch_models(new_epoch);
-
-        self.protocol_version = next_protocol_version;
 
         // 12. Return remainder to emission pool
         if validator_reward_pool > 0 {
@@ -1396,7 +1408,8 @@ impl SystemStateV1 {
     /// Calculate the reward per target for the upcoming epoch.
     /// Based on target_reward_allocation_bps of epoch emissions divided by estimated targets.
     ///
-    /// Uses target_initial_targets_per_epoch as the estimate for number of targets.
+    /// V3+: uses target_hits_per_epoch (expected total fills including spawn-on-fill).
+    /// Pre-V3: uses target_initial_targets_per_epoch (for checkpoint replay compatibility).
     pub fn calculate_reward_per_target(&self) -> u64 {
         let epoch_emissions = self.emission_pool.emission_per_epoch;
         let target_allocation_bps = self.parameters.target_reward_allocation_bps;
@@ -1404,20 +1417,33 @@ impl SystemStateV1 {
         let target_emissions = (epoch_emissions as u128 * target_allocation_bps as u128
             / BPS_DENOMINATOR as u128) as u64;
 
-        // Use initial targets per epoch as the estimate
-        let estimated_targets = self.parameters.target_initial_targets_per_epoch.max(1);
+        let denominator = if self.protocol_version >= 3 {
+            // V3+: divide by target_hits_per_epoch (expected total fills including spawn-on-fill)
+            self.parameters.target_hits_per_epoch.max(1)
+        } else {
+            // Pre-V3: divide by initial targets only (for checkpoint replay)
+            self.parameters.target_initial_targets_per_epoch.max(1)
+        };
 
-        target_emissions / estimated_targets
+        target_emissions / denominator
     }
+
+    /// Embedding distance standard deviation (cosine distance).
+    /// Defines the unit of z: threshold = 1.0 - EMBEDDING_DISTANCE_STD * z.
+    const EMBEDDING_DISTANCE_STD: f32 = 0.022;
+
+    /// Minimum z step to prevent z=0 from being stuck under multiplicative adjustment.
+    const MIN_Z_STEP: f32 = 0.1;
 
     /// Adjust difficulty thresholds based on hits per epoch.
     /// Called during epoch transition in advance_epoch_targets().
     ///
-    /// Compares the EMA of absolute hit counts against target_hits_per_epoch:
-    /// If ema_hits > target: too many hits → decrease thresholds (harder)
-    /// If ema_hits < target: too few hits → increase thresholds (easier)
+    /// V3+: z-based adjustment grounded in embedding statistics.
+    ///   z = (1.0 - threshold) / σ, where σ = 0.022 (embedding distance std).
+    ///   step = max(|z| * adj_rate, MIN_Z_STEP).
+    ///   If ema > target: z += step (harder). If ema < target: z -= step (easier).
     ///
-    /// Uses an EMA of hits per epoch for smoother adjustments.
+    /// Pre-V3: original multiplicative adjustment (for checkpoint replay).
     pub fn adjust_difficulty(&mut self) {
         let target_hits = self.parameters.target_hits_per_epoch;
         let decay_bps = self.parameters.target_hits_ema_decay_bps;
@@ -1427,42 +1453,58 @@ impl SystemStateV1 {
 
         // Skip adjustment if still in bootstrap mode (EMA is 0)
         if ema_hits == 0 {
-            info!("Difficulty adjustment skipped: bootstrap mode (no hit data yet)");
+            info!("Difficulty adjustment skipped: bootstrap mode");
             return;
         }
 
-        let adjustment_rate = self.parameters.target_difficulty_adjustment_rate_bps;
         let min_distance = self.parameters.target_min_distance_threshold.as_scalar();
         let max_distance = self.parameters.target_max_distance_threshold.as_scalar();
 
-        // Calculate adjustment factor based on EMA vs target
-        // If ema > target, we're too easy → decrease thresholds (harder)
-        // If ema < target, we're too hard → increase thresholds (easier)
-        // If ema == target, no adjustment needed
-        let adjustment_factor: f32 = if ema_hits > target_hits {
-            // Too easy - make harder (decrease thresholds)
-            // factor < 1.0
-            (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32 / BPS_DENOMINATOR as f32
-        } else if ema_hits < target_hits {
-            // Too hard - make easier (increase thresholds)
-            // factor > 1.0
-            (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32
+        if self.protocol_version >= 3 {
+            // V3+: z-based adjustment grounded in embedding statistics
+            let threshold = self.target_state.distance_threshold.as_scalar();
+            let z = (1.0 - threshold) / Self::EMBEDDING_DISTANCE_STD;
+            let adj_rate = self.parameters.target_difficulty_adjustment_rate_bps as f32
+                / BPS_DENOMINATOR as f32;
+
+            let step = (z.abs() * adj_rate).max(Self::MIN_Z_STEP);
+            let new_z = if ema_hits > target_hits {
+                z + step // too many hits → harder
+            } else if ema_hits < target_hits {
+                z - step // too few hits → easier
+            } else {
+                z
+            };
+
+            let z_max = (1.0 - min_distance) / Self::EMBEDDING_DISTANCE_STD;
+            let z_min = (1.0 - max_distance) / Self::EMBEDDING_DISTANCE_STD;
+            let clamped_z = new_z.clamp(z_min, z_max);
+            let new_threshold = 1.0 - Self::EMBEDDING_DISTANCE_STD * clamped_z;
+
+            self.target_state.distance_threshold = SomaTensor::scalar(new_threshold);
+            info!(
+                "Difficulty adjusted (z-based): threshold={:.4}, z={:.2} (ema={}, target={})",
+                new_threshold, clamped_z, ema_hits, target_hits,
+            );
         } else {
-            1.0 // Exact match, no adjustment
-        };
-
-        // Apply adjustment to distance threshold
-        let current_distance = self.target_state.distance_threshold.as_scalar();
-        let new_distance = (current_distance * adjustment_factor).clamp(min_distance, max_distance);
-        self.target_state.distance_threshold = SomaTensor::scalar(new_distance);
-
-        info!(
-            "Difficulty adjusted: distance={} (ema_hits={}, target_hits={}, hits_this_epoch={})",
-            self.target_state.distance_threshold,
-            ema_hits,
-            target_hits,
-            self.target_state.hits_this_epoch,
-        );
+            // Pre-V3: original multiplicative adjustment (for checkpoint replay)
+            let adjustment_rate = self.parameters.target_difficulty_adjustment_rate_bps;
+            let adjustment_factor: f32 = if ema_hits > target_hits {
+                (BPS_DENOMINATOR - adjustment_rate).min(BPS_DENOMINATOR) as f32
+                    / BPS_DENOMINATOR as f32
+            } else if ema_hits < target_hits {
+                (BPS_DENOMINATOR + adjustment_rate) as f32 / BPS_DENOMINATOR as f32
+            } else {
+                1.0
+            };
+            let current = self.target_state.distance_threshold.as_scalar();
+            let new_distance = (current * adjustment_factor).clamp(min_distance, max_distance);
+            self.target_state.distance_threshold = SomaTensor::scalar(new_distance);
+            info!(
+                "Difficulty adjusted (legacy): distance={} (ema={}, target={})",
+                new_distance, ema_hits, target_hits,
+            );
+        }
     }
 
     /// Called at epoch boundary to update target state for the new epoch.
@@ -1701,6 +1743,12 @@ impl SystemState {
     pub fn emission_pool_mut(&mut self) -> &mut EmissionPool {
         match self {
             Self::V1(v1) => &mut v1.emission_pool,
+        }
+    }
+    #[cfg(test)]
+    pub fn set_protocol_version_for_testing(&mut self, version: u64) {
+        match self {
+            Self::V1(v1) => v1.protocol_version = version,
         }
     }
     pub fn safe_mode(&self) -> bool {

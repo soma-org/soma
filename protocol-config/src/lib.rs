@@ -15,7 +15,7 @@ pub use tensor::{BcsF32, Dtype, SomaTensor};
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 2;
+pub const MAX_PROTOCOL_VERSION: u64 = 3;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -401,6 +401,20 @@ impl ProtocolConfig {
             cfg.execution_version = Some(1);
         }
         if version.0 >= 3 {
+            // Difficulty recalibration: 1 hit/sec target, z-based adjustment
+            cfg.target_hits_per_epoch = Some(86_400); // 1 hit/sec × 86400 sec/day
+            cfg.target_min_distance_threshold = Some(BcsF32(0.95));
+            cfg.target_difficulty_adjustment_rate_bps = Some(200); // 2%
+            cfg.target_hits_ema_decay_bps = Some(9000); // 90% decay
+            cfg.target_initial_distance_threshold = Some(BcsF32(0.978)); // z=1
+
+            // Bond: ~5% of reward at avg 10k submission → -EV cheating at 95% detection
+            cfg.submission_bond_per_byte = Some(65); // was 10; 65 × 10k = 650k ≈ 5% of 12.7M reward
+
+            cfg.execution_version = Some(2);
+        }
+        // V4 is MAX_ALLOWED in msim (no-op, same as V3). Reserved for future changes.
+        if version.0 >= 5 {
             panic!("unsupported version {:?}", version);
         }
 

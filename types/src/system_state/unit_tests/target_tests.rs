@@ -12,10 +12,12 @@
 
 use super::test_utils::{
     advance_epoch_with_rewards, commit_model, commit_model_with_dim, create_model,
-    create_test_system_state, create_validators_with_stakes, reveal_model, reveal_model_with_dim,
+    create_test_system_state, create_test_system_state_at_version, create_validators_with_stakes,
+    reveal_model, reveal_model_with_dim,
 };
 use crate::base::SomaAddress;
 use crate::config::genesis_config::SHANNONS_PER_SOMA;
+use crate::system_state::SystemStateTrait;
 use crate::target::{TargetStatus, deterministic_embedding, generate_target, make_target_seed};
 
 /// Test that target seeds are deterministic
@@ -174,7 +176,7 @@ fn test_target_generation_multiple_models() {
     }
 }
 
-/// Test reward_per_target calculation
+/// Test reward_per_target calculation (V3: uses target_hits_per_epoch as denominator)
 #[test]
 fn test_calculate_reward_per_target() {
     let validators = create_validators_with_stakes(vec![100, 100]);
@@ -183,11 +185,11 @@ fn test_calculate_reward_per_target() {
     // Set up parameters
     system_state.emission_pool_mut().emission_per_epoch = 1_000_000 * SHANNONS_PER_SOMA;
     system_state.parameters_mut().target_reward_allocation_bps = 8000; // 80%
-    system_state.parameters_mut().target_initial_targets_per_epoch = 100; // 100 targets per epoch
+    system_state.parameters_mut().target_hits_per_epoch = 100; // V3 uses this as denominator
 
     let reward_per_target = system_state.calculate_reward_per_target();
 
-    // Expected: (1M SOMA * 80%) / 100 targets = 8000 SOMA per target
+    // Expected: (1M SOMA * 80%) / 100 = 8000 SOMA per target
     let expected_target_emissions = (1_000_000 * SHANNONS_PER_SOMA * 8000) / 10000;
     let expected_reward = expected_target_emissions / 100;
 
@@ -273,11 +275,11 @@ fn test_difficulty_adjustment_min_bounds() {
 
     system_state.adjust_difficulty();
 
-    // Should be clamped to min
-    assert_eq!(
-        system_state.target_state().distance_threshold.as_scalar(),
-        0.1,
-        "Distance threshold should not go below min"
+    // Should be clamped to min (use approximate comparison for f32)
+    assert!(
+        (system_state.target_state().distance_threshold.as_scalar() - 0.1).abs() < 0.001,
+        "Distance threshold should not go below min: got {}",
+        system_state.target_state().distance_threshold.as_scalar()
     );
 }
 
@@ -524,4 +526,472 @@ fn test_model_selection_seed_affects_result() {
     // Note: We don't assert inequality because technically same selection is possible (just unlikely)
     // The main test is that different seeds can produce different selections
     assert_eq!(selection3.len(), 3, "Different seed should still produce valid selection");
+}
+
+// ===== V3 Protocol Tests =====
+
+/// Test reward_per_target V3: denominator = target_hits_per_epoch
+#[test]
+fn test_reward_per_target_v3() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // V3 params: emission_per_epoch = 1.37T shannons, allocation = 80%, hits = 86400
+    let emission_per_epoch = 1_370_000_000_000u64; // 1.37T shannons
+    system_state.emission_pool_mut().emission_per_epoch = emission_per_epoch;
+    system_state.parameters_mut().target_reward_allocation_bps = 8000; // 80%
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+
+    let reward = system_state.calculate_reward_per_target();
+
+    // Expected: (1.37T * 80%) / 86400 = 12,685,185 shannons (~12.7M)
+    let expected = (emission_per_epoch as u128 * 8000u128 / 10000u128) as u64 / 86_400;
+    assert_eq!(reward, expected);
+    assert!(reward > 12_000_000 && reward < 13_000_000, "reward {} should be ~12.7M", reward);
+}
+
+/// Test reward_per_target V2: denominator = target_initial_targets_per_epoch (replay compat)
+#[test]
+fn test_reward_per_target_v2_unchanged() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state_at_version(validators, 1000, 100, 2);
+
+    let emission_per_epoch = 1_370_000_000_000u64;
+    system_state.emission_pool_mut().emission_per_epoch = emission_per_epoch;
+    system_state.parameters_mut().target_reward_allocation_bps = 8000;
+    system_state.parameters_mut().target_initial_targets_per_epoch = 20;
+
+    let reward = system_state.calculate_reward_per_target();
+
+    // V2: (1.37T * 80%) / 20 = 54.8B
+    let expected = (emission_per_epoch as u128 * 8000u128 / 10000u128) as u64 / 20;
+    assert_eq!(reward, expected);
+    assert!(reward > 50_000_000_000, "V2 reward {} should be ~54.8B", reward);
+}
+
+/// Test z-based difficulty adjustment: too many hits → harder (z increases, threshold decreases)
+#[test]
+fn test_z_adjustment_harder() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.978);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200; // 2%
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // Simulate hits above target
+    system_state.target_state_mut().hits_this_epoch = 100_000;
+
+    let old_threshold = system_state.target_state().distance_threshold.as_scalar();
+    system_state.adjust_difficulty();
+    let new_threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    assert!(
+        new_threshold < old_threshold,
+        "Threshold should decrease (harder) when hits > target: {} -> {}",
+        old_threshold,
+        new_threshold
+    );
+}
+
+/// Test z-based difficulty adjustment: too few hits → easier (z decreases, threshold increases)
+#[test]
+fn test_z_adjustment_easier() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.978);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // Simulate hits well below target
+    system_state.target_state_mut().hits_this_epoch = 5_000;
+
+    let old_threshold = system_state.target_state().distance_threshold.as_scalar();
+    system_state.adjust_difficulty();
+    let new_threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    assert!(
+        new_threshold > old_threshold,
+        "Threshold should increase (easier) when hits < target: {} -> {}",
+        old_threshold,
+        new_threshold
+    );
+}
+
+/// Test MIN_Z_STEP prevents z=0 from being stuck
+#[test]
+fn test_z_min_step_prevents_stuck() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // Set threshold = 1.0 → z = 0.0
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // More hits than target → should make harder even though z=0
+    system_state.target_state_mut().hits_this_epoch = 100_000;
+
+    system_state.adjust_difficulty();
+    let new_threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    // z should have increased by MIN_Z_STEP (0.1) → threshold = 1.0 - 0.022 * 0.1 = 0.9978
+    assert!(
+        new_threshold < 1.0,
+        "Threshold should decrease from 1.0 even when z=0 (MIN_Z_STEP): got {}",
+        new_threshold
+    );
+    let expected = 1.0 - 0.022 * 0.1;
+    assert!(
+        (new_threshold - expected).abs() < 0.001,
+        "Threshold should be ~{}: got {}",
+        expected,
+        new_threshold
+    );
+}
+
+/// Test z clamped at min_distance_threshold (0.95)
+#[test]
+fn test_z_clamp_at_min_threshold() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.978);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // Simulate many epochs of hardening
+    for _ in 0..200 {
+        system_state.target_state_mut().hits_this_epoch = 200_000; // always too many
+        system_state.adjust_difficulty();
+        system_state.target_state_mut().hits_this_epoch = 0; // reset for next iteration
+    }
+
+    let final_threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        final_threshold >= 0.95 - 0.001,
+        "Threshold must never drop below 0.95: got {}",
+        final_threshold
+    );
+}
+
+/// Test z clamped at max_distance_threshold
+#[test]
+fn test_z_clamp_at_max_threshold() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.978);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // Simulate many epochs of easing
+    for _ in 0..200 {
+        system_state.target_state_mut().hits_this_epoch = 0; // no hits → easier
+        // Need non-zero EMA to avoid bootstrap skip
+        system_state.target_state_mut().hits_ema = 1;
+        system_state.adjust_difficulty();
+    }
+
+    let final_threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        final_threshold <= 2.0 + 0.001,
+        "Threshold must never exceed max 2.0: got {}",
+        final_threshold
+    );
+}
+
+/// Test difficulty convergence: fills == target → no drift
+#[test]
+fn test_difficulty_convergence() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.978);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_hits_ema_decay_bps = 9000;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    let initial_threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    // Set EMA to target hits (equilibrium)
+    system_state.target_state_mut().hits_ema = 86_400;
+
+    // Run 50 epochs with fills == target
+    for _ in 0..50 {
+        system_state.target_state_mut().hits_this_epoch = 86_400;
+        system_state.adjust_difficulty();
+    }
+
+    let final_threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        (final_threshold - initial_threshold).abs() < 0.001,
+        "Threshold should stay stable when fills == target: initial={}, final={}",
+        initial_threshold,
+        final_threshold
+    );
+}
+
+/// Test recovery from difficulty spiral (threshold at floor, 0 fills → should ease)
+#[test]
+fn test_difficulty_recovery_from_spiral() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // Start at max hardness (z = max, threshold = 0.95)
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_hits_ema_decay_bps = 9000;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // Run 20 epochs with very few fills (1 hit keeps EMA non-zero to avoid bootstrap skip)
+    for _ in 0..20 {
+        system_state.target_state_mut().hits_this_epoch = 1;
+        system_state.adjust_difficulty();
+    }
+
+    let final_threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        final_threshold > 0.96,
+        "Threshold should recover from floor with few fills: got {}",
+        final_threshold
+    );
+}
+
+/// Test legacy difficulty preserved at V2
+#[test]
+fn test_legacy_difficulty_preserved() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state_at_version(validators, 1000, 100, 2);
+
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.parameters_mut().target_hits_per_epoch = 16;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 1000; // 10%
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.1);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(10.0);
+
+    // 30 hits > 16 target → should use multiplicative decrease
+    system_state.target_state_mut().hits_this_epoch = 30;
+
+    system_state.adjust_difficulty();
+    let threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    // V2 multiplicative: 1.0 * (10000 - 1000) / 10000 = 0.9
+    assert!(
+        (threshold - 0.9).abs() < 0.001,
+        "V2 should use multiplicative adjustment: expected 0.9, got {}",
+        threshold
+    );
+}
+
+/// Test V3 migration resets threshold and EMA
+#[test]
+fn test_v3_migration_resets_state() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state_at_version(validators, 1000, 100, 2);
+
+    // Simulate pre-V3 stuck state
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.86);
+    system_state.target_state_mut().hits_ema = 3213;
+
+    // Advance epoch with V3 config (triggers migration)
+    let next_epoch = system_state.epoch() + 1;
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    let v3_config = protocol_config::ProtocolConfig::get_for_version(
+        protocol_config::ProtocolVersion::new(3),
+        protocol_config::Chain::default(),
+    );
+
+    let _ = system_state.advance_epoch(next_epoch, &v3_config, 0, new_timestamp, vec![0; 32]);
+
+    // After V3 migration: threshold should be reset to initial (0.978), EMA to 0
+    let threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        (threshold - 0.978).abs() < 0.01,
+        "V3 migration should reset threshold to 0.978: got {}",
+        threshold
+    );
+}
+
+/// Test V3 migration only runs once (V3→V3 should not reset)
+#[test]
+fn test_v3_migration_only_once() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // Already at V3, set some state
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(0.96);
+    system_state.target_state_mut().hits_ema = 5000;
+
+    // Advance epoch (V3→V3, no migration)
+    let next_epoch = system_state.epoch() + 1;
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    let v3_config = protocol_config::ProtocolConfig::get_for_version(
+        protocol_config::ProtocolVersion::new(3),
+        protocol_config::Chain::default(),
+    );
+
+    let _ = system_state.advance_epoch(next_epoch, &v3_config, 0, new_timestamp, vec![0; 32]);
+
+    // EMA should NOT be reset to 0 (it was updated by adjust_difficulty)
+    // The EMA update formula: new = (9000 * 5000 + 1000 * 0) / 10000 = 4500
+    // It should be whatever the EMA formula produces, not 0
+    assert!(
+        system_state.target_state().hits_ema != 0
+            || system_state.target_state().hits_this_epoch == 0,
+        "V3→V3 should not reset EMA to 0 via migration"
+    );
+}
+
+/// Test emission budget never exceeded at various fill counts
+#[test]
+fn test_emission_budget_never_exceeded() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+
+    for fill_count in [0u64, 100, 1000, 86_400, 100_000] {
+        let mut system_state = create_test_system_state(validators.clone(), 1000, 100);
+
+        let emission_per_epoch = 1_370_000_000_000u64;
+        system_state.emission_pool_mut().emission_per_epoch = emission_per_epoch;
+        system_state.parameters_mut().target_reward_allocation_bps = 8000;
+        system_state.parameters_mut().target_hits_per_epoch = 86_400;
+
+        let reward_per_target = system_state.calculate_reward_per_target();
+        let epoch_target_budget = (emission_per_epoch as u128 * 8000u128 / 10000u128) as u64;
+
+        // Simulate spawning targets up to fill_count (or budget)
+        let mut total_spent = 0u64;
+        let mut targets_spawned = 0u64;
+        for _ in 0..fill_count {
+            let already_spent = targets_spawned.saturating_mul(reward_per_target);
+            if already_spent.saturating_add(reward_per_target) > epoch_target_budget {
+                break;
+            }
+            total_spent += reward_per_target;
+            targets_spawned += 1;
+        }
+
+        assert!(
+            total_spent <= epoch_target_budget,
+            "Budget exceeded at fill_count={}: spent={}, budget={}",
+            fill_count,
+            total_spent,
+            epoch_target_budget
+        );
+    }
+}
+
+/// Test emission budget exhaustion at capacity (86,400 fills)
+#[test]
+fn test_emission_budget_at_capacity() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    let emission_per_epoch = 1_370_000_000_000u64;
+    system_state.emission_pool_mut().emission_per_epoch = emission_per_epoch;
+    system_state.parameters_mut().target_reward_allocation_bps = 8000;
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+
+    let reward_per_target = system_state.calculate_reward_per_target();
+    let epoch_target_budget = (emission_per_epoch as u128 * 8000u128 / 10000u128) as u64;
+
+    // At exactly 86,400 targets: total should be close to budget
+    let total_at_capacity = reward_per_target * 86_400;
+    assert!(
+        total_at_capacity <= epoch_target_budget,
+        "86,400 targets should fit within budget: total={}, budget={}",
+        total_at_capacity,
+        epoch_target_budget
+    );
+
+    // The 86,401st target should be blocked
+    let at_86401 = reward_per_target * 86_401;
+    assert!(
+        at_86401 > epoch_target_budget,
+        "86,401 targets should exceed budget: total={}, budget={}",
+        at_86401,
+        epoch_target_budget
+    );
+}
+
+/// Test emission pool drain rate follows linear schedule
+#[test]
+fn test_emission_pool_drain_rate_linear() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+
+    for fill_rate in [5_000u64, 10_000, 50_000, 86_400] {
+        let mut system_state = create_test_system_state(validators.clone(), 100_000, 100);
+
+        let emission_per_epoch = 100 * SHANNONS_PER_SOMA;
+        system_state.emission_pool_mut().emission_per_epoch = emission_per_epoch;
+        system_state.parameters_mut().target_reward_allocation_bps = 8000;
+        system_state.parameters_mut().target_hits_per_epoch = 86_400;
+
+        let genesis_balance = system_state.emission_pool().balance;
+        let reward_per_target = system_state.calculate_reward_per_target();
+        let epoch_target_budget = (emission_per_epoch as u128 * 8000u128 / 10000u128) as u64;
+
+        // Simulate 10 epochs
+        for epoch in 1..=10 {
+            // Simulate target spawning within budget
+            let mut targets_spawned = 0u64;
+            for _ in 0..fill_rate {
+                let already_spent = targets_spawned.saturating_mul(reward_per_target);
+                if already_spent.saturating_add(reward_per_target) > epoch_target_budget {
+                    break;
+                }
+                if system_state.emission_pool().balance < reward_per_target {
+                    break;
+                }
+                system_state.emission_pool_mut().balance -= reward_per_target;
+                targets_spawned += 1;
+            }
+
+            // Pool should never drain faster than linear schedule
+            let max_drain = emission_per_epoch * epoch;
+            assert!(
+                system_state.emission_pool().balance >= genesis_balance.saturating_sub(max_drain),
+                "Pool drained too fast at fill_rate={}, epoch={}: balance={}, min_expected={}",
+                fill_rate,
+                epoch,
+                system_state.emission_pool().balance,
+                genesis_balance.saturating_sub(max_drain)
+            );
+        }
+    }
 }

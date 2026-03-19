@@ -16,7 +16,8 @@ use diesel_async::RunQueryDsl;
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
 use crate::api::types::aggregates::{
-    ModelAggregates, RewardAggregates, SubmitterStats, TargetAggregates, TargetScoreAggregates,
+    ModelAggregates, ModelStats, RewardAggregates, SubmitterStats, TargetAggregates,
+    TargetScoreAggregates,
 };
 use crate::api::types::available_range::AvailableRange;
 use crate::api::types::checkpoint::Checkpoint;
@@ -210,6 +211,50 @@ impl Query {
             raw_transaction_bcs: s.raw_transaction,
             raw_effects_bcs: s.raw_effects,
             user_signatures_bcs: s.user_signatures,
+        }))
+    }
+
+    /// Look up decoded transaction detail by digest (base58).
+    async fn transaction_detail(
+        &self,
+        ctx: &Context<'_>,
+        digest: String,
+    ) -> Result<Option<TransactionDetail>> {
+        let digest_bytes = bs58::decode(&digest)
+            .into_vec()
+            .map_err(|e| Error::new(format!("Invalid digest: {e}")))?;
+
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_tx_details;
+
+        type Row = (i64, Vec<u8>, String, Vec<u8>, i64, i64, Option<String>);
+
+        let stored: Option<Row> = soma_tx_details::table
+            .select((
+                soma_tx_details::tx_sequence_number,
+                soma_tx_details::tx_digest,
+                soma_tx_details::kind,
+                soma_tx_details::sender,
+                soma_tx_details::epoch,
+                soma_tx_details::timestamp_ms,
+                soma_tx_details::metadata_json,
+            ))
+            .filter(soma_tx_details::tx_digest.eq(&digest_bytes))
+            .first(conn.deref_mut())
+            .await
+            .optional()
+            .map_err(|e| Error::new(e.to_string()))?;
+
+        Ok(stored.map(|row| TransactionDetail {
+            tx_sequence_number: row.0,
+            tx_digest: row.1,
+            kind: row.2,
+            sender: row.3,
+            epoch: row.4,
+            timestamp_ms: row.5,
+            metadata_json: row.6,
         }))
     }
 
@@ -1535,6 +1580,148 @@ impl Query {
                 SubmitterStats {
                     submitter: sub,
                     target_count: tc,
+                    avg_distance_score: if dc > 0 { Some(ds / dc as f64) } else { None },
+                    avg_loss_score: if lc > 0 { Some(ls / lc as f64) } else { None },
+                    total_reward: tr,
+                    total_data_size: tds,
+                },
+            ));
+        }
+
+        Ok(connection)
+    }
+
+    /// Leaderboard of models, ranked by number of targets won.
+    /// Includes win rate (targets won / targets assigned), average scores, and total rewards.
+    #[graphql(complexity = "10 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
+    async fn model_leaderboard(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<i32>,
+        after: Option<String>,
+        epoch: Option<i64>,
+    ) -> Result<Connection<String, ModelStats>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let config: &GraphQlConfig = ctx.data()?;
+        let limit = first.unwrap_or(config.default_page_size).min(config.max_page_size) as i64;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_targets;
+
+        // Load all targets (any status) for assignment counts, and filled targets for win stats.
+        // We need: target_id, cp_sequence_number, status, winning_model_id, scores, reward, data_size, model_ids_json
+        type Row = (
+            Vec<u8>,         // target_id
+            i64,             // cp_sequence_number
+            String,          // status
+            Option<Vec<u8>>, // winning_model_id
+            Option<f64>,     // winning_distance_score
+            Option<f64>,     // winning_loss_score
+            i64,             // reward_pool
+            Option<i64>,     // winning_data_size
+            String,          // model_ids_json
+        );
+
+        let mut query = soma_targets::table
+            .select((
+                soma_targets::target_id,
+                soma_targets::cp_sequence_number,
+                soma_targets::status,
+                soma_targets::winning_model_id,
+                soma_targets::winning_distance_score,
+                soma_targets::winning_loss_score,
+                soma_targets::reward_pool,
+                soma_targets::winning_data_size,
+                soma_targets::model_ids_json,
+            ))
+            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
+            .into_boxed();
+
+        if let Some(e) = epoch {
+            query = query.filter(soma_targets::epoch.eq(e));
+        }
+
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        // Deduplicate by target_id (take most recent cp_sequence_number).
+        // For each unique target:
+        //   - Parse model_ids_json to count assignments per model
+        //   - If status == "filled", aggregate win stats by winning_model_id
+        let mut seen = std::collections::HashSet::new();
+        // Value: (targets_won, dist_sum, dist_count, loss_sum, loss_count, total_reward, total_data_size, targets_assigned)
+        let mut model_map: std::collections::HashMap<
+            Vec<u8>,
+            (i64, f64, i64, f64, i64, i64, i64, i64),
+        > = std::collections::HashMap::new();
+
+        for (tid, _cp, status, winning_model_id, dist, loss, rp, data_size, model_ids_json) in &rows
+        {
+            if !seen.insert(tid.clone()) {
+                continue;
+            }
+
+            // Count assignments for every model listed in model_ids_json
+            let assigned_ids: Vec<String> =
+                serde_json::from_str(model_ids_json).unwrap_or_default();
+            for hex_str in &assigned_ids {
+                let hex = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+                if let Ok(mid) = hex::decode(hex) {
+                    model_map.entry(mid).or_default().7 += 1;
+                }
+            }
+
+            // Aggregate win stats for filled targets
+            if status.eq_ignore_ascii_case("filled") {
+                let Some(wm) = winning_model_id else {
+                    continue;
+                };
+                let entry = model_map.entry(wm.clone()).or_default();
+                entry.0 += 1; // targets_won
+                if let Some(d) = dist {
+                    entry.1 += d;
+                    entry.2 += 1;
+                }
+                if let Some(l) = loss {
+                    entry.3 += l;
+                    entry.4 += 1;
+                }
+                entry.5 = entry.5.saturating_add(*rp);
+                if let Some(ds) = data_size {
+                    entry.6 = entry.6.saturating_add(*ds);
+                }
+            }
+        }
+
+        // Sort by targets_won desc
+        let mut entries: Vec<_> = model_map.into_iter().collect();
+        entries.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+
+        // Apply cursor pagination
+        let after_addr: Option<Vec<u8>> = after
+            .as_deref()
+            .map(|s| hex::decode(s).map_err(|e| Error::new(format!("Invalid cursor: {e}"))))
+            .transpose()?;
+
+        let start_idx = match &after_addr {
+            Some(addr) => entries.iter().position(|(k, _)| k == addr).map(|i| i + 1).unwrap_or(0),
+            None => 0,
+        };
+
+        let page: Vec<_> = entries.into_iter().skip(start_idx).take(limit as usize + 1).collect();
+        let has_next = page.len() as i64 > limit;
+        let nodes: Vec<_> = page.into_iter().take(limit as usize).collect();
+        let has_previous = after.is_some();
+
+        let mut connection = Connection::new(has_previous, has_next);
+        for (mid, (tw, ds, dc, ls, lc, tr, tds, ta)) in nodes {
+            let cursor = hex::encode(&mid);
+            connection.edges.push(Edge::new(
+                cursor,
+                ModelStats {
+                    model_id: mid,
+                    targets_won: tw,
+                    targets_assigned: ta,
                     avg_distance_score: if dc > 0 { Some(ds / dc as f64) } else { None },
                     avg_loss_score: if lc > 0 { Some(ls / lc as f64) } else { None },
                     total_reward: tr,

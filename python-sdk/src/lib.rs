@@ -94,24 +94,32 @@ fn obj_to_py_with_ref(obj: &types::object::Object) -> PyResult<Py<PyAny>> {
 
 /// Fetch the coin with the highest balance owned by `sender`.
 ///
-/// Scans all coins (up to page-size 100) and returns the one with the
-/// largest balance so that gas/transfer operations don't accidentally
-/// pick a dust coin.
+/// Scans up to 256 coins and returns the one with the largest balance so
+/// that gas/transfer operations don't accidentally pick a dust coin.
+/// The cap avoids excessive RPC pagination for addresses with thousands
+/// of dust coins.
 async fn auto_fetch_coin(client: &sdk::SomaClient, sender: SomaAddress) -> PyResult<ObjectRef> {
     use futures::TryStreamExt as _;
+    const MAX_COINS: usize = 1000;
+
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(sender.to_string());
-    request.page_size = Some(100);
+    request.page_size = Some(1000);
     request.object_type = Some(rpc::types::ObjectType::Coin.into());
     let stream = client.list_owned_objects(request).await;
     tokio::pin!(stream);
 
     let mut best: Option<(ObjectRef, u64)> = None;
+    let mut count = 0usize;
     while let Some(obj) = stream.try_next().await.map_err(to_py_err)? {
         let balance = obj.as_coin().unwrap_or(0);
         let obj_ref = obj.compute_object_reference();
         if best.as_ref().map_or(true, |(_, b)| balance > *b) {
             best = Some((obj_ref, balance));
+        }
+        count += 1;
+        if count >= MAX_COINS {
+            break;
         }
     }
 

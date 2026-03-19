@@ -509,17 +509,21 @@ impl SomaClient {
     ) -> Result<TransactionData, error::Error> {
         use futures::TryStreamExt as _;
 
+        /// Maximum coins to collect for gas payment. Matches the
+        /// server's max page size (1000) so all coins fit in a
+        /// single RPC call for smash_gas to merge.
+        const MAX_GAS_COINS: usize = 1000;
+
         let mut request = ListOwnedObjectsRequest::default();
         request.owner = Some(sender.to_string());
-        request.page_size = Some(100);
+        request.page_size = Some(1000);
         request.object_type = Some(rpc::types::ObjectType::Coin.into());
 
         let stream = self.list_owned_objects(request).await;
         tokio::pin!(stream);
 
-        // Collect ALL non-excluded coins so that `smash_gas` can merge them
-        // into one primary coin, giving the transaction access to the full
-        // balance (matching the CLI's TransactionBuilder behaviour).
+        // Collect non-excluded coins (up to MAX_GAS_COINS) so that
+        // `smash_gas` can merge them into one primary coin.
         let mut coins: Vec<(types::object::ObjectRef, u64)> = Vec::new();
         while let Some(obj) =
             stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
@@ -530,6 +534,9 @@ impl SomaClient {
             }
             let balance = obj.as_coin().unwrap_or(0);
             coins.push((obj_ref, balance));
+            if coins.len() >= MAX_GAS_COINS {
+                break;
+            }
         }
 
         if coins.is_empty() {

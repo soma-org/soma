@@ -147,6 +147,64 @@ impl SubmitterStats {
     }
 }
 
+/// Aggregate statistics for a model on the leaderboard.
+pub struct ModelStats {
+    pub model_id: Vec<u8>,
+    pub targets_won: i64,
+    pub targets_assigned: i64,
+    pub avg_distance_score: Option<f64>,
+    pub avg_loss_score: Option<f64>,
+    pub total_reward: i64,
+    pub total_data_size: i64,
+}
+
+#[Object]
+impl ModelStats {
+    /// Model ID (hex address).
+    async fn model_id(&self) -> crate::api::scalars::SomaAddress {
+        crate::api::scalars::SomaAddress(self.model_id.clone())
+    }
+
+    /// Number of targets won (filled) by this model.
+    async fn targets_won(&self) -> i32 {
+        self.targets_won as i32
+    }
+
+    /// Number of targets this model was assigned to.
+    async fn targets_assigned(&self) -> i32 {
+        self.targets_assigned as i32
+    }
+
+    /// Win rate: targets won / targets assigned (0.0–1.0). Null if never assigned.
+    async fn win_rate(&self) -> Option<f64> {
+        if self.targets_assigned > 0 {
+            Some(self.targets_won as f64 / self.targets_assigned as f64)
+        } else {
+            None
+        }
+    }
+
+    /// Average distance score across won targets.
+    async fn avg_distance_score(&self) -> Option<f64> {
+        self.avg_distance_score
+    }
+
+    /// Average loss score across won targets.
+    async fn avg_loss_score(&self) -> Option<f64> {
+        self.avg_loss_score
+    }
+
+    /// Total reward earned by this model (shannons).
+    async fn total_reward(&self) -> BigInt {
+        BigInt(self.total_reward)
+    }
+
+    /// Total data size across won submissions (bytes).
+    async fn total_data_size(&self) -> BigInt {
+        BigInt(self.total_data_size)
+    }
+}
+
 /// Aggregate statistics for rewards at a given epoch.
 pub struct RewardAggregates {
     pub total_count: i64,

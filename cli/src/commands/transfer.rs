@@ -31,16 +31,16 @@ pub async fn execute(
     let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
 
     // Resolve gas payment
-    let gas_ref = match gas {
+    let gas_payment = match gas {
         Some(gas_id) => {
             let gas_obj = client
                 .get_object(gas_id)
                 .await
                 .map_err(|e| anyhow!("Failed to get gas object: {}", e))?;
-            Some(gas_obj.compute_object_reference())
+            vec![gas_obj.compute_object_reference()]
         }
-        None => None,
+        None => vec![],
     };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_ref, tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
 }

@@ -131,6 +131,17 @@ impl TransactionExecutor for ChangeEpochExecutor {
                     let embedding_dim = state.parameters().target_embedding_dim;
                     let new_epoch = state.epoch();
 
+                    // V3+: compute per-epoch emission budget for targets
+                    let epoch_target_budget = if state.protocol_version() >= 3 {
+                        Some(
+                            (state.emission_pool().emission_per_epoch as u128
+                                * state.parameters().target_reward_allocation_bps as u128
+                                / 10000u128) as u64,
+                        )
+                    } else {
+                        None
+                    };
+
                     let mut targets_created = 0u64;
                     for _ in 0..initial_targets {
                         // Check emission pool has sufficient funds
@@ -141,6 +152,22 @@ impl TransactionExecutor for ChangeEpochExecutor {
                                 targets_created
                             );
                             break;
+                        }
+
+                        // V3+: enforce per-epoch emission budget
+                        if let Some(budget) = epoch_target_budget {
+                            let already_spent = state
+                                .target_state()
+                                .targets_generated_this_epoch
+                                .saturating_mul(reward_per_target);
+                            if already_spent.saturating_add(reward_per_target) > budget {
+                                tracing::warn!(
+                                    "Epoch target budget exhausted at epoch {}, stopping at {} targets",
+                                    new_epoch,
+                                    targets_created
+                                );
+                                break;
+                            }
                         }
 
                         let creation_num = store.next_creation_num();

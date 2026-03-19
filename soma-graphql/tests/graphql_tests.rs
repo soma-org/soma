@@ -2853,3 +2853,147 @@ async fn test_targets_batch_rewards() {
         assert_eq!(balances.len(), 1, "each reward should have 1 balance");
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_model_leaderboard() {
+    let ctx = setup().await;
+
+    let model_a = vec![0x11; 32];
+    let model_b = vec![0x22; 32];
+    let model_a_hex = format!("0x{}", hex::encode(&model_a));
+    let model_b_hex = format!("0x{}", hex::encode(&model_b));
+    let model_ids_json = serde_json::to_string(&vec![&model_a_hex, &model_b_hex]).unwrap();
+
+    let mut conn = ctx.db.connect().await.unwrap();
+    use indexer_alt_schema::schema::soma_targets;
+
+    // Target 1: filled, won by model_a, both models assigned
+    diesel::insert_into(soma_targets::table)
+        .values(&StoredTarget {
+            target_id: vec![0x01; 32],
+            cp_sequence_number: 10,
+            epoch: 1,
+            status: "Filled".to_string(),
+            submitter: Some(vec![0xAA; 32]),
+            winning_model_id: Some(model_a.clone()),
+            reward_pool: 5000,
+            bond_amount: 0,
+            report_count: 0,
+            winning_distance_score: Some(0.1),
+            winning_loss_score: Some(0.05),
+            winning_model_owner: Some(vec![0xCC; 32]),
+            fill_epoch: Some(1),
+            distance_threshold: 0.5,
+            model_ids_json: model_ids_json.clone(),
+            winning_data_url: None,
+            winning_data_checksum: None,
+            winning_data_size: Some(1024),
+        })
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // Target 2: filled, won by model_a, both models assigned
+    diesel::insert_into(soma_targets::table)
+        .values(&StoredTarget {
+            target_id: vec![0x02; 32],
+            cp_sequence_number: 11,
+            epoch: 1,
+            status: "Filled".to_string(),
+            submitter: Some(vec![0xAA; 32]),
+            winning_model_id: Some(model_a.clone()),
+            reward_pool: 3000,
+            bond_amount: 0,
+            report_count: 0,
+            winning_distance_score: Some(0.2),
+            winning_loss_score: Some(0.03),
+            winning_model_owner: Some(vec![0xCC; 32]),
+            fill_epoch: Some(1),
+            distance_threshold: 0.5,
+            model_ids_json: model_ids_json.clone(),
+            winning_data_url: None,
+            winning_data_checksum: None,
+            winning_data_size: Some(2048),
+        })
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // Target 3: filled, won by model_b, both models assigned
+    diesel::insert_into(soma_targets::table)
+        .values(&StoredTarget {
+            target_id: vec![0x03; 32],
+            cp_sequence_number: 12,
+            epoch: 1,
+            status: "Filled".to_string(),
+            submitter: Some(vec![0xAA; 32]),
+            winning_model_id: Some(model_b.clone()),
+            reward_pool: 4000,
+            bond_amount: 0,
+            report_count: 0,
+            winning_distance_score: Some(0.15),
+            winning_loss_score: Some(0.04),
+            winning_model_owner: Some(vec![0xDD; 32]),
+            fill_epoch: Some(1),
+            distance_threshold: 0.5,
+            model_ids_json: model_ids_json.clone(),
+            winning_data_url: None,
+            winning_data_checksum: None,
+            winning_data_size: Some(512),
+        })
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // Target 4: open (not filled), both models assigned — counts toward assignments only
+    diesel::insert_into(soma_targets::table)
+        .values(&StoredTarget {
+            target_id: vec![0x04; 32],
+            cp_sequence_number: 13,
+            epoch: 1,
+            status: "Open".to_string(),
+            submitter: None,
+            winning_model_id: None,
+            reward_pool: 2000,
+            bond_amount: 0,
+            report_count: 0,
+            winning_distance_score: None,
+            winning_loss_score: None,
+            winning_model_owner: None,
+            fill_epoch: None,
+            distance_threshold: 0.5,
+            model_ids_json: model_ids_json.clone(),
+            winning_data_url: None,
+            winning_data_checksum: None,
+            winning_data_size: None,
+        })
+        .execute(conn.deref_mut())
+        .await
+        .unwrap();
+
+    // Query the model leaderboard
+    let query = r#"{ modelLeaderboard { edges { node { modelId targetsWon targetsAssigned winRate avgDistanceScore avgLossScore totalReward totalDataSize } } } }"#;
+    let json = execute(&ctx.schema, query).await;
+
+    let edges = json["data"]["modelLeaderboard"]["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 2, "should have 2 models");
+
+    // model_a should be first (2 wins), model_b second (1 win)
+    let a = &edges[0]["node"];
+    assert_eq!(a["modelId"], model_a_hex);
+    assert_eq!(a["targetsWon"], 2);
+    assert_eq!(a["targetsAssigned"], 4); // assigned in all 4 targets
+    // win rate = 2/4 = 0.5
+    let win_rate_a: f64 = a["winRate"].as_f64().unwrap();
+    assert!((win_rate_a - 0.5).abs() < 1e-6);
+    assert_eq!(a["totalReward"], "8000"); // 5000 + 3000
+
+    let b = &edges[1]["node"];
+    assert_eq!(b["modelId"], model_b_hex);
+    assert_eq!(b["targetsWon"], 1);
+    assert_eq!(b["targetsAssigned"], 4);
+    let win_rate_b: f64 = b["winRate"].as_f64().unwrap();
+    assert!((win_rate_b - 0.25).abs() < 1e-6);
+    assert_eq!(b["totalReward"], "4000");
+}

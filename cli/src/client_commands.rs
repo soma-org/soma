@@ -94,9 +94,9 @@ impl SomaClientCommands {
 
                 let sender = tx_data.sender();
                 let kind = tx_data.kind().clone();
-                let gas = tx_data.gas().first().cloned();
+                let gas_payment = tx_data.gas().to_vec();
 
-                execute_or_serialize(context, sender, kind, gas, processing).await
+                execute_or_serialize(context, sender, kind, gas_payment, processing).await
             }
 
             SomaClientCommands::ExecuteSignedTx { tx_bytes, signatures } => {
@@ -151,12 +151,16 @@ impl SomaClientCommands {
 }
 
 /// Execute a transaction or serialize it based on processing args.
-/// This is a shared helper used by multiple command modules.
+///
+/// `gas_payment` is a pre-fetched list of coin refs to use for gas. When
+/// non-empty the coins are used directly (no RPC call). When empty the
+/// `TransactionBuilder` auto-fetches all coins sorted richest-first so
+/// that `smash_gas` can merge dust.
 pub async fn execute_or_serialize(
     context: &mut WalletContext,
     sender: SomaAddress,
     kind: TransactionKind,
-    gas: Option<ObjectRef>,
+    gas_payment: Vec<ObjectRef>,
     processing: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     ensure!(
@@ -166,7 +170,7 @@ pub async fn execute_or_serialize(
 
     // Build transaction data
     let builder = TransactionBuilder::new(context);
-    let tx_data = builder.build_transaction_data(sender, kind.clone(), gas).await?;
+    let tx_data = builder.build_transaction_data(sender, kind.clone(), gas_payment).await?;
 
     // Handle tx-digest-only mode
     if processing.tx_digest {
@@ -215,12 +219,8 @@ pub async fn execute_or_serialize(
         return Ok(ClientCommandResponse::SerializedSignedTransaction(encoded));
     }
 
-    // Execute the transaction, with retry on ObjectLockConflict when gas is auto-selected
-    let response = if gas.is_none() {
-        execute_with_lock_retry(context, sender, kind, tx).await?
-    } else {
-        context.execute_transaction_may_fail(tx).await?
-    };
+    // Execute with retry on ObjectLockConflict — re-fetches coins on retry
+    let response = execute_with_lock_retry(context, sender, kind, tx).await?;
 
     Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(&response)))
 }

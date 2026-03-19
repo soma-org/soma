@@ -421,6 +421,34 @@ pub fn create_test_system_state(
     state
 }
 
+/// Create a test system state at a specific protocol version
+pub fn create_test_system_state_at_version(
+    validators: Vec<Validator>,
+    supply_amount: u64,
+    emission_per_epoch: u64,
+    version: u64,
+) -> SystemState {
+    let protocol_version = ProtocolVersion::new(version);
+    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
+        protocol_version,
+        protocol_config::Chain::default(),
+    );
+    let epoch_start_timestamp_ms = 1000;
+    let stake_subsidy_fund = supply_amount * SHANNONS_PER_SOMA;
+
+    let mut state = SystemState::create(
+        validators,
+        version,
+        epoch_start_timestamp_ms,
+        &protocol_config,
+        stake_subsidy_fund,
+        emission_per_epoch * SHANNONS_PER_SOMA,
+        None,
+    );
+    state.parameters_mut().validator_reward_allocation_bps = 10000; // 100%
+    state
+}
+
 /// Setup a system state with specified validator addresses
 pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
     let mut validators = Vec::new();

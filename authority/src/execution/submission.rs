@@ -260,8 +260,22 @@ impl SubmissionExecutor {
 
         // 13. Spawn replacement target if there are active models and emission pool has funds
         let reward_per_target = state.target_state().reward_per_target;
+
+        // V3+: enforce per-epoch emission budget (naturally = target_hits_per_epoch targets)
+        let within_budget = if state.protocol_version() >= 3 {
+            let epoch_target_budget = (state.emission_pool().emission_per_epoch as u128
+                * state.parameters().target_reward_allocation_bps as u128
+                / 10000u128) as u64;
+            let already_spent =
+                state.target_state().targets_generated_this_epoch.saturating_mul(reward_per_target);
+            already_spent.saturating_add(reward_per_target) <= epoch_target_budget
+        } else {
+            true
+        };
+
         if state.model_registry().has_active_models()
             && state.emission_pool().balance >= reward_per_target
+            && within_budget
         {
             // Deduct reward from emission pool for the new target
             state.emission_pool_mut().balance =
