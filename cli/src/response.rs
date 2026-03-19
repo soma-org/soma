@@ -839,6 +839,8 @@ pub struct ObjectOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<ObjectContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_transaction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bcs_bytes: Option<String>,
 }
 
@@ -853,6 +855,7 @@ impl ObjectOutput {
             object_type: obj.type_().to_string(),
             owner: Some(OwnerDisplay::from(obj.owner.clone())),
             content,
+            previous_transaction: Some(obj.previous_transaction.to_string()),
             bcs_bytes: if include_bcs {
                 Some(fastcrypto::encoding::Base64::encode(obj.data.contents()))
             } else {

@@ -1393,20 +1393,9 @@ impl PySomaClient {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let sender = kp.address();
 
-            // Auto-fetch bond coin (richest available).
-            // On lock conflict the retry loop in sign_and_execute_with_retry
-            // will re-select a different coin automatically.
-            let bond_coin = client
-                .select_coin_excluding(sender, &Default::default())
-                .await
-                .map_err(to_py_err)?;
-
-            eprintln!(
-                "[soma-sdk] SubmitData: bond_coin=({}, v{}, {})",
-                bond_coin.0,
-                bond_coin.1.value(),
-                bond_coin.2,
-            );
+            // Bond coin is selected inside sign_and_execute_with_retry's
+            // retry loop with full in-flight awareness. Pass a placeholder.
+            let bond_coin = (ObjectID::ZERO, Version::new(), types::digests::ObjectDigest::MIN);
 
             let kind = TransactionKind::SubmitData(SubmitDataArgs {
                 target_id: target,
@@ -1535,6 +1524,17 @@ impl PySomaClient {
                 .sign_and_execute_with_retry(&kp, sender, kind, "PayCoins")
                 .await
                 .map_err(to_py_err)?;
+            to_py_obj(&effects)
+        })
+    }
+
+    /// Merge all coins into as few as possible (2 RPCs: list + single tx).
+    fn merge_coins<'py>(&self, py: Python<'py>, signer: &PyKeypair) -> PyResult<Bound<'py, PyAny>> {
+        let client = self.inner.clone();
+        let kp = signer.inner.copy();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let sender = kp.address();
+            let effects = client.merge_coins(&kp, sender).await.map_err(to_py_err)?;
             to_py_obj(&effects)
         })
     }

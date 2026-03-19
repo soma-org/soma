@@ -966,3 +966,50 @@ asyncio.run(_test())
     ))
     .await;
 }
+
+/// Test `merge_coins`: split coins via pay_coins, then merge them back.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_merge_coins() {
+    init_python();
+    let cluster = TestClusterBuilder::new().build().await;
+    let rpc_url = cluster.fullnode_handle.rpc_url.clone();
+    let (_, secret) = export_keypair_bech32(&cluster, 0);
+
+    run_python(format!(
+        r#"
+import asyncio
+from soma_sdk import SomaClient, Keypair
+
+async def _test():
+    client = await SomaClient("{rpc_url}")
+    kp = Keypair.from_secret_key("{secret}")
+    sender = kp.address()
+
+    # Create multiple coins by paying to self
+    await client.pay_coins(
+        signer=kp,
+        recipients=[sender, sender],
+        amounts=[0.5, 0.5],
+    )
+
+    # Now sender should have multiple coins
+    coins_before = await client.list_owned_objects(sender, object_type="coin")
+    assert len(coins_before) >= 2, \
+        f"should have >= 2 coins after split, got {{len(coins_before)}}"
+
+    # Merge coins
+    effects = await client.merge_coins(signer=kp)
+    assert effects is not None, "merge_coins should return effects"
+
+    # After merge, should have exactly 2 coins
+    coins_after = await client.list_owned_objects(sender, object_type="coin")
+    assert len(coins_after) <= 2, \
+        f"should have <= 2 coins after merge, got {{len(coins_after)}}"
+    assert len(coins_after) < len(coins_before), \
+        f"should have fewer coins after merge: {{len(coins_before)}} -> {{len(coins_after)}}"
+
+asyncio.run(_test())
+"#
+    ))
+    .await;
+}

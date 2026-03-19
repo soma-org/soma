@@ -280,6 +280,19 @@ EXAMPLES:
         json: bool,
     },
 
+    /// Merge dust coins to reduce object count
+    #[clap(
+        name = "merge-coins",
+        after_help = "\
+EXAMPLES:
+    soma merge-coins
+    soma merge-coins --json"
+    )]
+    MergeCoins {
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
     /// Show network connection status, version info, and active address
     #[clap(
         name = "status",
@@ -733,6 +746,13 @@ impl SomaCommand {
             // =================================================================
             // COMMON USER ACTIONS
             // =================================================================
+            SomaCommand::MergeCoins { json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::merge::execute(&mut context).await?;
+                result.print(json);
+                Ok(())
+            }
+
             SomaCommand::Balance { address, with_coins, json } => {
                 let context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::balance::execute(&context, address, with_coins).await?;

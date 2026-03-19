@@ -43,6 +43,23 @@ fn kv_loader<'a>(ctx: &'a Context<'a>) -> Option<&'a Arc<dyn KvLoader>> {
     ctx.data::<Arc<dyn KvLoader>>().ok()
 }
 
+/// Compute the submitter's share of a target reward pool.
+/// Submitter gets their bps share plus any rounding remainder.
+/// Mirrors authority/src/execution/submission.rs:459-467.
+fn submitter_reward_share(reward_pool: i64) -> i64 {
+    const MODEL_BPS: i64 = 4975;
+    const CLAIMER_BPS: i64 = 50;
+    let model_share = reward_pool * MODEL_BPS / 10000;
+    let claimer_share = reward_pool * CLAIMER_BPS / 10000;
+    reward_pool - model_share - claimer_share
+}
+
+/// Compute the model owner's share of a target reward pool.
+fn model_reward_share(reward_pool: i64) -> i64 {
+    const MODEL_BPS: i64 = 4975;
+    reward_pool * MODEL_BPS / 10000
+}
+
 pub struct Query;
 
 #[Object]
@@ -1575,7 +1592,7 @@ impl Query {
                 entry.3 += l;
                 entry.4 += 1;
             }
-            entry.5 = entry.5.saturating_add(*rp);
+            entry.5 = entry.5.saturating_add(submitter_reward_share(*rp));
             if let Some(ds) = data_size {
                 entry.6 = entry.6.saturating_add(*ds);
             }
@@ -1681,7 +1698,7 @@ impl Query {
                 loss_sum += l;
                 loss_count += 1;
             }
-            total_reward = total_reward.saturating_add(*rp);
+            total_reward = total_reward.saturating_add(submitter_reward_share(*rp));
             if let Some(ds) = data_size {
                 total_data_size = total_data_size.saturating_add(*ds);
             }
@@ -1782,7 +1799,7 @@ impl Query {
             }
 
             // Aggregate win stats for filled targets
-            if status.eq_ignore_ascii_case("filled") {
+            if status.eq_ignore_ascii_case("filled") || status.eq_ignore_ascii_case("claimed") {
                 let Some(wm) = winning_model_id else {
                     continue;
                 };
@@ -1796,7 +1813,7 @@ impl Query {
                     entry.3 += l;
                     entry.4 += 1;
                 }
-                entry.5 = entry.5.saturating_add(*rp);
+                entry.5 = entry.5.saturating_add(model_reward_share(*rp));
                 if let Some(ds) = data_size {
                     entry.6 = entry.6.saturating_add(*ds);
                 }

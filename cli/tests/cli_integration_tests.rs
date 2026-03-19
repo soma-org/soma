@@ -290,6 +290,62 @@ fn test_validator_summary_display() {
 }
 
 // =============================================================================
+// Merge coins response tests
+// =============================================================================
+
+#[test]
+fn test_merge_coins_nothing_to_merge_display() {
+    use cli::commands::merge::MergeCoinsResponse;
+
+    let response = MergeCoinsResponse::NothingToMerge;
+    let display = format!("{}", response);
+    assert!(display.contains("Nothing to merge"), "Should say nothing to merge: {display}");
+}
+
+#[test]
+fn test_merge_coins_success_display() {
+    use cli::commands::merge::MergeCoinsResponse;
+    use cli::response::{OwnedObjectRef, OwnerDisplay, TransactionResponse, TransactionStatus};
+
+    let tx = TransactionResponse {
+        digest: types::digests::TransactionDigest::default(),
+        status: TransactionStatus::Success,
+        executed_epoch: 0,
+        checkpoint: Some(1),
+        fee: types::tx_fee::TransactionFee {
+            base_fee: 1000,
+            operation_fee: 500,
+            value_fee: 0,
+            total_fee: 1500,
+        },
+        created: vec![],
+        mutated: vec![],
+        deleted: vec![],
+        gas_object: OwnedObjectRef {
+            object_id: types::object::ObjectID::ZERO,
+            version: types::object::Version::from_u64(1),
+            digest: types::digests::ObjectDigest::new([0; 32]),
+            owner: OwnerDisplay::AddressOwner { address: types::base::SomaAddress::ZERO },
+        },
+        balance_changes: vec![],
+    };
+    let response = MergeCoinsResponse::Success(tx);
+    let display = format!("{}", response);
+    assert!(display.contains("merged successfully"), "Should say merged successfully: {display}");
+    assert!(display.contains("Gas Summary"), "Should show gas summary: {display}");
+}
+
+#[test]
+fn test_merge_coins_json() {
+    use cli::commands::merge::MergeCoinsResponse;
+
+    let response = MergeCoinsResponse::NothingToMerge;
+    let json = serde_json::to_string(&response).unwrap();
+    // NothingToMerge serializes as null (untagged enum)
+    assert_eq!(json, "null");
+}
+
+// =============================================================================
 // New address output tests
 // =============================================================================
 

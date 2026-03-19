@@ -8,6 +8,7 @@ pub mod claim;
 pub mod data;
 pub mod env;
 pub mod faucet;
+pub mod merge;
 pub mod model;
 pub mod objects;
 pub mod pay;

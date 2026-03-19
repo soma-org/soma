@@ -518,6 +518,14 @@ class SomaClient:
         amounts: list[float],
     ) -> TransactionEffects: ...
 
+    # -- High-level: Coin Maintenance --
+    async def merge_coins(
+        self,
+        signer: Keypair,
+    ) -> TransactionEffects:
+        """Merge all coins into as few as possible (2 RPCs: list + single tx)."""
+        ...
+
     # -- High-level: Staking --
     async def add_stake(
         self,
