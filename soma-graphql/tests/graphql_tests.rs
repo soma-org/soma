@@ -3073,7 +3073,7 @@ async fn test_model_leaderboard() {
     // win rate = 2/4 = 0.5
     let win_rate_a: f64 = a["winRate"].as_f64().unwrap();
     assert!((win_rate_a - 0.5).abs() < 1e-6);
-    assert_eq!(a["totalReward"], "8000"); // 5000 + 3000
+    assert_eq!(a["totalReward"], "3979"); // model_reward_share(5000) + model_reward_share(3000)
 
     let b = &edges[1]["node"];
     assert_eq!(b["modelId"], model_b_hex);
@@ -3081,5 +3081,5 @@ async fn test_model_leaderboard() {
     assert_eq!(b["targetsAssigned"], 4);
     let win_rate_b: f64 = b["winRate"].as_f64().unwrap();
     assert!((win_rate_b - 0.25).abs() < 1e-6);
-    assert_eq!(b["totalReward"], "4000");
+    assert_eq!(b["totalReward"], "1990"); // model_reward_share(4000)
 }
