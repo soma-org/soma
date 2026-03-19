@@ -1620,6 +1620,94 @@ impl Query {
         Ok(connection)
     }
 
+    /// Stats for a single data submitter.
+    async fn submitter_stats(
+        &self,
+        ctx: &Context<'_>,
+        address: String,
+        epoch: Option<i64>,
+    ) -> Result<Option<SubmitterStats>> {
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        let addr_bytes =
+            hex::decode(&address).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+
+        use indexer_alt_schema::schema::soma_targets;
+
+        type Row = (Vec<u8>, i64, Option<f64>, Option<f64>, i64, Option<i64>);
+
+        let mut query = soma_targets::table
+            .select((
+                soma_targets::target_id,
+                soma_targets::cp_sequence_number,
+                soma_targets::winning_distance_score,
+                soma_targets::winning_loss_score,
+                soma_targets::reward_pool,
+                soma_targets::winning_data_size,
+            ))
+            .filter(soma_targets::status.eq("filled"))
+            .filter(soma_targets::submitter.eq(&addr_bytes))
+            .order((
+                soma_targets::target_id.asc(),
+                soma_targets::cp_sequence_number.desc(),
+            ))
+            .into_boxed();
+
+        if let Some(e) = epoch {
+            query = query.filter(soma_targets::epoch.eq(e));
+        }
+
+        let rows: Vec<Row> =
+            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        // Deduplicate by target_id, aggregate
+        let mut seen = std::collections::HashSet::new();
+        let (mut target_count, mut dist_sum, mut dist_count, mut loss_sum, mut loss_count) =
+            (0i64, 0.0f64, 0i64, 0.0f64, 0i64);
+        let (mut total_reward, mut total_data_size) = (0i64, 0i64);
+
+        for (tid, _cp, dist, loss, rp, data_size) in &rows {
+            if !seen.insert(tid.clone()) {
+                continue;
+            }
+            target_count += 1;
+            if let Some(d) = dist {
+                dist_sum += d;
+                dist_count += 1;
+            }
+            if let Some(l) = loss {
+                loss_sum += l;
+                loss_count += 1;
+            }
+            total_reward = total_reward.saturating_add(*rp);
+            if let Some(ds) = data_size {
+                total_data_size = total_data_size.saturating_add(*ds);
+            }
+        }
+
+        Ok(Some(SubmitterStats {
+            submitter: addr_bytes,
+            target_count,
+            avg_distance_score: if dist_count > 0 {
+                Some(dist_sum / dist_count as f64)
+            } else {
+                None
+            },
+            avg_loss_score: if loss_count > 0 {
+                Some(loss_sum / loss_count as f64)
+            } else {
+                None
+            },
+            total_reward,
+            total_data_size,
+        }))
+    }
+
     /// Leaderboard of models, ranked by number of targets won.
     /// Includes win rate (targets won / targets assigned), average scores, and total rewards.
     #[graphql(complexity = "10 + first.map(|f| f as usize).unwrap_or(20) * child_complexity")]
