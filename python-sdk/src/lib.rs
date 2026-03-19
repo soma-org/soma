@@ -825,7 +825,7 @@ impl PySomaClient {
 
     /// List targets with optional filtering.
     /// Defaults to status="open". Pass claimable=True to show claimable targets.
-    #[pyo3(signature = (status=None, claimable=false, epoch=None, limit=None, read_mask=None))]
+    #[pyo3(signature = (status=None, claimable=false, epoch=None, limit=None, read_mask=None, submitter=None, page_token=None))]
     fn list_targets<'py>(
         &self,
         py: Python<'py>,
@@ -834,6 +834,8 @@ impl PySomaClient {
         epoch: Option<u64>,
         limit: Option<u32>,
         read_mask: Option<String>,
+        submitter: Option<String>,
+        page_token: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -844,8 +846,20 @@ impl PySomaClient {
                 Some(status.unwrap_or_else(|| "open".to_string()))
             };
             request.epoch_filter = epoch;
+            request.submitter_filter = submitter;
             if let Some(limit) = limit {
                 request.page_size = Some(limit);
+            }
+            if let Some(ref token) = page_token {
+                request.page_token = Some(
+                    hex::decode(token)
+                        .map_err(|e| {
+                            pyo3::exceptions::PyValueError::new_err(format!(
+                                "invalid page_token hex: {e}"
+                            ))
+                        })?
+                        .into(),
+                );
             }
             let effective_mask = read_mask.unwrap_or_else(|| {
                 "id,status,generation_epoch,reward_pool,embedding,model_ids,\
@@ -858,9 +872,7 @@ impl PySomaClient {
             let response = client.list_targets(request).await.map_err(to_py_err)?;
             let obj = ListTargetsObj {
                 targets: response.targets.into_iter().map(proto_target_to_obj).collect(),
-                next_page_token: response
-                    .next_page_token
-                    .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default()),
+                next_page_token: response.next_page_token.map(|b| hex::encode(b)),
             };
             to_py_obj(&obj)
         })
@@ -976,7 +988,7 @@ impl PySomaClient {
 
     /// List targets as typed Target objects.
     /// Defaults to status="open". Pass claimable=True to show claimable targets.
-    #[pyo3(signature = (status=None, claimable=false, epoch=None, limit=None))]
+    #[pyo3(signature = (status=None, claimable=false, epoch=None, limit=None, submitter=None))]
     fn get_targets<'py>(
         &self,
         py: Python<'py>,
@@ -984,6 +996,7 @@ impl PySomaClient {
         claimable: bool,
         epoch: Option<u64>,
         limit: Option<u32>,
+        submitter: Option<String>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let client = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
@@ -994,6 +1007,7 @@ impl PySomaClient {
                 Some(status.unwrap_or_else(|| "open".to_string()))
             };
             request.epoch_filter = epoch;
+            request.submitter_filter = submitter;
             if let Some(limit) = limit {
                 request.page_size = Some(limit);
             }

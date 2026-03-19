@@ -381,6 +381,8 @@ class SomaClient:
         epoch: Optional[int] = None,
         limit: Optional[int] = None,
         read_mask: Optional[str] = None,
+        submitter: Optional[str] = None,
+        page_token: Optional[str] = None,
     ) -> ListTargetsResponse: ...
     async def get_targets(
         self,
@@ -388,6 +390,7 @@ class SomaClient:
         claimable: bool = False,
         epoch: Optional[int] = None,
         limit: Optional[int] = None,
+        submitter: Optional[str] = None,
     ) -> list[Target]: ...
     async def get_model_manifests(
         self,

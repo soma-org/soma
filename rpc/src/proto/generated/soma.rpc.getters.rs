@@ -2093,6 +2093,7 @@ mod _getter_impls {
                 page_size: None,
                 page_token: None,
                 read_mask: None,
+                submitter_filter: None,
             }
         }
         #[doc(hidden)]
@@ -2114,6 +2115,10 @@ mod _getter_impls {
         }
         pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.page_token = Some(field.into());
+            self
+        }
+        pub fn with_submitter_filter(mut self, field: String) -> Self {
+            self.submitter_filter = Some(field.into());
             self
         }
     }

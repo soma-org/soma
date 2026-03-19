@@ -40,6 +40,9 @@ pub enum TargetCommand {
         /// Filter by generation epoch
         #[clap(long, short = 'e')]
         epoch: Option<u64>,
+        /// Filter by submitter address (hex string)
+        #[clap(long)]
+        submitter: Option<String>,
         /// Maximum number of targets to return (default: 20, max: 1000)
         #[clap(long, default_value = "20")]
         limit: u32,
@@ -109,7 +112,7 @@ EXAMPLES:
 impl TargetCommand {
     pub async fn execute(self, context: &mut WalletContext) -> Result<TargetCommandResponse> {
         match self {
-            TargetCommand::List { status, claimable, epoch, limit } => {
+            TargetCommand::List { status, claimable, epoch, submitter, limit } => {
                 let client = context.get_client().await?;
 
                 // --claimable overrides status; otherwise default to "open"
@@ -122,6 +125,7 @@ impl TargetCommand {
                 let mut request = ListTargetsRequest::default();
                 request.status_filter = status_filter;
                 request.epoch_filter = epoch;
+                request.submitter_filter = submitter;
                 request.page_size = Some(limit);
                 request.read_mask =
                     Some(FieldMask::from_str("id,status,reward_pool,model_ids,distance_threshold"));

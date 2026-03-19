@@ -9,6 +9,7 @@
 use bytes::Bytes;
 use prost::Message;
 use prost_types::FieldMask;
+use types::base::SomaAddress;
 use types::storage::read_store::TargetInfo;
 
 use crate::api::RpcService;
@@ -58,6 +59,18 @@ pub fn list_targets(
 
     let epoch_filter = request.epoch_filter;
 
+    let submitter_filter = request
+        .submitter_filter
+        .as_ref()
+        .map(|s| {
+            s.parse::<SomaAddress>().map_err(|e| {
+                FieldViolation::new("submitter_filter")
+                    .with_description(format!("invalid submitter_filter: {e}"))
+                    .with_reason(ErrorReason::FieldInvalid)
+            })
+        })
+        .transpose()?;
+
     let page_size = request
         .page_size
         .map(|s| (s as usize).clamp(1, MAX_PAGE_SIZE))
@@ -68,7 +81,10 @@ pub fn list_targets(
 
     // Validate page token parameters match request
     if let Some(ref token) = page_token {
-        if token.status_filter != status_filter || token.epoch_filter != epoch_filter {
+        if token.status_filter != status_filter
+            || token.epoch_filter != epoch_filter
+            || token.submitter_filter != request.submitter_filter
+        {
             return Err(FieldViolation::new("page_token")
                 .with_description("page_token parameters do not match request filters")
                 .with_reason(ErrorReason::FieldInvalid)
@@ -150,6 +166,12 @@ pub fn list_targets(
         if is_claimable_filter && !is_claimable {
             continue; // "claimable" filter: skip non-claimable targets
         }
+        // Apply submitter filter
+        if let Some(ref addr) = submitter_filter {
+            if target.submitter.as_ref() != Some(addr) {
+                continue;
+            }
+        }
         if status_filter.as_deref() == Some("open") && is_expired {
             continue; // "open" filter: skip expired targets (only show truly open)
         }
@@ -181,6 +203,7 @@ pub fn list_targets(
             encode_page_token(PageToken {
                 status_filter: status_filter.clone(),
                 epoch_filter,
+                submitter_filter: request.submitter_filter.clone(),
                 cursor: cursor_info,
             })
         });
@@ -194,6 +217,7 @@ pub fn list_targets(
 struct PageToken {
     status_filter: Option<String>,
     epoch_filter: Option<u64>,
+    submitter_filter: Option<String>,
     cursor: TargetInfo,
 }
 

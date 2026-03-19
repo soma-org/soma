@@ -3264,6 +3264,12 @@ mod _field_impls {
             number: 5i32,
             message_fields: None,
         };
+        pub const SUBMITTER_FILTER_FIELD: &'static MessageField = &MessageField {
+            name: "submitter_filter",
+            json_name: "submitterFilter",
+            number: 6i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for ListTargetsRequest {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -3272,6 +3278,7 @@ mod _field_impls {
             Self::PAGE_SIZE_FIELD,
             Self::PAGE_TOKEN_FIELD,
             Self::READ_MASK_FIELD,
+            Self::SUBMITTER_FILTER_FIELD,
         ];
     }
     impl ListTargetsRequest {
@@ -3312,6 +3319,10 @@ mod _field_impls {
         }
         pub fn read_mask(mut self) -> String {
             self.path.push(ListTargetsRequest::READ_MASK_FIELD.name);
+            self.finish()
+        }
+        pub fn submitter_filter(mut self) -> String {
+            self.path.push(ListTargetsRequest::SUBMITTER_FILTER_FIELD.name);
             self.finish()
         }
     }

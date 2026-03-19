@@ -8255,6 +8255,9 @@ impl serde::Serialize for ListTargetsRequest {
         if self.read_mask.is_some() {
             len += 1;
         }
+        if self.submitter_filter.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ListTargetsRequest", len)?;
         if let Some(v) = self.status_filter.as_ref() {
             struct_ser.serialize_field("statusFilter", v)?;
@@ -8274,6 +8277,9 @@ impl serde::Serialize for ListTargetsRequest {
         }
         if let Some(v) = self.read_mask.as_ref() {
             struct_ser.serialize_field("readMask", &crate::utils::_serde::FieldMaskSerializer(v))?;
+        }
+        if let Some(v) = self.submitter_filter.as_ref() {
+            struct_ser.serialize_field("submitterFilter", v)?;
         }
         struct_ser.end()
     }
@@ -8295,6 +8301,8 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
             "pageToken",
             "read_mask",
             "readMask",
+            "submitter_filter",
+            "submitterFilter",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -8304,6 +8312,7 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
             PageSize,
             PageToken,
             ReadMask,
+            SubmitterFilter,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -8331,6 +8340,7 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
                             "pageSize" | "page_size" => Ok(GeneratedField::PageSize),
                             "pageToken" | "page_token" => Ok(GeneratedField::PageToken),
                             "readMask" | "read_mask" => Ok(GeneratedField::ReadMask),
+                            "submitterFilter" | "submitter_filter" => Ok(GeneratedField::SubmitterFilter),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -8357,6 +8367,7 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
                 let mut page_size__ = None;
                 let mut page_token__ = None;
                 let mut read_mask__ = None;
+                let mut submitter_filter__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::StatusFilter => {
@@ -8395,6 +8406,12 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
                             }
                             read_mask__ = map_.next_value::<::std::option::Option<crate::utils::_serde::FieldMaskDeserializer>>()?.map(|x| x.0.into());
                         }
+                        GeneratedField::SubmitterFilter => {
+                            if submitter_filter__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("submitterFilter"));
+                            }
+                            submitter_filter__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -8406,6 +8423,7 @@ impl<'de> serde::Deserialize<'de> for ListTargetsRequest {
                     page_size: page_size__,
                     page_token: page_token__,
                     read_mask: read_mask__,
+                    submitter_filter: submitter_filter__,
                 })
             }
         }

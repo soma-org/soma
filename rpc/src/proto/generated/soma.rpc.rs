@@ -2240,6 +2240,10 @@ pub struct ListTargetsRequest {
     /// If no mask is specified, all fields are returned.
     #[prost(message, optional, tag = "5")]
     pub read_mask: ::core::option::Option<::prost_types::FieldMask>,
+    /// Optional submitter address filter (hex string).
+    /// If specified, only targets with this submitter are returned.
+    #[prost(string, optional, tag = "6")]
+    pub submitter_filter: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Response message for `StateService.ListTargets`.
 #[non_exhaustive]

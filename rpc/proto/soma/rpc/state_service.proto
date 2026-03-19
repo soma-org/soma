@@ -104,6 +104,10 @@ message ListTargetsRequest {
   // Mask specifying which fields to read on each target.
   // If no mask is specified, all fields are returned.
   optional google.protobuf.FieldMask read_mask = 5;
+
+  // Optional submitter address filter (hex string).
+  // If specified, only targets with this submitter are returned.
+  optional string submitter_filter = 6;
 }
 
 // Response message for `StateService.ListTargets`.
