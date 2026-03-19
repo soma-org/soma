@@ -1648,10 +1648,7 @@ impl Query {
             ))
             .filter(soma_targets::status.eq("filled"))
             .filter(soma_targets::submitter.eq(&addr_bytes))
-            .order((
-                soma_targets::target_id.asc(),
-                soma_targets::cp_sequence_number.desc(),
-            ))
+            .order((soma_targets::target_id.asc(), soma_targets::cp_sequence_number.desc()))
             .into_boxed();
 
         if let Some(e) = epoch {
@@ -1698,11 +1695,7 @@ impl Query {
             } else {
                 None
             },
-            avg_loss_score: if loss_count > 0 {
-                Some(loss_sum / loss_count as f64)
-            } else {
-                None
-            },
+            avg_loss_score: if loss_count > 0 { Some(loss_sum / loss_count as f64) } else { None },
             total_reward,
             total_data_size,
         }))

@@ -1,9 +1,9 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use async_graphql::*;
 use ::types::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI};
 use ::types::transaction::TransactionKind;
+use async_graphql::*;
 
 use crate::api::scalars::{Base64, BigInt, DateTime, Digest, SomaAddress};
 
@@ -159,35 +159,31 @@ impl Transaction {
 
     /// The decoded transaction kind label (e.g. "SubmitData", "CreateModel", "AddStake").
     async fn kind(&self) -> Result<String> {
-        let tx: ::types::transaction::Transaction =
-            bcs::from_bytes(&self.raw_transaction_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let tx: ::types::transaction::Transaction = bcs::from_bytes(&self.raw_transaction_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         let kind = tx.data().intent_message().value.kind();
         Ok(kind_label(kind).to_string())
     }
 
     /// The address of the transaction sender.
     async fn sender(&self) -> Result<SomaAddress> {
-        let tx: ::types::transaction::Transaction =
-            bcs::from_bytes(&self.raw_transaction_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let tx: ::types::transaction::Transaction = bcs::from_bytes(&self.raw_transaction_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         let sender = tx.data().intent_message().value.sender();
         Ok(SomaAddress(sender.to_vec()))
     }
 
     /// The epoch in which this transaction was executed.
     async fn epoch(&self) -> Result<BigInt> {
-        let effects: TransactionEffects =
-            bcs::from_bytes(&self.raw_effects_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let effects: TransactionEffects = bcs::from_bytes(&self.raw_effects_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         Ok(BigInt(effects.executed_epoch() as i64))
     }
 
     /// Execution status: "Success" or "Failure".
     async fn status(&self) -> Result<String> {
-        let effects: TransactionEffects =
-            bcs::from_bytes(&self.raw_effects_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let effects: TransactionEffects = bcs::from_bytes(&self.raw_effects_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         Ok(match effects.status() {
             ExecutionStatus::Success => "Success".to_string(),
             ExecutionStatus::Failure { .. } => "Failure".to_string(),
@@ -196,17 +192,15 @@ impl Transaction {
 
     /// Total gas fee deducted.
     async fn gas_used(&self) -> Result<BigInt> {
-        let effects: TransactionEffects =
-            bcs::from_bytes(&self.raw_effects_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let effects: TransactionEffects = bcs::from_bytes(&self.raw_effects_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         Ok(BigInt(effects.transaction_fee().total_fee as i64))
     }
 
     /// Transaction digests this transaction depends on.
     async fn dependencies(&self) -> Result<Vec<Digest>> {
-        let effects: TransactionEffects =
-            bcs::from_bytes(&self.raw_effects_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let effects: TransactionEffects = bcs::from_bytes(&self.raw_effects_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         Ok(effects
             .dependencies()
             .iter()
@@ -216,9 +210,8 @@ impl Transaction {
 
     /// Kind-specific metadata as JSON (e.g. target_id, model_id, amount).
     async fn metadata_json(&self) -> Result<Option<String>> {
-        let tx: ::types::transaction::Transaction =
-            bcs::from_bytes(&self.raw_transaction_bcs)
-                .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
+        let tx: ::types::transaction::Transaction = bcs::from_bytes(&self.raw_transaction_bcs)
+            .map_err(|e| Error::new(format!("BCS decode error: {e}")))?;
         let kind = tx.data().intent_message().value.kind();
         Ok(metadata_json(kind))
     }
