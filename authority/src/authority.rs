@@ -984,9 +984,17 @@ impl AuthorityState {
             Err(e) => return ExecutionOutput::Fatal(e),
         };
 
-        let owned_object_refs = input_objects.inner().filter_owned_objects();
-        if let Err(e) = self.check_owned_locks(&owned_object_refs) {
-            return ExecutionOutput::Fatal(e);
+        // During checkpoint replay (expected_effects_digest is Some), skip the owned lock
+        // check. This check verifies metadata in the object_transaction_locks side table,
+        // which is only needed for live double-spend prevention. During replay, correctness
+        // is guaranteed by: (1) read_objects_for_execution loading objects by exact key,
+        // (2) check_certificate_input validating versions/digests/ownership, and
+        // (3) the effects digest comparison after execution.
+        if expected_effects_digest.is_none() {
+            let owned_object_refs = input_objects.inner().filter_owned_objects();
+            if let Err(e) = self.check_owned_locks(&owned_object_refs) {
+                return ExecutionOutput::Fatal(e);
+            }
         }
         let tx_digest = *certificate.digest();
         let protocol_config = epoch_store.protocol_config();
