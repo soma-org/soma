@@ -268,33 +268,39 @@ impl WalletContext {
         Ok(object_refs)
     }
 
-    /// Return the coin with the highest balance owned by this address.
+    /// Return the coin with the highest balance owned by this address,
+    /// together with its balance.
     ///
     /// Unlike [`get_one_gas_object_owned_by_address`] (which returns an
     /// arbitrary first coin), this fetches all coins and picks the richest
     /// one so that gas/transfer operations are far less likely to fail due
     /// to insufficient balance.
+    pub async fn get_richest_coin_with_balance(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
+        Ok(self.get_gas_objects_sorted_by_balance_with_amounts(address).await?.into_iter().next())
+    }
+
+    /// Convenience wrapper that discards the balance.
     pub async fn get_richest_gas_object_owned_by_address(
         &self,
         address: SomaAddress,
     ) -> anyhow::Result<Option<ObjectRef>> {
-        Ok(self.get_gas_objects_sorted_by_balance(address).await?.into_iter().next())
+        Ok(self.get_richest_coin_with_balance(address).await?.map(|(r, _)| r))
     }
 
     /// Return up to `MAX_GAS_COINS` coins owned by `address`, sorted
-    /// richest-first.
+    /// richest-first, with their balances.
     ///
     /// Caps the number of coins fetched to avoid excessive RPC pagination
     /// (addresses with thousands of dust coins would otherwise require
-    /// dozens of page requests). When the resulting vector is used as the
-    /// `gas_payment` for a transaction, `smash_gas` will merge the
-    /// included coins into the primary, gradually cleaning up dust over
-    /// successive transactions.
-    pub async fn get_gas_objects_sorted_by_balance(
+    /// dozens of page requests).
+    pub async fn get_gas_objects_sorted_by_balance_with_amounts(
         &self,
         address: SomaAddress,
-    ) -> anyhow::Result<Vec<ObjectRef>> {
-        /// Maximum number of coins to use as gas payment / smashing.
+    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
+        /// Maximum number of coins to fetch.
         /// Matches Sui's `max_gas_payment_objects` protocol limit (256)
         /// to stay well under the consensus transaction size cap.
         const MAX_GAS_COINS: usize = 256;
@@ -330,7 +336,21 @@ impl WalletContext {
 
         // Sort descending by balance so the richest coin is first.
         coins.sort_by(|a, b| b.1.cmp(&a.1));
-        Ok(coins.into_iter().map(|(r, _)| r).collect())
+        Ok(coins)
+    }
+
+    /// Return up to `MAX_GAS_COINS` coin refs owned by `address`, sorted
+    /// richest-first (without balances).
+    pub async fn get_gas_objects_sorted_by_balance(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Vec<ObjectRef>> {
+        Ok(self
+            .get_gas_objects_sorted_by_balance_with_amounts(address)
+            .await?
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect())
     }
 
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {

@@ -54,9 +54,21 @@ pub fn read_and_hash_file(path: &Path) -> Result<([u8; 32], String, usize)> {
 pub async fn auto_fetch_bond_coin(
     context: &WalletContext,
     sender: SomaAddress,
+    required: Option<u64>,
 ) -> Result<ObjectRef> {
-    context
-        .get_richest_gas_object_owned_by_address(sender)
+    let (obj_ref, balance) = context
+        .get_richest_coin_with_balance(sender)
         .await?
-        .ok_or_else(|| anyhow!("No coins found for address {}", sender))
+        .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
+    if let Some(amt) = required {
+        if balance < amt {
+            return Err(anyhow!(
+                "Richest coin has balance {} but bond requires {}. \
+                 Run `soma merge-coins` to consolidate your coins.",
+                balance,
+                amt,
+            ));
+        }
+    }
+    Ok(obj_ref)
 }

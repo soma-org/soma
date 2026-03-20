@@ -277,7 +277,8 @@ async fn execute_with_lock_retry(
                     .find(|c| !excluded_coins.contains(&c.0))
                     .ok_or_else(|| {
                         anyhow!(
-                            "No available gas coins after excluding locked coins: {:?}",
+                            "No available gas coins after excluding locked coins: {:?}. \
+                             Run `soma merge-coins` to consolidate your coins.",
                             excluded_coins
                         )
                     })?;

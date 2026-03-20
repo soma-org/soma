@@ -34,11 +34,18 @@ pub async fn execute(
             (r, vec![r])
         }
         None => {
-            // Pick the richest coin for both transfer and gas payment.
-            let r = context
-                .get_richest_gas_object_owned_by_address(sender)
+            let (r, balance) = context
+                .get_richest_coin_with_balance(sender)
                 .await?
                 .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
+            if balance < amount {
+                return Err(anyhow!(
+                    "Richest coin has balance {} but transfer requires {}. \
+                     Run `soma merge-coins` to consolidate your coins.",
+                    balance,
+                    amount,
+                ));
+            }
             (r, vec![r])
         }
     };

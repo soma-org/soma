@@ -86,7 +86,8 @@ impl SubmitCommand {
         let loss_score_vec = parse_embedding(&self.loss_score)?;
 
         // Auto-fetch bond coin
-        let bond_coin_ref = super::parse_helpers::auto_fetch_bond_coin(context, sender).await?;
+        let bond_coin_ref =
+            super::parse_helpers::auto_fetch_bond_coin(context, sender, None).await?;
 
         // Pre-fetch epoch timing (non-fatal, before transaction)
         let (next_epoch_hint, claim_epoch_hint) = match context.get_client().await {

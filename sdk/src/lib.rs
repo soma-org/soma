@@ -604,7 +604,8 @@ impl SomaClient {
         if coins.is_empty() {
             return Err(error::Error::DataError(format!(
                 "No available gas coin for address {sender} \
-                 (excluded {} locked coins)",
+                 (excluded {} locked coins). \
+                 Run `soma merge-coins` to consolidate your coins.",
                 excluded.len()
             )));
         }
