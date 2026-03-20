@@ -119,9 +119,8 @@ pub fn dump_table(
             print_entries(table_name, &entries, page_size, page_number);
         }
         StoreName::Index => {
-            let db = authority::rpc_index::IndexStoreTables::open_readonly(
-                &db_path.join("rpc-index"),
-            );
+            let db =
+                authority::rpc_index::IndexStoreTables::open_readonly(&db_path.join("rpc-index"));
             let entries = eyre_to_anyhow(db.dump(table_name, page_size, page_number))?;
             print_entries(table_name, &entries, page_size, page_number);
         }
@@ -155,9 +154,8 @@ pub fn table_summary(
             eyre_to_anyhow(db.dump(table_name, page_size, 0))?
         }
         StoreName::Index => {
-            let db = authority::rpc_index::IndexStoreTables::open_readonly(
-                &db_path.join("rpc-index"),
-            );
+            let db =
+                authority::rpc_index::IndexStoreTables::open_readonly(&db_path.join("rpc-index"));
             eyre_to_anyhow(db.dump(table_name, page_size, 0))?
         }
     };
@@ -235,10 +233,7 @@ fn print_entries(
     page_size: u16,
     page_number: usize,
 ) {
-    println!(
-        "Table: {} (page {}, page_size {})",
-        table_name, page_number, page_size
-    );
+    println!("Table: {} (page {}, page_size {})", table_name, page_number, page_size);
     println!("Entries: {}", entries.len());
     for (key, value) in entries {
         println!("  {} => {}", key, value);
@@ -257,15 +252,10 @@ mod tests {
         // Open all table structs in read-write mode to create them
         let _perpetual = AuthorityPerpetualTables::open(path, None);
         let _epoch = AuthorityEpochTables::open(0, path, None);
-        let _checkpoint = CheckpointStore::new(
-            &path.join("checkpoints"),
-            Arc::new(PrunerWatermarks::default()),
-        );
-        let _committee = CommitteeStoreTables::open_tables_read_write(
-            path.join("committee"),
-            None,
-            None,
-        );
+        let _checkpoint =
+            CheckpointStore::new(&path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
+        let _committee =
+            CommitteeStoreTables::open_tables_read_write(path.join("committee"), None, None);
 
         // Verify describe_tables returns non-empty for all stores
         let perpetual_tables = AuthorityPerpetualTables::describe_tables();
@@ -284,21 +274,36 @@ mod tests {
         let perpetual_ro = AuthorityPerpetualTables::open_readonly(path);
         for table_name in perpetual_tables.keys() {
             let result = perpetual_ro.dump(table_name, 10, 0);
-            assert!(result.is_ok(), "Failed to dump perpetual table '{}': {:?}", table_name, result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to dump perpetual table '{}': {:?}",
+                table_name,
+                result.err()
+            );
         }
 
         // Verify dump works on each epoch table
         let epoch_ro = AuthorityEpochTables::open_readonly(0, path);
         for table_name in epoch_tables.keys() {
             let result = epoch_ro.dump(table_name, 10, 0);
-            assert!(result.is_ok(), "Failed to dump epoch table '{}': {:?}", table_name, result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to dump epoch table '{}': {:?}",
+                table_name,
+                result.err()
+            );
         }
 
         // Verify dump works on each checkpoint table
         let checkpoint_ro = CheckpointStoreTables::open_readonly(&path.join("checkpoints"));
         for table_name in checkpoint_tables.keys() {
             let result = checkpoint_ro.dump(table_name, 10, 0);
-            assert!(result.is_ok(), "Failed to dump checkpoint table '{}': {:?}", table_name, result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to dump checkpoint table '{}': {:?}",
+                table_name,
+                result.err()
+            );
         }
     }
 }

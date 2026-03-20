@@ -55,8 +55,7 @@ fn hex_decode(s: &str) -> anyhow::Result<Vec<u8>> {
     (0..trimmed.len())
         .step_by(2)
         .map(|i| {
-            u8::from_str_radix(&trimmed[i..i + 2], 16)
-                .map_err(|e| anyhow!("Invalid hex: {}", e))
+            u8::from_str_radix(&trimmed[i..i + 2], 16).map_err(|e| anyhow!("Invalid hex: {}", e))
         })
         .collect()
 }

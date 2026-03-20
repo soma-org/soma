@@ -1820,6 +1820,39 @@ impl Query {
             }
         }
 
+        // Include all active models, even those never assigned to a target.
+        {
+            use indexer_alt_schema::schema::soma_models;
+
+            let mut active_query = soma_models::table
+                .select(soma_models::model_id)
+                .filter(soma_models::status.eq("active"))
+                .into_boxed();
+
+            if let Some(e) = epoch {
+                active_query = active_query.filter(soma_models::epoch.eq(e));
+            } else {
+                // Use the latest epoch when no epoch is specified.
+                let latest: Option<i64> = soma_models::table
+                    .select(soma_models::epoch)
+                    .order(soma_models::epoch.desc())
+                    .first::<i64>(conn.deref_mut())
+                    .await
+                    .optional()
+                    .map_err(|e| Error::new(e.to_string()))?;
+                if let Some(le) = latest {
+                    active_query = active_query.filter(soma_models::epoch.eq(le));
+                }
+            }
+
+            let active_ids: Vec<Vec<u8>> =
+                active_query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
+
+            for mid in active_ids {
+                model_map.entry(mid).or_default();
+            }
+        }
+
         // Sort by targets_won desc
         let mut entries: Vec<_> = model_map.into_iter().collect();
         entries.sort_by(|a, b| b.1.0.cmp(&a.1.0));

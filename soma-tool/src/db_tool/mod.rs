@@ -17,7 +17,7 @@ use types::digests::TransactionDigest;
 use types::object::ObjectID;
 
 use authority::authority_store_pruner::{
-    AuthorityStorePruner, PrunerWatermarks, EPOCH_DURATION_MS_FOR_TESTING,
+    AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING, PrunerWatermarks,
 };
 use authority::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables};
 use authority::checkpoints::CheckpointStore;
@@ -125,10 +125,7 @@ pub fn print_db_all_tables(db_path: PathBuf) -> anyhow::Result<()> {
     db_dump::list_tables(db_path)
 }
 
-pub async fn execute_db_tool_command(
-    db_path: PathBuf,
-    cmd: DbToolCommand,
-) -> anyhow::Result<()> {
+pub async fn execute_db_tool_command(db_path: PathBuf, cmd: DbToolCommand) -> anyhow::Result<()> {
     match cmd {
         DbToolCommand::ListTables => {
             db_dump::list_tables(db_path)?;
@@ -146,21 +143,11 @@ pub async fn execute_db_tool_command(
         }
 
         DbToolCommand::TableSummary(opts) => {
-            db_dump::table_summary(
-                opts.store,
-                opts.epoch,
-                db_path,
-                &opts.table_name,
-            )?;
+            db_dump::table_summary(opts.store, opts.epoch, db_path, &opts.table_name)?;
         }
 
         DbToolCommand::ListDBMetadata(opts) => {
-            db_dump::print_table_metadata(
-                opts.store,
-                opts.epoch,
-                db_path,
-                &opts.table_name,
-            )?;
+            db_dump::print_table_metadata(opts.store, opts.epoch, db_path, &opts.table_name)?;
         }
 
         DbToolCommand::PrintLastConsensusIndex { epoch } => {
@@ -187,10 +174,7 @@ pub async fn execute_db_tool_command(
             reset_db(&db_path).await?;
         }
 
-        DbToolCommand::RewindCheckpointExecution {
-            epoch,
-            checkpoint_sequence_number,
-        } => {
+        DbToolCommand::RewindCheckpointExecution { epoch, checkpoint_sequence_number } => {
             rewind_checkpoint_execution(&db_path, epoch, checkpoint_sequence_number)?;
         }
 
@@ -233,12 +217,10 @@ fn print_last_consensus_index(db_path: &PathBuf, epoch: EpochId) -> anyhow::Resu
             println!("Last consensus index: {:?}", stats.index);
             println!("Stats: {:?}", stats.stats);
         }
-        None => {
-            match epoch_tables.get_last_consensus_index()? {
-                Some(index) => println!("Last consensus index: {:?}", index),
-                None => println!("No consensus index found for epoch {}", epoch),
-            }
-        }
+        None => match epoch_tables.get_last_consensus_index()? {
+            Some(index) => println!("Last consensus index: {:?}", index),
+            None => println!("No consensus index found for epoch {}", epoch),
+        },
     }
     Ok(())
 }
@@ -251,24 +233,22 @@ fn hex_decode(s: &str) -> anyhow::Result<Vec<u8>> {
     (0..trimmed.len())
         .step_by(2)
         .map(|i| {
-            u8::from_str_radix(&trimmed[i..i + 2], 16)
-                .map_err(|e| anyhow!("Invalid hex: {}", e))
+            u8::from_str_radix(&trimmed[i..i + 2], 16).map_err(|e| anyhow!("Invalid hex: {}", e))
         })
         .collect()
 }
 
 fn parse_digest(digest_str: &str) -> anyhow::Result<TransactionDigest> {
     let bytes = hex_decode(digest_str)?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|v: Vec<u8>| anyhow!("Invalid digest length: expected 32 bytes, got {}", v.len()))?;
+    let arr: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
+        anyhow!("Invalid digest length: expected 32 bytes, got {}", v.len())
+    })?;
     Ok(TransactionDigest::from(arr))
 }
 
 fn parse_object_id(id_str: &str) -> anyhow::Result<ObjectID> {
     let bytes = hex_decode(id_str)?;
-    ObjectID::try_from(bytes.as_slice())
-        .map_err(|e| anyhow!("Invalid object ID: {}", e))
+    ObjectID::try_from(bytes.as_slice()).map_err(|e| anyhow!("Invalid object ID: {}", e))
 }
 
 fn print_transaction(db_path: &PathBuf, digest_str: &str) -> anyhow::Result<()> {
@@ -298,7 +278,12 @@ fn print_transaction(db_path: &PathBuf, digest_str: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn print_object(db_path: &PathBuf, id_str: &str, version: Option<u64>, all_versions: bool) -> anyhow::Result<()> {
+fn print_object(
+    db_path: &PathBuf,
+    id_str: &str,
+    version: Option<u64>,
+    all_versions: bool,
+) -> anyhow::Result<()> {
     let perpetual_db = AuthorityPerpetualTables::open(db_path, None);
     let object_id = parse_object_id(id_str)?;
 
@@ -329,10 +314,7 @@ fn print_object(db_path: &PathBuf, id_str: &str, version: Option<u64>, all_versi
             None => println!("Object not found at version {}", v),
         }
     } else {
-        match perpetual_db.find_object_lt_or_eq_version(
-            object_id,
-            types::object::Version::MAX,
-        )? {
+        match perpetual_db.find_object_lt_or_eq_version(object_id, types::object::Version::MAX)? {
             Some(obj) => println!("Object: {:?}", obj),
             None => println!("Object not found: {}", object_id),
         }
@@ -345,10 +327,8 @@ fn print_checkpoint(
     db_path: &PathBuf,
     sequence_number: CheckpointSequenceNumber,
 ) -> anyhow::Result<()> {
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
     match checkpoint_db.get_checkpoint_by_sequence_number(sequence_number)? {
         Some(checkpoint) => {
             println!("Checkpoint: {:?}", checkpoint);
@@ -364,10 +344,8 @@ fn print_checkpoint_content(
     db_path: &PathBuf,
     sequence_number: CheckpointSequenceNumber,
 ) -> anyhow::Result<()> {
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
 
     let checkpoint = checkpoint_db
         .get_checkpoint_by_sequence_number(sequence_number)?
@@ -379,10 +357,7 @@ fn print_checkpoint_content(
             println!("Checkpoint Contents: {:?}", contents);
         }
         None => {
-            println!(
-                "Checkpoint contents not found for checkpoint {}",
-                sequence_number
-            );
+            println!("Checkpoint contents not found for checkpoint {}", sequence_number);
         }
     }
 
@@ -396,10 +371,8 @@ async fn reset_db(db_path: &PathBuf) -> anyhow::Result<()> {
     store::rocks::safe_drop_db(perpetual_path.clone(), Duration::from_secs(30)).await?;
     info!("Dropped perpetual tables");
 
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
     checkpoint_db.reset_db_for_execution_since_genesis()?;
     info!("Reset checkpoint execution to genesis");
 
@@ -412,29 +385,20 @@ fn rewind_checkpoint_execution(
     epoch: EpochId,
     checkpoint_sequence_number: CheckpointSequenceNumber,
 ) -> anyhow::Result<()> {
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
 
-    let checkpoint = checkpoint_db
-        .get_checkpoint_by_sequence_number(checkpoint_sequence_number)?
-        .ok_or_else(|| {
-            anyhow!(
-                "Checkpoint not found: {}",
-                checkpoint_sequence_number
-            )
-        })?;
+    let checkpoint =
+        checkpoint_db
+            .get_checkpoint_by_sequence_number(checkpoint_sequence_number)?
+            .ok_or_else(|| anyhow!("Checkpoint not found: {}", checkpoint_sequence_number))?;
 
     checkpoint_db.set_highest_executed_checkpoint_subtle(&checkpoint)?;
     info!(
         "Rewound checkpoint execution to epoch {} checkpoint {}",
         epoch, checkpoint_sequence_number
     );
-    println!(
-        "Successfully rewound to epoch {} checkpoint {}",
-        epoch, checkpoint_sequence_number
-    );
+    println!("Successfully rewound to epoch {} checkpoint {}", epoch, checkpoint_sequence_number);
 
     Ok(())
 }
@@ -450,10 +414,8 @@ fn compact(db_path: &PathBuf) -> anyhow::Result<()> {
 async fn prune_objects(db_path: &PathBuf) -> anyhow::Result<()> {
     info!("Pruning objects at {:?}", db_path);
     let perpetual_db = Arc::new(AuthorityPerpetualTables::open(db_path, None));
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
     let pruner_db = Arc::new(AuthorityPrunerTables::open(db_path));
     let config = AuthorityStorePruningConfig::default();
 
@@ -475,10 +437,8 @@ async fn prune_checkpoints(db_path: &PathBuf) -> anyhow::Result<()> {
     info!("Pruning checkpoints at {:?}", db_path);
     let perpetual_db = Arc::new(AuthorityPerpetualTables::open(db_path, None));
     let pruner_watermarks = Arc::new(PrunerWatermarks::default());
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        pruner_watermarks.clone(),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), pruner_watermarks.clone());
     let pruner_db = Arc::new(AuthorityPrunerTables::open(db_path));
     let config = AuthorityStorePruningConfig::default();
 
@@ -501,20 +461,15 @@ fn set_checkpoint_watermark(
     db_path: &PathBuf,
     sequence_number: CheckpointSequenceNumber,
 ) -> anyhow::Result<()> {
-    let checkpoint_db = CheckpointStore::new(
-        &db_path.join("checkpoints"),
-        Arc::new(PrunerWatermarks::default()),
-    );
+    let checkpoint_db =
+        CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
 
     let checkpoint = checkpoint_db
         .get_checkpoint_by_sequence_number(sequence_number)?
         .ok_or_else(|| anyhow!("Checkpoint not found: {}", sequence_number))?;
 
     checkpoint_db.set_highest_executed_checkpoint_subtle(&checkpoint)?;
-    println!(
-        "Set highest executed checkpoint watermark to {}",
-        sequence_number
-    );
+    println!("Set highest executed checkpoint watermark to {}", sequence_number);
 
     Ok(())
 }
