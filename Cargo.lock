@@ -9469,7 +9469,7 @@ dependencies = [
 
 [[package]]
 name = "soma-sdk"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "bcs",
  "fastcrypto",
@@ -9509,6 +9509,23 @@ dependencies = [
  "tower-layer",
  "tracing",
  "x509-parser",
+]
+
+[[package]]
+name = "soma-tool"
+version = "0.1.19"
+dependencies = [
+ "anyhow",
+ "authority",
+ "bin-version",
+ "clap",
+ "eyre",
+ "store",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "types",
 ]
 
 [[package]]

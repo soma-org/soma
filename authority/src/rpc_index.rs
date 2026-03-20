@@ -228,7 +228,7 @@ pub struct TargetIndexInfo {
 /// - bounded in size by the live object set
 /// - are prune-able and have corresponding logic in the `prune` function
 #[derive(DBMapUtils)]
-struct IndexStoreTables {
+pub struct IndexStoreTables {
     /// A singleton that store metadata information on the DB.
     ///
     /// A few uses for this singleton:
@@ -274,6 +274,10 @@ struct IndexStoreTables {
 }
 
 impl IndexStoreTables {
+    pub fn open_readonly(path: &Path) -> IndexStoreTablesReadOnly {
+        Self::get_read_only_handle(path.to_path_buf(), None, None)
+    }
+
     fn open_with_index_options<P: Into<PathBuf>>(
         path: P,
         // index_options: IndexStoreOptions,

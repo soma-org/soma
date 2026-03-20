@@ -39,6 +39,7 @@ members = [
   "indexer-kvstore",
   "soma-graphql",
   "indexer-e2e-tests",
+  "soma-tool",
 ]
 
 

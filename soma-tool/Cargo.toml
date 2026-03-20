@@ -1,0 +1,26 @@
+[package]
+name = "soma-tool"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "soma-tool"
+path = "src/main.rs"
+
+[dependencies]
+authority.workspace = true
+types.workspace = true
+store.workspace = true
+bin-version.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+eyre.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
