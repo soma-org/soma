@@ -19,11 +19,11 @@ pub async fn execute(context: &mut WalletContext) -> Result<MergeCoinsResponse> 
     let sender = context.active_address()?;
     let client = context.get_client().await?;
 
-    // 1. List coins (one page — up to 1000, run again if more)
-    const MAX_COINS: usize = 1000;
+    // 1. List coins (up to 256 per call, run again if more)
+    const MAX_COINS: usize = 256;
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(sender.to_string());
-    request.page_size = Some(MAX_COINS as u32);
+    request.page_size = Some(1000);
     request.object_type = Some(rpc::types::ObjectType::Coin.into());
 
     let stream = client.list_owned_objects(request).await;

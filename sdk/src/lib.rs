@@ -701,7 +701,7 @@ impl SomaClient {
     ) -> Result<TransactionEffects, error::Error> {
         use futures::TryStreamExt as _;
 
-        const MAX_COINS: usize = 1000;
+        const MAX_COINS: usize = 256;
 
         let mut request = ListOwnedObjectsRequest::default();
         request.owner = Some(sender.to_string());

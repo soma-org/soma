@@ -294,10 +294,10 @@ impl WalletContext {
         &self,
         address: SomaAddress,
     ) -> anyhow::Result<Vec<ObjectRef>> {
-        /// Maximum number of coins to fetch for gas payment / smashing.
-        /// Matches the server's max page size (1000) so all coins
-        /// fit in a single RPC call for smash_gas to merge.
-        const MAX_GAS_COINS: usize = 1000;
+        /// Maximum number of coins to use as gas payment / smashing.
+        /// Matches Sui's `max_gas_payment_objects` protocol limit (256)
+        /// to stay well under the consensus transaction size cap.
+        const MAX_GAS_COINS: usize = 256;
 
         let client = self.get_client().await?;
 
