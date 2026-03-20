@@ -27,8 +27,7 @@ impl<'a> TransactionBuilder<'a> {
     /// Build unsigned transaction data for a given kind.
     ///
     /// If `gas_payment` is non-empty, uses the provided coins directly
-    /// (avoiding an RPC call). If empty, auto-fetches all coins sorted
-    /// richest-first so that `smash_gas` can merge dust.
+    /// (avoiding an RPC call). If empty, auto-selects the richest coin.
     pub async fn build_transaction_data(
         &self,
         sender: SomaAddress,
@@ -36,15 +35,17 @@ impl<'a> TransactionBuilder<'a> {
         gas_payment: Vec<ObjectRef>,
     ) -> Result<TransactionData> {
         let gas_payment = if gas_payment.is_empty() {
-            let coins = self.context.get_gas_objects_sorted_by_balance(sender).await?;
-            if coins.is_empty() {
-                return Err(anyhow!(
-                    "No gas object found for address {}. \
-                     Please ensure the address has coins.",
-                    sender
-                ));
-            }
-            coins
+            let coin =
+                self.context.get_richest_gas_object_owned_by_address(sender).await?.ok_or_else(
+                    || {
+                        anyhow!(
+                            "No gas object found for address {}. \
+                         Please ensure the address has coins.",
+                            sender
+                        )
+                    },
+                )?;
+            vec![coin]
         } else {
             gas_payment
         };

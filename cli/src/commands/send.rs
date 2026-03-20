@@ -34,13 +34,12 @@ pub async fn execute(
             (r, vec![r])
         }
         None => {
-            // Fetch all coins once. The richest (first) is used for the
-            // transfer; ALL of them are passed as gas_payment so smash_gas
-            // can merge dust coins, keeping the address clean.
-            let coins = context.get_gas_objects_sorted_by_balance(sender).await?;
-            let r =
-                *coins.first().ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
-            (r, coins)
+            // Pick the richest coin for both transfer and gas payment.
+            let r = context
+                .get_richest_gas_object_owned_by_address(sender)
+                .await?
+                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
+            (r, vec![r])
         }
     };
 

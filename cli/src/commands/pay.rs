@@ -2,7 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow, bail, ensure};
+use anyhow::{Result, anyhow, ensure};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
 use types::base::SomaAddress;
@@ -53,13 +53,12 @@ pub async fn execute(
             (refs, gas)
         }
         None => {
-            // Fetch all coins once. They serve as both the pay-coins input
-            // and the gas_payment, so smash_gas can merge dust.
-            let all_coins = context.get_gas_objects_sorted_by_balance(sender).await?;
-            if all_coins.is_empty() {
-                bail!("No coins found for address {}", sender);
-            }
-            (all_coins.clone(), all_coins)
+            // Pick the richest coin as both input and gas payment.
+            let r = context
+                .get_richest_gas_object_owned_by_address(sender)
+                .await?
+                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
+            (vec![r], vec![r])
         }
     };
 

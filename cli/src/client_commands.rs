@@ -270,19 +270,19 @@ async fn execute_with_lock_retry(
                     );
                 }
 
-                // Re-fetch coins excluding locked ones and rebuild
+                // Re-fetch coins excluding locked ones and pick the richest
                 let coins = context.get_gas_objects_sorted_by_balance(sender).await?;
-                let gas_payment: Vec<ObjectRef> =
-                    coins.into_iter().filter(|c| !excluded_coins.contains(&c.0)).collect();
+                let gas_coin = coins
+                    .into_iter()
+                    .find(|c| !excluded_coins.contains(&c.0))
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "No available gas coins after excluding locked coins: {:?}",
+                            excluded_coins
+                        )
+                    })?;
 
-                if gas_payment.is_empty() {
-                    return Err(anyhow!(
-                        "No available gas coins after excluding locked coins: {:?}",
-                        excluded_coins
-                    ));
-                }
-
-                let tx_data = TransactionData::new(kind.clone(), sender, gas_payment);
+                let tx_data = TransactionData::new(kind.clone(), sender, vec![gas_coin]);
                 current_tx = context.sign_transaction(&tx_data).await;
             }
         }
