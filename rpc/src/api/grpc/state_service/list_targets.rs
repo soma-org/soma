@@ -20,7 +20,7 @@ use crate::proto::soma::{ErrorReason, ListTargetsRequest, ListTargetsResponse, T
 use crate::utils::field::{FieldMaskTree, FieldMaskUtil};
 
 const MAX_PAGE_SIZE: usize = 1000;
-const DEFAULT_PAGE_SIZE: usize = 50;
+const DEFAULT_PAGE_SIZE: usize = 100;
 const MAX_PAGE_SIZE_BYTES: usize = 512 * 1024; // 512KiB
 
 /// Default fields to return if no read_mask is specified.

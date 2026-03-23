@@ -1299,6 +1299,17 @@ impl SystemStateV1 {
             self.target_state.hits_ema = 0;
         }
 
+        // V5 migration: reset difficulty for faster convergence near z=0
+        if self.protocol_version < 5 && next_protocol_version >= 5 {
+            info!(
+                "V5 migration: resetting difficulty (threshold={}, ema={})",
+                self.target_state.distance_threshold, self.target_state.hits_ema
+            );
+            self.target_state.distance_threshold =
+                self.parameters.target_initial_distance_threshold.clone();
+            self.target_state.hits_ema = 0;
+        }
+
         // Get reward_slashing_rate from protocol config
         let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
@@ -1467,7 +1478,12 @@ impl SystemStateV1 {
             let adj_rate = self.parameters.target_difficulty_adjustment_rate_bps as f32
                 / BPS_DENOMINATOR as f32;
 
-            let step = (z.abs() * adj_rate).max(Self::MIN_Z_STEP);
+            let min_z_step = if self.protocol_version >= 5 {
+                2.0 // V5+: larger floor for faster convergence near z=0
+            } else {
+                Self::MIN_Z_STEP
+            };
+            let step = (z.abs() * adj_rate).max(min_z_step);
             let new_z = if ema_hits > target_hits {
                 z + step // too many hits → harder
             } else if ema_hits < target_hits {

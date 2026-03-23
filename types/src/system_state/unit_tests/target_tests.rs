@@ -631,7 +631,8 @@ fn test_z_adjustment_easier() {
 #[test]
 fn test_z_min_step_prevents_stuck() {
     let validators = create_validators_with_stakes(vec![100, 100]);
-    let mut system_state = create_test_system_state(validators, 1000, 100);
+    // Pin to V4 to test the original MIN_Z_STEP=0.1 behavior
+    let mut system_state = create_test_system_state_at_version(validators, 1000, 100, 4);
 
     // Set threshold = 1.0 → z = 0.0
     system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
@@ -875,6 +876,98 @@ fn test_v3_migration_only_once() {
         system_state.target_state().hits_ema != 0
             || system_state.target_state().hits_this_epoch == 0,
         "V3→V3 should not reset EMA to 0 via migration"
+    );
+}
+
+/// Test V5 MIN_Z_STEP = 2.0 at z=0 (threshold=1.0)
+#[test]
+fn test_v5_min_z_step() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // Set threshold = 1.0 → z = 0.0
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.parameters_mut().target_hits_per_epoch = 86_400;
+    system_state.parameters_mut().target_difficulty_adjustment_rate_bps = 200;
+    system_state.parameters_mut().target_min_distance_threshold =
+        crate::tensor::SomaTensor::scalar(0.95);
+    system_state.parameters_mut().target_max_distance_threshold =
+        crate::tensor::SomaTensor::scalar(2.0);
+
+    // More hits than target → should make harder with step = 2.0 z-units
+    system_state.target_state_mut().hits_this_epoch = 100_000;
+
+    system_state.adjust_difficulty();
+    let new_threshold = system_state.target_state().distance_threshold.as_scalar();
+
+    // z should have increased by 2.0 → threshold = 1.0 - 0.022 * 2.0 = 0.956
+    let expected = 1.0 - 0.022 * 2.0;
+    assert!(
+        (new_threshold - expected).abs() < 0.001,
+        "V5 MIN_Z_STEP=2.0: threshold should be ~{}: got {}",
+        expected,
+        new_threshold
+    );
+}
+
+/// Test V5 migration resets threshold and EMA
+#[test]
+fn test_v5_migration_resets_state() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state_at_version(validators, 1000, 100, 4);
+
+    // Simulate V4 state stuck near z=0
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.0);
+    system_state.target_state_mut().hits_ema = 200;
+
+    // Advance epoch with V5 config (triggers migration)
+    let next_epoch = system_state.epoch() + 1;
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    let v5_config = protocol_config::ProtocolConfig::get_for_version(
+        protocol_config::ProtocolVersion::new(5),
+        protocol_config::Chain::default(),
+    );
+
+    let _ = system_state.advance_epoch(next_epoch, &v5_config, 0, new_timestamp, vec![0; 32]);
+
+    // After V5 migration: threshold should be reset to 1.05, EMA to 0
+    let threshold = system_state.target_state().distance_threshold.as_scalar();
+    assert!(
+        (threshold - 1.05).abs() < 0.01,
+        "V5 migration should reset threshold to 1.05: got {}",
+        threshold
+    );
+}
+
+/// Test V5 migration only runs once (V5→V5 should not reset)
+#[test]
+fn test_v5_migration_only_once() {
+    let validators = create_validators_with_stakes(vec![100, 100]);
+    let mut system_state = create_test_system_state(validators, 1000, 100);
+
+    // Already at V5, set some state
+    system_state.target_state_mut().distance_threshold = crate::tensor::SomaTensor::scalar(1.08);
+    system_state.target_state_mut().hits_ema = 5000;
+
+    // Advance epoch (V5→V5, no migration)
+    let next_epoch = system_state.epoch() + 1;
+    let new_timestamp =
+        system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    let v5_config = protocol_config::ProtocolConfig::get_for_version(
+        protocol_config::ProtocolVersion::new(5),
+        protocol_config::Chain::default(),
+    );
+
+    let _ = system_state.advance_epoch(next_epoch, &v5_config, 0, new_timestamp, vec![0; 32]);
+
+    // EMA should NOT be reset to 0 (it was updated by adjust_difficulty)
+    assert!(
+        system_state.target_state().hits_ema != 0
+            || system_state.target_state().hits_this_epoch == 0,
+        "V5→V5 should not reset EMA to 0 via migration"
     );
 }
 

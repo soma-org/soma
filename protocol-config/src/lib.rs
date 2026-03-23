@@ -15,7 +15,7 @@ pub use tensor::{BcsF32, Dtype, SomaTensor};
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 4;
+pub const MAX_PROTOCOL_VERSION: u64 = 5;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -418,8 +418,15 @@ impl ProtocolConfig {
             // At current z=0.818, converges to threshold=1.0 in 1 epoch.
             cfg.target_difficulty_adjustment_rate_bps = Some(10000); // 100%
         }
-        // V5 is MAX_ALLOWED in msim (no-op, same as V4). Reserved for future changes.
-        if version.0 >= 6 {
+        if version.0 >= 5 {
+            // Easier starting difficulty: threshold above random-sample distance
+            // band (~1.007-1.045). MIN_Z_STEP raised to 2.0 in adjust_difficulty().
+            cfg.target_initial_distance_threshold = Some(BcsF32(1.05));
+            // More concurrent targets to reduce per-target contention for newcomers.
+            cfg.target_initial_targets_per_epoch = Some(100); // was 20
+        }
+        // V6 is MAX_ALLOWED in msim (no-op, same as V5). Reserved for future changes.
+        if version.0 >= 7 {
             panic!("unsupported version {:?}", version);
         }
 

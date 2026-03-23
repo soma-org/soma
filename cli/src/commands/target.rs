@@ -43,8 +43,8 @@ pub enum TargetCommand {
         /// Filter by submitter address (hex string)
         #[clap(long)]
         submitter: Option<String>,
-        /// Maximum number of targets to return (default: 20, max: 1000)
-        #[clap(long, default_value = "20")]
+        /// Maximum number of targets to return (default: 100, max: 1000)
+        #[clap(long, default_value = "100")]
         limit: u32,
     },
 
