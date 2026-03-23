@@ -108,7 +108,7 @@ async fn test_genesis_target_bootstrap() {
     let mut request = ListTargetsRequest::default();
     request.status_filter = Some("open".to_string());
     request.epoch_filter = Some(0);
-    request.page_size = Some(100);
+    request.page_size = Some(1000);
 
     let response = client.list_targets(request).await.unwrap();
 
@@ -172,7 +172,7 @@ async fn test_genesis_target_bootstrap_3_models() {
     let mut request = ListTargetsRequest::default();
     request.status_filter = Some("open".to_string());
     request.epoch_filter = Some(0);
-    request.page_size = Some(100);
+    request.page_size = Some(1000);
 
     let response = client.list_targets(request).await.unwrap();
 
@@ -252,7 +252,7 @@ async fn test_submit_data_fills_target() {
 
     // Count initial targets
     let mut initial_request = ListTargetsRequest::default();
-    initial_request.page_size = Some(100);
+    initial_request.page_size = Some(1000);
     let initial_response = client.list_targets(initial_request).await.unwrap();
     let initial_target_count = initial_response.targets.len();
 
@@ -297,13 +297,13 @@ async fn test_submit_data_fills_target() {
     // Verify target is now filled
     let mut filled_request = ListTargetsRequest::default();
     filled_request.status_filter = Some("filled".to_string());
-    filled_request.page_size = Some(100);
+    filled_request.page_size = Some(1000);
     let filled_response = client.list_targets(filled_request).await.unwrap();
     assert!(!filled_response.targets.is_empty(), "Should have a filled target after submission");
 
     // Verify replacement target was spawned (total count should increase by 1)
     let mut final_request = ListTargetsRequest::default();
-    final_request.page_size = Some(100);
+    final_request.page_size = Some(1000);
     let final_response = client.list_targets(final_request).await.unwrap();
     assert_eq!(
         final_response.targets.len(),
@@ -423,7 +423,7 @@ async fn test_claim_rewards_after_audit_window() {
 
     // Verify target is deleted (claimed targets are pruned from storage and index)
     let mut all_request = ListTargetsRequest::default();
-    all_request.page_size = Some(100);
+    all_request.page_size = Some(1000);
     let all_response = client.list_targets(all_request).await.unwrap();
     let found = all_response
         .targets
@@ -467,7 +467,7 @@ async fn test_epoch_boundary_issues_new_targets() {
     let client = test_cluster.wallet.get_client().await.unwrap();
     let mut epoch0_request = ListTargetsRequest::default();
     epoch0_request.epoch_filter = Some(0);
-    epoch0_request.page_size = Some(100);
+    epoch0_request.page_size = Some(1000);
     let epoch0_response = client.list_targets(epoch0_request).await.unwrap();
     let epoch0_count = epoch0_response.targets.len();
 
@@ -479,7 +479,7 @@ async fn test_epoch_boundary_issues_new_targets() {
     // Count epoch 1 targets
     let mut epoch1_request = ListTargetsRequest::default();
     epoch1_request.epoch_filter = Some(1);
-    epoch1_request.page_size = Some(100);
+    epoch1_request.page_size = Some(1000);
     let epoch1_response = client.list_targets(epoch1_request).await.unwrap();
     let epoch1_count = epoch1_response.targets.len();
 
@@ -490,7 +490,7 @@ async fn test_epoch_boundary_issues_new_targets() {
 
     // Count total targets
     let mut total_request = ListTargetsRequest::default();
-    total_request.page_size = Some(100);
+    total_request.page_size = Some(1000);
     let total_response = client.list_targets(total_request).await.unwrap();
     let total_count = total_response.targets.len();
 
@@ -568,7 +568,7 @@ async fn test_claim_expired_unfilled_target() {
 
     // Verify target is deleted (claimed targets are pruned from storage and index)
     let mut all_request = ListTargetsRequest::default();
-    all_request.page_size = Some(100);
+    all_request.page_size = Some(1000);
     let all_response = client.list_targets(all_request).await.unwrap();
     let found = all_response
         .targets
