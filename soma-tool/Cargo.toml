@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 authority.workspace = true
+rpc.workspace = true
 types.workspace = true
 store.workspace = true
 bin-version.workspace = true

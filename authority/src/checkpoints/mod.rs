@@ -120,10 +120,10 @@ pub struct CheckpointStoreTables {
     /// efficient reads of full checkpoints. Entries from this table are deleted after state
     /// accumulation has completed.
     #[default_options_override_fn = "full_checkpoint_content_table_default_config"]
-    full_checkpoint_content: DBMap<CheckpointSequenceNumber, FullCheckpointContents>,
+    pub full_checkpoint_content: DBMap<CheckpointSequenceNumber, FullCheckpointContents>,
 
     /// Stores certified checkpoints
-    pub(crate) certified_checkpoints: DBMap<CheckpointSequenceNumber, TrustedCheckpoint>,
+    pub certified_checkpoints: DBMap<CheckpointSequenceNumber, TrustedCheckpoint>,
     /// Map from checkpoint digest to certified checkpoint
     pub(crate) checkpoint_by_digest: DBMap<CheckpointDigest, TrustedCheckpoint>,
 
@@ -137,7 +137,7 @@ pub struct CheckpointStoreTables {
 
     /// Watermarks used to determine the highest verified, fully synced, and
     /// fully executed checkpoints
-    pub(crate) watermarks: DBMap<CheckpointWatermark, (CheckpointSequenceNumber, CheckpointDigest)>,
+    pub watermarks: DBMap<CheckpointWatermark, (CheckpointSequenceNumber, CheckpointDigest)>,
 
     /// Stores transaction fork detection information
     pub(crate) transaction_fork_detected:

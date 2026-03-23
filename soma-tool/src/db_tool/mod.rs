@@ -2,6 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,13 +15,17 @@ use types::checkpoints::CheckpointSequenceNumber;
 use types::committee::EpochId;
 use types::config::node_config::AuthorityStorePruningConfig;
 use types::digests::TransactionDigest;
+use types::effects::TransactionEffectsAPI as _;
+use types::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
 use types::object::ObjectID;
+use types::storage::object_store::ObjectStore;
 
+use authority::authority_per_epoch_store::AuthorityEpochTables;
 use authority::authority_store_pruner::{
     AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING, PrunerWatermarks,
 };
 use authority::authority_store_tables::{AuthorityPerpetualTables, AuthorityPrunerTables};
-use authority::checkpoints::CheckpointStore;
+use authority::checkpoints::{CheckpointStore, CheckpointStoreTables, CheckpointWatermark};
 
 pub use db_dump::DumpOptions;
 
@@ -111,6 +116,16 @@ pub enum DbToolCommand {
         sequence_number: CheckpointSequenceNumber,
     },
 
+    /// Export a checkpoint as a .binpb.zst blob
+    ExportCheckpointBlob {
+        /// The checkpoint sequence number
+        #[arg(long)]
+        sequence_number: CheckpointSequenceNumber,
+        /// Output file path
+        #[arg(long)]
+        output: PathBuf,
+    },
+
     /// Search the owner index by address
     IndexSearchOwner(index_search::OwnerSearchOptions),
 
@@ -192,6 +207,10 @@ pub async fn execute_db_tool_command(db_path: PathBuf, cmd: DbToolCommand) -> an
 
         DbToolCommand::SetCheckpointWatermark { sequence_number } => {
             set_checkpoint_watermark(&db_path, sequence_number)?;
+        }
+
+        DbToolCommand::ExportCheckpointBlob { sequence_number, output } => {
+            export_checkpoint_blob(&db_path, sequence_number, &output)?;
         }
 
         DbToolCommand::IndexSearchOwner(opts) => {
@@ -461,15 +480,175 @@ fn set_checkpoint_watermark(
     db_path: &PathBuf,
     sequence_number: CheckpointSequenceNumber,
 ) -> anyhow::Result<()> {
+    let ckpt_tables = CheckpointStoreTables::new(
+        &db_path.join("checkpoints"),
+        "checkpoint",
+        Arc::new(PrunerWatermarks::default()),
+    );
+
+    let checkpoint = ckpt_tables
+        .certified_checkpoints
+        .get(&sequence_number)?
+        .ok_or_else(|| anyhow!("Checkpoint not found: {}", sequence_number))?;
+
+    let checkpoint = checkpoint.inner();
+    let epoch = checkpoint.epoch;
+
+    // 1. Set all three checkpoint watermarks to the rewind point.
+    //    This forces state sync to re-download checkpoints after this point,
+    //    which populates full_checkpoint_content (needed for re-execution).
+    let watermark_value = (sequence_number, *checkpoint.digest());
+    ckpt_tables.watermarks.insert(&CheckpointWatermark::HighestExecuted, &watermark_value)?;
+    ckpt_tables.watermarks.insert(&CheckpointWatermark::HighestSynced, &watermark_value)?;
+    ckpt_tables.watermarks.insert(&CheckpointWatermark::HighestVerified, &watermark_value)?;
+    println!("Set all checkpoint watermarks (executed/synced/verified) to {}", sequence_number);
+
+    // 2. Delete certified_checkpoints and full_checkpoint_content after the rewind point.
+    //    This forces the fullnode to re-sync these from the network, ensuring the
+    //    executor has full checkpoint data available for the re-execution path.
+    let mut ckpt_keys: Vec<CheckpointSequenceNumber> = Vec::new();
+    for kv in
+        ckpt_tables.certified_checkpoints.safe_iter_with_bounds(Some(sequence_number + 1), None)
+    {
+        let (seq, _) = kv?;
+        ckpt_keys.push(seq);
+    }
+    if !ckpt_keys.is_empty() {
+        let count = ckpt_keys.len();
+        let mut batch = ckpt_tables.certified_checkpoints.batch();
+        batch
+            .delete_batch(&ckpt_tables.certified_checkpoints, ckpt_keys.iter().copied())
+            .expect("db error");
+        batch
+            .delete_batch(&ckpt_tables.full_checkpoint_content, ckpt_keys.iter().copied())
+            .expect("db error");
+        batch.write()?;
+        println!(
+            "Deleted {} certified checkpoints and full_checkpoint_content entries after {}",
+            count, sequence_number
+        );
+    }
+
+    // 3. Clear running root state hashes and state_hash_by_checkpoint in the
+    //    rewind epoch's store AND all subsequent epoch stores. This prevents
+    //    GlobalStateHasher panics on re-execution.
+    let store_path = db_path.join("store");
+    for e in epoch..=epoch + 20 {
+        let epoch_path = store_path.join(format!("epoch_{}", e));
+        if !epoch_path.exists() {
+            continue;
+        }
+        let epoch_tables = AuthorityEpochTables::open(e, &store_path, None);
+
+        let mut root_keys = Vec::new();
+        for kv in epoch_tables
+            .running_root_state_hash
+            .safe_iter_with_bounds(Some(sequence_number + 1), None)
+        {
+            let (seq, _) = kv?;
+            root_keys.push(seq);
+        }
+
+        let mut hash_keys = Vec::new();
+        for kv in epoch_tables
+            .state_hash_by_checkpoint
+            .safe_iter_with_bounds(Some(sequence_number + 1), None)
+        {
+            let (seq, _) = kv?;
+            hash_keys.push(seq);
+        }
+
+        if !root_keys.is_empty() || !hash_keys.is_empty() {
+            let mut batch = epoch_tables.running_root_state_hash.batch();
+            if !root_keys.is_empty() {
+                batch
+                    .delete_batch(&epoch_tables.running_root_state_hash, root_keys.iter().copied())
+                    .expect("db error");
+            }
+            if !hash_keys.is_empty() {
+                batch
+                    .delete_batch(&epoch_tables.state_hash_by_checkpoint, hash_keys.iter().copied())
+                    .expect("db error");
+            }
+            batch.write()?;
+            println!(
+                "Epoch {}: cleared {} running roots, {} state hashes after checkpoint {}",
+                e,
+                root_keys.len(),
+                hash_keys.len(),
+                sequence_number
+            );
+        }
+    }
+
+    println!(
+        "Rewind complete. Fullnode will re-sync and re-execute from checkpoint {}.",
+        sequence_number + 1
+    );
+    Ok(())
+}
+
+fn export_checkpoint_blob(
+    db_path: &PathBuf,
+    sequence_number: CheckpointSequenceNumber,
+    output: &PathBuf,
+) -> anyhow::Result<()> {
     let checkpoint_db =
         CheckpointStore::new(&db_path.join("checkpoints"), Arc::new(PrunerWatermarks::default()));
+    let perpetual_db = AuthorityPerpetualTables::open(db_path, None);
 
-    let checkpoint = checkpoint_db
+    let verified_checkpoint = checkpoint_db
         .get_checkpoint_by_sequence_number(sequence_number)?
         .ok_or_else(|| anyhow!("Checkpoint not found: {}", sequence_number))?;
 
-    checkpoint_db.set_highest_executed_checkpoint_subtle(&checkpoint)?;
-    println!("Set highest executed checkpoint watermark to {}", sequence_number);
+    let contents_digest = verified_checkpoint.content_digest;
+    let contents = checkpoint_db
+        .get_checkpoint_contents(&contents_digest)?
+        .ok_or_else(|| anyhow!("Checkpoint contents not found: {}", sequence_number))?;
+
+    // Try full_checkpoint_content table first (has transactions + effects + signatures)
+    let full_contents = checkpoint_db
+        .get_full_checkpoint_contents_by_sequence_number(sequence_number)?
+        .ok_or_else(|| anyhow!("Full checkpoint contents not found: {}", sequence_number))?;
+
+    let mut transactions = Vec::new();
+    for exec_data in full_contents.iter() {
+        let tx_data = exec_data.transaction.data();
+        transactions.push(ExecutedTransaction {
+            transaction: tx_data.transaction_data().clone(),
+            signatures: tx_data.tx_signatures().to_vec(),
+            effects: exec_data.effects.clone(),
+        });
+    }
+
+    let object_set = {
+        let refs: Vec<_> = transactions
+            .iter()
+            .flat_map(|tx| types::storage::get_transaction_object_set(&tx.transaction, &tx.effects))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let objects = perpetual_db.multi_get_objects_by_key(&refs);
+        let mut set = ObjectSet::default();
+        for (idx, obj) in objects.into_iter().enumerate() {
+            set.insert(obj.ok_or_else(|| anyhow!("Missing object {:?}", refs[idx]))?);
+        }
+        set
+    };
+
+    let checkpoint =
+        Checkpoint { summary: verified_checkpoint.into(), contents, transactions, object_set };
+
+    let blob = rpc::utils::checkpoint_blob::encode_checkpoint(&checkpoint)
+        .map_err(|e| anyhow!("Failed to encode checkpoint: {}", e))?;
+
+    std::fs::write(output, &blob)?;
+    println!(
+        "Exported checkpoint {} to {} ({} bytes)",
+        sequence_number,
+        output.display(),
+        blob.len()
+    );
 
     Ok(())
 }

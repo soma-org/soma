@@ -9520,6 +9520,7 @@ dependencies = [
  "bin-version",
  "clap",
  "eyre",
+ "rpc",
  "store",
  "tempfile",
  "tokio",
