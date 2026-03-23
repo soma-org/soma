@@ -36,9 +36,8 @@ pub(crate) fn store_checkpoint_locally(
     std::fs::write(path.join(&tmp_name), blob).map_err(|_| {
         SomaError::FileIOError("failed to save full checkpoint content locally".to_string())
     })?;
-    std::fs::rename(path.join(&tmp_name), path.join(file_name)).map_err(|_| {
-        SomaError::FileIOError("failed to rename checkpoint file".to_string())
-    })?;
+    std::fs::rename(path.join(&tmp_name), path.join(file_name))
+        .map_err(|_| SomaError::FileIOError("failed to rename checkpoint file".to_string()))?;
 
     Ok(())
 }
