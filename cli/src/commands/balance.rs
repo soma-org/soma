@@ -29,7 +29,7 @@ pub async fn execute(
 
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(address.to_string());
-    request.object_type = Some(ObjectType::Coin.into());
+    request.object_type = Some("Coin".to_string());
     request.page_size = Some(1000);
     request.read_mask = Some(FieldMask::from_paths([
         "object_id",

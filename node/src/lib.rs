@@ -10,7 +10,6 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result, anyhow};
 use arc_swap::ArcSwap;
-use authority::audit_service::AuditService;
 use authority::authority::{AuthorityState, ExecutionEnv};
 use authority::authority_aggregator::AuthorityAggregator;
 use authority::authority_client::NetworkAuthorityClient;
@@ -35,7 +34,6 @@ use authority::consensus_validator::TxValidator;
 use authority::execution_scheduler::SchedulingSource;
 use authority::fullnode_proxy::FullnodeProxy;
 use authority::global_state_hasher::GlobalStateHasher;
-use authority::proxy_server::{ProxyConfig, ProxyServer, spawn_report_handler};
 use authority::reconfiguration::ReconfigurationInitiator;
 use authority::rpc_index::RpcIndexStore;
 use authority::server::{ServerBuilder, TLS_SERVER_NAME};
@@ -107,13 +105,6 @@ pub struct ValidatorComponents {
     consensus_manager: Arc<ConsensusManager>,
     consensus_store_pruner: ConsensusStorePruner,
     consensus_adapter: Arc<ConsensusAdapter>,
-    /// AuditService for submission verification (submits tally-based reports).
-    /// Currently defunct (Stage 1) — no trigger mechanism until Stage 2.
-    audit_service: Option<Arc<AuditService>>,
-    /// Handle for the HTTP proxy server (for serving data/model downloads).
-    /// None if proxy_port is not configured.
-    #[allow(unused)]
-    proxy_server_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 enum SpawnOnce {
@@ -197,10 +188,6 @@ pub struct SomaNode {
     auth_agg: Arc<ArcSwap<AuthorityAggregator<NetworkAuthorityClient>>>,
 
     subscription_service_checkpoint_sender: Option<tokio::sync::mpsc::Sender<Checkpoint>>,
-
-    /// Handle for the local scoring server task (if started).
-    /// Stored so we can abort it on shutdown or validator removal.
-    local_scoring_handle: Option<JoinHandle<()>>,
 }
 
 impl SomaNode {
@@ -466,36 +453,6 @@ impl SomaNode {
 
         let authority_names_to_peer_ids = ArcSwap::from_pointee(authority_names_to_peer_ids);
 
-        // If this is a validator without an external scoring_url, start a local scoring
-        // server so that the audit service can perform ML inference for challenge resolution.
-        let mut local_scoring_handle = None;
-        if is_validator && config.scoring_url.is_none() {
-            info!("No scoring_url configured; starting local scoring server");
-            let scoring_data_dir = config.db_path().join("scoring-data");
-            std::fs::create_dir_all(&scoring_data_dir)
-                .context("Failed to create scoring data directory")?;
-
-            let model_config = scoring::ModelConfig::new();
-            let engine = Arc::new(
-                scoring::scoring::ScoringEngine::new(
-                    &scoring_data_dir,
-                    model_config,
-                    &config.scoring_device,
-                    None,
-                )
-                .context("Failed to create local ScoringEngine")?,
-            );
-
-            let (handle, port) = scoring::server::start_local_scoring_server(engine)
-                .await
-                .map_err(|e| anyhow!("Failed to start local scoring server: {e}"))?;
-
-            let local_url = format!("http://127.0.0.1:{port}");
-            info!("Local scoring server started at {local_url}");
-            config.scoring_url = Some(local_url);
-            local_scoring_handle = Some(handle);
-        }
-
         let validator_components = if state.is_validator(&epoch_store) && is_validator {
             let (components, _) = futures::join!(
                 Self::construct_validator_components(
@@ -539,7 +496,6 @@ impl SomaNode {
             shutdown_channel_tx: shutdown_channel,
             auth_agg,
             subscription_service_checkpoint_sender,
-            local_scoring_handle,
 
             // connection_monitor_status,
             #[cfg(msim)]
@@ -750,78 +706,11 @@ impl SomaNode {
             if std::env::var("DISABLE_REPLAY_WAITER").is_ok() { None } else { Some(replay_waiter) };
         checkpoint_service.spawn(epoch_store.clone(), replay_waiter).await;
 
-        // AuditService is currently defunct (Stage 1 — challenges removed).
-        // Stage 2 will add autonomous epoch-triggered auditing.
-        let audit_service =
-            Self::create_audit_service(config, &state, &epoch_store, consensus_adapter.clone())
-                .await;
-
-        // Start proxy server if proxy_port is configured
-        let proxy_server_handle = if let Some(proxy_port) =
-            config.consensus_config.as_ref().and_then(|c| c.proxy_port())
-        {
-            // Create report channel for availability reports
-            let (report_tx, report_rx) = tokio::sync::mpsc::channel(100);
-
-            // Spawn the report handler with consensus adapter for transaction submission
-            let validator_address = config.soma_address();
-            let account_keypair = Arc::new(config.account_key_pair.keypair().copy());
-            let report_state = state.clone();
-            let report_consensus_adapter = consensus_adapter.clone();
-            let report_epoch_store = epoch_store.clone();
-            tokio::spawn(async move {
-                spawn_report_handler(
-                    report_rx,
-                    validator_address,
-                    account_keypair,
-                    report_state,
-                    report_consensus_adapter,
-                    report_epoch_store,
-                )
-                .await;
-            });
-
-            // Create and start the proxy server
-            let proxy_store = Arc::new(object_store::memory::InMemory::new());
-            match ProxyServer::new(state.clone(), report_tx, proxy_store, ProxyConfig::default()) {
-                Ok(proxy_server) => {
-                    let proxy_server = Arc::new(proxy_server);
-                    let router = proxy_server.router();
-                    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], proxy_port));
-
-                    info!("Starting proxy server on {}", addr);
-
-                    let handle = tokio::spawn(async move {
-                        let listener = match tokio::net::TcpListener::bind(addr).await {
-                            Ok(l) => l,
-                            Err(e) => {
-                                error!("Failed to bind proxy server to {}: {}", addr, e);
-                                return;
-                            }
-                        };
-                        if let Err(e) = axum::serve(listener, router).await {
-                            error!("Proxy server error: {}", e);
-                        }
-                    });
-
-                    Some(handle)
-                }
-                Err(e) => {
-                    warn!("Failed to create proxy server: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
         Ok(ValidatorComponents {
             validator_server_handle,
             consensus_manager,
             consensus_store_pruner,
             consensus_adapter,
-            audit_service,
-            proxy_server_handle,
         })
     }
 
@@ -1152,16 +1041,9 @@ impl SomaNode {
                 consensus_manager,
                 consensus_store_pruner,
                 consensus_adapter,
-                audit_service,
-                proxy_server_handle: _, // Dropped - recreated each epoch
             }) = validator_components_lock_guard.take()
             {
                 info!("Reconfiguring the validator.");
-
-                // Shutdown the old AuditService (if any).
-                // The AuditService holds channels that will be dropped, which signals
-                // spawned tasks to shut down.
-                drop(audit_service);
 
                 consensus_manager.shutdown().await;
                 info!("Consensus has shut down.");
@@ -1198,10 +1080,6 @@ impl SomaNode {
                     )
                 } else {
                     info!("This node is no longer a validator after reconfiguration");
-                    if let Some(handle) = &self.local_scoring_handle {
-                        handle.abort();
-                        info!("Local scoring server shut down (no longer a validator)");
-                    }
                     None
                 }
             } else {
@@ -1262,10 +1140,6 @@ impl SomaNode {
     }
 
     async fn shutdown(&self) {
-        if let Some(handle) = &self.local_scoring_handle {
-            handle.abort();
-            info!("Local scoring server shut down");
-        }
         if let Some(validator_components) = &*self.validator_components.lock().await {
             validator_components.consensus_manager.shutdown().await;
         }
@@ -1539,45 +1413,6 @@ impl SomaNode {
 
     pub fn get_config(&self) -> &NodeConfig {
         &self.config
-    }
-
-    async fn create_audit_service(
-        config: &NodeConfig,
-        state: &Arc<AuthorityState>,
-        epoch_store: &Arc<AuthorityPerEpochStore>,
-        consensus_adapter: Arc<ConsensusAdapter>,
-    ) -> Option<Arc<AuditService>> {
-        let scoring_url = config.scoring_url.as_ref()?;
-
-        let remote_runtime =
-            match authority::audit_service::RemoteScoringRuntime::connect(scoring_url).await {
-                Ok(rt) => rt,
-                Err(e) => {
-                    warn!("Failed to connect to scoring service at {scoring_url}: {e}");
-                    return None;
-                }
-            };
-
-        info!("Audit service connected to scoring service at {scoring_url}");
-
-        let validator_address = config.soma_address();
-        let account_keypair = Arc::new(config.account_key_pair.keypair().copy());
-
-        let audit_service = AuditService::build(
-            state.name,
-            validator_address,
-            account_keypair,
-            state.clone(),
-            Arc::new(remote_runtime),
-            epoch_store.epoch(),
-            consensus_adapter,
-            epoch_store.clone(),
-        );
-
-        // NOTE: AuditService is currently defunct (Stage 1).
-        // Stage 2 will add an autonomous epoch-triggered spawn.
-
-        Some(audit_service)
     }
 }
 

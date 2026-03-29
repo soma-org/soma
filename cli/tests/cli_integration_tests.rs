@@ -174,56 +174,6 @@ fn test_envs_output_empty() {
 }
 
 // =============================================================================
-// Model response tests
-// =============================================================================
-
-#[test]
-fn test_model_list_empty() {
-    use cli::commands::model::ModelListOutput;
-
-    let output = ModelListOutput { models: vec![] };
-    let display = format!("{}", output);
-    assert!(display.contains("No models"), "Empty list should say no models: {display}");
-}
-
-#[test]
-fn test_model_info_display() {
-    use cli::commands::model::{ModelInfoOutput, ModelStatus, ModelSummary};
-
-    let output = ModelInfoOutput {
-        model_id: types::object::ObjectID::ZERO,
-        status: ModelStatus::Active,
-        summary: ModelSummary {
-            model_id: types::object::ObjectID::ZERO,
-            owner: types::base::SomaAddress::ZERO,
-            status: ModelStatus::Active,
-            architecture_version: 1,
-            commission_rate: 500,
-            stake_balance: 1_000_000_000,
-            has_pending_update: false,
-        },
-    };
-
-    let display = format!("{}", output);
-    assert!(display.contains("Model Information"), "Should contain header: {display}");
-    assert!(display.contains("Active"), "Should show active status: {display}");
-    assert!(display.contains("5.00%"), "Should show commission rate: {display}");
-}
-
-#[test]
-fn test_model_status_display() {
-    use cli::commands::model::ModelStatus;
-
-    let active = format!("{}", ModelStatus::Active);
-    let pending = format!("{}", ModelStatus::Pending);
-    let inactive = format!("{}", ModelStatus::Inactive);
-
-    assert!(active.contains("Active"));
-    assert!(pending.contains("Pending"));
-    assert!(inactive.contains("Inactive"));
-}
-
-// =============================================================================
 // Format helpers tests
 // =============================================================================
 

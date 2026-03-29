@@ -2,8 +2,11 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod ask;
 pub mod balance_change;
 pub mod base;
+pub mod bid;
+pub mod bridge;
 pub mod checkpoints;
 pub mod checksum;
 #[cfg(feature = "tls")]
@@ -26,9 +29,6 @@ pub mod grpc_timeout;
 pub mod intent;
 pub mod messages_grpc;
 pub mod metadata;
-pub mod model;
-#[cfg(feature = "ml")]
-pub mod model_selection;
 pub mod multiaddr;
 pub mod multisig;
 pub mod mutex_table;
@@ -37,15 +37,13 @@ pub mod parameters;
 pub mod peer_id;
 pub mod quorum_driver;
 pub(crate) mod serde;
+pub mod settlement;
 pub mod signature_verification;
 pub mod storage;
-pub mod submission;
 pub mod supported_protocol_versions;
 pub mod sync;
 pub mod system_state;
-pub mod target;
 pub mod temporary_store;
-pub mod tensor;
 pub mod test_checkpoint_data_builder;
 #[cfg(feature = "tls")]
 pub mod tls;
@@ -56,6 +54,7 @@ pub mod transaction_outputs;
 pub mod tx_fee;
 pub mod unit_tests;
 pub mod validator_info;
+pub mod vault;
 
 use base::SomaAddress;
 use object::{OBJECT_START_VERSION, ObjectID, Version};
@@ -85,6 +84,3 @@ built_in_ids! {
 /// After genesis execution, the lamport timestamp is Version(1) = OBJECT_START_VERSION.
 pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
 
-/// The initial shared version for Target objects created at genesis.
-/// All targets are created at genesis with the same lamport timestamp.
-pub const TARGET_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;

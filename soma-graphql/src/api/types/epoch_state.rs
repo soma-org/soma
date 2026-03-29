@@ -5,16 +5,15 @@ use async_graphql::*;
 
 use crate::api::scalars::BigInt;
 
-/// Epoch-level system state: emission pool, target state, and safe mode.
+/// Epoch-level system state: emission pool, marketplace, and safe mode.
 pub struct EpochState {
     pub epoch: i64,
     pub emission_balance: i64,
     pub emission_per_epoch: i64,
-    pub distance_threshold: f64,
-    pub targets_generated_this_epoch: i64,
-    pub hits_this_epoch: i64,
-    pub hits_ema: i64,
-    pub reward_per_target: i64,
+    pub distribution_counter: i64,
+    pub period_length: i64,
+    pub decrease_rate: i32,
+    pub protocol_fund_balance: i64,
     pub safe_mode: bool,
     pub safe_mode_accumulated_fees: i64,
     pub safe_mode_accumulated_emissions: i64,
@@ -32,34 +31,29 @@ impl EpochState {
         BigInt(self.emission_balance)
     }
 
-    /// Fixed emission amount per epoch (shannons).
+    /// Current emission amount per epoch (shannons). Decays over time.
     async fn emission_per_epoch(&self) -> BigInt {
         BigInt(self.emission_per_epoch)
     }
 
-    /// Current distance threshold for new targets.
-    async fn distance_threshold(&self) -> f64 {
-        self.distance_threshold
+    /// Number of epochs emissions have been distributed.
+    async fn distribution_counter(&self) -> BigInt {
+        BigInt(self.distribution_counter)
     }
 
-    /// Number of targets generated this epoch.
-    async fn targets_generated_this_epoch(&self) -> BigInt {
-        BigInt(self.targets_generated_this_epoch)
+    /// Number of epochs per decay period.
+    async fn period_length(&self) -> BigInt {
+        BigInt(self.period_length)
     }
 
-    /// Number of successful hits (filled targets) this epoch.
-    async fn hits_this_epoch(&self) -> BigInt {
-        BigInt(self.hits_this_epoch)
+    /// Decay rate in basis points (e.g. 1000 = 10% decrease per period).
+    async fn decrease_rate(&self) -> i32 {
+        self.decrease_rate
     }
 
-    /// Exponential moving average of hits per epoch.
-    async fn hits_ema(&self) -> BigInt {
-        BigInt(self.hits_ema)
-    }
-
-    /// Reward per target for the current epoch (shannons).
-    async fn reward_per_target(&self) -> BigInt {
-        BigInt(self.reward_per_target)
+    /// Accumulated USDC from marketplace value fees (microdollars).
+    async fn protocol_fund_balance(&self) -> BigInt {
+        BigInt(self.protocol_fund_balance)
     }
 
     /// Whether the system is in safe mode.

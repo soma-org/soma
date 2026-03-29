@@ -25,10 +25,9 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
 use sdk::proxy_client::{ProxyClient, ProxyClientConfig};
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -124,8 +123,6 @@ impl FullnodeProxy {
     /// Build an axum router for the fullnode proxy.
     pub fn router(self: Arc<Self>) -> Router {
         Router::new()
-            .route("/data/{target_id}", get(Self::forward_data))
-            .route("/model/{model_id}", get(Self::forward_model))
             .with_state(self)
     }
 
@@ -186,45 +183,6 @@ impl FullnodeProxy {
         Ok(epoch_store.epoch())
     }
 
-    /// Forward a data request to validators.
-    async fn forward_data(
-        State(proxy): State<Arc<FullnodeProxy>>,
-        Path(target_id_str): Path<String>,
-    ) -> Result<impl IntoResponse, FullnodeProxyError> {
-        let target_id = parse_object_id(&target_id_str)
-            .ok_or_else(|| FullnodeProxyError::InvalidId(target_id_str.clone()))?;
-
-        let client = proxy.ensure_client().await?;
-
-        let data = client
-            .fetch_submission_data(&target_id)
-            .await
-            .map_err(|e| FullnodeProxyError::FetchFailed(e.to_string()))?;
-
-        info!("Forwarded {} bytes for target {} through fullnode proxy", data.len(), target_id);
-
-        Ok((StatusCode::OK, data))
-    }
-
-    /// Forward a model request to validators.
-    async fn forward_model(
-        State(proxy): State<Arc<FullnodeProxy>>,
-        Path(model_id_str): Path<String>,
-    ) -> Result<impl IntoResponse, FullnodeProxyError> {
-        let model_id = parse_object_id(&model_id_str)
-            .ok_or_else(|| FullnodeProxyError::InvalidId(model_id_str.clone()))?;
-
-        let client = proxy.ensure_client().await?;
-
-        let data = client
-            .fetch_model(&model_id)
-            .await
-            .map_err(|e| FullnodeProxyError::FetchFailed(e.to_string()))?;
-
-        info!("Forwarded {} bytes for model {} through fullnode proxy", data.len(), model_id);
-
-        Ok((StatusCode::OK, data))
-    }
 }
 
 // ===========================================================================

@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Pay SOMA to multiple recipients
+[deprecated: use `transfer`] Pay SOMA to multiple recipients
 
 Usage: soma pay [OPTIONS] --recipients <RECIPIENTS>... --amounts <AMOUNTS>...
 
@@ -16,8 +16,3 @@ Options:
       --serialize-signed-transaction    Serialize the signed transaction data (base64) instead of executing. Use with `soma tx execute-combined-signed --signed-tx-bytes <SIGNED_TX_BYTES>`
       --json                            Output as JSON
   -h, --help                            Print help
-
-EXAMPLES:
-    soma pay --recipients 0xABC... --amounts 1
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN...

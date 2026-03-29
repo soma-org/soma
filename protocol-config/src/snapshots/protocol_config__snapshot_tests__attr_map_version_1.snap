@@ -28,8 +28,6 @@ initial_value_fee_bps:
   u64: 10
 max_checkpoint_size_bytes:
   u64: 31457280
-max_submission_data_size:
-  u64: 1048576
 max_transactions_per_checkpoint:
   u64: 20000
 max_value_fee_bps:
@@ -38,49 +36,11 @@ min_checkpoint_interval_ms:
   u64: 200
 min_value_fee_bps:
   u64: 1
-model_architecture_version:
-  u64: 1
-model_min_stake:
-  u64: 1000000000
-model_reveal_slash_rate_bps:
-  u64: 5000
-model_tally_slash_rate_bps:
-  u64: 9500
 mysticeti_num_leaders_per_round:
   usize: 1
 reward_slashing_rate_bps:
   u64: 5000
-submission_bond_per_byte:
-  u64: 10
-target_claimer_incentive_bps:
-  u64: 50
-target_difficulty_adjustment_rate_bps:
-  u64: 1000
-target_embedding_dim:
-  u64: 2048
 target_epoch_fee_collection:
   u64: 1000000000
-target_hits_ema_decay_bps:
-  u64: 7000
-target_hits_per_epoch:
-  u64: 16
-target_initial_distance_threshold:
-  BcsF32: 2
-target_initial_targets_per_epoch:
-  u64: 20
-target_max_distance_threshold:
-  BcsF32: 2
-target_min_distance_threshold:
-  BcsF32: 0.1
-target_model_reward_share_bps:
-  u64: 4975
-target_models_per_target:
-  u64: 3
-target_reward_allocation_bps:
-  u64: 8000
-target_submitter_reward_share_bps:
-  u64: 4975
-validator_reward_allocation_bps:
-  u64: 7000
 write_object_fee:
   u64: 300

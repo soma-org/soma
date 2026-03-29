@@ -31,13 +31,8 @@ pub mod wallet_context;
 // Re-export types for downstream crates
 #[cfg(feature = "grpc-services")]
 pub use admin::admin_types;
-#[cfg(feature = "grpc-services")]
-pub use scoring::types as scoring_types;
 
 // gRPC client type aliases (tonic 0.14.3 channels, separate from core ledger)
-#[cfg(feature = "grpc-services")]
-type ScoringGrpcClient =
-    scoring::tonic_gen::scoring_client::ScoringClient<scoring::tonic::transport::Channel>;
 #[cfg(feature = "grpc-services")]
 type AdminGrpcClient =
     admin::admin_gen::admin_client::AdminClient<admin::tonic::transport::Channel>;
@@ -52,8 +47,6 @@ pub struct SomaClientBuilder {
     request_timeout: Duration,
     faucet_url: Option<String>,
     #[cfg(feature = "grpc-services")]
-    scoring_url: Option<String>,
-    #[cfg(feature = "grpc-services")]
     admin_url: Option<String>,
 }
 
@@ -62,8 +55,6 @@ impl Default for SomaClientBuilder {
         Self {
             request_timeout: Duration::from_secs(60),
             faucet_url: None,
-            #[cfg(feature = "grpc-services")]
-            scoring_url: None,
             #[cfg(feature = "grpc-services")]
             admin_url: None,
         }
@@ -74,13 +65,6 @@ impl SomaClientBuilder {
     /// Set the request timeout
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
-        self
-    }
-
-    /// Set the scoring service URL (e.g. `http://127.0.0.1:9124`).
-    #[cfg(feature = "grpc-services")]
-    pub fn scoring_url(mut self, url: impl Into<String>) -> Self {
-        self.scoring_url = Some(url.into());
         self
     }
 
@@ -101,17 +85,6 @@ impl SomaClientBuilder {
     pub async fn build(self, rpc_url: impl AsRef<str>) -> Result<SomaClient, error::Error> {
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
-
-        #[cfg(feature = "grpc-services")]
-        let scoring_client = match self.scoring_url {
-            Some(url) => {
-                let sc = ScoringGrpcClient::connect(url)
-                    .await
-                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
-                Some(Arc::new(Mutex::new(sc)))
-            }
-            None => None,
-        };
 
         #[cfg(feature = "grpc-services")]
         let admin_client = match self.admin_url {
@@ -139,8 +112,6 @@ impl SomaClientBuilder {
             in_flight_coins: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             faucet_client,
             #[cfg(feature = "grpc-services")]
-            scoring_client,
-            #[cfg(feature = "grpc-services")]
             admin_client,
         })
     }
@@ -165,8 +136,6 @@ pub struct SomaClient {
     /// since we only hold it briefly with no awaits.
     in_flight_coins: Arc<std::sync::Mutex<std::collections::HashSet<ObjectID>>>,
     faucet_client: Option<Arc<Mutex<faucet_client::FaucetClient>>>,
-    #[cfg(feature = "grpc-services")]
-    scoring_client: Option<Arc<Mutex<ScoringGrpcClient>>>,
     #[cfg(feature = "grpc-services")]
     admin_client: Option<Arc<Mutex<AdminGrpcClient>>>,
 }
@@ -300,19 +269,6 @@ impl SomaClient {
         client.get_latest_system_state().await
     }
 
-    /// List targets with optional filtering by status and epoch.
-    ///
-    /// Returns a paginated list of targets. Use `status_filter` to filter by "open", "filled", or "claimed".
-    /// Use `epoch_filter` to filter by generation epoch.
-    pub async fn list_targets(
-        &self,
-        request: impl tonic::IntoRequest<rpc::proto::soma::ListTargetsRequest>,
-    ) -> Result<rpc::proto::soma::ListTargetsResponse, tonic::Status> {
-        let mut client = self.inner.write().await;
-        client.list_targets(request).await
-    }
-
-    /// Get a challenge by ID.
     /// Get epoch information
     pub async fn get_epoch(
         &self,
@@ -326,12 +282,6 @@ impl SomaClient {
     pub async fn get_protocol_version(&self) -> Result<u64, tonic::Status> {
         let mut client = self.inner.write().await;
         client.get_protocol_version().await
-    }
-
-    /// Get the current model architecture version from the network
-    pub async fn get_architecture_version(&self) -> Result<u64, tonic::Status> {
-        let mut client = self.inner.write().await;
-        client.get_architecture_version().await
     }
 
     /// Simulate a transaction without executing it (no signature required)
@@ -375,7 +325,7 @@ impl SomaClient {
                 let mut request = ListOwnedObjectsRequest::default();
                 request.owner = Some(sender.to_string());
                 request.page_size = Some(100);
-                request.object_type = Some(rpc::types::ObjectType::Coin.into());
+                request.object_type = Some("Coin".to_string());
 
                 let stream = self.list_owned_objects(request).await;
                 tokio::pin!(stream);
@@ -435,10 +385,6 @@ impl SomaClient {
     /// - **ObjectLockConflict** / "already locked": another in-flight tx holds the lock
     /// - **Stale version** / "not available for consumption": coin was already consumed
     ///
-    /// For `SubmitData` transactions, bond coin selection is done inside the
-    /// retry loop with full in-flight awareness — callers should pass a
-    /// placeholder bond ref that will be overwritten before use.
-    ///
     /// Each attempt picks disjoint coins via randomized top-N selection and
     /// tracks them as in-flight so concurrent calls use different coins.
     pub async fn sign_and_execute_with_retry(
@@ -457,51 +403,17 @@ impl SomaClient {
             let mut full_excluded = excluded_coins.clone();
             full_excluded.extend(&in_flight_snapshot);
 
-            // 2. For SubmitData: select bond coin (random top-N, from non-excluded)
-            if let TransactionKind::SubmitData(ref mut args) = kind {
-                match self.select_coin_excluding(sender, &full_excluded).await {
-                    Ok(bond) => {
-                        args.bond_coin = bond;
-                        full_excluded.insert(bond.0);
-                    }
-                    Err(_) if !in_flight_snapshot.is_empty() => {
-                        // All coins are in-flight — backoff and retry
-                        let backoff = Duration::from_millis(500 * (1 << attempt.min(3)));
-                        tracing::warn!(
-                            "No available coins for {label} (all in-flight), \
-                             backing off {:?} (attempt {}/{})",
-                            backoff,
-                            attempt + 1,
-                            MAX_RETRIES,
-                        );
-                        tokio::time::sleep(backoff).await;
-                        continue;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
-
-            // 3. Select gas coin (single coin, random top-N, from full_excluded)
+            // 2. Select gas coin (single coin, random top-N, from full_excluded)
             let tx_data = match self
                 .build_transaction_data_excluding(sender, kind.clone(), &full_excluded)
                 .await
             {
                 Ok(td) => td,
-                Err(_) if matches!(kind, TransactionKind::SubmitData(_)) => {
-                    // Fallback: allow bond == gas (TransactionData::input_objects dedup)
-                    let bond_excluded = excluded_coins.clone();
-                    let mut fe2 = bond_excluded.clone();
-                    fe2.extend(&in_flight_snapshot);
-                    self.build_transaction_data_excluding(sender, kind.clone(), &fe2).await?
-                }
                 Err(e) => return Err(e),
             };
 
-            // 4. Reserve: insert bond + gas IDs into in_flight_coins
+            // 3. Reserve: insert gas IDs into in_flight_coins
             let mut reserved = Vec::new();
-            if let TransactionKind::SubmitData(ref args) = kind {
-                reserved.push(args.bond_coin.0);
-            }
             for gas_ref in tx_data.gas() {
                 reserved.push(gas_ref.0);
             }
@@ -581,7 +493,7 @@ impl SomaClient {
         let mut request = ListOwnedObjectsRequest::default();
         request.owner = Some(sender.to_string());
         request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some(rpc::types::ObjectType::Coin.into());
+        request.object_type = Some("Coin".to_string());
 
         let stream = self.list_owned_objects(request).await;
         tokio::pin!(stream);
@@ -623,7 +535,7 @@ impl SomaClient {
     /// Uses randomized top-N selection so concurrent callers are unlikely
     /// to pick the same coin. This is a standalone coin-selection helper
     /// for callers that need to embed a coin reference in a
-    /// [`TransactionKind`] (e.g. bond coins for `SubmitData`).
+    /// [`TransactionKind`].
     ///
     /// Scans at most one page of coins to keep RPC calls to 1.
     pub async fn select_coin_excluding(
@@ -639,7 +551,7 @@ impl SomaClient {
         let mut request = ListOwnedObjectsRequest::default();
         request.owner = Some(sender.to_string());
         request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some(rpc::types::ObjectType::Coin.into());
+        request.object_type = Some("Coin".to_string());
 
         let stream = self.list_owned_objects(request).await;
         tokio::pin!(stream);
@@ -707,7 +619,7 @@ impl SomaClient {
         let mut request = ListOwnedObjectsRequest::default();
         request.owner = Some(sender.to_string());
         request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some(rpc::types::ObjectType::Coin.into());
+        request.object_type = Some("Coin".to_string());
 
         let stream = self.list_owned_objects(request).await;
         tokio::pin!(stream);
@@ -740,58 +652,187 @@ impl SomaClient {
         let gas_payment: Vec<_> = coins[1..].iter().map(|(r, _)| *r).collect();
 
         let kind =
-            TransactionKind::TransferCoin { coin: transfer_coin, amount: None, recipient: sender };
+            TransactionKind::Transfer { coins: vec![transfer_coin], amounts: None, recipients: vec![sender] };
         let tx_data = TransactionData::new(kind, sender, gas_payment);
         self.sign_and_execute(keypair, tx_data, "MergeCoins").await
     }
 
     // -------------------------------------------------------------------
-    // gRPC service methods (behind grpc-services feature)
+    // Marketplace transaction builders
     // -------------------------------------------------------------------
 
-    /// Score model manifests against a data submission.
-    #[cfg(feature = "grpc-services")]
-    pub async fn score(
+    /// Create an ask (buyer posts a task request).
+    pub async fn create_ask(
         &self,
-        request: scoring::types::ScoreRequest,
-    ) -> Result<scoring::types::ScoreResponse, error::Error> {
-        let sc = self
-            .scoring_client
-            .as_ref()
-            .ok_or_else(|| {
-                error::Error::ServiceNotConfigured(
-                    "No scoring_url was provided when creating SomaClient".into(),
-                )
-            })?
-            .clone();
-        let mut client = sc.lock().await;
-        let response = client
-            .score(request)
-            .await
-            .map_err(|e| error::Error::GrpcError(e.to_string()))?
-            .into_inner();
-        Ok(response)
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        task_digest: types::digests::TaskDigest,
+        max_price_per_bid: u64,
+        num_bids_wanted: u32,
+        timeout_ms: u64,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::CreateAsk(types::transaction::CreateAskArgs {
+            task_digest,
+            max_price_per_bid,
+            num_bids_wanted,
+            timeout_ms,
+        });
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "CreateAsk").await
     }
 
-    /// Health check against the scoring service.
-    #[cfg(feature = "grpc-services")]
-    pub async fn scoring_health(&self) -> Result<bool, error::Error> {
-        let sc = self
-            .scoring_client
-            .as_ref()
-            .ok_or_else(|| {
-                error::Error::ServiceNotConfigured(
-                    "No scoring_url was provided when creating SomaClient".into(),
-                )
-            })?
-            .clone();
-        let mut client = sc.lock().await;
-        let response = client
-            .health(scoring::types::HealthRequest {})
-            .await
-            .map_err(|e| error::Error::GrpcError(e.to_string()))?
-            .into_inner();
-        Ok(response.ok)
+    /// Cancel an open ask before any bids are accepted.
+    pub async fn cancel_ask(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        ask_id: types::digests::AskId,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::CancelAsk { ask_id };
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "CancelAsk").await
+    }
+
+    /// Create a bid on an ask (seller offers to fulfill).
+    pub async fn create_bid(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        ask_id: types::digests::AskId,
+        price: u64,
+        response_digest: types::digests::ResponseDigest,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::CreateBid(types::transaction::CreateBidArgs {
+            ask_id,
+            price,
+            response_digest,
+        });
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "CreateBid").await
+    }
+
+    /// Accept a bid (atomic settlement — deducts USDC, credits seller vault, creates settlement).
+    pub async fn accept_bid(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        ask_id: types::digests::AskId,
+        bid_id: types::digests::BidId,
+        payment_coin: types::object::ObjectRef,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::AcceptBid(types::transaction::AcceptBidArgs {
+            ask_id,
+            bid_id,
+            payment_coin,
+        });
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "AcceptBid").await
+    }
+
+    /// Submit a negative seller rating on a settlement (must be within rating deadline).
+    pub async fn rate_seller(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        settlement_id: types::digests::SettlementId,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::RateSeller { settlement_id };
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "RateSeller").await
+    }
+
+    /// Withdraw USDC from a seller vault.
+    pub async fn withdraw_from_vault(
+        &self,
+        keypair: &keypair::Keypair,
+        sender: SomaAddress,
+        vault: types::object::ObjectRef,
+        amount: Option<u64>,
+        recipient_coin: Option<types::object::ObjectRef>,
+    ) -> Result<TransactionEffects, error::Error> {
+        let kind = TransactionKind::WithdrawFromVault { vault, amount, recipient_coin };
+        let tx_data = self.build_transaction_data(sender, kind, None).await?;
+        self.sign_and_execute(keypair, tx_data, "WithdrawFromVault").await
+    }
+
+    // -------------------------------------------------------------------
+    // Marketplace query methods
+    // -------------------------------------------------------------------
+
+    /// Get an ask object by ID.
+    pub async fn get_ask(&self, ask_id: ObjectID) -> Result<Object, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_ask(ask_id).await
+    }
+
+    /// Get a bid object by ID.
+    pub async fn get_bid_object(&self, bid_id: ObjectID) -> Result<Object, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_bid_object(bid_id).await
+    }
+
+    /// Get a settlement object by ID.
+    pub async fn get_settlement(
+        &self,
+        settlement_id: ObjectID,
+    ) -> Result<Object, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_settlement(settlement_id).await
+    }
+
+    /// Get all bids for an ask. Returns raw Object values; caller deserializes Bid from contents.
+    pub async fn get_bids_for_ask(
+        &self,
+        ask_id: ObjectID,
+        status_filter: Option<&str>,
+    ) -> Result<Vec<Object>, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_bids_for_ask(ask_id, status_filter).await
+    }
+
+    /// Get all open asks. Optionally filter by buyer address.
+    pub async fn get_open_asks(
+        &self,
+        buyer: Option<&types::base::SomaAddress>,
+        page_size: Option<u32>,
+    ) -> Result<Vec<Object>, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_open_asks(buyer, page_size).await
+    }
+
+    /// Get all seller vaults for an owner.
+    pub async fn get_vaults(
+        &self,
+        owner: &types::base::SomaAddress,
+    ) -> Result<Vec<Object>, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_vaults(owner).await
+    }
+
+    /// Get the current Protocol Fund USDC balance (microdollars).
+    pub async fn get_protocol_fund(&self) -> Result<u64, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_protocol_fund().await
+    }
+
+    /// Get reputation summary for an address, computed server-side from settlement data.
+    pub async fn get_reputation(
+        &self,
+        address: &types::base::SomaAddress,
+    ) -> Result<rpc::proto::soma::GetReputationResponse, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_reputation(address).await
+    }
+
+    /// Get settlements filtered by buyer and/or seller.
+    pub async fn get_settlements(
+        &self,
+        buyer: Option<&types::base::SomaAddress>,
+        seller: Option<&types::base::SomaAddress>,
+        page_size: Option<u32>,
+    ) -> Result<Vec<Object>, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_settlements(buyer, seller, page_size).await
     }
 
     /// Request test tokens from the faucet. Returns the gas response.

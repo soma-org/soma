@@ -76,25 +76,6 @@ fn test_send_help() {
     insta::assert_snapshot!("send_help", stdout);
 }
 
-#[test]
-fn test_model_help() {
-    let output =
-        soma_cmd().args(["model", "--help"]).output().expect("failed to run soma model --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("model_help", stdout);
-}
-
-#[test]
-fn test_model_commit_help() {
-    let output = soma_cmd()
-        .args(["model", "commit", "--help"])
-        .output()
-        .expect("failed to run soma model commit --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("model_commit_help", stdout);
-}
 
 #[test]
 fn test_status_help() {
@@ -189,14 +170,6 @@ fn test_tx_help() {
     insta::assert_snapshot!("tx_help", stdout);
 }
 
-#[test]
-fn test_target_help() {
-    let output =
-        soma_cmd().args(["target", "--help"]).output().expect("failed to run soma target --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("target_help", stdout);
-}
 
 #[test]
 fn test_network_help() {
@@ -259,14 +232,6 @@ fn test_send_missing_required_args() {
     soma_cmd().args(["send"]).assert().failure().stderr(predicate::str::contains("--to"));
 }
 
-#[test]
-fn test_model_commit_missing_args() {
-    soma_cmd()
-        .args(["model", "commit"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--weights-file"));
-}
 
 // =============================================================================
 // Error formatting tests (via the library)

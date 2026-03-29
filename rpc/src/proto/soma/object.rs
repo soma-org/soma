@@ -166,9 +166,14 @@ impl From<crate::types::ObjectType> for String {
     fn from(value: crate::types::ObjectType) -> Self {
         match value {
             crate::types::ObjectType::SystemState => "SystemState".to_string(),
-            crate::types::ObjectType::Coin => "Coin".to_string(),
+            crate::types::ObjectType::Coin(types::object::CoinType::Soma) => "Coin(SOMA)".to_string(),
+            crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => "Coin(USDC)".to_string(),
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
-            crate::types::ObjectType::Target => "Target".to_string(),
+            crate::types::ObjectType::Ask => "Ask".to_string(),
+            crate::types::ObjectType::Bid => "Bid".to_string(),
+            crate::types::ObjectType::Settlement => "Settlement".to_string(),
+            crate::types::ObjectType::SellerVault => "SellerVault".to_string(),
+            crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
         }
     }
 }
@@ -179,9 +184,14 @@ impl FromStr for crate::types::ObjectType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "SystemState" => Ok(Self::SystemState),
-            "Coin" => Ok(Self::Coin),
+            "Coin" | "Coin(SOMA)" => Ok(Self::Coin(types::object::CoinType::Soma)),
+            "Coin(USDC)" => Ok(Self::Coin(types::object::CoinType::Usdc)),
             "StakedSoma" => Ok(Self::StakedSoma),
-            "Target" => Ok(Self::Target),
+            "Ask" => Ok(Self::Ask),
+            "Bid" => Ok(Self::Bid),
+            "Settlement" => Ok(Self::Settlement),
+            "SellerVault" => Ok(Self::SellerVault),
+            "PendingWithdrawal" => Ok(Self::PendingWithdrawal),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

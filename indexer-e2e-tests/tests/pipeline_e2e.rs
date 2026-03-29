@@ -48,7 +48,7 @@ async fn test_transfer_coin_indexed() {
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );
@@ -131,7 +131,7 @@ async fn test_watermarks_advance() {
             test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
         let tx_data = TransactionData::new(
-            TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
+            TransactionKind::Transfer { coins: vec![gas], amounts: Some(100).map(|a| vec![a]), recipients: vec![recipient] },
             sender,
             vec![gas],
         );
@@ -191,7 +191,7 @@ async fn test_objects_indexed() {
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );
@@ -246,7 +246,7 @@ async fn test_graphql_queries_indexed_data() {
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(500), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );
@@ -323,7 +323,7 @@ async fn test_epoch_boundary_indexed() {
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(100), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(100).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );

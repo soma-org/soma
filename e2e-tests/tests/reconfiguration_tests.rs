@@ -49,6 +49,7 @@ async fn test_reconfig_with_committee_change_basic() {
     let mut test_cluster = TestClusterBuilder::new()
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![VALIDATOR_STARTING_STAKE * 1_000],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)
@@ -148,6 +149,7 @@ async fn do_test_reconfig_with_committee_change_stress() {
     let mut test_cluster = TestClusterBuilder::new()
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(7)
@@ -220,6 +222,7 @@ async fn test_reconfig_with_voting_power_decrease_normal() {
         )
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![DEFAULT_GAS_AMOUNT * initial_num_validators as u64 * 3],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)
@@ -386,6 +389,7 @@ async fn test_reconfig_with_voting_power_decrease_immediate_removal() {
         .with_validators(initial_validators)
         .with_accounts(vec![AccountConfig {
             gas_amounts: vec![10 * VALIDATOR_STARTING_STAKE * initial_num_validators as u64],
+            usdc_amounts: vec![],
             address: None,
         }])
         .with_num_validators(initial_num_validators)

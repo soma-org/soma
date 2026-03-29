@@ -11,7 +11,6 @@ pub mod subscriptions;
 
 use std::sync::Arc;
 
-use async_graphql::dataloader::DataLoader;
 use async_graphql::{EmptyMutation, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use axum::Router;
@@ -23,7 +22,6 @@ use tower_http::cors::CorsLayer;
 use crate::api::query::Query;
 use crate::config::GraphQlConfig;
 use crate::db::PgReader;
-use crate::loaders::{TargetReportersLoader, TargetRewardLoader};
 use crate::subscriptions::{Subscription, SubscriptionChannels};
 
 pub use indexer_kvstore::KvLoader;
@@ -46,14 +44,9 @@ pub fn build_schema(
     kv: Option<Arc<dyn KvLoader>>,
     sub_channels: SubscriptionChannels,
 ) -> SomaSchema {
-    let reporters_loader = DataLoader::new(TargetReportersLoader { pg: pg.clone() }, tokio::spawn);
-    let reward_loader = DataLoader::new(TargetRewardLoader { pg: pg.clone() }, tokio::spawn);
-
     let mut builder = Schema::build(Query, EmptyMutation, Subscription)
         .data(pg)
         .data(config.clone())
-        .data(reporters_loader)
-        .data(reward_loader)
         .data(sub_channels)
         .limit_depth(config.max_query_depth)
         .limit_complexity(config.max_query_complexity);

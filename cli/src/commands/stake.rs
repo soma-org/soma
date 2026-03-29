@@ -2,21 +2,19 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use sdk::wallet_context::WalletContext;
 use types::base::SomaAddress;
-use types::model::ModelId;
 use types::object::ObjectID;
 use types::transaction::TransactionKind;
 
 use crate::client_commands::TxProcessingArgs;
-use crate::response::{ClientCommandResponse, TransactionResponse};
+use crate::response::ClientCommandResponse;
 
-/// Execute the stake command (stake SOMA with a validator or model)
+/// Execute the stake command (stake SOMA with a validator)
 pub async fn execute_stake(
     context: &mut WalletContext,
-    validator: Option<SomaAddress>,
-    model: Option<ModelId>,
+    validator: SomaAddress,
     amount: Option<u64>,
     coin: Option<ObjectID>,
     tx_args: TxProcessingArgs,
@@ -53,14 +51,7 @@ pub async fn execute_stake(
         }
     };
 
-    // Build transaction kind
-    let kind = if let Some(validator_address) = validator {
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount }
-    } else if let Some(model_id) = model {
-        TransactionKind::AddStakeToModel { model_id, coin_ref, amount }
-    } else {
-        unreachable!()
-    };
+    let kind = TransactionKind::AddStake { address: validator, coin_ref, amount };
 
     crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
 }

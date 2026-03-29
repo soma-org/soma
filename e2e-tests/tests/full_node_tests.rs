@@ -142,7 +142,7 @@ async fn test_access_stale_object_version() {
 
     // Mutate the gas object via a transfer (creates version N+1)
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: old_gas, amount: Some(1000), recipient },
+        TransactionKind::Transfer { coins: vec![old_gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![old_gas],
     );
@@ -152,7 +152,7 @@ async fn test_access_stale_object_version() {
     // Now try to use the OLD ref (version N) — the fullnode should reject it
     // because the live version in cache is N+1.
     let tx_data_stale = TransactionData::new(
-        TransactionKind::TransferCoin { coin: old_gas, amount: Some(500), recipient },
+        TransactionKind::Transfer { coins: vec![old_gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![old_gas],
     );
@@ -213,7 +213,7 @@ async fn test_full_node_transaction_orchestrator_basic() {
         .expect("sender must have a gas object");
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );
@@ -265,7 +265,7 @@ async fn test_execute_tx_with_serialized_signature() {
         .expect("sender must have a gas object");
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(1000), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     );
@@ -290,24 +290,3 @@ async fn test_execute_tx_with_serialized_signature() {
     );
 }
 
-/// Build a test cluster with `with_local_scoring()` — validators auto-start their own
-/// local scoring server instead of using the shared mock. Verifies the local scoring
-/// server path works end-to-end (node startup succeeds, audit service is active).
-#[cfg(msim)]
-#[msim::sim_test]
-async fn test_local_scoring_server_auto_start() {
-    init_tracing();
-
-    let test_cluster =
-        TestClusterBuilder::new().with_num_validators(1).with_local_scoring().build().await;
-
-    // If we get here, the validator started with its own local scoring server.
-    // Verify the audit service is active on each validator.
-    for handle in test_cluster.all_validator_handles() {
-        handle.with(|node| {
-            assert!(node.state().name != Default::default(), "Validator should be running");
-        });
-    }
-
-    info!("Validators successfully started with local scoring server");
-}

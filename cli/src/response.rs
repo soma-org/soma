@@ -818,7 +818,6 @@ pub enum ObjectContent {
     Coin { balance: u64 },
     StakedSoma(StakedSomaDisplay),
     SystemState,
-    Target,
     Unknown,
 }
 
@@ -866,7 +865,7 @@ impl ObjectOutput {
 
     fn extract_content(obj: &Object) -> Option<ObjectContent> {
         match obj.type_() {
-            ObjectType::Coin => obj.as_coin().map(|balance| ObjectContent::Coin { balance }),
+            ObjectType::Coin(_) => obj.as_coin().map(|balance| ObjectContent::Coin { balance }),
             ObjectType::StakedSoma => obj.as_staked_soma().map(|s| {
                 ObjectContent::StakedSoma(StakedSomaDisplay {
                     pool_id: s.pool_id,
@@ -875,7 +874,7 @@ impl ObjectOutput {
                 })
             }),
             ObjectType::SystemState => Some(ObjectContent::SystemState),
-            ObjectType::Target => Some(ObjectContent::Target),
+            _ => None,
         }
     }
 }
@@ -946,13 +945,6 @@ impl Display for ObjectOutput {
                         f,
                         "{}",
                         "System State object (use specialized queries for details)".dimmed()
-                    )?;
-                }
-                ObjectContent::Target => {
-                    writeln!(
-                        f,
-                        "{}",
-                        "Target object (use 'soma target info <id>' for details)".dimmed()
                     )?;
                 }
                 ObjectContent::Unknown => {}

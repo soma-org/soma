@@ -2,13 +2,12 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Stake SOMA with a validator or model
+Stake SOMA with a validator
 
-Usage: soma stake [OPTIONS]
+Usage: soma stake [OPTIONS] --validator <VALIDATOR>
 
 Options:
       --validator <VALIDATOR>           Validator address to stake with
-      --model <MODEL>                   Model ID to stake with
       --amount <AMOUNT>                 Amount to stake in SOMA (uses entire coin if not specified)
       --coin <COIN>                     Coin to use for staking (auto-selected if not provided)
       --tx-digest                       Compute the transaction digest and print it out, but do not execute
@@ -20,5 +19,4 @@ Options:
 
 EXAMPLES:
     soma stake --validator 0xVAL... --amount 10
-    soma stake --model 0xMODEL... --amount 5
     soma stake --validator 0xVAL... --coin 0xCOIN...

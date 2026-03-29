@@ -52,7 +52,7 @@ use types::messages_grpc::{
     HandleTransactionResponse, ObjectInfoRequest, ObjectInfoResponse, TransactionInfoRequest,
     TransactionInfoResponse, TransactionStatus,
 };
-use types::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
+use types::object::{CoinType, OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version};
 use types::storage::InputKey;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
@@ -1127,6 +1127,7 @@ impl AuthorityState {
         let mock_gas_id = if transaction.gas().is_empty() {
             let mock_gas_object = Object::new_coin(
                 ObjectID::MAX,
+                CoinType::Soma,
                 DEV_INSPECT_GAS_COIN_VALUE,
                 Owner::AddressOwner(transaction.sender()),
                 TransactionDigest::genesis_marker(),
@@ -1623,7 +1624,7 @@ impl AuthorityState {
         cur_epoch_store: &AuthorityPerEpochStore,
     ) {
         use types::config::genesis_config::TOTAL_SUPPLY_SHANNONS;
-        use types::object::ObjectType;
+        use types::object::{CoinType, ObjectType};
 
         // Get system state from the object store for accurate balance accounting
         let system_state = self
@@ -1652,16 +1653,8 @@ impl AuthorityState {
             system_state_balance += v.staking_pool.pending_stake as u128;
         }
 
-        // Model staking pools (all states)
-        for model in system_state.model_registry().models.values() {
-            let pool = model.staking_pool();
-            system_state_balance += pool.soma_balance as u128;
-            system_state_balance += pool.pending_stake as u128;
-        }
-
-        // Iterate all live objects to sum coin and target balances
+        // Iterate all live objects to sum coin balances
         let mut coin_balance: u128 = 0;
-        let mut target_balance: u128 = 0;
         let mut object_count: u64 = 0;
 
         for live_obj in self.get_global_state_hash_store().iter_live_object_set() {
@@ -1671,24 +1664,19 @@ impl AuthorityState {
             object_count += 1;
 
             match obj.type_() {
-                ObjectType::Coin => {
+                ObjectType::Coin(CoinType::Soma) => {
                     if let Some(balance) = obj.as_coin() {
                         coin_balance += balance as u128;
                     }
                 }
-                ObjectType::Target => {
-                    if let Some(target) = obj.as_target() {
-                        target_balance += target.reward_pool as u128;
-                        target_balance += target.bond_amount as u128;
-                    }
-                }
+                // USDC coins are minted via bridge and are not part of SOMA supply
+                ObjectType::Coin(CoinType::Usdc) => {}
                 // SystemState: accounted above via get_system_state_object_for_testing
-                // StakedSoma, Submission: no SOMA value (receipts only)
                 _ => {}
             }
         }
 
-        let total_accounted = coin_balance + system_state_balance + target_balance;
+        let total_accounted = coin_balance + system_state_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;
 
         if total_accounted != expected {
@@ -1696,7 +1684,6 @@ impl AuthorityState {
                 "SUPPLY CONSERVATION VIOLATION at epoch {}! \
                  Expected {expected}, got {total_accounted} \
                  (coins={coin_balance}, system_state={system_state_balance}, \
-                 targets={target_balance}, \
                  objects_scanned={object_count})",
                 cur_epoch_store.epoch(),
             );
@@ -1709,7 +1696,7 @@ impl AuthorityState {
             info!(
                 "Supply conservation check passed for epoch {} \
                  (total={expected}, coins={coin_balance}, \
-                 system_state={system_state_balance}, targets={target_balance}, \
+                 system_state={system_state_balance}, \
                  objects={object_count})",
                 cur_epoch_store.epoch(),
             );

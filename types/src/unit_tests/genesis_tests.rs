@@ -15,7 +15,7 @@ use rand::rngs::StdRng;
 use crate::SYSTEM_STATE_OBJECT_ID;
 use crate::base::SomaAddress;
 use crate::config::genesis_config::{
-    GenesisCeremonyParameters, GenesisModelConfig, SHANNONS_PER_SOMA, TokenAllocation,
+    GenesisCeremonyParameters, SHANNONS_PER_SOMA, TokenAllocation,
     TokenDistributionSchedule, TokenDistributionScheduleBuilder, ValidatorGenesisConfigBuilder,
 };
 use crate::effects::{ExecutionStatus, TransactionEffectsAPI};
@@ -48,7 +48,6 @@ fn make_schedule_for_validators(
             recipient_address: address,
             amount_shannons: per_validator,
             staked_with_validator: Some(address),
-            staked_with_model: None,
         });
     }
     builder.build()
@@ -68,7 +67,6 @@ fn make_schedule_with_coins(
             recipient_address: address,
             amount_shannons: per_validator_stake,
             staked_with_validator: Some(address),
-            staked_with_model: None,
         });
     }
     for (addr, amount) in coin_recipients {
@@ -76,7 +74,6 @@ fn make_schedule_with_coins(
             recipient_address: *addr,
             amount_shannons: *amount,
             staked_with_validator: None,
-            staked_with_model: None,
         });
     }
     builder.build()
@@ -171,7 +168,7 @@ fn test_genesis_creates_initial_coins() {
     let coin_objects: Vec<_> = unsigned
         .objects()
         .iter()
-        .filter(|o| *o.type_() == ObjectType::Coin && o.owner == Owner::AddressOwner(coin_addr))
+        .filter(|o| matches!(o.type_(), ObjectType::Coin(_)) && o.owner == Owner::AddressOwner(coin_addr))
         .collect();
 
     assert!(!coin_objects.is_empty(), "Must have at least one coin object for the recipient");
@@ -266,7 +263,7 @@ fn test_genesis_builder_custom_parameters() {
 
     let mut params = GenesisCeremonyParameters::new();
     params.epoch_duration_ms = custom_epoch_duration_ms;
-    params.emission_per_epoch = custom_emission;
+    params.emission_initial_distribution_amount = custom_emission;
     params.chain_start_timestamp_ms = custom_timestamp;
 
     let unsigned = GenesisBuilder::new()
@@ -283,9 +280,9 @@ fn test_genesis_builder_custom_parameters() {
         "Custom epoch duration must be reflected"
     );
     assert_eq!(
-        system_state.emission_pool().emission_per_epoch,
+        system_state.emission_pool().current_distribution_amount,
         custom_emission,
-        "Custom emission per epoch must be reflected"
+        "Custom emission initial distribution amount must be reflected"
     );
     assert_eq!(
         system_state.epoch_start_timestamp_ms(),
@@ -360,76 +357,10 @@ fn test_genesis_emission_pool() {
     // Verify emission_per_epoch matches the default
     let default_params = GenesisCeremonyParameters::new();
     assert_eq!(
-        system_state.emission_pool().emission_per_epoch,
-        default_params.emission_per_epoch,
-        "Emission per epoch must match the configured value"
+        system_state.emission_pool().current_distribution_amount,
+        default_params.emission_initial_distribution_amount,
+        "Emission initial distribution amount must match the configured value"
     );
-}
-
-// ===========================================================================
-// Test 9: Seed models produce active targets when configured
-// ===========================================================================
-
-#[test]
-fn test_genesis_creates_initial_targets() {
-    let configs = make_validator_configs(4);
-    let per_validator = 1_000 * SHANNONS_PER_SOMA;
-
-    let model_owner = SomaAddress::random();
-    let model_stake = 1 * SHANNONS_PER_SOMA;
-
-    // Build schedule (validator stakes only — model stake is handled internally
-    // by the builder from GenesisModelConfig.initial_stake)
-    let schedule = make_schedule_for_validators(&configs, per_validator);
-
-    // Create a genesis model config
-    use url::Url;
-
-    use crate::checksum::Checksum;
-    use crate::crypto::DecryptionKey;
-    use crate::digests::ModelWeightsCommitment;
-    use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-
-    let url_str = "https://example.com/model/weights";
-    let url = Url::parse(url_str).unwrap();
-    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
-    let manifest = Manifest::V1(ManifestV1::new(url, metadata));
-
-    let genesis_model = GenesisModelConfig {
-        owner: model_owner,
-        manifest,
-        decryption_key: DecryptionKey::new([0u8; 32]),
-        weights_commitment: ModelWeightsCommitment::new([0xBB; 32]),
-        architecture_version: 1,
-        commission_rate: 500, // 5%
-        initial_stake: model_stake,
-    };
-
-    let unsigned = GenesisBuilder::new()
-        .with_validator_configs(configs)
-        .with_token_distribution_schedule(schedule)
-        .with_genesis_models(vec![genesis_model])
-        .build_unsigned_genesis();
-
-    let system_state = get_system_state(&unsigned.objects()).unwrap();
-
-    // Model must be registered as active (model_id is auto-assigned)
-    assert!(
-        system_state.model_registry().has_active_models(),
-        "Genesis model must be active in the model registry"
-    );
-
-    // Targets should have been generated since there is at least one active model
-    let target_objects: Vec<_> =
-        unsigned.objects().iter().filter(|o| *o.type_() == ObjectType::Target).collect();
-
-    // With an active model and a non-empty emission pool, we expect some targets
-    assert!(!target_objects.is_empty(), "Genesis with an active model should produce seed targets");
-
-    // All targets should be shared objects
-    for t in &target_objects {
-        assert!(matches!(t.owner, Owner::Shared { .. }), "Target objects must be Shared");
-    }
 }
 
 // ===========================================================================
@@ -457,7 +388,7 @@ fn test_genesis_objects_have_correct_owners() {
     // Coin objects must be AddressOwner
     for obj in unsigned.objects() {
         match obj.type_() {
-            ObjectType::Coin => {
+            ObjectType::Coin(_) => {
                 assert!(
                     matches!(obj.owner, Owner::AddressOwner(_)),
                     "Coin objects must have AddressOwner ownership"
@@ -471,9 +402,6 @@ fn test_genesis_objects_have_correct_owners() {
             }
             ObjectType::SystemState => {
                 assert!(matches!(obj.owner, Owner::Shared { .. }), "SystemState must be Shared");
-            }
-            ObjectType::Target => {
-                assert!(matches!(obj.owner, Owner::Shared { .. }), "Target objects must be Shared");
             }
             _ => {}
         }

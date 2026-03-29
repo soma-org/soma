@@ -50,7 +50,7 @@ async fn make_transfer(
         .expect("sender must have a gas object");
 
     TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(amount), recipient },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(amount).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas],
     )
@@ -551,7 +551,7 @@ async fn test_early_validation_with_old_object_version() {
         .expect("sender must have a gas object");
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_before, amount: Some(1000), recipient },
+        TransactionKind::Transfer { coins: vec![gas_before], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas_before],
     );
@@ -562,7 +562,7 @@ async fn test_early_validation_with_old_object_version() {
     // Now try to use the OLD object version in a new transaction
     // This should fail because the object has been mutated
     let tx_data_stale = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_before, amount: Some(500), recipient },
+        TransactionKind::Transfer { coins: vec![gas_before], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas_before],
     );

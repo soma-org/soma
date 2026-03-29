@@ -51,26 +51,26 @@ impl Processor for SomaEpochState {
 
         let epoch = system_state.epoch() as i64;
         let ep = system_state.emission_pool();
-        let ts = system_state.target_state();
 
-        // Access safe_mode fields via V1 variant
-        let (safe_mode, safe_mode_fees, safe_mode_emissions) = match &system_state {
-            SystemState::V1(v1) => (
-                v1.safe_mode,
-                v1.safe_mode_accumulated_fees as i64,
-                v1.safe_mode_accumulated_emissions as i64,
-            ),
-        };
+        // Access fields via V1 variant
+        let (safe_mode, safe_mode_fees, safe_mode_emissions, protocol_fund_balance) =
+            match &system_state {
+                SystemState::V1(v1) => (
+                    v1.safe_mode,
+                    v1.safe_mode_accumulated_fees as i64,
+                    v1.safe_mode_accumulated_emissions as i64,
+                    v1.protocol_fund_balance as i64,
+                ),
+            };
 
         Ok(vec![StoredEpochState {
             epoch,
             emission_balance: ep.balance as i64,
-            emission_per_epoch: ep.emission_per_epoch as i64,
-            distance_threshold: ts.distance_threshold.as_scalar() as f64,
-            targets_generated_this_epoch: ts.targets_generated_this_epoch as i64,
-            hits_this_epoch: ts.hits_this_epoch as i64,
-            hits_ema: ts.hits_ema as i64,
-            reward_per_target: ts.reward_per_target as i64,
+            emission_per_epoch: ep.current_distribution_amount as i64,
+            distribution_counter: ep.distribution_counter as i64,
+            period_length: ep.period_length as i64,
+            decrease_rate: ep.decrease_rate as i32,
+            protocol_fund_balance,
             safe_mode,
             safe_mode_accumulated_fees: safe_mode_fees,
             safe_mode_accumulated_emissions: safe_mode_emissions,

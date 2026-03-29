@@ -17,16 +17,12 @@ members = [
   "soma-keys",
   "rpc",
   "sdk",
-  "python-sdk",
-  "models",
-  "arrgen",
   "store",
   "store-derive",
   "data-ingestion",
   "protocol-config",
   "protocol-config-macros",
   "faucet",
-  "scoring",
   "admin",
   "soma-field-count-derive",
   "soma-field-count",
@@ -40,6 +36,7 @@ members = [
   "soma-graphql",
   "indexer-e2e-tests",
   "soma-tool",
+  "bridge-node",
 ]
 
 
@@ -106,14 +103,12 @@ bin-version = { path = "bin-version" }
 soma-keys = { path = "soma-keys" }
 rpc = { path = "rpc" }
 sdk = { path = "sdk" }
-python-sdk = { path = "python-sdk" }
 store-derive = { path = "store-derive" }
 store = { path = "store" }
 data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
 faucet = { path = "faucet" }
-scoring = { path = "scoring", default-features = false }
 admin = { path = "admin" }
 soma-field-count-derive = { path = "soma-field-count-derive" }
 soma-field-count = { path = "soma-field-count" }
@@ -125,6 +120,7 @@ indexer-alt-schema = { path = "indexer-alt-schema" }
 indexer-alt = { path = "indexer-alt" }
 indexer-kvstore = { path = "indexer-kvstore" }
 soma-graphql = { path = "soma-graphql" }
+bridge-node = { path = "bridge-node" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }
@@ -219,8 +215,6 @@ runtime = { path = "runtime" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
 blobs = { path = "blobs" }
-arrgen = { path = "arrgen", default-features = false }
-models = { path = "models" }
 
 
 # external deps
@@ -232,11 +226,6 @@ url = { version = "2.5.8", features = ["serde"] }
 aes = "0.8.4"
 ctr = "0.9.2"
 crypto-common = "0.1.7"
-pythonize = "0.28"
-pyo3 = "0.28"
-pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
-pyo3-build-config = "0.28"
-numpy = "0.28"
 ndarray = { version = "0.16", features = ["serde"] }
 ndarray-rand = "0.15.0"
 reqwest = { version = "0.12.28", default-features = false, features = [
@@ -331,7 +320,6 @@ num-prime = { version = "0.4", features = ["big-int"] }
 rand_chacha = "0.3"
 criterion = "0.5"
 num-bigint-dig = "0.8"
-safetensors = "0.5"
 memmap2 = "0.9.9"
 colored = "2"
 git-version = "0.3.9"

@@ -63,7 +63,7 @@ async fn make_transfer_consensus_tx(
 
     let gas_ref = gas_object.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas_ref, amount: Some(1_000), recipient },
+        TransactionKind::Transfer { coins: vec![gas_ref], amounts: Some(1_000).map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas_ref],
     );

@@ -22,10 +22,8 @@ use indexer_kvstore::{
 };
 use rpc::utils::checkpoint_blob;
 use types::base::SomaAddress;
-use types::object::ObjectType;
-use types::target::TargetStatus;
 use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state, test_target,
+    TestCheckpointBuilder, default_test_system_state,
 };
 
 /// Write a checkpoint to disk as `{seq}.binpb.zst`.
@@ -68,10 +66,8 @@ async fn test_bigtable_indexer_e2e() {
     let dir = checkpoint_dir.path();
 
     // 1. Build synthetic checkpoints
-    let target = test_target(0, TargetStatus::Open, 1_000_000);
     let cp0 = TestCheckpointBuilder::new(0)
         .with_genesis_system_state(default_test_system_state())
-        .add_target(target)
         .build();
 
     let sender = SomaAddress::random();
@@ -164,21 +160,7 @@ async fn test_bigtable_indexer_e2e() {
     assert_eq!(epoch.epoch, Some(0));
     assert!(epoch.system_state_bcs.is_some(), "should have system state");
 
-    // 12. Verify target data was indexed
-    let target_obj = cp0
-        .transactions
-        .iter()
-        .flat_map(|tx| tx.output_objects(&cp0.object_set))
-        .find(|o| *o.type_() == ObjectType::Target)
-        .expect("cp0 should have a target");
-    let target_key = indexer_kvstore::tables::targets::encode_key(&target_obj.id().to_vec());
-    let target_rows = reader
-        .multi_get(indexer_kvstore::tables::targets::NAME, vec![target_key], None)
-        .await
-        .unwrap();
-    assert_eq!(target_rows.len(), 1, "should have 1 target row");
-
-    // 13. Verify watermarks are consistent
+    // 12. Verify watermarks are consistent
     let wm = reader.get_watermark().await.unwrap().expect("watermark should exist");
     assert_eq!(wm.checkpoint_hi_inclusive, 1);
 

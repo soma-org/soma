@@ -10,3 +10,4 @@ pub mod keytool;
 pub mod response;
 pub mod soma_amount;
 pub mod soma_commands;
+pub mod usdc_amount;

@@ -7,7 +7,7 @@ use protocol_config::ProtocolConfig;
 use types::balance_change::derive_balance_changes_2;
 use types::base::SomaAddress;
 use types::effects::TransactionEffectsAPI;
-use types::object::{ObjectID, ObjectRef, ObjectType};
+use types::object::{CoinType, ObjectID, ObjectRef, ObjectType};
 use types::system_state::SystemStateTrait;
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
 
@@ -169,7 +169,7 @@ fn select_gas(
         .inner()
         .indexes()
         .ok_or_else(RpcError::not_found)?
-        .owned_objects_iter(owner, Some(ObjectType::Coin), None)?
+        .owned_objects_iter(owner, Some(ObjectType::Coin(CoinType::Soma)), None)?
         .filter_ok(|info| !input_objects.contains(&info.object_id))
         .filter_map_ok(|info| reader.inner().get_object(&info.object_id))
         // filter for objects which are not ConsensusAddress owned,

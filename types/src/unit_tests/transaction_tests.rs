@@ -5,21 +5,14 @@
 use fastcrypto::ed25519::Ed25519KeyPair;
 
 use crate::base::SomaAddress;
-use crate::checksum::Checksum;
 use crate::consensus::ConsensusCommitPrologueV1;
-use crate::crypto::{DecryptionKey, default_hash, get_key_pair};
+use crate::crypto::{default_hash, get_key_pair};
 use crate::digests::{
-    AdditionalConsensusStateDigest, ConsensusCommitDigest, DecryptionKeyCommitment,
-    EmbeddingCommitment, ModelWeightsCommitment, ObjectDigest,
+    AdditionalConsensusStateDigest, ConsensusCommitDigest, ObjectDigest,
 };
 use crate::envelope::Message;
 use crate::intent::{Intent, IntentMessage};
-use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use crate::model::ModelId;
 use crate::object::{ObjectID, ObjectRef, Version};
-use crate::submission::SubmissionManifest;
-use crate::target::TargetId;
-use crate::tensor::SomaTensor;
 use crate::transaction::*;
 use crate::unit_tests::utils::to_sender_signed_transaction;
 use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
@@ -48,28 +41,6 @@ fn make_transfer_coin_data() -> (TransactionData, SomaAddress) {
 fn make_system_tx_data(kind: TransactionKind) -> TransactionData {
     assert!(kind.is_system_tx(), "kind must be a system transaction");
     TransactionData::new(kind, SomaAddress::default(), vec![])
-}
-
-/// Create a dummy Manifest for model / submission tests.
-fn dummy_manifest() -> Manifest {
-    let url = url::Url::parse("https://example.com/weights.bin").unwrap();
-    let metadata = Metadata::V1(MetadataV1::new(Checksum::default(), 1024));
-    Manifest::V1(ManifestV1::new(url, metadata))
-}
-
-/// Create a dummy SubmissionManifest.
-fn dummy_submission_manifest() -> SubmissionManifest {
-    SubmissionManifest::new(dummy_manifest())
-}
-
-/// Create a dummy SomaTensor (a single-element embedding).
-fn dummy_tensor() -> SomaTensor {
-    SomaTensor::new(vec![1.0, 2.0, 3.0], vec![3])
-}
-
-/// Create a dummy scalar SomaTensor for distance scores.
-fn dummy_scalar_tensor() -> SomaTensor {
-    SomaTensor::new(vec![0.5], vec![1])
 }
 
 // ---------------------------------------------------------------------------
@@ -150,8 +121,6 @@ fn test_transaction_kind_classification() {
     assert!(genesis.is_system_tx());
     assert!(!genesis.is_validator_tx());
     assert!(!genesis.is_staking_tx());
-    assert!(!genesis.is_model_tx());
-    assert!(!genesis.is_submission_tx());
 
     let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
@@ -217,76 +186,15 @@ fn test_transaction_kind_classification() {
     let withdraw_stake = TransactionKind::WithdrawStake { staked_soma: random_object_ref() };
     assert!(withdraw_stake.is_staking_tx());
 
-    // Model transactions
-    let model_id = ModelId::random();
-    let create_model = TransactionKind::CreateModel(CreateModelArgs {
-        stake_amount: 1000,
-        commission_rate: 100,
-        architecture_version: 1,
-    });
-    assert!(create_model.is_model_tx());
-    assert!(!create_model.is_staking_tx());
-
-    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id,
-        manifest: dummy_manifest(),
-        weights_commitment: ModelWeightsCommitment::random(),
-        embedding_commitment: EmbeddingCommitment::random(),
-        decryption_key_commitment: DecryptionKeyCommitment::random(),
-    });
-    assert!(commit_model.is_model_tx());
-    assert!(!commit_model.is_staking_tx());
-
-    let reveal_model = TransactionKind::RevealModel(RevealModelArgs {
-        model_id,
-        decryption_key: DecryptionKey::new([0u8; 32]),
-        embedding: dummy_tensor(),
-    });
-    assert!(reveal_model.is_model_tx());
-
-    let deactivate = TransactionKind::DeactivateModel { model_id };
-    assert!(deactivate.is_model_tx());
-
-    let report_model = TransactionKind::ReportModel { model_id };
-    assert!(report_model.is_model_tx());
-
-    let undo_report_model = TransactionKind::UndoReportModel { model_id };
-    assert!(undo_report_model.is_model_tx());
-
-    // Submission transactions
-    let target_id: TargetId = ObjectID::random();
-    let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id,
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    assert!(submit_data.is_submission_tx());
-    assert!(!submit_data.is_model_tx());
-
-    let claim_rewards = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id });
-    assert!(claim_rewards.is_submission_tx());
-
-    let report_sub = TransactionKind::ReportSubmission { target_id };
-    assert!(report_sub.is_submission_tx());
-
-    let undo_report_sub = TransactionKind::UndoReportSubmission { target_id };
-    assert!(undo_report_sub.is_submission_tx());
-
     // Coin/object transactions should not match any category
-    let transfer_coin = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
+    let transfer_coin = TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: Some(100).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
     };
     assert!(!transfer_coin.is_system_tx());
     assert!(!transfer_coin.is_validator_tx());
     assert!(!transfer_coin.is_staking_tx());
-    assert!(!transfer_coin.is_model_tx());
-    assert!(!transfer_coin.is_submission_tx());
 }
 
 // ---------------------------------------------------------------------------
@@ -355,9 +263,6 @@ fn test_user_tx_has_gas() {
 
 #[test]
 fn test_all_tx_kinds_bcs_roundtrip() {
-    let model_id = ModelId::random();
-    let target_id: TargetId = ObjectID::random();
-
     let kinds: Vec<TransactionKind> = vec![
         // System
         TransactionKind::Genesis(GenesisTransaction { objects: vec![] }),
@@ -393,15 +298,18 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs::default()),
         TransactionKind::SetCommissionRate { new_rate: 100 },
         // Coin/object
-        TransactionKind::TransferCoin {
-            coin: random_object_ref(),
-            amount: Some(500),
-            recipient: SomaAddress::random(),
-        },
-        TransactionKind::PayCoins {
+        TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: Some(500).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
+    },
+        TransactionKind::Transfer {
             coins: vec![random_object_ref(), random_object_ref()],
             amounts: Some(vec![100, 200]),
             recipients: vec![SomaAddress::random(), SomaAddress::random()],
+        },
+        TransactionKind::MergeCoins {
+            coins: vec![random_object_ref(), random_object_ref()],
         },
         TransactionKind::TransferObjects {
             objects: vec![random_object_ref()],
@@ -414,52 +322,58 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             amount: Some(1000),
         },
         TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
-        // Model
-        TransactionKind::CreateModel(CreateModelArgs {
-            stake_amount: 5000,
-            commission_rate: 200,
-            architecture_version: 1,
+        // Marketplace
+        TransactionKind::CreateAsk(crate::transaction::CreateAskArgs {
+            task_digest: crate::digests::TaskDigest::random(),
+            max_price_per_bid: 1000,
+            num_bids_wanted: 3,
+            timeout_ms: 60_000,
         }),
-        TransactionKind::CommitModel(CommitModelArgs {
-            model_id,
-            manifest: dummy_manifest(),
-            weights_commitment: ModelWeightsCommitment::random(),
-            embedding_commitment: EmbeddingCommitment::random(),
-            decryption_key_commitment: DecryptionKeyCommitment::random(),
+        TransactionKind::CancelAsk { ask_id: ObjectID::random() },
+        TransactionKind::CreateBid(crate::transaction::CreateBidArgs {
+            ask_id: ObjectID::random(),
+            price: 500,
+            response_digest: crate::digests::ResponseDigest::random(),
         }),
-        TransactionKind::RevealModel(RevealModelArgs {
-            model_id,
-            decryption_key: DecryptionKey::new([0u8; 32]),
-            embedding: dummy_tensor(),
+        TransactionKind::AcceptBid(crate::transaction::AcceptBidArgs {
+            ask_id: ObjectID::random(),
+            bid_id: ObjectID::random(),
+            payment_coin: random_object_ref(),
         }),
-        TransactionKind::AddStakeToModel {
-            model_id,
-            coin_ref: random_object_ref(),
-            amount: Some(500),
+        TransactionKind::RateSeller { settlement_id: ObjectID::random() },
+        TransactionKind::WithdrawFromVault {
+            vault: random_object_ref(),
+            amount: Some(1000),
+            recipient_coin: None,
         },
-        TransactionKind::SetModelCommissionRate { model_id, new_rate: 300 },
-        TransactionKind::DeactivateModel { model_id },
-        TransactionKind::ReportModel { model_id },
-        TransactionKind::UndoReportModel { model_id },
-        // Submission
-        TransactionKind::SubmitData(SubmitDataArgs {
-            target_id,
-            data_manifest: dummy_submission_manifest(),
-            model_id,
-            embedding: dummy_tensor(),
-            distance_score: dummy_scalar_tensor(),
-            loss_score: SomaTensor::new(vec![0.5], vec![1]),
-            bond_coin: random_object_ref(),
+        // Bridge
+        TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
+            nonce: 1,
+            eth_tx_hash: [0u8; 32],
+            recipient: SomaAddress::random(),
+            amount: 1000,
+            aggregated_signature: vec![],
+            signer_bitmap: vec![],
         }),
-        TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-        TransactionKind::ReportSubmission { target_id },
-        TransactionKind::UndoReportSubmission { target_id },
+        TransactionKind::BridgeWithdraw(crate::transaction::BridgeWithdrawArgs {
+            payment_coin: random_object_ref(),
+            amount: 500,
+            recipient_eth_address: [0u8; 20],
+        }),
+        TransactionKind::BridgeEmergencyPause(crate::transaction::BridgeEmergencyPauseArgs {
+            aggregated_signature: vec![],
+            signer_bitmap: vec![],
+        }),
+        TransactionKind::BridgeEmergencyUnpause(crate::transaction::BridgeEmergencyUnpauseArgs {
+            aggregated_signature: vec![],
+            signer_bitmap: vec![],
+        }),
     ];
 
     assert_eq!(
         kinds.len(),
-        26,
-        "Expected 26 TransactionKind variants; if a new variant was added, update this test"
+        25,
+        "Expected 25 TransactionKind variants; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {
@@ -559,9 +473,6 @@ fn test_genesis_transaction() {
 
 #[test]
 fn test_shared_input_objects() {
-    let model_id = ModelId::random();
-    let target_id: TargetId = ObjectID::random();
-
     // Validator tx -> SystemState only
     let add_val = TransactionKind::AddValidator(AddValidatorArgs {
         pubkey_bytes: vec![],
@@ -587,44 +498,16 @@ fn test_shared_input_objects() {
     assert_eq!(shared.len(), 1);
     assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
 
-    // Model tx -> SystemState only
-    let commit_model = TransactionKind::CommitModel(CommitModelArgs {
-        model_id: ModelId::random(),
-        manifest: dummy_manifest(),
-        weights_commitment: ModelWeightsCommitment::random(),
-        embedding_commitment: EmbeddingCommitment::random(),
-        decryption_key_commitment: DecryptionKeyCommitment::random(),
-    });
-    let shared: Vec<_> = commit_model.shared_input_objects().collect();
-    assert_eq!(shared.len(), 1);
-    assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-
-    // Submission tx -> SystemState + Target
-    let submit_data = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id,
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    let shared: Vec<_> = submit_data.shared_input_objects().collect();
-    assert_eq!(shared.len(), 2);
-    assert_eq!(shared[0].id, SYSTEM_STATE_OBJECT_ID);
-    assert_eq!(shared[1].id, target_id);
-    assert!(shared[1].mutable);
-
     // Genesis -> no shared input objects
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
     let shared: Vec<_> = genesis.shared_input_objects().collect();
     assert!(shared.is_empty());
 
     // TransferCoin -> no shared input objects
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
+    let transfer = TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: Some(100).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
     };
     let shared: Vec<_> = transfer.shared_input_objects().collect();
     assert!(shared.is_empty());
@@ -658,10 +541,10 @@ fn test_input_objects_no_duplicates() {
 #[test]
 fn test_contains_shared_object() {
     // TransferCoin does NOT touch shared state
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
+    let transfer = TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: Some(100).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
     };
     assert!(!transfer.contains_shared_object(), "TransferCoin should not contain shared objects");
 
@@ -675,18 +558,6 @@ fn test_contains_shared_object() {
         add_stake.contains_shared_object(),
         "AddStake should contain shared objects (SystemState)"
     );
-
-    // SubmitData touches SystemState + Target
-    let submit = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id: ObjectID::random(),
-        data_manifest: dummy_submission_manifest(),
-        model_id: ModelId::random(),
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin: random_object_ref(),
-    });
-    assert!(submit.contains_shared_object(), "SubmitData should contain shared objects");
 
     // Genesis does NOT touch shared state
     let genesis = TransactionKind::Genesis(GenesisTransaction { objects: vec![] });
@@ -848,12 +719,12 @@ fn test_transaction_data_constructors() {
     // Gas payment should be the first coin
     assert_eq!(pay_data.gas(), vec![coin1]);
     match pay_data.kind() {
-        TransactionKind::PayCoins { coins, amounts, recipients } => {
+        TransactionKind::Transfer { coins, amounts, recipients } => {
             assert_eq!(coins.len(), 2);
             assert_eq!(*amounts, Some(vec![100, 200]));
             assert_eq!(recipients.len(), 2);
         }
-        _ => panic!("Expected PayCoins kind"),
+        _ => panic!("Expected Transfer kind"),
     }
 }
 
@@ -884,14 +755,6 @@ fn test_requires_system_state() {
     };
     assert!(add_stake.requires_system_state());
 
-    // Model tx requires system state
-    let deactivate = TransactionKind::DeactivateModel { model_id: ModelId::random() };
-    assert!(deactivate.requires_system_state());
-
-    // Submission tx requires system state
-    let claim = TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: ObjectID::random() });
-    assert!(claim.requires_system_state());
-
     // ChangeEpoch requires system state (is_epoch_change)
     let epoch = TransactionKind::ChangeEpoch(ChangeEpoch {
         epoch: 1,
@@ -903,10 +766,10 @@ fn test_requires_system_state() {
     assert!(epoch.requires_system_state());
 
     // Transfer does NOT require system state
-    let transfer = TransactionKind::TransferCoin {
-        coin: random_object_ref(),
-        amount: Some(100),
-        recipient: SomaAddress::random(),
+    let transfer = TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: Some(100).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
     };
     assert!(!transfer.requires_system_state());
 
@@ -950,10 +813,10 @@ fn test_input_objects_system_tx() {
 fn test_input_objects_user_txs() {
     // TransferCoin: should have the coin as ImmOrOwnedObject
     let coin_ref = random_object_ref();
-    let transfer = TransactionKind::TransferCoin {
-        coin: coin_ref,
-        amount: Some(100),
-        recipient: SomaAddress::random(),
+    let transfer = TransactionKind::Transfer {
+        coins: vec![coin_ref],
+        amounts: Some(100).map(|a| vec![a]),
+        recipients: vec![SomaAddress::random()],
     };
     let inputs = transfer.input_objects().expect("should succeed");
     assert_eq!(inputs.len(), 1);
@@ -975,25 +838,6 @@ fn test_input_objects_user_txs() {
     assert!(!inputs[1].is_shared_object());
     assert_eq!(inputs[1].object_id(), coin_ref2.0);
 
-    // SubmitData: SystemState + bond_coin + target (shared)
-    let target_id = ObjectID::random();
-    let bond_coin = random_object_ref();
-    let submit = TransactionKind::SubmitData(SubmitDataArgs {
-        target_id,
-        data_manifest: dummy_submission_manifest(),
-        model_id: ModelId::random(),
-        embedding: dummy_tensor(),
-        distance_score: dummy_scalar_tensor(),
-        loss_score: SomaTensor::new(vec![0.5], vec![1]),
-        bond_coin,
-    });
-    let inputs = submit.input_objects().expect("should succeed");
-    assert_eq!(inputs.len(), 3);
-    // Should contain system state, bond coin, and target
-    let ids: Vec<ObjectID> = inputs.iter().map(|i| i.object_id()).collect();
-    assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
-    assert!(ids.contains(&bond_coin.0));
-    assert!(ids.contains(&target_id));
 }
 
 // ---------------------------------------------------------------------------

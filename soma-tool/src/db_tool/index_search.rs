@@ -32,21 +32,6 @@ pub struct BalanceSearchOptions {
     pub owner: String,
 }
 
-#[derive(Parser, Clone)]
-pub struct TargetSearchOptions {
-    /// Optional status filter (open, filled, claimed)
-    #[arg(long)]
-    pub status: Option<String>,
-
-    /// Optional epoch filter
-    #[arg(long)]
-    pub epoch: Option<u64>,
-
-    /// Maximum number of results to return
-    #[arg(long, default_value = "20")]
-    pub count: u64,
-}
-
 fn hex_decode(s: &str) -> anyhow::Result<Vec<u8>> {
     let trimmed = s.trim_start_matches("0x");
     if trimmed.len() % 2 != 0 {
@@ -135,44 +120,3 @@ pub fn search_balance_index(db_path: PathBuf, opts: BalanceSearchOptions) -> any
     Ok(())
 }
 
-/// Search the target index by status and/or epoch
-pub fn search_target_index(db_path: PathBuf, opts: TargetSearchOptions) -> anyhow::Result<()> {
-    let db = open_index_readonly(&db_path);
-
-    let mut count = 0u64;
-    let max_count = opts.count;
-
-    for entry in db.targets.safe_iter() {
-        let (key, value) = entry?;
-
-        if let Some(ref status) = opts.status {
-            if key.status != *status {
-                continue;
-            }
-        }
-
-        if let Some(epoch) = opts.epoch {
-            if key.generation_epoch != epoch {
-                continue;
-            }
-        }
-
-        println!(
-            "Target: {} | Status: {} | Epoch: {} | Version: {:?}",
-            key.target_id, key.status, key.generation_epoch, value.version,
-        );
-
-        count += 1;
-        if count >= max_count {
-            break;
-        }
-    }
-
-    if count == 0 {
-        println!("No targets found");
-    } else {
-        println!("\nTotal: {} entries (limit: {})", count, max_count);
-    }
-
-    Ok(())
-}

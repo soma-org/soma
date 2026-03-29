@@ -10,7 +10,7 @@ use crate::object::*;
 
 /// Helper to create a simple ObjectData for testing.
 fn make_test_object_data(id: ObjectID) -> ObjectData {
-    ObjectData::new_with_id(id, ObjectType::Coin, Version::from_u64(1), vec![1, 2, 3, 4])
+    ObjectData::new_with_id(id, ObjectType::Coin(CoinType::Soma), Version::from_u64(1), vec![1, 2, 3, 4])
 }
 
 /// Helper to create a full Object for testing.
@@ -64,13 +64,13 @@ fn test_coin_object() {
     let owner = Owner::AddressOwner(SomaAddress::default());
     let prev_tx = TransactionDigest::genesis_marker();
 
-    let coin = Object::new_coin(id, balance, owner, prev_tx);
+    let coin = Object::new_coin(id, CoinType::Soma, balance, owner, prev_tx);
 
     // Verify it roundtrips
     let extracted = coin.as_coin();
     assert!(extracted.is_some(), "as_coin() should return Some for a coin object");
     assert_eq!(extracted.unwrap(), balance, "Coin balance should roundtrip correctly");
-    assert_eq!(*coin.type_(), ObjectType::Coin);
+    assert_eq!(*coin.type_(), ObjectType::Coin(CoinType::Soma));
     assert_eq!(coin.id(), id);
 }
 
@@ -81,7 +81,7 @@ fn test_coin_balance_update() {
     let owner = Owner::AddressOwner(SomaAddress::default());
     let prev_tx = TransactionDigest::genesis_marker();
 
-    let mut coin = Object::new_coin(id, initial_balance, owner, prev_tx);
+    let mut coin = Object::new_coin(id, CoinType::Soma, initial_balance, owner, prev_tx);
     assert_eq!(coin.as_coin().unwrap(), initial_balance);
 
     let new_balance: u64 = 999;
@@ -100,9 +100,8 @@ fn test_coin_balance_update() {
 fn test_object_type_variants() {
     let variants = [
         (ObjectType::SystemState, "SystemState"),
-        (ObjectType::Coin, "Coin"),
+        (ObjectType::Coin(CoinType::Soma), "Coin(SOMA)"),
         (ObjectType::StakedSoma, "StakedSoma"),
-        (ObjectType::Target, "Target"),
     ];
 
     for (variant, expected_str) in &variants {

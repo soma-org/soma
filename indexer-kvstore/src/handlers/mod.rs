@@ -8,9 +8,6 @@ pub use epochs_end::EpochEndPipeline;
 pub use epochs_start::EpochStartPipeline;
 pub use handler::{BigTableHandler, BigTableProcessor};
 pub use objects::ObjectsPipeline;
-pub use soma_models::SomaModelsPipeline;
-pub use soma_rewards::SomaRewardsPipeline;
-pub use soma_targets::SomaTargetsPipeline;
 pub use transactions::TransactionsPipeline;
 
 mod checkpoints;
@@ -19,7 +16,4 @@ mod epochs_end;
 mod epochs_start;
 mod handler;
 mod objects;
-mod soma_models;
-mod soma_rewards;
-mod soma_targets;
 mod transactions;

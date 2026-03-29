@@ -57,9 +57,13 @@ impl TryFrom<types::object::Object> for Object {
         // Map ObjectType from domain to SDK
         let object_type = match value.data.object_type() {
             types::object::ObjectType::SystemState => ObjectType::SystemState,
-            types::object::ObjectType::Coin => ObjectType::Coin,
+            types::object::ObjectType::Coin(ct) => ObjectType::Coin(*ct),
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
-            types::object::ObjectType::Target => ObjectType::Target,
+            types::object::ObjectType::Ask => ObjectType::Ask,
+            types::object::ObjectType::Bid => ObjectType::Bid,
+            types::object::ObjectType::Settlement => ObjectType::Settlement,
+            types::object::ObjectType::SellerVault => ObjectType::SellerVault,
+            types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -83,9 +87,13 @@ impl TryFrom<Object> for types::object::Object {
         // Map ObjectType from SDK to domain
         let object_type = match value.object_type {
             ObjectType::SystemState => types::object::ObjectType::SystemState,
-            ObjectType::Coin => types::object::ObjectType::Coin,
+            ObjectType::Coin(ct) => types::object::ObjectType::Coin(ct),
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
-            ObjectType::Target => types::object::ObjectType::Target,
+            ObjectType::Ask => types::object::ObjectType::Ask,
+            ObjectType::Bid => types::object::ObjectType::Bid,
+            ObjectType::Settlement => types::object::ObjectType::Settlement,
+            ObjectType::SellerVault => types::object::ObjectType::SellerVault,
+            ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -364,16 +372,14 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             TK::SetCommissionRate { new_rate } => TransactionKind::SetCommissionRate { new_rate },
 
             // Transfer operations
-            TK::TransferCoin { coin, amount, recipient } => TransactionKind::TransferCoin {
-                coin: coin.into(),
-                amount,
-                recipient: recipient.into(),
-            },
-
-            TK::PayCoins { coins, amounts, recipients } => TransactionKind::PayCoins {
+            TK::Transfer { coins, amounts, recipients } => TransactionKind::Transfer {
                 coins: coins.into_iter().map(Into::into).collect(),
                 amounts,
                 recipients: recipients.into_iter().map(Into::into).collect(),
+            },
+
+            TK::MergeCoins { coins } => TransactionKind::MergeCoins {
+                coins: coins.into_iter().map(Into::into).collect(),
             },
 
             TK::TransferObjects { objects, recipient } => TransactionKind::TransferObjects {
@@ -392,72 +398,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 TransactionKind::WithdrawStake { staked_soma: staked_soma.into() }
             }
 
-            // Model transactions
-            TK::CreateModel(args) => TransactionKind::CreateModel(CreateModelArgs {
-                stake_amount: args.stake_amount,
-                commission_rate: args.commission_rate,
-                architecture_version: args.architecture_version,
-            }),
-
-            TK::CommitModel(args) => TransactionKind::CommitModel(CommitModelArgs {
-                model_id: args.model_id.into(),
-                manifest: args.manifest.into(),
-                weights_commitment: args.weights_commitment.into_inner().to_vec(),
-                embedding_commitment: args.embedding_commitment.into_inner().to_vec(),
-                decryption_key_commitment: args.decryption_key_commitment.into_inner().to_vec(),
-            }),
-
-            TK::RevealModel(args) => TransactionKind::RevealModel(RevealModelArgs {
-                model_id: args.model_id.into(),
-                decryption_key: args.decryption_key.as_ref().to_vec(),
-                embedding: args.embedding.to_vec(),
-            }),
-
-            TK::AddStakeToModel { model_id, coin_ref, amount } => {
-                TransactionKind::AddStakeToModel {
-                    model_id: model_id.into(),
-                    coin_ref: coin_ref.into(),
-                    amount,
-                }
-            }
-
-            TK::SetModelCommissionRate { model_id, new_rate } => {
-                TransactionKind::SetModelCommissionRate { model_id: model_id.into(), new_rate }
-            }
-
-            TK::DeactivateModel { model_id } => {
-                TransactionKind::DeactivateModel { model_id: model_id.into() }
-            }
-
-            TK::ReportModel { model_id } => {
-                TransactionKind::ReportModel { model_id: model_id.into() }
-            }
-
-            TK::UndoReportModel { model_id } => {
-                TransactionKind::UndoReportModel { model_id: model_id.into() }
-            }
-
-            // Submission transactions
-            TK::SubmitData(args) => TransactionKind::SubmitData(SubmitDataArgs {
-                target_id: args.target_id.into(),
-                data_manifest: SubmissionManifest { manifest: args.data_manifest.manifest.into() },
-                model_id: args.model_id.into(),
-                embedding: args.embedding.to_vec(),
-                distance_score: args.distance_score.as_scalar(),
-                loss_score: args.loss_score.to_vec(),
-                bond_coin: args.bond_coin.into(),
-            }),
-
-            TK::ClaimRewards(args) => {
-                TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id: args.target_id.into() })
-            }
-
-            TK::ReportSubmission { target_id } => {
-                TransactionKind::ReportSubmission { target_id: target_id.into() }
-            }
-            TK::UndoReportSubmission { target_id } => {
-                TransactionKind::UndoReportSubmission { target_id: target_id.into() }
-            }
+            _ => return Err(SdkTypeConversionError("Marketplace/bridge tx type conversion not yet implemented".to_string())),
         })
     }
 }
@@ -544,14 +485,14 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
 
             // Transfer operations
-            TransactionKind::TransferCoin { coin, amount, recipient } => {
-                TK::TransferCoin { coin: coin.into(), amount, recipient: recipient.into() }
-            }
-
-            TransactionKind::PayCoins { coins, amounts, recipients } => TK::PayCoins {
+            TransactionKind::Transfer { coins, amounts, recipients } => TK::Transfer {
                 coins: coins.into_iter().map(Into::into).collect(),
                 amounts,
                 recipients: recipients.into_iter().map(Into::into).collect(),
+            },
+
+            TransactionKind::MergeCoins { coins } => TK::MergeCoins {
+                coins: coins.into_iter().map(Into::into).collect(),
             },
 
             TransactionKind::TransferObjects { objects, recipient } => TK::TransferObjects {
@@ -568,112 +509,72 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 TK::WithdrawStake { staked_soma: staked_soma.into() }
             }
 
-            // Model transactions
-            TransactionKind::CreateModel(args) => {
-                TK::CreateModel(types::transaction::CreateModelArgs {
-                    stake_amount: args.stake_amount,
-                    commission_rate: args.commission_rate,
-                    architecture_version: args.architecture_version,
+            // Marketplace transactions
+            TransactionKind::CreateAsk(args) => TK::CreateAsk(types::transaction::CreateAskArgs {
+                task_digest: types::digests::TaskDigest::new(
+                    args.task_digest.try_into().unwrap_or([0u8; 32]),
+                ),
+                max_price_per_bid: args.max_price_per_bid,
+                num_bids_wanted: args.num_bids_wanted,
+                timeout_ms: args.timeout_ms,
+            }),
+            TransactionKind::CancelAsk { ask_id } => TK::CancelAsk { ask_id: ask_id.into() },
+            TransactionKind::CreateBid(args) => TK::CreateBid(types::transaction::CreateBidArgs {
+                ask_id: args.ask_id.into(),
+                price: args.price,
+                response_digest: types::digests::ResponseDigest::new(
+                    args.response_digest.try_into().unwrap_or([0u8; 32]),
+                ),
+            }),
+            TransactionKind::AcceptBid(args) => TK::AcceptBid(types::transaction::AcceptBidArgs {
+                ask_id: args.ask_id.into(),
+                bid_id: args.bid_id.into(),
+                payment_coin: args.payment_coin.into(),
+            }),
+            TransactionKind::RateSeller { settlement_id } => {
+                TK::RateSeller { settlement_id: settlement_id.into() }
+            }
+            TransactionKind::WithdrawFromVault { vault, amount, recipient_coin } => {
+                TK::WithdrawFromVault {
+                    vault: vault.into(),
+                    amount,
+                    recipient_coin: recipient_coin.map(Into::into),
+                }
+            }
+
+            // Bridge transactions
+            TransactionKind::BridgeDeposit(args) => {
+                TK::BridgeDeposit(types::transaction::BridgeDepositArgs {
+                    nonce: args.nonce,
+                    eth_tx_hash: args.eth_tx_hash.try_into().unwrap_or([0u8; 32]),
+                    recipient: args.recipient.into(),
+                    amount: args.amount,
+                    aggregated_signature: args.aggregated_signature,
+                    signer_bitmap: args.signer_bitmap,
+                })
+            }
+            TransactionKind::BridgeWithdraw(args) => {
+                TK::BridgeWithdraw(types::transaction::BridgeWithdrawArgs {
+                    payment_coin: args.payment_coin.into(),
+                    amount: args.amount,
+                    recipient_eth_address: args.recipient_eth_address.try_into().unwrap_or([0u8; 20]),
+                })
+            }
+            TransactionKind::BridgeEmergencyPause(args) => {
+                TK::BridgeEmergencyPause(types::transaction::BridgeEmergencyPauseArgs {
+                    aggregated_signature: args.aggregated_signature,
+                    signer_bitmap: args.signer_bitmap,
+                })
+            }
+            TransactionKind::BridgeEmergencyUnpause(args) => {
+                TK::BridgeEmergencyUnpause(types::transaction::BridgeEmergencyUnpauseArgs {
+                    aggregated_signature: args.aggregated_signature,
+                    signer_bitmap: args.signer_bitmap,
                 })
             }
 
-            TransactionKind::CommitModel(args) => {
-                TK::CommitModel(types::transaction::CommitModelArgs {
-                    model_id: args.model_id.into(),
-                    manifest: args.manifest.try_into()?,
-                    weights_commitment: types::digests::ModelWeightsCommitment::new(
-                        args.weights_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("weights_commitment must be 32 bytes".into())
-                        })?,
-                    ),
-                    embedding_commitment: types::digests::EmbeddingCommitment::new(
-                        args.embedding_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError("embedding_commitment must be 32 bytes".into())
-                        })?,
-                    ),
-                    decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                        args.decryption_key_commitment.try_into().map_err(|_| {
-                            SdkTypeConversionError(
-                                "decryption_key_commitment must be 32 bytes".into(),
-                            )
-                        })?,
-                    ),
-                })
-            }
-
-            TransactionKind::RevealModel(args) => {
-                let dim = args.embedding.len();
-                TK::RevealModel(types::transaction::RevealModelArgs {
-                    model_id: args.model_id.into(),
-                    decryption_key: types::crypto::DecryptionKey::new(
-                        args.decryption_key.try_into().map_err(|_| {
-                            SdkTypeConversionError("decryption_key must be 32 bytes".into())
-                        })?,
-                    ),
-                    embedding: types::tensor::SomaTensor::new(args.embedding, vec![dim]),
-                })
-            }
-
-            TransactionKind::AddStakeToModel { model_id, coin_ref, amount } => {
-                TK::AddStakeToModel { model_id: model_id.into(), coin_ref: coin_ref.into(), amount }
-            }
-
-            TransactionKind::SetModelCommissionRate { model_id, new_rate } => {
-                TK::SetModelCommissionRate { model_id: model_id.into(), new_rate }
-            }
-
-            TransactionKind::DeactivateModel { model_id } => {
-                TK::DeactivateModel { model_id: model_id.into() }
-            }
-
-            TransactionKind::ReportModel { model_id } => {
-                TK::ReportModel { model_id: model_id.into() }
-            }
-
-            TransactionKind::UndoReportModel { model_id } => {
-                TK::UndoReportModel { model_id: model_id.into() }
-            }
-
-            // Submission transactions
-            TransactionKind::SubmitData(args) => {
-                let data_manifest = types::submission::SubmissionManifest::new(
-                    args.data_manifest.manifest.try_into()?,
-                );
-                // Convert f32 embedding to SomaTensor
-                let embedding = types::tensor::SomaTensor::new(
-                    args.embedding.clone(),
-                    vec![args.embedding.len()],
-                );
-                let distance_score = types::tensor::SomaTensor::scalar(args.distance_score);
-                let loss_score = types::tensor::SomaTensor::new(
-                    args.loss_score.clone(),
-                    vec![args.loss_score.len()],
-                );
-
-                TK::SubmitData(types::transaction::SubmitDataArgs {
-                    target_id: args.target_id.into(),
-                    data_manifest,
-                    model_id: args.model_id.into(),
-                    embedding,
-                    distance_score,
-                    loss_score,
-                    bond_coin: args.bond_coin.into(),
-                })
-            }
-
-            TransactionKind::ClaimRewards(args) => {
-                TK::ClaimRewards(types::transaction::ClaimRewardsArgs {
-                    target_id: args.target_id.into(),
-                    // target_initial_shared_version is ignored from proto - use protocol constant
-                })
-            }
-
-            TransactionKind::ReportSubmission { target_id } => {
-                TK::ReportSubmission { target_id: target_id.into() }
-            }
-            TransactionKind::UndoReportSubmission { target_id } => {
-                TK::UndoReportSubmission { target_id: target_id.into() }
-            }
+            // Model/Target/Submission transaction kinds have been removed from the domain
+            _ => return Err(SdkTypeConversionError("Unsupported transaction kind".into())),
         })
     }
 }
@@ -1283,12 +1184,6 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::EmbeddingDimensionMismatch { expected, actual } => {
                 Self::EmbeddingDimensionMismatch { expected, actual }
             }
-            types::effects::ExecutionFailureStatus::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold {
-                    score: score.as_scalar(),
-                    threshold: threshold.as_scalar(),
-                }
-            }
             types::effects::ExecutionFailureStatus::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
             }
@@ -1339,6 +1234,30 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
             types::effects::ExecutionFailureStatus::SomaError(soma_error) => {
                 Self::OtherError(soma_error.to_string())
             }
+            // Marketplace errors
+            types::effects::ExecutionFailureStatus::AskNotFound
+            | types::effects::ExecutionFailureStatus::AskNotOpen
+            | types::effects::ExecutionFailureStatus::AskExpired
+            | types::effects::ExecutionFailureStatus::AskAlreadyFilled
+            | types::effects::ExecutionFailureStatus::AskHasAcceptedBids
+            | types::effects::ExecutionFailureStatus::BidNotFound
+            | types::effects::ExecutionFailureStatus::BidNotPending
+            | types::effects::ExecutionFailureStatus::BidPriceTooHigh
+            | types::effects::ExecutionFailureStatus::SellerCannotBidOnOwnAsk
+            | types::effects::ExecutionFailureStatus::SettlementNotFound
+            | types::effects::ExecutionFailureStatus::SettlementAlreadyRatedNegative
+            | types::effects::ExecutionFailureStatus::RatingDeadlinePassed
+            | types::effects::ExecutionFailureStatus::VaultNotFound
+            | types::effects::ExecutionFailureStatus::InsufficientVaultBalance
+            | types::effects::ExecutionFailureStatus::WrongCoinTypeForPayment => {
+                Self::OtherError(value.to_string())
+            }
+            // Bridge errors
+            types::effects::ExecutionFailureStatus::BridgePaused
+            | types::effects::ExecutionFailureStatus::BridgeNonceAlreadyProcessed
+            | types::effects::ExecutionFailureStatus::BridgeInsufficientSignatureStake => {
+                Self::OtherError(value.to_string())
+            }
         }
     }
 }
@@ -1357,8 +1276,8 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             }
             ExecutionError::InvalidObjectType { object_id } => Self::InvalidObjectType {
                 object_id: object_id.into(),
-                expected_type: types::object::ObjectType::Coin, // TODO: change this
-                actual_type: types::object::ObjectType::Coin,   // TODO: change this
+                expected_type: types::object::ObjectType::Coin(types::object::CoinType::Soma), // TODO: change this
+                actual_type: types::object::ObjectType::Coin(types::object::CoinType::Soma),   // TODO: change this
             },
             ExecutionError::InvalidTransactionType => Self::InvalidTransactionType,
             ExecutionError::InvalidArguments { reason } => Self::InvalidArguments { reason },
@@ -1415,12 +1334,6 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
             }
             ExecutionError::EmbeddingDimensionMismatch { expected, actual } => {
                 Self::EmbeddingDimensionMismatch { expected, actual }
-            }
-            ExecutionError::DistanceExceedsThreshold { score, threshold } => {
-                Self::DistanceExceedsThreshold {
-                    score: types::tensor::SomaTensor::scalar(score),
-                    threshold: types::tensor::SomaTensor::scalar(threshold),
-                }
             }
             ExecutionError::InsufficientBond { required, provided } => {
                 Self::InsufficientBond { required, provided }
@@ -1631,32 +1544,6 @@ impl TryFrom<Manifest> for types::metadata::Manifest {
                 Ok(types::metadata::Manifest::V1(types::metadata::ManifestV1::new(url, metadata)))
             }
         }
-    }
-}
-
-// ============================================================================
-// ModelWeightsManifest conversions
-// ============================================================================
-
-impl From<types::model::ModelWeightsManifest> for ModelWeightsManifest {
-    fn from(value: types::model::ModelWeightsManifest) -> Self {
-        Self {
-            manifest: value.manifest.into(),
-            decryption_key: value.decryption_key.as_bytes().to_vec(),
-        }
-    }
-}
-
-impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
-    type Error = SdkTypeConversionError;
-
-    fn try_from(value: ModelWeightsManifest) -> Result<Self, Self::Error> {
-        let manifest = value.manifest.try_into()?;
-        let key_array: [u8; 32] = value
-            .decryption_key
-            .try_into()
-            .map_err(|_| SdkTypeConversionError("decryption_key must be 32 bytes".into()))?;
-        Ok(Self { manifest, decryption_key: types::crypto::DecryptionKey::new(key_array) })
     }
 }
 

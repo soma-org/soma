@@ -23,7 +23,6 @@ mod execution_status;
 mod ledger_service;
 mod object;
 mod signatures;
-pub mod target;
 mod transaction;
 mod transaction_execution_service;
 

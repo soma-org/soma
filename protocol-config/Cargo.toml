@@ -6,13 +6,10 @@ version.workspace = true
 [dependencies]
 serde.workspace = true
 tracing.workspace = true
-serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
+serde_with = { version = "3.16", default-features = false, features = ["alloc", "macros"] }
 protocol-config-macros.workspace = true
 schemars = { version = "0.8.22", features = ["either"] }
 clap.workspace = true
-fastcrypto = { workspace = true }
-burn = { workspace = true }
-bcs.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

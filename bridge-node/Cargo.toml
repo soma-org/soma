@@ -1,0 +1,49 @@
+[package]
+name = "bridge-node"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Workspace crates
+types = { workspace = true }
+utils = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bcs = { workspace = true }
+
+# Crypto
+fastcrypto = { workspace = true }
+
+# Ethereum RPC (raw JSON-RPC via reqwest — avoids alloy serde compatibility issues)
+reqwest = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+backoff = { workspace = true }
+dashmap = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+rand = { workspace = true }
+wiremock = { workspace = true }

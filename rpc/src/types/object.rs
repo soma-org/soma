@@ -150,7 +150,11 @@ impl Object {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ObjectType {
     SystemState,
-    Coin,
+    Coin(types::object::CoinType),
     StakedSoma,
-    Target,
+    Ask,
+    Bid,
+    Settlement,
+    SellerVault,
+    PendingWithdrawal,
 }

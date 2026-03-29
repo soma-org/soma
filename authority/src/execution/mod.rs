@@ -4,13 +4,13 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
-use model::ModelExecutor;
+use marketplace::MarketplaceExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
 use staking::StakingExecutor;
-use submission::SubmissionExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
 use types::base::SomaAddress;
@@ -30,13 +30,13 @@ use types::transaction::{
 use types::tx_fee::TransactionFee;
 use validator::ValidatorExecutor;
 
+mod bridge;
 mod change_epoch;
 mod coin;
-mod model;
+mod marketplace;
 mod object;
 mod prepare_gas;
 mod staking;
-mod submission;
 mod system;
 mod validator;
 
@@ -341,31 +341,29 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::ConsensusCommitPrologueV1(_) => Box::new(ConsensusCommitExecutor::new()),
 
         // Coin and object transactions
-        TransactionKind::TransferCoin { .. } | TransactionKind::PayCoins { .. } => {
+        TransactionKind::Transfer { .. } | TransactionKind::MergeCoins { .. } => {
             Box::new(CoinExecutor::new())
         }
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
-        // Staking transactions - both validator and model staking
+        // Staking transactions (validator only)
         TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
             Box::new(StakingExecutor::new())
         }
 
-        // Model transactions
-        TransactionKind::CreateModel(_)
-        | TransactionKind::CommitModel(_)
-        | TransactionKind::RevealModel(_)
-        | TransactionKind::AddStakeToModel { .. }
-        | TransactionKind::SetModelCommissionRate { .. }
-        | TransactionKind::DeactivateModel { .. }
-        | TransactionKind::ReportModel { .. }
-        | TransactionKind::UndoReportModel { .. } => Box::new(ModelExecutor::new()),
+        // Marketplace transactions
+        TransactionKind::CreateAsk(_)
+        | TransactionKind::CancelAsk { .. }
+        | TransactionKind::CreateBid(_)
+        | TransactionKind::AcceptBid(_)
+        | TransactionKind::RateSeller { .. }
+        | TransactionKind::WithdrawFromVault { .. } => Box::new(MarketplaceExecutor::new()),
 
-        // Submission transactions
-        TransactionKind::SubmitData(_)
-        | TransactionKind::ClaimRewards(_)
-        | TransactionKind::ReportSubmission { .. }
-        | TransactionKind::UndoReportSubmission { .. } => Box::new(SubmissionExecutor::new()),
+        // Bridge transactions
+        TransactionKind::BridgeDeposit(_)
+        | TransactionKind::BridgeWithdraw(_)
+        | TransactionKind::BridgeEmergencyPause(_)
+        | TransactionKind::BridgeEmergencyUnpause(_) => Box::new(BridgeExecutor::new()),
     }
 }
 

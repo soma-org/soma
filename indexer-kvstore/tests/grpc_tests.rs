@@ -25,17 +25,14 @@ use rpc::proto::soma::{
 };
 use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
-use types::target::TargetStatus;
 use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state, test_target,
+    TestCheckpointBuilder, default_test_system_state,
 };
 
-/// Build a genesis checkpoint with system state and a target.
+/// Build a genesis checkpoint with system state.
 fn genesis_checkpoint() -> Checkpoint {
-    let target = test_target(0, TargetStatus::Open, 1000);
     TestCheckpointBuilder::new(0)
         .with_genesis_system_state(default_test_system_state())
-        .add_target(target)
         .build()
 }
 

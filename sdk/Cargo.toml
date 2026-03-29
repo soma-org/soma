@@ -33,7 +33,6 @@ hex.workspace = true
 tiny-bip39.workspace = true
 
 # Optional gRPC service deps
-scoring = { path = "../scoring", default-features = false, optional = true }
 admin = { path = "../admin", optional = true }
 
 # Optional proxy/TLS deps
@@ -43,7 +42,7 @@ reqwest = { version = "0.12", default-features = false, features = ["http2", "js
 default = ["tls"]
 proxy = ["dep:reqwest"]
 tls = ["rpc/tls", "proxy", "reqwest/rustls-tls"]
-grpc-services = ["dep:scoring", "dep:admin"]
+grpc-services = ["dep:admin"]
 
 [dev-dependencies]
 faucet = { path = "../faucet", default-features = false }

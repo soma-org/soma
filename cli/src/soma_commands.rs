@@ -43,11 +43,10 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{
-    EnvCommand, ModelCommand, ObjectsCommand, SomaValidatorCommand, TargetCommand, WalletCommand,
-};
+use crate::commands::{EnvCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
+use crate::usdc_amount::UsdcAmount;
 
 const DEFAULT_EPOCH_DURATION_MS: u64 = 86_400_000; // 24 hours; use admin endpoint to advance
 
@@ -143,14 +142,63 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Send SOMA to a recipient
+    /// Transfer SOMA or USDC to one or more recipients
     #[clap(
-        name = "send",
+        name = "transfer",
         after_help = "\
 EXAMPLES:
-    soma send --to 0x1234...5678 --amount 1
-    soma send --to my-alias --amount 0.5 --coin 0xABCD..."
+    soma transfer 10 0x1234...5678              # send 10 SOMA
+    soma transfer 1.50 0xABC... --usdc          # send 1.50 USDC
+    soma transfer 5 0xA... 0xB... 0xC...        # split 5 SOMA equally among 3 recipients
+    soma transfer 0 0xA... 0xB... --amounts 3,2 # send 3 to first, 2 to second
+    soma transfer 10 0xABC... --coins 0xC1,0xC2 # use specific input coins"
     )]
+    Transfer {
+        /// Amount to send (in SOMA by default, or USDC with --usdc)
+        amount: String,
+        /// Recipient address(es) or alias(es)
+        #[clap(required = true, num_args(1..))]
+        recipients: Vec<KeyIdentity>,
+        /// Send USDC instead of SOMA
+        #[clap(long)]
+        usdc: bool,
+        /// Per-recipient amounts (comma-separated). Overrides the positional amount.
+        #[clap(long, value_delimiter = ',')]
+        amounts: Option<Vec<String>>,
+        /// Input coin object IDs (comma-separated, auto-selected if not provided)
+        #[clap(long, value_delimiter = ',')]
+        coins: Option<Vec<ObjectID>>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Transfer an object to a recipient
+    #[clap(
+        name = "transfer-object",
+        after_help = "\
+EXAMPLES:
+    soma transfer-object --to 0x1234...5678 --object-id 0xABCD..."
+    )]
+    TransferObject {
+        /// Recipient address or alias
+        #[clap(long)]
+        to: KeyIdentity,
+        /// Object ID to transfer
+        #[clap(long)]
+        object_id: ObjectID,
+        /// Gas object (auto-selected if not provided)
+        #[clap(long)]
+        gas: Option<ObjectID>,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// [deprecated: use `transfer`] Send SOMA to a recipient
+    #[clap(name = "send", hide = true)]
     Send {
         /// Recipient address or alias
         #[clap(long)]
@@ -167,39 +215,8 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Transfer an object to a recipient
-    #[clap(
-        name = "transfer",
-        after_help = "\
-EXAMPLES:
-    soma transfer --to 0x1234...5678 --object-id 0xABCD...
-    soma transfer --to my-alias --object-id 0xABCD... --gas 0xGAS..."
-    )]
-    Transfer {
-        /// Recipient address or alias
-        #[clap(long)]
-        to: KeyIdentity,
-        /// Object ID to transfer
-        #[clap(long)]
-        object_id: ObjectID,
-        /// Gas object (auto-selected if not provided)
-        #[clap(long)]
-        gas: Option<ObjectID>,
-        #[clap(flatten)]
-        tx_args: TxProcessingArgs,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Pay SOMA to multiple recipients
-    #[clap(
-        name = "pay",
-        after_help = "\
-EXAMPLES:
-    soma pay --recipients 0xABC... --amounts 1
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 0.5
-    soma pay --recipients 0xABC... 0xDEF... --amounts 1 2 --coins 0xCOIN..."
-    )]
+    /// [deprecated: use `transfer`] Pay SOMA to multiple recipients
+    #[clap(name = "pay", hide = true)]
     Pay {
         /// Recipient addresses
         #[clap(long, required = true, num_args(1..))]
@@ -216,22 +233,18 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Stake SOMA with a validator or model
+    /// Stake SOMA with a validator
     #[clap(
         name = "stake",
         after_help = "\
 EXAMPLES:
     soma stake --validator 0xVAL... --amount 10
-    soma stake --model 0xMODEL... --amount 5
     soma stake --validator 0xVAL... --coin 0xCOIN..."
     )]
     Stake {
         /// Validator address to stake with
-        #[clap(long, group = "stake_target", required_unless_present = "model")]
-        validator: Option<SomaAddress>,
-        /// Model ID to stake with
-        #[clap(long, group = "stake_target", required_unless_present = "validator")]
-        model: Option<ObjectID>,
+        #[clap(long)]
+        validator: SomaAddress,
         /// Amount to stake in SOMA (uses entire coin if not specified)
         #[clap(long)]
         amount: Option<SomaAmount>,
@@ -282,11 +295,12 @@ EXAMPLES:
 
     /// Merge dust coins to reduce object count
     #[clap(
-        name = "merge-coins",
+        name = "merge",
+        visible_alias = "merge-coins",
         after_help = "\
 EXAMPLES:
-    soma merge-coins
-    soma merge-coins --json"
+    soma merge
+    soma merge --json"
     )]
     MergeCoins {
         #[clap(long, global = true, help = "Output as JSON")]
@@ -302,6 +316,144 @@ EXAMPLES:
     soma status --json"
     )]
     Status {
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    // =========================================================================
+    // MARKETPLACE COMMANDS
+    // =========================================================================
+    /// Manage asks (task requests)
+    #[clap(
+        name = "ask",
+        after_help = "\
+EXAMPLES:
+    soma ask create --task prompt.txt --max-price 1.50 --timeout 5m
+    soma ask cancel 0xASK_ID"
+    )]
+    Ask {
+        #[clap(subcommand)]
+        cmd: commands::AskCommand,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Manage bids (offers to fulfill asks)
+    #[clap(
+        name = "bid",
+        after_help = "\
+EXAMPLES:
+    soma bid create 0xASK_ID --price 1.00 --response output.txt"
+    )]
+    Bid {
+        #[clap(subcommand)]
+        cmd: commands::BidCommand,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Accept a bid (settlement: pays seller, creates settlement record)
+    ///
+    /// USDC payment coin is auto-selected from your wallet.
+    /// Use --cheapest with --ask to auto-accept the cheapest pending bid.
+    #[clap(
+        name = "accept",
+        after_help = "\
+EXAMPLES:
+    soma accept 0xBID_ID                           # auto-selects USDC coin
+    soma accept 0xBID_ID --payment-coin 0xUSDC     # explicit USDC coin
+    soma accept --ask 0xASK_ID --cheapest           # accept cheapest bid
+    soma accept --ask 0xASK_ID --cheapest --count 3 # accept 3 cheapest bids"
+    )]
+    Accept {
+        /// Bid ID to accept (omit when using --cheapest)
+        bid_id: Option<ObjectID>,
+        /// Ask ID (inferred from bid if not provided)
+        #[clap(long)]
+        ask: Option<ObjectID>,
+        /// USDC coin to pay with (auto-selected if not provided)
+        #[clap(long)]
+        payment_coin: Option<ObjectID>,
+        /// Accept the cheapest pending bid(s) for the ask (requires --ask)
+        #[clap(long)]
+        cheapest: bool,
+        /// Number of cheapest bids to accept (default: 1, requires --cheapest)
+        #[clap(long, default_value = "1")]
+        count: u32,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Submit a negative seller rating on a settlement
+    #[clap(
+        name = "rate",
+        after_help = "\
+EXAMPLES:
+    soma rate 0xSETTLEMENT_ID"
+    )]
+    Rate {
+        /// Settlement ID to rate
+        settlement_id: ObjectID,
+        #[clap(flatten)]
+        tx_args: TxProcessingArgs,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// Manage seller vault (withdraw USDC earnings)
+    #[clap(
+        name = "vault",
+        after_help = "\
+EXAMPLES:
+    soma vault withdraw 0xVAULT_ID
+    soma vault withdraw 0xVAULT_ID --amount 10.50"
+    )]
+    Vault {
+        #[clap(subcommand)]
+        cmd: commands::VaultCommand,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// View reputation for an address (derived from settlement history)
+    #[clap(
+        name = "reputation",
+        after_help = "\
+EXAMPLES:
+    soma reputation                            # reputation for active address
+    soma reputation 0xABC                      # reputation for specific address
+    soma reputation --json"
+    )]
+    Reputation {
+        /// Address to query (default: active wallet address)
+        address: Option<String>,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
+    /// View settlement history (accepted bids, payments, ratings)
+    #[clap(
+        name = "settlements",
+        after_help = "\
+EXAMPLES:
+    soma settlements                           # all settlements for active address
+    soma settlements --as buyer                # settlements where you are the buyer
+    soma settlements --as seller               # settlements where you are the seller
+    soma settlements --address 0xABC --as seller
+    soma settlements --json"
+    )]
+    Settlements {
+        /// Role filter: 'buyer', 'seller', or omit for both
+        #[clap(long = "as")]
+        role: Option<String>,
+        /// Address to query (default: active wallet address)
+        #[clap(long)]
+        address: Option<String>,
+        /// Maximum number of settlements to return
+        #[clap(long, default_value = "100")]
+        limit: u32,
         #[clap(long, global = true, help = "Output as JSON")]
         json: bool,
     },
@@ -378,51 +530,6 @@ EXAMPLES:
     },
 
     // =========================================================================
-    // SUBMISSION COMMANDS
-    // =========================================================================
-    /// Manage models (commit, reveal, update, deactivate, query)
-    #[clap(
-        name = "model",
-        after_help = "\
-EXAMPLES:
-    soma model list
-    soma model info 0xMODEL_ID
-    soma model commit 0xMODEL_ID --weights-url-commitment 0xHEX... \\
-        --weights-commitment 0xHEX... --architecture-version 1 \\
-        --stake-amount 100 --staking-pool-id 0xPOOL_ID
-    soma model reveal 0xMODEL_ID --weights-url https://... \\
-        --weights-checksum 0xHEX... --weights-size 1024 \\
-        --decryption-key 0xHEX... --embedding 0.1,0.2,0.3
-    soma model deactivate 0xMODEL_ID
-    soma model download 0xMODEL_ID --output ./weights.bin"
-    )]
-    Model {
-        #[clap(subcommand)]
-        cmd: ModelCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    /// Manage targets: query, submit data, claim rewards, download data
-    #[clap(
-        name = "target",
-        after_help = "\
-EXAMPLES:
-    soma target list
-    soma target list --status open
-    soma target info 0xTARGET_ID
-    soma target submit --target-id 0xTARGET... --data-commitment 0xHEX... ...
-    soma target claim 0xTARGET_ID
-    soma target download 0xTARGET_ID"
-    )]
-    Target {
-        #[clap(subcommand)]
-        cmd: TargetCommand,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
-    // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
     /// Manage validators (register, set gas price, commission)
@@ -445,15 +552,14 @@ EXAMPLES:
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a long-running service (localnet, validator, faucet, scoring)
+    /// Start a long-running service (localnet, validator, faucet)
     #[clap(
         name = "start",
         after_help = "\
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
+    soma start localnet --force-regenesis
     soma start validator --config validator.yaml
-    soma start faucet --port 9123
-    soma start scoring --port 9124"
+    soma start faucet --port 9123"
     )]
     Start {
         #[clap(subcommand)]
@@ -524,16 +630,15 @@ EXAMPLES:
 pub enum StartCommand {
     /// Start a local SOMA network for development and testing
     ///
-    /// Launches local validators, a fullnode, and optionally a faucet and scoring service.
+    /// Launches local validators, a fullnode, and optionally a faucet.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
     /// for an ephemeral network that starts fresh each time.
     #[clap(
         name = "localnet",
         after_help = "\
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
     soma start localnet --force-regenesis
-    soma start localnet --no-faucet --no-scoring"
+    soma start localnet --no-faucet"
     )]
     Localnet {
         /// Config directory that will be used to store network config, node db, keystore.
@@ -582,14 +687,6 @@ EXAMPLES:
         /// Disable the faucet server.
         #[clap(long)]
         no_faucet: bool,
-
-        /// Disable the scoring server.
-        #[clap(long)]
-        no_scoring: bool,
-
-        /// Use small model config for the scoring server (embedding_dim=16, num_layers=2).
-        #[clap(long)]
-        small_model: bool,
     },
 
     /// Start a validator node from a config file
@@ -632,41 +729,6 @@ EXAMPLES:
         config_dir: Option<PathBuf>,
     },
 
-    /// Start the scoring service for computing embeddings and distances
-    ///
-    /// Runs an HTTP server that accepts scoring requests via POST /score.
-    #[clap(
-        name = "scoring",
-        after_help = "\
-EXAMPLES:
-    soma start scoring
-    soma start scoring --host 127.0.0.1 --port 8080
-    soma start scoring --device cuda
-    soma start scoring --small-model
-    soma start scoring --data-dir /tmp/soma-data"
-    )]
-    Scoring {
-        /// Host to bind the scoring service to
-        #[clap(long, default_value = "0.0.0.0")]
-        host: String,
-
-        /// Port to listen on
-        #[clap(long, default_value_t = 9124)]
-        port: u16,
-
-        /// Directory for cached blob storage (data and model weights)
-        #[clap(long)]
-        data_dir: Option<PathBuf>,
-
-        /// Use a small model for testing (embedding_dim=16, num_layers=2)
-        #[clap(long)]
-        small_model: bool,
-
-        /// Compute device backend: cpu, wgpu, or cuda (default: wgpu).
-        /// CUDA requires the NVIDIA CUDA toolkit to be installed.
-        #[clap(long, default_value = "wgpu")]
-        device: String,
-    },
 }
 
 /// Subcommands for `soma tx` — transaction queries and raw execution.
@@ -717,7 +779,7 @@ pub enum GenesisCommand {
     #[clap(name = "ceremony")]
     Ceremony(crate::genesis_ceremony::Ceremony),
 
-    /// Inspect a genesis.blob file for models, targets, and key parameters
+    /// Inspect a genesis.blob file for key parameters
     #[clap(name = "inspect")]
     Inspect {
         /// Path to genesis.blob file
@@ -733,7 +795,6 @@ impl SomaCommand {
                 StartCommand::Localnet { log_level, .. } => {
                     log_level.parse().unwrap_or(tracing::Level::INFO)
                 }
-                StartCommand::Scoring { .. } => tracing::Level::INFO,
                 StartCommand::Validator { .. } => tracing::Level::INFO,
                 StartCommand::Faucet { .. } => tracing::Level::INFO,
             },
@@ -760,7 +821,65 @@ impl SomaCommand {
                 Ok(())
             }
 
+            SomaCommand::Transfer { amount, recipients, usdc, amounts, coins, tx_args, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+
+                // Parse the positional amount based on token type
+                let base_amount: u64 = if usdc {
+                    amount
+                        .parse::<UsdcAmount>()
+                        .map_err(|e| anyhow!("{}", e))?
+                        .microdollars()
+                } else {
+                    amount
+                        .parse::<SomaAmount>()
+                        .map_err(|e| anyhow!("{}", e))?
+                        .shannons()
+                };
+
+                // Parse per-recipient amounts if provided
+                let per_recipient_amounts: Option<Vec<u64>> = amounts.map(|strs| {
+                    strs.into_iter()
+                        .map(|s| {
+                            if usdc {
+                                s.parse::<UsdcAmount>().map(|a| a.microdollars()).map_err(|e| anyhow!("{}", e))
+                            } else {
+                                s.parse::<SomaAmount>().map(|a| a.shannons()).map_err(|e| anyhow!("{}", e))
+                            }
+                        })
+                        .collect::<Result<Vec<u64>, _>>()
+                }).transpose()?;
+
+                let result = commands::transfer::execute(
+                    &mut context,
+                    base_amount,
+                    recipients,
+                    per_recipient_amounts,
+                    coins,
+                    usdc,
+                    tx_args,
+                )
+                .await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::TransferObject { to, object_id, gas, tx_args, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::transfer::execute_transfer_object(&mut context, to, object_id, gas, tx_args).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
             SomaCommand::Send { to, amount, coin, tx_args, json } => {
+                // Backward compat: delegate to unified transfer
                 ensure!(amount.shannons() > 0, "Amount must be greater than 0");
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
@@ -773,18 +892,8 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Transfer { to, object_id, gas, tx_args, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::transfer::execute(&mut context, to, object_id, gas, tx_args).await?;
-                result.print(json);
-                if result.has_failed_transaction() {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-
             SomaCommand::Pay { recipients, amounts, coins, tx_args, json } => {
+                // Backward compat: delegate to unified transfer
                 ensure!(
                     recipients.len() == amounts.len(),
                     "Number of recipients ({}) must match number of amounts ({})",
@@ -811,12 +920,11 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Stake { validator, model, amount, coin, tx_args, json } => {
+            SomaCommand::Stake { validator, amount, coin, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::stake::execute_stake(
                     &mut context,
                     validator,
-                    model,
                     amount.map(|a| a.shannons()),
                     coin,
                     tx_args,
@@ -843,6 +951,86 @@ impl SomaCommand {
             SomaCommand::Faucet { address, url, json: _ } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 commands::faucet::execute_request(&mut context, address, url).await?;
+                Ok(())
+            }
+
+            // Marketplace commands
+            SomaCommand::Ask { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::ask::execute(&mut context, cmd).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Bid { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::bid::execute(&mut context, cmd).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Accept { bid_id, ask, payment_coin, cheapest, count, tx_args, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                if cheapest {
+                    let ask_id = ask.ok_or_else(|| anyhow!("--cheapest requires --ask <ASK_ID>"))?;
+                    let result =
+                        commands::accept::execute_cheapest(&mut context, ask_id, count, payment_coin, tx_args)
+                            .await?;
+                    result.print(json);
+                    if result.has_failed_transaction() {
+                        std::process::exit(1);
+                    }
+                } else {
+                    let bid_id = bid_id.ok_or_else(|| {
+                        anyhow!("Bid ID is required. Usage: soma accept <BID_ID> or soma accept --ask <ASK_ID> --cheapest")
+                    })?;
+                    let result =
+                        commands::accept::execute(&mut context, bid_id, ask, payment_coin, tx_args)
+                            .await?;
+                    result.print(json);
+                    if result.has_failed_transaction() {
+                        std::process::exit(1);
+                    }
+                }
+                Ok(())
+            }
+
+            SomaCommand::Rate { settlement_id, tx_args, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result =
+                    commands::rate::execute(&mut context, settlement_id, tx_args).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Vault { cmd, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let result = commands::vault::execute(&mut context, cmd).await?;
+                result.print(json);
+                if result.has_failed_transaction() {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+
+            SomaCommand::Settlements { role, address, limit, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                commands::settlements::execute(&mut context, role, address, limit, json).await?;
+                Ok(())
+            }
+
+            SomaCommand::Reputation { address, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                commands::reputation::execute(&mut context, address, json).await?;
                 Ok(())
             }
 
@@ -1013,18 +1201,6 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Model { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
-            SomaCommand::Target { cmd, json } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                cmd.execute(&mut context).await?.print(json);
-                Ok(())
-            }
-
             // =================================================================
             // NODE OPERATIONS
             // =================================================================
@@ -1062,8 +1238,6 @@ impl SomaCommand {
                         log_level: _,
                         with_faucet,
                         no_faucet,
-                        no_scoring,
-                        small_model,
                     } => {
                         // Faucet: on by default unless --no-faucet
                         let faucet = if no_faucet {
@@ -1071,8 +1245,6 @@ impl SomaCommand {
                         } else {
                             Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
                         };
-                        // Scoring: on by default unless --no-scoring
-                        let scoring = !no_scoring;
                         start(
                             config_dir.clone(),
                             force_regenesis,
@@ -1082,8 +1254,6 @@ impl SomaCommand {
                             no_full_node,
                             committee_size,
                             faucet,
-                            scoring,
-                            small_model,
                         )
                         .await?;
                     }
@@ -1093,63 +1263,6 @@ impl SomaCommand {
                     StartCommand::Faucet { port, host, amount, num_coins, config_dir } => {
                         commands::faucet::execute_start(port, host, amount, num_coins, config_dir)
                             .await?;
-                    }
-                    StartCommand::Scoring { host, port, data_dir, small_model, device } => {
-                        use types::config::node_config::DeviceConfig;
-
-                        let device = match device.as_str() {
-                            "cpu" => DeviceConfig::Cpu,
-                            "wgpu" => DeviceConfig::Wgpu,
-                            "cuda" => DeviceConfig::Cuda,
-                            other => {
-                                bail!("Unknown device: {other}. Valid options: cpu, wgpu, cuda")
-                            }
-                        };
-
-                        let data_dir = data_dir.unwrap_or_else(|| {
-                            soma_config_dir()
-                                .unwrap_or_else(|_| PathBuf::from("."))
-                                .join("scoring-data")
-                        });
-                        fs::create_dir_all(&data_dir)?;
-
-                        let model_config = if small_model {
-                            scoring::model_config_small()
-                        } else {
-                            runtime::ModelConfig::new()
-                        };
-
-                        let progress_factory =
-                            crate::commands::download_progress::scoring_progress_factory();
-                        let engine = std::sync::Arc::new(
-                            scoring::scoring::ScoringEngine::new(
-                                &data_dir,
-                                model_config,
-                                &device,
-                                progress_factory,
-                            )
-                            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-                        );
-
-                        print_banner("Scoring Service");
-
-                        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
-                        let device_str = device.to_string();
-                        let url = format!("http://{display_host}:{port}");
-                        let score_ep = format!("POST {url}/score");
-                        let data_display = data_dir.display().to_string();
-                        print_info_panel(&[
-                            ("URL", &url),
-                            ("Score endpoint", &score_ep),
-                            ("Device", &device_str),
-                            ("Data dir", &data_display),
-                        ]);
-                        eprintln!();
-                        eprintln!("  Press {} to stop.", "Ctrl+C".bold());
-
-                        scoring::server::start_scoring_server(&host, port, engine)
-                            .await
-                            .map_err(|e| anyhow!("Scoring server error: {e}"))?;
                     }
                 }
                 Ok(())
@@ -1219,8 +1332,6 @@ async fn start(
     no_full_node: bool,
     committee_size: Option<usize>,
     with_faucet: Option<String>,
-    with_scoring: bool,
-    small_model: bool,
 ) -> Result<(), anyhow::Error> {
     if force_regenesis {
         ensure!(
@@ -1251,10 +1362,6 @@ async fn start(
         } else {
             GenesisConfig::for_local_testing()
         };
-        if small_model {
-            // Small model uses embedding_dim=16; override protocol config default of 2048
-            genesis_config.parameters.target_embedding_dim_override = Some(16);
-        }
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
@@ -1359,44 +1466,6 @@ async fn start(
     // -- Build & launch -------------------------------------------------------
     const STATUS_WIDTH: usize = 50;
     print_banner("Local Network");
-
-    // -- Scoring service (must start before validators so they can connect) ----
-    let mut scoring_url: Option<String> = None;
-    if with_scoring {
-        use types::config::node_config::DeviceConfig;
-
-        let msg = "Starting scoring service...";
-        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
-
-        let model_config =
-            if small_model { scoring::model_config_small() } else { runtime::ModelConfig::new() };
-
-        let scoring_data_dir = config_dir.join("scoring-data");
-        fs::create_dir_all(&scoring_data_dir)?;
-        let device = DeviceConfig::Wgpu;
-
-        let progress_factory = crate::commands::download_progress::scoring_progress_factory();
-        let engine = std::sync::Arc::new(
-            scoring::scoring::ScoringEngine::new(
-                &scoring_data_dir,
-                model_config,
-                &device,
-                progress_factory,
-            )
-            .map_err(|e| anyhow!("Failed to create scoring engine: {e}"))?,
-        );
-
-        tokio::spawn(async move {
-            if let Err(e) = scoring::server::start_scoring_server("0.0.0.0", 9124, engine).await {
-                tracing::error!("Scoring server error: {}", e);
-            }
-        });
-
-        let url = "http://127.0.0.1:9124".to_string();
-        swarm_builder = swarm_builder.with_scoring_url(url.clone());
-        scoring_url = Some(url);
-        eprintln!("{}", "done".green());
-    }
 
     let msg = "Generating genesis...";
     eprint!("  {msg:<width$}", width = STATUS_WIDTH);
@@ -1534,12 +1603,10 @@ async fn start(
     eprintln!("  {}", "Network ready.".green().bold());
     eprintln!();
     let faucet_display = faucet_url.as_deref().unwrap_or("disabled");
-    let scoring_display = scoring_url.as_deref().unwrap_or("disabled");
     let epoch_display = format!("{}s", epoch_ms / 1000);
     let rows: Vec<(&str, &str)> = vec![
         ("RPC URL", &fullnode_rpc_url),
         ("Faucet", faucet_display),
-        ("Scoring", scoring_display),
         ("Admin", &admin_url),
         ("Epoch", &epoch_display),
         ("Persistence", persistence),

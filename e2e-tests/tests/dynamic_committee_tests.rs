@@ -68,6 +68,7 @@ impl StressTestRunner {
             .with_accounts(vec![
                 AccountConfig {
                     gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                    usdc_amounts: vec![],
                     address: None,
                 };
                 100

@@ -40,10 +40,12 @@ pub use fee::TransactionFee;
 pub use object::{Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
-    AddValidatorArgs, ChangeEpoch, ClaimRewardsArgs, CommitModelArgs, ConsensusCommitPrologue,
-    CreateModelArgs, GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1,
-    ModelWeightsManifest, RemoveValidatorArgs, RevealModelArgs, SignedTransaction,
-    SubmissionManifest, SubmitDataArgs, Transaction, TransactionKind, UpdateValidatorMetadataArgs,
+    AcceptBidArgs, AddValidatorArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
+    BridgeEmergencyUnpauseArgs, BridgeWithdrawArgs, ChangeEpoch, ClaimRewardsArgs,
+    CommitModelArgs, ConsensusCommitPrologue, CreateAskArgs, CreateBidArgs, CreateModelArgs,
+    GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
+    RemoveValidatorArgs, RevealModelArgs, SignedTransaction, SubmissionManifest, SubmitDataArgs,
+    Transaction, TransactionKind, UpdateValidatorMetadataArgs,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -2,7 +2,7 @@
 source: cli/tests/cli_snapshot_tests.rs
 expression: stdout
 ---
-Start a long-running service (localnet, validator, faucet, scoring)
+Start a long-running service (localnet, validator, faucet)
 
 Usage: soma start <COMMAND>
 
@@ -10,14 +10,12 @@ Commands:
   localnet   Start a local SOMA network for development and testing
   validator  Start a validator node from a config file
   faucet     Start a standalone faucet gRPC server
-  scoring    Start the scoring service for computing embeddings and distances
   help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help  Print help
 
 EXAMPLES:
-    soma start localnet --force-regenesis --small-model
+    soma start localnet --force-regenesis
     soma start validator --config validator.yaml
     soma start faucet --port 9123
-    soma start scoring --port 9124

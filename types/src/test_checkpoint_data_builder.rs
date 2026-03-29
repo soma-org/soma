@@ -20,15 +20,13 @@ use crate::digests::{CheckpointDigest, ObjectDigest, TransactionDigest, Transact
 use crate::effects::object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use crate::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsV1};
 use crate::full_checkpoint_content::{Checkpoint, ExecutedTransaction, ObjectSet};
-use crate::model::ModelId;
 use crate::object::{
-    OBJECT_START_VERSION, Object, ObjectData, ObjectID, ObjectType, Owner, Version,
+    CoinType, OBJECT_START_VERSION, Object, ObjectData, ObjectID, ObjectType, Owner, Version,
 };
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::system_state::{SystemState, SystemStateTrait as _};
-use crate::target::{TargetId, TargetStatus, TargetV1};
-use crate::tensor::SomaTensor;
 use crate::transaction::{
-    ChangeEpoch, ClaimRewardsArgs, GenesisTransaction, TransactionData, TransactionKind,
+    ChangeEpoch, GenesisTransaction, TransactionData, TransactionKind,
 };
 use crate::tx_fee::TransactionFee;
 
@@ -155,7 +153,7 @@ impl TestCheckpointBuilder {
         let gas_output = Object::new(
             ObjectData::new_with_id(
                 gas_id,
-                ObjectType::Coin,
+                ObjectType::Coin(CoinType::Soma),
                 version,
                 bcs::to_bytes(&999_000u64).unwrap(),
             ),
@@ -167,7 +165,7 @@ impl TestCheckpointBuilder {
         let coin_output = Object::new(
             ObjectData::new_with_id(
                 coin_id,
-                ObjectType::Coin,
+                ObjectType::Coin(CoinType::Soma),
                 version,
                 bcs::to_bytes(&amount).unwrap(),
             ),
@@ -229,181 +227,6 @@ impl TestCheckpointBuilder {
             effects,
             input_objects: vec![gas_input],
             output_objects: vec![gas_output, coin_output],
-        });
-        self
-    }
-
-    /// Add a target object to the checkpoint as output of a system transaction.
-    pub fn add_target(mut self, target: TargetV1) -> Self {
-        let tx_digest = TransactionDigest::random();
-        let version = Version::from_u64(self.next_version);
-        self.next_version += 1;
-
-        let target_id = ObjectID::random();
-        let target_bytes = bcs::to_bytes(&target).unwrap();
-        let target_obj = Object::new(
-            ObjectData::new_with_id(target_id, ObjectType::Target, version, target_bytes),
-            Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
-            tx_digest,
-        );
-
-        // System transaction that creates the target
-        let tx_data = TransactionData::new(
-            TransactionKind::Genesis(crate::transaction::GenesisTransaction { objects: vec![] }),
-            SomaAddress::default(),
-            vec![],
-        );
-
-        let changed_objects = vec![(
-            target_id,
-            EffectsObjectChange {
-                input_state: ObjectIn::NotExist,
-                output_state: ObjectOut::ObjectWrite((
-                    ObjectDigest::random(),
-                    Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
-                )),
-                id_operation: IDOperation::Created,
-            },
-        )];
-
-        let effects = TransactionEffects::V1(TransactionEffectsV1 {
-            status: ExecutionStatus::Success,
-            executed_epoch: self.epoch,
-            transaction_digest: tx_digest,
-            version,
-            changed_objects,
-            dependencies: vec![],
-            unchanged_shared_objects: vec![],
-            transaction_fee: TransactionFee::default(),
-            gas_object_index: None,
-        });
-
-        self.transactions.push(TestTransaction {
-            tx_data,
-            effects,
-            input_objects: vec![],
-            output_objects: vec![target_obj],
-        });
-        self
-    }
-
-    /// Add a target object with a specific ID to the checkpoint.
-    pub fn add_target_with_id(mut self, target_id: ObjectID, target: TargetV1) -> Self {
-        let tx_digest = TransactionDigest::random();
-        let version = Version::from_u64(self.next_version);
-        self.next_version += 1;
-
-        let target_bytes = bcs::to_bytes(&target).unwrap();
-        let target_obj = Object::new(
-            ObjectData::new_with_id(target_id, ObjectType::Target, version, target_bytes),
-            Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
-            tx_digest,
-        );
-
-        let tx_data = TransactionData::new(
-            TransactionKind::Genesis(crate::transaction::GenesisTransaction { objects: vec![] }),
-            SomaAddress::default(),
-            vec![],
-        );
-
-        let changed_objects = vec![(
-            target_id,
-            EffectsObjectChange {
-                input_state: ObjectIn::NotExist,
-                output_state: ObjectOut::ObjectWrite((
-                    ObjectDigest::random(),
-                    Owner::Shared { initial_shared_version: OBJECT_START_VERSION },
-                )),
-                id_operation: IDOperation::Created,
-            },
-        )];
-
-        let effects = TransactionEffects::V1(TransactionEffectsV1 {
-            status: ExecutionStatus::Success,
-            executed_epoch: self.epoch,
-            transaction_digest: tx_digest,
-            version,
-            changed_objects,
-            dependencies: vec![],
-            unchanged_shared_objects: vec![],
-            transaction_fee: TransactionFee::default(),
-            gas_object_index: None,
-        });
-
-        self.transactions.push(TestTransaction {
-            tx_data,
-            effects,
-            input_objects: vec![],
-            output_objects: vec![target_obj],
-        });
-        self
-    }
-
-    /// Add a ClaimRewards transaction.
-    pub fn add_claim_rewards(
-        mut self,
-        sender: SomaAddress,
-        target_id: TargetId,
-        sender_amount: i128,
-    ) -> Self {
-        let tx_digest = TransactionDigest::random();
-        let version = Version::from_u64(self.next_version);
-        self.next_version += 1;
-
-        let gas_id = ObjectID::random();
-        let gas_input = Object::with_id_owner_coin_for_testing(gas_id, sender, 1_000_000);
-        let final_balance = (1_000_000i128 + sender_amount) as u64;
-        let gas_output = Object::new(
-            ObjectData::new_with_id(
-                gas_id,
-                ObjectType::Coin,
-                version,
-                bcs::to_bytes(&final_balance).unwrap(),
-            ),
-            Owner::AddressOwner(sender),
-            tx_digest,
-        );
-
-        let gas_input_version = gas_input.version();
-
-        let tx_data = TransactionData::new(
-            TransactionKind::ClaimRewards(ClaimRewardsArgs { target_id }),
-            sender,
-            vec![gas_input.compute_object_reference()],
-        );
-
-        let changed_objects = vec![(
-            gas_id,
-            EffectsObjectChange {
-                input_state: ObjectIn::Exist((
-                    (gas_input_version, ObjectDigest::random()),
-                    Owner::AddressOwner(sender),
-                )),
-                output_state: ObjectOut::ObjectWrite((
-                    ObjectDigest::random(),
-                    Owner::AddressOwner(sender),
-                )),
-                id_operation: IDOperation::None,
-            },
-        )];
-
-        let effects = TransactionEffects::V1(TransactionEffectsV1 {
-            status: ExecutionStatus::Success,
-            executed_epoch: self.epoch,
-            transaction_digest: tx_digest,
-            version,
-            changed_objects,
-            dependencies: vec![],
-            unchanged_shared_objects: vec![],
-            transaction_fee: TransactionFee::default(),
-            gas_object_index: Some(0),
-        });
-
-        self.transactions.push(TestTransaction {
-            tx_data,
-            effects,
-            input_objects: vec![gas_input],
-            output_objects: vec![gas_output],
         });
         self
     }
@@ -613,57 +436,13 @@ pub fn default_test_system_state() -> SystemState {
         protocol_config::ProtocolVersion::MAX.as_u64(),
         1_000_000, // epoch_start_timestamp_ms
         &protocol_config,
-        0, // emission_fund
-        0, // emission_per_epoch
+        0,                       // emission_fund
+        100_000_000_000_000,     // emission_initial_distribution_amount (100K SOMA in shannons)
+        10,                      // emission_period_length
+        1000,                    // emission_decrease_rate (10% in bps)
         None,
+        MarketplaceParameters::default(),
+        BridgeCommittee::empty(),
     )
 }
 
-/// Create a simple test `TargetV1` with minimal fields.
-pub fn test_target(epoch: EpochId, status: TargetStatus, reward_pool: u64) -> TargetV1 {
-    TargetV1 {
-        embedding: SomaTensor::zeros(vec![4]),
-        model_ids: vec![ObjectID::random()],
-        distance_threshold: SomaTensor::scalar(0.5),
-        reward_pool,
-        generation_epoch: epoch,
-        status,
-        submitter: None,
-        winning_model_id: None,
-        winning_model_owner: None,
-        bond_amount: 0,
-        winning_data_manifest: None,
-        winning_embedding: None,
-        winning_distance_score: None,
-        winning_loss_score: None,
-        submission_reports: BTreeSet::new(),
-    }
-}
-
-/// Create a filled target with a submitter.
-pub fn test_filled_target(
-    epoch: EpochId,
-    fill_epoch: EpochId,
-    submitter: SomaAddress,
-    model_id: ModelId,
-    reward_pool: u64,
-    bond_amount: u64,
-) -> TargetV1 {
-    TargetV1 {
-        embedding: SomaTensor::zeros(vec![4]),
-        model_ids: vec![model_id],
-        distance_threshold: SomaTensor::scalar(0.5),
-        reward_pool,
-        generation_epoch: epoch,
-        status: TargetStatus::Filled { fill_epoch },
-        submitter: Some(submitter),
-        winning_model_id: Some(model_id),
-        winning_model_owner: Some(submitter),
-        bond_amount,
-        winning_data_manifest: None,
-        winning_embedding: None,
-        winning_distance_score: None,
-        winning_loss_score: None,
-        submission_reports: BTreeSet::new(),
-    }
-}

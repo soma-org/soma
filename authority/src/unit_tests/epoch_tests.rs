@@ -90,14 +90,12 @@ async fn test_advance_epoch_returns_validator_rewards() {
     let result = state.advance_epoch(1, &protocol_config, fees, 1_000_000, vec![]);
 
     let validator_rewards = result.unwrap();
-    // With non-zero fees + emissions, validators should receive some rewards
-    // (unless validator_reward_allocation_bps is 0)
-    if state.parameters().validator_reward_allocation_bps > 0 {
-        assert!(
-            !validator_rewards.is_empty(),
-            "Validators should receive rewards when fees > 0 and allocation_bps > 0"
-        );
-    }
+    // With non-zero fees + emissions, validators should receive rewards
+    // (all emissions + fees go to validators in the marketplace model)
+    assert!(
+        !validator_rewards.is_empty(),
+        "Validators should receive rewards when fees > 0"
+    );
 }
 
 // =============================================================================
@@ -108,10 +106,10 @@ async fn test_advance_epoch_returns_validator_rewards() {
 async fn test_advance_epoch_emission_pool_decreases() {
     let mut state = get_genesis_system_state().await;
     let initial_emission = state.emission_pool().balance;
-    let emission_per_epoch = state.emission_pool().emission_per_epoch;
+    let emission_amount = state.emission_pool().current_distribution_amount;
 
     assert!(initial_emission > 0, "Genesis emission pool should be positive");
-    assert!(emission_per_epoch > 0, "Emission per epoch should be positive");
+    assert!(emission_amount > 0, "Emission distribution amount should be positive");
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         state.protocol_version().into(),
@@ -215,39 +213,7 @@ async fn test_advance_epoch_recovery_from_safe_mode() {
     );
 }
 
-// =============================================================================
-// Difficulty adjustment tests
-// =============================================================================
-
-#[tokio::test]
-async fn test_advance_epoch_hit_counter_tracking() {
-    let mut state = get_genesis_system_state().await;
-
-    // Simulate some hits and targets
-    state.target_state_mut().record_target_generated();
-    state.target_state_mut().record_target_generated();
-    state.target_state_mut().record_hit();
-
-    let targets_before = state.target_state().targets_generated_this_epoch;
-    let hits_before = state.target_state().hits_this_epoch;
-    assert_eq!(targets_before, 2);
-    assert_eq!(hits_before, 1);
-
-    let protocol_config = protocol_config::ProtocolConfig::get_for_version(
-        state.protocol_version().into(),
-        protocol_config::Chain::default(),
-    );
-
-    let _ = state.advance_epoch(1, &protocol_config, 0, 1_000_000, vec![]);
-
-    // After epoch advance, hit rate counters should be reset for the new epoch
-    assert_eq!(state.target_state().hits_this_epoch, 0, "Hits should be reset after epoch advance");
-    assert_eq!(
-        state.target_state().targets_generated_this_epoch,
-        0,
-        "Targets generated should be reset after epoch advance"
-    );
-}
+// Difficulty adjustment tests removed — target_state was stripped in Phase 1.
 
 // =============================================================================
 // BPS arithmetic safety

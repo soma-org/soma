@@ -258,7 +258,7 @@ async fn execute_transfer_with_separate_gas(
 
     // Use the gas object for gas payment, transfer the coin
     let data = TransactionData::new(
-        types::transaction::TransactionKind::TransferCoin { coin: coin_ref, amount, recipient },
+        types::transaction::TransactionKind::Transfer { coins: vec![coin_ref], amounts: amount.map(|a| vec![a]), recipients: vec![recipient] },
         sender,
         vec![gas_ref],
     );

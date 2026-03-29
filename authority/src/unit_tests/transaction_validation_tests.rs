@@ -105,10 +105,10 @@ async fn test_empty_gas_payment_rejected() {
     let authority_state = TestAuthorityBuilder::new().build().await;
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN),
+        TransactionKind::Transfer {
+            coins: vec![(ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN)],
+            amounts: Some(vec![100]),
+            recipients: vec![SomaAddress::default()],
         },
         sender,
         vec![], // empty gas payment
@@ -132,10 +132,10 @@ async fn test_nonexistent_gas_object_rejected() {
 
     let fake_gas_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: fake_gas_ref,
+        TransactionKind::Transfer {
+            coins: vec![fake_gas_ref],
+            amounts: Some(100).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         sender,
         vec![fake_gas_ref], // non-existent gas
@@ -157,10 +157,10 @@ async fn test_transaction_data_bcs_roundtrip() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(1000),
-            coin: coin_ref,
+        TransactionKind::Transfer {
+            coins: vec![coin_ref],
+            amounts: Some(1000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         sender,
         vec![coin_ref],
@@ -180,10 +180,10 @@ async fn test_transaction_digest_determinism() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(1000),
-            coin: coin_ref,
+        TransactionKind::Transfer {
+            coins: vec![coin_ref],
+            amounts: Some(1000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         sender,
         vec![coin_ref],
@@ -220,10 +220,10 @@ async fn test_duplicate_gas_coin_rejected() {
     authority_state.insert_genesis_object(coin2).await;
 
     let data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            recipient: SomaAddress::default(),
-            amount: Some(100),
-            coin: coin2_ref,
+        TransactionKind::Transfer {
+            coins: vec![coin2_ref],
+            amounts: Some(100).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         sender,
         vec![gas_ref, gas_ref], // duplicate gas coin

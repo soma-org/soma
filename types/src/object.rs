@@ -27,7 +27,6 @@ use crate::digests::{ObjectDigest, TransactionDigest};
 use crate::error::{SomaError, SomaResult};
 use crate::serde::Readable;
 use crate::system_state::staking::StakedSomaV1;
-use crate::target::TargetV1;
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
@@ -304,28 +303,37 @@ impl Object {
         &self.0.owner
     }
 
-    /// Create a new coin with the specified balance
+    /// Create a new coin with the specified balance and coin type
     pub fn new_coin(
         id: ObjectID,
+        coin_type: CoinType,
         balance: u64,
         owner: Owner,
         previous_transaction: TransactionDigest,
     ) -> Self {
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin,
+            ObjectType::Coin(coin_type),
             Version::MIN,
             bcs::to_bytes(&balance).unwrap(),
         );
         Self::new(data, owner, previous_transaction)
     }
 
-    /// Extract the coin balance if this is a coin object
+    /// Extract the coin balance if this is a coin object (any CoinType)
     pub fn as_coin(&self) -> Option<u64> {
-        if *self.data.object_type() == ObjectType::Coin {
+        if matches!(self.data.object_type(), ObjectType::Coin(_)) {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
+        }
+    }
+
+    /// Returns the CoinType if this is a coin object
+    pub fn coin_type(&self) -> Option<CoinType> {
+        match self.data.object_type() {
+            ObjectType::Coin(ct) => Some(*ct),
+            _ => None,
         }
     }
 
@@ -342,7 +350,7 @@ impl Object {
     pub fn with_id_owner_version_for_testing(id: ObjectID, version: Version, owner: Owner) -> Self {
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin,
+            ObjectType::Coin(CoinType::Soma),
             version,
             bcs::to_bytes(&GAS_VALUE_FOR_TESTING).unwrap(),
         );
@@ -352,7 +360,7 @@ impl Object {
     pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin,
+            ObjectType::Coin(CoinType::Soma),
             Version::MIN,
             bcs::to_bytes(&balance).unwrap(),
         );
@@ -390,39 +398,41 @@ impl Object {
         }
     }
 
-    /// Create a new Object containing a Target.
-    ///
-    /// Targets are shared objects with `initial_shared_version` set to `OBJECT_START_VERSION`.
-    /// Using OBJECT_START_VERSION (1) instead of Version::new() (0) ensures TemporaryStore
-    /// won't replace it with the lamport timestamp, giving targets a predictable
-    /// initial_shared_version that matches TARGET_OBJECT_SHARED_VERSION regardless of
-    /// when the target is created (genesis or epoch change).
-    pub fn new_target_object(
+    /// Create a new marketplace object (Ask, Bid, Settlement, SellerVault, PendingWithdrawal).
+    /// Uses BCS serialization of the inner type as contents.
+    pub fn new_marketplace_object<T: serde::Serialize>(
         id: ObjectID,
-        target: TargetV1,
+        object_type: ObjectType,
+        inner: &T,
+        owner: Owner,
         previous_transaction: TransactionDigest,
-    ) -> Object {
-        // Serialize Target to bytes
-        let target_bytes = bcs::to_bytes(&target).unwrap();
-
-        // Create ObjectData - use Version::MIN, TemporaryStore assigns lamport version
-        let data = ObjectData::new_with_id(id, ObjectType::Target, Version::MIN, target_bytes);
-
-        // Targets are shared objects - use OBJECT_START_VERSION (1) directly
-        // so TemporaryStore won't update it (it only updates Version::new() = 0)
-        let owner = Owner::Shared { initial_shared_version: OBJECT_START_VERSION };
-
-        Object::new(data, owner, previous_transaction)
+    ) -> Self {
+        let data = ObjectData::new_with_id(
+            id,
+            object_type,
+            Version::MIN,
+            bcs::to_bytes(inner).unwrap(),
+        );
+        Self::new(data, owner, previous_transaction)
     }
 
-    /// Extract Target from an Object
-    pub fn as_target(&self) -> Option<TargetV1> {
-        if *self.data.object_type() == ObjectType::Target {
+    /// Deserialize an object's contents as a specific type.
+    pub fn deserialize_contents<T: serde::de::DeserializeOwned>(
+        &self,
+        expected_type: ObjectType,
+    ) -> Option<T> {
+        if *self.data.object_type() == expected_type {
             bcs::from_bytes(self.data.contents()).ok()
         } else {
             None
         }
     }
+
+    /// Update an object's contents with BCS-serialized data.
+    pub fn update_contents<T: serde::Serialize>(&mut self, inner: &T) {
+        self.data.update_contents(bcs::to_bytes(inner).unwrap());
+    }
+
 }
 
 impl std::ops::Deref for Object {
@@ -558,49 +568,74 @@ impl ObjectData {
     }
 }
 
+/// Distinguishes SOMA (gas/staking) coins from USDC (marketplace payment) coins.
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, Serialize, Hash, PartialOrd, Ord)]
+pub enum CoinType {
+    Soma,
+    Usdc,
+}
+
+impl fmt::Display for CoinType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CoinType::Soma => write!(f, "SOMA"),
+            CoinType::Usdc => write!(f, "USDC"),
+        }
+    }
+}
+
 /// # ObjectType
 ///
 /// Defines the type of an object, which determines its behavior and structure.
-///
-/// ## Purpose
-/// ObjectType categorizes objects based on their role in the system, allowing
-/// for type-specific handling and validation.
-///
-/// ## Usage
-/// Different object types may have different validation rules, execution
-/// behaviors, and storage requirements.
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, PartialOrd, Ord)]
 pub enum ObjectType {
     /// Represents the global system state object
     SystemState,
-    /// Represents an owned SOMA Token object
-    Coin,
+    /// Represents an owned coin object tagged with its denomination
+    Coin(CoinType),
     /// Represents an owned Staked SOMA object
     StakedSoma,
-    /// Represents a data submission target object
-    Target,
+    /// Marketplace ask (buyer's request for work)
+    Ask,
+    /// Marketplace bid (seller's offer to fulfill an ask)
+    Bid,
+    /// Settlement (created when buyer accepts a bid)
+    Settlement,
+    /// Per-seller USDC balance accumulator
+    SellerVault,
+    /// Pending USDC withdrawal from Soma to Ethereum
+    PendingWithdrawal,
 }
 
 impl fmt::Display for ObjectType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectType::SystemState => write!(f, "SystemState"),
-            ObjectType::Coin => write!(f, "Coin"),
+            ObjectType::Coin(ct) => write!(f, "Coin({})", ct),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
-            ObjectType::Target => write!(f, "Target"),
+            ObjectType::Ask => write!(f, "Ask"),
+            ObjectType::Bid => write!(f, "Bid"),
+            ObjectType::Settlement => write!(f, "Settlement"),
+            ObjectType::SellerVault => write!(f, "SellerVault"),
+            ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
         }
     }
 }
 
 impl FromStr for ObjectType {
-    type Err = String; // Or use a custom error type
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "SystemState" => Ok(ObjectType::SystemState),
-            "Coin" => Ok(ObjectType::Coin),
+            "Coin" | "Coin(SOMA)" => Ok(ObjectType::Coin(CoinType::Soma)),
+            "Coin(USDC)" => Ok(ObjectType::Coin(CoinType::Usdc)),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
-            "Target" => Ok(ObjectType::Target),
+            "Ask" => Ok(ObjectType::Ask),
+            "Bid" => Ok(ObjectType::Bid),
+            "Settlement" => Ok(ObjectType::Settlement),
+            "SellerVault" => Ok(ObjectType::SellerVault),
+            "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

@@ -6,7 +6,7 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner};
+use types::object::{CoinType, Object, ObjectID, ObjectRef, ObjectType, Owner};
 use types::system_state::SystemState;
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
@@ -258,6 +258,7 @@ impl StakingExecutor {
         // Create a Coin object with the withdrawn amount
         let new_coin = Object::new_coin(
             ObjectID::derive_id(tx_digest, store.next_creation_num()),
+            CoinType::Soma,
             withdrawn_amount,
             Owner::AddressOwner(signer),
             tx_digest,
@@ -336,11 +337,20 @@ impl FeeCalculator for StakingExecutor {
     }
 }
 
-/// Verifies an object is a coin and returns its balance
+/// Verifies an object is a SOMA coin and returns its balance
 fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
+    // Staking requires SOMA coins
+    let balance = object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
         object_id: object.id(),
-        expected_type: ObjectType::Coin,
+        expected_type: ObjectType::Coin(CoinType::Soma),
         actual_type: object.type_().clone(),
-    })
+    })?;
+    match object.coin_type() {
+        Some(CoinType::Soma) => Ok(balance),
+        _ => Err(ExecutionFailureStatus::InvalidObjectType {
+            object_id: object.id(),
+            expected_type: ObjectType::Coin(CoinType::Soma),
+            actual_type: object.type_().clone(),
+        }),
+    }
 }

@@ -24,7 +24,7 @@ pub async fn execute(context: &mut WalletContext) -> Result<MergeCoinsResponse> 
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(sender.to_string());
     request.page_size = Some(1000);
-    request.object_type = Some(rpc::types::ObjectType::Coin.into());
+    request.object_type = Some("Coin".to_string());
 
     let stream = client.list_owned_objects(request).await;
     tokio::pin!(stream);
@@ -50,7 +50,7 @@ pub async fn execute(context: &mut WalletContext) -> Result<MergeCoinsResponse> 
     let gas_payment: Vec<_> = coins[1..].iter().map(|(r, _)| *r).collect();
 
     let kind =
-        TransactionKind::TransferCoin { coin: transfer_coin, amount: None, recipient: sender };
+        TransactionKind::Transfer { coins: vec![transfer_coin], amounts: None, recipients: vec![sender] };
     let tx_data = TransactionData::new(kind, sender, gas_payment);
 
     // 3. Sign and execute

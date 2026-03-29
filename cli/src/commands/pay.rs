@@ -70,7 +70,7 @@ pub async fn execute(
         }
     };
 
-    let kind = TransactionKind::PayCoins {
+    let kind = TransactionKind::Transfer {
         coins: coin_refs,
         amounts: Some(amounts),
         recipients: recipient_addresses,

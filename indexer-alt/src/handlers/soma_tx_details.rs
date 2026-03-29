@@ -28,84 +28,44 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
         TransactionKind::UndoReportValidator { .. } => "UndoReportValidator",
         TransactionKind::UpdateValidatorMetadata(_) => "UpdateValidatorMetadata",
         TransactionKind::SetCommissionRate { .. } => "SetCommissionRate",
-        TransactionKind::TransferCoin { .. } => "TransferCoin",
-        TransactionKind::PayCoins { .. } => "PayCoins",
+        TransactionKind::Transfer { .. } => "Transfer",
+        TransactionKind::MergeCoins { .. } => "MergeCoins",
         TransactionKind::TransferObjects { .. } => "TransferObjects",
         TransactionKind::AddStake { .. } => "AddStake",
         TransactionKind::WithdrawStake { .. } => "WithdrawStake",
-        TransactionKind::CreateModel(_) => "CreateModel",
-        TransactionKind::CommitModel(_) => "CommitModel",
-        TransactionKind::RevealModel(_) => "RevealModel",
-        TransactionKind::AddStakeToModel { .. } => "AddStakeToModel",
-        TransactionKind::SetModelCommissionRate { .. } => "SetModelCommissionRate",
-        TransactionKind::DeactivateModel { .. } => "DeactivateModel",
-        TransactionKind::ReportModel { .. } => "ReportModel",
-        TransactionKind::UndoReportModel { .. } => "UndoReportModel",
-        TransactionKind::SubmitData(_) => "SubmitData",
-        TransactionKind::ClaimRewards(_) => "ClaimRewards",
-        TransactionKind::ReportSubmission { .. } => "ReportSubmission",
-        TransactionKind::UndoReportSubmission { .. } => "UndoReportSubmission",
+        TransactionKind::CreateAsk(_) => "CreateAsk",
+        TransactionKind::CancelAsk { .. } => "CancelAsk",
+        TransactionKind::CreateBid(_) => "CreateBid",
+        TransactionKind::AcceptBid(_) => "AcceptBid",
+        TransactionKind::RateSeller { .. } => "RateSeller",
+        TransactionKind::WithdrawFromVault { .. } => "WithdrawFromVault",
+        TransactionKind::BridgeDeposit(_) => "BridgeDeposit",
+        TransactionKind::BridgeWithdraw(_) => "BridgeWithdraw",
+        TransactionKind::BridgeEmergencyPause(_) => "BridgeEmergencyPause",
+        TransactionKind::BridgeEmergencyUnpause(_) => "BridgeEmergencyUnpause",
     }
 }
 
 /// Extract kind-specific metadata as a JSON string for interesting tx types.
 fn metadata_json(kind: &TransactionKind) -> Option<String> {
     match kind {
-        TransactionKind::SubmitData(args) => Some(format!(
-            r#"{{"target_id":"0x{}","model_id":"0x{}"}}"#,
-            hex::encode(args.target_id.to_vec()),
-            hex::encode(args.model_id.to_vec()),
-        )),
-        TransactionKind::CommitModel(args) => {
-            Some(format!(r#"{{"model_id":"0x{}"}}"#, hex::encode(args.model_id.to_vec()),))
-        }
-        TransactionKind::RevealModel(args) => {
-            Some(format!(r#"{{"model_id":"0x{}"}}"#, hex::encode(args.model_id.to_vec()),))
-        }
-        TransactionKind::ClaimRewards(args) => {
-            Some(format!(r#"{{"target_id":"0x{}"}}"#, hex::encode(args.target_id.to_vec()),))
-        }
-        TransactionKind::AddStakeToModel { model_id, amount, .. } => {
-            let amount_str = match amount {
-                Some(a) => format!("{a}"),
+        TransactionKind::Transfer { amounts, recipients, .. } => {
+            let amount_str = match amounts {
+                Some(a) => format!("{:?}", a),
                 None => "null".to_string(),
             };
+            let recipients_str: Vec<String> = recipients
+                .iter()
+                .map(|r| format!("\"0x{}\"", hex::encode(r.to_vec())))
+                .collect();
             Some(format!(
-                r#"{{"model_id":"0x{}","amount":{}}}"#,
-                hex::encode(model_id.to_vec()),
+                r#"{{"recipients":[{}],"amounts":{}}}"#,
+                recipients_str.join(","),
                 amount_str,
             ))
         }
-        TransactionKind::SetModelCommissionRate { model_id, new_rate } => Some(format!(
-            r#"{{"model_id":"0x{}","new_rate":{}}}"#,
-            hex::encode(model_id.to_vec()),
-            new_rate,
-        )),
-        TransactionKind::DeactivateModel { model_id } => {
-            Some(format!(r#"{{"model_id":"0x{}"}}"#, hex::encode(model_id.to_vec()),))
-        }
-        TransactionKind::ReportModel { model_id } => {
-            Some(format!(r#"{{"model_id":"0x{}"}}"#, hex::encode(model_id.to_vec()),))
-        }
-        TransactionKind::UndoReportModel { model_id } => {
-            Some(format!(r#"{{"model_id":"0x{}"}}"#, hex::encode(model_id.to_vec()),))
-        }
-        TransactionKind::ReportSubmission { target_id } => {
-            Some(format!(r#"{{"target_id":"0x{}"}}"#, hex::encode(target_id.to_vec()),))
-        }
-        TransactionKind::UndoReportSubmission { target_id } => {
-            Some(format!(r#"{{"target_id":"0x{}"}}"#, hex::encode(target_id.to_vec()),))
-        }
-        TransactionKind::TransferCoin { amount, recipient, .. } => {
-            let amount_str = match amount {
-                Some(a) => format!("{a}"),
-                None => "null".to_string(),
-            };
-            Some(format!(
-                r#"{{"recipient":"0x{}","amount":{}}}"#,
-                hex::encode(recipient.to_vec()),
-                amount_str,
-            ))
+        TransactionKind::MergeCoins { coins } => {
+            Some(format!(r#"{{"coin_count":{}}}"#, coins.len()))
         }
         TransactionKind::AddStake { address, amount, .. } => {
             let amount_str = match amount {

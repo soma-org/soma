@@ -17,7 +17,7 @@ fn make_sender_signed_data() -> SenderSignedData {
     let recipient = SomaAddress::random();
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: obj_ref, amount: Some(100), recipient },
+        TransactionKind::Transfer { coins: vec![obj_ref], amounts: Some(vec![100]), recipients: vec![recipient] },
         sender,
         vec![obj_ref],
     );

@@ -21,7 +21,7 @@ use types::storage::ObjectKey;
 use types::storage::committee_store::CommitteeStore;
 use types::storage::object_store::ObjectStore;
 use types::storage::read_store::{
-    BalanceInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader, TargetInfo,
+    BalanceInfo, OwnedObjectInfo, ReadStore, RpcIndexes, RpcStateReader,
 };
 use types::storage::storage_error::{Error as StorageError, Result};
 use types::storage::write_store::WriteStore;
@@ -484,18 +484,50 @@ impl RpcIndexes for RestReadStore {
         self.index()?.get_highest_indexed_checkpoint_seq_number().map_err(Into::into)
     }
 
-    fn targets_iter(
+    fn bids_for_ask(
         &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<TargetInfo>,
-    ) -> Result<
-        Box<dyn Iterator<Item = Result<TargetInfo, types::storage::storage_error::Error>> + '_>,
-    > {
-        let iter = self
-            .index()?
-            .targets_iter(status_filter, epoch_filter, cursor)?
-            .map(|r| r.map_err(Into::into));
-        Ok(Box::new(iter))
+        ask_id: &types::object::ObjectID,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        self.index()?
+            .bids_for_ask(*ask_id)
+            .map_err(Into::into)
+            .and_then(|iter| {
+                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            })
+    }
+
+    fn open_asks(
+        &self,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        self.index()?
+            .open_asks_iter()
+            .map_err(Into::into)
+            .and_then(|iter| {
+                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            })
+    }
+
+    fn settlements_by_buyer(
+        &self,
+        buyer: &types::base::SomaAddress,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        self.index()?
+            .settlements_by_buyer(*buyer)
+            .map_err(Into::into)
+            .and_then(|iter| {
+                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            })
+    }
+
+    fn settlements_by_seller(
+        &self,
+        seller: &types::base::SomaAddress,
+    ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
+        self.index()?
+            .settlements_by_seller(*seller)
+            .map_err(Into::into)
+            .and_then(|iter| {
+                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            })
     }
 }

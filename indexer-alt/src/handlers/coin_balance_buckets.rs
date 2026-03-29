@@ -38,7 +38,7 @@ fn coin_owner_kind(owner: &Owner) -> Option<StoredCoinOwnerKind> {
 /// Extract the coin balance bucket data from an object, if it's an address-owned coin.
 fn coin_data(obj: &Object) -> Option<(StoredCoinOwnerKind, Vec<u8>, u64)> {
     let owner_kind = coin_owner_kind(obj.owner())?;
-    if *obj.type_() != ObjectType::Coin {
+    if !matches!(obj.type_(), ObjectType::Coin(_)) {
         return None;
     }
     let balance = obj.as_coin()?;

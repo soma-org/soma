@@ -44,19 +44,6 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    for (_, m) in ss.model_registry().active_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-    for (_, m) in ss.model_registry().pending_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-    for (_, m) in ss.model_registry().inactive_models() {
-        staking += m.staking_pool.soma_balance as u128;
-        staking += m.staking_pool.pending_stake as u128;
-    }
-
     let safe_mode =
         ss.safe_mode_accumulated_fees() as u128 + ss.safe_mode_accumulated_emissions() as u128;
 
@@ -85,7 +72,7 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
             5
         ])
         .build()
@@ -160,7 +147,7 @@ async fn test_supply_conservation_multi_epoch() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
             10
         ])
         .build()
@@ -232,7 +219,7 @@ async fn test_emission_pool_accounting() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], address: None };
+            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
             3
         ])
         .build()
@@ -240,7 +227,7 @@ async fn test_emission_pool_accounting() {
 
     let initial_ss = get_system_state(&test_cluster);
     let (initial_emission, initial_staking, _) = system_state_balances(&initial_ss);
-    let emission_per_epoch = initial_ss.emission_pool().emission_per_epoch;
+    let emission_per_epoch = initial_ss.emission_pool().current_distribution_amount;
 
     info!(
         "Initial: emission_pool={initial_emission}, emission_per_epoch={emission_per_epoch}, \

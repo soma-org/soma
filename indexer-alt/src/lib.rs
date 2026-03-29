@@ -156,26 +156,6 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
 
     // --- Tier C: Soma-specific pipelines (never pruned) ---
     indexer
-        .concurrent_pipeline(handlers::soma_targets::SomaTargets, no_prune.clone())
-        .await
-        .context("Failed to register soma_targets pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_models::SomaModels, no_prune.clone())
-        .await
-        .context("Failed to register soma_models pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_rewards::SomaRewards, no_prune.clone())
-        .await
-        .context("Failed to register soma_rewards pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_reward_balances::SomaRewardBalances, no_prune.clone())
-        .await
-        .context("Failed to register soma_reward_balances pipeline")?;
-
-    indexer
         .concurrent_pipeline(handlers::soma_staked_soma::SomaStakedSoma, no_prune.clone())
         .await
         .context("Failed to register soma_staked_soma pipeline")?;
@@ -186,19 +166,35 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_epoch_state pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_target_reports::SomaTargetReports, no_prune.clone())
-        .await
-        .context("Failed to register soma_target_reports pipeline")?;
-
-    indexer
         .concurrent_pipeline(handlers::soma_tx_details::SomaTxDetails, no_prune.clone())
         .await
         .context("Failed to register soma_tx_details pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune)
+        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune.clone())
         .await
         .context("Failed to register soma_validators pipeline")?;
+
+    // --- Tier C: Marketplace pipelines (never pruned) ---
+    indexer
+        .concurrent_pipeline(handlers::soma_asks::SomaAsks, no_prune.clone())
+        .await
+        .context("Failed to register soma_asks pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_bids::SomaBids, no_prune.clone())
+        .await
+        .context("Failed to register soma_bids pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_settlements::SomaSettlements, no_prune.clone())
+        .await
+        .context("Failed to register soma_settlements pipeline")?;
+
+    indexer
+        .concurrent_pipeline(handlers::soma_vaults::SomaVaults, no_prune)
+        .await
+        .context("Failed to register soma_vaults pipeline")?;
 
     Ok(())
 }

@@ -88,14 +88,6 @@ mod authority_tests;
 mod validator_tests;
 
 #[cfg(test)]
-#[path = "unit_tests/model_tests.rs"]
-mod model_tests;
-
-#[cfg(test)]
-#[path = "unit_tests/submission_tests.rs"]
-mod submission_tests;
-
-#[cfg(test)]
 #[path = "unit_tests/transaction_validation_tests.rs"]
 mod transaction_validation_tests;
 
@@ -126,6 +118,14 @@ mod batch_verification_tests;
 #[cfg(test)]
 #[path = "unit_tests/consensus_tests.rs"]
 mod consensus_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/marketplace_tests.rs"]
+mod marketplace_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/bridge_tests.rs"]
+mod bridge_tests;
 
 #[cfg(test)]
 pub(crate) mod consensus_test_utils;

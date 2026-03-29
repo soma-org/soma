@@ -68,7 +68,6 @@ pub enum ExecutionError {
     // Submission errors
     ModelNotInTarget { model_id: Address, target_id: Address },
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
-    DistanceExceedsThreshold { score: f32, threshold: f32 },
     InsufficientBond { required: u64, provided: u64 },
     InsufficientEmissionBalance,
 

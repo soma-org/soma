@@ -5,7 +5,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::iter;
 
-use crate::submission::SubmissionManifest;
 use fastcrypto::hash::HashFunction;
 use fastcrypto::traits::{Signer, ToFromBytes};
 use itertools::{Either, Itertools};
@@ -19,26 +18,20 @@ use crate::base::{AuthorityName, FullObjectID, SizeOneVec, SomaAddress};
 use crate::checkpoints::{CheckpointSequenceNumber, CheckpointTimestamp};
 use crate::committee::{Committee, EpochId};
 use crate::consensus::ConsensusCommitPrologueV1;
-use crate::crypto::DecryptionKey;
 use crate::crypto::{
     AuthoritySignInfo, AuthoritySignInfoTrait, AuthoritySignature, AuthorityStrongQuorumSignInfo,
     DefaultHash, Ed25519SomaSignature, EmptySignInfo, GenericSignature, Signature,
     SomaSignatureInner, default_hash,
 };
 use crate::digests::{
-    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest,
-    DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment, SenderSignedDataDigest,
-    TransactionDigest,
+    AdditionalConsensusStateDigest, AskId, BidId, CertificateDigest, ConsensusCommitDigest,
+    ResponseDigest, SenderSignedDataDigest, SettlementId, TaskDigest, TransactionDigest,
 };
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::metadata::Manifest;
-use crate::model::{ArchitectureVersion, ModelId};
-use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
-use crate::target::TargetId;
+use crate::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
 use crate::temporary_store::SharedInput;
-use crate::tensor::SomaTensor;
 use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
 
 /// # TransactionKind
@@ -82,15 +75,13 @@ pub enum TransactionKind {
     },
 
     // Coin and object transactions
-    TransferCoin {
-        coin: ObjectRef,
-        amount: Option<u64>,
-        recipient: SomaAddress,
-    },
-    PayCoins {
+    Transfer {
         coins: Vec<ObjectRef>,
         amounts: Option<Vec<u64>>,
         recipients: Vec<SomaAddress>,
+    },
+    MergeCoins {
+        coins: Vec<ObjectRef>,
     },
     TransferObjects {
         objects: Vec<ObjectRef>,
@@ -106,42 +97,31 @@ pub enum TransactionKind {
         staked_soma: ObjectRef,
     },
 
-    // Model transactions
-    CreateModel(CreateModelArgs),
-    CommitModel(CommitModelArgs),
-    RevealModel(RevealModelArgs),
-    AddStakeToModel {
-        model_id: ModelId,
-        coin_ref: ObjectRef,
+    // Marketplace transactions
+    CreateAsk(CreateAskArgs),
+    CancelAsk {
+        ask_id: AskId,
+    },
+    CreateBid(CreateBidArgs),
+    AcceptBid(AcceptBidArgs),
+    /// Submit a negative rating for a seller on a settlement.
+    /// Only negative ratings go on-chain — the default is positive (no tx needed).
+    RateSeller {
+        settlement_id: SettlementId,
+    },
+    WithdrawFromVault {
+        vault: ObjectRef,
         amount: Option<u64>,
-    },
-    SetModelCommissionRate {
-        model_id: ModelId,
-        new_rate: u64,
-    },
-    DeactivateModel {
-        model_id: ModelId,
-    },
-    ReportModel {
-        model_id: ModelId,
-    },
-    UndoReportModel {
-        model_id: ModelId,
+        recipient_coin: Option<ObjectRef>,
     },
 
-    // Submission transactions
-    SubmitData(SubmitDataArgs),
-    ClaimRewards(ClaimRewardsArgs),
-    /// Report a submission as fraudulent (validators only).
-    /// Reports are stored on the Target object and accumulate until 2f+1 quorum.
-    /// Quorum triggers slashing at ClaimRewards time.
-    ReportSubmission {
-        target_id: TargetId,
-    },
-    /// Undo a previous submission report.
-    UndoReportSubmission {
-        target_id: TargetId,
-    },
+    // Bridge transactions (system — gasless)
+    BridgeDeposit(BridgeDepositArgs),
+    BridgeEmergencyPause(BridgeEmergencyPauseArgs),
+    BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+
+    // Bridge transaction (user — normal gas)
+    BridgeWithdraw(BridgeWithdrawArgs),
 }
 
 /// # AddValidatorArgs
@@ -221,73 +201,59 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
-/// CreateModel: economic setup only (stake, commission, architecture).
-/// Returns model_id (derived from tx_digest). Model enters Created state.
+// --- Marketplace arg structs ---
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CreateModelArgs {
-    pub stake_amount: u64,
-    pub commission_rate: u64,
-    pub architecture_version: ArchitectureVersion,
+pub struct CreateAskArgs {
+    pub task_digest: TaskDigest,
+    pub max_price_per_bid: u64,
+    pub num_bids_wanted: u32,
+    pub timeout_ms: u64,
 }
 
-/// CommitModel (unified): works on Created models (initial) and Active models (update).
-/// On Created: transitions to Pending, sets commit_epoch.
-/// On Active: sets/overwrites pending_update.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CommitModelArgs {
-    pub model_id: ModelId,
-    pub manifest: Manifest,
-    pub weights_commitment: ModelWeightsCommitment,
-    /// Commitment (hash) of the model embedding for stake-weighted KNN selection.
-    pub embedding_commitment: EmbeddingCommitment,
-    /// Commitment (hash) of the decryption key, verified at reveal time.
-    pub decryption_key_commitment: DecryptionKeyCommitment,
+pub struct CreateBidArgs {
+    pub ask_id: AskId,
+    pub price: u64,
+    pub response_digest: ResponseDigest,
 }
 
-/// RevealModel (unified): works on Pending models (initial) and Active models with pending_update.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct RevealModelArgs {
-    pub model_id: ModelId,
-    pub decryption_key: DecryptionKey,
-    /// Full model embedding, revealed after commit.
-    pub embedding: SomaTensor,
+pub struct AcceptBidArgs {
+    pub ask_id: AskId,
+    pub bid_id: BidId,
+    pub payment_coin: ObjectRef,
 }
 
-/// Arguments for a data submission to a target.
-///
-/// This is a single-transaction submission (no commit-reveal) where the submitter
-/// provides all required data upfront. Front-running mitigation is deferred to
-/// future versions.
+// --- Bridge arg structs ---
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct SubmitDataArgs {
-    /// Target to submit against (shared object ID)
-    pub target_id: TargetId,
-
-    /// Manifest for submitted data (URL + checksum + size)
-    pub data_manifest: SubmissionManifest,
-
-    /// Which model the submitter chose from the target's model_ids
-    pub model_id: ModelId,
-
-    /// Pre-computed embedding as SomaTensor (f32 values)
-    pub embedding: SomaTensor,
-
-    /// Distance score as SomaTensor (scalar, shape [1]). Lower is better.
-    pub distance_score: SomaTensor,
-
-    /// Loss score from model inference as SomaTensor (vector, f32 values).
-    /// Stored on-chain for tracking and verified during challenge audit.
-    pub loss_score: SomaTensor,
-
-    /// Coin to use for bond payment (must cover submission_bond_per_byte * data_manifest.size)
-    pub bond_coin: ObjectRef,
+pub struct BridgeDepositArgs {
+    pub nonce: u64,
+    pub eth_tx_hash: [u8; 32],
+    pub recipient: SomaAddress,
+    pub amount: u64,
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
 }
 
-/// Arguments for claiming rewards from a filled or expired target.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct ClaimRewardsArgs {
-    /// Target to claim rewards from
-    pub target_id: TargetId,
+pub struct BridgeWithdrawArgs {
+    pub payment_coin: ObjectRef,
+    pub amount: u64,
+    pub recipient_eth_address: [u8; 20],
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeEmergencyPauseArgs {
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BridgeEmergencyUnpauseArgs {
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
 }
 
 impl TransactionKind {
@@ -297,6 +263,31 @@ impl TransactionKind {
             TransactionKind::Genesis(_)
                 | TransactionKind::ConsensusCommitPrologueV1(_)
                 | TransactionKind::ChangeEpoch(_)
+                | TransactionKind::BridgeDeposit(_)
+                | TransactionKind::BridgeEmergencyPause(_)
+                | TransactionKind::BridgeEmergencyUnpause(_)
+        )
+    }
+
+    pub fn is_marketplace_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::CreateAsk(_)
+                | TransactionKind::CancelAsk { .. }
+                | TransactionKind::CreateBid(_)
+                | TransactionKind::AcceptBid(_)
+                | TransactionKind::RateSeller { .. }
+                | TransactionKind::WithdrawFromVault { .. }
+        )
+    }
+
+    pub fn is_bridge_tx(&self) -> bool {
+        matches!(
+            self,
+            TransactionKind::BridgeDeposit(_)
+                | TransactionKind::BridgeWithdraw(_)
+                | TransactionKind::BridgeEmergencyPause(_)
+                | TransactionKind::BridgeEmergencyUnpause(_)
         )
     }
 
@@ -316,40 +307,17 @@ impl TransactionKind {
         matches!(self, TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. })
     }
 
-    pub fn is_model_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::CreateModel(_)
-                | TransactionKind::CommitModel(_)
-                | TransactionKind::RevealModel(_)
-                | TransactionKind::AddStakeToModel { .. }
-                | TransactionKind::SetModelCommissionRate { .. }
-                | TransactionKind::DeactivateModel { .. }
-                | TransactionKind::ReportModel { .. }
-                | TransactionKind::UndoReportModel { .. }
-        )
-    }
 
     pub fn is_end_of_epoch_tx(&self) -> bool {
         matches!(self, TransactionKind::ChangeEpoch(_))
-    }
-
-    pub fn is_submission_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::SubmitData(_)
-                | TransactionKind::ClaimRewards(_)
-                | TransactionKind::ReportSubmission { .. }
-                | TransactionKind::UndoReportSubmission { .. }
-        )
     }
 
     pub fn requires_system_state(&self) -> bool {
         self.is_validator_tx()
             || self.is_epoch_change()
             || self.is_staking_tx()
-            || self.is_model_tx()
-            || self.is_submission_tx()
+            || self.is_marketplace_tx()
+            || self.is_bridge_tx()
     }
 
     pub fn is_epoch_change(&self) -> bool {
@@ -374,35 +342,40 @@ impl TransactionKind {
             objects.push(SharedInputObject::SYSTEM_OBJ);
         }
 
-        // Add transaction-specific shared objects
+        // Add marketplace shared objects (Ask, Bid, Settlement).
+        // These use OBJECT_START_VERSION as initial_shared_version to match the
+        // version set during creation (see temporary_store.rs update_version_and_previous_tx).
         match self {
-            TransactionKind::SubmitData(args) => {
+            TransactionKind::CancelAsk { ask_id } => {
                 objects.push(SharedInputObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    id: *ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
                     mutable: true,
                 });
             }
-            TransactionKind::ClaimRewards(args) => {
+            TransactionKind::CreateBid(args) => {
                 objects.push(SharedInputObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    id: args.ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
+                    mutable: true, // must be mutable so version advances in store
+                });
+            }
+            TransactionKind::AcceptBid(args) => {
+                objects.push(SharedInputObject {
+                    id: args.ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
+                    mutable: true,
+                });
+                objects.push(SharedInputObject {
+                    id: args.bid_id,
+                    initial_shared_version: OBJECT_START_VERSION,
                     mutable: true,
                 });
             }
-            TransactionKind::ReportSubmission { target_id, .. } => {
-                // ReportSubmission writes to the Target object
+            TransactionKind::RateSeller { settlement_id } => {
                 objects.push(SharedInputObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::UndoReportSubmission { target_id } => {
-                // UndoReportSubmission writes to the Target object
-                objects.push(SharedInputObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    id: *settlement_id,
+                    initial_shared_version: OBJECT_START_VERSION,
                     mutable: true,
                 });
             }
@@ -430,10 +403,7 @@ impl TransactionKind {
 
         // Add transaction-specific inputs
         match self {
-            TransactionKind::TransferCoin { coin, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
-            }
-            TransactionKind::PayCoins { coins, .. } => {
+            TransactionKind::Transfer { coins, .. } | TransactionKind::MergeCoins { coins } => {
                 for coin in coins {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
                 }
@@ -451,46 +421,53 @@ impl TransactionKind {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }
 
-            TransactionKind::AddStakeToModel { coin_ref, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-            }
-
-            TransactionKind::SubmitData(args) => {
-                // Add bond coin as owned object
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.bond_coin));
-                // Add target as shared object
+            TransactionKind::CancelAsk { ask_id } => {
                 input_objects.push(InputObjectKind::SharedObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    id: *ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
                     mutable: true,
                 });
             }
 
-            TransactionKind::ClaimRewards(args) => {
-                // Add target as shared object
+            TransactionKind::CreateBid(args) => {
                 input_objects.push(InputObjectKind::SharedObject {
-                    id: args.target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
+                    id: args.ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
+                    mutable: true, // must be mutable so version advances in store
+                });
+            }
+
+            TransactionKind::AcceptBid(args) => {
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: args.ask_id,
+                    initial_shared_version: OBJECT_START_VERSION,
+                    mutable: true,
+                });
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: args.bid_id,
+                    initial_shared_version: OBJECT_START_VERSION,
+                    mutable: true,
+                });
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.payment_coin));
+            }
+
+            TransactionKind::RateSeller { settlement_id } => {
+                input_objects.push(InputObjectKind::SharedObject {
+                    id: *settlement_id,
+                    initial_shared_version: OBJECT_START_VERSION,
                     mutable: true,
                 });
             }
 
-            TransactionKind::ReportSubmission { target_id, .. } => {
-                // Add target as shared object (mutable - storing reports)
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
+            TransactionKind::WithdrawFromVault { vault, recipient_coin, .. } => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(*vault));
+                if let Some(coin) = recipient_coin {
+                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
+                }
             }
 
-            TransactionKind::UndoReportSubmission { target_id } => {
-                // Add target as shared object (mutable - removing reports)
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *target_id,
-                    initial_shared_version: crate::TARGET_OBJECT_SHARED_VERSION,
-                    mutable: true,
-                });
+            TransactionKind::BridgeWithdraw(args) => {
+                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.payment_coin));
             }
 
             _ => {}
@@ -772,10 +749,10 @@ impl TransactionData {
     ) -> Self {
         // Use the first coin in the list as gas payment
         if coins.is_empty() {
-            panic!("PayCoins transaction must have at least one coin");
+            panic!("Transfer transaction must have at least one coin");
         }
         Self::new(
-            TransactionKind::PayCoins { coins: coins.clone(), amounts, recipients },
+            TransactionKind::Transfer { coins: coins.clone(), amounts, recipients },
             sender,
             vec![coins[0]],
         )
@@ -788,7 +765,11 @@ impl TransactionData {
         object_ref: ObjectRef,
     ) -> Self {
         Self::new(
-            TransactionKind::TransferCoin { coin: object_ref, amount, recipient },
+            TransactionKind::Transfer {
+                coins: vec![object_ref],
+                amounts: amount.map(|a| vec![a]),
+                recipients: vec![recipient],
+            },
             sender,
             vec![object_ref],
         )

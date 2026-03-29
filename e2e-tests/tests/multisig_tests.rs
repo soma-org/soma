@@ -51,7 +51,7 @@ async fn fund_multisig_address(
         .expect("funder must have gas");
 
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin { coin: gas, amount: Some(amount), recipient: multisig_addr },
+        TransactionKind::Transfer { coins: vec![gas], amounts: Some(amount).map(|a| vec![a]), recipients: vec![multisig_addr] },
         funder,
         vec![gas],
     );
@@ -125,10 +125,10 @@ async fn test_multisig_e2e() {
     // 1. Sign with keys 0 and 1 — meets threshold (weight 2 >= 2), should succeed
     info!("Test 1: Two signatures meeting threshold");
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1_000_000),
-            recipient: SomaAddress::default(),
+        TransactionKind::Transfer {
+            coins: vec![gas],
+            amounts: Some(1_000_000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         multisig_addr,
         vec![gas],
@@ -145,10 +145,10 @@ async fn test_multisig_e2e() {
     // 2. Sign with keys 1 and 2 — meets threshold
     info!("Test 2: Different two signatures meeting threshold");
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1_000_000),
-            recipient: SomaAddress::default(),
+        TransactionKind::Transfer {
+            coins: vec![gas],
+            amounts: Some(1_000_000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         multisig_addr,
         vec![gas],
@@ -165,10 +165,10 @@ async fn test_multisig_e2e() {
     // 3. Sign with key 0 only — below threshold (weight 1 < 2), should fail
     info!("Test 3: Single signature below threshold");
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1_000_000),
-            recipient: SomaAddress::default(),
+        TransactionKind::Transfer {
+            coins: vec![gas],
+            amounts: Some(1_000_000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         multisig_addr,
         vec![gas],
@@ -185,10 +185,10 @@ async fn test_multisig_e2e() {
     // 4. Multisig with no signatures — should fail at combine time
     info!("Test 4: No signatures");
     let tx_data = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: gas,
-            amount: Some(1_000_000),
-            recipient: SomaAddress::default(),
+        TransactionKind::Transfer {
+            coins: vec![gas],
+            amounts: Some(1_000_000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         multisig_addr,
         vec![gas],
@@ -216,10 +216,10 @@ async fn test_multisig_e2e() {
     let wrong_gas = fund_multisig_address(&test_cluster, wrong_sender, 20_000_000_000).await;
 
     let tx_data_wrong = TransactionData::new(
-        TransactionKind::TransferCoin {
-            coin: wrong_gas,
-            amount: Some(1_000_000),
-            recipient: SomaAddress::default(),
+        TransactionKind::Transfer {
+            coins: vec![wrong_gas],
+            amounts: Some(1_000_000).map(|a| vec![a]),
+            recipients: vec![SomaAddress::default()],
         },
         wrong_sender,
         vec![wrong_gas],

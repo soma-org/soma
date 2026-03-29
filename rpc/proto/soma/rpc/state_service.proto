@@ -13,10 +13,20 @@ import "soma/rpc/transaction.proto";
 service StateService {
   rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
-  rpc GetTarget(GetTargetRequest) returns (GetTargetResponse);
-  rpc ListTargets(ListTargetsRequest) returns (ListTargetsResponse);
-  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
-  rpc ListChallenges(ListChallengesRequest) returns (ListChallengesResponse);
+  rpc GetBid(GetBidRequest) returns (GetBidResponse);
+  rpc GetAsk(GetAskRequest) returns (GetAskResponse);
+  rpc GetSettlement(GetSettlementRequest) returns (GetSettlementResponse);
+  rpc GetBidsForAsk(GetBidsForAskRequest) returns (GetBidsForAskResponse);
+  rpc GetOpenAsks(GetOpenAsksRequest) returns (GetOpenAsksResponse);
+  rpc GetVault(GetVaultRequest) returns (GetVaultResponse);
+  rpc GetSettlements(GetSettlementsRequest) returns (GetSettlementsResponse);
+
+  rpc GetProtocolFund(GetProtocolFundRequest) returns (GetProtocolFundResponse);
+  rpc GetReputation(GetReputationRequest) returns (GetReputationResponse);
+
+  // Streaming subscriptions for marketplace discovery
+  rpc SubscribeAsks(SubscribeAsksRequest) returns (stream AskEvent);
+  rpc SubscribeBids(SubscribeBidsRequest) returns (stream BidEvent);
 }
 
 // Request message for `LiveDataService.GetBalance`.
@@ -67,107 +77,145 @@ message ListOwnedObjectsResponse {
   optional bytes next_page_token = 2;
 }
 
-// Request message for `StateService.GetTarget`.
-message GetTargetRequest {
-  // Required. The target ID (ObjectID hex string).
-  optional string target_id = 1;
-
-  // Mask specifying which fields to read.
-  // If no mask is specified, all fields are returned.
-  optional google.protobuf.FieldMask read_mask = 2;
+// Request message for `StateService.GetBid`.
+message GetBidRequest {
+  // Required. The bid ID (ObjectID hex string).
+  optional string bid_id = 1;
 }
 
-// Response message for `StateService.GetTarget`.
-message GetTargetResponse {
-  optional Target target = 1;
+// Response message for `StateService.GetBid`.
+message GetBidResponse {
+  optional Object bid = 1;
 }
 
-// Request message for `StateService.ListTargets`.
-message ListTargetsRequest {
-  // Optional status filter: "open", "filled", or "claimed".
-  // If not specified, returns targets of all statuses.
-  optional string status_filter = 1;
-
-  // Optional epoch filter. If specified, only returns targets with
-  // generation_epoch equal to this value.
-  optional uint64 epoch_filter = 2;
-
-  // The maximum number of entries to return. The service may return fewer.
-  // If unspecified, at most `50` entries will be returned.
-  // The maximum value is `1000`; values above `1000` will be coerced to `1000`.
-  optional uint32 page_size = 3;
-
-  // A page token, received from a previous `ListTargets` call.
-  // Provide this to retrieve the subsequent page.
-  optional bytes page_token = 4;
-
-  // Mask specifying which fields to read on each target.
-  // If no mask is specified, all fields are returned.
-  optional google.protobuf.FieldMask read_mask = 5;
-
-  // Optional submitter address filter (hex string).
-  // If specified, only targets with this submitter are returned.
-  optional string submitter_filter = 6;
+// Request message for `StateService.GetAsk`.
+message GetAskRequest {
+  // Required. The ask ID (ObjectID hex string).
+  optional string ask_id = 1;
 }
 
-// Response message for `StateService.ListTargets`.
-message ListTargetsResponse {
-  // Page of targets matching the filters.
-  repeated Target targets = 1;
-
-  // A token, which can be sent as `page_token` to retrieve the next page.
-  // If this field is omitted, there are no subsequent pages.
-  optional bytes next_page_token = 2;
+// Response message for `StateService.GetAsk`.
+message GetAskResponse {
+  optional Object ask = 1;
 }
 
-// Request message for `StateService.GetChallenge`.
-message GetChallengeRequest {
-  // Required. The challenge ID (ObjectID hex string).
-  optional string challenge_id = 1;
-
-  // Mask specifying which fields to read.
-  // If no mask is specified, all fields are returned.
-  optional google.protobuf.FieldMask read_mask = 2;
+// Request message for `StateService.GetSettlement`.
+message GetSettlementRequest {
+  // Required. The settlement ID (ObjectID hex string).
+  optional string settlement_id = 1;
 }
 
-// Response message for `StateService.GetChallenge`.
-message GetChallengeResponse {
-  optional Challenge challenge = 1;
+// Response message for `StateService.GetSettlement`.
+message GetSettlementResponse {
+  optional Object settlement = 1;
 }
 
-// Request message for `StateService.ListChallenges`.
-message ListChallengesRequest {
-  // Optional target ID filter. If specified, only returns challenges for this target.
-  optional string target_id = 1;
-
-  // Optional status filter: "pending" or "resolved".
-  // If not specified, returns challenges of all statuses.
+// Request message for `StateService.GetBidsForAsk`.
+message GetBidsForAskRequest {
+  // Required. The ask ID to get bids for.
+  optional string ask_id = 1;
+  // Optional filter by bid status (e.g., "Pending", "Accepted").
   optional string status_filter = 2;
-
-  // Optional epoch filter. If specified, only returns challenges with
-  // challenge_epoch equal to this value.
-  optional uint64 epoch_filter = 3;
-
-  // The maximum number of entries to return. The service may return fewer.
-  // If unspecified, at most `50` entries will be returned.
-  // The maximum value is `1000`; values above `1000` will be coerced to `1000`.
-  optional uint32 page_size = 4;
-
-  // A page token, received from a previous `ListChallenges` call.
-  // Provide this to retrieve the subsequent page.
-  optional bytes page_token = 5;
-
-  // Mask specifying which fields to read on each challenge.
-  // If no mask is specified, all fields are returned.
-  optional google.protobuf.FieldMask read_mask = 6;
 }
 
-// Response message for `StateService.ListChallenges`.
-message ListChallengesResponse {
-  // Page of challenges matching the filters.
-  repeated Challenge challenges = 1;
+// Response message for `StateService.GetBidsForAsk`.
+message GetBidsForAskResponse {
+  repeated Object bids = 1;
+}
 
-  // A token, which can be sent as `page_token` to retrieve the next page.
-  // If this field is omitted, there are no subsequent pages.
-  optional bytes next_page_token = 2;
+// Request message for `StateService.GetOpenAsks`.
+message GetOpenAsksRequest {
+  // Optional: filter by buyer address.
+  optional string buyer = 1;
+  // Maximum number of asks to return. Default: 100.
+  optional uint32 page_size = 2;
+}
+
+// Response message for `StateService.GetOpenAsks`.
+message GetOpenAsksResponse {
+  repeated Object asks = 1;
+}
+
+// Request message for `StateService.GetVault`.
+message GetVaultRequest {
+  // Required. The vault owner's address. Returns the first SellerVault owned by this address.
+  optional string owner = 1;
+}
+
+// Response message for `StateService.GetVault`.
+message GetVaultResponse {
+  // All vaults owned by the address (there may be multiple from different settlements).
+  repeated Object vaults = 1;
+}
+
+// Request message for `StateService.GetSettlements`.
+message GetSettlementsRequest {
+  // Optional: filter by buyer address.
+  optional string buyer = 1;
+  // Optional: filter by seller address.
+  optional string seller = 2;
+  // Maximum number of settlements to return. Default: 100.
+  optional uint32 page_size = 3;
+}
+
+// Response message for `StateService.GetSettlements`.
+message GetSettlementsResponse {
+  repeated Object settlements = 1;
+}
+
+// Request message for `StateService.SubscribeAsks`.
+// Sellers use this to listen for new asks in real-time.
+message SubscribeAsksRequest {
+  // Optional: maximum price filter (only asks with max_price_per_bid >= this value).
+  optional uint64 min_max_price = 1;
+}
+
+// A new or updated ask event streamed to subscribers.
+message AskEvent {
+  optional Object ask = 1;
+  // "created", "filled", "cancelled", "expired"
+  optional string event_type = 2;
+}
+
+// Request message for `StateService.SubscribeBids`.
+// Buyers use this to listen for new bids on their asks.
+message SubscribeBidsRequest {
+  // Required. The ask ID to watch for bids.
+  optional string ask_id = 1;
+}
+
+// A new bid event streamed to subscribers.
+message BidEvent {
+  optional Object bid = 1;
+}
+
+// Request message for `StateService.GetProtocolFund`.
+message GetProtocolFundRequest {}
+
+// Response message for `StateService.GetProtocolFund`.
+message GetProtocolFundResponse {
+  // Current Protocol Fund USDC balance in microdollars.
+  optional uint64 balance = 1;
+}
+
+// Request message for `StateService.GetReputation`.
+message GetReputationRequest {
+  // Required. The address to query reputation for.
+  optional string address = 1;
+}
+
+// Response message for `StateService.GetReputation`.
+// Reputation is computed server-side from settlement data.
+message GetReputationResponse {
+  optional string address = 1;
+  // As buyer
+  optional uint64 buyer_settlements = 2;
+  optional uint64 buyer_volume_spent = 3;
+  optional uint64 buyer_unique_sellers = 4;
+  // As seller
+  optional uint64 seller_settlements = 5;
+  optional uint64 seller_volume_earned = 6;
+  optional uint64 seller_negative_ratings = 7;
+  optional double seller_approval_rate = 8;
+  optional uint64 seller_unique_buyers = 9;
 }

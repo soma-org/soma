@@ -24,9 +24,6 @@ const TABLES: &[&str] = &[
     indexer_kvstore::tables::objects::NAME,
     indexer_kvstore::tables::epochs::NAME,
     indexer_kvstore::tables::watermark_alt_legacy::NAME,
-    indexer_kvstore::tables::targets::NAME,
-    indexer_kvstore::tables::models::NAME,
-    indexer_kvstore::tables::rewards::NAME,
 ];
 
 /// Resolve the path to the `cbtemulator` binary shipped with the gcloud SDK.

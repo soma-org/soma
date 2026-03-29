@@ -12,14 +12,12 @@ use std::sync::Arc;
 use indexer_framework::pipeline::Processor;
 use indexer_kvstore::{
     CheckpointsByDigestPipeline, CheckpointsPipeline, EpochEndPipeline, EpochStartPipeline,
-    ObjectsPipeline, SomaModelsPipeline, SomaRewardsPipeline, SomaTargetsPipeline,
-    TransactionsPipeline,
+    ObjectsPipeline, TransactionsPipeline,
 };
 use types::base::SomaAddress;
 use types::committee::Committee;
-use types::target::TargetStatus;
 use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state, test_target,
+    TestCheckpointBuilder, default_test_system_state,
 };
 
 #[tokio::test]
@@ -93,39 +91,3 @@ async fn test_epoch_end_without_boundary() {
     assert_eq!(entries.len(), 0, "normal checkpoint should produce no epoch-end entries");
 }
 
-#[tokio::test]
-async fn test_soma_targets() {
-    let target = test_target(0, TargetStatus::Open, 1000);
-    let checkpoint = TestCheckpointBuilder::new(1).add_target(target).build();
-    let entries = SomaTargetsPipeline.process(&Arc::new(checkpoint)).await.unwrap();
-    assert_eq!(entries.len(), 1, "should produce 1 target entry for 1 target");
-}
-
-#[tokio::test]
-async fn test_soma_models_genesis() {
-    // default_test_system_state() creates a system state with an empty model registry,
-    // so we expect 0 model entries. The pipeline should still succeed without error.
-    let checkpoint = TestCheckpointBuilder::new(0)
-        .with_genesis_system_state(default_test_system_state())
-        .build();
-    let entries = SomaModelsPipeline.process(&Arc::new(checkpoint)).await.unwrap();
-    assert_eq!(entries.len(), 0, "default system state has no models, so 0 entries expected");
-}
-
-#[tokio::test]
-async fn test_soma_models_non_epoch() {
-    // A normal checkpoint (not genesis, not end-of-epoch) should produce no model entries.
-    let checkpoint = TestCheckpointBuilder::new(5).build();
-    let entries = SomaModelsPipeline.process(&Arc::new(checkpoint)).await.unwrap();
-    assert_eq!(entries.len(), 0, "non-epoch checkpoint should produce no model entries");
-}
-
-#[tokio::test]
-async fn test_soma_rewards() {
-    let sender = SomaAddress::random();
-    let target_id = types::object::ObjectID::random();
-    let checkpoint =
-        TestCheckpointBuilder::new(1).add_claim_rewards(sender, target_id, 500).build();
-    let entries = SomaRewardsPipeline.process(&Arc::new(checkpoint)).await.unwrap();
-    assert_eq!(entries.len(), 1, "should produce 1 reward entry for 1 claim");
-}

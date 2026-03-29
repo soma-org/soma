@@ -1,26 +1,27 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::Path;
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use blobs::BlobPath;
-use blobs::downloader::HttpBlobDownloader;
-use blobs::progress::ProgressFactory;
-use burn::backend::{Cuda, NdArray, Wgpu};
 use burn::tensor::TensorData;
-use models::v1::ModelRunner;
-use object_store::local::LocalFileSystem;
-use tokio::sync::Semaphore;
-use types::config::node_config::DeviceConfig;
 use types::error::RuntimeResult;
 use types::metadata::Manifest;
-use types::parameters::HttpParameters;
 
-pub mod v1;
+/// Model configuration stub (models crate removed).
+#[derive(Debug, Clone)]
+pub struct ModelConfig;
 
-pub use models::v1::modules::model::ModelConfig;
+impl ModelConfig {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Input for running a competition evaluation.
 pub struct CompetitionInput {
@@ -151,66 +152,4 @@ pub trait RuntimeAPI: Send + Sync + 'static {
         &self,
         input: ManifestCompetitionInput,
     ) -> RuntimeResult<CompetitionOutput>;
-}
-
-/// Create a `RuntimeV1` with the specified burn backend, returned as `Arc<dyn RuntimeAPI>`.
-///
-/// All backends are always compiled in. CUDA requires the NVIDIA CUDA toolkit
-/// to be installed at runtime; it will error when initializing if unavailable.
-pub fn build_runtime(
-    device: &DeviceConfig,
-    data_dir: &Path,
-    model_config: ModelConfig,
-    progress: Option<Arc<dyn ProgressFactory>>,
-) -> anyhow::Result<Arc<dyn RuntimeAPI>> {
-    let store = Arc::new(
-        LocalFileSystem::new_with_prefix(data_dir)
-            .map_err(|e| anyhow::anyhow!("Failed to create local file system store: {e}"))?,
-    );
-
-    let http_params = HttpParameters::default();
-    let semaphore = Arc::new(Semaphore::new(10));
-    let chunk_size = 5 * 1024 * 1024; // 5MB
-    let ns_per_byte = http_params.nanoseconds_per_byte as u16;
-
-    let downloader = Arc::new(
-        HttpBlobDownloader::new(&http_params, store.clone(), semaphore, chunk_size, ns_per_byte)
-            .map_err(|e| anyhow::anyhow!("Failed to create blob downloader: {e}"))?,
-    );
-
-    match device {
-        DeviceConfig::Cpu => {
-            let model = Arc::new(ModelRunner::<NdArray>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(
-                store,
-                downloader,
-                0,
-                Default::default(),
-                model,
-                progress,
-            )))
-        }
-        DeviceConfig::Wgpu => {
-            let model = Arc::new(ModelRunner::<Wgpu>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(
-                store,
-                downloader,
-                0,
-                Default::default(),
-                model,
-                progress,
-            )))
-        }
-        DeviceConfig::Cuda => {
-            let model = Arc::new(ModelRunner::<Cuda>::new(model_config, Default::default(), 4));
-            Ok(Arc::new(v1::RuntimeV1::new(
-                store,
-                downloader,
-                0,
-                Default::default(),
-                model,
-                progress,
-            )))
-        }
-    }
 }

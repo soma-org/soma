@@ -39,7 +39,6 @@ strum.workspace = true
 http.workspace = true
 pin-project-lite.workspace = true
 url.workspace = true
-arrgen.workspace = true
 clap.workspace = true
 byteorder = "1.5.0"
 serde_yaml = "0.8.26"

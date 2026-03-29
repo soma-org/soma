@@ -96,15 +96,13 @@ pub enum TransactionKind {
     },
 
     // Transfers and payments
-    TransferCoin {
-        coin: ObjectReference,
-        amount: Option<u64>,
-        recipient: Address,
-    },
-    PayCoins {
+    Transfer {
         coins: Vec<ObjectReference>,
         amounts: Option<Vec<u64>>,
         recipients: Vec<Address>,
+    },
+    MergeCoins {
+        coins: Vec<ObjectReference>,
     },
     TransferObjects {
         objects: Vec<ObjectReference>,
@@ -156,6 +154,79 @@ pub enum TransactionKind {
     UndoReportSubmission {
         target_id: Address,
     },
+
+    // Marketplace transactions
+    CreateAsk(CreateAskArgs),
+    CancelAsk { ask_id: Address },
+    CreateBid(CreateBidArgs),
+    AcceptBid(AcceptBidArgs),
+    RateSeller { settlement_id: Address },
+    WithdrawFromVault {
+        vault: ObjectReference,
+        amount: Option<u64>,
+        recipient_coin: Option<ObjectReference>,
+    },
+
+    // Bridge transactions
+    BridgeDeposit(BridgeDepositArgs),
+    BridgeWithdraw(BridgeWithdrawArgs),
+    BridgeEmergencyPause(BridgeEmergencyPauseArgs),
+    BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+}
+
+// Marketplace arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CreateAskArgs {
+    pub task_digest: Vec<u8>,
+    pub max_price_per_bid: u64,
+    pub num_bids_wanted: u32,
+    pub timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CreateBidArgs {
+    pub ask_id: Address,
+    pub price: u64,
+    pub response_digest: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct AcceptBidArgs {
+    pub ask_id: Address,
+    pub bid_id: Address,
+    pub payment_coin: ObjectReference,
+}
+
+// Bridge arg types
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeDepositArgs {
+    pub nonce: u64,
+    pub eth_tx_hash: Vec<u8>,
+    pub recipient: Address,
+    pub amount: u64,
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeWithdrawArgs {
+    pub payment_coin: ObjectReference,
+    pub amount: u64,
+    pub recipient_eth_address: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeEmergencyPauseArgs {
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BridgeEmergencyUnpauseArgs {
+    pub aggregated_signature: Vec<u8>,
+    pub signer_bitmap: Vec<u8>,
 }
 
 // Supporting types for validator management

@@ -201,11 +201,11 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             SetCommissionRate { new_rate } => Kind::SetCommissionRate(new_rate.into()),
 
             // Transfers and payments
-            TransferCoin { coin, amount, recipient } => {
-                Kind::TransferCoin(TransferCoinArgs { coin, amount, recipient }.into())
-            }
-            PayCoins { coins, amounts, recipients } => {
+            Transfer { coins, amounts, recipients } => {
                 Kind::PayCoins(PayCoinsArgs { coins, amounts, recipients }.into())
+            }
+            MergeCoins { coins } => {
+                Kind::PayCoins(PayCoinsArgs { coins, amounts: None, recipients: vec![] }.into())
             }
             TransferObjects { objects, recipient } => {
                 Kind::TransferObjects(TransferObjectsArgs { objects, recipient }.into())
@@ -282,6 +282,60 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                     target_id: Some(target_id.to_string()),
                 })
             }
+
+            // Marketplace transactions
+            CreateAsk(args) => Kind::CreateAsk(super::CreateAsk {
+                task_digest: Some(args.task_digest.clone().into()),
+                max_price_per_bid: Some(args.max_price_per_bid),
+                num_bids_wanted: Some(args.num_bids_wanted),
+                timeout_ms: Some(args.timeout_ms),
+            }),
+            CancelAsk { ask_id } => Kind::CancelAsk(super::CancelAsk {
+                ask_id: Some(ask_id.to_string()),
+            }),
+            CreateBid(args) => Kind::CreateBid(super::CreateBid {
+                ask_id: Some(args.ask_id.to_string()),
+                price: Some(args.price),
+                response_digest: Some(args.response_digest.clone().into()),
+            }),
+            AcceptBid(args) => Kind::AcceptBid(super::AcceptBid {
+                ask_id: Some(args.ask_id.to_string()),
+                bid_id: Some(args.bid_id.to_string()),
+                payment_coin: Some(args.payment_coin.clone().into()),
+            }),
+            RateSeller { settlement_id } => Kind::RateSeller(super::RateSeller {
+                settlement_id: Some(settlement_id.to_string()),
+            }),
+            WithdrawFromVault { vault, amount, recipient_coin } => {
+                Kind::WithdrawFromVault(super::WithdrawFromVault {
+                    vault: Some(vault.clone().into()),
+                    amount: amount.clone(),
+                    recipient_coin: recipient_coin.clone().map(Into::into),
+                })
+            }
+
+            // Bridge transactions
+            BridgeDeposit(args) => Kind::BridgeDeposit(super::BridgeDeposit {
+                nonce: Some(args.nonce),
+                eth_tx_hash: Some(args.eth_tx_hash.clone().into()),
+                recipient: Some(args.recipient.to_string()),
+                amount: Some(args.amount),
+                aggregated_signature: Some(args.aggregated_signature.clone().into()),
+                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+            }),
+            BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
+                payment_coin: Some(args.payment_coin.clone().into()),
+                amount: Some(args.amount),
+                recipient_eth_address: Some(args.recipient_eth_address.clone().into()),
+            }),
+            BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(super::BridgeEmergencyPause {
+                aggregated_signature: Some(args.aggregated_signature.clone().into()),
+                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+            }),
+            BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(super::BridgeEmergencyUnpause {
+                aggregated_signature: Some(args.aggregated_signature.clone().into()),
+                signer_bitmap: Some(args.signer_bitmap.clone().into()),
+            }),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -329,29 +383,43 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             },
 
             // Transfers and payments
-            Kind::TransferCoin(transfer) => Self::TransferCoin {
-                coin: transfer
+            Kind::TransferCoin(transfer) => {
+                // Legacy proto: map single-coin TransferCoin to Transfer
+                let coin = transfer
                     .coin
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("coin"))?
-                    .try_into()?,
-                amount: transfer.amount,
-                recipient: transfer
+                    .try_into()?;
+                let recipient = transfer
                     .recipient
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("recipient"))?
                     .parse()
-                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
-            },
-            Kind::PayCoins(pay) => Self::PayCoins {
-                coins: pay.coins.iter().map(TryInto::try_into).collect::<Result<_, _>>()?,
-                amounts: Some(pay.amounts.clone()),
-                recipients: pay
-                    .recipients
-                    .iter()
-                    .map(|r| r.parse().map_err(|e| TryFromProtoError::invalid("recipients", e)))
-                    .collect::<Result<_, _>>()?,
-            },
+                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?;
+                Self::Transfer {
+                    coins: vec![coin],
+                    amounts: transfer.amount.map(|a| vec![a]),
+                    recipients: vec![recipient],
+                }
+            }
+            Kind::PayCoins(pay) => {
+                let coins: Vec<_> =
+                    pay.coins.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
+                if pay.recipients.is_empty() {
+                    // MergeCoins: no recipients means merge-only
+                    Self::MergeCoins { coins }
+                } else {
+                    let recipients: Vec<_> = pay
+                        .recipients
+                        .iter()
+                        .map(|r| {
+                            r.parse().map_err(|e| TryFromProtoError::invalid("recipients", e))
+                        })
+                        .collect::<Result<_, _>>()?;
+                    let amounts = if pay.amounts.is_empty() { None } else { Some(pay.amounts.clone()) };
+                    Self::Transfer { coins, amounts, recipients }
+                }
+            }
             Kind::TransferObjects(transfer) => Self::TransferObjects {
                 objects: transfer
                     .objects
@@ -554,6 +622,82 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
             },
+            // Marketplace transactions
+            Kind::CreateAsk(args) => Self::CreateAsk(crate::types::CreateAskArgs {
+                task_digest: args.task_digest.as_deref().unwrap_or_default().to_vec(),
+                max_price_per_bid: args.max_price_per_bid.unwrap_or(0),
+                num_bids_wanted: args.num_bids_wanted.unwrap_or(0),
+                timeout_ms: args.timeout_ms.unwrap_or(0),
+            }),
+            Kind::CancelAsk(args) => Self::CancelAsk {
+                ask_id: args.ask_id.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
+            },
+            Kind::CreateBid(args) => Self::CreateBid(crate::types::CreateBidArgs {
+                ask_id: args.ask_id.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
+                price: args.price.unwrap_or(0),
+                response_digest: args.response_digest.as_deref().unwrap_or_default().to_vec(),
+            }),
+            Kind::AcceptBid(args) => Self::AcceptBid(crate::types::AcceptBidArgs {
+                ask_id: args.ask_id.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
+                bid_id: args.bid_id.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("bid_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("bid_id", e))?,
+                payment_coin: args.payment_coin.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("payment_coin"))?
+                    .try_into()?,
+            }),
+            Kind::RateSeller(args) => Self::RateSeller {
+                settlement_id: args.settlement_id.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("settlement_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("settlement_id", e))?,
+            },
+            Kind::WithdrawFromVault(args) => Self::WithdrawFromVault {
+                vault: args.vault.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("vault"))?
+                    .try_into()?,
+                amount: args.amount,
+                recipient_coin: args.recipient_coin.as_ref().map(TryInto::try_into).transpose()?,
+            },
+
+            // Bridge transactions
+            Kind::BridgeDeposit(args) => Self::BridgeDeposit(crate::types::BridgeDepositArgs {
+                nonce: args.nonce.unwrap_or(0),
+                eth_tx_hash: args.eth_tx_hash.as_deref().unwrap_or_default().to_vec(),
+                recipient: args.recipient.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("recipient"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
+                amount: args.amount.unwrap_or(0),
+                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
+                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+            }),
+            Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
+                payment_coin: args.payment_coin.as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("payment_coin"))?
+                    .try_into()?,
+                amount: args.amount.unwrap_or(0),
+                recipient_eth_address: args.recipient_eth_address.as_deref().unwrap_or_default().to_vec(),
+            }),
+            Kind::BridgeEmergencyPause(args) => Self::BridgeEmergencyPause(crate::types::BridgeEmergencyPauseArgs {
+                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
+                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+            }),
+            Kind::BridgeEmergencyUnpause(args) => Self::BridgeEmergencyUnpause(crate::types::BridgeEmergencyUnpauseArgs {
+                aggregated_signature: args.aggregated_signature.as_deref().unwrap_or_default().to_vec(),
+                signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
+            }),
+
             // Challenge variants removed — reject if received from proto
             Kind::InitiateChallenge(_)
             | Kind::ReportChallenge(_)
@@ -833,24 +977,7 @@ impl From<u64> for SetCommissionRate {
     }
 }
 
-// TransferCoin conversions (create a wrapper struct)
-pub struct TransferCoinArgs {
-    pub coin: crate::types::ObjectReference,
-    pub amount: Option<u64>,
-    pub recipient: crate::types::Address,
-}
-
-impl From<TransferCoinArgs> for TransferCoin {
-    fn from(args: TransferCoinArgs) -> Self {
-        Self {
-            coin: Some(args.coin.into()),
-            amount: args.amount,
-            recipient: Some(args.recipient.to_string()),
-        }
-    }
-}
-
-// PayCoins conversions
+// PayCoins conversions (used for both Transfer and MergeCoins)
 pub struct PayCoinsArgs {
     pub coins: Vec<crate::types::ObjectReference>,
     pub amounts: Option<Vec<u64>>,

@@ -6,7 +6,7 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::ExecutionResult;
-use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner};
+use types::object::{CoinType, Object, ObjectID, ObjectRef, ObjectType, Owner};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
@@ -21,148 +21,8 @@ impl CoinExecutor {
         Self {}
     }
 
-    /// Execute a TransferCoin transaction
-    fn execute_transfer_coin(
-        &self,
-        store: &mut TemporaryStore,
-        coin_ref: ObjectRef,
-        amount: Option<u64>,
-        recipient: SomaAddress,
-        signer: SomaAddress,
-        tx_digest: TransactionDigest,
-        value_fee: u64,
-    ) -> ExecutionResult<()> {
-        let coin_id = coin_ref.0;
-
-        // Get source coin
-        let source_object = store
-            .read_object(&coin_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: coin_id })?;
-
-        // Check ownership
-        check_ownership(&source_object, signer)?;
-
-        // Check this is a coin object and get balance
-        let source_balance = verify_coin(&source_object)?;
-
-        // Check if this coin is the primary gas coin
-        let is_gas_coin = store.gas_object_id == Some(coin_id);
-
-        match amount {
-            // Pay specific amount
-            Some(specific_amount) => {
-                // If this is a gas coin, we need to ensure there's enough left for fees
-                if is_gas_coin {
-                    // For write fee, we'll create one new coin and update the source
-                    let write_fee = self.calculate_operation_fee(store, 2);
-
-                    // Total fee needed
-                    let total_fee = checked_add(value_fee, write_fee)?;
-
-                    // Check sufficient balance for both the transfer and the fee
-                    if source_balance < checked_add(specific_amount, total_fee)? {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Calculate remaining balance after transfer and fees
-                    let remaining_balance = checked_sub(source_balance, specific_amount)?;
-
-                    // Create new coin for recipient
-                    let new_coin = Object::new_coin(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        specific_amount,
-                        Owner::AddressOwner(recipient),
-                        tx_digest,
-                    );
-                    store.create_object(new_coin);
-
-                    // Update source coin with remaining balance (which includes the fee)
-                    let mut updated_source = source_object.clone();
-                    updated_source.update_coin_balance(remaining_balance);
-                    store.mutate_input_object(updated_source);
-                } else {
-                    // Not a gas coin, proceed normally
-                    // Check sufficient balance
-                    if source_balance < specific_amount {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Calculate remaining balance after transfer
-                    let remaining_balance = checked_sub(source_balance, specific_amount)?;
-
-                    // If transferring the entire balance, just change ownership
-                    if specific_amount == source_balance {
-                        let mut updated_source = source_object.clone();
-                        updated_source.owner = Owner::AddressOwner(recipient);
-                        store.mutate_input_object(updated_source);
-                        return Ok(());
-                    }
-
-                    // Create new coin for recipient
-                    let new_coin = Object::new_coin(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        specific_amount,
-                        Owner::AddressOwner(recipient),
-                        tx_digest,
-                    );
-                    store.create_object(new_coin);
-
-                    // Update source coin
-                    let mut updated_source = source_object.clone();
-                    updated_source.update_coin_balance(remaining_balance);
-                    store.mutate_input_object(updated_source);
-                }
-            }
-
-            // Pay all (transfer the entire coin)
-            None => {
-                if is_gas_coin {
-                    // Note: Base fee has already been deducted during gas preparation
-                    // We only need to account for value and operation fees
-
-                    // Use the FeeCalculator trait methods to calculate fees
-
-                    // For write fee, we know we'll create one new object and update the original
-                    let write_fee = self.calculate_operation_fee(store, 2);
-
-                    // Total fee is value_fee + write_fee (base fee already deducted)
-                    let remaining_fee = checked_add(write_fee, value_fee)?;
-
-                    // Ensure there's enough balance after previous fee deduction
-                    if source_balance <= remaining_fee {
-                        return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
-                    }
-
-                    // Calculate amount to transfer (total - remaining fee)
-                    let transfer_amount = checked_sub(source_balance, remaining_fee)?;
-
-                    // Create new coin for recipient with (balance - fee)
-                    let new_coin = Object::new_coin(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        transfer_amount,
-                        Owner::AddressOwner(recipient),
-                        tx_digest,
-                    );
-                    store.create_object(new_coin);
-
-                    // Update source coin to just keep the fee amount
-                    let mut updated_source = source_object.clone();
-                    updated_source.update_coin_balance(remaining_fee);
-                    store.mutate_input_object(updated_source);
-                } else {
-                    // Not a gas coin, just change ownership of entire coin
-                    let mut updated_source = source_object.clone();
-                    updated_source.owner = Owner::AddressOwner(recipient);
-                    store.mutate_input_object(updated_source);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Execute a PayCoins transaction
-    fn execute_pay_coins(
+    /// Execute a Transfer transaction (unified from TransferCoin and PayCoins)
+    fn execute_transfer(
         &self,
         store: &mut TemporaryStore,
         coin_refs: Vec<ObjectRef>,
@@ -210,6 +70,7 @@ impl CoinExecutor {
                 let mut total_available: u64 = 0;
                 let mut available_coins = Vec::new();
                 let mut gas_coin_data = None;
+                let mut resolved_coin_type: Option<CoinType> = None;
 
                 for coin_ref in &coin_refs {
                     let coin_id = coin_ref.0;
@@ -229,6 +90,22 @@ impl CoinExecutor {
                     // Check this is a coin object
                     let balance = verify_coin(&coin_object)?;
 
+                    // Validate all coins share the same CoinType
+                    let ct = coin_object.coin_type().unwrap();
+                    if let Some(expected) = &resolved_coin_type {
+                        if ct != *expected {
+                            return Err(ExecutionFailureStatus::InvalidArguments {
+                                reason: format!(
+                                    "All coins must be the same type. Expected {:?}, got {:?}",
+                                    expected, ct
+                                ),
+                            }
+                            .into());
+                        }
+                    } else {
+                        resolved_coin_type = Some(ct);
+                    }
+
                     // If this is the gas coin, keep track of it separately
                     if Some(coin_id) == store.gas_object_id {
                         gas_coin_data = Some((coin_id, balance));
@@ -237,6 +114,8 @@ impl CoinExecutor {
                     total_available = checked_add(total_available, balance)?;
                     available_coins.push((coin_id, balance));
                 }
+
+                let coin_type = resolved_coin_type.unwrap_or(CoinType::Soma);
 
                 // Calculate total needed
                 let total_payments: u64 = checked_sum(specific_amounts.iter().copied())?;
@@ -249,8 +128,15 @@ impl CoinExecutor {
                 // Total remaining fee
                 let remaining_fee = checked_add(value_fee, write_fee)?;
 
-                // Check sufficient balance for payments + fees
-                if total_available < checked_add(total_payments, remaining_fee)? {
+                // Check sufficient balance for payments (+ fees if gas coin is among transfer coins)
+                // When the gas coin is separate, remaining fees are deducted from it in
+                // post-execution, not from the transfer coins.
+                let required = if has_gas_coin {
+                    checked_add(total_payments, remaining_fee)?
+                } else {
+                    total_payments
+                };
+                if total_available < required {
                     return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                 }
 
@@ -258,6 +144,7 @@ impl CoinExecutor {
                 for (amount, recipient) in specific_amounts.iter().zip(recipients.iter()) {
                     let new_coin = Object::new_coin(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                        coin_type,
                         *amount,
                         Owner::AddressOwner(*recipient),
                         tx_digest,
@@ -324,6 +211,7 @@ impl CoinExecutor {
                     let gas_coin = store.read_object(&gas_id).unwrap();
                     check_ownership(&gas_coin, signer)?;
                     let gas_balance = verify_coin(&gas_coin)?;
+                    let coin_type = gas_coin.coin_type().unwrap();
                     total_available = checked_add(total_available, gas_balance)?;
 
                     // Process other coins
@@ -333,6 +221,17 @@ impl CoinExecutor {
                             let coin_obj = store.read_object(&coin_ref.0).unwrap();
                             check_ownership(&coin_obj, signer)?;
                             let balance = verify_coin(&coin_obj)?;
+                            // Validate matching CoinType
+                            let ct = coin_obj.coin_type().unwrap();
+                            if ct != coin_type {
+                                return Err(ExecutionFailureStatus::InvalidArguments {
+                                    reason: format!(
+                                        "All coins must be the same type. Expected {:?}, got {:?}",
+                                        coin_type, ct
+                                    ),
+                                }
+                                .into());
+                            }
                             total_available = checked_add(total_available, balance)?;
                             other_coins.push((coin_ref.0, balance));
                         }
@@ -357,6 +256,7 @@ impl CoinExecutor {
                     // Create new coin for recipient with (total balance - fee)
                     let new_coin = Object::new_coin(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
+                        coin_type,
                         transfer_amount,
                         Owner::AddressOwner(recipient),
                         tx_digest,
@@ -405,6 +305,7 @@ impl CoinExecutor {
 
                         // Get balance of first coin
                         let mut total_balance = verify_coin(&first_coin_object)?;
+                        let coin_type = first_coin_object.coin_type().unwrap();
 
                         // Process all other coins
                         for coin_ref in coin_refs.iter().skip(1) {
@@ -424,6 +325,19 @@ impl CoinExecutor {
 
                             // Verify it's a coin and add balance
                             let balance = verify_coin(&coin_object)?;
+
+                            // Validate matching CoinType
+                            let ct = coin_object.coin_type().unwrap();
+                            if ct != coin_type {
+                                return Err(ExecutionFailureStatus::InvalidArguments {
+                                    reason: format!(
+                                        "All coins must be the same type. Expected {:?}, got {:?}",
+                                        coin_type, ct
+                                    ),
+                                }
+                                .into());
+                            }
+
                             total_balance = checked_add(total_balance, balance)?;
 
                             // Delete this coin (we'll merge into the first)
@@ -442,6 +356,77 @@ impl CoinExecutor {
 
         Ok(())
     }
+
+    /// Execute a MergeCoins transaction — merges all coins into the first one
+    fn execute_merge_coins(
+        &self,
+        store: &mut TemporaryStore,
+        coin_refs: Vec<ObjectRef>,
+        signer: SomaAddress,
+        _tx_digest: TransactionDigest,
+    ) -> ExecutionResult<()> {
+        if coin_refs.is_empty() {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Must provide at least one coin".to_string(),
+            }
+            .into());
+        }
+
+        // Get the first coin as the target
+        let first_coin_id = coin_refs[0].0;
+
+        // Check if the first coin was already merged by smash_gas
+        if store.is_deleted(&first_coin_id) {
+            return Err(ExecutionFailureStatus::ObjectNotFound { object_id: first_coin_id }.into());
+        }
+
+        let first_coin_object = store.read_object(&first_coin_id).ok_or_else(|| {
+            ExecutionFailureStatus::ObjectNotFound { object_id: first_coin_id }
+        })?;
+
+        check_ownership(&first_coin_object, signer)?;
+        let mut total_balance = verify_coin(&first_coin_object)?;
+        let coin_type = first_coin_object.coin_type().unwrap();
+
+        // Merge all other coins into the first
+        for coin_ref in coin_refs.iter().skip(1) {
+            let coin_id = coin_ref.0;
+
+            if store.is_deleted(&coin_id) {
+                continue;
+            }
+
+            let coin_object = store.read_object(&coin_id).ok_or_else(|| {
+                ExecutionFailureStatus::ObjectNotFound { object_id: coin_id }
+            })?;
+
+            check_ownership(&coin_object, signer)?;
+            let balance = verify_coin(&coin_object)?;
+
+            // Validate matching CoinType
+            let ct = coin_object.coin_type().unwrap();
+            if ct != coin_type {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!(
+                        "All coins must be the same type. Expected {:?}, got {:?}",
+                        coin_type, ct
+                    ),
+                }
+                .into());
+            }
+
+            total_balance = checked_add(total_balance, balance)?;
+
+            store.delete_input_object(&coin_id);
+        }
+
+        // Update the first coin with total balance
+        let mut updated_first_coin = first_coin_object.clone();
+        updated_first_coin.update_coin_balance(total_balance);
+        store.mutate_input_object(updated_first_coin);
+
+        Ok(())
+    }
 }
 
 impl TransactionExecutor for CoinExecutor {
@@ -454,12 +439,14 @@ impl TransactionExecutor for CoinExecutor {
         value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::TransferCoin { coin, amount, recipient } => self
-                .execute_transfer_coin(
-                    store, coin, amount, recipient, signer, tx_digest, value_fee,
-                ),
-            TransactionKind::PayCoins { coins, amounts, recipients } => self
-                .execute_pay_coins(store, coins, amounts, recipients, signer, tx_digest, value_fee),
+            TransactionKind::Transfer { coins, amounts, recipients } => {
+                self.execute_transfer(
+                    store, coins, amounts, recipients, signer, tx_digest, value_fee,
+                )
+            }
+            TransactionKind::MergeCoins { coins } => {
+                self.execute_merge_coins(store, coins, signer, tx_digest)
+            }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
     }
@@ -470,22 +457,7 @@ impl FeeCalculator for CoinExecutor {
         let value_fee_bps = store.fee_parameters.value_fee_bps;
 
         match kind {
-            TransactionKind::TransferCoin { coin, amount, .. } => {
-                let transfer_amount = if let Some(specific_amount) = amount {
-                    *specific_amount
-                } else {
-                    // For full transfer, get the actual coin balance
-                    store.read_object(&coin.0).and_then(|obj| obj.as_coin()).unwrap_or(0)
-                };
-
-                if transfer_amount == 0 {
-                    return 0;
-                }
-
-                bps_mul(transfer_amount, value_fee_bps)
-            }
-
-            TransactionKind::PayCoins { coins, amounts, .. } => {
+            TransactionKind::Transfer { coins, amounts, .. } => {
                 let total_amount: u64 = if let Some(specific_amounts) = amounts {
                     specific_amounts.iter().copied().sum::<u64>()
                 } else {
@@ -513,7 +485,7 @@ impl FeeCalculator for CoinExecutor {
 fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
     object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
         object_id: object.id(),
-        expected_type: ObjectType::Coin,
+        expected_type: ObjectType::Coin(CoinType::Soma),
         actual_type: object.type_().clone(),
     })
 }

@@ -21,6 +21,7 @@ use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
+use types::bid::Bid;
 use types::object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
 use types::storage::WriteKind;
 use types::storage::read_store::{EpochInfo, TransactionInfo};
@@ -31,7 +32,7 @@ use types::transaction_outputs::WrittenObjects;
 use crate::authority_store::AuthorityStore;
 use crate::checkpoints::CheckpointStore;
 
-const CURRENT_DB_VERSION: u64 = 4; // Bumped for terminal object pruning
+const CURRENT_DB_VERSION: u64 = 6; // Bumped for settlements secondary indexes
 const BALANCE_FLUSH_THRESHOLD: usize = 10_000;
 
 fn bulk_ingestion_write_options() -> WriteOptions {
@@ -99,15 +100,6 @@ fn balance_compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> Decision
     };
 
     if balance_info.balance_delta == 0 { Decision::Remove } else { Decision::Keep }
-}
-
-/// Convert a TargetStatus to a string for indexing.
-fn target_status_string(status: &types::target::TargetStatus) -> String {
-    match status {
-        types::target::TargetStatus::Open => "open".to_string(),
-        types::target::TargetStatus::Filled { .. } => "filled".to_string(),
-        types::target::TargetStatus::Claimed => "claimed".to_string(),
-    }
 }
 
 fn balance_table_options() -> store::rocks::DBOptions {
@@ -204,21 +196,6 @@ impl From<BalanceIndexInfo> for types::storage::read_store::BalanceInfo {
     }
 }
 
-/// Key for the target index table.
-/// Ordered by (status, generation_epoch, target_id) to allow efficient filtering and pagination.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct TargetIndexKey {
-    pub status: String,
-    pub generation_epoch: u64,
-    pub target_id: ObjectID,
-}
-
-/// Value stored in the target index table.
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct TargetIndexInfo {
-    pub version: Version,
-}
-
 /// RocksDB tables for the RpcIndexStore
 ///
 /// Anytime a new table is added, or and existing one has it's schema changed, make sure to also
@@ -266,11 +243,31 @@ pub struct IndexStoreTables {
     /// Allows looking up balances by owner address and coin type.
     balance: DBMap<BalanceKey, BalanceIndexInfo>,
 
-    /// An index of Targets.
+    /// An index of Bids by Ask ID.
     ///
-    /// Allows efficient iteration over targets filtered by status and/or epoch.
-    /// Key is (status, generation_epoch, target_id) for efficient range scans.
-    targets: DBMap<TargetIndexKey, TargetIndexInfo>,
+    /// Allows efficient lookup of all bids for a given ask (needed for `soma accept --cheapest`).
+    /// Key: (ask_id, bid_id) — sorted by ask_id first for range scans.
+    /// Bounded by the live object set (entries removed when bid objects are deleted).
+    bids_by_ask: DBMap<(ObjectID, ObjectID), ()>,
+
+    /// An index of open Asks for marketplace discovery.
+    ///
+    /// Key: ask_id. Entries are added when Ask objects are created/mutated with status Open,
+    /// and removed when the ask is Filled/Cancelled/Expired or deleted.
+    /// Bounded by the live object set.
+    open_asks: DBMap<ObjectID, ()>,
+
+    /// An index of Settlements by buyer address.
+    ///
+    /// Key: (buyer_address, settlement_id) — sorted by buyer first for range scans.
+    /// Bounded by the live object set (entries removed when settlement objects are deleted).
+    settlements_by_buyer: DBMap<(SomaAddress, ObjectID), ()>,
+
+    /// An index of Settlements by seller address.
+    ///
+    /// Key: (seller_address, settlement_id) — sorted by seller first for range scans.
+    /// Bounded by the live object set (entries removed when settlement objects are deleted).
+    settlements_by_seller: DBMap<(SomaAddress, ObjectID), ()>,
 }
 
 impl IndexStoreTables {
@@ -536,7 +533,7 @@ impl IndexStoreTables {
                     .merge_delta(&BalanceIndexInfo { balance_delta: change.amount });
             }
 
-            // Update owner and target indexes for removed objects
+            // Update owner and marketplace indexes for removed objects
             for removed_object in tx.removed_objects_pre_version() {
                 match removed_object.owner() {
                     Owner::AddressOwner(_) => {
@@ -547,55 +544,12 @@ impl IndexStoreTables {
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
 
-                // Clean up target index entries for deleted shared objects
-                if removed_object.type_() == &ObjectType::Target {
-                    if let Ok(old_target) =
-                        bcs::from_bytes::<types::target::TargetV1>(removed_object.data.contents())
-                    {
-                        let old_key = TargetIndexKey {
-                            status: target_status_string(&old_target.status),
-                            generation_epoch: old_target.generation_epoch,
-                            target_id: removed_object.id(),
-                        };
-                        batch.delete_batch(&self.targets, [old_key])?;
-                    }
-                }
+                // Remove marketplace secondary index entries
+                self.remove_marketplace_index_entries(removed_object, batch)?;
             }
 
-            // Update owner and target indexes for changed objects
+            // Update owner indexes for changed objects
             for (object, old_object) in tx.changed_objects() {
-                // Handle target index updates for Target objects
-                if object.type_() == &ObjectType::Target {
-                    // Remove old target index entry if this is an update
-                    if let Some(old_obj) = old_object {
-                        if let Ok(old_target) =
-                            bcs::from_bytes::<types::target::TargetV1>(old_obj.data.contents())
-                        {
-                            let old_status = target_status_string(&old_target.status);
-                            let old_key = TargetIndexKey {
-                                status: old_status,
-                                generation_epoch: old_target.generation_epoch,
-                                target_id: old_obj.id(),
-                            };
-                            batch.delete_batch(&self.targets, [old_key])?;
-                        }
-                    }
-
-                    // Add new target index entry
-                    if let Ok(target) =
-                        bcs::from_bytes::<types::target::TargetV1>(object.data.contents())
-                    {
-                        let status = target_status_string(&target.status);
-                        let key = TargetIndexKey {
-                            status,
-                            generation_epoch: target.generation_epoch,
-                            target_id: object.id(),
-                        };
-                        let info = TargetIndexInfo { version: object.version() };
-                        batch.insert_batch(&self.targets, [(key, info)])?;
-                    }
-                }
-
                 if let Some(old_object) = old_object {
                     match old_object.owner() {
                         Owner::AddressOwner(_) => {
@@ -616,11 +570,93 @@ impl IndexStoreTables {
 
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
+
+                // Update marketplace secondary indexes for new/changed objects
+                self.update_marketplace_index_entries(object, batch)?;
             }
         }
 
         batch.partial_merge_batch(&self.balance, balance_changes)?;
 
+        Ok(())
+    }
+
+    /// Update marketplace secondary indexes when an object is created or mutated.
+    fn update_marketplace_index_entries(
+        &self,
+        object: &Object,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        let object_type = object.data.object_type();
+        match object_type {
+            ObjectType::Bid => {
+                if let Some(bid) = object.deserialize_contents::<Bid>(ObjectType::Bid) {
+                    batch.insert_batch(
+                        &self.bids_by_ask,
+                        [((bid.ask_id, bid.id), ())],
+                    )?;
+                }
+            }
+            ObjectType::Ask => {
+                if let Some(ask) = object.deserialize_contents::<types::ask::Ask>(ObjectType::Ask) {
+                    if ask.status == types::ask::AskStatus::Open {
+                        batch.insert_batch(&self.open_asks, [(ask.id, ())])?;
+                    } else {
+                        batch.delete_batch(&self.open_asks, [ask.id])?;
+                    }
+                }
+            }
+            ObjectType::Settlement => {
+                if let Some(settlement) = object.deserialize_contents::<types::settlement::Settlement>(ObjectType::Settlement) {
+                    batch.insert_batch(
+                        &self.settlements_by_buyer,
+                        [((settlement.buyer, settlement.id), ())],
+                    )?;
+                    batch.insert_batch(
+                        &self.settlements_by_seller,
+                        [((settlement.seller, settlement.id), ())],
+                    )?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Remove marketplace secondary index entries when an object is deleted.
+    fn remove_marketplace_index_entries(
+        &self,
+        object: &Object,
+        batch: &mut store::rocks::DBBatch,
+    ) -> Result<(), StorageError> {
+        let object_type = object.data.object_type();
+        match object_type {
+            ObjectType::Bid => {
+                if let Some(bid) = object.deserialize_contents::<Bid>(ObjectType::Bid) {
+                    batch.delete_batch(
+                        &self.bids_by_ask,
+                        [(bid.ask_id, bid.id)],
+                    )?;
+                }
+            }
+            ObjectType::Ask => {
+                let ask_id = object.id();
+                batch.delete_batch(&self.open_asks, [ask_id])?;
+            }
+            ObjectType::Settlement => {
+                if let Some(settlement) = object.deserialize_contents::<types::settlement::Settlement>(ObjectType::Settlement) {
+                    batch.delete_batch(
+                        &self.settlements_by_buyer,
+                        [(settlement.buyer, settlement.id)],
+                    )?;
+                    batch.delete_batch(
+                        &self.settlements_by_seller,
+                        [(settlement.seller, settlement.id)],
+                    )?;
+                }
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -697,57 +733,85 @@ impl IndexStoreTables {
         }))
     }
 
-    /// Iterate over targets, optionally filtered by status and/or epoch.
-    fn targets_iter(
+    /// Iterate all bid IDs for a given ask.
+    fn bids_for_ask(
         &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<types::storage::read_store::TargetInfo>,
+        ask_id: ObjectID,
     ) -> Result<
-        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
         TypedStoreError,
     > {
-        // If status_filter is provided, we can seek directly to that status prefix
-        // Otherwise, we need to scan all statuses
-        let lower_bound = cursor.map(|c| TargetIndexKey {
-            status: c.status,
-            generation_epoch: c.generation_epoch,
-            target_id: c.target_id,
-        });
-
-        let status_filter_clone = status_filter.clone();
-        let iter = self.targets.safe_iter_with_bounds(lower_bound, None).filter_map(move |item| {
-            match item {
-                Ok((key, info)) => {
-                    // Apply status filter if specified
-                    if let Some(ref filter) = status_filter_clone {
-                        if &key.status != filter {
-                            return None;
-                        }
-                    }
-                    // Apply epoch filter if specified
-                    if let Some(epoch) = epoch_filter {
-                        if key.generation_epoch != epoch {
-                            return None;
-                        }
-                    }
-                    Some(Ok(types::storage::read_store::TargetInfo {
-                        target_id: key.target_id,
-                        version: info.version,
-                        status: key.status,
-                        generation_epoch: key.generation_epoch,
-                    }))
+        let lower = (ask_id, ObjectID::ZERO);
+        Ok(self
+            .bids_by_ask
+            .safe_iter_with_bounds(Some(lower), None)
+            .take_while(move |item| {
+                match item {
+                    Ok(((aid, _), _)) => *aid == ask_id,
+                    Err(_) => true,
                 }
-                Err(e) => Some(Err(e)),
-            }
-        });
+            })
+            .map(|item| item.map(|((_, bid_id), _)| bid_id)))
+    }
 
-        Ok(iter)
+    /// Iterate all open ask IDs.
+    fn open_asks_iter(
+        &self,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        Ok(self
+            .open_asks
+            .safe_iter_with_bounds(None::<ObjectID>, None::<ObjectID>)
+            .map(|item: Result<(ObjectID, ()), _>| item.map(|(ask_id, _)| ask_id)))
+    }
+
+    /// Iterate all settlement IDs for a given buyer.
+    fn settlements_by_buyer_iter(
+        &self,
+        buyer: SomaAddress,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        let lower = (buyer, ObjectID::ZERO);
+        Ok(self
+            .settlements_by_buyer
+            .safe_iter_with_bounds(Some(lower), None)
+            .take_while(move |item| {
+                match item {
+                    Ok(((b, _), _)) => *b == buyer,
+                    Err(_) => true,
+                }
+            })
+            .map(|item| item.map(|((_, settlement_id), _)| settlement_id)))
+    }
+
+    /// Iterate all settlement IDs for a given seller.
+    fn settlements_by_seller_iter(
+        &self,
+        seller: SomaAddress,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        let lower = (seller, ObjectID::ZERO);
+        Ok(self
+            .settlements_by_seller
+            .safe_iter_with_bounds(Some(lower), None)
+            .take_while(move |item| {
+                match item {
+                    Ok(((s, _), _)) => *s == seller,
+                    Err(_) => true,
+                }
+            })
+            .map(|item| item.map(|((_, settlement_id), _)| settlement_id)))
     }
 
     /// Index a single executed transaction's object changes immediately after execution.
     ///
-    /// Updates the owner and target indexes for real-time queries.
+    /// Updates the owner indexes for real-time queries.
     /// Balance updates are intentionally omitted here — they are applied only during
     /// checkpoint-based indexing (`index_objects`) to avoid double-counting via the
     /// additive RocksDB merge operator.
@@ -775,19 +839,8 @@ impl IndexStoreTables {
                             Owner::Shared { .. } | Owner::Immutable => {}
                         }
 
-                        // Clean up target index entries for deleted shared objects
-                        if old_object.type_() == &ObjectType::Target {
-                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
-                                old_object.data.contents(),
-                            ) {
-                                let old_key = TargetIndexKey {
-                                    status: target_status_string(&old_target.status),
-                                    generation_epoch: old_target.generation_epoch,
-                                    target_id: id,
-                                };
-                                batch.delete_batch(&self.targets, [old_key])?;
-                            }
-                        }
+                        // Remove marketplace indexes for deleted objects
+                        self.remove_marketplace_index_entries(old_object, &mut batch)?;
                     }
                 }
             }
@@ -796,42 +849,6 @@ impl IndexStoreTables {
         // Process all changed objects
         for (oref, owner, kind) in effects.all_changed_objects() {
             let id = &oref.0;
-
-            // Handle Target index updates
-            if let Some(new_object) = written.get(id) {
-                if new_object.type_() == &ObjectType::Target {
-                    // Remove old target index entry if this is an update
-                    if matches!(kind, WriteKind::Mutate) {
-                        if let Some(old_object) = input_objects.get(id) {
-                            if let Ok(old_target) = bcs::from_bytes::<types::target::TargetV1>(
-                                old_object.data.contents(),
-                            ) {
-                                let old_status = target_status_string(&old_target.status);
-                                let old_key = TargetIndexKey {
-                                    status: old_status,
-                                    generation_epoch: old_target.generation_epoch,
-                                    target_id: *id,
-                                };
-                                batch.delete_batch(&self.targets, [old_key])?;
-                            }
-                        }
-                    }
-
-                    // Add new target index entry
-                    if let Ok(target) =
-                        bcs::from_bytes::<types::target::TargetV1>(new_object.data.contents())
-                    {
-                        let status = target_status_string(&target.status);
-                        let key = TargetIndexKey {
-                            status,
-                            generation_epoch: target.generation_epoch,
-                            target_id: *id,
-                        };
-                        let info = TargetIndexInfo { version: new_object.version() };
-                        batch.insert_batch(&self.targets, [(key, info)])?;
-                    }
-                }
-            }
 
             // For mutated objects, handle old owner removal if owner changed
             if matches!(kind, WriteKind::Mutate) {
@@ -866,6 +883,11 @@ impl IndexStoreTables {
                     }
                 }
                 Owner::Shared { .. } | Owner::Immutable => {}
+            }
+
+            // Update marketplace secondary indexes for new/changed objects
+            if let Some(new_object) = written.get(id) {
+                self.update_marketplace_index_entries(new_object, &mut batch)?;
             }
         }
 
@@ -1253,16 +1275,43 @@ impl RpcIndexStore {
         self.tables.watermark.get(&Watermark::Indexed)
     }
 
-    pub fn targets_iter(
+    pub fn bids_for_ask(
         &self,
-        status_filter: Option<String>,
-        epoch_filter: Option<u64>,
-        cursor: Option<types::storage::read_store::TargetInfo>,
+        ask_id: ObjectID,
     ) -> Result<
-        impl Iterator<Item = Result<types::storage::read_store::TargetInfo, TypedStoreError>> + '_,
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
         TypedStoreError,
     > {
-        self.tables.targets_iter(status_filter, epoch_filter, cursor)
+        self.tables.bids_for_ask(ask_id)
+    }
+
+    pub fn open_asks_iter(
+        &self,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        self.tables.open_asks_iter()
+    }
+
+    pub fn settlements_by_buyer(
+        &self,
+        buyer: SomaAddress,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        self.tables.settlements_by_buyer_iter(buyer)
+    }
+
+    pub fn settlements_by_seller(
+        &self,
+        seller: SomaAddress,
+    ) -> Result<
+        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
+        TypedStoreError,
+    > {
+        self.tables.settlements_by_seller_iter(seller)
     }
 
     /// Index a transaction immediately after execution (before checkpoint finalization).
@@ -1304,22 +1353,6 @@ impl<'a> ParMakeLiveObjectIndexer for RpcParLiveObjectSetIndexer<'a> {
 
 impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
     fn index_object(&mut self, object: Object) -> Result<(), StorageError> {
-        // Index Target objects (shared objects) — skip terminal (Claimed) targets
-        if object.type_() == &ObjectType::Target {
-            if let Ok(target) = bcs::from_bytes::<types::target::TargetV1>(object.data.contents()) {
-                if !matches!(target.status, types::target::TargetStatus::Claimed) {
-                    let status = target_status_string(&target.status);
-                    let key = TargetIndexKey {
-                        status,
-                        generation_epoch: target.generation_epoch,
-                        target_id: object.id(),
-                    };
-                    let info = TargetIndexInfo { version: object.version() };
-                    self.batch.insert_batch(&self.tables.targets, [(key, info)])?;
-                }
-            }
-        }
-
         match object.owner {
             // Owner Index
             Owner::AddressOwner(owner) => {

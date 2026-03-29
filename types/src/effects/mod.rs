@@ -26,9 +26,7 @@ use crate::object::{
 };
 use crate::storage::WriteKind;
 use crate::temporary_store::SharedInput;
-use crate::tensor::SomaTensor;
 use crate::tx_fee::TransactionFee;
-
 pub mod object_change;
 
 /// Versioned wrapper for TransactionEffects.
@@ -828,9 +826,6 @@ pub enum ExecutionFailureStatus {
     #[error("Embedding dimension mismatch: expected {expected}, got {actual}.")]
     EmbeddingDimensionMismatch { expected: u64, actual: u64 },
 
-    #[error("Distance score {score} exceeds threshold {threshold}.")]
-    DistanceExceedsThreshold { score: SomaTensor, threshold: SomaTensor },
-
     #[error("Insufficient bond: required {required}, provided {provided}.")]
     InsufficientBond { required: u64, provided: u64 },
 
@@ -886,6 +881,66 @@ pub enum ExecutionFailureStatus {
 
     #[error("Certificate is cancelled due to congestion on shared object")]
     ExecutionCancelledDueToSharedObjectCongestion, //{ congested_objects: CongestedObjects },
+
+    //
+    // Marketplace errors
+    //
+    #[error("Ask not found.")]
+    AskNotFound,
+
+    #[error("Ask is not open.")]
+    AskNotOpen,
+
+    #[error("Ask has expired.")]
+    AskExpired,
+
+    #[error("Ask is already filled (accepted_bid_count == num_bids_wanted).")]
+    AskAlreadyFilled,
+
+    #[error("Cannot cancel ask after bids have been accepted.")]
+    AskHasAcceptedBids,
+
+    #[error("Bid not found.")]
+    BidNotFound,
+
+    #[error("Bid is not pending.")]
+    BidNotPending,
+
+    #[error("Bid price exceeds ask max_price_per_bid.")]
+    BidPriceTooHigh,
+
+    #[error("Seller cannot bid on own ask.")]
+    SellerCannotBidOnOwnAsk,
+
+    #[error("Settlement not found.")]
+    SettlementNotFound,
+
+    #[error("Settlement already rated negative.")]
+    SettlementAlreadyRatedNegative,
+
+    #[error("Rating deadline has passed.")]
+    RatingDeadlinePassed,
+
+    #[error("Vault not found.")]
+    VaultNotFound,
+
+    #[error("Insufficient vault balance.")]
+    InsufficientVaultBalance,
+
+    #[error("Wrong coin type: expected USDC for marketplace payment.")]
+    WrongCoinTypeForPayment,
+
+    //
+    // Bridge errors
+    //
+    #[error("Bridge is paused.")]
+    BridgePaused,
+
+    #[error("Bridge deposit nonce already processed.")]
+    BridgeNonceAlreadyProcessed,
+
+    #[error("Bridge signature verification failed: insufficient stake.")]
+    BridgeInsufficientSignatureStake,
 
     //
     // Post-execution errors

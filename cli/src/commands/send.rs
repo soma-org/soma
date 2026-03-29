@@ -50,7 +50,7 @@ pub async fn execute(
         }
     };
 
-    let kind = TransactionKind::TransferCoin { coin: coin_ref, amount: Some(amount), recipient };
+    let kind = TransactionKind::Transfer { coins: vec![coin_ref], amounts: Some(vec![amount]), recipients: vec![recipient] };
 
     crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
 }

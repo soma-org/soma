@@ -22,8 +22,7 @@ use indexer_framework::postgres::handler::Handler;
 use types::base::SomaAddress;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::ObjectID;
-use types::target::TargetStatus;
-use types::test_checkpoint_data_builder::{TestCheckpointBuilder, test_filled_target, test_target};
+use types::test_checkpoint_data_builder::TestCheckpointBuilder;
 
 use indexer_alt::handlers::*;
 
@@ -437,130 +436,6 @@ async fn test_coin_balance_buckets_commit() {
 }
 
 // ===========================================================================
-// soma_targets
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_targets_process() {
-    let target = test_target(0, TargetStatus::Open, 1_000_000);
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(1).with_network_total_transactions(1).add_target(target).build(),
-    );
-    let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
-    assert_eq!(values.len(), 1);
-    assert_eq!(values[0].status, "open");
-    assert_eq!(values[0].epoch, 0);
-    assert_eq!(values[0].reward_pool, 1_000_000);
-    assert_eq!(values[0].bond_amount, 0);
-    assert!(values[0].submitter.is_none());
-    assert!(values[0].winning_model_id.is_none());
-    assert_eq!(values[0].report_count, 0);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_targets_filled() {
-    let submitter = SomaAddress::random();
-    let model_id = ObjectID::random();
-    let target = test_filled_target(0, 0, submitter, model_id, 500_000, 10_000);
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(2).with_network_total_transactions(1).add_target(target).build(),
-    );
-    let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
-    assert_eq!(values.len(), 1);
-    assert_eq!(values[0].status, "filled");
-    assert_eq!(values[0].submitter.as_ref().unwrap(), &submitter.to_vec());
-    assert_eq!(values[0].winning_model_id.as_ref().unwrap(), &model_id.to_vec());
-    assert_eq!(values[0].bond_amount, 10_000);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_targets_ignores_non_targets() {
-    // A simple coin transfer has no targets
-    let cp = Arc::new(simple_checkpoint());
-    let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
-    assert!(values.is_empty());
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_targets_commit() {
-    let (db, _temp) = setup().await;
-    let target = test_target(0, TargetStatus::Open, 1_000_000);
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(1).with_network_total_transactions(1).add_target(target).build(),
-    );
-    let values = soma_targets::SomaTargets.process(&cp).await.unwrap();
-
-    let mut conn = db.connect().await.unwrap();
-    let rows = soma_targets::SomaTargets::commit(&values, &mut conn).await.unwrap();
-    assert_eq!(rows, 1);
-}
-
-// ===========================================================================
-// soma_models — requires epoch-boundary checkpoint with SystemState
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_models_skips_non_epoch_boundary() {
-    let cp = Arc::new(simple_checkpoint());
-    let values = soma_models::SomaModels.process(&cp).await.unwrap();
-    assert!(values.is_empty());
-}
-
-// ===========================================================================
-// soma_rewards
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_rewards_process() {
-    let sender = SomaAddress::random();
-    let target_id = ObjectID::random();
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(1)
-            .with_network_total_transactions(1)
-            .add_claim_rewards(sender, target_id, 100_000)
-            .build(),
-    );
-    let values = soma_rewards::SomaRewards.process(&cp).await.unwrap();
-    assert_eq!(values.len(), 1);
-    assert_eq!(values[0].target_id, target_id.to_vec());
-    assert_eq!(values[0].epoch, 0);
-    assert!(!values[0].tx_digest.is_empty());
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_rewards_ignores_non_claim() {
-    let cp = Arc::new(simple_checkpoint());
-    let values = soma_rewards::SomaRewards.process(&cp).await.unwrap();
-    assert!(values.is_empty());
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_rewards_commit() {
-    let (db, _temp) = setup().await;
-    let sender = SomaAddress::random();
-    let target_id = ObjectID::random();
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(1)
-            .with_network_total_transactions(1)
-            .add_claim_rewards(sender, target_id, 100_000)
-            .build(),
-    );
-    let values = soma_rewards::SomaRewards.process(&cp).await.unwrap();
-
-    let mut conn = db.connect().await.unwrap();
-    let rows = soma_rewards::SomaRewards::commit(&values, &mut conn).await.unwrap();
-    assert_eq!(rows, 1);
-}
-
-// ===========================================================================
 // Idempotency — double commit should not fail (on_conflict_do_nothing)
 // ===========================================================================
 
@@ -619,34 +494,3 @@ async fn test_multiple_transactions() {
     assert_eq!(cps[0].epoch, 1);
 }
 
-// ===========================================================================
-// Mixed content: targets + coins in same checkpoint
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_mixed_targets_and_coins() {
-    let sender = SomaAddress::random();
-    let recipient = SomaAddress::random();
-    let target = test_target(0, TargetStatus::Open, 500_000);
-
-    let cp = Arc::new(
-        TestCheckpointBuilder::new(3)
-            .with_network_total_transactions(2)
-            .add_transfer_coin(sender, recipient, 100_000)
-            .add_target(target)
-            .build(),
-    );
-
-    // soma_targets should find 1 target
-    let targets = soma_targets::SomaTargets.process(&cp).await.unwrap();
-    assert_eq!(targets.len(), 1);
-
-    // tx_digests should find 2 transactions
-    let digests = tx_digests::TxDigests.process(&cp).await.unwrap();
-    assert_eq!(digests.len(), 2);
-
-    // kv_objects should find objects for both txs
-    let objects = kv_objects::KvObjects.process(&cp).await.unwrap();
-    assert!(objects.len() >= 3); // gas + coin + target
-}

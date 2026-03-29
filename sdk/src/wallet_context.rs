@@ -235,7 +235,7 @@ impl WalletContext {
         let page_size = limit.unwrap_or(100).min(1000) as u32;
         request.page_size = Some(page_size);
 
-        request.object_type = Some((ObjectType::Coin).into());
+        request.object_type = Some("Coin".to_string());
         request.read_mask = Some(FieldMask::from_paths([
             "object_id",
             "version",
@@ -310,7 +310,7 @@ impl WalletContext {
         let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
         request.owner = Some(address.to_string());
         request.page_size = Some(1000);
-        request.object_type = Some((ObjectType::Coin).into());
+        request.object_type = Some("Coin".to_string());
         request.read_mask = Some(FieldMask::from_paths([
             "object_id",
             "version",
@@ -351,6 +351,58 @@ impl WalletContext {
             .into_iter()
             .map(|(r, _)| r)
             .collect())
+    }
+
+    /// Return up to `MAX_COINS` USDC coins owned by `address`, sorted
+    /// richest-first, with their balances (in microdollars).
+    pub async fn get_usdc_coins_sorted_by_balance(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
+        const MAX_COINS: usize = 256;
+
+        let client = self.get_client().await?;
+
+        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+        request.owner = Some(address.to_string());
+        request.page_size = Some(1000);
+        // Filter for USDC coins specifically
+        request.object_type = Some("Coin(USDC)".to_string());
+        request.read_mask = Some(FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
+        ]));
+
+        let stream = client.list_owned_objects(request).await;
+        tokio::pin!(stream);
+
+        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
+        while let Some(object) = stream.try_next().await? {
+            if object.coin_type() == Some(types::object::CoinType::Usdc) {
+                let balance = object.as_coin().unwrap_or(0);
+                let obj_ref = object.compute_object_reference();
+                coins.push((obj_ref, balance));
+                if coins.len() >= MAX_COINS {
+                    break;
+                }
+            }
+        }
+
+        coins.sort_by(|a, b| b.1.cmp(&a.1));
+        Ok(coins)
+    }
+
+    /// Return the richest USDC coin owned by this address, with its balance.
+    pub async fn get_richest_usdc_coin(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
+        Ok(self.get_usdc_coins_sorted_by_balance(address).await?.into_iter().next())
     }
 
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {

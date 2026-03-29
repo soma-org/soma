@@ -65,7 +65,7 @@ fn error_hint(msg: &str) -> Option<&'static str> {
         );
     }
     if msg_lower.contains("not found in active, pending, or inactive") {
-        return Some("Check the model ID with `soma model list`.");
+        return Some("Check the ID and try again.");
     }
     if msg_lower.contains("must be exactly 32 bytes") {
         return Some(

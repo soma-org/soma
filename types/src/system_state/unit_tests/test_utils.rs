@@ -19,21 +19,18 @@ use crate::checksum::Checksum;
 use crate::committee::TOTAL_VOTING_POWER;
 use crate::config::genesis_config::SHANNONS_PER_SOMA;
 use crate::crypto::{
-    self, AuthorityKeyPair, DecryptionKey, DefaultHash, NetworkKeyPair, NetworkPublicKey,
+    self, AuthorityKeyPair, DefaultHash, NetworkKeyPair, NetworkPublicKey,
     ProtocolKeyPair,
 };
-use crate::digests::{DecryptionKeyCommitment, EmbeddingCommitment, ModelWeightsCommitment};
 use crate::effects::ExecutionFailureStatus;
 use crate::error::ExecutionResult;
-use crate::metadata::{Manifest, ManifestV1, Metadata, MetadataV1};
-use crate::model::ModelId;
 use crate::multiaddr::Multiaddr;
 use crate::object::ObjectID;
 use crate::system_state::emission::EmissionPool;
 use crate::system_state::staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool};
 use crate::system_state::validator::{Validator, ValidatorSet};
+use crate::bridge::{BridgeCommittee, MarketplaceParameters};
 use crate::system_state::{PublicKey, SystemParameters, SystemState, SystemStateTrait};
-use crate::tensor::SomaTensor;
 
 #[cfg(test)]
 #[derive(Clone)]
@@ -413,11 +410,12 @@ pub fn create_test_system_state(
         &protocol_config,
         stake_subsidy_fund,
         emission_per_epoch * SHANNONS_PER_SOMA,
+        10,   // emission_period_length
+        1000, // emission_decrease_rate (10% in bps)
         None,
+        MarketplaceParameters::default(),
+        BridgeCommittee::empty(),
     );
-    // Set validator_reward_allocation_bps to 100% so all fees go to validators.
-    // This decouples validator/delegation/reward tests from the data submission reward split.
-    state.parameters_mut().validator_reward_allocation_bps = 10000; // 100%
     state
 }
 
@@ -436,17 +434,19 @@ pub fn create_test_system_state_at_version(
     let epoch_start_timestamp_ms = 1000;
     let stake_subsidy_fund = supply_amount * SHANNONS_PER_SOMA;
 
-    let mut state = SystemState::create(
+    SystemState::create(
         validators,
         version,
         epoch_start_timestamp_ms,
         &protocol_config,
         stake_subsidy_fund,
         emission_per_epoch * SHANNONS_PER_SOMA,
+        10,   // emission_period_length
+        1000, // emission_decrease_rate (10% in bps)
         None,
-    );
-    state.parameters_mut().validator_reward_allocation_bps = 10000; // 100%
-    state
+        MarketplaceParameters::default(),
+        BridgeCommittee::empty(),
+    )
 }
 
 /// Setup a system state with specified validator addresses
@@ -539,156 +539,3 @@ pub fn stake_plus_current_rewards_for_validator(
     None
 }
 
-// ===== Model test helpers =====
-
-/// Build a dummy `Manifest` from a URL string.
-pub fn make_manifest(url_str: &str) -> Manifest {
-    let url = Url::parse(url_str).expect("Invalid URL in test helper");
-    let metadata = Metadata::V1(MetadataV1::new(Checksum::new_from_hash([1u8; 32]), 1024));
-    Manifest::V1(ManifestV1::new(url, metadata))
-}
-
-/// The fixed test decryption key used by all test commit/reveal helpers.
-pub const TEST_DECRYPTION_KEY: [u8; 32] = [0xAA; 32];
-
-/// Compute the `DecryptionKeyCommitment` that matches `TEST_DECRYPTION_KEY`.
-pub fn test_decryption_key_commitment() -> DecryptionKeyCommitment {
-    let mut hasher = DefaultHash::default();
-    hasher.update(&TEST_DECRYPTION_KEY);
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    DecryptionKeyCommitment::new(bytes)
-}
-
-/// Compute the `EmbeddingCommitment` for a given model_id and embedding dimension.
-pub fn test_embedding_commitment(model_id: &ModelId, dim: usize) -> EmbeddingCommitment {
-    let embedding = make_test_embedding(model_id, dim);
-    let embedding_bytes = bcs::to_bytes(&embedding).expect("BCS serialization cannot fail");
-    let mut hasher = DefaultHash::default();
-    hasher.update(&embedding_bytes);
-    let hash = hasher.finalize();
-    let bytes: [u8; 32] = hash.as_ref().try_into().unwrap();
-    EmbeddingCommitment::new(bytes)
-}
-
-/// Create a model (economic setup only). Returns the StakedSomaV1 receipt.
-/// Model enters Created state; call `commit_model` next to transition to Pending.
-pub fn create_model(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: ModelId,
-    stake_amount: u64,
-) -> StakedSomaV1 {
-    create_model_with_commission(system_state, owner, model_id, stake_amount, 0)
-}
-
-/// Create a model with a specified commission rate.
-pub fn create_model_with_commission(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: ModelId,
-    stake_amount: u64,
-    commission_rate: u64,
-) -> StakedSomaV1 {
-    let staking_pool_id = ObjectID::random();
-
-    system_state
-        .request_create_model(
-            owner,
-            model_id,
-            system_state.parameters().model_architecture_version,
-            stake_amount,
-            commission_rate,
-            staking_pool_id,
-        )
-        .expect("Failed to create model")
-}
-
-/// Commit a model (unified): transitions Created -> Pending, or sets pending_update on Active.
-/// Uses a deterministic test URL derived from model_id to generate matching commitments.
-/// Embedding dimension defaults to 10 (matching `reveal_model`).
-pub fn commit_model(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
-    commit_model_with_dim(system_state, owner, model_id, 10);
-}
-
-/// Commit a model with a specified embedding dimension.
-/// Use this when you plan to call `reveal_model_with_dim` with a non-default dimension.
-pub fn commit_model_with_dim(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-    embedding_dim: usize,
-) {
-    let url_str = format!("https://example.com/models/{}", model_id);
-    let manifest = make_manifest(&url_str);
-    let weights_commitment = ModelWeightsCommitment::new([0xBB; 32]);
-    let embedding_commitment = test_embedding_commitment(model_id, embedding_dim);
-    let decryption_key_commitment = test_decryption_key_commitment();
-
-    system_state
-        .request_commit_model(
-            owner,
-            model_id,
-            manifest,
-            weights_commitment,
-            embedding_commitment,
-            decryption_key_commitment,
-        )
-        .expect("Failed to commit model")
-}
-
-/// Reveal a previously committed model (moves pending -> active).
-/// Must be called in `commit_epoch + 1`.
-/// Uses a default 10-dimensional embedding.
-pub fn reveal_model(system_state: &mut SystemState, owner: SomaAddress, model_id: &ModelId) {
-    reveal_model_with_dim(system_state, owner, model_id, 10);
-}
-
-/// Reveal a previously committed model with a specific embedding dimension.
-/// Must be called in `commit_epoch + 1`.
-pub fn reveal_model_with_dim(
-    system_state: &mut SystemState,
-    owner: SomaAddress,
-    model_id: &ModelId,
-    embedding_dim: usize,
-) {
-    let decryption_key = DecryptionKey::new([0xAA; 32]);
-    // Create a deterministic test embedding based on model_id
-    let embedding = make_test_embedding(model_id, embedding_dim);
-
-    system_state
-        .request_reveal_model(owner, model_id, decryption_key, embedding)
-        .expect("Failed to reveal model");
-}
-
-/// Create a deterministic test embedding based on model_id
-fn make_test_embedding(model_id: &ModelId, dim: usize) -> SomaTensor {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    model_id.hash(&mut hasher);
-    let seed = hasher.finish();
-
-    // Generate deterministic values based on the model_id
-    let values: Vec<f32> = (0..dim)
-        .map(|i| {
-            // Use a simple deterministic function based on seed and index
-            let x = ((seed.wrapping_add(i as u64)).wrapping_mul(2654435761) % 1000) as f32;
-            (x / 1000.0) - 0.5 // Normalize to [-0.5, 0.5]
-        })
-        .collect();
-
-    SomaTensor::new(values, vec![dim])
-}
-
-/// Stake to a model (any sender). Amount is in SOMA (not shannons).
-pub fn stake_with_model(
-    system_state: &mut SystemState,
-    model_id: &ModelId,
-    amount: u64,
-) -> StakedSomaV1 {
-    system_state
-        .request_add_stake_to_model(model_id, amount * SHANNONS_PER_SOMA)
-        .expect("Failed to stake with model")
-}

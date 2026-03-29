@@ -81,6 +81,14 @@ pub struct ValidatorMetadata {
 
     /// Optional new proxy address for the next epoch
     pub next_epoch_proxy_address: Option<Multiaddr>,
+
+    /// Compressed Secp256k1 public key (33 bytes) for EVM-compatible bridge signing
+    #[serde(default)]
+    pub bridge_ecdsa_pubkey: Option<Vec<u8>>,
+
+    /// Optional new bridge ECDSA key for the next epoch
+    #[serde(default)]
+    pub next_epoch_bridge_ecdsa_pubkey: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -137,6 +145,8 @@ impl Validator {
                 next_epoch_worker_pubkey: None,
                 next_epoch_proof_of_possession: None,
                 next_epoch_proxy_address: None,
+                bridge_ecdsa_pubkey: None,
+                next_epoch_bridge_ecdsa_pubkey: None,
             },
             voting_power,
             commission_rate,
@@ -445,6 +455,11 @@ impl Validator {
             next_epoch_p2p_address: None,
             next_epoch_primary_address: None,
             next_epoch_proxy_address: None,
+            bridge_ecdsa_pubkey: m
+                .next_epoch_bridge_ecdsa_pubkey
+                .clone()
+                .or(m.bridge_ecdsa_pubkey.clone()),
+            next_epoch_bridge_ecdsa_pubkey: None,
         }
     }
 

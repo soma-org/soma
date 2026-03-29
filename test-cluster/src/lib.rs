@@ -27,7 +27,7 @@ use types::base::{AuthorityName, ConciseableName, SomaAddress};
 use types::checksum::Checksum;
 use types::committee::{CommitteeTrait, EpochId};
 use types::config::genesis_config::{
-    AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, GenesisModelConfig, ValidatorGenesisConfig,
+    AccountConfig, DEFAULT_GAS_AMOUNT, GenesisConfig, ValidatorGenesisConfig,
 };
 use types::config::network_config::{
     NetworkConfig, ProtocolVersionsConfig, SupportedProtocolVersionsCallback,
@@ -63,36 +63,6 @@ mod swarm_node;
 
 const NUM_VALIDATORS: usize = 4;
 
-/// Mock scoring gRPC service for e2e tests.
-/// Returns deterministic results (winner=0, all-zero scores) without real ML inference.
-struct MockScoringService;
-
-#[scoring::tonic::async_trait]
-impl scoring::tonic_gen::scoring_server::Scoring for MockScoringService {
-    async fn score(
-        &self,
-        request: scoring::tonic::Request<scoring::types::ScoreRequest>,
-    ) -> Result<scoring::tonic::Response<scoring::types::ScoreResponse>, scoring::tonic::Status>
-    {
-        let req = request.into_inner();
-        let num_models = req.model_manifests.len().max(1);
-        Ok(scoring::tonic::Response::new(scoring::types::ScoreResponse {
-            winner: 0,
-            loss_score: vec![0.0; num_models],
-            embedding: vec![0.0; req.target_embedding.len()],
-            distance: vec![0.0; num_models],
-        }))
-    }
-
-    async fn health(
-        &self,
-        _request: scoring::tonic::Request<scoring::types::HealthRequest>,
-    ) -> Result<scoring::tonic::Response<scoring::types::HealthResponse>, scoring::tonic::Status>
-    {
-        Ok(scoring::tonic::Response::new(scoring::types::HealthResponse { ok: true }))
-    }
-}
-
 pub struct FullNodeHandle {
     pub soma_node: SomaNodeHandle,
     pub soma_client: SomaClient,
@@ -112,6 +82,9 @@ pub struct TestCluster {
     pub swarm: Swarm,
     pub wallet: WalletContext,
     pub fullnode_handle: FullNodeHandle,
+    /// Bridge committee keypairs (in BTreeMap iteration order of the committee members).
+    /// Only populated when the cluster is built with `with_bridge_committee()`.
+    pub bridge_keypairs: Vec<fastcrypto::secp256k1::Secp256k1KeyPair>,
 }
 
 impl TestCluster {
@@ -468,9 +441,7 @@ pub struct TestClusterBuilder {
     validator_supported_protocol_versions_config: ProtocolVersionsConfig,
     fullnode_run_with_range: Option<RunWithRange>,
     data_ingestion_dir: Option<PathBuf>,
-    /// When true, skip the mock scoring server and let validators start their own
-    /// local scoring service (using CPU backend and small model for testing).
-    use_local_scoring: bool,
+    bridge_keypairs: Vec<fastcrypto::secp256k1::Secp256k1KeyPair>,
 }
 
 impl TestClusterBuilder {
@@ -483,7 +454,7 @@ impl TestClusterBuilder {
             validator_supported_protocol_versions_config: ProtocolVersionsConfig::Default,
             fullnode_run_with_range: None,
             data_ingestion_dir: None,
-            use_local_scoring: false,
+            bridge_keypairs: Vec::new(),
         }
     }
 
@@ -549,13 +520,6 @@ impl TestClusterBuilder {
         self
     }
 
-    /// Skip the mock scoring server and let each validator start its own local
-    /// scoring service (CPU backend). Useful for testing the auto-start path.
-    pub fn with_local_scoring(mut self) -> Self {
-        self.use_local_scoring = true;
-        self
-    }
-
     pub async fn build(mut self) -> TestCluster {
         let swarm = self.start_swarm().await.unwrap();
         let working_dir = swarm.dir();
@@ -590,71 +554,11 @@ impl TestClusterBuilder {
         let wallet_conf = swarm.dir().join(SOMA_CLIENT_CONFIG);
         let wallet = WalletContext::new(&wallet_conf).unwrap();
 
-        TestCluster { wallet, fullnode_handle, swarm }
+        TestCluster { wallet, fullnode_handle, swarm, bridge_keypairs: self.bridge_keypairs }
     }
 
     async fn start_swarm(&mut self) -> Result<Swarm, anyhow::Error> {
         let mut builder: SwarmBuilder = Swarm::builder().with_fullnode_count(1);
-
-        if !self.use_local_scoring {
-            // Start a mock scoring server so validators can run the audit service.
-            let scoring_host = local_ip_utils::get_new_ip();
-            let scoring_port = local_ip_utils::get_available_port(&scoring_host);
-            let scoring_addr: SocketAddr =
-                format!("{scoring_host}:{scoring_port}").parse().unwrap();
-
-            // In msim, services must run inside a simulated node with an assigned IP.
-            // Spawn the scoring server on its own node, matching the pattern used by
-            // validator containers in container-sim.rs.
-            #[cfg(msim)]
-            {
-                let ip: std::net::IpAddr = scoring_host.parse().unwrap();
-                let handle = msim::runtime::Handle::current();
-                handle
-                    .create_node()
-                    .ip(ip)
-                    .name("mock-scoring")
-                    .init(move || async move {
-                        let listener = tokio::net::TcpListener::bind(scoring_addr).await.unwrap();
-                        scoring::tonic::transport::Server::builder()
-                            .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
-                                MockScoringService,
-                            ))
-                            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
-                                listener,
-                            ))
-                            .await
-                            .expect("mock scoring server");
-                    })
-                    .build();
-            }
-
-            #[cfg(not(msim))]
-            {
-                let std_listener = std::net::TcpListener::bind(scoring_addr)?;
-                std_listener.set_nonblocking(true)?;
-                let listener = tokio::net::TcpListener::from_std(std_listener)?;
-                tokio::spawn(async move {
-                    scoring::tonic::transport::Server::builder()
-                        .add_service(scoring::tonic_gen::scoring_server::ScoringServer::new(
-                            MockScoringService,
-                        ))
-                        .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(
-                            listener,
-                        ))
-                        .await
-                        .expect("mock scoring server");
-                });
-            }
-
-            let scoring_url = format!("http://{scoring_addr}");
-            info!("Mock scoring server started at {scoring_url}");
-            builder = builder.with_scoring_url(scoring_url);
-        } else {
-            info!("Using local scoring (no mock server); validators will auto-start their own");
-            // Use CPU backend for tests (reliable without GPU).
-            builder = builder.with_scoring_device(types::config::node_config::DeviceConfig::Cpu);
-        }
 
         if let Some(validators) = self.validators.take() {
             builder = builder.with_validators(validators);
@@ -721,8 +625,31 @@ impl TestClusterBuilder {
         self.genesis_config.as_mut().unwrap()
     }
 
-    pub fn with_genesis_models(mut self, models: Vec<GenesisModelConfig>) -> Self {
-        self.get_or_init_genesis_config().genesis_models = models;
+
+    /// Give each genesis account USDC coins for marketplace testing.
+    /// `amount_microdollars` per coin, `count` coins per account.
+    pub fn with_usdc_for_accounts(mut self, amount_microdollars: u64, count: usize) -> Self {
+        let config = self.get_or_init_genesis_config();
+        for account in &mut config.accounts {
+            account.usdc_amounts = vec![amount_microdollars; count];
+        }
+        self
+    }
+
+    pub fn with_marketplace_params(mut self, params: types::bridge::MarketplaceParameters) -> Self {
+        self.get_or_init_genesis_config().marketplace_params = Some(params);
+        self
+    }
+
+    /// Set up a test bridge committee with `num_members` members, each with
+    /// equal voting power summing to 10000. Uses real secp256k1 keypairs.
+    /// The keypairs are stored on `TestCluster.bridge_keypairs` (in BTreeMap
+    /// iteration order) so tests can sign bridge messages.
+    pub fn with_bridge_committee(mut self, num_members: usize) -> Self {
+        let (committee, keypairs) =
+            types::bridge::generate_test_bridge_committee(num_members);
+        self.bridge_keypairs = keypairs;
+        self.get_or_init_genesis_config().bridge_committee = Some(committee);
         self
     }
 
@@ -731,7 +658,7 @@ impl TestClusterBuilder {
         addresses: impl IntoIterator<Item = SomaAddress>,
     ) -> Self {
         self.get_or_init_genesis_config().accounts.extend(addresses.into_iter().map(|address| {
-            AccountConfig { address: Some(address), gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10] }
+            AccountConfig { address: Some(address), gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10], ..Default::default() }
         }));
         self
     }

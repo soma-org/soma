@@ -7,7 +7,7 @@ use crate::crypto::AuthorityPublicKeyBytes;
 use crate::digests::TransactionDigest;
 use crate::effects::ExecutionFailureStatus;
 use crate::error::{ErrorCategory, SomaError};
-use crate::object::{ObjectID, ObjectType};
+use crate::object::{CoinType, ObjectID, ObjectType};
 
 /// Each SomaError variant we can easily construct has a non-empty Display impl.
 #[test]
@@ -114,7 +114,7 @@ fn test_execution_failure_status_variants() {
         ExecutionFailureStatus::ObjectNotFound { object_id: ObjectID::ZERO },
         ExecutionFailureStatus::InvalidObjectType {
             object_id: ObjectID::ZERO,
-            expected_type: ObjectType::Coin,
+            expected_type: ObjectType::Coin(CoinType::Soma),
             actual_type: ObjectType::SystemState,
         },
         ExecutionFailureStatus::InvalidTransactionType,

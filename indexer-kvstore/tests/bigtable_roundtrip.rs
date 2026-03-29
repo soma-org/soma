@@ -14,16 +14,14 @@ use std::sync::Arc;
 use indexer_framework::pipeline::Processor;
 use indexer_kvstore::{
     BigTableClient, CheckpointsByDigestPipeline, CheckpointsPipeline, EpochEndPipeline,
-    EpochStartPipeline, KeyValueStoreReader, ObjectsPipeline, SomaRewardsPipeline,
-    SomaTargetsPipeline, TransactionsPipeline, Watermark,
+    EpochStartPipeline, KeyValueStoreReader, ObjectsPipeline,
+    TransactionsPipeline, Watermark,
 };
 use types::base::SomaAddress;
 use types::committee::Committee;
 use types::full_checkpoint_content::Checkpoint;
-use types::object::ObjectType;
-use types::target::TargetStatus;
 use types::test_checkpoint_data_builder::{
-    TestCheckpointBuilder, default_test_system_state, test_target,
+    TestCheckpointBuilder, default_test_system_state,
 };
 
 /// Set watermarks for all pipelines to the given values.
@@ -33,12 +31,10 @@ async fn set_watermarks(client: &mut BigTableClient, wm: &Watermark) {
     }
 }
 
-/// Build a genesis checkpoint with system state and a target.
+/// Build a genesis checkpoint with system state.
 fn genesis_checkpoint() -> Checkpoint {
-    let target = test_target(0, TargetStatus::Open, 1000);
     TestCheckpointBuilder::new(0)
         .with_genesis_system_state(default_test_system_state())
-        .add_target(target)
         .build()
 }
 
@@ -211,55 +207,6 @@ async fn test_latest_epoch_roundtrip() {
 
     let latest = client.get_latest_epoch().await.unwrap().expect("should find latest epoch");
     assert_eq!(latest.epoch, Some(0));
-}
-
-// ---------- Soma targets roundtrip ----------
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_targets_roundtrip() {
-    let (_emu, mut client) = setup().await;
-
-    let target = test_target(0, TargetStatus::Open, 1000);
-    let cp = TestCheckpointBuilder::new(1).add_target(target).build();
-    let entries = SomaTargetsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
-    client.write_entries(indexer_kvstore::tables::targets::NAME, entries).await.unwrap();
-
-    // Read back via multi_get on targets table
-    let first_tx = &cp.transactions[0];
-    let output_objects: Vec<_> = first_tx.output_objects(&cp.object_set).collect();
-    let target_obj = output_objects
-        .iter()
-        .find(|o| *o.type_() == ObjectType::Target)
-        .expect("should have a target object");
-
-    let key = indexer_kvstore::tables::targets::encode_key(&target_obj.id().to_vec());
-    let results =
-        client.multi_get(indexer_kvstore::tables::targets::NAME, vec![key], None).await.unwrap();
-    assert_eq!(results.len(), 1, "should find 1 target row");
-}
-
-// ---------- Soma rewards roundtrip ----------
-
-#[tokio::test]
-#[ignore]
-async fn test_soma_rewards_roundtrip() {
-    let (_emu, mut client) = setup().await;
-
-    let sender = SomaAddress::random();
-    let target_id = types::object::ObjectID::random();
-    let cp = TestCheckpointBuilder::new(1).add_claim_rewards(sender, target_id, 500).build();
-    let entries = SomaRewardsPipeline.process(&Arc::new(cp.clone())).await.unwrap();
-    client.write_entries(indexer_kvstore::tables::rewards::NAME, entries).await.unwrap();
-
-    let tx_digest = cp.contents.iter().next().unwrap().transaction;
-    let key = indexer_kvstore::tables::rewards::encode_key(
-        &target_id.to_vec(),
-        &tx_digest.inner().to_vec(),
-    );
-    let results =
-        client.multi_get(indexer_kvstore::tables::rewards::NAME, vec![key], None).await.unwrap();
-    assert_eq!(results.len(), 1, "should find 1 reward row");
 }
 
 // ---------- Watermark roundtrip ----------

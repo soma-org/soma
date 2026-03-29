@@ -10,7 +10,7 @@ use fastcrypto::traits::ToFromBytes;
 use types::base::SomaAddress;
 use types::crypto::SomaSignature;
 use types::envelope::Message as _;
-use types::metadata::{ManifestAPI, MetadataAPI};
+use types::metadata::{ManifestAPI as _, MetadataAPI as _};
 use url::Url;
 
 use crate::proto::TryFromProtoError;
@@ -144,10 +144,6 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 ExecutionErrorKind::EmbeddingDimensionMismatch,
                 Some(format!("expected={}, actual={}", expected, actual)),
             ),
-            E::DistanceExceedsThreshold { score, threshold } => (
-                ExecutionErrorKind::DistanceExceedsThreshold,
-                Some(format!("score={}, threshold={}", score, threshold)),
-            ),
             E::InsufficientBond { required, provided } => (
                 ExecutionErrorKind::InsufficientBond,
                 Some(format!("required={}, provided={}", required, provided)),
@@ -173,6 +169,26 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Some("Model in invalid state for this operation".into()),
             ),
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
+            // Marketplace errors
+            E::AskNotFound => (ExecutionErrorKind::OtherError, Some("Ask not found".into())),
+            E::AskNotOpen => (ExecutionErrorKind::OtherError, Some("Ask is not open".into())),
+            E::AskExpired => (ExecutionErrorKind::OtherError, Some("Ask has expired".into())),
+            E::AskAlreadyFilled => (ExecutionErrorKind::OtherError, Some("Ask is already filled".into())),
+            E::AskHasAcceptedBids => (ExecutionErrorKind::OtherError, Some("Cannot cancel ask after bids accepted".into())),
+            E::BidNotFound => (ExecutionErrorKind::OtherError, Some("Bid not found".into())),
+            E::BidNotPending => (ExecutionErrorKind::OtherError, Some("Bid is not pending".into())),
+            E::BidPriceTooHigh => (ExecutionErrorKind::OtherError, Some("Bid price exceeds ask max".into())),
+            E::SellerCannotBidOnOwnAsk => (ExecutionErrorKind::OtherError, Some("Seller cannot bid on own ask".into())),
+            E::SettlementNotFound => (ExecutionErrorKind::OtherError, Some("Settlement not found".into())),
+            E::SettlementAlreadyRatedNegative => (ExecutionErrorKind::OtherError, Some("Settlement already rated negative".into())),
+            E::RatingDeadlinePassed => (ExecutionErrorKind::OtherError, Some("Rating deadline has passed".into())),
+            E::VaultNotFound => (ExecutionErrorKind::OtherError, Some("Vault not found".into())),
+            E::InsufficientVaultBalance => (ExecutionErrorKind::OtherError, Some("Insufficient vault balance".into())),
+            E::WrongCoinTypeForPayment => (ExecutionErrorKind::OtherError, Some("Wrong coin type: expected USDC".into())),
+            // Bridge errors
+            E::BridgePaused => (ExecutionErrorKind::OtherError, Some("Bridge is paused".into())),
+            E::BridgeNonceAlreadyProcessed => (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into())),
+            E::BridgeInsufficientSignatureStake => (ExecutionErrorKind::OtherError, Some("Bridge: insufficient signature stake".into())),
         };
 
         message.set_kind(kind);
@@ -555,15 +571,15 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 Kind::SetCommissionRate(SetCommissionRate { new_rate: Some(new_rate) })
             }
 
-            K::TransferCoin { coin, amount, recipient } => Kind::TransferCoin(TransferCoin {
-                coin: Some(object_ref_to_proto(coin)),
-                amount,
-                recipient: Some(recipient.to_string()),
-            }),
-            K::PayCoins { coins, amounts, recipients } => Kind::PayCoins(PayCoins {
+            K::Transfer { coins, amounts, recipients } => Kind::PayCoins(PayCoins {
                 coins: coins.into_iter().map(object_ref_to_proto).collect(),
                 amounts: amounts.unwrap_or_default(),
                 recipients: recipients.into_iter().map(|r| r.to_string()).collect(),
+            }),
+            K::MergeCoins { coins } => Kind::PayCoins(PayCoins {
+                coins: coins.into_iter().map(object_ref_to_proto).collect(),
+                amounts: vec![],
+                recipients: vec![],
             }),
             K::TransferObjects { objects, recipient } => Kind::TransferObjects(TransferObjects {
                 objects: objects.into_iter().map(object_ref_to_proto).collect(),
@@ -579,72 +595,57 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
             }),
 
-            // Model transactions
-            K::CreateModel(args) => Kind::CreateModel(CreateModel {
-                stake_amount: Some(args.stake_amount),
-                commission_rate: Some(args.commission_rate),
-                architecture_version: Some(args.architecture_version),
+            // Marketplace transactions
+            K::CreateAsk(args) => Kind::CreateAsk(CreateAsk {
+                task_digest: Some(args.task_digest.inner().to_vec().into()),
+                max_price_per_bid: Some(args.max_price_per_bid),
+                num_bids_wanted: Some(args.num_bids_wanted),
+                timeout_ms: Some(args.timeout_ms),
             }),
-            K::CommitModel(args) => Kind::CommitModel(CommitModel {
-                model_id: Some(args.model_id.to_string()),
-                manifest: Some(args.manifest.into()),
-                weights_commitment: Some(args.weights_commitment.into_inner().to_vec().into()),
-                embedding_commitment: Some(args.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(
-                    args.decryption_key_commitment.into_inner().to_vec().into(),
-                ),
+            K::CancelAsk { ask_id } => Kind::CancelAsk(CancelAsk {
+                ask_id: Some(ask_id.to_string()),
             }),
-            K::RevealModel(args) => Kind::RevealModel(RevealModel {
-                model_id: Some(args.model_id.to_string()),
-                decryption_key: Some(args.decryption_key.as_ref().to_vec().into()),
-                embedding: args.embedding.to_vec(),
+            K::CreateBid(args) => Kind::CreateBid(CreateBid {
+                ask_id: Some(args.ask_id.to_string()),
+                price: Some(args.price),
+                response_digest: Some(args.response_digest.inner().to_vec().into()),
             }),
-            K::AddStakeToModel { model_id, coin_ref, amount } => {
-                Kind::AddStakeToModel(AddStakeToModel {
-                    model_id: Some(model_id.to_string()),
-                    coin_ref: Some(object_ref_to_proto(coin_ref)),
-                    amount,
-                })
-            }
-            K::SetModelCommissionRate { model_id, new_rate } => {
-                Kind::SetModelCommissionRate(SetModelCommissionRate {
-                    model_id: Some(model_id.to_string()),
-                    new_rate: Some(new_rate),
-                })
-            }
-            K::DeactivateModel { model_id } => {
-                Kind::DeactivateModel(DeactivateModel { model_id: Some(model_id.to_string()) })
-            }
-            K::ReportModel { model_id } => {
-                Kind::ReportModel(ReportModel { model_id: Some(model_id.to_string()) })
-            }
-            K::UndoReportModel { model_id } => {
-                Kind::UndoReportModel(UndoReportModel { model_id: Some(model_id.to_string()) })
-            }
-            // Submission transactions
-            K::SubmitData(args) => Kind::SubmitData(SubmitData {
-                target_id: Some(args.target_id.to_string()),
-                data_manifest: Some(crate::proto::soma::SubmissionManifest {
-                    manifest: Some(args.data_manifest.manifest.into()),
-                }),
-                model_id: Some(args.model_id.to_string()),
-                embedding: args.embedding.to_vec(),
-                distance_score: Some(args.distance_score.as_scalar()),
-                bond_coin: Some(object_ref_to_proto(args.bond_coin)),
-                loss_score: args.loss_score.to_vec(),
+            K::AcceptBid(args) => Kind::AcceptBid(AcceptBid {
+                ask_id: Some(args.ask_id.to_string()),
+                bid_id: Some(args.bid_id.to_string()),
+                payment_coin: Some(object_ref_to_proto(args.payment_coin)),
             }),
-            K::ClaimRewards(args) => {
-                Kind::ClaimRewards(ClaimRewards { target_id: Some(args.target_id.to_string()) })
-            }
-            K::ReportSubmission { target_id } => Kind::ReportSubmission(ReportSubmission {
-                target_id: Some(target_id.to_string()),
-                challenger: None,
+            K::RateSeller { settlement_id } => Kind::RateSeller(RateSeller {
+                settlement_id: Some(settlement_id.to_string()),
             }),
-            K::UndoReportSubmission { target_id } => {
-                Kind::UndoReportSubmission(UndoReportSubmission {
-                    target_id: Some(target_id.to_string()),
-                })
-            }
+            K::WithdrawFromVault { vault, amount, recipient_coin } => Kind::WithdrawFromVault(WithdrawFromVault {
+                vault: Some(object_ref_to_proto(vault)),
+                amount,
+                recipient_coin: recipient_coin.map(object_ref_to_proto),
+            }),
+
+            // Bridge transactions
+            K::BridgeDeposit(args) => Kind::BridgeDeposit(BridgeDeposit {
+                nonce: Some(args.nonce),
+                eth_tx_hash: Some(args.eth_tx_hash.to_vec().into()),
+                recipient: Some(args.recipient.to_string()),
+                amount: Some(args.amount),
+                aggregated_signature: Some(args.aggregated_signature.into()),
+                signer_bitmap: Some(args.signer_bitmap.into()),
+            }),
+            K::BridgeWithdraw(args) => Kind::BridgeWithdraw(BridgeWithdraw {
+                payment_coin: Some(object_ref_to_proto(args.payment_coin)),
+                amount: Some(args.amount),
+                recipient_eth_address: Some(args.recipient_eth_address.to_vec().into()),
+            }),
+            K::BridgeEmergencyPause(args) => Kind::BridgeEmergencyPause(BridgeEmergencyPause {
+                aggregated_signature: Some(args.aggregated_signature.into()),
+                signer_bitmap: Some(args.signer_bitmap.into()),
+            }),
+            K::BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(BridgeEmergencyUnpause {
+                aggregated_signature: Some(args.aggregated_signature.into()),
+                signer_bitmap: Some(args.signer_bitmap.into()),
+            }),
         };
 
         Self { kind: Some(kind), ..Default::default() }
@@ -923,16 +924,6 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
         let validator_report_records =
             convert_report_records(proto_state.validator_report_records)?;
 
-        // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
-
-        // Convert model registry
-        let model_registry =
-            proto_state.model_registry.map(|mr| mr.try_into()).transpose()?.unwrap_or_default();
-
-        // Convert target state
-        let target_state =
-            proto_state.target_state.map(|ts| ts.try_into()).transpose()?.unwrap_or_default();
-
         // Build initial committees
         let system_state =
             types::system_state::SystemState::V1(types::system_state::SystemStateV1 {
@@ -946,9 +937,9 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
 
                 emission_pool,
 
-                model_registry,
-
-                target_state,
+                marketplace_params: types::bridge::MarketplaceParameters::default(),
+                protocol_fund_balance: 0,
+                bridge_state: types::bridge::BridgeState::new(types::bridge::BridgeCommittee::empty()),
 
                 safe_mode: proto_state.safe_mode.unwrap_or(false),
                 safe_mode_accumulated_fees: proto_state.safe_mode_accumulated_fees.unwrap_or(0),
@@ -967,19 +958,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
     fn try_from(proto_params: SystemParameters) -> Result<Self, Self::Error> {
         Ok(protocol_config::SystemParameters {
             epoch_duration_ms: proto_params.epoch_duration_ms.ok_or("Missing epoch_duration_ms")?,
-            validator_reward_allocation_bps: proto_params
-                .validator_reward_allocation_bps
-                .ok_or("Missing validator_reward_allocation_bps")?,
-            model_min_stake: proto_params.model_min_stake.ok_or("Missing model_min_stake")?,
-            model_architecture_version: proto_params
-                .model_architecture_version
-                .ok_or("Missing model_architecture_version")?,
-            model_reveal_slash_rate_bps: proto_params
-                .model_reveal_slash_rate_bps
-                .ok_or("Missing model_reveal_slash_rate_bps")?,
-            model_tally_slash_rate_bps: proto_params
-                .model_tally_slash_rate_bps
-                .ok_or("Missing model_tally_slash_rate_bps")?,
             target_epoch_fee_collection: proto_params
                 .target_epoch_fee_collection
                 .ok_or("Missing target_epoch_fee_collection")?,
@@ -991,61 +969,6 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
             fee_adjustment_rate_bps: proto_params
                 .fee_adjustment_rate_bps
                 .ok_or("Missing fee_adjustment_rate_bps")?,
-            // Target/Submission parameters
-            target_models_per_target: proto_params
-                .target_models_per_target
-                .ok_or("Missing target_models_per_target")?,
-            target_embedding_dim: proto_params
-                .target_embedding_dim
-                .ok_or("Missing target_embedding_dim")?,
-            target_initial_distance_threshold: types::tensor::SomaTensor::scalar(
-                proto_params
-                    .target_initial_distance_threshold
-                    .ok_or("Missing target_initial_distance_threshold")?,
-            ),
-            target_reward_allocation_bps: proto_params
-                .target_reward_allocation_bps
-                .ok_or("Missing target_reward_allocation_bps")?,
-            target_hits_per_epoch: proto_params
-                .target_hits_per_epoch
-                .ok_or("Missing target_hits_per_epoch")?,
-            target_hits_ema_decay_bps: proto_params
-                .target_hits_ema_decay_bps
-                .ok_or("Missing target_hits_ema_decay_bps")?,
-            target_difficulty_adjustment_rate_bps: proto_params
-                .target_difficulty_adjustment_rate_bps
-                .ok_or("Missing target_difficulty_adjustment_rate_bps")?,
-            target_max_distance_threshold: types::tensor::SomaTensor::scalar(
-                proto_params
-                    .target_max_distance_threshold
-                    .ok_or("Missing target_max_distance_threshold")?,
-            ),
-            target_min_distance_threshold: types::tensor::SomaTensor::scalar(
-                proto_params
-                    .target_min_distance_threshold
-                    .ok_or("Missing target_min_distance_threshold")?,
-            ),
-            target_initial_targets_per_epoch: proto_params
-                .target_initial_targets_per_epoch
-                .ok_or("Missing target_initial_targets_per_epoch")?,
-            // Reward distribution parameters
-            target_submitter_reward_share_bps: proto_params
-                .target_submitter_reward_share_bps
-                .ok_or("Missing target_submitter_reward_share_bps")?,
-            target_model_reward_share_bps: proto_params
-                .target_model_reward_share_bps
-                .ok_or("Missing target_model_reward_share_bps")?,
-            target_claimer_incentive_bps: proto_params
-                .target_claimer_incentive_bps
-                .ok_or("Missing target_claimer_incentive_bps")?,
-            // Submission parameters
-            submission_bond_per_byte: proto_params
-                .submission_bond_per_byte
-                .ok_or("Missing submission_bond_per_byte")?,
-            // Data size limit
-            max_submission_data_size: proto_params
-                .max_submission_data_size
-                .ok_or("Missing max_submission_data_size")?,
         })
     }
 }
@@ -1056,9 +979,12 @@ impl TryFrom<EmissionPool> for types::system_state::emission::EmissionPool {
     fn try_from(proto_emission_pool: EmissionPool) -> Result<Self, Self::Error> {
         Ok(types::system_state::emission::EmissionPool {
             balance: proto_emission_pool.balance.ok_or("Missing balance")?,
-            emission_per_epoch: proto_emission_pool
+            distribution_counter: 0,
+            current_distribution_amount: proto_emission_pool
                 .emission_per_epoch
                 .ok_or("Missing emission_per_epoch")?,
+            period_length: 0,
+            decrease_rate: 0,
         })
     }
 }
@@ -1273,6 +1199,8 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             next_epoch_worker_pubkey,
             next_epoch_proxy_address,
             next_epoch_proof_of_possession,
+            bridge_ecdsa_pubkey: None,
+            next_epoch_bridge_ecdsa_pubkey: None,
         };
 
         let staking_pool = proto_val.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
@@ -1355,34 +1283,6 @@ fn convert_report_records(
         .collect()
 }
 
-fn convert_submission_report_records(
-    proto_records: BTreeMap<String, ReporterSet>,
-) -> Result<BTreeMap<types::object::ObjectID, BTreeSet<SomaAddress>>, String> {
-    proto_records
-        .into_iter()
-        .map(|(k, v)| {
-            let key = k.parse().map_err(|_| "Invalid ObjectID")?;
-            let reporters = v
-                .reporters
-                .into_iter()
-                .map(|r| r.parse().map_err(|_| "Invalid SomaAddress"))
-                .collect::<Result<BTreeSet<_>, _>>()?;
-            Ok((key, reporters))
-        })
-        .collect()
-}
-
-fn convert_submission_report_records_to_proto(
-    records: BTreeMap<types::object::ObjectID, BTreeSet<SomaAddress>>,
-) -> Result<BTreeMap<String, ReporterSet>, String> {
-    Ok(records
-        .into_iter()
-        .map(|(k, v)| {
-            let reporters: Vec<String> = v.into_iter().map(|addr| addr.to_string()).collect();
-            (k.to_string(), ReporterSet { reporters })
-        })
-        .collect())
-}
 
 impl TryFrom<types::system_state::SystemState> for SystemState {
     type Error = String;
@@ -1394,8 +1294,6 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
         let validator_report_records =
             convert_report_records_to_proto(v1.validator_report_records)?;
 
-        // NOTE: submission_report_records has been moved to Target objects (tally-based approach)
-
         Ok(SystemState {
             epoch: Some(v1.epoch),
             protocol_version: Some(v1.protocol_version),
@@ -1404,9 +1302,9 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             validators: Some(v1.validators.try_into()?),
             validator_report_records,
             emission_pool: Some(v1.emission_pool.try_into()?),
-            target_state: Some(v1.target_state.into()),
-            model_registry: Some(v1.model_registry.try_into()?),
-            submission_report_records: std::collections::BTreeMap::new(), // Empty for backward compat
+            target_state: None,
+            model_registry: None,
+            submission_report_records: std::collections::BTreeMap::new(),
             safe_mode: Some(v1.safe_mode),
             safe_mode_accumulated_fees: Some(v1.safe_mode_accumulated_fees),
             safe_mode_accumulated_emissions: Some(v1.safe_mode_accumulated_emissions),
@@ -1414,39 +1312,6 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
     }
 }
 
-//
-// TargetState conversions
-//
-
-impl From<types::system_state::target_state::TargetState> for TargetState {
-    fn from(domain: types::system_state::target_state::TargetState) -> Self {
-        TargetState {
-            distance_threshold: Some(domain.distance_threshold.as_scalar()),
-            targets_generated_this_epoch: Some(domain.targets_generated_this_epoch),
-            hits_this_epoch: Some(domain.hits_this_epoch),
-            hits_ema: Some(domain.hits_ema),
-            reward_per_target: Some(domain.reward_per_target),
-        }
-    }
-}
-
-impl TryFrom<TargetState> for types::system_state::target_state::TargetState {
-    type Error = String;
-
-    fn try_from(proto: TargetState) -> Result<Self, Self::Error> {
-        Ok(types::system_state::target_state::TargetState {
-            distance_threshold: types::tensor::SomaTensor::scalar(
-                proto.distance_threshold.ok_or("Missing distance_threshold")?,
-            ),
-            targets_generated_this_epoch: proto
-                .targets_generated_this_epoch
-                .ok_or("Missing targets_generated_this_epoch")?,
-            hits_this_epoch: proto.hits_this_epoch.ok_or("Missing hits_this_epoch")?,
-            hits_ema: proto.hits_ema.ok_or("Missing hits_ema")?,
-            reward_per_target: proto.reward_per_target.ok_or("Missing reward_per_target")?,
-        })
-    }
-}
 
 impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     type Error = String;
@@ -1454,11 +1319,11 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     fn try_from(domain_params: protocol_config::SystemParameters) -> Result<Self, Self::Error> {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
-            validator_reward_allocation_bps: Some(domain_params.validator_reward_allocation_bps),
-            model_min_stake: Some(domain_params.model_min_stake),
-            model_architecture_version: Some(domain_params.model_architecture_version),
-            model_reveal_slash_rate_bps: Some(domain_params.model_reveal_slash_rate_bps),
-            model_tally_slash_rate_bps: Some(domain_params.model_tally_slash_rate_bps),
+            validator_reward_allocation_bps: None,
+            model_min_stake: None,
+            model_architecture_version: None,
+            model_reveal_slash_rate_bps: None,
+            model_tally_slash_rate_bps: None,
             target_epoch_fee_collection: Some(domain_params.target_epoch_fee_collection),
             base_fee: Some(domain_params.base_fee),
             write_object_fee: Some(domain_params.write_object_fee),
@@ -1466,36 +1331,22 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
             min_value_fee_bps: Some(domain_params.min_value_fee_bps),
             max_value_fee_bps: Some(domain_params.max_value_fee_bps),
             fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
-            // Target/Submission parameters
-            target_models_per_target: Some(domain_params.target_models_per_target),
-            target_embedding_dim: Some(domain_params.target_embedding_dim),
-            target_initial_distance_threshold: Some(
-                domain_params.target_initial_distance_threshold.as_scalar(),
-            ),
-            target_reward_allocation_bps: Some(domain_params.target_reward_allocation_bps),
-            target_hits_per_epoch: Some(domain_params.target_hits_per_epoch),
-            target_hits_ema_decay_bps: Some(domain_params.target_hits_ema_decay_bps),
-            target_difficulty_adjustment_rate_bps: Some(
-                domain_params.target_difficulty_adjustment_rate_bps,
-            ),
-            target_max_distance_threshold: Some(
-                domain_params.target_max_distance_threshold.as_scalar(),
-            ),
-            target_min_distance_threshold: Some(
-                domain_params.target_min_distance_threshold.as_scalar(),
-            ),
-            target_initial_targets_per_epoch: Some(domain_params.target_initial_targets_per_epoch),
-            // Reward distribution parameters
-            target_submitter_reward_share_bps: Some(
-                domain_params.target_submitter_reward_share_bps,
-            ),
-            target_model_reward_share_bps: Some(domain_params.target_model_reward_share_bps),
-            target_claimer_incentive_bps: Some(domain_params.target_claimer_incentive_bps),
-            // Submission parameters
-            submission_bond_per_byte: Some(domain_params.submission_bond_per_byte),
-            // Data size limit
-            max_submission_data_size: Some(domain_params.max_submission_data_size),
-            // Deprecated (challenge system removed)
+            // Deprecated fields - set to None for proto compat
+            target_models_per_target: None,
+            target_embedding_dim: None,
+            target_initial_distance_threshold: None,
+            target_reward_allocation_bps: None,
+            target_hits_per_epoch: None,
+            target_hits_ema_decay_bps: None,
+            target_difficulty_adjustment_rate_bps: None,
+            target_max_distance_threshold: None,
+            target_min_distance_threshold: None,
+            target_initial_targets_per_epoch: None,
+            target_submitter_reward_share_bps: None,
+            target_model_reward_share_bps: None,
+            target_claimer_incentive_bps: None,
+            submission_bond_per_byte: None,
+            max_submission_data_size: None,
             challenger_bond_per_byte: None,
         })
     }
@@ -1509,7 +1360,7 @@ impl TryFrom<types::system_state::emission::EmissionPool> for EmissionPool {
     ) -> Result<Self, Self::Error> {
         Ok(EmissionPool {
             balance: Some(domain_emission_pool.balance),
-            emission_per_epoch: Some(domain_emission_pool.emission_per_epoch),
+            emission_per_epoch: Some(domain_emission_pool.current_distribution_amount),
         })
     }
 }
@@ -1693,426 +1544,6 @@ fn convert_report_records_to_proto(
         .collect()
 }
 
-//
-// ModelWeightsManifest
-//
-
-impl From<types::model::ModelWeightsManifest> for ModelWeightsManifest {
-    fn from(value: types::model::ModelWeightsManifest) -> Self {
-        Self {
-            manifest: Some(value.manifest.into()),
-            decryption_key: Some(value.decryption_key.as_bytes().to_vec().into()),
-        }
-    }
-}
-
-impl TryFrom<ModelWeightsManifest> for types::model::ModelWeightsManifest {
-    type Error = String;
-
-    fn try_from(proto: ModelWeightsManifest) -> Result<Self, Self::Error> {
-        let manifest = proto
-            .manifest
-            .ok_or("Missing manifest")?
-            .try_into()
-            .map_err(|e: TryFromProtoError| e.to_string())?;
-
-        let key_bytes: Vec<u8> = proto.decryption_key.ok_or("Missing decryption_key")?.into();
-        let key_array: [u8; 32] =
-            key_bytes.try_into().map_err(|_| "decryption_key must be 32 bytes".to_string())?;
-
-        Ok(types::model::ModelWeightsManifest {
-            manifest,
-            decryption_key: types::crypto::DecryptionKey::new(key_array),
-        })
-    }
-}
-
-//
-// PendingModelUpdate
-//
-
-impl From<types::model::PendingModelUpdate> for PendingModelUpdate {
-    fn from(value: types::model::PendingModelUpdate) -> Self {
-        Self {
-            manifest: Some(value.manifest.into()),
-            weights_commitment: Some(value.weights_commitment.into_inner().to_vec().into()),
-            embedding_commitment: Some(value.embedding_commitment.into_inner().to_vec().into()),
-            decryption_key_commitment: Some(
-                value.decryption_key_commitment.into_inner().to_vec().into(),
-            ),
-            commit_epoch: Some(value.commit_epoch),
-        }
-    }
-}
-
-impl TryFrom<PendingModelUpdate> for types::model::PendingModelUpdate {
-    type Error = String;
-
-    fn try_from(proto: PendingModelUpdate) -> Result<Self, Self::Error> {
-        let manifest = proto.manifest.ok_or("Missing manifest")?;
-        let manifest: types::metadata::Manifest =
-            manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
-
-        let wt_bytes: Vec<u8> =
-            proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
-        let wt_array: [u8; 32] =
-            wt_bytes.try_into().map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
-
-        let ec_bytes: Vec<u8> =
-            proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
-        let ec_array: [u8; 32] =
-            ec_bytes.try_into().map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
-
-        let dk_bytes: Vec<u8> =
-            proto.decryption_key_commitment.ok_or("Missing decryption_key_commitment")?.into();
-        let dk_array: [u8; 32] = dk_bytes
-            .try_into()
-            .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
-
-        Ok(types::model::PendingModelUpdate {
-            manifest,
-            weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
-            embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-            decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(dk_array),
-            commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
-        })
-    }
-}
-
-//
-// Model
-//
-
-impl TryFrom<types::model::Model> for Model {
-    type Error = String;
-
-    fn try_from(domain: types::model::Model) -> Result<Self, Self::Error> {
-        use types::model::{Model as DomainModel, ModelStateV1};
-        let DomainModel::V1(state) = domain;
-        match state {
-            ModelStateV1::Created(m) => Ok(Model {
-                state: Some("created".into()),
-                owner: Some(m.owner.to_string()),
-                architecture_version: Some(m.architecture_version),
-                staking_pool: Some(m.staking_pool.try_into()?),
-                commission_rate: Some(m.commission_rate),
-                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
-                create_epoch: Some(m.create_epoch),
-                ..Default::default()
-            }),
-            ModelStateV1::Pending(m) => Ok(Model {
-                state: Some("pending".into()),
-                owner: Some(m.owner.to_string()),
-                architecture_version: Some(m.architecture_version),
-                manifest: Some(m.manifest.into()),
-                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
-                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(
-                    m.decryption_key_commitment.into_inner().to_vec().into(),
-                ),
-                commit_epoch: Some(m.commit_epoch),
-                staking_pool: Some(m.staking_pool.try_into()?),
-                commission_rate: Some(m.commission_rate),
-                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
-                ..Default::default()
-            }),
-            ModelStateV1::Active(m) => Ok(Model {
-                state: Some("active".into()),
-                owner: Some(m.owner.to_string()),
-                architecture_version: Some(m.architecture_version),
-                manifest: Some(m.manifest.into()),
-                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
-                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(
-                    m.decryption_key_commitment.into_inner().to_vec().into(),
-                ),
-                decryption_key: Some(m.decryption_key.as_ref().to_vec().into()),
-                embedding: m.embedding.to_vec(),
-                staking_pool: Some(m.staking_pool.try_into()?),
-                commission_rate: Some(m.commission_rate),
-                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
-                pending_update: m.pending_update.map(Into::into),
-                ..Default::default()
-            }),
-            ModelStateV1::Inactive(m) => Ok(Model {
-                state: Some("inactive".into()),
-                owner: Some(m.owner.to_string()),
-                architecture_version: Some(m.architecture_version),
-                manifest: Some(m.manifest.into()),
-                weights_commitment: Some(m.weights_commitment.into_inner().to_vec().into()),
-                embedding_commitment: Some(m.embedding_commitment.into_inner().to_vec().into()),
-                decryption_key_commitment: Some(
-                    m.decryption_key_commitment.into_inner().to_vec().into(),
-                ),
-                decryption_key: Some(m.decryption_key.as_ref().to_vec().into()),
-                embedding: m.embedding.to_vec(),
-                staking_pool: Some(m.staking_pool.try_into()?),
-                commission_rate: Some(m.commission_rate),
-                next_epoch_commission_rate: Some(m.next_epoch_commission_rate),
-                ..Default::default()
-            }),
-        }
-    }
-}
-
-impl TryFrom<Model> for types::model::Model {
-    type Error = String;
-
-    fn try_from(proto: Model) -> Result<Self, Self::Error> {
-        let state_str = proto.state.as_deref().ok_or("Missing state field on Model")?;
-        let owner = proto
-            .owner
-            .ok_or("Missing owner")?
-            .parse()
-            .map_err(|_| "Invalid SomaAddress".to_string())?;
-        let architecture_version =
-            proto.architecture_version.ok_or("Missing architecture_version")?;
-        let staking_pool = proto.staking_pool.ok_or("Missing staking_pool")?.try_into()?;
-        let commission_rate = proto.commission_rate.ok_or("Missing commission_rate")?;
-        let next_epoch_commission_rate =
-            proto.next_epoch_commission_rate.ok_or("Missing next_epoch_commission_rate")?;
-
-        match state_str {
-            "created" => Ok(types::model::Model::V1(types::model::ModelStateV1::Created(
-                types::model::CreatedModel {
-                    owner,
-                    architecture_version,
-                    staking_pool,
-                    commission_rate,
-                    next_epoch_commission_rate,
-                    create_epoch: proto.create_epoch.ok_or("Missing create_epoch")?,
-                },
-            ))),
-            "pending" => {
-                let manifest = proto.manifest.ok_or("Missing manifest")?;
-                let manifest: types::metadata::Manifest =
-                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
-                let wt_bytes: Vec<u8> =
-                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
-                let wt_array: [u8; 32] = wt_bytes
-                    .try_into()
-                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
-                let ec_bytes: Vec<u8> =
-                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
-                let ec_array: [u8; 32] = ec_bytes
-                    .try_into()
-                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
-                let dk_commit_bytes: Vec<u8> = proto
-                    .decryption_key_commitment
-                    .ok_or("Missing decryption_key_commitment")?
-                    .into();
-                let dk_commit_array: [u8; 32] = dk_commit_bytes
-                    .try_into()
-                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
-
-                Ok(types::model::Model::V1(types::model::ModelStateV1::Pending(
-                    types::model::PendingModel {
-                        owner,
-                        architecture_version,
-                        staking_pool,
-                        commission_rate,
-                        next_epoch_commission_rate,
-                        manifest,
-                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
-                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                            dk_commit_array,
-                        ),
-                        commit_epoch: proto.commit_epoch.ok_or("Missing commit_epoch")?,
-                    },
-                )))
-            }
-            "active" => {
-                let manifest = proto.manifest.ok_or("Missing manifest")?;
-                let manifest: types::metadata::Manifest =
-                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
-                let wt_bytes: Vec<u8> =
-                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
-                let wt_array: [u8; 32] = wt_bytes
-                    .try_into()
-                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
-                let ec_bytes: Vec<u8> =
-                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
-                let ec_array: [u8; 32] = ec_bytes
-                    .try_into()
-                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
-                let dk_commit_bytes: Vec<u8> = proto
-                    .decryption_key_commitment
-                    .ok_or("Missing decryption_key_commitment")?
-                    .into();
-                let dk_commit_array: [u8; 32] = dk_commit_bytes
-                    .try_into()
-                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
-                let dk_bytes: Vec<u8> =
-                    proto.decryption_key.ok_or("Missing decryption_key")?.into();
-                let dk_array: [u8; 32] = dk_bytes
-                    .try_into()
-                    .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
-                let dim = proto.embedding.len();
-                let embedding = types::tensor::SomaTensor::new(proto.embedding, vec![dim]);
-                let pending_update = proto.pending_update.map(TryInto::try_into).transpose()?;
-
-                Ok(types::model::Model::V1(types::model::ModelStateV1::Active(
-                    types::model::ActiveModel {
-                        owner,
-                        architecture_version,
-                        staking_pool,
-                        commission_rate,
-                        next_epoch_commission_rate,
-                        manifest,
-                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
-                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                            dk_commit_array,
-                        ),
-                        decryption_key: types::crypto::DecryptionKey::new(dk_array),
-                        embedding,
-                        pending_update,
-                    },
-                )))
-            }
-            "inactive" => {
-                let manifest = proto.manifest.ok_or("Missing manifest")?;
-                let manifest: types::metadata::Manifest =
-                    manifest.try_into().map_err(|e: TryFromProtoError| e.to_string())?;
-                let wt_bytes: Vec<u8> =
-                    proto.weights_commitment.ok_or("Missing weights_commitment")?.into();
-                let wt_array: [u8; 32] = wt_bytes
-                    .try_into()
-                    .map_err(|_| "weights_commitment must be 32 bytes".to_string())?;
-                let ec_bytes: Vec<u8> =
-                    proto.embedding_commitment.ok_or("Missing embedding_commitment")?.into();
-                let ec_array: [u8; 32] = ec_bytes
-                    .try_into()
-                    .map_err(|_| "embedding_commitment must be 32 bytes".to_string())?;
-                let dk_commit_bytes: Vec<u8> = proto
-                    .decryption_key_commitment
-                    .ok_or("Missing decryption_key_commitment")?
-                    .into();
-                let dk_commit_array: [u8; 32] = dk_commit_bytes
-                    .try_into()
-                    .map_err(|_| "decryption_key_commitment must be 32 bytes".to_string())?;
-                let dk_bytes: Vec<u8> =
-                    proto.decryption_key.ok_or("Missing decryption_key")?.into();
-                let dk_array: [u8; 32] = dk_bytes
-                    .try_into()
-                    .map_err(|_| "decryption_key must be 32 bytes".to_string())?;
-                let dim = proto.embedding.len();
-                let embedding = types::tensor::SomaTensor::new(proto.embedding, vec![dim]);
-
-                Ok(types::model::Model::V1(types::model::ModelStateV1::Inactive(
-                    types::model::InactiveModel {
-                        owner,
-                        architecture_version,
-                        staking_pool,
-                        commission_rate,
-                        next_epoch_commission_rate,
-                        manifest,
-                        weights_commitment: types::digests::ModelWeightsCommitment::new(wt_array),
-                        embedding_commitment: types::digests::EmbeddingCommitment::new(ec_array),
-                        decryption_key_commitment: types::digests::DecryptionKeyCommitment::new(
-                            dk_commit_array,
-                        ),
-                        decryption_key: types::crypto::DecryptionKey::new(dk_array),
-                        embedding,
-                    },
-                )))
-            }
-            other => Err(format!("Unknown model state: {}", other)),
-        }
-    }
-}
-
-//
-// ModelRegistry
-//
-
-impl TryFrom<types::system_state::model_registry::ModelRegistry> for ModelRegistry {
-    type Error = String;
-
-    fn try_from(
-        domain: types::system_state::model_registry::ModelRegistry,
-    ) -> Result<Self, Self::Error> {
-        let models = domain
-            .models
-            .into_iter()
-            .map(|(id, model)| {
-                let proto_model: Model = model.try_into()?;
-                Ok((id.to_string(), proto_model))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let staking_pool_mappings = domain
-            .staking_pool_mappings
-            .into_iter()
-            .map(|(pool_id, model_id)| (pool_id.to_string(), model_id.to_string()))
-            .collect();
-
-        let model_report_records = domain
-            .model_report_records
-            .into_iter()
-            .map(|(k, v)| {
-                let key = k.to_string();
-                let reporters = v.into_iter().map(|r| r.to_string()).collect();
-                Ok((key, ReporterSet { reporters }))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        Ok(ModelRegistry {
-            models,
-            staking_pool_mappings,
-            total_model_stake: Some(domain.total_model_stake),
-            model_report_records,
-        })
-    }
-}
-
-impl TryFrom<ModelRegistry> for types::system_state::model_registry::ModelRegistry {
-    type Error = String;
-
-    fn try_from(proto: ModelRegistry) -> Result<Self, Self::Error> {
-        let models = proto
-            .models
-            .into_iter()
-            .map(|(k, v)| {
-                let id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let model: types::model::Model = v.try_into()?;
-                Ok((id, model))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let staking_pool_mappings = proto
-            .staking_pool_mappings
-            .into_iter()
-            .map(|(k, v)| {
-                let pool_id = k.parse().map_err(|_| "Invalid ObjectID".to_string())?;
-                let model_id = v.parse().map_err(|_| "Invalid ModelId".to_string())?;
-                Ok((pool_id, model_id))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        let model_report_records = proto
-            .model_report_records
-            .into_iter()
-            .map(|(k, v)| {
-                let model_id = k.parse().map_err(|_| "Invalid ModelId/ObjectID".to_string())?;
-                let reporters = v
-                    .reporters
-                    .into_iter()
-                    .map(|r| r.parse().map_err(|_| "Invalid SomaAddress".to_string()))
-                    .collect::<Result<BTreeSet<_>, _>>()?;
-                Ok((model_id, reporters))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        Ok(types::system_state::model_registry::ModelRegistry {
-            models,
-            staking_pool_mappings,
-            total_model_stake: proto.total_model_stake.ok_or("Missing total_model_stake")?,
-            model_report_records,
-        })
-    }
-}
 
 //
 // TransactionChecks

@@ -283,12 +283,16 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                 as u64;
         }
 
-        let (account_keys, allocations) = genesis_config.generate_accounts(&mut rng).unwrap();
+        let (account_keys, allocations, usdc_allocations) =
+            genesis_config.generate_accounts(&mut rng).unwrap();
 
         let token_distribution_schedule = {
             let mut builder = TokenDistributionScheduleBuilder::new();
             for allocation in allocations {
                 builder.add_allocation(allocation);
+            }
+            for usdc in usdc_allocations {
+                builder.add_usdc_allocation(usdc);
             }
             // Add allocations for each validator
             for validator in &all_validators {
@@ -299,20 +303,15 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
                     recipient_address: address,
                     amount_shannons: DEFAULT_GAS_AMOUNT * 10,
                     staked_with_validator: None,
-                    staked_with_model: None,
                 };
                 let stake = TokenAllocation {
                     recipient_address: address,
                     amount_shannons: validator.stake,
                     staked_with_validator: Some(address),
-                    staked_with_model: None,
                 };
                 builder.add_allocation(gas_coin);
                 builder.add_allocation(stake);
             }
-
-            // Note: genesis model staking is handled internally by the GenesisBuilder
-            // using initial_stake from each GenesisModelConfig.
 
             builder.build()
         };
@@ -321,8 +320,14 @@ impl<R: rand::RngCore + rand::CryptoRng> ConfigBuilder<R> {
         let mut genesis_builder = GenesisBuilder::new()
             .with_parameters(genesis_config.parameters.clone())
             .with_validator_configs(all_validators.clone())
-            .with_token_distribution_schedule(token_distribution_schedule)
-            .with_genesis_models(genesis_config.genesis_models);
+            .with_token_distribution_schedule(token_distribution_schedule);
+
+        if let Some(mp) = genesis_config.marketplace_params.clone() {
+            genesis_builder = genesis_builder.with_marketplace_params(mp);
+        }
+        if let Some(bc) = genesis_config.bridge_committee.clone() {
+            genesis_builder = genesis_builder.with_bridge_committee(bc);
+        }
 
         let consensus_keypairs: Vec<AuthorityKeyPair> = all_validators
             .clone()

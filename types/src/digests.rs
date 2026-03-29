@@ -17,6 +17,7 @@ use tracing::info;
 
 use crate::crypto::DIGEST_LENGTH;
 use crate::error::{SomaError, SomaResult};
+use crate::object::ObjectID;
 use crate::serde::Readable;
 /// A representation of a 32 byte digest
 #[serde_as]
@@ -893,255 +894,6 @@ impl fmt::UpperHex for CheckpointContentsDigest {
     }
 }
 
-/// Commitment to model weights: hash(decrypted_weights).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct ModelWeightsCommitment(Digest);
-
-impl ModelWeightsCommitment {
-    pub const fn new(digest: [u8; 32]) -> Self {
-        Self(Digest::new(digest))
-    }
-
-    pub fn random() -> Self {
-        Self(Digest::random())
-    }
-
-    pub const fn inner(&self) -> &[u8; 32] {
-        self.0.inner()
-    }
-
-    pub const fn into_inner(self) -> [u8; 32] {
-        self.0.into_inner()
-    }
-
-    pub fn base58_encode(&self) -> String {
-        Base58::encode(self.0)
-    }
-}
-
-impl AsRef<[u8]> for ModelWeightsCommitment {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl AsRef<[u8; 32]> for ModelWeightsCommitment {
-    fn as_ref(&self) -> &[u8; 32] {
-        self.0.as_ref()
-    }
-}
-
-impl From<ModelWeightsCommitment> for [u8; 32] {
-    fn from(digest: ModelWeightsCommitment) -> Self {
-        digest.into_inner()
-    }
-}
-
-impl From<[u8; 32]> for ModelWeightsCommitment {
-    fn from(digest: [u8; 32]) -> Self {
-        Self::new(digest)
-    }
-}
-
-impl fmt::Display for ModelWeightsCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl fmt::Debug for ModelWeightsCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("ModelWeightsCommitment").field(&self.0).finish()
-    }
-}
-
-/// Commitment to a decryption key: hash(key_bytes).
-/// Allows the executor to reject an invalid reveal without decrypting the weights.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct DecryptionKeyCommitment(Digest);
-
-impl DecryptionKeyCommitment {
-    pub const fn new(digest: [u8; 32]) -> Self {
-        Self(Digest::new(digest))
-    }
-
-    pub fn random() -> Self {
-        Self(Digest::random())
-    }
-
-    pub const fn inner(&self) -> &[u8; 32] {
-        self.0.inner()
-    }
-
-    pub const fn into_inner(self) -> [u8; 32] {
-        self.0.into_inner()
-    }
-
-    pub fn base58_encode(&self) -> String {
-        Base58::encode(self.0)
-    }
-}
-
-impl AsRef<[u8]> for DecryptionKeyCommitment {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl AsRef<[u8; 32]> for DecryptionKeyCommitment {
-    fn as_ref(&self) -> &[u8; 32] {
-        self.0.as_ref()
-    }
-}
-
-impl From<DecryptionKeyCommitment> for [u8; 32] {
-    fn from(digest: DecryptionKeyCommitment) -> Self {
-        digest.into_inner()
-    }
-}
-
-impl From<[u8; 32]> for DecryptionKeyCommitment {
-    fn from(digest: [u8; 32]) -> Self {
-        Self::new(digest)
-    }
-}
-
-impl fmt::Display for DecryptionKeyCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl fmt::Debug for DecryptionKeyCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("DecryptionKeyCommitment").field(&self.0).finish()
-    }
-}
-
-/// Commitment to a model embedding: hash(bcs(embedding)).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct EmbeddingCommitment(Digest);
-
-impl EmbeddingCommitment {
-    pub const fn new(digest: [u8; 32]) -> Self {
-        Self(Digest::new(digest))
-    }
-
-    pub fn random() -> Self {
-        Self(Digest::random())
-    }
-
-    pub const fn inner(&self) -> &[u8; 32] {
-        self.0.inner()
-    }
-
-    pub const fn into_inner(self) -> [u8; 32] {
-        self.0.into_inner()
-    }
-
-    pub fn base58_encode(&self) -> String {
-        Base58::encode(self.0)
-    }
-}
-
-impl AsRef<[u8]> for EmbeddingCommitment {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl AsRef<[u8; 32]> for EmbeddingCommitment {
-    fn as_ref(&self) -> &[u8; 32] {
-        self.0.as_ref()
-    }
-}
-
-impl From<EmbeddingCommitment> for [u8; 32] {
-    fn from(digest: EmbeddingCommitment) -> Self {
-        digest.into_inner()
-    }
-}
-
-impl From<[u8; 32]> for EmbeddingCommitment {
-    fn from(digest: [u8; 32]) -> Self {
-        Self::new(digest)
-    }
-}
-
-impl fmt::Display for EmbeddingCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl fmt::Debug for EmbeddingCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("EmbeddingCommitment").field(&self.0).finish()
-    }
-}
-
-/// Commitment to submitted data: hash(raw_data_bytes).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-pub struct DataCommitment(Digest);
-
-impl DataCommitment {
-    pub const fn new(digest: [u8; 32]) -> Self {
-        Self(Digest::new(digest))
-    }
-
-    pub fn random() -> Self {
-        Self(Digest::random())
-    }
-
-    pub const fn inner(&self) -> &[u8; 32] {
-        self.0.inner()
-    }
-
-    pub const fn into_inner(self) -> [u8; 32] {
-        self.0.into_inner()
-    }
-
-    pub fn base58_encode(&self) -> String {
-        Base58::encode(self.0)
-    }
-}
-
-impl AsRef<[u8]> for DataCommitment {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl AsRef<[u8; 32]> for DataCommitment {
-    fn as_ref(&self) -> &[u8; 32] {
-        self.0.as_ref()
-    }
-}
-
-impl From<DataCommitment> for [u8; 32] {
-    fn from(digest: DataCommitment) -> Self {
-        digest.into_inner()
-    }
-}
-
-impl From<[u8; 32]> for DataCommitment {
-    fn from(digest: [u8; 32]) -> Self {
-        Self::new(digest)
-    }
-}
-
-impl fmt::Display for DataCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl fmt::Debug for DataCommitment {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("DataCommitment").field(&self.0).finish()
-    }
-}
-
 #[derive(
     Clone,
     Copy,
@@ -1244,3 +996,164 @@ impl fmt::Debug for AdditionalConsensusStateDigest {
         f.debug_tuple("AdditionalConsensusStateDigest").field(&self.0).finish()
     }
 }
+
+/// Blake2b hash of task content (opaque to chain — content lives off-chain).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct TaskDigest(Digest);
+
+impl TaskDigest {
+    pub const ZERO: Self = Self(Digest::ZERO);
+
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for TaskDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for TaskDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<TaskDigest> for [u8; 32] {
+    fn from(digest: TaskDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for TaskDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for TaskDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for TaskDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("TaskDigest").field(&self.0).finish()
+    }
+}
+
+impl std::str::FromStr for TaskDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(TaskDigest::new(result))
+    }
+}
+
+/// Blake2b hash of seller's response content (opaque to chain — content lives off-chain).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct ResponseDigest(Digest);
+
+impl ResponseDigest {
+    pub const ZERO: Self = Self(Digest::ZERO);
+
+    pub const fn new(digest: [u8; 32]) -> Self {
+        Self(Digest::new(digest))
+    }
+
+    pub fn random() -> Self {
+        Self(Digest::random())
+    }
+
+    pub fn inner(&self) -> &[u8; 32] {
+        self.0.inner()
+    }
+
+    pub fn into_inner(self) -> [u8; 32] {
+        self.0.into_inner()
+    }
+
+    pub fn base58_encode(&self) -> String {
+        Base58::encode(self.0)
+    }
+}
+
+impl AsRef<[u8]> for ResponseDigest {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsRef<[u8; 32]> for ResponseDigest {
+    fn as_ref(&self) -> &[u8; 32] {
+        self.0.as_ref()
+    }
+}
+
+impl From<ResponseDigest> for [u8; 32] {
+    fn from(digest: ResponseDigest) -> Self {
+        digest.into_inner()
+    }
+}
+
+impl From<[u8; 32]> for ResponseDigest {
+    fn from(digest: [u8; 32]) -> Self {
+        Self::new(digest)
+    }
+}
+
+impl fmt::Display for ResponseDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for ResponseDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ResponseDigest").field(&self.0).finish()
+    }
+}
+
+impl std::str::FromStr for ResponseDigest {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut result = [0; 32];
+        let buffer = Base58::decode(s).map_err(|e| anyhow::anyhow!(e))?;
+        if buffer.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid digest length. Expected 32 bytes"));
+        }
+        result.copy_from_slice(&buffer);
+        Ok(ResponseDigest::new(result))
+    }
+}
+
+/// Alias types for marketplace object IDs.
+pub type AskId = ObjectID;
+pub type BidId = ObjectID;
+pub type SettlementId = ObjectID;

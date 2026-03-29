@@ -48,9 +48,6 @@ pub use crate::handlers::CheckpointsPipeline;
 pub use crate::handlers::EpochEndPipeline;
 pub use crate::handlers::EpochStartPipeline;
 pub use crate::handlers::ObjectsPipeline;
-pub use crate::handlers::SomaModelsPipeline;
-pub use crate::handlers::SomaRewardsPipeline;
-pub use crate::handlers::SomaTargetsPipeline;
 pub use crate::handlers::TransactionsPipeline;
 pub use config::CommitterLayer;
 pub use config::ConcurrentLayer;
@@ -70,28 +67,18 @@ pub const EPOCH_START_PIPELINE: &str =
     <BigTableHandler<EpochStartPipeline> as indexer_framework::pipeline::Processor>::NAME;
 pub const EPOCH_END_PIPELINE: &str =
     <BigTableHandler<EpochEndPipeline> as indexer_framework::pipeline::Processor>::NAME;
-pub const SOMA_TARGETS_PIPELINE: &str =
-    <BigTableHandler<SomaTargetsPipeline> as indexer_framework::pipeline::Processor>::NAME;
-pub const SOMA_MODELS_PIPELINE: &str =
-    <BigTableHandler<SomaModelsPipeline> as indexer_framework::pipeline::Processor>::NAME;
-pub const SOMA_REWARDS_PIPELINE: &str =
-    <BigTableHandler<SomaRewardsPipeline> as indexer_framework::pipeline::Processor>::NAME;
-
 /// All pipeline names registered by the indexer.
-pub const ALL_PIPELINE_NAMES: [&str; 9] = [
+pub const ALL_PIPELINE_NAMES: [&str; 6] = [
     CHECKPOINTS_PIPELINE,
     CHECKPOINTS_BY_DIGEST_PIPELINE,
     TRANSACTIONS_PIPELINE,
     OBJECTS_PIPELINE,
     EPOCH_START_PIPELINE,
     EPOCH_END_PIPELINE,
-    SOMA_TARGETS_PIPELINE,
-    SOMA_MODELS_PIPELINE,
-    SOMA_REWARDS_PIPELINE,
 ];
 
 /// Non-legacy pipeline names used for the default `get_watermark` implementation.
-const WATERMARK_PIPELINES: [&str; 9] = ALL_PIPELINE_NAMES;
+const WATERMARK_PIPELINES: [&str; 6] = ALL_PIPELINE_NAMES;
 
 static WRITE_LEGACY_DATA: OnceLock<bool> = OnceLock::new();
 
@@ -393,37 +380,6 @@ impl BigTableIndexer {
                     build_rate_limiter(&pipeline.epoch_end, base_rps, &global),
                 ),
                 pipeline.epoch_end.finish(base.clone()),
-            )
-            .await?;
-        // Soma-specific pipelines
-        indexer
-            .concurrent_pipeline(
-                BigTableHandler::new(
-                    SomaTargetsPipeline,
-                    &pipeline.soma_targets,
-                    build_rate_limiter(&pipeline.soma_targets, base_rps, &global),
-                ),
-                pipeline.soma_targets.finish(base.clone()),
-            )
-            .await?;
-        indexer
-            .concurrent_pipeline(
-                BigTableHandler::new(
-                    SomaModelsPipeline,
-                    &pipeline.soma_models,
-                    build_rate_limiter(&pipeline.soma_models, base_rps, &global),
-                ),
-                pipeline.soma_models.finish(base.clone()),
-            )
-            .await?;
-        indexer
-            .concurrent_pipeline(
-                BigTableHandler::new(
-                    SomaRewardsPipeline,
-                    &pipeline.soma_rewards,
-                    build_rate_limiter(&pipeline.soma_rewards, base_rps, &global),
-                ),
-                pipeline.soma_rewards.finish(base),
             )
             .await?;
 

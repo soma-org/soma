@@ -114,10 +114,6 @@ impl From<crate::types::ExecutionError> for ExecutionError {
                 ExecutionErrorKind::EmbeddingDimensionMismatch,
                 Some(ErrorDetails::OtherError(format!("expected={}, actual={}", expected, actual))),
             ),
-            E::DistanceExceedsThreshold { score, threshold } => (
-                ExecutionErrorKind::DistanceExceedsThreshold,
-                Some(ErrorDetails::OtherError(format!("score={}, threshold={}", score, threshold))),
-            ),
             E::InsufficientBond { required, provided } => (
                 ExecutionErrorKind::InsufficientBond,
                 Some(ErrorDetails::OtherError(format!(
@@ -345,8 +341,9 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
                 Ok(Self::EmbeddingDimensionMismatch { expected, actual })
             }
             K::DistanceExceedsThreshold => {
-                let (score, threshold) = parse_two_f32s(&value.error_details, "score", "threshold");
-                Ok(Self::DistanceExceedsThreshold { score, threshold })
+                // Deprecated variant - map to OtherError
+                let msg = value.description.clone().unwrap_or_else(|| "Distance exceeds threshold (deprecated)".to_string());
+                Ok(Self::OtherError(msg))
             }
             K::InsufficientBond => {
                 let (required, provided) =

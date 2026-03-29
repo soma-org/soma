@@ -1,7 +1,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Proxy client for fetching submission data and model weights from validators.
+//! Proxy client for fetching data from validators.
 //!
 //! The `ProxyClient` fetches data from validator proxy servers, with:
 //! - **Shuffle for load balancing**: Validators are shuffled before each request
@@ -17,13 +17,8 @@
 //! # async fn example(system_state: &SystemState) -> Result<(), sdk::proxy_client::ProxyError> {
 //! let client = ProxyClient::from_system_state(system_state)?;
 //!
-//! // Fetch submission data
-//! let target_id = types::object::ObjectID::random();
-//! let data = client.fetch_submission_data(&target_id).await?;
-//!
-//! // Fetch model weights
-//! let model_id = types::object::ObjectID::random();
-//! let weights = client.fetch_model(&model_id).await?;
+//! // Fetch data from a path
+//! let data = client.fetch_path("/some/path").await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -33,11 +28,8 @@ use std::time::Duration;
 use rand::seq::SliceRandom as _;
 use tracing::{info, warn};
 use types::base::AuthorityName;
-use types::model::ModelId;
 use types::multiaddr::Multiaddr;
-use types::object::ObjectID;
 use types::system_state::SystemState;
-use types::target::TargetId;
 use url::Url;
 
 // ===========================================================================
@@ -133,7 +125,7 @@ impl ProxyClientConfig {
 // Proxy Client
 // ===========================================================================
 
-/// Client for fetching submission data and model weights from validator proxies.
+/// Client for fetching data from validator proxies.
 ///
 /// # Load Balancing
 ///
@@ -192,9 +184,8 @@ impl ProxyClient {
 
     /// Create a proxy client that fetches from a single fullnode proxy URL.
     ///
-    /// The fullnode exposes `/data/{target_id}` and `/model/{model_id}` routes
-    /// on the same HTTP server as its RPC endpoint. This is the simplest way
-    /// to create a proxy client — just pass the fullnode URL.
+    /// This is the simplest way to create a proxy client — just pass the
+    /// fullnode URL.
     pub fn from_url(url: impl AsRef<str>) -> Result<Self, ProxyError> {
         Self::from_url_with_config(url, ProxyClientConfig::default())
     }
@@ -233,86 +224,29 @@ impl ProxyClient {
         self.validators.len()
     }
 
-    /// Fetch submission data for a filled target.
+    /// Fetch data from a given path with retry across validators.
     ///
     /// Shuffles validators and tries each in order until one succeeds.
-    pub async fn fetch_submission_data(&self, target_id: &TargetId) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_with_retry(&format!("/data/{}", target_id)).await
+    pub async fn fetch_path(&self, path: &str) -> Result<Vec<u8>, ProxyError> {
+        self.fetch_with_retry(path).await
     }
 
-    /// Fetch model weights for an active model.
-    ///
-    /// Shuffles validators and tries each in order until one succeeds.
-    pub async fn fetch_model(&self, model_id: &ModelId) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_with_retry(&format!("/model/{}", model_id)).await
-    }
-
-    /// Fetch submission data with a custom timeout.
-    ///
-    /// Use this when you know the expected data size.
-    pub async fn fetch_submission_data_with_size(
-        &self,
-        target_id: &TargetId,
-        expected_size: u64,
-    ) -> Result<Vec<u8>, ProxyError> {
-        let timeout = self.config.timeout_for_size(expected_size);
-        self.fetch_with_retry_and_timeout(&format!("/data/{}", target_id), timeout).await
-    }
-
-    /// Fetch model weights with a custom timeout.
-    ///
-    /// Use this when you know the expected model size.
-    pub async fn fetch_model_with_size(
-        &self,
-        model_id: &ModelId,
-        expected_size: u64,
-    ) -> Result<Vec<u8>, ProxyError> {
-        let timeout = self.config.timeout_for_size(expected_size);
-        self.fetch_with_retry_and_timeout(&format!("/model/{}", model_id), timeout).await
-    }
-
-    /// Fetch model weights with streaming progress reporting.
+    /// Fetch data from a given path with streaming progress reporting.
     ///
     /// The callback receives `(bytes_downloaded_so_far, content_length)` after each chunk.
     /// `content_length` is `None` if the server did not provide a Content-Length header.
-    pub async fn fetch_model_with_progress(
+    pub async fn fetch_path_with_progress(
         &self,
-        model_id: &ModelId,
+        path: &str,
         mut on_progress: impl FnMut(u64, Option<u64>) + Send,
     ) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_with_retry_streaming(
-            &format!("/model/{}", model_id),
-            self.config.base_timeout,
-            &mut on_progress,
-        )
-        .await
+        self.fetch_with_retry_streaming(path, self.config.base_timeout, &mut on_progress)
+            .await
     }
-
-    /// Fetch submission data with streaming progress reporting.
-    ///
-    /// The callback receives `(bytes_downloaded_so_far, content_length)` after each chunk.
-    pub async fn fetch_submission_data_with_progress(
-        &self,
-        target_id: &TargetId,
-        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
-    ) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_with_retry_streaming(
-            &format!("/data/{}", target_id),
-            self.config.base_timeout,
-            &mut on_progress,
-        )
-        .await
-    }
-
-    // =====================================================================
-    // Direct URL download with proxy fallback
-    // =====================================================================
 
     /// Try downloading directly from a URL first, falling back to the proxy path.
     ///
-    /// This is the preferred download method when the source URL is known (e.g.,
-    /// from a target's `winning_data_manifest` or a model's manifest). Direct
-    /// download avoids the validator proxy hop and its potential stall points.
+    /// Direct download avoids the validator proxy hop and its potential stall points.
     pub async fn fetch_url_with_proxy_fallback(
         &self,
         url: &Url,
@@ -333,28 +267,6 @@ impl ProxyClient {
 
         // Fall back to proxy
         self.fetch_with_retry_streaming(proxy_path, self.config.base_timeout, &mut on_progress)
-            .await
-    }
-
-    /// Fetch submission data: try direct URL first, fall back to proxy.
-    pub async fn fetch_submission_data_direct(
-        &self,
-        target_id: &TargetId,
-        url: &Url,
-        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
-    ) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_url_with_proxy_fallback(url, &format!("/data/{}", target_id), &mut on_progress)
-            .await
-    }
-
-    /// Fetch model weights: try direct URL first, fall back to proxy.
-    pub async fn fetch_model_direct(
-        &self,
-        model_id: &ModelId,
-        url: &Url,
-        mut on_progress: impl FnMut(u64, Option<u64>) + Send,
-    ) -> Result<Vec<u8>, ProxyError> {
-        self.fetch_url_with_proxy_fallback(url, &format!("/model/{}", model_id), &mut on_progress)
             .await
     }
 

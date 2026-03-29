@@ -10,7 +10,7 @@ use protocol_config::{Chain, ProtocolConfig};
 use store::nondeterministic;
 use types::base::AuthorityName;
 use types::config::certificate_deny_config::CertificateDenyConfig;
-use types::config::genesis_config::AccountConfig;
+use types::config::genesis_config::{AccountConfig, GenesisConfig};
 use types::config::network_config::{ConfigBuilder, NetworkConfig};
 use types::config::node_config::{
     AuthorityStorePruningConfig, ExecutionCacheConfig, ExpensiveSafetyCheckConfig,
@@ -57,6 +57,7 @@ pub struct TestAuthorityBuilder<'a> {
     // authority_overload_config: Option<AuthorityOverloadConfig>,
     cache_config: Option<ExecutionCacheConfig>,
     chain_override: Option<Chain>,
+    genesis_config: Option<GenesisConfig>,
 }
 
 impl<'a> TestAuthorityBuilder<'a> {
@@ -155,6 +156,11 @@ impl<'a> TestAuthorityBuilder<'a> {
         self
     }
 
+    pub fn with_genesis_config(mut self, config: GenesisConfig) -> Self {
+        self.genesis_config = Some(config);
+        self
+    }
+
     pub async fn build(self) -> Arc<AuthorityState> {
         // `_guard` must be declared here so it is not dropped before
         // `AuthorityPerEpochStore::new` is called
@@ -162,12 +168,15 @@ impl<'a> TestAuthorityBuilder<'a> {
         // let _guard = protocol_config
         //     .map(|config| ProtocolConfig::apply_overrides_for_testing(move |_, _| config.clone()));
 
-        let mut local_network_config_builder =
-            ConfigBuilder::new_with_temp_dir().with_accounts(self.accounts);
-        // if let Some(protocol_config) = &self.protocol_config {
-        //     local_network_config_builder =
-        //         local_network_config_builder.with_protocol_version(protocol_config.version);
-        // }
+        let local_network_config_builder = if let Some(mut genesis_config) = self.genesis_config {
+            // Merge accounts into the custom genesis config
+            if !self.accounts.is_empty() {
+                genesis_config.accounts.extend(self.accounts);
+            }
+            ConfigBuilder::new_with_temp_dir().with_genesis_config(genesis_config)
+        } else {
+            ConfigBuilder::new_with_temp_dir().with_accounts(self.accounts)
+        };
         let local_network_config = local_network_config_builder.build();
         let genesis = &self.genesis.unwrap_or(&local_network_config.genesis);
         let genesis_committee = genesis.committee().unwrap();
