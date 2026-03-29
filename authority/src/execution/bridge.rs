@@ -19,7 +19,7 @@ use types::bridge::{BridgeCommittee, PendingWithdrawal};
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{CoinType, Object, ObjectID, ObjectType, Owner};
+use types::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::{
@@ -307,10 +307,13 @@ impl BridgeExecutor {
             created_at_ms: state.epoch_start_timestamp_ms(),
         };
 
-        let withdrawal_object = Object::new_marketplace_object(
-            withdrawal_id,
-            ObjectType::PendingWithdrawal,
-            &pending,
+        let withdrawal_object = Object::new(
+            ObjectData::new_with_id(
+                withdrawal_id,
+                ObjectType::PendingWithdrawal,
+                Version::MIN,
+                bcs::to_bytes(&pending).unwrap(),
+            ),
             Owner::Immutable, // read-only after creation — bridge nodes observe via checkpoints
             tx_digest,
         );

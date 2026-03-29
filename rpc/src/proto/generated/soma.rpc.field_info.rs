@@ -3148,26 +3148,26 @@ mod _field_impls {
             self.finish()
         }
     }
-    impl GetBidRequest {
-        pub const BID_ID_FIELD: &'static MessageField = &MessageField {
-            name: "bid_id",
-            json_name: "bidId",
+    impl GetTargetRequest {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
             number: 1i32,
             message_fields: None,
         };
     }
-    impl MessageFields for GetBidRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::BID_ID_FIELD];
+    impl MessageFields for GetTargetRequest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_ID_FIELD];
     }
-    impl GetBidRequest {
-        pub fn path_builder() -> GetBidRequestFieldPathBuilder {
-            GetBidRequestFieldPathBuilder::new()
+    impl GetTargetRequest {
+        pub fn path_builder() -> GetTargetRequestFieldPathBuilder {
+            GetTargetRequestFieldPathBuilder::new()
         }
     }
-    pub struct GetBidRequestFieldPathBuilder {
+    pub struct GetTargetRequestFieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl GetBidRequestFieldPathBuilder {
+    impl GetTargetRequestFieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -3179,31 +3179,31 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn bid_id(mut self) -> String {
-            self.path.push(GetBidRequest::BID_ID_FIELD.name);
+        pub fn target_id(mut self) -> String {
+            self.path.push(GetTargetRequest::TARGET_ID_FIELD.name);
             self.finish()
         }
     }
-    impl GetBidResponse {
-        pub const BID_FIELD: &'static MessageField = &MessageField {
-            name: "bid",
-            json_name: "bid",
+    impl GetTargetResponse {
+        pub const TARGET_FIELD: &'static MessageField = &MessageField {
+            name: "target",
+            json_name: "target",
             number: 1i32,
             message_fields: Some(Object::FIELDS),
         };
     }
-    impl MessageFields for GetBidResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::BID_FIELD];
+    impl MessageFields for GetTargetResponse {
+        const FIELDS: &'static [&'static MessageField] = &[Self::TARGET_FIELD];
     }
-    impl GetBidResponse {
-        pub fn path_builder() -> GetBidResponseFieldPathBuilder {
-            GetBidResponseFieldPathBuilder::new()
+    impl GetTargetResponse {
+        pub fn path_builder() -> GetTargetResponseFieldPathBuilder {
+            GetTargetResponseFieldPathBuilder::new()
         }
     }
-    pub struct GetBidResponseFieldPathBuilder {
+    pub struct GetTargetResponseFieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl GetBidResponseFieldPathBuilder {
+    impl GetTargetResponseFieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -3215,407 +3215,21 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn bid(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetBidResponse::BID_FIELD.name);
+        pub fn target(mut self) -> ObjectFieldPathBuilder {
+            self.path.push(GetTargetResponse::TARGET_FIELD.name);
             ObjectFieldPathBuilder::new_with_base(self.path)
         }
     }
-    impl GetAskRequest {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
+    impl ListTargetsRequest {
+        pub const STATUS_FIELD: &'static MessageField = &MessageField {
+            name: "status",
+            json_name: "status",
             number: 1i32,
             message_fields: None,
         };
-    }
-    impl MessageFields for GetAskRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ASK_ID_FIELD];
-    }
-    impl GetAskRequest {
-        pub fn path_builder() -> GetAskRequestFieldPathBuilder {
-            GetAskRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetAskRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetAskRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(GetAskRequest::ASK_ID_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetAskResponse {
-        pub const ASK_FIELD: &'static MessageField = &MessageField {
-            name: "ask",
-            json_name: "ask",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetAskResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ASK_FIELD];
-    }
-    impl GetAskResponse {
-        pub fn path_builder() -> GetAskResponseFieldPathBuilder {
-            GetAskResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetAskResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetAskResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetAskResponse::ASK_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetSettlementRequest {
-        pub const SETTLEMENT_ID_FIELD: &'static MessageField = &MessageField {
-            name: "settlement_id",
-            json_name: "settlementId",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetSettlementRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SETTLEMENT_ID_FIELD];
-    }
-    impl GetSettlementRequest {
-        pub fn path_builder() -> GetSettlementRequestFieldPathBuilder {
-            GetSettlementRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetSettlementRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetSettlementRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn settlement_id(mut self) -> String {
-            self.path.push(GetSettlementRequest::SETTLEMENT_ID_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetSettlementResponse {
-        pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
-            name: "settlement",
-            json_name: "settlement",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetSettlementResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SETTLEMENT_FIELD];
-    }
-    impl GetSettlementResponse {
-        pub fn path_builder() -> GetSettlementResponseFieldPathBuilder {
-            GetSettlementResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetSettlementResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetSettlementResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn settlement(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetSettlementResponse::SETTLEMENT_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetBidsForAskRequest {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const STATUS_FILTER_FIELD: &'static MessageField = &MessageField {
-            name: "status_filter",
-            json_name: "statusFilter",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetBidsForAskRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ASK_ID_FIELD,
-            Self::STATUS_FILTER_FIELD,
-        ];
-    }
-    impl GetBidsForAskRequest {
-        pub fn path_builder() -> GetBidsForAskRequestFieldPathBuilder {
-            GetBidsForAskRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetBidsForAskRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetBidsForAskRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(GetBidsForAskRequest::ASK_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn status_filter(mut self) -> String {
-            self.path.push(GetBidsForAskRequest::STATUS_FILTER_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetBidsForAskResponse {
-        pub const BIDS_FIELD: &'static MessageField = &MessageField {
-            name: "bids",
-            json_name: "bids",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetBidsForAskResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::BIDS_FIELD];
-    }
-    impl GetBidsForAskResponse {
-        pub fn path_builder() -> GetBidsForAskResponseFieldPathBuilder {
-            GetBidsForAskResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetBidsForAskResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetBidsForAskResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn bids(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetBidsForAskResponse::BIDS_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetOpenAsksRequest {
-        pub const BUYER_FIELD: &'static MessageField = &MessageField {
-            name: "buyer",
-            json_name: "buyer",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const PAGE_SIZE_FIELD: &'static MessageField = &MessageField {
-            name: "page_size",
-            json_name: "pageSize",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetOpenAsksRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::BUYER_FIELD,
-            Self::PAGE_SIZE_FIELD,
-        ];
-    }
-    impl GetOpenAsksRequest {
-        pub fn path_builder() -> GetOpenAsksRequestFieldPathBuilder {
-            GetOpenAsksRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetOpenAsksRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetOpenAsksRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn buyer(mut self) -> String {
-            self.path.push(GetOpenAsksRequest::BUYER_FIELD.name);
-            self.finish()
-        }
-        pub fn page_size(mut self) -> String {
-            self.path.push(GetOpenAsksRequest::PAGE_SIZE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetOpenAsksResponse {
-        pub const ASKS_FIELD: &'static MessageField = &MessageField {
-            name: "asks",
-            json_name: "asks",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetOpenAsksResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ASKS_FIELD];
-    }
-    impl GetOpenAsksResponse {
-        pub fn path_builder() -> GetOpenAsksResponseFieldPathBuilder {
-            GetOpenAsksResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetOpenAsksResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetOpenAsksResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn asks(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetOpenAsksResponse::ASKS_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetVaultRequest {
-        pub const OWNER_FIELD: &'static MessageField = &MessageField {
-            name: "owner",
-            json_name: "owner",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetVaultRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::OWNER_FIELD];
-    }
-    impl GetVaultRequest {
-        pub fn path_builder() -> GetVaultRequestFieldPathBuilder {
-            GetVaultRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetVaultRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetVaultRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn owner(mut self) -> String {
-            self.path.push(GetVaultRequest::OWNER_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetVaultResponse {
-        pub const VAULTS_FIELD: &'static MessageField = &MessageField {
-            name: "vaults",
-            json_name: "vaults",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetVaultResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::VAULTS_FIELD];
-    }
-    impl GetVaultResponse {
-        pub fn path_builder() -> GetVaultResponseFieldPathBuilder {
-            GetVaultResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetVaultResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetVaultResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn vaults(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetVaultResponse::VAULTS_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetSettlementsRequest {
-        pub const BUYER_FIELD: &'static MessageField = &MessageField {
-            name: "buyer",
-            json_name: "buyer",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const SELLER_FIELD: &'static MessageField = &MessageField {
-            name: "seller",
-            json_name: "seller",
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
             number: 2i32,
             message_fields: None,
         };
@@ -3625,415 +3239,30 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
-    }
-    impl MessageFields for GetSettlementsRequest {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::BUYER_FIELD,
-            Self::SELLER_FIELD,
-            Self::PAGE_SIZE_FIELD,
-        ];
-    }
-    impl GetSettlementsRequest {
-        pub fn path_builder() -> GetSettlementsRequestFieldPathBuilder {
-            GetSettlementsRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetSettlementsRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetSettlementsRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn buyer(mut self) -> String {
-            self.path.push(GetSettlementsRequest::BUYER_FIELD.name);
-            self.finish()
-        }
-        pub fn seller(mut self) -> String {
-            self.path.push(GetSettlementsRequest::SELLER_FIELD.name);
-            self.finish()
-        }
-        pub fn page_size(mut self) -> String {
-            self.path.push(GetSettlementsRequest::PAGE_SIZE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetSettlementsResponse {
-        pub const SETTLEMENTS_FIELD: &'static MessageField = &MessageField {
-            name: "settlements",
-            json_name: "settlements",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for GetSettlementsResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SETTLEMENTS_FIELD];
-    }
-    impl GetSettlementsResponse {
-        pub fn path_builder() -> GetSettlementsResponseFieldPathBuilder {
-            GetSettlementsResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetSettlementsResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetSettlementsResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn settlements(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(GetSettlementsResponse::SETTLEMENTS_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl SubscribeAsksRequest {
-        pub const MIN_MAX_PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "min_max_price",
-            json_name: "minMaxPrice",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for SubscribeAsksRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::MIN_MAX_PRICE_FIELD];
-    }
-    impl SubscribeAsksRequest {
-        pub fn path_builder() -> SubscribeAsksRequestFieldPathBuilder {
-            SubscribeAsksRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct SubscribeAsksRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl SubscribeAsksRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn min_max_price(mut self) -> String {
-            self.path.push(SubscribeAsksRequest::MIN_MAX_PRICE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl AskEvent {
-        pub const ASK_FIELD: &'static MessageField = &MessageField {
-            name: "ask",
-            json_name: "ask",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-        pub const EVENT_TYPE_FIELD: &'static MessageField = &MessageField {
-            name: "event_type",
-            json_name: "eventType",
-            number: 2i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for AskEvent {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ASK_FIELD,
-            Self::EVENT_TYPE_FIELD,
-        ];
-    }
-    impl AskEvent {
-        pub fn path_builder() -> AskEventFieldPathBuilder {
-            AskEventFieldPathBuilder::new()
-        }
-    }
-    pub struct AskEventFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl AskEventFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(AskEvent::ASK_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn event_type(mut self) -> String {
-            self.path.push(AskEvent::EVENT_TYPE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl SubscribeBidsRequest {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for SubscribeBidsRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ASK_ID_FIELD];
-    }
-    impl SubscribeBidsRequest {
-        pub fn path_builder() -> SubscribeBidsRequestFieldPathBuilder {
-            SubscribeBidsRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct SubscribeBidsRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl SubscribeBidsRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(SubscribeBidsRequest::ASK_ID_FIELD.name);
-            self.finish()
-        }
-    }
-    impl BidEvent {
-        pub const BID_FIELD: &'static MessageField = &MessageField {
-            name: "bid",
-            json_name: "bid",
-            number: 1i32,
-            message_fields: Some(Object::FIELDS),
-        };
-    }
-    impl MessageFields for BidEvent {
-        const FIELDS: &'static [&'static MessageField] = &[Self::BID_FIELD];
-    }
-    impl BidEvent {
-        pub fn path_builder() -> BidEventFieldPathBuilder {
-            BidEventFieldPathBuilder::new()
-        }
-    }
-    pub struct BidEventFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl BidEventFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn bid(mut self) -> ObjectFieldPathBuilder {
-            self.path.push(BidEvent::BID_FIELD.name);
-            ObjectFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl GetProtocolFundRequest {}
-    impl MessageFields for GetProtocolFundRequest {
-        const FIELDS: &'static [&'static MessageField] = &[];
-    }
-    impl GetProtocolFundRequest {
-        pub fn path_builder() -> GetProtocolFundRequestFieldPathBuilder {
-            GetProtocolFundRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetProtocolFundRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetProtocolFundRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-    }
-    impl GetProtocolFundResponse {
-        pub const BALANCE_FIELD: &'static MessageField = &MessageField {
-            name: "balance",
-            json_name: "balance",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetProtocolFundResponse {
-        const FIELDS: &'static [&'static MessageField] = &[Self::BALANCE_FIELD];
-    }
-    impl GetProtocolFundResponse {
-        pub fn path_builder() -> GetProtocolFundResponseFieldPathBuilder {
-            GetProtocolFundResponseFieldPathBuilder::new()
-        }
-    }
-    pub struct GetProtocolFundResponseFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetProtocolFundResponseFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn balance(mut self) -> String {
-            self.path.push(GetProtocolFundResponse::BALANCE_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetReputationRequest {
-        pub const ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "address",
-            json_name: "address",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for GetReputationRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ADDRESS_FIELD];
-    }
-    impl GetReputationRequest {
-        pub fn path_builder() -> GetReputationRequestFieldPathBuilder {
-            GetReputationRequestFieldPathBuilder::new()
-        }
-    }
-    pub struct GetReputationRequestFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl GetReputationRequestFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn address(mut self) -> String {
-            self.path.push(GetReputationRequest::ADDRESS_FIELD.name);
-            self.finish()
-        }
-    }
-    impl GetReputationResponse {
-        pub const ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "address",
-            json_name: "address",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const BUYER_SETTLEMENTS_FIELD: &'static MessageField = &MessageField {
-            name: "buyer_settlements",
-            json_name: "buyerSettlements",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const BUYER_VOLUME_SPENT_FIELD: &'static MessageField = &MessageField {
-            name: "buyer_volume_spent",
-            json_name: "buyerVolumeSpent",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const BUYER_UNIQUE_SELLERS_FIELD: &'static MessageField = &MessageField {
-            name: "buyer_unique_sellers",
-            json_name: "buyerUniqueSellers",
+        pub const PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "page_token",
+            json_name: "pageToken",
             number: 4i32,
             message_fields: None,
         };
-        pub const SELLER_SETTLEMENTS_FIELD: &'static MessageField = &MessageField {
-            name: "seller_settlements",
-            json_name: "sellerSettlements",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const SELLER_VOLUME_EARNED_FIELD: &'static MessageField = &MessageField {
-            name: "seller_volume_earned",
-            json_name: "sellerVolumeEarned",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const SELLER_NEGATIVE_RATINGS_FIELD: &'static MessageField = &MessageField {
-            name: "seller_negative_ratings",
-            json_name: "sellerNegativeRatings",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const SELLER_APPROVAL_RATE_FIELD: &'static MessageField = &MessageField {
-            name: "seller_approval_rate",
-            json_name: "sellerApprovalRate",
-            number: 8i32,
-            message_fields: None,
-        };
-        pub const SELLER_UNIQUE_BUYERS_FIELD: &'static MessageField = &MessageField {
-            name: "seller_unique_buyers",
-            json_name: "sellerUniqueBuyers",
-            number: 9i32,
-            message_fields: None,
-        };
     }
-    impl MessageFields for GetReputationResponse {
+    impl MessageFields for ListTargetsRequest {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::ADDRESS_FIELD,
-            Self::BUYER_SETTLEMENTS_FIELD,
-            Self::BUYER_VOLUME_SPENT_FIELD,
-            Self::BUYER_UNIQUE_SELLERS_FIELD,
-            Self::SELLER_SETTLEMENTS_FIELD,
-            Self::SELLER_VOLUME_EARNED_FIELD,
-            Self::SELLER_NEGATIVE_RATINGS_FIELD,
-            Self::SELLER_APPROVAL_RATE_FIELD,
-            Self::SELLER_UNIQUE_BUYERS_FIELD,
+            Self::STATUS_FIELD,
+            Self::EPOCH_FIELD,
+            Self::PAGE_SIZE_FIELD,
+            Self::PAGE_TOKEN_FIELD,
         ];
     }
-    impl GetReputationResponse {
-        pub fn path_builder() -> GetReputationResponseFieldPathBuilder {
-            GetReputationResponseFieldPathBuilder::new()
+    impl ListTargetsRequest {
+        pub fn path_builder() -> ListTargetsRequestFieldPathBuilder {
+            ListTargetsRequestFieldPathBuilder::new()
         }
     }
-    pub struct GetReputationResponseFieldPathBuilder {
+    pub struct ListTargetsRequestFieldPathBuilder {
         path: Vec<&'static str>,
     }
-    impl GetReputationResponseFieldPathBuilder {
+    impl ListTargetsRequestFieldPathBuilder {
         #[allow(clippy::new_without_default)]
         pub fn new() -> Self {
             Self { path: Default::default() }
@@ -4045,40 +3274,261 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn address(mut self) -> String {
-            self.path.push(GetReputationResponse::ADDRESS_FIELD.name);
+        pub fn status(mut self) -> String {
+            self.path.push(ListTargetsRequest::STATUS_FIELD.name);
             self.finish()
         }
-        pub fn buyer_settlements(mut self) -> String {
-            self.path.push(GetReputationResponse::BUYER_SETTLEMENTS_FIELD.name);
+        pub fn epoch(mut self) -> String {
+            self.path.push(ListTargetsRequest::EPOCH_FIELD.name);
             self.finish()
         }
-        pub fn buyer_volume_spent(mut self) -> String {
-            self.path.push(GetReputationResponse::BUYER_VOLUME_SPENT_FIELD.name);
+        pub fn page_size(mut self) -> String {
+            self.path.push(ListTargetsRequest::PAGE_SIZE_FIELD.name);
             self.finish()
         }
-        pub fn buyer_unique_sellers(mut self) -> String {
-            self.path.push(GetReputationResponse::BUYER_UNIQUE_SELLERS_FIELD.name);
+        pub fn page_token(mut self) -> String {
+            self.path.push(ListTargetsRequest::PAGE_TOKEN_FIELD.name);
             self.finish()
         }
-        pub fn seller_settlements(mut self) -> String {
-            self.path.push(GetReputationResponse::SELLER_SETTLEMENTS_FIELD.name);
+    }
+    impl ListTargetsResponse {
+        pub const TARGETS_FIELD: &'static MessageField = &MessageField {
+            name: "targets",
+            json_name: "targets",
+            number: 1i32,
+            message_fields: Some(Object::FIELDS),
+        };
+        pub const NEXT_PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "next_page_token",
+            json_name: "nextPageToken",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListTargetsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGETS_FIELD,
+            Self::NEXT_PAGE_TOKEN_FIELD,
+        ];
+    }
+    impl ListTargetsResponse {
+        pub fn path_builder() -> ListTargetsResponseFieldPathBuilder {
+            ListTargetsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct ListTargetsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListTargetsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn targets(mut self) -> ObjectFieldPathBuilder {
+            self.path.push(ListTargetsResponse::TARGETS_FIELD.name);
+            ObjectFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_page_token(mut self) -> String {
+            self.path.push(ListTargetsResponse::NEXT_PAGE_TOKEN_FIELD.name);
             self.finish()
         }
-        pub fn seller_volume_earned(mut self) -> String {
-            self.path.push(GetReputationResponse::SELLER_VOLUME_EARNED_FIELD.name);
+    }
+    impl GetChallengeRequest {
+        pub const CHALLENGE_ID_FIELD: &'static MessageField = &MessageField {
+            name: "challenge_id",
+            json_name: "challengeId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for GetChallengeRequest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHALLENGE_ID_FIELD];
+    }
+    impl GetChallengeRequest {
+        pub fn path_builder() -> GetChallengeRequestFieldPathBuilder {
+            GetChallengeRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct GetChallengeRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetChallengeRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn challenge_id(mut self) -> String {
+            self.path.push(GetChallengeRequest::CHALLENGE_ID_FIELD.name);
             self.finish()
         }
-        pub fn seller_negative_ratings(mut self) -> String {
-            self.path.push(GetReputationResponse::SELLER_NEGATIVE_RATINGS_FIELD.name);
+    }
+    impl GetChallengeResponse {
+        pub const CHALLENGE_FIELD: &'static MessageField = &MessageField {
+            name: "challenge",
+            json_name: "challenge",
+            number: 1i32,
+            message_fields: Some(Object::FIELDS),
+        };
+    }
+    impl MessageFields for GetChallengeResponse {
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHALLENGE_FIELD];
+    }
+    impl GetChallengeResponse {
+        pub fn path_builder() -> GetChallengeResponseFieldPathBuilder {
+            GetChallengeResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct GetChallengeResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl GetChallengeResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn challenge(mut self) -> ObjectFieldPathBuilder {
+            self.path.push(GetChallengeResponse::CHALLENGE_FIELD.name);
+            ObjectFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ListChallengesRequest {
+        pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
+            name: "target_id",
+            json_name: "targetId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const STATUS_FIELD: &'static MessageField = &MessageField {
+            name: "status",
+            json_name: "status",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PAGE_SIZE_FIELD: &'static MessageField = &MessageField {
+            name: "page_size",
+            json_name: "pageSize",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "page_token",
+            json_name: "pageToken",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListChallengesRequest {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::TARGET_ID_FIELD,
+            Self::STATUS_FIELD,
+            Self::PAGE_SIZE_FIELD,
+            Self::PAGE_TOKEN_FIELD,
+        ];
+    }
+    impl ListChallengesRequest {
+        pub fn path_builder() -> ListChallengesRequestFieldPathBuilder {
+            ListChallengesRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct ListChallengesRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListChallengesRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn target_id(mut self) -> String {
+            self.path.push(ListChallengesRequest::TARGET_ID_FIELD.name);
             self.finish()
         }
-        pub fn seller_approval_rate(mut self) -> String {
-            self.path.push(GetReputationResponse::SELLER_APPROVAL_RATE_FIELD.name);
+        pub fn status(mut self) -> String {
+            self.path.push(ListChallengesRequest::STATUS_FIELD.name);
             self.finish()
         }
-        pub fn seller_unique_buyers(mut self) -> String {
-            self.path.push(GetReputationResponse::SELLER_UNIQUE_BUYERS_FIELD.name);
+        pub fn page_size(mut self) -> String {
+            self.path.push(ListChallengesRequest::PAGE_SIZE_FIELD.name);
+            self.finish()
+        }
+        pub fn page_token(mut self) -> String {
+            self.path.push(ListChallengesRequest::PAGE_TOKEN_FIELD.name);
+            self.finish()
+        }
+    }
+    impl ListChallengesResponse {
+        pub const CHALLENGES_FIELD: &'static MessageField = &MessageField {
+            name: "challenges",
+            json_name: "challenges",
+            number: 1i32,
+            message_fields: Some(Object::FIELDS),
+        };
+        pub const NEXT_PAGE_TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "next_page_token",
+            json_name: "nextPageToken",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListChallengesResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHALLENGES_FIELD,
+            Self::NEXT_PAGE_TOKEN_FIELD,
+        ];
+    }
+    impl ListChallengesResponse {
+        pub fn path_builder() -> ListChallengesResponseFieldPathBuilder {
+            ListChallengesResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct ListChallengesResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListChallengesResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn challenges(mut self) -> ObjectFieldPathBuilder {
+            self.path.push(ListChallengesResponse::CHALLENGES_FIELD.name);
+            ObjectFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn next_page_token(mut self) -> String {
+            self.path.push(ListChallengesResponse::NEXT_PAGE_TOKEN_FIELD.name);
             self.finish()
         }
     }
@@ -6363,42 +5813,6 @@ mod _field_impls {
             number: 32i32,
             message_fields: Some(ClaimChallengeBond::FIELDS),
         };
-        pub const CREATE_ASK_FIELD: &'static MessageField = &MessageField {
-            name: "create_ask",
-            json_name: "createAsk",
-            number: 34i32,
-            message_fields: Some(CreateAsk::FIELDS),
-        };
-        pub const CANCEL_ASK_FIELD: &'static MessageField = &MessageField {
-            name: "cancel_ask",
-            json_name: "cancelAsk",
-            number: 35i32,
-            message_fields: Some(CancelAsk::FIELDS),
-        };
-        pub const CREATE_BID_FIELD: &'static MessageField = &MessageField {
-            name: "create_bid",
-            json_name: "createBid",
-            number: 36i32,
-            message_fields: Some(CreateBid::FIELDS),
-        };
-        pub const ACCEPT_BID_FIELD: &'static MessageField = &MessageField {
-            name: "accept_bid",
-            json_name: "acceptBid",
-            number: 37i32,
-            message_fields: Some(AcceptBid::FIELDS),
-        };
-        pub const RATE_SELLER_FIELD: &'static MessageField = &MessageField {
-            name: "rate_seller",
-            json_name: "rateSeller",
-            number: 38i32,
-            message_fields: Some(RateSeller::FIELDS),
-        };
-        pub const WITHDRAW_FROM_VAULT_FIELD: &'static MessageField = &MessageField {
-            name: "withdraw_from_vault",
-            json_name: "withdrawFromVault",
-            number: 39i32,
-            message_fields: Some(WithdrawFromVault::FIELDS),
-        };
         pub const BRIDGE_DEPOSIT_FIELD: &'static MessageField = &MessageField {
             name: "bridge_deposit",
             json_name: "bridgeDeposit",
@@ -6456,12 +5870,6 @@ mod _field_impls {
             Self::REPORT_CHALLENGE_FIELD,
             Self::UNDO_REPORT_CHALLENGE_FIELD,
             Self::CLAIM_CHALLENGE_BOND_FIELD,
-            Self::CREATE_ASK_FIELD,
-            Self::CANCEL_ASK_FIELD,
-            Self::CREATE_BID_FIELD,
-            Self::ACCEPT_BID_FIELD,
-            Self::RATE_SELLER_FIELD,
-            Self::WITHDRAW_FROM_VAULT_FIELD,
             Self::BRIDGE_DEPOSIT_FIELD,
             Self::BRIDGE_WITHDRAW_FIELD,
             Self::BRIDGE_EMERGENCY_PAUSE_FIELD,
@@ -6614,30 +6022,6 @@ mod _field_impls {
             self.path.push(TransactionKind::CLAIM_CHALLENGE_BOND_FIELD.name);
             ClaimChallengeBondFieldPathBuilder::new_with_base(self.path)
         }
-        pub fn create_ask(mut self) -> CreateAskFieldPathBuilder {
-            self.path.push(TransactionKind::CREATE_ASK_FIELD.name);
-            CreateAskFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn cancel_ask(mut self) -> CancelAskFieldPathBuilder {
-            self.path.push(TransactionKind::CANCEL_ASK_FIELD.name);
-            CancelAskFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn create_bid(mut self) -> CreateBidFieldPathBuilder {
-            self.path.push(TransactionKind::CREATE_BID_FIELD.name);
-            CreateBidFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn accept_bid(mut self) -> AcceptBidFieldPathBuilder {
-            self.path.push(TransactionKind::ACCEPT_BID_FIELD.name);
-            AcceptBidFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn rate_seller(mut self) -> RateSellerFieldPathBuilder {
-            self.path.push(TransactionKind::RATE_SELLER_FIELD.name);
-            RateSellerFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn withdraw_from_vault(mut self) -> WithdrawFromVaultFieldPathBuilder {
-            self.path.push(TransactionKind::WITHDRAW_FROM_VAULT_FIELD.name);
-            WithdrawFromVaultFieldPathBuilder::new_with_base(self.path)
-        }
         pub fn bridge_deposit(mut self) -> BridgeDepositFieldPathBuilder {
             self.path.push(TransactionKind::BRIDGE_DEPOSIT_FIELD.name);
             BridgeDepositFieldPathBuilder::new_with_base(self.path)
@@ -6655,329 +6039,6 @@ mod _field_impls {
         ) -> BridgeEmergencyUnpauseFieldPathBuilder {
             self.path.push(TransactionKind::BRIDGE_EMERGENCY_UNPAUSE_FIELD.name);
             BridgeEmergencyUnpauseFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl CreateAsk {
-        pub const TASK_DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "task_digest",
-            json_name: "taskDigest",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const MAX_PRICE_PER_BID_FIELD: &'static MessageField = &MessageField {
-            name: "max_price_per_bid",
-            json_name: "maxPricePerBid",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const NUM_BIDS_WANTED_FIELD: &'static MessageField = &MessageField {
-            name: "num_bids_wanted",
-            json_name: "numBidsWanted",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const TIMEOUT_MS_FIELD: &'static MessageField = &MessageField {
-            name: "timeout_ms",
-            json_name: "timeoutMs",
-            number: 4i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for CreateAsk {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::TASK_DIGEST_FIELD,
-            Self::MAX_PRICE_PER_BID_FIELD,
-            Self::NUM_BIDS_WANTED_FIELD,
-            Self::TIMEOUT_MS_FIELD,
-        ];
-    }
-    impl CreateAsk {
-        pub fn path_builder() -> CreateAskFieldPathBuilder {
-            CreateAskFieldPathBuilder::new()
-        }
-    }
-    pub struct CreateAskFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl CreateAskFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn task_digest(mut self) -> String {
-            self.path.push(CreateAsk::TASK_DIGEST_FIELD.name);
-            self.finish()
-        }
-        pub fn max_price_per_bid(mut self) -> String {
-            self.path.push(CreateAsk::MAX_PRICE_PER_BID_FIELD.name);
-            self.finish()
-        }
-        pub fn num_bids_wanted(mut self) -> String {
-            self.path.push(CreateAsk::NUM_BIDS_WANTED_FIELD.name);
-            self.finish()
-        }
-        pub fn timeout_ms(mut self) -> String {
-            self.path.push(CreateAsk::TIMEOUT_MS_FIELD.name);
-            self.finish()
-        }
-    }
-    impl CancelAsk {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for CancelAsk {
-        const FIELDS: &'static [&'static MessageField] = &[Self::ASK_ID_FIELD];
-    }
-    impl CancelAsk {
-        pub fn path_builder() -> CancelAskFieldPathBuilder {
-            CancelAskFieldPathBuilder::new()
-        }
-    }
-    pub struct CancelAskFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl CancelAskFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(CancelAsk::ASK_ID_FIELD.name);
-            self.finish()
-        }
-    }
-    impl CreateBid {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const PRICE_FIELD: &'static MessageField = &MessageField {
-            name: "price",
-            json_name: "price",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const RESPONSE_DIGEST_FIELD: &'static MessageField = &MessageField {
-            name: "response_digest",
-            json_name: "responseDigest",
-            number: 3i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for CreateBid {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ASK_ID_FIELD,
-            Self::PRICE_FIELD,
-            Self::RESPONSE_DIGEST_FIELD,
-        ];
-    }
-    impl CreateBid {
-        pub fn path_builder() -> CreateBidFieldPathBuilder {
-            CreateBidFieldPathBuilder::new()
-        }
-    }
-    pub struct CreateBidFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl CreateBidFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(CreateBid::ASK_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn price(mut self) -> String {
-            self.path.push(CreateBid::PRICE_FIELD.name);
-            self.finish()
-        }
-        pub fn response_digest(mut self) -> String {
-            self.path.push(CreateBid::RESPONSE_DIGEST_FIELD.name);
-            self.finish()
-        }
-    }
-    impl AcceptBid {
-        pub const ASK_ID_FIELD: &'static MessageField = &MessageField {
-            name: "ask_id",
-            json_name: "askId",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const BID_ID_FIELD: &'static MessageField = &MessageField {
-            name: "bid_id",
-            json_name: "bidId",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const PAYMENT_COIN_FIELD: &'static MessageField = &MessageField {
-            name: "payment_coin",
-            json_name: "paymentCoin",
-            number: 3i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for AcceptBid {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::ASK_ID_FIELD,
-            Self::BID_ID_FIELD,
-            Self::PAYMENT_COIN_FIELD,
-        ];
-    }
-    impl AcceptBid {
-        pub fn path_builder() -> AcceptBidFieldPathBuilder {
-            AcceptBidFieldPathBuilder::new()
-        }
-    }
-    pub struct AcceptBidFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl AcceptBidFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn ask_id(mut self) -> String {
-            self.path.push(AcceptBid::ASK_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn bid_id(mut self) -> String {
-            self.path.push(AcceptBid::BID_ID_FIELD.name);
-            self.finish()
-        }
-        pub fn payment_coin(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(AcceptBid::PAYMENT_COIN_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-    }
-    impl RateSeller {
-        pub const SETTLEMENT_ID_FIELD: &'static MessageField = &MessageField {
-            name: "settlement_id",
-            json_name: "settlementId",
-            number: 1i32,
-            message_fields: None,
-        };
-    }
-    impl MessageFields for RateSeller {
-        const FIELDS: &'static [&'static MessageField] = &[Self::SETTLEMENT_ID_FIELD];
-    }
-    impl RateSeller {
-        pub fn path_builder() -> RateSellerFieldPathBuilder {
-            RateSellerFieldPathBuilder::new()
-        }
-    }
-    pub struct RateSellerFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl RateSellerFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn settlement_id(mut self) -> String {
-            self.path.push(RateSeller::SETTLEMENT_ID_FIELD.name);
-            self.finish()
-        }
-    }
-    impl WithdrawFromVault {
-        pub const VAULT_FIELD: &'static MessageField = &MessageField {
-            name: "vault",
-            json_name: "vault",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
-            name: "amount",
-            json_name: "amount",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const RECIPIENT_COIN_FIELD: &'static MessageField = &MessageField {
-            name: "recipient_coin",
-            json_name: "recipientCoin",
-            number: 3i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
-    }
-    impl MessageFields for WithdrawFromVault {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::VAULT_FIELD,
-            Self::AMOUNT_FIELD,
-            Self::RECIPIENT_COIN_FIELD,
-        ];
-    }
-    impl WithdrawFromVault {
-        pub fn path_builder() -> WithdrawFromVaultFieldPathBuilder {
-            WithdrawFromVaultFieldPathBuilder::new()
-        }
-    }
-    pub struct WithdrawFromVaultFieldPathBuilder {
-        path: Vec<&'static str>,
-    }
-    impl WithdrawFromVaultFieldPathBuilder {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            Self { path: Default::default() }
-        }
-        #[doc(hidden)]
-        pub fn new_with_base(base: Vec<&'static str>) -> Self {
-            Self { path: base }
-        }
-        pub fn finish(self) -> String {
-            self.path.join(".")
-        }
-        pub fn vault(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(WithdrawFromVault::VAULT_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
-        }
-        pub fn amount(mut self) -> String {
-            self.path.push(WithdrawFromVault::AMOUNT_FIELD.name);
-            self.finish()
-        }
-        pub fn recipient_coin(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(WithdrawFromVault::RECIPIENT_COIN_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl BridgeDeposit {

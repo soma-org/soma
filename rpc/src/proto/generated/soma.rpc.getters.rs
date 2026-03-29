@@ -2039,481 +2039,205 @@ mod _getter_impls {
             self
         }
     }
-    impl GetBidRequest {
+    impl GetTargetRequest {
         pub const fn const_default() -> Self {
-            Self { bid_id: None }
+            Self { target_id: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBidRequest = GetBidRequest::const_default();
+            static DEFAULT: GetTargetRequest = GetTargetRequest::const_default();
             &DEFAULT
         }
-        pub fn with_bid_id(mut self, field: String) -> Self {
-            self.bid_id = Some(field.into());
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
             self
         }
     }
-    impl GetBidResponse {
+    impl GetTargetResponse {
         pub const fn const_default() -> Self {
-            Self { bid: None }
+            Self { target: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBidResponse = GetBidResponse::const_default();
+            static DEFAULT: GetTargetResponse = GetTargetResponse::const_default();
             &DEFAULT
         }
-        pub fn bid(&self) -> &Object {
-            self.bid
+        pub fn target(&self) -> &Object {
+            self.target
                 .as_ref()
                 .map(|field| field as _)
                 .unwrap_or_else(|| Object::default_instance() as _)
         }
-        pub fn bid_opt(&self) -> Option<&Object> {
-            self.bid.as_ref().map(|field| field as _)
+        pub fn target_opt(&self) -> Option<&Object> {
+            self.target.as_ref().map(|field| field as _)
         }
-        pub fn bid_opt_mut(&mut self) -> Option<&mut Object> {
-            self.bid.as_mut().map(|field| field as _)
+        pub fn target_opt_mut(&mut self) -> Option<&mut Object> {
+            self.target.as_mut().map(|field| field as _)
         }
-        pub fn bid_mut(&mut self) -> &mut Object {
-            self.bid.get_or_insert_default()
+        pub fn target_mut(&mut self) -> &mut Object {
+            self.target.get_or_insert_default()
         }
-        pub fn with_bid(mut self, field: Object) -> Self {
-            self.bid = Some(field.into());
+        pub fn with_target(mut self, field: Object) -> Self {
+            self.target = Some(field.into());
             self
         }
     }
-    impl GetAskRequest {
-        pub const fn const_default() -> Self {
-            Self { ask_id: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetAskRequest = GetAskRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-    }
-    impl GetAskResponse {
-        pub const fn const_default() -> Self {
-            Self { ask: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetAskResponse = GetAskResponse::const_default();
-            &DEFAULT
-        }
-        pub fn ask(&self) -> &Object {
-            self.ask
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Object::default_instance() as _)
-        }
-        pub fn ask_opt(&self) -> Option<&Object> {
-            self.ask.as_ref().map(|field| field as _)
-        }
-        pub fn ask_opt_mut(&mut self) -> Option<&mut Object> {
-            self.ask.as_mut().map(|field| field as _)
-        }
-        pub fn ask_mut(&mut self) -> &mut Object {
-            self.ask.get_or_insert_default()
-        }
-        pub fn with_ask(mut self, field: Object) -> Self {
-            self.ask = Some(field.into());
-            self
-        }
-    }
-    impl GetSettlementRequest {
-        pub const fn const_default() -> Self {
-            Self { settlement_id: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetSettlementRequest = GetSettlementRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_settlement_id(mut self, field: String) -> Self {
-            self.settlement_id = Some(field.into());
-            self
-        }
-    }
-    impl GetSettlementResponse {
-        pub const fn const_default() -> Self {
-            Self { settlement: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetSettlementResponse = GetSettlementResponse::const_default();
-            &DEFAULT
-        }
-        pub fn settlement(&self) -> &Object {
-            self.settlement
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Object::default_instance() as _)
-        }
-        pub fn settlement_opt(&self) -> Option<&Object> {
-            self.settlement.as_ref().map(|field| field as _)
-        }
-        pub fn settlement_opt_mut(&mut self) -> Option<&mut Object> {
-            self.settlement.as_mut().map(|field| field as _)
-        }
-        pub fn settlement_mut(&mut self) -> &mut Object {
-            self.settlement.get_or_insert_default()
-        }
-        pub fn with_settlement(mut self, field: Object) -> Self {
-            self.settlement = Some(field.into());
-            self
-        }
-    }
-    impl GetBidsForAskRequest {
+    impl ListTargetsRequest {
         pub const fn const_default() -> Self {
             Self {
-                ask_id: None,
-                status_filter: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBidsForAskRequest = GetBidsForAskRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-        pub fn with_status_filter(mut self, field: String) -> Self {
-            self.status_filter = Some(field.into());
-            self
-        }
-    }
-    impl GetBidsForAskResponse {
-        pub const fn const_default() -> Self {
-            Self { bids: Vec::new() }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetBidsForAskResponse = GetBidsForAskResponse::const_default();
-            &DEFAULT
-        }
-        pub fn bids(&self) -> &[Object] {
-            &self.bids
-        }
-        pub fn bids_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.bids
-        }
-        pub fn with_bids(mut self, field: Vec<Object>) -> Self {
-            self.bids = field;
-            self
-        }
-    }
-    impl GetOpenAsksRequest {
-        pub const fn const_default() -> Self {
-            Self {
-                buyer: None,
+                status: None,
+                epoch: None,
                 page_size: None,
+                page_token: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetOpenAsksRequest = GetOpenAsksRequest::const_default();
+            static DEFAULT: ListTargetsRequest = ListTargetsRequest::const_default();
             &DEFAULT
         }
-        pub fn with_buyer(mut self, field: String) -> Self {
-            self.buyer = Some(field.into());
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
+            self
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
             self
         }
         pub fn with_page_size(mut self, field: u32) -> Self {
             self.page_size = Some(field.into());
             self
         }
-    }
-    impl GetOpenAsksResponse {
-        pub const fn const_default() -> Self {
-            Self { asks: Vec::new() }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetOpenAsksResponse = GetOpenAsksResponse::const_default();
-            &DEFAULT
-        }
-        pub fn asks(&self) -> &[Object] {
-            &self.asks
-        }
-        pub fn asks_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.asks
-        }
-        pub fn with_asks(mut self, field: Vec<Object>) -> Self {
-            self.asks = field;
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
             self
         }
     }
-    impl GetVaultRequest {
-        pub const fn const_default() -> Self {
-            Self { owner: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetVaultRequest = GetVaultRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_owner(mut self, field: String) -> Self {
-            self.owner = Some(field.into());
-            self
-        }
-    }
-    impl GetVaultResponse {
-        pub const fn const_default() -> Self {
-            Self { vaults: Vec::new() }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetVaultResponse = GetVaultResponse::const_default();
-            &DEFAULT
-        }
-        pub fn vaults(&self) -> &[Object] {
-            &self.vaults
-        }
-        pub fn vaults_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.vaults
-        }
-        pub fn with_vaults(mut self, field: Vec<Object>) -> Self {
-            self.vaults = field;
-            self
-        }
-    }
-    impl GetSettlementsRequest {
+    impl ListTargetsResponse {
         pub const fn const_default() -> Self {
             Self {
-                buyer: None,
-                seller: None,
-                page_size: None,
+                targets: Vec::new(),
+                next_page_token: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetSettlementsRequest = GetSettlementsRequest::const_default();
+            static DEFAULT: ListTargetsResponse = ListTargetsResponse::const_default();
             &DEFAULT
         }
-        pub fn with_buyer(mut self, field: String) -> Self {
-            self.buyer = Some(field.into());
+        pub fn targets(&self) -> &[Object] {
+            &self.targets
+        }
+        pub fn targets_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.targets
+        }
+        pub fn with_targets(mut self, field: Vec<Object>) -> Self {
+            self.targets = field;
             self
         }
-        pub fn with_seller(mut self, field: String) -> Self {
-            self.seller = Some(field.into());
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
+            self
+        }
+    }
+    impl GetChallengeRequest {
+        pub const fn const_default() -> Self {
+            Self { challenge_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetChallengeRequest = GetChallengeRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_challenge_id(mut self, field: String) -> Self {
+            self.challenge_id = Some(field.into());
+            self
+        }
+    }
+    impl GetChallengeResponse {
+        pub const fn const_default() -> Self {
+            Self { challenge: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: GetChallengeResponse = GetChallengeResponse::const_default();
+            &DEFAULT
+        }
+        pub fn challenge(&self) -> &Object {
+            self.challenge
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| Object::default_instance() as _)
+        }
+        pub fn challenge_opt(&self) -> Option<&Object> {
+            self.challenge.as_ref().map(|field| field as _)
+        }
+        pub fn challenge_opt_mut(&mut self) -> Option<&mut Object> {
+            self.challenge.as_mut().map(|field| field as _)
+        }
+        pub fn challenge_mut(&mut self) -> &mut Object {
+            self.challenge.get_or_insert_default()
+        }
+        pub fn with_challenge(mut self, field: Object) -> Self {
+            self.challenge = Some(field.into());
+            self
+        }
+    }
+    impl ListChallengesRequest {
+        pub const fn const_default() -> Self {
+            Self {
+                target_id: None,
+                status: None,
+                page_size: None,
+                page_token: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: ListChallengesRequest = ListChallengesRequest::const_default();
+            &DEFAULT
+        }
+        pub fn with_target_id(mut self, field: String) -> Self {
+            self.target_id = Some(field.into());
+            self
+        }
+        pub fn with_status(mut self, field: String) -> Self {
+            self.status = Some(field.into());
             self
         }
         pub fn with_page_size(mut self, field: u32) -> Self {
             self.page_size = Some(field.into());
             self
         }
-    }
-    impl GetSettlementsResponse {
-        pub const fn const_default() -> Self {
-            Self { settlements: Vec::new() }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetSettlementsResponse = GetSettlementsResponse::const_default();
-            &DEFAULT
-        }
-        pub fn settlements(&self) -> &[Object] {
-            &self.settlements
-        }
-        pub fn settlements_mut(&mut self) -> &mut Vec<Object> {
-            &mut self.settlements
-        }
-        pub fn with_settlements(mut self, field: Vec<Object>) -> Self {
-            self.settlements = field;
+        pub fn with_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.page_token = Some(field.into());
             self
         }
     }
-    impl SubscribeAsksRequest {
-        pub const fn const_default() -> Self {
-            Self { min_max_price: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: SubscribeAsksRequest = SubscribeAsksRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_min_max_price(mut self, field: u64) -> Self {
-            self.min_max_price = Some(field.into());
-            self
-        }
-    }
-    impl AskEvent {
+    impl ListChallengesResponse {
         pub const fn const_default() -> Self {
             Self {
-                ask: None,
-                event_type: None,
+                challenges: Vec::new(),
+                next_page_token: None,
             }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
-            static DEFAULT: AskEvent = AskEvent::const_default();
+            static DEFAULT: ListChallengesResponse = ListChallengesResponse::const_default();
             &DEFAULT
         }
-        pub fn ask(&self) -> &Object {
-            self.ask
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Object::default_instance() as _)
+        pub fn challenges(&self) -> &[Object] {
+            &self.challenges
         }
-        pub fn ask_opt(&self) -> Option<&Object> {
-            self.ask.as_ref().map(|field| field as _)
+        pub fn challenges_mut(&mut self) -> &mut Vec<Object> {
+            &mut self.challenges
         }
-        pub fn ask_opt_mut(&mut self) -> Option<&mut Object> {
-            self.ask.as_mut().map(|field| field as _)
-        }
-        pub fn ask_mut(&mut self) -> &mut Object {
-            self.ask.get_or_insert_default()
-        }
-        pub fn with_ask(mut self, field: Object) -> Self {
-            self.ask = Some(field.into());
+        pub fn with_challenges(mut self, field: Vec<Object>) -> Self {
+            self.challenges = field;
             self
         }
-        pub fn with_event_type(mut self, field: String) -> Self {
-            self.event_type = Some(field.into());
-            self
-        }
-    }
-    impl SubscribeBidsRequest {
-        pub const fn const_default() -> Self {
-            Self { ask_id: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: SubscribeBidsRequest = SubscribeBidsRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-    }
-    impl BidEvent {
-        pub const fn const_default() -> Self {
-            Self { bid: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: BidEvent = BidEvent::const_default();
-            &DEFAULT
-        }
-        pub fn bid(&self) -> &Object {
-            self.bid
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| Object::default_instance() as _)
-        }
-        pub fn bid_opt(&self) -> Option<&Object> {
-            self.bid.as_ref().map(|field| field as _)
-        }
-        pub fn bid_opt_mut(&mut self) -> Option<&mut Object> {
-            self.bid.as_mut().map(|field| field as _)
-        }
-        pub fn bid_mut(&mut self) -> &mut Object {
-            self.bid.get_or_insert_default()
-        }
-        pub fn with_bid(mut self, field: Object) -> Self {
-            self.bid = Some(field.into());
-            self
-        }
-    }
-    impl GetProtocolFundRequest {
-        pub const fn const_default() -> Self {
-            Self {}
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetProtocolFundRequest = GetProtocolFundRequest::const_default();
-            &DEFAULT
-        }
-    }
-    impl GetProtocolFundResponse {
-        pub const fn const_default() -> Self {
-            Self { balance: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetProtocolFundResponse = GetProtocolFundResponse::const_default();
-            &DEFAULT
-        }
-        pub fn with_balance(mut self, field: u64) -> Self {
-            self.balance = Some(field.into());
-            self
-        }
-    }
-    impl GetReputationRequest {
-        pub const fn const_default() -> Self {
-            Self { address: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetReputationRequest = GetReputationRequest::const_default();
-            &DEFAULT
-        }
-        pub fn with_address(mut self, field: String) -> Self {
-            self.address = Some(field.into());
-            self
-        }
-    }
-    impl GetReputationResponse {
-        pub const fn const_default() -> Self {
-            Self {
-                address: None,
-                buyer_settlements: None,
-                buyer_volume_spent: None,
-                buyer_unique_sellers: None,
-                seller_settlements: None,
-                seller_volume_earned: None,
-                seller_negative_ratings: None,
-                seller_approval_rate: None,
-                seller_unique_buyers: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: GetReputationResponse = GetReputationResponse::const_default();
-            &DEFAULT
-        }
-        pub fn with_address(mut self, field: String) -> Self {
-            self.address = Some(field.into());
-            self
-        }
-        pub fn with_buyer_settlements(mut self, field: u64) -> Self {
-            self.buyer_settlements = Some(field.into());
-            self
-        }
-        pub fn with_buyer_volume_spent(mut self, field: u64) -> Self {
-            self.buyer_volume_spent = Some(field.into());
-            self
-        }
-        pub fn with_buyer_unique_sellers(mut self, field: u64) -> Self {
-            self.buyer_unique_sellers = Some(field.into());
-            self
-        }
-        pub fn with_seller_settlements(mut self, field: u64) -> Self {
-            self.seller_settlements = Some(field.into());
-            self
-        }
-        pub fn with_seller_volume_earned(mut self, field: u64) -> Self {
-            self.seller_volume_earned = Some(field.into());
-            self
-        }
-        pub fn with_seller_negative_ratings(mut self, field: u64) -> Self {
-            self.seller_negative_ratings = Some(field.into());
-            self
-        }
-        pub fn with_seller_approval_rate(mut self, field: f64) -> Self {
-            self.seller_approval_rate = Some(field.into());
-            self
-        }
-        pub fn with_seller_unique_buyers(mut self, field: u64) -> Self {
-            self.seller_unique_buyers = Some(field.into());
+        pub fn with_next_page_token(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.next_page_token = Some(field.into());
             self
         }
     }
@@ -4746,208 +4470,6 @@ mod _getter_impls {
             self.kind = Some(transaction_kind::Kind::ClaimChallengeBond(field.into()));
             self
         }
-        pub fn create_ask(&self) -> &CreateAsk {
-            if let Some(transaction_kind::Kind::CreateAsk(field)) = &self.kind {
-                field as _
-            } else {
-                CreateAsk::default_instance() as _
-            }
-        }
-        pub fn create_ask_opt(&self) -> Option<&CreateAsk> {
-            if let Some(transaction_kind::Kind::CreateAsk(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn create_ask_opt_mut(&mut self) -> Option<&mut CreateAsk> {
-            if let Some(transaction_kind::Kind::CreateAsk(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn create_ask_mut(&mut self) -> &mut CreateAsk {
-            if self.create_ask_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::CreateAsk(CreateAsk::default()),
-                );
-            }
-            self.create_ask_opt_mut().unwrap()
-        }
-        pub fn with_create_ask(mut self, field: CreateAsk) -> Self {
-            self.kind = Some(transaction_kind::Kind::CreateAsk(field.into()));
-            self
-        }
-        pub fn cancel_ask(&self) -> &CancelAsk {
-            if let Some(transaction_kind::Kind::CancelAsk(field)) = &self.kind {
-                field as _
-            } else {
-                CancelAsk::default_instance() as _
-            }
-        }
-        pub fn cancel_ask_opt(&self) -> Option<&CancelAsk> {
-            if let Some(transaction_kind::Kind::CancelAsk(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn cancel_ask_opt_mut(&mut self) -> Option<&mut CancelAsk> {
-            if let Some(transaction_kind::Kind::CancelAsk(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn cancel_ask_mut(&mut self) -> &mut CancelAsk {
-            if self.cancel_ask_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::CancelAsk(CancelAsk::default()),
-                );
-            }
-            self.cancel_ask_opt_mut().unwrap()
-        }
-        pub fn with_cancel_ask(mut self, field: CancelAsk) -> Self {
-            self.kind = Some(transaction_kind::Kind::CancelAsk(field.into()));
-            self
-        }
-        pub fn create_bid(&self) -> &CreateBid {
-            if let Some(transaction_kind::Kind::CreateBid(field)) = &self.kind {
-                field as _
-            } else {
-                CreateBid::default_instance() as _
-            }
-        }
-        pub fn create_bid_opt(&self) -> Option<&CreateBid> {
-            if let Some(transaction_kind::Kind::CreateBid(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn create_bid_opt_mut(&mut self) -> Option<&mut CreateBid> {
-            if let Some(transaction_kind::Kind::CreateBid(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn create_bid_mut(&mut self) -> &mut CreateBid {
-            if self.create_bid_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::CreateBid(CreateBid::default()),
-                );
-            }
-            self.create_bid_opt_mut().unwrap()
-        }
-        pub fn with_create_bid(mut self, field: CreateBid) -> Self {
-            self.kind = Some(transaction_kind::Kind::CreateBid(field.into()));
-            self
-        }
-        pub fn accept_bid(&self) -> &AcceptBid {
-            if let Some(transaction_kind::Kind::AcceptBid(field)) = &self.kind {
-                field as _
-            } else {
-                AcceptBid::default_instance() as _
-            }
-        }
-        pub fn accept_bid_opt(&self) -> Option<&AcceptBid> {
-            if let Some(transaction_kind::Kind::AcceptBid(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn accept_bid_opt_mut(&mut self) -> Option<&mut AcceptBid> {
-            if let Some(transaction_kind::Kind::AcceptBid(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn accept_bid_mut(&mut self) -> &mut AcceptBid {
-            if self.accept_bid_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::AcceptBid(AcceptBid::default()),
-                );
-            }
-            self.accept_bid_opt_mut().unwrap()
-        }
-        pub fn with_accept_bid(mut self, field: AcceptBid) -> Self {
-            self.kind = Some(transaction_kind::Kind::AcceptBid(field.into()));
-            self
-        }
-        pub fn rate_seller(&self) -> &RateSeller {
-            if let Some(transaction_kind::Kind::RateSeller(field)) = &self.kind {
-                field as _
-            } else {
-                RateSeller::default_instance() as _
-            }
-        }
-        pub fn rate_seller_opt(&self) -> Option<&RateSeller> {
-            if let Some(transaction_kind::Kind::RateSeller(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn rate_seller_opt_mut(&mut self) -> Option<&mut RateSeller> {
-            if let Some(transaction_kind::Kind::RateSeller(field)) = &mut self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn rate_seller_mut(&mut self) -> &mut RateSeller {
-            if self.rate_seller_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::RateSeller(RateSeller::default()),
-                );
-            }
-            self.rate_seller_opt_mut().unwrap()
-        }
-        pub fn with_rate_seller(mut self, field: RateSeller) -> Self {
-            self.kind = Some(transaction_kind::Kind::RateSeller(field.into()));
-            self
-        }
-        pub fn withdraw_from_vault(&self) -> &WithdrawFromVault {
-            if let Some(transaction_kind::Kind::WithdrawFromVault(field)) = &self.kind {
-                field as _
-            } else {
-                WithdrawFromVault::default_instance() as _
-            }
-        }
-        pub fn withdraw_from_vault_opt(&self) -> Option<&WithdrawFromVault> {
-            if let Some(transaction_kind::Kind::WithdrawFromVault(field)) = &self.kind {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn withdraw_from_vault_opt_mut(&mut self) -> Option<&mut WithdrawFromVault> {
-            if let Some(transaction_kind::Kind::WithdrawFromVault(field)) = &mut self
-                .kind
-            {
-                Some(field as _)
-            } else {
-                None
-            }
-        }
-        pub fn withdraw_from_vault_mut(&mut self) -> &mut WithdrawFromVault {
-            if self.withdraw_from_vault_opt_mut().is_none() {
-                self.kind = Some(
-                    transaction_kind::Kind::WithdrawFromVault(
-                        WithdrawFromVault::default(),
-                    ),
-                );
-            }
-            self.withdraw_from_vault_opt_mut().unwrap()
-        }
-        pub fn with_withdraw_from_vault(mut self, field: WithdrawFromVault) -> Self {
-            self.kind = Some(transaction_kind::Kind::WithdrawFromVault(field.into()));
-            self
-        }
         pub fn bridge_deposit(&self) -> &BridgeDeposit {
             if let Some(transaction_kind::Kind::BridgeDeposit(field)) = &self.kind {
                 field as _
@@ -5104,188 +4626,6 @@ mod _getter_impls {
             self.kind = Some(
                 transaction_kind::Kind::BridgeEmergencyUnpause(field.into()),
             );
-            self
-        }
-    }
-    impl CreateAsk {
-        pub const fn const_default() -> Self {
-            Self {
-                task_digest: None,
-                max_price_per_bid: None,
-                num_bids_wanted: None,
-                timeout_ms: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: CreateAsk = CreateAsk::const_default();
-            &DEFAULT
-        }
-        pub fn with_task_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.task_digest = Some(field.into());
-            self
-        }
-        pub fn with_max_price_per_bid(mut self, field: u64) -> Self {
-            self.max_price_per_bid = Some(field.into());
-            self
-        }
-        pub fn with_num_bids_wanted(mut self, field: u32) -> Self {
-            self.num_bids_wanted = Some(field.into());
-            self
-        }
-        pub fn with_timeout_ms(mut self, field: u64) -> Self {
-            self.timeout_ms = Some(field.into());
-            self
-        }
-    }
-    impl CancelAsk {
-        pub const fn const_default() -> Self {
-            Self { ask_id: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: CancelAsk = CancelAsk::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-    }
-    impl CreateBid {
-        pub const fn const_default() -> Self {
-            Self {
-                ask_id: None,
-                price: None,
-                response_digest: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: CreateBid = CreateBid::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-        pub fn with_price(mut self, field: u64) -> Self {
-            self.price = Some(field.into());
-            self
-        }
-        pub fn with_response_digest(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.response_digest = Some(field.into());
-            self
-        }
-    }
-    impl AcceptBid {
-        pub const fn const_default() -> Self {
-            Self {
-                ask_id: None,
-                bid_id: None,
-                payment_coin: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: AcceptBid = AcceptBid::const_default();
-            &DEFAULT
-        }
-        pub fn with_ask_id(mut self, field: String) -> Self {
-            self.ask_id = Some(field.into());
-            self
-        }
-        pub fn with_bid_id(mut self, field: String) -> Self {
-            self.bid_id = Some(field.into());
-            self
-        }
-        pub fn payment_coin(&self) -> &ObjectReference {
-            self.payment_coin
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn payment_coin_opt(&self) -> Option<&ObjectReference> {
-            self.payment_coin.as_ref().map(|field| field as _)
-        }
-        pub fn payment_coin_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.payment_coin.as_mut().map(|field| field as _)
-        }
-        pub fn payment_coin_mut(&mut self) -> &mut ObjectReference {
-            self.payment_coin.get_or_insert_default()
-        }
-        pub fn with_payment_coin(mut self, field: ObjectReference) -> Self {
-            self.payment_coin = Some(field.into());
-            self
-        }
-    }
-    impl RateSeller {
-        pub const fn const_default() -> Self {
-            Self { settlement_id: None }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: RateSeller = RateSeller::const_default();
-            &DEFAULT
-        }
-        pub fn with_settlement_id(mut self, field: String) -> Self {
-            self.settlement_id = Some(field.into());
-            self
-        }
-    }
-    impl WithdrawFromVault {
-        pub const fn const_default() -> Self {
-            Self {
-                vault: None,
-                amount: None,
-                recipient_coin: None,
-            }
-        }
-        #[doc(hidden)]
-        pub fn default_instance() -> &'static Self {
-            static DEFAULT: WithdrawFromVault = WithdrawFromVault::const_default();
-            &DEFAULT
-        }
-        pub fn vault(&self) -> &ObjectReference {
-            self.vault
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn vault_opt(&self) -> Option<&ObjectReference> {
-            self.vault.as_ref().map(|field| field as _)
-        }
-        pub fn vault_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.vault.as_mut().map(|field| field as _)
-        }
-        pub fn vault_mut(&mut self) -> &mut ObjectReference {
-            self.vault.get_or_insert_default()
-        }
-        pub fn with_vault(mut self, field: ObjectReference) -> Self {
-            self.vault = Some(field.into());
-            self
-        }
-        pub fn with_amount(mut self, field: u64) -> Self {
-            self.amount = Some(field.into());
-            self
-        }
-        pub fn recipient_coin(&self) -> &ObjectReference {
-            self.recipient_coin
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn recipient_coin_opt(&self) -> Option<&ObjectReference> {
-            self.recipient_coin.as_ref().map(|field| field as _)
-        }
-        pub fn recipient_coin_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.recipient_coin.as_mut().map(|field| field as _)
-        }
-        pub fn recipient_coin_mut(&mut self) -> &mut ObjectReference {
-            self.recipient_coin.get_or_insert_default()
-        }
-        pub fn with_recipient_coin(mut self, field: ObjectReference) -> Self {
-            self.recipient_coin = Some(field.into());
             self
         }
     }

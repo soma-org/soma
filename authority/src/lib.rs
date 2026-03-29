@@ -120,10 +120,6 @@ mod batch_verification_tests;
 mod consensus_tests;
 
 #[cfg(test)]
-#[path = "unit_tests/marketplace_tests.rs"]
-mod marketplace_tests;
-
-#[cfg(test)]
 #[path = "unit_tests/bridge_tests.rs"]
 mod bridge_tests;
 

@@ -398,24 +398,6 @@ impl Object {
         }
     }
 
-    /// Create a new marketplace object (Ask, Bid, Settlement, SellerVault, PendingWithdrawal).
-    /// Uses BCS serialization of the inner type as contents.
-    pub fn new_marketplace_object<T: serde::Serialize>(
-        id: ObjectID,
-        object_type: ObjectType,
-        inner: &T,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let data = ObjectData::new_with_id(
-            id,
-            object_type,
-            Version::MIN,
-            bcs::to_bytes(inner).unwrap(),
-        );
-        Self::new(data, owner, previous_transaction)
-    }
-
     /// Deserialize an object's contents as a specific type.
     pub fn deserialize_contents<T: serde::de::DeserializeOwned>(
         &self,
@@ -595,14 +577,6 @@ pub enum ObjectType {
     Coin(CoinType),
     /// Represents an owned Staked SOMA object
     StakedSoma,
-    /// Marketplace ask (buyer's request for work)
-    Ask,
-    /// Marketplace bid (seller's offer to fulfill an ask)
-    Bid,
-    /// Settlement (created when buyer accepts a bid)
-    Settlement,
-    /// Per-seller USDC balance accumulator
-    SellerVault,
     /// Pending USDC withdrawal from Soma to Ethereum
     PendingWithdrawal,
 }
@@ -613,10 +587,6 @@ impl fmt::Display for ObjectType {
             ObjectType::SystemState => write!(f, "SystemState"),
             ObjectType::Coin(ct) => write!(f, "Coin({})", ct),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
-            ObjectType::Ask => write!(f, "Ask"),
-            ObjectType::Bid => write!(f, "Bid"),
-            ObjectType::Settlement => write!(f, "Settlement"),
-            ObjectType::SellerVault => write!(f, "SellerVault"),
             ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
         }
     }
@@ -631,10 +601,6 @@ impl FromStr for ObjectType {
             "Coin" | "Coin(SOMA)" => Ok(ObjectType::Coin(CoinType::Soma)),
             "Coin(USDC)" => Ok(ObjectType::Coin(CoinType::Usdc)),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
-            "Ask" => Ok(ObjectType::Ask),
-            "Bid" => Ok(ObjectType::Bid),
-            "Settlement" => Ok(ObjectType::Settlement),
-            "SellerVault" => Ok(ObjectType::SellerVault),
             "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }

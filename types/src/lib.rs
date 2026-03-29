@@ -2,10 +2,8 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-pub mod ask;
 pub mod balance_change;
 pub mod base;
-pub mod bid;
 pub mod bridge;
 pub mod checkpoints;
 pub mod checksum;
@@ -37,7 +35,6 @@ pub mod parameters;
 pub mod peer_id;
 pub mod quorum_driver;
 pub(crate) mod serde;
-pub mod settlement;
 pub mod signature_verification;
 pub mod storage;
 pub mod supported_protocol_versions;
@@ -54,7 +51,6 @@ pub mod transaction_outputs;
 pub mod tx_fee;
 pub mod unit_tests;
 pub mod validator_info;
-pub mod vault;
 
 use base::SomaAddress;
 use object::{OBJECT_START_VERSION, ObjectID, Version};

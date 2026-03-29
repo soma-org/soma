@@ -1,5 +1,6 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 29
 expression: stdout
 ---
 Open-source Superintelligence
@@ -15,13 +16,6 @@ Commands:
   faucet           Request test tokens from a faucet server
   merge            Merge dust coins to reduce object count [aliases: merge-coins]
   status           Show network connection status, version info, and active address
-  ask              Manage asks (task requests)
-  bid              Manage bids (offers to fulfill asks)
-  accept           Accept a bid (settlement: pays seller, creates settlement record)
-  rate             Submit a negative seller rating on a settlement
-  vault            Manage seller vault (withdraw USDC earnings)
-  reputation       View reputation for an address (derived from settlement history)
-  settlements      View settlement history (accepted bids, payments, ratings)
   objects          Query on-chain objects by owner or ID
   tx               Get transaction details or execute serialized transactions
   wallet           Manage wallet addresses and keys

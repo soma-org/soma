@@ -5,7 +5,7 @@
 //!
 //! All tests are `#[ignore]` and require the BigTable emulator (`cbtemulator` + `cbt`).
 //! Run with:
-//!   PYO3_PYTHON=python3 cargo test -p indexer-kvstore --test bigtable_roundtrip -- --ignored
+//!   cargo test -p indexer-kvstore --test bigtable_roundtrip -- --ignored
 
 mod emulator;
 

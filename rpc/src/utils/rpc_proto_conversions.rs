@@ -169,22 +169,24 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
                 Some("Model in invalid state for this operation".into()),
             ),
             E::SomaError(e) => (ExecutionErrorKind::OtherError, Some(e.to_string())),
-            // Marketplace errors
-            E::AskNotFound => (ExecutionErrorKind::OtherError, Some("Ask not found".into())),
-            E::AskNotOpen => (ExecutionErrorKind::OtherError, Some("Ask is not open".into())),
-            E::AskExpired => (ExecutionErrorKind::OtherError, Some("Ask has expired".into())),
-            E::AskAlreadyFilled => (ExecutionErrorKind::OtherError, Some("Ask is already filled".into())),
-            E::AskHasAcceptedBids => (ExecutionErrorKind::OtherError, Some("Cannot cancel ask after bids accepted".into())),
-            E::BidNotFound => (ExecutionErrorKind::OtherError, Some("Bid not found".into())),
-            E::BidNotPending => (ExecutionErrorKind::OtherError, Some("Bid is not pending".into())),
-            E::BidPriceTooHigh => (ExecutionErrorKind::OtherError, Some("Bid price exceeds ask max".into())),
-            E::SellerCannotBidOnOwnAsk => (ExecutionErrorKind::OtherError, Some("Seller cannot bid on own ask".into())),
-            E::SettlementNotFound => (ExecutionErrorKind::OtherError, Some("Settlement not found".into())),
-            E::SettlementAlreadyRatedNegative => (ExecutionErrorKind::OtherError, Some("Settlement already rated negative".into())),
-            E::RatingDeadlinePassed => (ExecutionErrorKind::OtherError, Some("Rating deadline has passed".into())),
-            E::VaultNotFound => (ExecutionErrorKind::OtherError, Some("Vault not found".into())),
-            E::InsufficientVaultBalance => (ExecutionErrorKind::OtherError, Some("Insufficient vault balance".into())),
-            E::WrongCoinTypeForPayment => (ExecutionErrorKind::OtherError, Some("Wrong coin type: expected USDC".into())),
+            // Marketplace errors (legacy variants still in types crate)
+            E::AskNotFound
+            | E::AskNotOpen
+            | E::AskExpired
+            | E::AskAlreadyFilled
+            | E::AskHasAcceptedBids
+            | E::BidNotFound
+            | E::BidNotPending
+            | E::BidPriceTooHigh
+            | E::SellerCannotBidOnOwnAsk
+            | E::SettlementNotFound
+            | E::SettlementAlreadyRatedNegative
+            | E::RatingDeadlinePassed
+            | E::VaultNotFound
+            | E::InsufficientVaultBalance
+            | E::WrongCoinTypeForPayment => {
+                (ExecutionErrorKind::OtherError, Some(format!("{:?}", value)))
+            }
             // Bridge errors
             E::BridgePaused => (ExecutionErrorKind::OtherError, Some("Bridge is paused".into())),
             E::BridgeNonceAlreadyProcessed => (ExecutionErrorKind::OtherError, Some("Bridge nonce already processed".into())),
@@ -593,35 +595,6 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
 
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
                 staked_soma: Some(object_ref_to_proto(staked_soma)),
-            }),
-
-            // Marketplace transactions
-            K::CreateAsk(args) => Kind::CreateAsk(CreateAsk {
-                task_digest: Some(args.task_digest.inner().to_vec().into()),
-                max_price_per_bid: Some(args.max_price_per_bid),
-                num_bids_wanted: Some(args.num_bids_wanted),
-                timeout_ms: Some(args.timeout_ms),
-            }),
-            K::CancelAsk { ask_id } => Kind::CancelAsk(CancelAsk {
-                ask_id: Some(ask_id.to_string()),
-            }),
-            K::CreateBid(args) => Kind::CreateBid(CreateBid {
-                ask_id: Some(args.ask_id.to_string()),
-                price: Some(args.price),
-                response_digest: Some(args.response_digest.inner().to_vec().into()),
-            }),
-            K::AcceptBid(args) => Kind::AcceptBid(AcceptBid {
-                ask_id: Some(args.ask_id.to_string()),
-                bid_id: Some(args.bid_id.to_string()),
-                payment_coin: Some(object_ref_to_proto(args.payment_coin)),
-            }),
-            K::RateSeller { settlement_id } => Kind::RateSeller(RateSeller {
-                settlement_id: Some(settlement_id.to_string()),
-            }),
-            K::WithdrawFromVault { vault, amount, recipient_coin } => Kind::WithdrawFromVault(WithdrawFromVault {
-                vault: Some(object_ref_to_proto(vault)),
-                amount,
-                recipient_coin: recipient_coin.map(object_ref_to_proto),
             }),
 
             // Bridge transactions

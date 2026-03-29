@@ -169,10 +169,6 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::Coin(types::object::CoinType::Soma) => "Coin(SOMA)".to_string(),
             crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => "Coin(USDC)".to_string(),
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
-            crate::types::ObjectType::Ask => "Ask".to_string(),
-            crate::types::ObjectType::Bid => "Bid".to_string(),
-            crate::types::ObjectType::Settlement => "Settlement".to_string(),
-            crate::types::ObjectType::SellerVault => "SellerVault".to_string(),
             crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
         }
     }
@@ -187,10 +183,6 @@ impl FromStr for crate::types::ObjectType {
             "Coin" | "Coin(SOMA)" => Ok(Self::Coin(types::object::CoinType::Soma)),
             "Coin(USDC)" => Ok(Self::Coin(types::object::CoinType::Usdc)),
             "StakedSoma" => Ok(Self::StakedSoma),
-            "Ask" => Ok(Self::Ask),
-            "Bid" => Ok(Self::Bid),
-            "Settlement" => Ok(Self::Settlement),
-            "SellerVault" => Ok(Self::SellerVault),
             "PendingWithdrawal" => Ok(Self::PendingWithdrawal),
             _ => Err(format!("Unknown object type: {}", s)),
         }

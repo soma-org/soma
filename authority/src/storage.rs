@@ -486,48 +486,28 @@ impl RpcIndexes for RestReadStore {
 
     fn bids_for_ask(
         &self,
-        ask_id: &types::object::ObjectID,
+        _ask_id: &types::object::ObjectID,
     ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
-        self.index()?
-            .bids_for_ask(*ask_id)
-            .map_err(Into::into)
-            .and_then(|iter| {
-                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-            })
+        Ok(vec![])
     }
 
     fn open_asks(
         &self,
     ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
-        self.index()?
-            .open_asks_iter()
-            .map_err(Into::into)
-            .and_then(|iter| {
-                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-            })
+        Ok(vec![])
     }
 
     fn settlements_by_buyer(
         &self,
-        buyer: &types::base::SomaAddress,
+        _buyer: &types::base::SomaAddress,
     ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
-        self.index()?
-            .settlements_by_buyer(*buyer)
-            .map_err(Into::into)
-            .and_then(|iter| {
-                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-            })
+        Ok(vec![])
     }
 
     fn settlements_by_seller(
         &self,
-        seller: &types::base::SomaAddress,
+        _seller: &types::base::SomaAddress,
     ) -> types::storage::storage_error::Result<Vec<types::object::ObjectID>> {
-        self.index()?
-            .settlements_by_seller(*seller)
-            .map_err(Into::into)
-            .and_then(|iter| {
-                iter.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-            })
+        Ok(vec![])
     }
 }

@@ -9,10 +9,8 @@ members = [
   "e2e-tests",
   "sync",
   "cli",
-  "runtime",
   "soma-http",
   "soma-tls",
-  "blobs",
   "bin-version",
   "soma-keys",
   "rpc",
@@ -211,10 +209,8 @@ prost-build = "0.14.3"
 prost-types = "0.14.3"
 
 
-runtime = { path = "runtime" }
 soma-http = { path = "soma-http" }
 soma-tls = { path = "soma-tls" }
-blobs = { path = "blobs" }
 
 
 # external deps

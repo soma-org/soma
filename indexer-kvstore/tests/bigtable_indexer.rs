@@ -6,7 +6,7 @@
 //!
 //! Requires the BigTable emulator (`cbtemulator` + `cbt`).
 //! Run with:
-//!   PYO3_PYTHON=python3 cargo test -p indexer-kvstore --test bigtable_indexer -- --ignored
+//!   cargo test -p indexer-kvstore --test bigtable_indexer -- --ignored
 
 mod emulator;
 

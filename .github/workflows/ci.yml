@@ -17,7 +17,6 @@ env:
   CARGO_NET_RETRY: 10
   RUST_BACKTRACE: short
   RUST_LOG: error
-  PYO3_PYTHON: python3
 
 jobs:
   # ===========================================================================
@@ -27,7 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       isRust: ${{ steps.diff.outputs.isRust }}
-      isPython: ${{ steps.diff.outputs.isPython }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -39,12 +37,6 @@ jobs:
               - '**/Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
-              - '.github/workflows/ci.yml'
-            isPython:
-              - '**/*.py'
-              - '**/pyproject.toml'
-              - 'uv.lock'
-              - 'ty.toml'
               - '.github/workflows/ci.yml'
 
   # ===========================================================================
@@ -68,9 +60,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-debug
@@ -89,9 +78,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-debug
@@ -104,7 +90,6 @@ jobs:
             --workspace \
             --exclude e2e-tests \
             --exclude test-cluster \
-            --exclude soma-sdk \
             --profile ci
         env:
           SOMA_SKIP_SIMTESTS: 1
@@ -123,9 +108,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-msim
@@ -141,33 +123,6 @@ jobs:
             -p e2e-tests \
             -p consensus
 
-  python-sdk-integration:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-          sudo apt-get clean
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: rust-debug
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: "true"
-      - uses: taiki-e/install-action@nextest
-      - name: Run Python SDK integration tests
-        run: |
-          cargo nextest run \
-            -p soma-sdk \
-            --test integration \
-            --profile ci
-
   # ===========================================================================
   # Indexer / GraphQL integration tests
   # ===========================================================================
@@ -182,9 +137,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - name: Add PostgreSQL to PATH
         run: echo "/usr/lib/postgresql/$(ls /usr/lib/postgresql/ | head -1)/bin" >> $GITHUB_PATH
       - uses: Swatinem/rust-cache@v2
@@ -211,9 +163,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - name: Add PostgreSQL to PATH
         run: echo "/usr/lib/postgresql/$(ls /usr/lib/postgresql/ | head -1)/bin" >> $GITHUB_PATH
       - uses: Swatinem/rust-cache@v2
@@ -240,9 +189,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - name: Add PostgreSQL to PATH
         run: echo "/usr/lib/postgresql/$(ls /usr/lib/postgresql/ | head -1)/bin" >> $GITHUB_PATH
       - uses: Swatinem/rust-cache@v2
@@ -269,9 +215,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get clean
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
       - uses: google-github-actions/setup-gcloud@v2
       - name: Install BigTable emulator
         run: gcloud components install bigtable cbt --quiet
@@ -289,63 +232,11 @@ jobs:
             --profile ci
 
   # ===========================================================================
-  # Python checks
-  # ===========================================================================
-  ruff:
-    needs: diff
-    if: needs.diff.outputs.isPython == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v7
-      - run: uvx ruff check
-  pytest:
-    needs: diff
-    if: needs.diff.outputs.isPython == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@1.93.0
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: rust-debug
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: "true"
-      - uses: astral-sh/setup-uv@v7
-      - name: Run tests
-        run: uv run pytest
-  ty:
-    needs: diff
-    if: needs.diff.outputs.isPython == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@1.93.0
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: rust-debug
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: "true"
-      - uses: astral-sh/setup-uv@v7
-      - run: uv run ty check
-
-  # ===========================================================================
   # Gate — single required check for branch protection
   # ===========================================================================
   ci-gate:
     if: always()
-    needs: [rustfmt, clippy, test, simtest, python-sdk-integration, indexer-handler-tests, graphql-tests, indexer-e2e-tests, bigtable-tests, ruff, pytest, ty]
+    needs: [rustfmt, clippy, test, simtest, indexer-handler-tests, graphql-tests, indexer-e2e-tests, bigtable-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all jobs passed or were skipped
@@ -355,14 +246,10 @@ jobs:
             "${{ needs.clippy.result }}"
             "${{ needs.test.result }}"
             "${{ needs.simtest.result }}"
-            "${{ needs.python-sdk-integration.result }}"
             "${{ needs.indexer-handler-tests.result }}"
             "${{ needs.graphql-tests.result }}"
             "${{ needs.indexer-e2e-tests.result }}"
             "${{ needs.bigtable-tests.result }}"
-            "${{ needs.ruff.result }}"
-            "${{ needs.pytest.result }}"
-            "${{ needs.ty.result }}"
           )
           for r in "${results[@]}"; do
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then

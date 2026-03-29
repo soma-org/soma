@@ -155,47 +155,11 @@ pub enum TransactionKind {
         target_id: Address,
     },
 
-    // Marketplace transactions
-    CreateAsk(CreateAskArgs),
-    CancelAsk { ask_id: Address },
-    CreateBid(CreateBidArgs),
-    AcceptBid(AcceptBidArgs),
-    RateSeller { settlement_id: Address },
-    WithdrawFromVault {
-        vault: ObjectReference,
-        amount: Option<u64>,
-        recipient_coin: Option<ObjectReference>,
-    },
-
     // Bridge transactions
     BridgeDeposit(BridgeDepositArgs),
     BridgeWithdraw(BridgeWithdrawArgs),
     BridgeEmergencyPause(BridgeEmergencyPauseArgs),
     BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
-}
-
-// Marketplace arg types
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct CreateAskArgs {
-    pub task_digest: Vec<u8>,
-    pub max_price_per_bid: u64,
-    pub num_bids_wanted: u32,
-    pub timeout_ms: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct CreateBidArgs {
-    pub ask_id: Address,
-    pub price: u64,
-    pub response_digest: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
-pub struct AcceptBidArgs {
-    pub ask_id: Address,
-    pub bid_id: Address,
-    pub payment_coin: ObjectReference,
 }
 
 // Bridge arg types

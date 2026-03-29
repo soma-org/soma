@@ -1,5 +1,6 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 189
 expression: stdout
 ---
 Bootstrap and initialize a new SOMA network

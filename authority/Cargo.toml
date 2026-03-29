@@ -7,7 +7,6 @@ version.workspace = true
 sync.workspace = true
 consensus.workspace = true
 types.workspace = true
-blobs.workspace = true
 bytes.workspace = true
 utils.workspace = true
 protocol-config.workspace = true
@@ -61,7 +60,6 @@ axum.workspace = true
 hex = "0.4"
 rpc.workspace = true
 sdk.workspace = true
-runtime.workspace = true
 burn.workspace = true
 sysinfo = "0.35.2"
 diffy = { version = "0.3", default-features = false }

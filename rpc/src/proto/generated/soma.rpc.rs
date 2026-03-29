@@ -2196,204 +2196,87 @@ pub struct ListOwnedObjectsResponse {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Request message for `StateService.GetBid`.
+/// Request message for `StateService.GetTarget`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetBidRequest {
-    /// Required. The bid ID (ObjectID hex string).
+pub struct GetTargetRequest {
+    /// Required. The target ID (ObjectID hex string).
     #[prost(string, optional, tag = "1")]
-    pub bid_id: ::core::option::Option<::prost::alloc::string::String>,
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
 }
-/// Response message for `StateService.GetBid`.
+/// Response message for `StateService.GetTarget`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetBidResponse {
+pub struct GetTargetResponse {
     #[prost(message, optional, tag = "1")]
-    pub bid: ::core::option::Option<Object>,
+    pub target: ::core::option::Option<Object>,
 }
-/// Request message for `StateService.GetAsk`.
+/// Request message for `StateService.ListTargets`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetAskRequest {
-    /// Required. The ask ID (ObjectID hex string).
+pub struct ListTargetsRequest {
+    /// Optional: filter by target status ("open", "filled", "claimed").
     #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Response message for `StateService.GetAsk`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetAskResponse {
-    #[prost(message, optional, tag = "1")]
-    pub ask: ::core::option::Option<Object>,
-}
-/// Request message for `StateService.GetSettlement`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetSettlementRequest {
-    /// Required. The settlement ID (ObjectID hex string).
-    #[prost(string, optional, tag = "1")]
-    pub settlement_id: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Response message for `StateService.GetSettlement`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetSettlementResponse {
-    #[prost(message, optional, tag = "1")]
-    pub settlement: ::core::option::Option<Object>,
-}
-/// Request message for `StateService.GetBidsForAsk`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetBidsForAskRequest {
-    /// Required. The ask ID to get bids for.
-    #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Optional filter by bid status (e.g., "Pending", "Accepted").
-    #[prost(string, optional, tag = "2")]
-    pub status_filter: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Response message for `StateService.GetBidsForAsk`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetBidsForAskResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub bids: ::prost::alloc::vec::Vec<Object>,
-}
-/// Request message for `StateService.GetOpenAsks`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetOpenAsksRequest {
-    /// Optional: filter by buyer address.
-    #[prost(string, optional, tag = "1")]
-    pub buyer: ::core::option::Option<::prost::alloc::string::String>,
-    /// Maximum number of asks to return. Default: 100.
-    #[prost(uint32, optional, tag = "2")]
-    pub page_size: ::core::option::Option<u32>,
-}
-/// Response message for `StateService.GetOpenAsks`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetOpenAsksResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub asks: ::prost::alloc::vec::Vec<Object>,
-}
-/// Request message for `StateService.GetVault`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetVaultRequest {
-    /// Required. The vault owner's address. Returns the first SellerVault owned by this address.
-    #[prost(string, optional, tag = "1")]
-    pub owner: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Response message for `StateService.GetVault`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetVaultResponse {
-    /// All vaults owned by the address (there may be multiple from different settlements).
-    #[prost(message, repeated, tag = "1")]
-    pub vaults: ::prost::alloc::vec::Vec<Object>,
-}
-/// Request message for `StateService.GetSettlements`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetSettlementsRequest {
-    /// Optional: filter by buyer address.
-    #[prost(string, optional, tag = "1")]
-    pub buyer: ::core::option::Option<::prost::alloc::string::String>,
-    /// Optional: filter by seller address.
-    #[prost(string, optional, tag = "2")]
-    pub seller: ::core::option::Option<::prost::alloc::string::String>,
-    /// Maximum number of settlements to return. Default: 100.
+    pub status: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional: filter by epoch.
+    #[prost(uint64, optional, tag = "2")]
+    pub epoch: ::core::option::Option<u64>,
+    /// Maximum number of targets to return. Default: 100.
     #[prost(uint32, optional, tag = "3")]
     pub page_size: ::core::option::Option<u32>,
+    /// Page token for pagination.
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Response message for `StateService.GetSettlements`.
+/// Response message for `StateService.ListTargets`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetSettlementsResponse {
+pub struct ListTargetsResponse {
     #[prost(message, repeated, tag = "1")]
-    pub settlements: ::prost::alloc::vec::Vec<Object>,
+    pub targets: ::prost::alloc::vec::Vec<Object>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Request message for `StateService.SubscribeAsks`.
-/// Sellers use this to listen for new asks in real-time.
-#[non_exhaustive]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct SubscribeAsksRequest {
-    /// Optional: maximum price filter (only asks with max_price_per_bid >= this value).
-    #[prost(uint64, optional, tag = "1")]
-    pub min_max_price: ::core::option::Option<u64>,
-}
-/// A new or updated ask event streamed to subscribers.
+/// Request message for `StateService.GetChallenge`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AskEvent {
+pub struct GetChallengeRequest {
+    /// Required. The challenge ID (ObjectID hex string).
+    #[prost(string, optional, tag = "1")]
+    pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response message for `StateService.GetChallenge`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetChallengeResponse {
     #[prost(message, optional, tag = "1")]
-    pub ask: ::core::option::Option<Object>,
-    /// "created", "filled", "cancelled", "expired"
+    pub challenge: ::core::option::Option<Object>,
+}
+/// Request message for `StateService.ListChallenges`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListChallengesRequest {
+    /// Optional: filter by target ID.
+    #[prost(string, optional, tag = "1")]
+    pub target_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional: filter by status ("pending", "resolved").
     #[prost(string, optional, tag = "2")]
-    pub event_type: ::core::option::Option<::prost::alloc::string::String>,
+    pub status: ::core::option::Option<::prost::alloc::string::String>,
+    /// Maximum number of challenges to return. Default: 100.
+    #[prost(uint32, optional, tag = "3")]
+    pub page_size: ::core::option::Option<u32>,
+    /// Page token for pagination.
+    #[prost(bytes = "bytes", optional, tag = "4")]
+    pub page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Request message for `StateService.SubscribeBids`.
-/// Buyers use this to listen for new bids on their asks.
+/// Response message for `StateService.ListChallenges`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SubscribeBidsRequest {
-    /// Required. The ask ID to watch for bids.
-    #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// A new bid event streamed to subscribers.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BidEvent {
-    #[prost(message, optional, tag = "1")]
-    pub bid: ::core::option::Option<Object>,
-}
-/// Request message for `StateService.GetProtocolFund`.
-#[non_exhaustive]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct GetProtocolFundRequest {}
-/// Response message for `StateService.GetProtocolFund`.
-#[non_exhaustive]
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
-pub struct GetProtocolFundResponse {
-    /// Current Protocol Fund USDC balance in microdollars.
-    #[prost(uint64, optional, tag = "1")]
-    pub balance: ::core::option::Option<u64>,
-}
-/// Request message for `StateService.GetReputation`.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetReputationRequest {
-    /// Required. The address to query reputation for.
-    #[prost(string, optional, tag = "1")]
-    pub address: ::core::option::Option<::prost::alloc::string::String>,
-}
-/// Response message for `StateService.GetReputation`.
-/// Reputation is computed server-side from settlement data.
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetReputationResponse {
-    #[prost(string, optional, tag = "1")]
-    pub address: ::core::option::Option<::prost::alloc::string::String>,
-    /// As buyer
-    #[prost(uint64, optional, tag = "2")]
-    pub buyer_settlements: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "3")]
-    pub buyer_volume_spent: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "4")]
-    pub buyer_unique_sellers: ::core::option::Option<u64>,
-    /// As seller
-    #[prost(uint64, optional, tag = "5")]
-    pub seller_settlements: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "6")]
-    pub seller_volume_earned: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "7")]
-    pub seller_negative_ratings: ::core::option::Option<u64>,
-    #[prost(double, optional, tag = "8")]
-    pub seller_approval_rate: ::core::option::Option<f64>,
-    #[prost(uint64, optional, tag = "9")]
-    pub seller_unique_buyers: ::core::option::Option<u64>,
+pub struct ListChallengesResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub challenges: ::prost::alloc::vec::Vec<Object>,
+    #[prost(bytes = "bytes", optional, tag = "2")]
+    pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
 /// Generated client implementations.
 pub mod state_service_client {
@@ -2534,53 +2417,11 @@ pub mod state_service_client {
                 .insert(GrpcMethod::new("soma.rpc.StateService", "GetBalance"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_bid(
+        pub async fn get_target(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetBidRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetBidResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetBid",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetBid"));
-            self.inner.unary(req, path, codec).await
-        }
-        pub async fn get_ask(
-            &mut self,
-            request: impl tonic::IntoRequest<super::GetAskRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetAskResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetAsk",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetAsk"));
-            self.inner.unary(req, path, codec).await
-        }
-        pub async fn get_settlement(
-            &mut self,
-            request: impl tonic::IntoRequest<super::GetSettlementRequest>,
+            request: impl tonic::IntoRequest<super::GetTargetRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetSettlementResponse>,
+            tonic::Response<super::GetTargetResponse>,
             tonic::Status,
         > {
             self.inner
@@ -2593,18 +2434,18 @@ pub mod state_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetSettlement",
+                "/soma.rpc.StateService/GetTarget",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetSettlement"));
+                .insert(GrpcMethod::new("soma.rpc.StateService", "GetTarget"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_bids_for_ask(
+        pub async fn list_targets(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetBidsForAskRequest>,
+            request: impl tonic::IntoRequest<super::ListTargetsRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetBidsForAskResponse>,
+            tonic::Response<super::ListTargetsResponse>,
             tonic::Status,
         > {
             self.inner
@@ -2617,18 +2458,18 @@ pub mod state_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetBidsForAsk",
+                "/soma.rpc.StateService/ListTargets",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetBidsForAsk"));
+                .insert(GrpcMethod::new("soma.rpc.StateService", "ListTargets"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_open_asks(
+        pub async fn get_challenge(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetOpenAsksRequest>,
+            request: impl tonic::IntoRequest<super::GetChallengeRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetOpenAsksResponse>,
+            tonic::Response<super::GetChallengeResponse>,
             tonic::Status,
         > {
             self.inner
@@ -2641,18 +2482,18 @@ pub mod state_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetOpenAsks",
+                "/soma.rpc.StateService/GetChallenge",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetOpenAsks"));
+                .insert(GrpcMethod::new("soma.rpc.StateService", "GetChallenge"));
             self.inner.unary(req, path, codec).await
         }
-        pub async fn get_vault(
+        pub async fn list_challenges(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetVaultRequest>,
+            request: impl tonic::IntoRequest<super::ListChallengesRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetVaultResponse>,
+            tonic::Response<super::ListChallengesResponse>,
             tonic::Status,
         > {
             self.inner
@@ -2665,133 +2506,12 @@ pub mod state_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetVault",
+                "/soma.rpc.StateService/ListChallenges",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetVault"));
+                .insert(GrpcMethod::new("soma.rpc.StateService", "ListChallenges"));
             self.inner.unary(req, path, codec).await
-        }
-        pub async fn get_settlements(
-            &mut self,
-            request: impl tonic::IntoRequest<super::GetSettlementsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetSettlementsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetSettlements",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetSettlements"));
-            self.inner.unary(req, path, codec).await
-        }
-        pub async fn get_protocol_fund(
-            &mut self,
-            request: impl tonic::IntoRequest<super::GetProtocolFundRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetProtocolFundResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetProtocolFund",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetProtocolFund"));
-            self.inner.unary(req, path, codec).await
-        }
-        pub async fn get_reputation(
-            &mut self,
-            request: impl tonic::IntoRequest<super::GetReputationRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetReputationResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/GetReputation",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "GetReputation"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Streaming subscriptions for marketplace discovery
-        pub async fn subscribe_asks(
-            &mut self,
-            request: impl tonic::IntoRequest<super::SubscribeAsksRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::AskEvent>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/SubscribeAsks",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "SubscribeAsks"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        pub async fn subscribe_bids(
-            &mut self,
-            request: impl tonic::IntoRequest<super::SubscribeBidsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::BidEvent>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/soma.rpc.StateService/SubscribeBids",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("soma.rpc.StateService", "SubscribeBids"));
-            self.inner.server_streaming(req, path, codec).await
         }
     }
 }
@@ -2822,88 +2542,32 @@ pub mod state_service_server {
             tonic::Response<super::GetBalanceResponse>,
             tonic::Status,
         >;
-        async fn get_bid(
+        async fn get_target(
             &self,
-            request: tonic::Request<super::GetBidRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetBidResponse>, tonic::Status>;
-        async fn get_ask(
-            &self,
-            request: tonic::Request<super::GetAskRequest>,
-        ) -> std::result::Result<tonic::Response<super::GetAskResponse>, tonic::Status>;
-        async fn get_settlement(
-            &self,
-            request: tonic::Request<super::GetSettlementRequest>,
+            request: tonic::Request<super::GetTargetRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetSettlementResponse>,
+            tonic::Response<super::GetTargetResponse>,
             tonic::Status,
         >;
-        async fn get_bids_for_ask(
+        async fn list_targets(
             &self,
-            request: tonic::Request<super::GetBidsForAskRequest>,
+            request: tonic::Request<super::ListTargetsRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetBidsForAskResponse>,
+            tonic::Response<super::ListTargetsResponse>,
             tonic::Status,
         >;
-        async fn get_open_asks(
+        async fn get_challenge(
             &self,
-            request: tonic::Request<super::GetOpenAsksRequest>,
+            request: tonic::Request<super::GetChallengeRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetOpenAsksResponse>,
+            tonic::Response<super::GetChallengeResponse>,
             tonic::Status,
         >;
-        async fn get_vault(
+        async fn list_challenges(
             &self,
-            request: tonic::Request<super::GetVaultRequest>,
+            request: tonic::Request<super::ListChallengesRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::GetVaultResponse>,
-            tonic::Status,
-        >;
-        async fn get_settlements(
-            &self,
-            request: tonic::Request<super::GetSettlementsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetSettlementsResponse>,
-            tonic::Status,
-        >;
-        async fn get_protocol_fund(
-            &self,
-            request: tonic::Request<super::GetProtocolFundRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetProtocolFundResponse>,
-            tonic::Status,
-        >;
-        async fn get_reputation(
-            &self,
-            request: tonic::Request<super::GetReputationRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetReputationResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the SubscribeAsks method.
-        type SubscribeAsksStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::AskEvent, tonic::Status>,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Streaming subscriptions for marketplace discovery
-        async fn subscribe_asks(
-            &self,
-            request: tonic::Request<super::SubscribeAsksRequest>,
-        ) -> std::result::Result<
-            tonic::Response<Self::SubscribeAsksStream>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the SubscribeBids method.
-        type SubscribeBidsStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::BidEvent, tonic::Status>,
-            >
-            + std::marker::Send
-            + 'static;
-        async fn subscribe_bids(
-            &self,
-            request: tonic::Request<super::SubscribeBidsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<Self::SubscribeBidsStream>,
+            tonic::Response<super::ListChallengesResponse>,
             tonic::Status,
         >;
     }
@@ -3074,25 +2738,25 @@ pub mod state_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/soma.rpc.StateService/GetBid" => {
+                "/soma.rpc.StateService/GetTarget" => {
                     #[allow(non_camel_case_types)]
-                    struct GetBidSvc<T: StateService>(pub Arc<T>);
+                    struct GetTargetSvc<T: StateService>(pub Arc<T>);
                     impl<
                         T: StateService,
-                    > tonic::server::UnaryService<super::GetBidRequest>
-                    for GetBidSvc<T> {
-                        type Response = super::GetBidResponse;
+                    > tonic::server::UnaryService<super::GetTargetRequest>
+                    for GetTargetSvc<T> {
+                        type Response = super::GetTargetResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetBidRequest>,
+                            request: tonic::Request<super::GetTargetRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as StateService>::get_bid(&inner, request).await
+                                <T as StateService>::get_target(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -3103,7 +2767,7 @@ pub mod state_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetBidSvc(inner);
+                        let method = GetTargetSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3119,25 +2783,25 @@ pub mod state_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/soma.rpc.StateService/GetAsk" => {
+                "/soma.rpc.StateService/ListTargets" => {
                     #[allow(non_camel_case_types)]
-                    struct GetAskSvc<T: StateService>(pub Arc<T>);
+                    struct ListTargetsSvc<T: StateService>(pub Arc<T>);
                     impl<
                         T: StateService,
-                    > tonic::server::UnaryService<super::GetAskRequest>
-                    for GetAskSvc<T> {
-                        type Response = super::GetAskResponse;
+                    > tonic::server::UnaryService<super::ListTargetsRequest>
+                    for ListTargetsSvc<T> {
+                        type Response = super::ListTargetsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetAskRequest>,
+                            request: tonic::Request<super::ListTargetsRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as StateService>::get_ask(&inner, request).await
+                                <T as StateService>::list_targets(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -3148,7 +2812,7 @@ pub mod state_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetAskSvc(inner);
+                        let method = ListTargetsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3164,25 +2828,25 @@ pub mod state_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/soma.rpc.StateService/GetSettlement" => {
+                "/soma.rpc.StateService/GetChallenge" => {
                     #[allow(non_camel_case_types)]
-                    struct GetSettlementSvc<T: StateService>(pub Arc<T>);
+                    struct GetChallengeSvc<T: StateService>(pub Arc<T>);
                     impl<
                         T: StateService,
-                    > tonic::server::UnaryService<super::GetSettlementRequest>
-                    for GetSettlementSvc<T> {
-                        type Response = super::GetSettlementResponse;
+                    > tonic::server::UnaryService<super::GetChallengeRequest>
+                    for GetChallengeSvc<T> {
+                        type Response = super::GetChallengeResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetSettlementRequest>,
+                            request: tonic::Request<super::GetChallengeRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as StateService>::get_settlement(&inner, request).await
+                                <T as StateService>::get_challenge(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -3193,7 +2857,7 @@ pub mod state_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetSettlementSvc(inner);
+                        let method = GetChallengeSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3209,25 +2873,25 @@ pub mod state_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/soma.rpc.StateService/GetBidsForAsk" => {
+                "/soma.rpc.StateService/ListChallenges" => {
                     #[allow(non_camel_case_types)]
-                    struct GetBidsForAskSvc<T: StateService>(pub Arc<T>);
+                    struct ListChallengesSvc<T: StateService>(pub Arc<T>);
                     impl<
                         T: StateService,
-                    > tonic::server::UnaryService<super::GetBidsForAskRequest>
-                    for GetBidsForAskSvc<T> {
-                        type Response = super::GetBidsForAskResponse;
+                    > tonic::server::UnaryService<super::ListChallengesRequest>
+                    for ListChallengesSvc<T> {
+                        type Response = super::ListChallengesResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetBidsForAskRequest>,
+                            request: tonic::Request<super::ListChallengesRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as StateService>::get_bids_for_ask(&inner, request).await
+                                <T as StateService>::list_challenges(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -3238,7 +2902,7 @@ pub mod state_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetBidsForAskSvc(inner);
+                        let method = ListChallengesSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3250,324 +2914,6 @@ pub mod state_service_server {
                                 max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/GetOpenAsks" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetOpenAsksSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::UnaryService<super::GetOpenAsksRequest>
-                    for GetOpenAsksSvc<T> {
-                        type Response = super::GetOpenAsksResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::GetOpenAsksRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::get_open_asks(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetOpenAsksSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/GetVault" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetVaultSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::UnaryService<super::GetVaultRequest>
-                    for GetVaultSvc<T> {
-                        type Response = super::GetVaultResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::GetVaultRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::get_vault(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetVaultSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/GetSettlements" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetSettlementsSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::UnaryService<super::GetSettlementsRequest>
-                    for GetSettlementsSvc<T> {
-                        type Response = super::GetSettlementsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::GetSettlementsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::get_settlements(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetSettlementsSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/GetProtocolFund" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetProtocolFundSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::UnaryService<super::GetProtocolFundRequest>
-                    for GetProtocolFundSvc<T> {
-                        type Response = super::GetProtocolFundResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::GetProtocolFundRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::get_protocol_fund(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetProtocolFundSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/GetReputation" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetReputationSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::UnaryService<super::GetReputationRequest>
-                    for GetReputationSvc<T> {
-                        type Response = super::GetReputationResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::GetReputationRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::get_reputation(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetReputationSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/SubscribeAsks" => {
-                    #[allow(non_camel_case_types)]
-                    struct SubscribeAsksSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::ServerStreamingService<super::SubscribeAsksRequest>
-                    for SubscribeAsksSvc<T> {
-                        type Response = super::AskEvent;
-                        type ResponseStream = T::SubscribeAsksStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::SubscribeAsksRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::subscribe_asks(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SubscribeAsksSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/soma.rpc.StateService/SubscribeBids" => {
-                    #[allow(non_camel_case_types)]
-                    struct SubscribeBidsSvc<T: StateService>(pub Arc<T>);
-                    impl<
-                        T: StateService,
-                    > tonic::server::ServerStreamingService<super::SubscribeBidsRequest>
-                    for SubscribeBidsSvc<T> {
-                        type Response = super::BidEvent;
-                        type ResponseStream = T::SubscribeBidsStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::SubscribeBidsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as StateService>::subscribe_bids(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SubscribeBidsSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)
@@ -4455,7 +3801,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -4536,19 +3882,6 @@ pub mod transaction_kind {
         UndoReportChallenge(super::UndoReportChallenge),
         #[prost(message, tag = "32")]
         ClaimChallengeBond(super::ClaimChallengeBond),
-        /// Marketplace transactions
-        #[prost(message, tag = "34")]
-        CreateAsk(super::CreateAsk),
-        #[prost(message, tag = "35")]
-        CancelAsk(super::CancelAsk),
-        #[prost(message, tag = "36")]
-        CreateBid(super::CreateBid),
-        #[prost(message, tag = "37")]
-        AcceptBid(super::AcceptBid),
-        #[prost(message, tag = "38")]
-        RateSeller(super::RateSeller),
-        #[prost(message, tag = "39")]
-        WithdrawFromVault(super::WithdrawFromVault),
         /// Bridge transactions
         #[prost(message, tag = "40")]
         BridgeDeposit(super::BridgeDeposit),
@@ -4559,60 +3892,6 @@ pub mod transaction_kind {
         #[prost(message, tag = "43")]
         BridgeEmergencyUnpause(super::BridgeEmergencyUnpause),
     }
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateAsk {
-    #[prost(bytes = "bytes", optional, tag = "1")]
-    pub task_digest: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(uint64, optional, tag = "2")]
-    pub max_price_per_bid: ::core::option::Option<u64>,
-    #[prost(uint32, optional, tag = "3")]
-    pub num_bids_wanted: ::core::option::Option<u32>,
-    #[prost(uint64, optional, tag = "4")]
-    pub timeout_ms: ::core::option::Option<u64>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CancelAsk {
-    #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateBid {
-    #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(uint64, optional, tag = "2")]
-    pub price: ::core::option::Option<u64>,
-    #[prost(bytes = "bytes", optional, tag = "3")]
-    pub response_digest: ::core::option::Option<::prost::bytes::Bytes>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AcceptBid {
-    #[prost(string, optional, tag = "1")]
-    pub ask_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "2")]
-    pub bid_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub payment_coin: ::core::option::Option<ObjectReference>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RateSeller {
-    #[prost(string, optional, tag = "1")]
-    pub settlement_id: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[non_exhaustive]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WithdrawFromVault {
-    #[prost(message, optional, tag = "1")]
-    pub vault: ::core::option::Option<ObjectReference>,
-    #[prost(uint64, optional, tag = "2")]
-    pub amount: ::core::option::Option<u64>,
-    #[prost(message, optional, tag = "3")]
-    pub recipient_coin: ::core::option::Option<ObjectReference>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

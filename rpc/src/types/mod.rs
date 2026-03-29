@@ -40,9 +40,9 @@ pub use fee::TransactionFee;
 pub use object::{Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
-    AcceptBidArgs, AddValidatorArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
+    AddValidatorArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,
     BridgeEmergencyUnpauseArgs, BridgeWithdrawArgs, ChangeEpoch, ClaimRewardsArgs,
-    CommitModelArgs, ConsensusCommitPrologue, CreateAskArgs, CreateBidArgs, CreateModelArgs,
+    CommitModelArgs, ConsensusCommitPrologue, CreateModelArgs,
     GenesisTransaction, Manifest, ManifestV1, Metadata, MetadataV1, ModelWeightsManifest,
     RemoveValidatorArgs, RevealModelArgs, SignedTransaction, SubmissionManifest, SubmitDataArgs,
     Transaction, TransactionKind, UpdateValidatorMetadataArgs,

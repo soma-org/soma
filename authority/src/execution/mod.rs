@@ -7,7 +7,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
-use marketplace::MarketplaceExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
 use staking::StakingExecutor;
@@ -33,7 +32,6 @@ use validator::ValidatorExecutor;
 mod bridge;
 mod change_epoch;
 mod coin;
-mod marketplace;
 mod object;
 mod prepare_gas;
 mod staking;
@@ -350,14 +348,6 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => {
             Box::new(StakingExecutor::new())
         }
-
-        // Marketplace transactions
-        TransactionKind::CreateAsk(_)
-        | TransactionKind::CancelAsk { .. }
-        | TransactionKind::CreateBid(_)
-        | TransactionKind::AcceptBid(_)
-        | TransactionKind::RateSeller { .. }
-        | TransactionKind::WithdrawFromVault { .. } => Box::new(MarketplaceExecutor::new()),
 
         // Bridge transactions
         TransactionKind::BridgeDeposit(_)

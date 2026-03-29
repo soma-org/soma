@@ -1152,8 +1152,3 @@ impl std::str::FromStr for ResponseDigest {
         Ok(ResponseDigest::new(result))
     }
 }
-
-/// Alias types for marketplace object IDs.
-pub type AskId = ObjectID;
-pub type BidId = ObjectID;
-pub type SettlementId = ObjectID;

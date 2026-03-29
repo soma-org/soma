@@ -21,7 +21,6 @@ use types::consensus::ConsensusTransactionKind;
 use types::digests::TransactionDigest;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
-use types::bid::Bid;
 use types::object::{LiveObject, Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
 use types::storage::WriteKind;
 use types::storage::read_store::{EpochInfo, TransactionInfo};
@@ -243,31 +242,6 @@ pub struct IndexStoreTables {
     /// Allows looking up balances by owner address and coin type.
     balance: DBMap<BalanceKey, BalanceIndexInfo>,
 
-    /// An index of Bids by Ask ID.
-    ///
-    /// Allows efficient lookup of all bids for a given ask (needed for `soma accept --cheapest`).
-    /// Key: (ask_id, bid_id) — sorted by ask_id first for range scans.
-    /// Bounded by the live object set (entries removed when bid objects are deleted).
-    bids_by_ask: DBMap<(ObjectID, ObjectID), ()>,
-
-    /// An index of open Asks for marketplace discovery.
-    ///
-    /// Key: ask_id. Entries are added when Ask objects are created/mutated with status Open,
-    /// and removed when the ask is Filled/Cancelled/Expired or deleted.
-    /// Bounded by the live object set.
-    open_asks: DBMap<ObjectID, ()>,
-
-    /// An index of Settlements by buyer address.
-    ///
-    /// Key: (buyer_address, settlement_id) — sorted by buyer first for range scans.
-    /// Bounded by the live object set (entries removed when settlement objects are deleted).
-    settlements_by_buyer: DBMap<(SomaAddress, ObjectID), ()>,
-
-    /// An index of Settlements by seller address.
-    ///
-    /// Key: (seller_address, settlement_id) — sorted by seller first for range scans.
-    /// Bounded by the live object set (entries removed when settlement objects are deleted).
-    settlements_by_seller: DBMap<(SomaAddress, ObjectID), ()>,
 }
 
 impl IndexStoreTables {
@@ -544,8 +518,6 @@ impl IndexStoreTables {
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
 
-                // Remove marketplace secondary index entries
-                self.remove_marketplace_index_entries(removed_object, batch)?;
             }
 
             // Update owner indexes for changed objects
@@ -571,92 +543,11 @@ impl IndexStoreTables {
                     Owner::Shared { .. } | Owner::Immutable => {}
                 }
 
-                // Update marketplace secondary indexes for new/changed objects
-                self.update_marketplace_index_entries(object, batch)?;
             }
         }
 
         batch.partial_merge_batch(&self.balance, balance_changes)?;
 
-        Ok(())
-    }
-
-    /// Update marketplace secondary indexes when an object is created or mutated.
-    fn update_marketplace_index_entries(
-        &self,
-        object: &Object,
-        batch: &mut store::rocks::DBBatch,
-    ) -> Result<(), StorageError> {
-        let object_type = object.data.object_type();
-        match object_type {
-            ObjectType::Bid => {
-                if let Some(bid) = object.deserialize_contents::<Bid>(ObjectType::Bid) {
-                    batch.insert_batch(
-                        &self.bids_by_ask,
-                        [((bid.ask_id, bid.id), ())],
-                    )?;
-                }
-            }
-            ObjectType::Ask => {
-                if let Some(ask) = object.deserialize_contents::<types::ask::Ask>(ObjectType::Ask) {
-                    if ask.status == types::ask::AskStatus::Open {
-                        batch.insert_batch(&self.open_asks, [(ask.id, ())])?;
-                    } else {
-                        batch.delete_batch(&self.open_asks, [ask.id])?;
-                    }
-                }
-            }
-            ObjectType::Settlement => {
-                if let Some(settlement) = object.deserialize_contents::<types::settlement::Settlement>(ObjectType::Settlement) {
-                    batch.insert_batch(
-                        &self.settlements_by_buyer,
-                        [((settlement.buyer, settlement.id), ())],
-                    )?;
-                    batch.insert_batch(
-                        &self.settlements_by_seller,
-                        [((settlement.seller, settlement.id), ())],
-                    )?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    /// Remove marketplace secondary index entries when an object is deleted.
-    fn remove_marketplace_index_entries(
-        &self,
-        object: &Object,
-        batch: &mut store::rocks::DBBatch,
-    ) -> Result<(), StorageError> {
-        let object_type = object.data.object_type();
-        match object_type {
-            ObjectType::Bid => {
-                if let Some(bid) = object.deserialize_contents::<Bid>(ObjectType::Bid) {
-                    batch.delete_batch(
-                        &self.bids_by_ask,
-                        [(bid.ask_id, bid.id)],
-                    )?;
-                }
-            }
-            ObjectType::Ask => {
-                let ask_id = object.id();
-                batch.delete_batch(&self.open_asks, [ask_id])?;
-            }
-            ObjectType::Settlement => {
-                if let Some(settlement) = object.deserialize_contents::<types::settlement::Settlement>(ObjectType::Settlement) {
-                    batch.delete_batch(
-                        &self.settlements_by_buyer,
-                        [(settlement.buyer, settlement.id)],
-                    )?;
-                    batch.delete_batch(
-                        &self.settlements_by_seller,
-                        [(settlement.seller, settlement.id)],
-                    )?;
-                }
-            }
-            _ => {}
-        }
         Ok(())
     }
 
@@ -733,82 +624,6 @@ impl IndexStoreTables {
         }))
     }
 
-    /// Iterate all bid IDs for a given ask.
-    fn bids_for_ask(
-        &self,
-        ask_id: ObjectID,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        let lower = (ask_id, ObjectID::ZERO);
-        Ok(self
-            .bids_by_ask
-            .safe_iter_with_bounds(Some(lower), None)
-            .take_while(move |item| {
-                match item {
-                    Ok(((aid, _), _)) => *aid == ask_id,
-                    Err(_) => true,
-                }
-            })
-            .map(|item| item.map(|((_, bid_id), _)| bid_id)))
-    }
-
-    /// Iterate all open ask IDs.
-    fn open_asks_iter(
-        &self,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        Ok(self
-            .open_asks
-            .safe_iter_with_bounds(None::<ObjectID>, None::<ObjectID>)
-            .map(|item: Result<(ObjectID, ()), _>| item.map(|(ask_id, _)| ask_id)))
-    }
-
-    /// Iterate all settlement IDs for a given buyer.
-    fn settlements_by_buyer_iter(
-        &self,
-        buyer: SomaAddress,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        let lower = (buyer, ObjectID::ZERO);
-        Ok(self
-            .settlements_by_buyer
-            .safe_iter_with_bounds(Some(lower), None)
-            .take_while(move |item| {
-                match item {
-                    Ok(((b, _), _)) => *b == buyer,
-                    Err(_) => true,
-                }
-            })
-            .map(|item| item.map(|((_, settlement_id), _)| settlement_id)))
-    }
-
-    /// Iterate all settlement IDs for a given seller.
-    fn settlements_by_seller_iter(
-        &self,
-        seller: SomaAddress,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        let lower = (seller, ObjectID::ZERO);
-        Ok(self
-            .settlements_by_seller
-            .safe_iter_with_bounds(Some(lower), None)
-            .take_while(move |item| {
-                match item {
-                    Ok(((s, _), _)) => *s == seller,
-                    Err(_) => true,
-                }
-            })
-            .map(|item| item.map(|((_, settlement_id), _)| settlement_id)))
-    }
-
     /// Index a single executed transaction's object changes immediately after execution.
     ///
     /// Updates the owner indexes for real-time queries.
@@ -839,8 +654,6 @@ impl IndexStoreTables {
                             Owner::Shared { .. } | Owner::Immutable => {}
                         }
 
-                        // Remove marketplace indexes for deleted objects
-                        self.remove_marketplace_index_entries(old_object, &mut batch)?;
                     }
                 }
             }
@@ -885,10 +698,6 @@ impl IndexStoreTables {
                 Owner::Shared { .. } | Owner::Immutable => {}
             }
 
-            // Update marketplace secondary indexes for new/changed objects
-            if let Some(new_object) = written.get(id) {
-                self.update_marketplace_index_entries(new_object, &mut batch)?;
-            }
         }
 
         batch.write()?;
@@ -1273,45 +1082,6 @@ impl RpcIndexStore {
         &self,
     ) -> Result<Option<CheckpointSequenceNumber>, TypedStoreError> {
         self.tables.watermark.get(&Watermark::Indexed)
-    }
-
-    pub fn bids_for_ask(
-        &self,
-        ask_id: ObjectID,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.bids_for_ask(ask_id)
-    }
-
-    pub fn open_asks_iter(
-        &self,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.open_asks_iter()
-    }
-
-    pub fn settlements_by_buyer(
-        &self,
-        buyer: SomaAddress,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.settlements_by_buyer_iter(buyer)
-    }
-
-    pub fn settlements_by_seller(
-        &self,
-        seller: SomaAddress,
-    ) -> Result<
-        impl Iterator<Item = Result<ObjectID, TypedStoreError>> + '_,
-        TypedStoreError,
-    > {
-        self.tables.settlements_by_seller_iter(seller)
     }
 
     /// Index a transaction immediately after execution (before checkpoint finalization).

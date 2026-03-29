@@ -283,37 +283,6 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 })
             }
 
-            // Marketplace transactions
-            CreateAsk(args) => Kind::CreateAsk(super::CreateAsk {
-                task_digest: Some(args.task_digest.clone().into()),
-                max_price_per_bid: Some(args.max_price_per_bid),
-                num_bids_wanted: Some(args.num_bids_wanted),
-                timeout_ms: Some(args.timeout_ms),
-            }),
-            CancelAsk { ask_id } => Kind::CancelAsk(super::CancelAsk {
-                ask_id: Some(ask_id.to_string()),
-            }),
-            CreateBid(args) => Kind::CreateBid(super::CreateBid {
-                ask_id: Some(args.ask_id.to_string()),
-                price: Some(args.price),
-                response_digest: Some(args.response_digest.clone().into()),
-            }),
-            AcceptBid(args) => Kind::AcceptBid(super::AcceptBid {
-                ask_id: Some(args.ask_id.to_string()),
-                bid_id: Some(args.bid_id.to_string()),
-                payment_coin: Some(args.payment_coin.clone().into()),
-            }),
-            RateSeller { settlement_id } => Kind::RateSeller(super::RateSeller {
-                settlement_id: Some(settlement_id.to_string()),
-            }),
-            WithdrawFromVault { vault, amount, recipient_coin } => {
-                Kind::WithdrawFromVault(super::WithdrawFromVault {
-                    vault: Some(vault.clone().into()),
-                    amount: amount.clone(),
-                    recipient_coin: recipient_coin.clone().map(Into::into),
-                })
-            }
-
             // Bridge transactions
             BridgeDeposit(args) => Kind::BridgeDeposit(super::BridgeDeposit {
                 nonce: Some(args.nonce),
@@ -622,54 +591,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .parse()
                     .map_err(|e| TryFromProtoError::invalid("target_id", e))?,
             },
-            // Marketplace transactions
-            Kind::CreateAsk(args) => Self::CreateAsk(crate::types::CreateAskArgs {
-                task_digest: args.task_digest.as_deref().unwrap_or_default().to_vec(),
-                max_price_per_bid: args.max_price_per_bid.unwrap_or(0),
-                num_bids_wanted: args.num_bids_wanted.unwrap_or(0),
-                timeout_ms: args.timeout_ms.unwrap_or(0),
-            }),
-            Kind::CancelAsk(args) => Self::CancelAsk {
-                ask_id: args.ask_id.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
-            },
-            Kind::CreateBid(args) => Self::CreateBid(crate::types::CreateBidArgs {
-                ask_id: args.ask_id.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
-                price: args.price.unwrap_or(0),
-                response_digest: args.response_digest.as_deref().unwrap_or_default().to_vec(),
-            }),
-            Kind::AcceptBid(args) => Self::AcceptBid(crate::types::AcceptBidArgs {
-                ask_id: args.ask_id.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("ask_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("ask_id", e))?,
-                bid_id: args.bid_id.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("bid_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("bid_id", e))?,
-                payment_coin: args.payment_coin.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("payment_coin"))?
-                    .try_into()?,
-            }),
-            Kind::RateSeller(args) => Self::RateSeller {
-                settlement_id: args.settlement_id.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("settlement_id"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("settlement_id", e))?,
-            },
-            Kind::WithdrawFromVault(args) => Self::WithdrawFromVault {
-                vault: args.vault.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("vault"))?
-                    .try_into()?,
-                amount: args.amount,
-                recipient_coin: args.recipient_coin.as_ref().map(TryInto::try_into).transpose()?,
-            },
-
             // Bridge transactions
             Kind::BridgeDeposit(args) => Self::BridgeDeposit(crate::types::BridgeDepositArgs {
                 nonce: args.nonce.unwrap_or(0),

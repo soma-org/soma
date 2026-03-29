@@ -171,30 +171,9 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .context("Failed to register soma_tx_details pipeline")?;
 
     indexer
-        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune.clone())
+        .concurrent_pipeline(handlers::soma_validators::SomaValidators, no_prune)
         .await
         .context("Failed to register soma_validators pipeline")?;
-
-    // --- Tier C: Marketplace pipelines (never pruned) ---
-    indexer
-        .concurrent_pipeline(handlers::soma_asks::SomaAsks, no_prune.clone())
-        .await
-        .context("Failed to register soma_asks pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_bids::SomaBids, no_prune.clone())
-        .await
-        .context("Failed to register soma_bids pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_settlements::SomaSettlements, no_prune.clone())
-        .await
-        .context("Failed to register soma_settlements pipeline")?;
-
-    indexer
-        .concurrent_pipeline(handlers::soma_vaults::SomaVaults, no_prune)
-        .await
-        .context("Failed to register soma_vaults pipeline")?;
 
     Ok(())
 }

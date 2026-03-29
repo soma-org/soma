@@ -322,30 +322,6 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             amount: Some(1000),
         },
         TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
-        // Marketplace
-        TransactionKind::CreateAsk(crate::transaction::CreateAskArgs {
-            task_digest: crate::digests::TaskDigest::random(),
-            max_price_per_bid: 1000,
-            num_bids_wanted: 3,
-            timeout_ms: 60_000,
-        }),
-        TransactionKind::CancelAsk { ask_id: ObjectID::random() },
-        TransactionKind::CreateBid(crate::transaction::CreateBidArgs {
-            ask_id: ObjectID::random(),
-            price: 500,
-            response_digest: crate::digests::ResponseDigest::random(),
-        }),
-        TransactionKind::AcceptBid(crate::transaction::AcceptBidArgs {
-            ask_id: ObjectID::random(),
-            bid_id: ObjectID::random(),
-            payment_coin: random_object_ref(),
-        }),
-        TransactionKind::RateSeller { settlement_id: ObjectID::random() },
-        TransactionKind::WithdrawFromVault {
-            vault: random_object_ref(),
-            amount: Some(1000),
-            recipient_coin: None,
-        },
         // Bridge
         TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
             nonce: 1,
@@ -372,8 +348,8 @@ fn test_all_tx_kinds_bcs_roundtrip() {
 
     assert_eq!(
         kinds.len(),
-        25,
-        "Expected 25 TransactionKind variants; if a new variant was added, update this test"
+        19,
+        "Expected 19 TransactionKind variants; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {

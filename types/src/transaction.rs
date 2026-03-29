@@ -24,13 +24,13 @@ use crate::crypto::{
     SomaSignatureInner, default_hash,
 };
 use crate::digests::{
-    AdditionalConsensusStateDigest, AskId, BidId, CertificateDigest, ConsensusCommitDigest,
-    ResponseDigest, SenderSignedDataDigest, SettlementId, TaskDigest, TransactionDigest,
+    AdditionalConsensusStateDigest, CertificateDigest, ConsensusCommitDigest,
+    SenderSignedDataDigest, TransactionDigest,
 };
 use crate::envelope::{Envelope, Message, TrustedEnvelope, VerifiedEnvelope};
 use crate::error::{SomaError, SomaResult};
 use crate::intent::{Intent, IntentMessage, IntentScope};
-use crate::object::{OBJECT_START_VERSION, Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
+use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
 use crate::temporary_store::SharedInput;
 use crate::{SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION};
 
@@ -95,24 +95,6 @@ pub enum TransactionKind {
     },
     WithdrawStake {
         staked_soma: ObjectRef,
-    },
-
-    // Marketplace transactions
-    CreateAsk(CreateAskArgs),
-    CancelAsk {
-        ask_id: AskId,
-    },
-    CreateBid(CreateBidArgs),
-    AcceptBid(AcceptBidArgs),
-    /// Submit a negative rating for a seller on a settlement.
-    /// Only negative ratings go on-chain — the default is positive (no tx needed).
-    RateSeller {
-        settlement_id: SettlementId,
-    },
-    WithdrawFromVault {
-        vault: ObjectRef,
-        amount: Option<u64>,
-        recipient_coin: Option<ObjectRef>,
     },
 
     // Bridge transactions (system — gasless)
@@ -201,30 +183,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_proof_of_possession: Option<Vec<u8>>,
 }
 
-// --- Marketplace arg structs ---
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CreateAskArgs {
-    pub task_digest: TaskDigest,
-    pub max_price_per_bid: u64,
-    pub num_bids_wanted: u32,
-    pub timeout_ms: u64,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct CreateBidArgs {
-    pub ask_id: AskId,
-    pub price: u64,
-    pub response_digest: ResponseDigest,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct AcceptBidArgs {
-    pub ask_id: AskId,
-    pub bid_id: BidId,
-    pub payment_coin: ObjectRef,
-}
-
 // --- Bridge arg structs ---
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -269,18 +227,6 @@ impl TransactionKind {
         )
     }
 
-    pub fn is_marketplace_tx(&self) -> bool {
-        matches!(
-            self,
-            TransactionKind::CreateAsk(_)
-                | TransactionKind::CancelAsk { .. }
-                | TransactionKind::CreateBid(_)
-                | TransactionKind::AcceptBid(_)
-                | TransactionKind::RateSeller { .. }
-                | TransactionKind::WithdrawFromVault { .. }
-        )
-    }
-
     pub fn is_bridge_tx(&self) -> bool {
         matches!(
             self,
@@ -316,7 +262,6 @@ impl TransactionKind {
         self.is_validator_tx()
             || self.is_epoch_change()
             || self.is_staking_tx()
-            || self.is_marketplace_tx()
             || self.is_bridge_tx()
     }
 
@@ -340,46 +285,6 @@ impl TransactionKind {
         // Add system object if needed
         if self.requires_system_state() {
             objects.push(SharedInputObject::SYSTEM_OBJ);
-        }
-
-        // Add marketplace shared objects (Ask, Bid, Settlement).
-        // These use OBJECT_START_VERSION as initial_shared_version to match the
-        // version set during creation (see temporary_store.rs update_version_and_previous_tx).
-        match self {
-            TransactionKind::CancelAsk { ask_id } => {
-                objects.push(SharedInputObject {
-                    id: *ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::CreateBid(args) => {
-                objects.push(SharedInputObject {
-                    id: args.ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true, // must be mutable so version advances in store
-                });
-            }
-            TransactionKind::AcceptBid(args) => {
-                objects.push(SharedInputObject {
-                    id: args.ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-                objects.push(SharedInputObject {
-                    id: args.bid_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-            }
-            TransactionKind::RateSeller { settlement_id } => {
-                objects.push(SharedInputObject {
-                    id: *settlement_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-            }
-            _ => {}
         }
 
         objects.into_iter()
@@ -419,51 +324,6 @@ impl TransactionKind {
 
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
-            }
-
-            TransactionKind::CancelAsk { ask_id } => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-            }
-
-            TransactionKind::CreateBid(args) => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: args.ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true, // must be mutable so version advances in store
-                });
-            }
-
-            TransactionKind::AcceptBid(args) => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: args.ask_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: args.bid_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.payment_coin));
-            }
-
-            TransactionKind::RateSeller { settlement_id } => {
-                input_objects.push(InputObjectKind::SharedObject {
-                    id: *settlement_id,
-                    initial_shared_version: OBJECT_START_VERSION,
-                    mutable: true,
-                });
-            }
-
-            TransactionKind::WithdrawFromVault { vault, recipient_coin, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*vault));
-                if let Some(coin) = recipient_coin {
-                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
-                }
             }
 
             TransactionKind::BridgeWithdraw(args) => {

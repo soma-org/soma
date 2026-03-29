@@ -152,9 +152,5 @@ pub enum ObjectType {
     SystemState,
     Coin(types::object::CoinType),
     StakedSoma,
-    Ask,
-    Bid,
-    Settlement,
-    SellerVault,
     PendingWithdrawal,
 }

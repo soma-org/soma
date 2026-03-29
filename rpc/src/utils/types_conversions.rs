@@ -59,10 +59,6 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::SystemState => ObjectType::SystemState,
             types::object::ObjectType::Coin(ct) => ObjectType::Coin(*ct),
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
-            types::object::ObjectType::Ask => ObjectType::Ask,
-            types::object::ObjectType::Bid => ObjectType::Bid,
-            types::object::ObjectType::Settlement => ObjectType::Settlement,
-            types::object::ObjectType::SellerVault => ObjectType::SellerVault,
             types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
         };
 
@@ -89,10 +85,6 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::SystemState => types::object::ObjectType::SystemState,
             ObjectType::Coin(ct) => types::object::ObjectType::Coin(ct),
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
-            ObjectType::Ask => types::object::ObjectType::Ask,
-            ObjectType::Bid => types::object::ObjectType::Bid,
-            ObjectType::Settlement => types::object::ObjectType::Settlement,
-            ObjectType::SellerVault => types::object::ObjectType::SellerVault,
             ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
         };
 
@@ -507,39 +499,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             TransactionKind::WithdrawStake { staked_soma } => {
                 TK::WithdrawStake { staked_soma: staked_soma.into() }
-            }
-
-            // Marketplace transactions
-            TransactionKind::CreateAsk(args) => TK::CreateAsk(types::transaction::CreateAskArgs {
-                task_digest: types::digests::TaskDigest::new(
-                    args.task_digest.try_into().unwrap_or([0u8; 32]),
-                ),
-                max_price_per_bid: args.max_price_per_bid,
-                num_bids_wanted: args.num_bids_wanted,
-                timeout_ms: args.timeout_ms,
-            }),
-            TransactionKind::CancelAsk { ask_id } => TK::CancelAsk { ask_id: ask_id.into() },
-            TransactionKind::CreateBid(args) => TK::CreateBid(types::transaction::CreateBidArgs {
-                ask_id: args.ask_id.into(),
-                price: args.price,
-                response_digest: types::digests::ResponseDigest::new(
-                    args.response_digest.try_into().unwrap_or([0u8; 32]),
-                ),
-            }),
-            TransactionKind::AcceptBid(args) => TK::AcceptBid(types::transaction::AcceptBidArgs {
-                ask_id: args.ask_id.into(),
-                bid_id: args.bid_id.into(),
-                payment_coin: args.payment_coin.into(),
-            }),
-            TransactionKind::RateSeller { settlement_id } => {
-                TK::RateSeller { settlement_id: settlement_id.into() }
-            }
-            TransactionKind::WithdrawFromVault { vault, amount, recipient_coin } => {
-                TK::WithdrawFromVault {
-                    vault: vault.into(),
-                    amount,
-                    recipient_coin: recipient_coin.map(Into::into),
-                }
             }
 
             // Bridge transactions

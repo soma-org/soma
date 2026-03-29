@@ -81,55 +81,12 @@ message TransactionKind {
     UndoReportChallenge undo_report_challenge = 31;
     ClaimChallengeBond claim_challenge_bond = 32;
 
-    // Marketplace transactions
-    CreateAsk create_ask = 34;
-    CancelAsk cancel_ask = 35;
-    CreateBid create_bid = 36;
-    AcceptBid accept_bid = 37;
-    RateSeller rate_seller = 38;
-    WithdrawFromVault withdraw_from_vault = 39;
-
     // Bridge transactions
     BridgeDeposit bridge_deposit = 40;
     BridgeWithdraw bridge_withdraw = 41;
     BridgeEmergencyPause bridge_emergency_pause = 42;
     BridgeEmergencyUnpause bridge_emergency_unpause = 43;
   }
-}
-
-// Marketplace messages
-
-message CreateAsk {
-  optional bytes task_digest = 1;
-  optional uint64 max_price_per_bid = 2;
-  optional uint32 num_bids_wanted = 3;
-  optional uint64 timeout_ms = 4;
-}
-
-message CancelAsk {
-  optional string ask_id = 1;
-}
-
-message CreateBid {
-  optional string ask_id = 1;
-  optional uint64 price = 2;
-  optional bytes response_digest = 3;
-}
-
-message AcceptBid {
-  optional string ask_id = 1;
-  optional string bid_id = 2;
-  optional ObjectReference payment_coin = 3;
-}
-
-message RateSeller {
-  optional string settlement_id = 1;
-}
-
-message WithdrawFromVault {
-  optional ObjectReference vault = 1;
-  optional uint64 amount = 2;
-  optional ObjectReference recipient_coin = 3;
 }
 
 // Bridge messages

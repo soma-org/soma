@@ -1,9 +1,0 @@
-[tool.uv.workspace]
-members = ["python-models", "python-sdk", "python-examples", "arrgen"]
-
-[tool.uv.sources]
-soma-arrgen = { workspace = true }
-soma-sdk = { workspace = true }
-
-[dependency-groups]
-dev = ["ruff>=0.11", "ty>=0.0.1"]

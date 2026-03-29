@@ -1,5 +1,6 @@
 ---
 source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 58
 expression: stdout
 ---
 Start a local SOMA network for development and testing
