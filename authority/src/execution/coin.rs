@@ -11,7 +11,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor, bps_mul, checked_add, checked_sub, checked_sum};
+use super::{TransactionExecutor, checked_add, checked_sub, checked_sum};
 
 /// Executor for coin-related transactions
 pub struct CoinExecutor;
@@ -21,7 +21,10 @@ impl CoinExecutor {
         Self {}
     }
 
-    /// Execute a Transfer transaction (unified from TransferCoin and PayCoins)
+    /// Execute a Transfer transaction (unified from TransferCoin and PayCoins).
+    ///
+    /// Gas fee was already fully deducted from the gas coin in `prepare_gas`,
+    /// so this routine just moves balances around.
     fn execute_transfer(
         &self,
         store: &mut TemporaryStore,
@@ -30,7 +33,6 @@ impl CoinExecutor {
         recipients: Vec<SomaAddress>,
         signer: SomaAddress,
         tx_digest: TransactionDigest,
-        value_fee: u64,
     ) -> ExecutionResult<()> {
         if coin_refs.is_empty() {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -117,26 +119,10 @@ impl CoinExecutor {
 
                 let coin_type = resolved_coin_type.unwrap_or(CoinType::Soma);
 
-                // Calculate total needed
+                // Calculate total needed (fee already taken from gas coin in prepare_gas).
                 let total_payments: u64 = checked_sum(specific_amounts.iter().copied())?;
 
-                // Calculate estimated remaining fees (base fee already deducted)
-
-                // Write fee: 1 update for gas coin + 1 for each recipient
-                let write_fee = self.calculate_operation_fee(store, 1 + recipients.len() as u64);
-
-                // Total remaining fee
-                let remaining_fee = checked_add(value_fee, write_fee)?;
-
-                // Check sufficient balance for payments (+ fees if gas coin is among transfer coins)
-                // When the gas coin is separate, remaining fees are deducted from it in
-                // post-execution, not from the transfer coins.
-                let required = if has_gas_coin {
-                    checked_add(total_payments, remaining_fee)?
-                } else {
-                    total_payments
-                };
-                if total_available < required {
+                if total_available < total_payments {
                     return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                 }
 
@@ -200,14 +186,11 @@ impl CoinExecutor {
                 let recipient = recipients[0];
 
                 if has_gas_coin {
-                    // Note: Base fee has already been deducted during gas preparation
-                    // We only need to account for value and operation fees
-
-                    // Calculate total available balance across all coins
+                    // Gas fee already deducted from the gas coin by prepare_gas, so
+                    // pay-all just moves the remaining balance to the recipient.
                     let mut total_available = 0;
                     let gas_id = gas_object_id.unwrap();
 
-                    // First handle the gas coin (which should have already had base fee deducted)
                     let gas_coin = store.read_object(&gas_id).unwrap();
                     check_ownership(&gas_coin, signer)?;
                     let gas_balance = verify_coin(&gas_coin)?;
@@ -237,36 +220,22 @@ impl CoinExecutor {
                         }
                     }
 
-                    // Calculate value fee using the trait method
-
-                    // For write fee, we know we'll create one new object and keep gas coin
-                    let write_fee = self.calculate_operation_fee(store, 2);
-
-                    // Total remaining fee (base fee already deducted)
-                    let remaining_fee = checked_add(value_fee, write_fee)?;
-
-                    // Ensure there's enough balance to pay the fee
-                    if total_available <= remaining_fee {
+                    if total_available == 0 {
                         return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
                     }
 
-                    // Calculate amount to transfer (total - fee)
-                    let transfer_amount = checked_sub(total_available, remaining_fee)?;
-
-                    // Create new coin for recipient with (total balance - fee)
+                    // New coin for recipient with the full remaining balance.
                     let new_coin = Object::new_coin(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         coin_type,
-                        transfer_amount,
+                        total_available,
                         Owner::AddressOwner(recipient),
                         tx_digest,
                     );
                     store.create_object(new_coin);
 
-                    // Update gas coin to just keep the fee amount
-                    let mut updated_gas = gas_coin.clone();
-                    updated_gas.update_coin_balance(remaining_fee);
-                    store.mutate_input_object(updated_gas);
+                    // Drain the gas coin completely.
+                    store.delete_input_object(&gas_id);
 
                     // Delete all other coins
                     for (coin_id, _) in other_coins {
@@ -430,53 +399,37 @@ impl CoinExecutor {
 }
 
 impl TransactionExecutor for CoinExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
+        match kind {
+            // Transfer: cost grows with the number of input coins consumed and output
+            // coins created. 1 unit per side, minimum 2.
+            TransactionKind::Transfer { coins, recipients, .. } => {
+                let n = coins.len().saturating_add(recipients.len());
+                n.try_into().unwrap_or(u32::MAX)
+            }
+            // MergeCoins: cost grows with the merge size.
+            TransactionKind::MergeCoins { coins } => {
+                coins.len().try_into().unwrap_or(u32::MAX)
+            }
+            _ => 1,
+        }
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::Transfer { coins, amounts, recipients } => {
-                self.execute_transfer(
-                    store, coins, amounts, recipients, signer, tx_digest, value_fee,
-                )
+                self.execute_transfer(store, coins, amounts, recipients, signer, tx_digest)
             }
             TransactionKind::MergeCoins { coins } => {
                 self.execute_merge_coins(store, coins, signer, tx_digest)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
-        }
-    }
-}
-
-impl FeeCalculator for CoinExecutor {
-    fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
-        let value_fee_bps = store.fee_parameters.value_fee_bps;
-
-        match kind {
-            TransactionKind::Transfer { coins, amounts, .. } => {
-                let total_amount: u64 = if let Some(specific_amounts) = amounts {
-                    specific_amounts.iter().copied().sum::<u64>()
-                } else {
-                    // For pay_all, calculate total of actual balances
-                    coins
-                        .iter()
-                        .filter_map(|coin_ref| store.read_object(&coin_ref.0))
-                        .filter_map(|obj| obj.as_coin())
-                        .sum::<u64>()
-                };
-
-                if total_amount == 0 {
-                    return 0;
-                }
-
-                bps_mul(total_amount, value_fee_bps)
-            }
-
-            _ => 0,
         }
     }
 }

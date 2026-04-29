@@ -2,8 +2,6 @@
 source: protocol-config/src/lib.rs
 expression: config.attr_map()
 ---
-base_fee:
-  u64: 1000
 buffer_stake_for_protocol_upgrade_bps:
   u64: 5000
 consensus_bad_nodes_stake_threshold:
@@ -22,25 +20,15 @@ epoch_duration_ms:
   u64: 86400000
 execution_version:
   u64: 2
-fee_adjustment_rate_bps:
-  u64: 1250
-initial_value_fee_bps:
-  u64: 10
 max_checkpoint_size_bytes:
   u64: 31457280
 max_transactions_per_checkpoint:
   u64: 20000
-max_value_fee_bps:
-  u64: 50
 min_checkpoint_interval_ms:
   u64: 200
-min_value_fee_bps:
-  u64: 1
 mysticeti_num_leaders_per_round:
   usize: 1
 reward_slashing_rate_bps:
   u64: 5000
-target_epoch_fee_collection:
-  u64: 1000000000
-write_object_fee:
-  u64: 300
+unit_fee:
+  u64: 1000

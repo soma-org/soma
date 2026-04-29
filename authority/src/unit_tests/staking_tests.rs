@@ -18,13 +18,11 @@ use crate::authority::AuthorityState;
 use crate::authority_test_utils::send_and_confirm_transaction_;
 use crate::test_authority_builder::TestAuthorityBuilder;
 
-// Default fees from protocol config v1
-const BASE_FEE: u64 = 1000;
-const WRITE_FEE: u64 = 300;
-const VALUE_FEE_BPS: u64 = 10;
-const BPS_DENOMINATOR: u64 = 10000;
-// Staking gets half the normal value fee
-const STAKING_VALUE_FEE_BPS: u64 = VALUE_FEE_BPS / 2; // = 5
+// Default `unit_fee` from protocol config v1.
+const UNIT_FEE: u64 = 1000;
+// Staking ops cost a fixed 2 units (see StakingExecutor::fee_units).
+const STAKING_FEE_UNITS: u64 = 2;
+const STAKING_FEE: u64 = UNIT_FEE * STAKING_FEE_UNITS;
 
 // =============================================================================
 // AddStake success cases
@@ -83,12 +81,11 @@ async fn test_add_stake_entire_coin_as_gas() {
 }
 
 // =============================================================================
-// AddStake fee handling (half value fee)
+// AddStake fee handling
 // =============================================================================
 
 #[tokio::test]
-async fn test_add_stake_half_value_fee() {
-    // Staking should get half the normal value fee rate
+async fn test_add_stake_charges_fixed_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 10_000_000u64;
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 50_000_000);
@@ -99,16 +96,7 @@ async fn test_add_stake_half_value_fee() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     let fee = effects.transaction_fee();
-    // Value fee should be half the normal rate: amount * (value_fee_bps / 2) / BPS_DENOMINATOR
-    let expected_value_fee = (stake_amount * STAKING_VALUE_FEE_BPS) / BPS_DENOMINATOR;
-    assert_eq!(
-        fee.value_fee, expected_value_fee,
-        "Staking value fee should be half normal rate: got {}, expected {}",
-        fee.value_fee, expected_value_fee
-    );
-
-    assert_eq!(fee.base_fee, BASE_FEE, "Base fee should be standard");
-    assert_eq!(fee.total_fee, fee.base_fee + fee.operation_fee + fee.value_fee);
+    assert_eq!(fee.total_fee, STAKING_FEE);
 }
 
 // =============================================================================
@@ -117,25 +105,25 @@ async fn test_add_stake_half_value_fee() {
 
 #[tokio::test]
 async fn test_add_stake_insufficient_balance_specific_amount() {
+    // Balance that covers fee but not the stake amount itself.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    // Balance that covers base fee but not stake amount + remaining fees
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 5000);
 
     let res = execute_add_stake(
         coin,
-        Some(4500), // + base_fee(1000) + operation_fee + value_fee > 5000
+        Some(4500), // 4500 + STAKING_FEE (2000) > 5000
         sender,
         SomaKeyPair::Ed25519(key),
     )
     .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert!(!effects.status().is_ok(), "Should fail: stake amount + fees > balance");
+    assert!(!effects.status().is_ok(), "Should fail: stake amount + fee > balance");
 }
 
 #[tokio::test]
 async fn test_add_stake_insufficient_gas() {
-    // Balance below base fee
+    // Balance below the fee.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 500);
 
@@ -149,48 +137,12 @@ async fn test_add_stake_insufficient_gas() {
 }
 
 #[tokio::test]
-async fn test_add_stake_entire_coin_insufficient_for_fees() {
-    // Stake-all where the balance is barely above base_fee but not enough for
-    // value + operation fees
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 1100);
-
-    let res = execute_add_stake(
-        coin,
-        None, // stake all
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    // After base fee (1000), only 100 left. Operation fee for 1 object = 300.
-    // So total remaining fee > 100. Should fail.
-    assert!(
-        !effects.status().is_ok(),
-        "Should fail: after base_fee, not enough for stake-all fees"
-    );
-}
-
-// =============================================================================
-// AddStake gas coin awareness
-// =============================================================================
-
-#[tokio::test]
-async fn test_add_stake_gas_coin_reserves_for_fees() {
-    // When gas coin == stake coin with specific amount, executor should check
-    // that balance >= stake_amount + fees (not just stake_amount)
+async fn test_add_stake_gas_coin_reserves_for_fee() {
+    // When gas coin == stake coin, the fee must be deducted before staking.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let balance = 10_000_000u64;
-    let stake_amount = 9_990_000u64;
+    let stake_amount = balance - STAKING_FEE - 1; // tight but valid
     let coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, balance);
-
-    // After base_fee (1000), balance = 9_999_000
-    // stake_amount (9_990_000) + operation_fee (2*300=600) + value_fee > 9_999_000?
-    // Let's calculate: value_fee = 9_990_000 * 5 / 10000 = 4995
-    // Total needed = 9_990_000 + 600 + 4995 = 9_995_595
-    // Available after base fee = 9_999_000
-    // This should succeed (9_999_000 > 9_995_595)
 
     let res = execute_add_stake(coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key)).await;
 

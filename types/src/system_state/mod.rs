@@ -65,28 +65,13 @@ mod validator_pop_tests;
 /// Derived from SystemParameters at epoch start
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FeeParameters {
-    pub base_fee: u64,
-    pub write_object_fee: u64,
-    pub value_fee_bps: u64,
+    /// Per-unit fee. Tx fee = `unit_fee * executor.fee_units(...)`.
+    pub unit_fee: u64,
 }
 
 impl FeeParameters {
     pub fn from_system_parameters(params: &SystemParameters) -> Self {
-        Self {
-            base_fee: params.base_fee,
-            write_object_fee: params.write_object_fee,
-            value_fee_bps: params.value_fee_bps,
-        }
-    }
-
-    /// Calculate value fee for a given amount using u128 intermediates to prevent overflow.
-    pub fn calculate_value_fee(&self, amount: u64) -> u64 {
-        ((amount as u128) * (self.value_fee_bps as u128) / (BPS_DENOMINATOR as u128)) as u64
-    }
-
-    /// Calculate operation fee for N object writes
-    pub fn calculate_operation_fee(&self, num_objects: u64) -> u64 {
-        num_objects.saturating_mul(self.write_object_fee)
+        Self { unit_fee: params.unit_fee }
     }
 }
 
@@ -185,7 +170,7 @@ impl SystemStateV1 {
             emission_period_length,
             emission_decrease_rate,
         );
-        let mut parameters = protocol_config.build_system_parameters(None);
+        let mut parameters = protocol_config.build_system_parameters();
         if let Some(epoch_duration_ms) = epoch_duration_ms_override {
             parameters.epoch_duration_ms = epoch_duration_ms;
         }
@@ -530,11 +515,7 @@ impl SystemStateV1 {
         // Check if protocol version is changing
         if next_protocol_version != self.protocol_version {
             info!("Protocol upgrade: {} -> {}", self.protocol_version, next_protocol_version);
-
-            // Update parameters from new protocol config
-            // Preserve current value_fee_bps since it's dynamically adjusted
-            self.parameters =
-                next_protocol_config.build_system_parameters(Some(self.parameters.value_fee_bps));
+            self.parameters = next_protocol_config.build_system_parameters();
         }
 
         // Get reward_slashing_rate from protocol config
@@ -549,8 +530,6 @@ impl SystemStateV1 {
         {
             total_rewards = total_rewards.saturating_add(self.emission_pool.advance_epoch());
         }
-        // Adjust fees for next epoch BEFORE processing rewards
-        self.adjust_value_fee(epoch_total_transaction_fees);
 
         // 3. Increment epoch and update protocol version
         self.epoch = new_epoch;
@@ -615,54 +594,6 @@ impl SystemStateV1 {
             "Safe mode activated for epoch {}. Accumulated fees: {}, accumulated emissions: {}",
             new_epoch, self.safe_mode_accumulated_fees, self.safe_mode_accumulated_emissions
         );
-    }
-
-    /// Adjust value fee based on actual vs target fee collection
-    /// Called during advance_epoch
-    fn adjust_value_fee(&mut self, actual_fees_collected: u64) {
-        let target = self.parameters.target_epoch_fee_collection;
-        let current_bps = self.parameters.value_fee_bps;
-        let adjustment_rate = self.parameters.fee_adjustment_rate_bps;
-
-        // Avoid division by zero
-        if target == 0 {
-            return;
-        }
-
-        // Calculate ratio: actual / target (scaled by BPS_DENOMINATOR)
-        // ratio > 10000 means over target (network busy)
-        // ratio < 10000 means under target (network quiet)
-        let ratio = (actual_fees_collected.saturating_mul(BPS_DENOMINATOR))
-            .checked_div(target)
-            .unwrap_or(BPS_DENOMINATOR);
-
-        let new_bps = if ratio > BPS_DENOMINATOR {
-            // Over target - increase fees to reduce demand
-            // Scale increase by how much we exceeded
-            let excess_ratio = ratio - BPS_DENOMINATOR;
-            let increase = std::cmp::min(
-                (current_bps * excess_ratio) / BPS_DENOMINATOR,
-                (current_bps * adjustment_rate) / BPS_DENOMINATOR,
-            );
-            std::cmp::min(current_bps.saturating_add(increase), self.parameters.max_value_fee_bps)
-        } else {
-            // Under target - decrease fees to encourage activity
-            let deficit_ratio = BPS_DENOMINATOR - ratio;
-            let decrease = std::cmp::min(
-                (current_bps * deficit_ratio) / BPS_DENOMINATOR,
-                (current_bps * adjustment_rate) / BPS_DENOMINATOR,
-            );
-            std::cmp::max(current_bps.saturating_sub(decrease), self.parameters.min_value_fee_bps)
-        };
-
-        if new_bps != current_bps {
-            info!(
-                "Fee adjustment: {} -> {} bps (collected {} vs target {})",
-                current_bps, new_bps, actual_fees_collected, target
-            );
-        }
-
-        self.parameters.value_fee_bps = new_bps;
     }
 
     /// Get current fee parameters for transaction execution

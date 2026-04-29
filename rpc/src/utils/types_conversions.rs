@@ -611,23 +611,13 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
 
 impl From<types::tx_fee::TransactionFee> for crate::types::TransactionFee {
     fn from(value: types::tx_fee::TransactionFee) -> Self {
-        Self {
-            base_fee: value.base_fee,
-            operation_fee: value.operation_fee,
-            value_fee: value.value_fee,
-            total_fee: value.total_fee,
-        }
+        Self { total_fee: value.total_fee }
     }
 }
 
 impl From<crate::types::TransactionFee> for types::tx_fee::TransactionFee {
     fn from(value: crate::types::TransactionFee) -> Self {
-        Self {
-            base_fee: value.base_fee,
-            operation_fee: value.operation_fee,
-            value_fee: value.value_fee,
-            total_fee: value.total_fee,
-        }
+        Self { total_fee: value.total_fee }
     }
 }
 

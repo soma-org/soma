@@ -227,9 +227,11 @@ async fn test_pay_coin_failure_insufficient_total_balance_multiple_input_coins()
 
 #[tokio::test]
 async fn test_pay_coin_failure_insufficient_total_balance_one_input_coin() {
+    // Balance covers the gas fee (1 coin + 2 recipients = 3 units × 1000 = 3000)
+    // but not the requested payments (100 + 100). Should fail with
+    // InsufficientCoinBalance — distinct from InsufficientGas.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin1 =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100 + 1000 + 3 * 300); // base fee + operation fee + operation fee + 0 value fee
+    let coin1 = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 3100);
     let recipient1 = dbg_addr(1);
     let recipient2 = dbg_addr(2);
 

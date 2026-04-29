@@ -330,10 +330,7 @@ impl TransactionResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
-        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
+        builder.push_record(["Total Fee", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1376,10 +1373,7 @@ impl TransactionQueryResponse {
         writeln!(f)?;
         let mut builder = TableBuilder::default();
         builder.push_record(["Gas Summary", ""]);
-        builder.push_record(["Base Fee", &format_fee(self.fee.base_fee)]);
-        builder.push_record(["Operation Fee", &format_fee(self.fee.operation_fee)]);
-        builder.push_record(["Value Fee", &format_fee(self.fee.value_fee)]);
-        builder.push_record(["Total", &format_fee(self.fee.total_fee)]);
+        builder.push_record(["Total Fee", &format_fee(self.fee.total_fee)]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());

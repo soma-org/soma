@@ -79,7 +79,7 @@ impl EpochStartSystemState {
             epoch_duration_ms: 1000,
             active_validators: vec![],
             fee_parameters: FeeParameters::from_system_parameters(
-                &protocol_config.build_system_parameters(None),
+                &protocol_config.build_system_parameters(),
             ),
         })
     }

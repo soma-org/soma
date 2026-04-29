@@ -28,7 +28,7 @@ use types::transaction::{
 };
 
 use super::object::check_ownership;
-use super::{FeeCalculator, TransactionExecutor, checked_add, checked_sub};
+use super::{TransactionExecutor, checked_add, checked_sub};
 
 pub struct BridgeExecutor;
 
@@ -402,13 +402,22 @@ impl BridgeExecutor {
 }
 
 impl TransactionExecutor for BridgeExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
+        match kind {
+            // BridgeDeposit / Pause / Unpause are gasless system txs (skipped before
+            // fee_units is even called via is_system_tx). BridgeWithdraw is the only
+            // user-paid bridge op; charge a small fixed amount.
+            TransactionKind::BridgeWithdraw(_) => 2,
+            _ => 0,
+        }
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::BridgeDeposit(args) => {
@@ -425,13 +434,5 @@ impl TransactionExecutor for BridgeExecutor {
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
-    }
-}
-
-impl FeeCalculator for BridgeExecutor {
-    fn calculate_value_fee(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u64 {
-        // Bridge transactions have no value fee. BridgeDeposit/Pause/Unpause are
-        // gasless system txs; BridgeWithdraw pays only base_fee.
-        0
     }
 }

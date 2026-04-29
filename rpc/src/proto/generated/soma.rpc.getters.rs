@@ -2454,34 +2454,7 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 epoch_duration_ms: None,
-                validator_reward_allocation_bps: None,
-                model_min_stake: None,
-                model_architecture_version: None,
-                model_reveal_slash_rate_bps: None,
-                model_tally_slash_rate_bps: None,
-                target_epoch_fee_collection: None,
-                base_fee: None,
-                write_object_fee: None,
-                value_fee_bps: None,
-                min_value_fee_bps: None,
-                max_value_fee_bps: None,
-                fee_adjustment_rate_bps: None,
-                target_models_per_target: None,
-                target_embedding_dim: None,
-                target_initial_distance_threshold: None,
-                target_reward_allocation_bps: None,
-                target_hits_per_epoch: None,
-                target_hits_ema_decay_bps: None,
-                target_difficulty_adjustment_rate_bps: None,
-                target_max_distance_threshold: None,
-                target_min_distance_threshold: None,
-                target_initial_targets_per_epoch: None,
-                target_submitter_reward_share_bps: None,
-                target_model_reward_share_bps: None,
-                target_claimer_incentive_bps: None,
-                submission_bond_per_byte: None,
-                challenger_bond_per_byte: None,
-                max_submission_data_size: None,
+                unit_fee: None,
             }
         }
         #[doc(hidden)]
@@ -2493,116 +2466,8 @@ mod _getter_impls {
             self.epoch_duration_ms = Some(field.into());
             self
         }
-        pub fn with_validator_reward_allocation_bps(mut self, field: u64) -> Self {
-            self.validator_reward_allocation_bps = Some(field.into());
-            self
-        }
-        pub fn with_model_min_stake(mut self, field: u64) -> Self {
-            self.model_min_stake = Some(field.into());
-            self
-        }
-        pub fn with_model_architecture_version(mut self, field: u64) -> Self {
-            self.model_architecture_version = Some(field.into());
-            self
-        }
-        pub fn with_model_reveal_slash_rate_bps(mut self, field: u64) -> Self {
-            self.model_reveal_slash_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_model_tally_slash_rate_bps(mut self, field: u64) -> Self {
-            self.model_tally_slash_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_epoch_fee_collection(mut self, field: u64) -> Self {
-            self.target_epoch_fee_collection = Some(field.into());
-            self
-        }
-        pub fn with_base_fee(mut self, field: u64) -> Self {
-            self.base_fee = Some(field.into());
-            self
-        }
-        pub fn with_write_object_fee(mut self, field: u64) -> Self {
-            self.write_object_fee = Some(field.into());
-            self
-        }
-        pub fn with_value_fee_bps(mut self, field: u64) -> Self {
-            self.value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_min_value_fee_bps(mut self, field: u64) -> Self {
-            self.min_value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_max_value_fee_bps(mut self, field: u64) -> Self {
-            self.max_value_fee_bps = Some(field.into());
-            self
-        }
-        pub fn with_fee_adjustment_rate_bps(mut self, field: u64) -> Self {
-            self.fee_adjustment_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_models_per_target(mut self, field: u64) -> Self {
-            self.target_models_per_target = Some(field.into());
-            self
-        }
-        pub fn with_target_embedding_dim(mut self, field: u64) -> Self {
-            self.target_embedding_dim = Some(field.into());
-            self
-        }
-        pub fn with_target_initial_distance_threshold(mut self, field: f32) -> Self {
-            self.target_initial_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_reward_allocation_bps(mut self, field: u64) -> Self {
-            self.target_reward_allocation_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_hits_per_epoch(mut self, field: u64) -> Self {
-            self.target_hits_per_epoch = Some(field.into());
-            self
-        }
-        pub fn with_target_hits_ema_decay_bps(mut self, field: u64) -> Self {
-            self.target_hits_ema_decay_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_difficulty_adjustment_rate_bps(mut self, field: u64) -> Self {
-            self.target_difficulty_adjustment_rate_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_max_distance_threshold(mut self, field: f32) -> Self {
-            self.target_max_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_min_distance_threshold(mut self, field: f32) -> Self {
-            self.target_min_distance_threshold = Some(field.into());
-            self
-        }
-        pub fn with_target_initial_targets_per_epoch(mut self, field: u64) -> Self {
-            self.target_initial_targets_per_epoch = Some(field.into());
-            self
-        }
-        pub fn with_target_submitter_reward_share_bps(mut self, field: u64) -> Self {
-            self.target_submitter_reward_share_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_model_reward_share_bps(mut self, field: u64) -> Self {
-            self.target_model_reward_share_bps = Some(field.into());
-            self
-        }
-        pub fn with_target_claimer_incentive_bps(mut self, field: u64) -> Self {
-            self.target_claimer_incentive_bps = Some(field.into());
-            self
-        }
-        pub fn with_submission_bond_per_byte(mut self, field: u64) -> Self {
-            self.submission_bond_per_byte = Some(field.into());
-            self
-        }
-        pub fn with_challenger_bond_per_byte(mut self, field: u64) -> Self {
-            self.challenger_bond_per_byte = Some(field.into());
-            self
-        }
-        pub fn with_max_submission_data_size(mut self, field: u64) -> Self {
-            self.max_submission_data_size = Some(field.into());
+        pub fn with_unit_fee(mut self, field: u64) -> Self {
+            self.unit_fee = Some(field.into());
             self
         }
     }
@@ -6056,29 +5921,12 @@ mod _getter_impls {
     }
     impl TransactionFee {
         pub const fn const_default() -> Self {
-            Self {
-                base_fee: None,
-                operation_fee: None,
-                value_fee: None,
-                total_fee: None,
-            }
+            Self { total_fee: None }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: TransactionFee = TransactionFee::const_default();
             &DEFAULT
-        }
-        pub fn with_base_fee(mut self, field: u64) -> Self {
-            self.base_fee = Some(field.into());
-            self
-        }
-        pub fn with_operation_fee(mut self, field: u64) -> Self {
-            self.operation_fee = Some(field.into());
-            self
-        }
-        pub fn with_value_fee(mut self, field: u64) -> Self {
-            self.value_fee = Some(field.into());
-            self
         }
         pub fn with_total_fee(mut self, field: u64) -> Self {
             self.total_fee = Some(field.into());

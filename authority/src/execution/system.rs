@@ -5,12 +5,11 @@
 use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
-use types::error::{ExecutionResult, SomaError, SomaResult};
-use types::object::ObjectID;
+use types::error::ExecutionResult;
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for Genesis transactions
 pub struct GenesisExecutor;
@@ -22,16 +21,19 @@ impl GenesisExecutor {
 }
 
 impl TransactionExecutor for GenesisExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        // Gasless system tx — `is_system_tx()` short-circuits prepare_gas anyway.
+        0
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         _signer: SomaAddress,
         kind: TransactionKind,
-        tx_digest: TransactionDigest,
-        _value_fee: u64,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         if let TransactionKind::Genesis(genesis) = kind {
-            // Create all genesis objects
             for object in genesis.objects {
                 store.create_object(object.clone());
             }
@@ -41,8 +43,6 @@ impl TransactionExecutor for GenesisExecutor {
         }
     }
 }
-
-impl FeeCalculator for GenesisExecutor {}
 
 /// Executor for consensus commit transactions
 pub struct ConsensusCommitExecutor;
@@ -54,17 +54,17 @@ impl ConsensusCommitExecutor {
 }
 
 impl TransactionExecutor for ConsensusCommitExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        0
+    }
+
     fn execute(
         &mut self,
         _store: &mut TemporaryStore,
         _signer: SomaAddress,
         _kind: TransactionKind,
         _tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
-        // For consensus commit, we don't process any state changes, just return success
         Ok(())
     }
 }
-
-impl FeeCalculator for ConsensusCommitExecutor {}

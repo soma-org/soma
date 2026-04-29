@@ -8,7 +8,7 @@ use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use coin::CoinExecutor;
 use object::ObjectExecutor;
-use prepare_gas::{GasPreparationResult, calculate_and_deduct_remaining_fees, prepare_gas};
+use prepare_gas::{GasPreparationResult, prepare_gas};
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
@@ -74,40 +74,26 @@ pub(crate) fn checked_sum<I: Iterator<Item = u64>>(
     iter.try_fold(0u64, |acc, x| checked_add(acc, x))
 }
 
-/// Core trait for all transaction executors
-trait TransactionExecutor: FeeCalculator {
+/// Core trait for all transaction executors.
+///
+/// Each executor reports its **fee units** for an op based on the op's actual
+/// shape (e.g. `MergeCoins` returns `coins.len()`). The protocol-level
+/// `unit_fee` is multiplied by these units to produce the total tx fee, which
+/// is deducted up front in `prepare_gas`.
+trait TransactionExecutor {
+    /// Number of fee units this op should be charged for.
+    /// Returning 0 means the op is gasless (system tx). The default is 1.
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        1
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        value_fee: u64,
     ) -> ExecutionResult<()>;
-}
-
-/// Trait for calculating transaction fees based on transaction type
-pub trait FeeCalculator {
-    /// Calculate the value-based fee for a transaction
-    fn calculate_value_fee(&self, store: &TemporaryStore, kind: &TransactionKind) -> u64 {
-        // Default: use the store's fee parameters
-        0
-    }
-
-    /// Get the base fee (now reads from store)
-    fn base_fee(&self, store: &TemporaryStore) -> u64 {
-        store.fee_parameters.base_fee
-    }
-
-    /// Calculate fee per object write
-    fn write_fee_per_object(&self, store: &TemporaryStore) -> u64 {
-        store.fee_parameters.write_object_fee
-    }
-
-    /// Calculate operation fee for a given number of objects
-    fn calculate_operation_fee(&self, store: &TemporaryStore, num_objects: u64) -> u64 {
-        num_objects.saturating_mul(self.write_fee_per_object(store))
-    }
 }
 
 pub fn execute_transaction(
@@ -227,13 +213,7 @@ pub fn execute_transaction(
     let pre_execution_deleted = temporary_store.execution_results.deleted_object_ids.clone();
 
     // Execute the transaction
-    let result = executor.execute(
-        &mut temporary_store,
-        signer,
-        kind.clone(),
-        tx_digest,
-        gas_result.value_fee,
-    );
+    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
 
     // Check execution status
     let (mut execution_status, mut execution_error) = match result {
@@ -250,56 +230,28 @@ pub fn execute_transaction(
         }
     };
 
-    // Initialize the final transaction fee to what was deducted during gas preparation
-    let mut final_transaction_fee = gas_result.transaction_fee.clone();
+    // Fee was fully deducted up front in prepare_gas; this is what gets reported.
+    let final_transaction_fee = gas_result.transaction_fee.clone();
 
-    // Phase 4: Calculate and deduct remaining transaction fee if execution succeeded
+    // Phase 4: Check ownership invariants if execution succeeded
     if execution_status.is_ok() {
-        match calculate_and_deduct_remaining_fees(
-            &mut temporary_store,
-            &kind,
-            &*executor,
-            &gas_result,
-        ) {
-            Ok(updated_fee) => {
-                final_transaction_fee = updated_fee;
+        let is_epoch_change = kind.is_epoch_change();
+        let mutable_inputs = temporary_store.get_mutable_input_ids();
 
-                // Phase 5: Check ownership invariants
-                let is_epoch_change = kind.is_epoch_change();
-                let mutable_inputs = temporary_store.get_mutable_input_ids();
+        if let Err(err) =
+            temporary_store.check_ownership_invariants(&signer, &mutable_inputs, is_epoch_change)
+        {
+            // Ownership invariant check failed, revert to post-gas changes state
+            revert_non_gas_changes(
+                &mut temporary_store,
+                pre_execution_objects,
+                pre_execution_deleted,
+            );
 
-                if let Err(err) = temporary_store.check_ownership_invariants(
-                    &signer,
-                    &mutable_inputs,
-                    is_epoch_change,
-                ) {
-                    // Ownership invariant check failed, revert to post-gas changes state
-                    revert_non_gas_changes(
-                        &mut temporary_store,
-                        pre_execution_objects,
-                        pre_execution_deleted,
-                    );
-
-                    // Update execution status to failure
-                    let error_msg = format!("Ownership invariant violated: {}", err);
-                    let error_status =
-                        ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
-                    execution_status = ExecutionStatus::Failure { error: error_status.clone() };
-                    execution_error = Some(ExecutionError::new(error_status, None));
-                }
-            }
-            Err(err) => {
-                // Execution succeeded but fee deduction failed, revert to post-gas changes state
-                revert_non_gas_changes(
-                    &mut temporary_store,
-                    pre_execution_objects,
-                    pre_execution_deleted,
-                );
-
-                // Update execution status to failure
-                execution_status = ExecutionStatus::Failure { error: err.clone() };
-                execution_error = Some(ExecutionError::new(err, None));
-            }
+            let error_msg = format!("Ownership invariant violated: {}", err);
+            let error_status = ExecutionFailureStatus::SomaError(SomaError::from(error_msg));
+            execution_status = ExecutionStatus::Failure { error: error_status.clone() };
+            execution_error = Some(ExecutionError::new(error_status, None));
         }
     }
 
@@ -470,13 +422,7 @@ fn handle_shared_object_transaction(
     let mut executor = create_executor(&kind);
 
     // Execute the transaction
-    let result = executor.execute(
-        &mut temporary_store,
-        signer,
-        kind.clone(),
-        tx_digest,
-        gas_result.value_fee,
-    );
+    let result = executor.execute(&mut temporary_store, signer, kind.clone(), tx_digest);
 
     // Convert result to execution status and error
     let (execution_status, execution_error) = match result {
@@ -509,42 +455,9 @@ fn handle_shared_object_transaction(
         }
     };
 
-    // Execution status should be success here
+    // Fee was fully deducted up front in prepare_gas.
+    let final_transaction_fee = gas_result.transaction_fee.clone();
 
-    // Initialize the final transaction fee to what was deducted during gas preparation
-    let mut final_transaction_fee = gas_result.transaction_fee.clone();
-
-    match calculate_and_deduct_remaining_fees(&mut temporary_store, &kind, &*executor, &gas_result)
-    {
-        Ok(updated_fee) => {
-            final_transaction_fee = updated_fee;
-        }
-        Err(err) => {
-            revert_non_gas_changes(
-                &mut temporary_store,
-                pre_execution_objects.clone(),
-                pre_execution_deleted.clone(),
-            );
-
-            // Return with failure status but keep gas changes
-            let execution_status = ExecutionStatus::Failure { error: err.clone() };
-
-            if temporary_store.execution_version >= 1 {
-                temporary_store.ensure_active_inputs_mutated();
-            }
-            let (inner, effects) = temporary_store.into_effects(
-                shared_object_refs,
-                &tx_digest,
-                transaction_dependencies,
-                execution_status,
-                epoch_id,
-                gas_result.transaction_fee, // Use original fee that was successfully deducted
-                gas_result.primary_gas_id,
-            );
-
-            return (inner, effects, Some(ExecutionError::new(err, None)));
-        }
-    }
     // Prepare to collect objects for the output
     let mut object_changes = BTreeMap::new();
     let mut written_objects = BTreeMap::new();

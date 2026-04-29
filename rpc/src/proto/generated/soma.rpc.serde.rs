@@ -14538,88 +14538,7 @@ impl serde::Serialize for SystemParameters {
         if self.epoch_duration_ms.is_some() {
             len += 1;
         }
-        if self.validator_reward_allocation_bps.is_some() {
-            len += 1;
-        }
-        if self.model_min_stake.is_some() {
-            len += 1;
-        }
-        if self.model_architecture_version.is_some() {
-            len += 1;
-        }
-        if self.model_reveal_slash_rate_bps.is_some() {
-            len += 1;
-        }
-        if self.model_tally_slash_rate_bps.is_some() {
-            len += 1;
-        }
-        if self.target_epoch_fee_collection.is_some() {
-            len += 1;
-        }
-        if self.base_fee.is_some() {
-            len += 1;
-        }
-        if self.write_object_fee.is_some() {
-            len += 1;
-        }
-        if self.value_fee_bps.is_some() {
-            len += 1;
-        }
-        if self.min_value_fee_bps.is_some() {
-            len += 1;
-        }
-        if self.max_value_fee_bps.is_some() {
-            len += 1;
-        }
-        if self.fee_adjustment_rate_bps.is_some() {
-            len += 1;
-        }
-        if self.target_models_per_target.is_some() {
-            len += 1;
-        }
-        if self.target_embedding_dim.is_some() {
-            len += 1;
-        }
-        if self.target_initial_distance_threshold.is_some() {
-            len += 1;
-        }
-        if self.target_reward_allocation_bps.is_some() {
-            len += 1;
-        }
-        if self.target_hits_per_epoch.is_some() {
-            len += 1;
-        }
-        if self.target_hits_ema_decay_bps.is_some() {
-            len += 1;
-        }
-        if self.target_difficulty_adjustment_rate_bps.is_some() {
-            len += 1;
-        }
-        if self.target_max_distance_threshold.is_some() {
-            len += 1;
-        }
-        if self.target_min_distance_threshold.is_some() {
-            len += 1;
-        }
-        if self.target_initial_targets_per_epoch.is_some() {
-            len += 1;
-        }
-        if self.target_submitter_reward_share_bps.is_some() {
-            len += 1;
-        }
-        if self.target_model_reward_share_bps.is_some() {
-            len += 1;
-        }
-        if self.target_claimer_incentive_bps.is_some() {
-            len += 1;
-        }
-        if self.submission_bond_per_byte.is_some() {
-            len += 1;
-        }
-        if self.challenger_bond_per_byte.is_some() {
-            len += 1;
-        }
-        if self.max_submission_data_size.is_some() {
+        if self.unit_fee.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.SystemParameters", len)?;
@@ -14628,139 +14547,10 @@ impl serde::Serialize for SystemParameters {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("epochDurationMs", ToString::to_string(&v).as_str())?;
         }
-        if let Some(v) = self.validator_reward_allocation_bps.as_ref() {
+        if let Some(v) = self.unit_fee.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("validatorRewardAllocationBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.model_min_stake.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("modelMinStake", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.model_architecture_version.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("modelArchitectureVersion", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.model_reveal_slash_rate_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("modelRevealSlashRateBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.model_tally_slash_rate_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("modelTallySlashRateBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_epoch_fee_collection.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetEpochFeeCollection", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.base_fee.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("baseFee", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.write_object_fee.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("writeObjectFee", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.value_fee_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("valueFeeBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.min_value_fee_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("minValueFeeBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.max_value_fee_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("maxValueFeeBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.fee_adjustment_rate_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("feeAdjustmentRateBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_models_per_target.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetModelsPerTarget", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_embedding_dim.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetEmbeddingDim", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_initial_distance_threshold.as_ref() {
-            struct_ser.serialize_field("targetInitialDistanceThreshold", v)?;
-        }
-        if let Some(v) = self.target_reward_allocation_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetRewardAllocationBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_hits_per_epoch.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetHitsPerEpoch", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_hits_ema_decay_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetHitsEmaDecayBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_difficulty_adjustment_rate_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetDifficultyAdjustmentRateBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_max_distance_threshold.as_ref() {
-            struct_ser.serialize_field("targetMaxDistanceThreshold", v)?;
-        }
-        if let Some(v) = self.target_min_distance_threshold.as_ref() {
-            struct_ser.serialize_field("targetMinDistanceThreshold", v)?;
-        }
-        if let Some(v) = self.target_initial_targets_per_epoch.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetInitialTargetsPerEpoch", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_submitter_reward_share_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetSubmitterRewardShareBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_model_reward_share_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetModelRewardShareBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.target_claimer_incentive_bps.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("targetClaimerIncentiveBps", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.submission_bond_per_byte.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("submissionBondPerByte", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.challenger_bond_per_byte.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("challengerBondPerByte", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.max_submission_data_size.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("maxSubmissionDataSize", ToString::to_string(&v).as_str())?;
+            struct_ser.serialize_field("unitFee", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -14774,95 +14564,14 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
         const FIELDS: &[&str] = &[
             "epoch_duration_ms",
             "epochDurationMs",
-            "validator_reward_allocation_bps",
-            "validatorRewardAllocationBps",
-            "model_min_stake",
-            "modelMinStake",
-            "model_architecture_version",
-            "modelArchitectureVersion",
-            "model_reveal_slash_rate_bps",
-            "modelRevealSlashRateBps",
-            "model_tally_slash_rate_bps",
-            "modelTallySlashRateBps",
-            "target_epoch_fee_collection",
-            "targetEpochFeeCollection",
-            "base_fee",
-            "baseFee",
-            "write_object_fee",
-            "writeObjectFee",
-            "value_fee_bps",
-            "valueFeeBps",
-            "min_value_fee_bps",
-            "minValueFeeBps",
-            "max_value_fee_bps",
-            "maxValueFeeBps",
-            "fee_adjustment_rate_bps",
-            "feeAdjustmentRateBps",
-            "target_models_per_target",
-            "targetModelsPerTarget",
-            "target_embedding_dim",
-            "targetEmbeddingDim",
-            "target_initial_distance_threshold",
-            "targetInitialDistanceThreshold",
-            "target_reward_allocation_bps",
-            "targetRewardAllocationBps",
-            "target_hits_per_epoch",
-            "targetHitsPerEpoch",
-            "target_hits_ema_decay_bps",
-            "targetHitsEmaDecayBps",
-            "target_difficulty_adjustment_rate_bps",
-            "targetDifficultyAdjustmentRateBps",
-            "target_max_distance_threshold",
-            "targetMaxDistanceThreshold",
-            "target_min_distance_threshold",
-            "targetMinDistanceThreshold",
-            "target_initial_targets_per_epoch",
-            "targetInitialTargetsPerEpoch",
-            "target_submitter_reward_share_bps",
-            "targetSubmitterRewardShareBps",
-            "target_model_reward_share_bps",
-            "targetModelRewardShareBps",
-            "target_claimer_incentive_bps",
-            "targetClaimerIncentiveBps",
-            "submission_bond_per_byte",
-            "submissionBondPerByte",
-            "challenger_bond_per_byte",
-            "challengerBondPerByte",
-            "max_submission_data_size",
-            "maxSubmissionDataSize",
+            "unit_fee",
+            "unitFee",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             EpochDurationMs,
-            ValidatorRewardAllocationBps,
-            ModelMinStake,
-            ModelArchitectureVersion,
-            ModelRevealSlashRateBps,
-            ModelTallySlashRateBps,
-            TargetEpochFeeCollection,
-            BaseFee,
-            WriteObjectFee,
-            ValueFeeBps,
-            MinValueFeeBps,
-            MaxValueFeeBps,
-            FeeAdjustmentRateBps,
-            TargetModelsPerTarget,
-            TargetEmbeddingDim,
-            TargetInitialDistanceThreshold,
-            TargetRewardAllocationBps,
-            TargetHitsPerEpoch,
-            TargetHitsEmaDecayBps,
-            TargetDifficultyAdjustmentRateBps,
-            TargetMaxDistanceThreshold,
-            TargetMinDistanceThreshold,
-            TargetInitialTargetsPerEpoch,
-            TargetSubmitterRewardShareBps,
-            TargetModelRewardShareBps,
-            TargetClaimerIncentiveBps,
-            SubmissionBondPerByte,
-            ChallengerBondPerByte,
-            MaxSubmissionDataSize,
+            UnitFee,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -14886,34 +14595,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     {
                         match value {
                             "epochDurationMs" | "epoch_duration_ms" => Ok(GeneratedField::EpochDurationMs),
-                            "validatorRewardAllocationBps" | "validator_reward_allocation_bps" => Ok(GeneratedField::ValidatorRewardAllocationBps),
-                            "modelMinStake" | "model_min_stake" => Ok(GeneratedField::ModelMinStake),
-                            "modelArchitectureVersion" | "model_architecture_version" => Ok(GeneratedField::ModelArchitectureVersion),
-                            "modelRevealSlashRateBps" | "model_reveal_slash_rate_bps" => Ok(GeneratedField::ModelRevealSlashRateBps),
-                            "modelTallySlashRateBps" | "model_tally_slash_rate_bps" => Ok(GeneratedField::ModelTallySlashRateBps),
-                            "targetEpochFeeCollection" | "target_epoch_fee_collection" => Ok(GeneratedField::TargetEpochFeeCollection),
-                            "baseFee" | "base_fee" => Ok(GeneratedField::BaseFee),
-                            "writeObjectFee" | "write_object_fee" => Ok(GeneratedField::WriteObjectFee),
-                            "valueFeeBps" | "value_fee_bps" => Ok(GeneratedField::ValueFeeBps),
-                            "minValueFeeBps" | "min_value_fee_bps" => Ok(GeneratedField::MinValueFeeBps),
-                            "maxValueFeeBps" | "max_value_fee_bps" => Ok(GeneratedField::MaxValueFeeBps),
-                            "feeAdjustmentRateBps" | "fee_adjustment_rate_bps" => Ok(GeneratedField::FeeAdjustmentRateBps),
-                            "targetModelsPerTarget" | "target_models_per_target" => Ok(GeneratedField::TargetModelsPerTarget),
-                            "targetEmbeddingDim" | "target_embedding_dim" => Ok(GeneratedField::TargetEmbeddingDim),
-                            "targetInitialDistanceThreshold" | "target_initial_distance_threshold" => Ok(GeneratedField::TargetInitialDistanceThreshold),
-                            "targetRewardAllocationBps" | "target_reward_allocation_bps" => Ok(GeneratedField::TargetRewardAllocationBps),
-                            "targetHitsPerEpoch" | "target_hits_per_epoch" => Ok(GeneratedField::TargetHitsPerEpoch),
-                            "targetHitsEmaDecayBps" | "target_hits_ema_decay_bps" => Ok(GeneratedField::TargetHitsEmaDecayBps),
-                            "targetDifficultyAdjustmentRateBps" | "target_difficulty_adjustment_rate_bps" => Ok(GeneratedField::TargetDifficultyAdjustmentRateBps),
-                            "targetMaxDistanceThreshold" | "target_max_distance_threshold" => Ok(GeneratedField::TargetMaxDistanceThreshold),
-                            "targetMinDistanceThreshold" | "target_min_distance_threshold" => Ok(GeneratedField::TargetMinDistanceThreshold),
-                            "targetInitialTargetsPerEpoch" | "target_initial_targets_per_epoch" => Ok(GeneratedField::TargetInitialTargetsPerEpoch),
-                            "targetSubmitterRewardShareBps" | "target_submitter_reward_share_bps" => Ok(GeneratedField::TargetSubmitterRewardShareBps),
-                            "targetModelRewardShareBps" | "target_model_reward_share_bps" => Ok(GeneratedField::TargetModelRewardShareBps),
-                            "targetClaimerIncentiveBps" | "target_claimer_incentive_bps" => Ok(GeneratedField::TargetClaimerIncentiveBps),
-                            "submissionBondPerByte" | "submission_bond_per_byte" => Ok(GeneratedField::SubmissionBondPerByte),
-                            "challengerBondPerByte" | "challenger_bond_per_byte" => Ok(GeneratedField::ChallengerBondPerByte),
-                            "maxSubmissionDataSize" | "max_submission_data_size" => Ok(GeneratedField::MaxSubmissionDataSize),
+                            "unitFee" | "unit_fee" => Ok(GeneratedField::UnitFee),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -14936,34 +14618,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut epoch_duration_ms__ = None;
-                let mut validator_reward_allocation_bps__ = None;
-                let mut model_min_stake__ = None;
-                let mut model_architecture_version__ = None;
-                let mut model_reveal_slash_rate_bps__ = None;
-                let mut model_tally_slash_rate_bps__ = None;
-                let mut target_epoch_fee_collection__ = None;
-                let mut base_fee__ = None;
-                let mut write_object_fee__ = None;
-                let mut value_fee_bps__ = None;
-                let mut min_value_fee_bps__ = None;
-                let mut max_value_fee_bps__ = None;
-                let mut fee_adjustment_rate_bps__ = None;
-                let mut target_models_per_target__ = None;
-                let mut target_embedding_dim__ = None;
-                let mut target_initial_distance_threshold__ = None;
-                let mut target_reward_allocation_bps__ = None;
-                let mut target_hits_per_epoch__ = None;
-                let mut target_hits_ema_decay_bps__ = None;
-                let mut target_difficulty_adjustment_rate_bps__ = None;
-                let mut target_max_distance_threshold__ = None;
-                let mut target_min_distance_threshold__ = None;
-                let mut target_initial_targets_per_epoch__ = None;
-                let mut target_submitter_reward_share_bps__ = None;
-                let mut target_model_reward_share_bps__ = None;
-                let mut target_claimer_incentive_bps__ = None;
-                let mut submission_bond_per_byte__ = None;
-                let mut challenger_bond_per_byte__ = None;
-                let mut max_submission_data_size__ = None;
+                let mut unit_fee__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::EpochDurationMs => {
@@ -14974,227 +14629,11 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
-                        GeneratedField::ValidatorRewardAllocationBps => {
-                            if validator_reward_allocation_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("validatorRewardAllocationBps"));
+                        GeneratedField::UnitFee => {
+                            if unit_fee__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("unitFee"));
                             }
-                            validator_reward_allocation_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ModelMinStake => {
-                            if model_min_stake__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("modelMinStake"));
-                            }
-                            model_min_stake__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ModelArchitectureVersion => {
-                            if model_architecture_version__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("modelArchitectureVersion"));
-                            }
-                            model_architecture_version__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ModelRevealSlashRateBps => {
-                            if model_reveal_slash_rate_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("modelRevealSlashRateBps"));
-                            }
-                            model_reveal_slash_rate_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ModelTallySlashRateBps => {
-                            if model_tally_slash_rate_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("modelTallySlashRateBps"));
-                            }
-                            model_tally_slash_rate_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetEpochFeeCollection => {
-                            if target_epoch_fee_collection__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetEpochFeeCollection"));
-                            }
-                            target_epoch_fee_collection__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::BaseFee => {
-                            if base_fee__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("baseFee"));
-                            }
-                            base_fee__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::WriteObjectFee => {
-                            if write_object_fee__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("writeObjectFee"));
-                            }
-                            write_object_fee__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ValueFeeBps => {
-                            if value_fee_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("valueFeeBps"));
-                            }
-                            value_fee_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::MinValueFeeBps => {
-                            if min_value_fee_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("minValueFeeBps"));
-                            }
-                            min_value_fee_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::MaxValueFeeBps => {
-                            if max_value_fee_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("maxValueFeeBps"));
-                            }
-                            max_value_fee_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::FeeAdjustmentRateBps => {
-                            if fee_adjustment_rate_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("feeAdjustmentRateBps"));
-                            }
-                            fee_adjustment_rate_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetModelsPerTarget => {
-                            if target_models_per_target__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetModelsPerTarget"));
-                            }
-                            target_models_per_target__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetEmbeddingDim => {
-                            if target_embedding_dim__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetEmbeddingDim"));
-                            }
-                            target_embedding_dim__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetInitialDistanceThreshold => {
-                            if target_initial_distance_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetInitialDistanceThreshold"));
-                            }
-                            target_initial_distance_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetRewardAllocationBps => {
-                            if target_reward_allocation_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetRewardAllocationBps"));
-                            }
-                            target_reward_allocation_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetHitsPerEpoch => {
-                            if target_hits_per_epoch__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetHitsPerEpoch"));
-                            }
-                            target_hits_per_epoch__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetHitsEmaDecayBps => {
-                            if target_hits_ema_decay_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetHitsEmaDecayBps"));
-                            }
-                            target_hits_ema_decay_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetDifficultyAdjustmentRateBps => {
-                            if target_difficulty_adjustment_rate_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetDifficultyAdjustmentRateBps"));
-                            }
-                            target_difficulty_adjustment_rate_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetMaxDistanceThreshold => {
-                            if target_max_distance_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetMaxDistanceThreshold"));
-                            }
-                            target_max_distance_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetMinDistanceThreshold => {
-                            if target_min_distance_threshold__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetMinDistanceThreshold"));
-                            }
-                            target_min_distance_threshold__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetInitialTargetsPerEpoch => {
-                            if target_initial_targets_per_epoch__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetInitialTargetsPerEpoch"));
-                            }
-                            target_initial_targets_per_epoch__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetSubmitterRewardShareBps => {
-                            if target_submitter_reward_share_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetSubmitterRewardShareBps"));
-                            }
-                            target_submitter_reward_share_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetModelRewardShareBps => {
-                            if target_model_reward_share_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetModelRewardShareBps"));
-                            }
-                            target_model_reward_share_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::TargetClaimerIncentiveBps => {
-                            if target_claimer_incentive_bps__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("targetClaimerIncentiveBps"));
-                            }
-                            target_claimer_incentive_bps__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::SubmissionBondPerByte => {
-                            if submission_bond_per_byte__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("submissionBondPerByte"));
-                            }
-                            submission_bond_per_byte__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ChallengerBondPerByte => {
-                            if challenger_bond_per_byte__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("challengerBondPerByte"));
-                            }
-                            challenger_bond_per_byte__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::MaxSubmissionDataSize => {
-                            if max_submission_data_size__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("maxSubmissionDataSize"));
-                            }
-                            max_submission_data_size__ = 
+                            unit_fee__ = 
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
@@ -15205,34 +14644,7 @@ impl<'de> serde::Deserialize<'de> for SystemParameters {
                 }
                 Ok(SystemParameters {
                     epoch_duration_ms: epoch_duration_ms__,
-                    validator_reward_allocation_bps: validator_reward_allocation_bps__,
-                    model_min_stake: model_min_stake__,
-                    model_architecture_version: model_architecture_version__,
-                    model_reveal_slash_rate_bps: model_reveal_slash_rate_bps__,
-                    model_tally_slash_rate_bps: model_tally_slash_rate_bps__,
-                    target_epoch_fee_collection: target_epoch_fee_collection__,
-                    base_fee: base_fee__,
-                    write_object_fee: write_object_fee__,
-                    value_fee_bps: value_fee_bps__,
-                    min_value_fee_bps: min_value_fee_bps__,
-                    max_value_fee_bps: max_value_fee_bps__,
-                    fee_adjustment_rate_bps: fee_adjustment_rate_bps__,
-                    target_models_per_target: target_models_per_target__,
-                    target_embedding_dim: target_embedding_dim__,
-                    target_initial_distance_threshold: target_initial_distance_threshold__,
-                    target_reward_allocation_bps: target_reward_allocation_bps__,
-                    target_hits_per_epoch: target_hits_per_epoch__,
-                    target_hits_ema_decay_bps: target_hits_ema_decay_bps__,
-                    target_difficulty_adjustment_rate_bps: target_difficulty_adjustment_rate_bps__,
-                    target_max_distance_threshold: target_max_distance_threshold__,
-                    target_min_distance_threshold: target_min_distance_threshold__,
-                    target_initial_targets_per_epoch: target_initial_targets_per_epoch__,
-                    target_submitter_reward_share_bps: target_submitter_reward_share_bps__,
-                    target_model_reward_share_bps: target_model_reward_share_bps__,
-                    target_claimer_incentive_bps: target_claimer_incentive_bps__,
-                    submission_bond_per_byte: submission_bond_per_byte__,
-                    challenger_bond_per_byte: challenger_bond_per_byte__,
-                    max_submission_data_size: max_submission_data_size__,
+                    unit_fee: unit_fee__,
                 })
             }
         }
@@ -16498,34 +15910,10 @@ impl serde::Serialize for TransactionFee {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.base_fee.is_some() {
-            len += 1;
-        }
-        if self.operation_fee.is_some() {
-            len += 1;
-        }
-        if self.value_fee.is_some() {
-            len += 1;
-        }
         if self.total_fee.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.TransactionFee", len)?;
-        if let Some(v) = self.base_fee.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("baseFee", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.operation_fee.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("operationFee", ToString::to_string(&v).as_str())?;
-        }
-        if let Some(v) = self.value_fee.as_ref() {
-            #[allow(clippy::needless_borrow)]
-            #[allow(clippy::needless_borrows_for_generic_args)]
-            struct_ser.serialize_field("valueFee", ToString::to_string(&v).as_str())?;
-        }
         if let Some(v) = self.total_fee.as_ref() {
             #[allow(clippy::needless_borrow)]
             #[allow(clippy::needless_borrows_for_generic_args)]
@@ -16541,21 +15929,12 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "base_fee",
-            "baseFee",
-            "operation_fee",
-            "operationFee",
-            "value_fee",
-            "valueFee",
             "total_fee",
             "totalFee",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            BaseFee,
-            OperationFee,
-            ValueFee,
             TotalFee,
             __SkipField__,
         }
@@ -16579,9 +15958,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                         E: serde::de::Error,
                     {
                         match value {
-                            "baseFee" | "base_fee" => Ok(GeneratedField::BaseFee),
-                            "operationFee" | "operation_fee" => Ok(GeneratedField::OperationFee),
-                            "valueFee" | "value_fee" => Ok(GeneratedField::ValueFee),
                             "totalFee" | "total_fee" => Ok(GeneratedField::TotalFee),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -16604,36 +15980,9 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut base_fee__ = None;
-                let mut operation_fee__ = None;
-                let mut value_fee__ = None;
                 let mut total_fee__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::BaseFee => {
-                            if base_fee__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("baseFee"));
-                            }
-                            base_fee__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::OperationFee => {
-                            if operation_fee__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("operationFee"));
-                            }
-                            operation_fee__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
-                        GeneratedField::ValueFee => {
-                            if value_fee__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("valueFee"));
-                            }
-                            value_fee__ = 
-                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
-                            ;
-                        }
                         GeneratedField::TotalFee => {
                             if total_fee__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("totalFee"));
@@ -16648,9 +15997,6 @@ impl<'de> serde::Deserialize<'de> for TransactionFee {
                     }
                 }
                 Ok(TransactionFee {
-                    base_fee: base_fee__,
-                    operation_fee: operation_fee__,
-                    value_fee: value_fee__,
                     total_fee: total_fee__,
                 })
             }

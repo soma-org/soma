@@ -58,9 +58,6 @@ fn test_transaction_response_display_success() {
         executed_epoch: 1,
         checkpoint: Some(100),
         fee: types::tx_fee::TransactionFee {
-            base_fee: 1000,
-            operation_fee: 500,
-            value_fee: 0,
             total_fee: 1500,
         },
         created: vec![],
@@ -90,9 +87,6 @@ fn test_transaction_response_display_failure() {
         executed_epoch: 1,
         checkpoint: None,
         fee: types::tx_fee::TransactionFee {
-            base_fee: 0,
-            operation_fee: 0,
-            value_fee: 0,
             total_fee: 0,
         },
         created: vec![],
@@ -263,9 +257,6 @@ fn test_merge_coins_success_display() {
         executed_epoch: 0,
         checkpoint: Some(1),
         fee: types::tx_fee::TransactionFee {
-            base_fee: 1000,
-            operation_fee: 500,
-            value_fee: 0,
             total_fee: 1500,
         },
         created: vec![],

@@ -2,7 +2,6 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use tracing::info;
 use types::base::SomaAddress;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
@@ -17,18 +16,20 @@ use super::TransactionExecutor;
 pub(crate) struct GasPreparationResult {
     /// Primary gas object ID (if gas handling is enabled)
     pub primary_gas_id: Option<ObjectID>,
-    /// Transaction fee information
+    /// Transaction fee that was deducted
     pub transaction_fee: TransactionFee,
-    /// Amount of base fee that was deducted
-    base_fee_deducted: u64,
-    /// Pre-calculated value fee to ensure consistency
-    pub value_fee: u64,
 }
 
-/// Prepares gas for a transaction
+/// Prepare gas for a transaction.
 ///
 /// For system transactions, this does nothing.
-/// For regular transactions, it smashes gas coins and attempts to deduct base fee.
+/// For user transactions:
+///   1. Smashes gas coins into one primary coin.
+///   2. Computes total fee = `unit_fee * executor.fee_units(...)`.
+///   3. Deducts the fee from the gas coin in one shot.
+///
+/// On insufficient balance, drains whatever's available and returns
+/// `InsufficientGas` so the caller can record the failed effect.
 pub fn prepare_gas(
     temporary_store: &mut TemporaryStore,
     kind: &TransactionKind,
@@ -41,8 +42,6 @@ pub fn prepare_gas(
         return Ok(GasPreparationResult {
             primary_gas_id: None,
             transaction_fee: TransactionFee::default(),
-            base_fee_deducted: 0,
-            value_fee: 0,
         });
     }
 
@@ -58,51 +57,30 @@ pub fn prepare_gas(
     let primary_gas_id = Some(gas_id);
     temporary_store.gas_object_id = primary_gas_id;
 
-    // Deduct base fee for DOS protection
-    let base_fee = executor.base_fee(temporary_store);
+    // Compute total fee = unit_fee × fee_units
+    let unit_fee = temporary_store.fee_parameters.unit_fee;
+    let units = executor.fee_units(temporary_store, kind) as u64;
+    let total_fee = unit_fee.saturating_mul(units);
 
     // Get gas object with merged balance
     let gas_obj = temporary_store.read_object(&gas_id).unwrap();
     let gas_balance = gas_obj.as_coin().unwrap();
 
-    // Check if there's enough for base fee
-    if gas_balance < base_fee {
-        // Not enough for base fee - take what we can and fail
+    if gas_balance < total_fee {
+        // Not enough — take what we can and report InsufficientGas.
         if gas_balance > 0 {
-            // Deduct whatever is available
-            let partial_fee = TransactionFee::new(gas_balance, 0, 0);
-
-            // This should always succeed since we're taking at most the available balance
+            let partial_fee = TransactionFee::new(gas_balance);
             if deduct_gas_fee(temporary_store, &partial_fee).is_ok() {
                 return Err((ExecutionFailureStatus::InsufficientGas, partial_fee));
             }
         }
-
         return Err((ExecutionFailureStatus::InsufficientGas, TransactionFee::default()));
     }
 
-    // Sufficient gas for base fee - deduct it
-    let base_fee_obj = TransactionFee::new(base_fee, 0, 0);
-
-    // Calculate value fee before deducting any gas
-    let value_fee = executor.calculate_value_fee(temporary_store, kind);
-
-    match deduct_gas_fee(temporary_store, &base_fee_obj) {
-        Ok(_) => {
-            // Base fee deducted successfully
-            let transaction_fee = TransactionFee::new(base_fee, 0, 0);
-
-            Ok(GasPreparationResult {
-                primary_gas_id,
-                transaction_fee,
-                base_fee_deducted: base_fee,
-                value_fee,
-            })
-        }
-        Err(err) => {
-            // This shouldn't happen since we checked the balance
-            Err((err, TransactionFee::default()))
-        }
+    let fee = TransactionFee::new(total_fee);
+    match deduct_gas_fee(temporary_store, &fee) {
+        Ok(_) => Ok(GasPreparationResult { primary_gas_id, transaction_fee: fee }),
+        Err(err) => Err((err, TransactionFee::default())),
     }
 }
 
@@ -197,53 +175,6 @@ fn smash_gas_coins(
     Ok(primary_gas_id)
 }
 
-/// Calculates and deducts operation and value fees after successful execution
-///
-/// Returns the final transaction fee that includes both base fee and remaining fees.
-pub fn calculate_and_deduct_remaining_fees(
-    temporary_store: &mut TemporaryStore,
-    kind: &TransactionKind,
-    executor: &dyn TransactionExecutor,
-    gas_result: &GasPreparationResult,
-) -> Result<TransactionFee, ExecutionFailureStatus> {
-    // Skip for system transactions or if no gas ID
-    if kind.is_system_tx() || gas_result.primary_gas_id.is_none() {
-        return Ok(gas_result.transaction_fee.clone());
-    }
-
-    let gas_id = gas_result.primary_gas_id.unwrap();
-
-    // Use pre-calculated value fee instead of recalculating
-    let value_fee = gas_result.value_fee;
-
-    // Calculate operation fee (without recalculating value fee)
-    let operation_fee = (temporary_store.execution_results.written_objects.len() as u64)
-        .saturating_mul(executor.write_fee_per_object(temporary_store));
-
-    // Get gas object
-    let gas_obj = match temporary_store.read_object(&gas_id) {
-        Some(obj) => obj,
-        None => return Err(ExecutionFailureStatus::ObjectNotFound { object_id: gas_id }),
-    };
-
-    // Create TransactionFee with pre-calculated value fee
-    let remaining_fee = TransactionFee::new(
-        0, // Base fee already deducted
-        operation_fee,
-        value_fee,
-    );
-
-    // Attempt to deduct the remaining fee
-    match deduct_gas_fee(temporary_store, &remaining_fee) {
-        Ok(_) => {
-            // Combine base fee with operation and value fees for reporting
-            let final_fee = merge_fee_components(gas_result.base_fee_deducted, remaining_fee);
-            Ok(final_fee)
-        }
-        Err(err) => Err(err),
-    }
-}
-
 fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> ExecutionResult<u64> {
     let gas_id = store
         .gas_object_id
@@ -257,12 +188,10 @@ fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> Execution
         ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
     })?;
 
-    // Check sufficient balance
     if current_balance < fee.total_fee {
         return Err(ExecutionFailureStatus::InsufficientGas);
     }
 
-    // Deduct fee from gas object
     let new_balance = current_balance - fee.total_fee;
 
     if new_balance == 0 {
@@ -276,9 +205,4 @@ fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> Execution
     }
 
     Ok(fee.total_fee)
-}
-
-// Helper function to merge fee components for reporting
-fn merge_fee_components(base_fee: u64, remaining_fee: TransactionFee) -> TransactionFee {
-    TransactionFee::new(base_fee, remaining_fee.operation_fee, remaining_fee.value_fee)
 }

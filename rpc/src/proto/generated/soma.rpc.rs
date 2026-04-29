@@ -3379,71 +3379,9 @@ pub struct ReporterSet {
 pub struct SystemParameters {
     #[prost(uint64, optional, tag = "1")]
     pub epoch_duration_ms: ::core::option::Option<u64>,
+    /// Per-unit fee. Tx fee = unit_fee * executor.fee_units(...).
     #[prost(uint64, optional, tag = "2")]
-    pub validator_reward_allocation_bps: ::core::option::Option<u64>,
-    /// Model parameters
-    #[prost(uint64, optional, tag = "3")]
-    pub model_min_stake: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "4")]
-    pub model_architecture_version: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "5")]
-    pub model_reveal_slash_rate_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "6")]
-    pub model_tally_slash_rate_bps: ::core::option::Option<u64>,
-    /// Fee parameters
-    #[prost(uint64, optional, tag = "7")]
-    pub target_epoch_fee_collection: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "8")]
-    pub base_fee: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "9")]
-    pub write_object_fee: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "10")]
-    pub value_fee_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "11")]
-    pub min_value_fee_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "12")]
-    pub max_value_fee_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "13")]
-    pub fee_adjustment_rate_bps: ::core::option::Option<u64>,
-    /// Target/Submission parameters
-    #[prost(uint64, optional, tag = "14")]
-    pub target_models_per_target: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "15")]
-    pub target_embedding_dim: ::core::option::Option<u64>,
-    #[prost(float, optional, tag = "16")]
-    pub target_initial_distance_threshold: ::core::option::Option<f32>,
-    #[prost(uint64, optional, tag = "17")]
-    pub target_reward_allocation_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "18")]
-    pub target_hits_per_epoch: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "19")]
-    pub target_hits_ema_decay_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "20")]
-    pub target_difficulty_adjustment_rate_bps: ::core::option::Option<u64>,
-    #[prost(float, optional, tag = "21")]
-    pub target_max_distance_threshold: ::core::option::Option<f32>,
-    #[prost(float, optional, tag = "22")]
-    pub target_min_distance_threshold: ::core::option::Option<f32>,
-    #[prost(uint64, optional, tag = "23")]
-    pub target_initial_targets_per_epoch: ::core::option::Option<u64>,
-    /// Reward distribution parameters
-    #[prost(uint64, optional, tag = "24")]
-    pub target_submitter_reward_share_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "25")]
-    pub target_model_reward_share_bps: ::core::option::Option<u64>,
-    #[prost(uint64, optional, tag = "26")]
-    pub target_claimer_incentive_bps: ::core::option::Option<u64>,
-    /// Submission parameters
-    #[prost(uint64, optional, tag = "27")]
-    pub submission_bond_per_byte: ::core::option::Option<u64>,
-    /// Challenge parameters
-    ///
-    /// challenge_distance_epsilon removed - using Burn's Tolerance::permissive() instead
-    #[prost(uint64, optional, tag = "28")]
-    pub challenger_bond_per_byte: ::core::option::Option<u64>,
-    /// Data size limit
-    #[prost(uint64, optional, tag = "30")]
-    pub max_submission_data_size: ::core::option::Option<u64>,
+    pub unit_fee: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
@@ -4829,16 +4767,8 @@ pub mod transaction_execution_service_server {
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TransactionFee {
-    /// base transaction fee.
+    /// Total fee deducted (in shannons).
+    /// Tx fee = unit_fee * executor.fee_units(...).
     #[prost(uint64, optional, tag = "1")]
-    pub base_fee: ::core::option::Option<u64>,
-    /// Fee for each object operation (reads and writes).
-    #[prost(uint64, optional, tag = "2")]
-    pub operation_fee: ::core::option::Option<u64>,
-    /// Fee based on transaction value.
-    #[prost(uint64, optional, tag = "3")]
-    pub value_fee: ::core::option::Option<u64>,
-    /// Total fee deducted.
-    #[prost(uint64, optional, tag = "4")]
     pub total_fee: ::core::option::Option<u64>,
 }

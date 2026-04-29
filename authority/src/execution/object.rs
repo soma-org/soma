@@ -10,7 +10,7 @@ use types::object::{Object, ObjectRef, Owner};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for object transfer transactions
 pub struct ObjectExecutor;
@@ -51,13 +51,21 @@ impl ObjectExecutor {
 }
 
 impl TransactionExecutor for ObjectExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
+        match kind {
+            TransactionKind::TransferObjects { objects, .. } => {
+                objects.len().try_into().unwrap_or(u32::MAX)
+            }
+            _ => 1,
+        }
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         match kind {
             TransactionKind::TransferObjects { objects, recipient } => {
@@ -67,8 +75,6 @@ impl TransactionExecutor for ObjectExecutor {
         }
     }
 }
-
-impl FeeCalculator for ObjectExecutor {}
 
 /// Checks ownership of an object against the expected owner
 pub(crate) fn check_ownership(

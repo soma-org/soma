@@ -25,19 +25,9 @@ use crate::utils::types_conversions::SdkTypeConversionError;
 
 impl From<types::tx_fee::TransactionFee> for TransactionFee {
     fn from(
-        types::tx_fee::TransactionFee {
-            base_fee,
-            operation_fee,
-            value_fee,
-            total_fee,
-        }: types::tx_fee::TransactionFee,
+        types::tx_fee::TransactionFee { total_fee }: types::tx_fee::TransactionFee,
     ) -> Self {
-        Self {
-            base_fee: Some(base_fee),
-            operation_fee: Some(operation_fee),
-            value_fee: Some(value_fee),
-            total_fee: Some(total_fee),
-        }
+        Self { total_fee: Some(total_fee) }
     }
 }
 
@@ -931,17 +921,7 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
     fn try_from(proto_params: SystemParameters) -> Result<Self, Self::Error> {
         Ok(protocol_config::SystemParameters {
             epoch_duration_ms: proto_params.epoch_duration_ms.ok_or("Missing epoch_duration_ms")?,
-            target_epoch_fee_collection: proto_params
-                .target_epoch_fee_collection
-                .ok_or("Missing target_epoch_fee_collection")?,
-            base_fee: proto_params.base_fee.ok_or("Missing base_fee")?,
-            write_object_fee: proto_params.write_object_fee.ok_or("Missing write_object_fee")?,
-            value_fee_bps: proto_params.value_fee_bps.ok_or("Missing value_fee_bps")?,
-            min_value_fee_bps: proto_params.min_value_fee_bps.ok_or("Missing min_value_fee_bps")?,
-            max_value_fee_bps: proto_params.max_value_fee_bps.ok_or("Missing max_value_fee_bps")?,
-            fee_adjustment_rate_bps: proto_params
-                .fee_adjustment_rate_bps
-                .ok_or("Missing fee_adjustment_rate_bps")?,
+            unit_fee: proto_params.unit_fee.ok_or("Missing unit_fee")?,
         })
     }
 }
@@ -1292,35 +1272,7 @@ impl TryFrom<protocol_config::SystemParameters> for SystemParameters {
     fn try_from(domain_params: protocol_config::SystemParameters) -> Result<Self, Self::Error> {
         Ok(SystemParameters {
             epoch_duration_ms: Some(domain_params.epoch_duration_ms),
-            validator_reward_allocation_bps: None,
-            model_min_stake: None,
-            model_architecture_version: None,
-            model_reveal_slash_rate_bps: None,
-            model_tally_slash_rate_bps: None,
-            target_epoch_fee_collection: Some(domain_params.target_epoch_fee_collection),
-            base_fee: Some(domain_params.base_fee),
-            write_object_fee: Some(domain_params.write_object_fee),
-            value_fee_bps: Some(domain_params.value_fee_bps),
-            min_value_fee_bps: Some(domain_params.min_value_fee_bps),
-            max_value_fee_bps: Some(domain_params.max_value_fee_bps),
-            fee_adjustment_rate_bps: Some(domain_params.fee_adjustment_rate_bps),
-            // Deprecated fields - set to None for proto compat
-            target_models_per_target: None,
-            target_embedding_dim: None,
-            target_initial_distance_threshold: None,
-            target_reward_allocation_bps: None,
-            target_hits_per_epoch: None,
-            target_hits_ema_decay_bps: None,
-            target_difficulty_adjustment_rate_bps: None,
-            target_max_distance_threshold: None,
-            target_min_distance_threshold: None,
-            target_initial_targets_per_epoch: None,
-            target_submitter_reward_share_bps: None,
-            target_model_reward_share_bps: None,
-            target_claimer_incentive_bps: None,
-            submission_bond_per_byte: None,
-            max_submission_data_size: None,
-            challenger_bond_per_byte: None,
+            unit_fee: Some(domain_params.unit_fee),
         })
     }
 }

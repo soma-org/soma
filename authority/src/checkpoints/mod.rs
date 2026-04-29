@@ -1661,11 +1661,7 @@ impl CheckpointBuilder {
         let current_tx_fees = TransactionFee::new_from_txn_effects(cur_checkpoint_effects.iter());
         if previous_epoch == self.epoch_store.epoch() {
             // sum only when we are within the same epoch
-            TransactionFee::new(
-                previous_tx_fees.base_fee + current_tx_fees.base_fee,
-                previous_tx_fees.operation_fee + current_tx_fees.operation_fee,
-                previous_tx_fees.value_fee + current_tx_fees.value_fee,
-            )
+            TransactionFee::new(previous_tx_fees.total_fee + current_tx_fees.total_fee)
         } else {
             current_tx_fees
         }

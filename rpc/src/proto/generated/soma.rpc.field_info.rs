@@ -3830,206 +3830,17 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const VALIDATOR_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "validator_reward_allocation_bps",
-            json_name: "validatorRewardAllocationBps",
+        pub const UNIT_FEE_FIELD: &'static MessageField = &MessageField {
+            name: "unit_fee",
+            json_name: "unitFee",
             number: 2i32,
-            message_fields: None,
-        };
-        pub const MODEL_MIN_STAKE_FIELD: &'static MessageField = &MessageField {
-            name: "model_min_stake",
-            json_name: "modelMinStake",
-            number: 3i32,
-            message_fields: None,
-        };
-        pub const MODEL_ARCHITECTURE_VERSION_FIELD: &'static MessageField = &MessageField {
-            name: "model_architecture_version",
-            json_name: "modelArchitectureVersion",
-            number: 4i32,
-            message_fields: None,
-        };
-        pub const MODEL_REVEAL_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "model_reveal_slash_rate_bps",
-            json_name: "modelRevealSlashRateBps",
-            number: 5i32,
-            message_fields: None,
-        };
-        pub const MODEL_TALLY_SLASH_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "model_tally_slash_rate_bps",
-            json_name: "modelTallySlashRateBps",
-            number: 6i32,
-            message_fields: None,
-        };
-        pub const TARGET_EPOCH_FEE_COLLECTION_FIELD: &'static MessageField = &MessageField {
-            name: "target_epoch_fee_collection",
-            json_name: "targetEpochFeeCollection",
-            number: 7i32,
-            message_fields: None,
-        };
-        pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "base_fee",
-            json_name: "baseFee",
-            number: 8i32,
-            message_fields: None,
-        };
-        pub const WRITE_OBJECT_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "write_object_fee",
-            json_name: "writeObjectFee",
-            number: 9i32,
-            message_fields: None,
-        };
-        pub const VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "value_fee_bps",
-            json_name: "valueFeeBps",
-            number: 10i32,
-            message_fields: None,
-        };
-        pub const MIN_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "min_value_fee_bps",
-            json_name: "minValueFeeBps",
-            number: 11i32,
-            message_fields: None,
-        };
-        pub const MAX_VALUE_FEE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "max_value_fee_bps",
-            json_name: "maxValueFeeBps",
-            number: 12i32,
-            message_fields: None,
-        };
-        pub const FEE_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "fee_adjustment_rate_bps",
-            json_name: "feeAdjustmentRateBps",
-            number: 13i32,
-            message_fields: None,
-        };
-        pub const TARGET_MODELS_PER_TARGET_FIELD: &'static MessageField = &MessageField {
-            name: "target_models_per_target",
-            json_name: "targetModelsPerTarget",
-            number: 14i32,
-            message_fields: None,
-        };
-        pub const TARGET_EMBEDDING_DIM_FIELD: &'static MessageField = &MessageField {
-            name: "target_embedding_dim",
-            json_name: "targetEmbeddingDim",
-            number: 15i32,
-            message_fields: None,
-        };
-        pub const TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_initial_distance_threshold",
-            json_name: "targetInitialDistanceThreshold",
-            number: 16i32,
-            message_fields: None,
-        };
-        pub const TARGET_REWARD_ALLOCATION_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_reward_allocation_bps",
-            json_name: "targetRewardAllocationBps",
-            number: 17i32,
-            message_fields: None,
-        };
-        pub const TARGET_HITS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "target_hits_per_epoch",
-            json_name: "targetHitsPerEpoch",
-            number: 18i32,
-            message_fields: None,
-        };
-        pub const TARGET_HITS_EMA_DECAY_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_hits_ema_decay_bps",
-            json_name: "targetHitsEmaDecayBps",
-            number: 19i32,
-            message_fields: None,
-        };
-        pub const TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_difficulty_adjustment_rate_bps",
-            json_name: "targetDifficultyAdjustmentRateBps",
-            number: 20i32,
-            message_fields: None,
-        };
-        pub const TARGET_MAX_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_max_distance_threshold",
-            json_name: "targetMaxDistanceThreshold",
-            number: 21i32,
-            message_fields: None,
-        };
-        pub const TARGET_MIN_DISTANCE_THRESHOLD_FIELD: &'static MessageField = &MessageField {
-            name: "target_min_distance_threshold",
-            json_name: "targetMinDistanceThreshold",
-            number: 22i32,
-            message_fields: None,
-        };
-        pub const TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "target_initial_targets_per_epoch",
-            json_name: "targetInitialTargetsPerEpoch",
-            number: 23i32,
-            message_fields: None,
-        };
-        pub const TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_submitter_reward_share_bps",
-            json_name: "targetSubmitterRewardShareBps",
-            number: 24i32,
-            message_fields: None,
-        };
-        pub const TARGET_MODEL_REWARD_SHARE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_model_reward_share_bps",
-            json_name: "targetModelRewardShareBps",
-            number: 25i32,
-            message_fields: None,
-        };
-        pub const TARGET_CLAIMER_INCENTIVE_BPS_FIELD: &'static MessageField = &MessageField {
-            name: "target_claimer_incentive_bps",
-            json_name: "targetClaimerIncentiveBps",
-            number: 26i32,
-            message_fields: None,
-        };
-        pub const SUBMISSION_BOND_PER_BYTE_FIELD: &'static MessageField = &MessageField {
-            name: "submission_bond_per_byte",
-            json_name: "submissionBondPerByte",
-            number: 27i32,
-            message_fields: None,
-        };
-        pub const CHALLENGER_BOND_PER_BYTE_FIELD: &'static MessageField = &MessageField {
-            name: "challenger_bond_per_byte",
-            json_name: "challengerBondPerByte",
-            number: 28i32,
-            message_fields: None,
-        };
-        pub const MAX_SUBMISSION_DATA_SIZE_FIELD: &'static MessageField = &MessageField {
-            name: "max_submission_data_size",
-            json_name: "maxSubmissionDataSize",
-            number: 30i32,
             message_fields: None,
         };
     }
     impl MessageFields for SystemParameters {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::EPOCH_DURATION_MS_FIELD,
-            Self::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD,
-            Self::MODEL_MIN_STAKE_FIELD,
-            Self::MODEL_ARCHITECTURE_VERSION_FIELD,
-            Self::MODEL_REVEAL_SLASH_RATE_BPS_FIELD,
-            Self::MODEL_TALLY_SLASH_RATE_BPS_FIELD,
-            Self::TARGET_EPOCH_FEE_COLLECTION_FIELD,
-            Self::BASE_FEE_FIELD,
-            Self::WRITE_OBJECT_FEE_FIELD,
-            Self::VALUE_FEE_BPS_FIELD,
-            Self::MIN_VALUE_FEE_BPS_FIELD,
-            Self::MAX_VALUE_FEE_BPS_FIELD,
-            Self::FEE_ADJUSTMENT_RATE_BPS_FIELD,
-            Self::TARGET_MODELS_PER_TARGET_FIELD,
-            Self::TARGET_EMBEDDING_DIM_FIELD,
-            Self::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_REWARD_ALLOCATION_BPS_FIELD,
-            Self::TARGET_HITS_PER_EPOCH_FIELD,
-            Self::TARGET_HITS_EMA_DECAY_BPS_FIELD,
-            Self::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD,
-            Self::TARGET_MAX_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_MIN_DISTANCE_THRESHOLD_FIELD,
-            Self::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD,
-            Self::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD,
-            Self::TARGET_MODEL_REWARD_SHARE_BPS_FIELD,
-            Self::TARGET_CLAIMER_INCENTIVE_BPS_FIELD,
-            Self::SUBMISSION_BOND_PER_BYTE_FIELD,
-            Self::CHALLENGER_BOND_PER_BYTE_FIELD,
-            Self::MAX_SUBMISSION_DATA_SIZE_FIELD,
+            Self::UNIT_FEE_FIELD,
         ];
     }
     impl SystemParameters {
@@ -4056,122 +3867,8 @@ mod _field_impls {
             self.path.push(SystemParameters::EPOCH_DURATION_MS_FIELD.name);
             self.finish()
         }
-        pub fn validator_reward_allocation_bps(mut self) -> String {
-            self.path.push(SystemParameters::VALIDATOR_REWARD_ALLOCATION_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn model_min_stake(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_MIN_STAKE_FIELD.name);
-            self.finish()
-        }
-        pub fn model_architecture_version(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_ARCHITECTURE_VERSION_FIELD.name);
-            self.finish()
-        }
-        pub fn model_reveal_slash_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_REVEAL_SLASH_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn model_tally_slash_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::MODEL_TALLY_SLASH_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_epoch_fee_collection(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_EPOCH_FEE_COLLECTION_FIELD.name);
-            self.finish()
-        }
-        pub fn base_fee(mut self) -> String {
-            self.path.push(SystemParameters::BASE_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn write_object_fee(mut self) -> String {
-            self.path.push(SystemParameters::WRITE_OBJECT_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn min_value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::MIN_VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn max_value_fee_bps(mut self) -> String {
-            self.path.push(SystemParameters::MAX_VALUE_FEE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn fee_adjustment_rate_bps(mut self) -> String {
-            self.path.push(SystemParameters::FEE_ADJUSTMENT_RATE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_models_per_target(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MODELS_PER_TARGET_FIELD.name);
-            self.finish()
-        }
-        pub fn target_embedding_dim(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_EMBEDDING_DIM_FIELD.name);
-            self.finish()
-        }
-        pub fn target_initial_distance_threshold(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_INITIAL_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_reward_allocation_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_REWARD_ALLOCATION_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_hits_per_epoch(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HITS_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn target_hits_ema_decay_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_HITS_EMA_DECAY_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_difficulty_adjustment_rate_bps(mut self) -> String {
-            self.path
-                .push(
-                    SystemParameters::TARGET_DIFFICULTY_ADJUSTMENT_RATE_BPS_FIELD.name,
-                );
-            self.finish()
-        }
-        pub fn target_max_distance_threshold(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MAX_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_min_distance_threshold(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MIN_DISTANCE_THRESHOLD_FIELD.name);
-            self.finish()
-        }
-        pub fn target_initial_targets_per_epoch(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_INITIAL_TARGETS_PER_EPOCH_FIELD.name);
-            self.finish()
-        }
-        pub fn target_submitter_reward_share_bps(mut self) -> String {
-            self.path
-                .push(SystemParameters::TARGET_SUBMITTER_REWARD_SHARE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_model_reward_share_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_MODEL_REWARD_SHARE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn target_claimer_incentive_bps(mut self) -> String {
-            self.path.push(SystemParameters::TARGET_CLAIMER_INCENTIVE_BPS_FIELD.name);
-            self.finish()
-        }
-        pub fn submission_bond_per_byte(mut self) -> String {
-            self.path.push(SystemParameters::SUBMISSION_BOND_PER_BYTE_FIELD.name);
-            self.finish()
-        }
-        pub fn challenger_bond_per_byte(mut self) -> String {
-            self.path.push(SystemParameters::CHALLENGER_BOND_PER_BYTE_FIELD.name);
-            self.finish()
-        }
-        pub fn max_submission_data_size(mut self) -> String {
-            self.path.push(SystemParameters::MAX_SUBMISSION_DATA_SIZE_FIELD.name);
+        pub fn unit_fee(mut self) -> String {
+            self.path.push(SystemParameters::UNIT_FEE_FIELD.name);
             self.finish()
         }
     }
@@ -8502,38 +8199,15 @@ mod _field_impls {
         }
     }
     impl TransactionFee {
-        pub const BASE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "base_fee",
-            json_name: "baseFee",
-            number: 1i32,
-            message_fields: None,
-        };
-        pub const OPERATION_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "operation_fee",
-            json_name: "operationFee",
-            number: 2i32,
-            message_fields: None,
-        };
-        pub const VALUE_FEE_FIELD: &'static MessageField = &MessageField {
-            name: "value_fee",
-            json_name: "valueFee",
-            number: 3i32,
-            message_fields: None,
-        };
         pub const TOTAL_FEE_FIELD: &'static MessageField = &MessageField {
             name: "total_fee",
             json_name: "totalFee",
-            number: 4i32,
+            number: 1i32,
             message_fields: None,
         };
     }
     impl MessageFields for TransactionFee {
-        const FIELDS: &'static [&'static MessageField] = &[
-            Self::BASE_FEE_FIELD,
-            Self::OPERATION_FEE_FIELD,
-            Self::VALUE_FEE_FIELD,
-            Self::TOTAL_FEE_FIELD,
-        ];
+        const FIELDS: &'static [&'static MessageField] = &[Self::TOTAL_FEE_FIELD];
     }
     impl TransactionFee {
         pub fn path_builder() -> TransactionFeeFieldPathBuilder {
@@ -8554,18 +8228,6 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
-        }
-        pub fn base_fee(mut self) -> String {
-            self.path.push(TransactionFee::BASE_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn operation_fee(mut self) -> String {
-            self.path.push(TransactionFee::OPERATION_FEE_FIELD.name);
-            self.finish()
-        }
-        pub fn value_fee(mut self) -> String {
-            self.path.push(TransactionFee::VALUE_FEE_FIELD.name);
-            self.finish()
         }
         pub fn total_fee(mut self) -> String {
             self.path.push(TransactionFee::TOTAL_FEE_FIELD.name);

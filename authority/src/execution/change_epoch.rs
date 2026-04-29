@@ -11,7 +11,7 @@ use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::{FeeCalculator, TransactionExecutor};
+use super::TransactionExecutor;
 
 /// Executor for system state transactions (validators)
 pub struct ChangeEpochExecutor;
@@ -22,7 +22,6 @@ impl ChangeEpochExecutor {
     }
 }
 
-impl FeeCalculator for ChangeEpochExecutor {}
 
 /// Under msim, optionally inject a failure for specific epochs.
 /// Tests register a `fail_point_if` callback for "advance_epoch_result_injection"
@@ -54,13 +53,16 @@ fn maybe_inject_advance_epoch_failure(
 }
 
 impl TransactionExecutor for ChangeEpochExecutor {
+    fn fee_units(&self, _store: &TemporaryStore, _kind: &TransactionKind) -> u32 {
+        0
+    }
+
     fn execute(
         &mut self,
         store: &mut TemporaryStore,
         _signer: SomaAddress,
         kind: TransactionKind,
         tx_digest: TransactionDigest,
-        _value_fee: u64,
     ) -> ExecutionResult<()> {
         // Get system state object
         let state_object = store
