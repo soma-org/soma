@@ -273,26 +273,6 @@ EXAMPLES:
         json: bool,
     },
 
-    /// Request test tokens from a faucet server
-    #[clap(
-        name = "faucet",
-        after_help = "\
-EXAMPLES:
-    soma faucet
-    soma faucet --address 0x1234...5678
-    soma faucet --url http://127.0.0.1:9123"
-    )]
-    Faucet {
-        /// Address to receive tokens (defaults to active address)
-        #[clap(long)]
-        address: Option<soma_keys::key_identity::KeyIdentity>,
-        /// The URL of the faucet server
-        #[clap(long)]
-        url: Option<String>,
-        #[clap(long, global = true, help = "Output as JSON")]
-        json: bool,
-    },
-
     /// Merge dust coins to reduce object count
     #[clap(
         name = "merge",
@@ -414,14 +394,13 @@ EXAMPLES:
     // =========================================================================
     // NODE OPERATIONS
     // =========================================================================
-    /// Start a long-running service (localnet, validator, faucet)
+    /// Start a long-running service (localnet, validator)
     #[clap(
         name = "start",
         after_help = "\
 EXAMPLES:
     soma start localnet --force-regenesis
-    soma start validator --config validator.yaml
-    soma start faucet --port 9123"
+    soma start validator --config validator.yaml"
     )]
     Start {
         #[clap(subcommand)]
@@ -452,8 +431,6 @@ EXAMPLES:
         force: bool,
         #[clap(long = "epoch-duration-ms")]
         epoch_duration_ms: Option<u64>,
-        #[clap(long, help = "Creates an extra faucet configuration for soma persisted runs.")]
-        with_faucet: bool,
         /// Set number of validators in the network.
         #[clap(long)]
         committee_size: Option<usize>,
@@ -492,15 +469,14 @@ EXAMPLES:
 pub enum StartCommand {
     /// Start a local SOMA network for development and testing
     ///
-    /// Launches local validators, a fullnode, and optionally a faucet.
+    /// Launches local validators and a fullnode.
     /// State is persisted in ~/.soma/ by default, or use --force-regenesis
     /// for an ephemeral network that starts fresh each time.
     #[clap(
         name = "localnet",
         after_help = "\
 EXAMPLES:
-    soma start localnet --force-regenesis
-    soma start localnet --no-faucet"
+    soma start localnet --force-regenesis"
     )]
     Localnet {
         /// Config directory that will be used to store network config, node db, keystore.
@@ -535,20 +511,6 @@ EXAMPLES:
         /// Log level for CLI output (trace, debug, info, warn, error).
         #[clap(long, default_value = "info")]
         log_level: String,
-
-        /// Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable.
-        #[clap(
-            long,
-            default_missing_value = "0.0.0.0:9123",
-            num_args = 0..=1,
-            require_equals = true,
-            value_name = "FAUCET_HOST_PORT",
-        )]
-        with_faucet: Option<String>,
-
-        /// Disable the faucet server.
-        #[clap(long)]
-        no_faucet: bool,
     },
 
     /// Start a validator node from a config file
@@ -562,33 +524,6 @@ EXAMPLES:
         /// Path to the validator config file (YAML)
         #[clap(long = "config", short = 'c')]
         config: PathBuf,
-    },
-
-    /// Start a standalone faucet gRPC server
-    #[clap(
-        name = "faucet",
-        after_help = "\
-EXAMPLES:
-    soma start faucet
-    soma start faucet --port 9999 --host 0.0.0.0
-    soma start faucet --amount 5000000000 --num-coins 2"
-    )]
-    Faucet {
-        /// Port to listen on
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_FAUCET_PORT)]
-        port: u16,
-        /// Host IP to bind to
-        #[clap(long, default_value = "0.0.0.0")]
-        host: String,
-        /// Amount of shannons to send per coin
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_AMOUNT)]
-        amount: u64,
-        /// Number of coins to send per request
-        #[clap(long, default_value_t = faucet::faucet_config::DEFAULT_NUM_COINS)]
-        num_coins: usize,
-        /// Path to the client config directory
-        #[clap(long)]
-        config_dir: Option<PathBuf>,
     },
 }
 
@@ -657,7 +592,6 @@ impl SomaCommand {
                     log_level.parse().unwrap_or(tracing::Level::INFO)
                 }
                 StartCommand::Validator { .. } => tracing::Level::INFO,
-                StartCommand::Faucet { .. } => tracing::Level::INFO,
             },
             _ => tracing::Level::ERROR,
         }
@@ -806,12 +740,6 @@ impl SomaCommand {
                 if result.has_failed_transaction() {
                     std::process::exit(1);
                 }
-                Ok(())
-            }
-
-            SomaCommand::Faucet { address, url, json: _ } => {
-                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                commands::faucet::execute_request(&mut context, address, url).await?;
                 Ok(())
             }
 
@@ -1017,15 +945,7 @@ impl SomaCommand {
                         epoch_duration_ms,
                         committee_size,
                         log_level: _,
-                        with_faucet,
-                        no_faucet,
                     } => {
-                        // Faucet: on by default unless --no-faucet
-                        let faucet = if no_faucet {
-                            None
-                        } else {
-                            Some(with_faucet.unwrap_or_else(|| "0.0.0.0:9123".to_string()))
-                        };
                         start(
                             config_dir.clone(),
                             force_regenesis,
@@ -1034,16 +954,11 @@ impl SomaCommand {
                             data_ingestion_dir,
                             no_full_node,
                             committee_size,
-                            faucet,
                         )
                         .await?;
                     }
                     StartCommand::Validator { config } => {
                         commands::validator::start_validator_node(config).await?;
-                    }
-                    StartCommand::Faucet { port, host, amount, num_coins, config_dir } => {
-                        commands::faucet::execute_start(port, host, amount, num_coins, config_dir)
-                            .await?;
                     }
                 }
                 Ok(())
@@ -1056,7 +971,6 @@ impl SomaCommand {
                 from_config,
                 write_config,
                 epoch_duration_ms,
-                with_faucet,
                 committee_size,
             } => {
                 match cmd {
@@ -1074,7 +988,6 @@ impl SomaCommand {
                     working_dir,
                     force,
                     epoch_duration_ms,
-                    with_faucet,
                     committee_size,
                 )
                 .await
@@ -1112,7 +1025,6 @@ async fn start(
     mut data_ingestion_dir: Option<PathBuf>,
     no_full_node: bool,
     committee_size: Option<usize>,
-    with_faucet: Option<String>,
 ) -> Result<(), anyhow::Error> {
     if force_regenesis {
         ensure!(
@@ -1138,11 +1050,7 @@ async fn start(
         }
         .ok_or_else(|| anyhow!("Committee size must be at least 1."))?;
         swarm_builder = swarm_builder.committee_size(committee_size);
-        let mut genesis_config = if with_faucet.is_some() {
-            GenesisConfig::for_local_testing().add_faucet_account()
-        } else {
-            GenesisConfig::for_local_testing()
-        };
+        let mut genesis_config = GenesisConfig::for_local_testing();
         swarm_builder = swarm_builder.with_genesis_config(genesis_config);
         let epoch_duration_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
         swarm_builder = swarm_builder.with_epoch_duration_ms(epoch_duration_ms);
@@ -1183,7 +1091,7 @@ async fn start(
                 let network_config = soma_config.join(SOMA_NETWORK_CONFIG);
 
                 if !network_config.exists() {
-                    genesis(None, None, None, false, epoch_duration_ms, false, committee_size)
+                    genesis(None, None, None, false, epoch_duration_ms, committee_size)
                         .await
                         .map_err(|_| {
                             anyhow!(
@@ -1276,87 +1184,6 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
-    // -- Faucet ---------------------------------------------------------------
-    // Faucet startup logic derived from MystenLabs/sui (Apache-2.0)
-    // See: https://github.com/MystenLabs/sui/blob/main/crates/sui/src/sui_commands.rs
-    let mut faucet_url: Option<String> = None;
-    if let Some(input) = with_faucet {
-        let msg = "Starting faucet...";
-        eprint!("  {msg:<width$}", width = STATUS_WIDTH);
-        let (host, port) = parse_faucet_host_port(&input)?;
-
-        // Extract the last account key as the faucet key (added by add_faucet_account)
-        let faucet_key = if force_regenesis {
-            let keys = &swarm.config().account_keys;
-            if keys.is_empty() {
-                bail!("No account keys found in swarm config for faucet");
-            }
-            Some(keys.last().expect("account_keys is not empty").copy())
-        } else {
-            None
-        };
-
-        // Set up a wallet context for the faucet
-        let keystore_path = tempfile::tempdir()?.keep().join(SOMA_KEYSTORE_FILENAME);
-        let mut faucet_keystore = FileBasedKeystore::load_or_create(&keystore_path)?;
-
-        if let Some(key) = faucet_key {
-            faucet_keystore.import(None, key).await?;
-        } else {
-            // For persisted runs, import all keys from the network config
-            for key in &swarm.config().account_keys {
-                faucet_keystore.import(None, key.copy()).await?;
-            }
-        }
-
-        let active_address = faucet_keystore.addresses().pop();
-
-        let mut client_config = SomaClientConfig::new(Keystore::from(faucet_keystore));
-        client_config.active_address = active_address;
-        client_config.add_env(SomaEnv {
-            alias: "localnet".to_string(),
-            rpc: fullnode_rpc_url.clone(),
-            basic_auth: None,
-            chain_id: None,
-        });
-        client_config.active_env = Some("localnet".to_string());
-
-        let faucet_config_path =
-            keystore_path.parent().expect("keystore path has a parent").join(SOMA_CLIENT_CONFIG);
-        client_config.save(&faucet_config_path)?;
-
-        let wallet_context = create_wallet_context(
-            60,
-            faucet_config_path.parent().expect("config path has a parent").to_path_buf(),
-        )?;
-
-        let faucet_config = faucet::faucet_config::FaucetConfig {
-            port,
-            host_ip: host.clone(),
-            ..Default::default()
-        };
-
-        let faucet_instance =
-            faucet::local_faucet::LocalFaucet::new(wallet_context, faucet_config.clone())
-                .await
-                .map_err(|e| anyhow!("Failed to initialize faucet: {e}"))?;
-
-        let app_state = std::sync::Arc::new(faucet::app_state::AppState {
-            faucet: std::sync::Arc::new(faucet_instance),
-            config: faucet_config,
-        });
-
-        tokio::spawn(async move {
-            if let Err(e) = faucet::server::start_faucet(app_state).await {
-                tracing::error!("Faucet server error: {}", e);
-            }
-        });
-
-        let display_host = if host == "0.0.0.0" { "127.0.0.1" } else { &host };
-        faucet_url = Some(format!("http://{display_host}:{port}/gas"));
-        eprintln!("{}", "done".green());
-    }
-
     // -- Admin server (epoch advance) -----------------------------------------
     let swarm = std::sync::Arc::new(swarm);
     {
@@ -1383,11 +1210,9 @@ async fn start(
     eprintln!();
     eprintln!("  {}", "Network ready.".green().bold());
     eprintln!();
-    let faucet_display = faucet_url.as_deref().unwrap_or("disabled");
     let epoch_display = format!("{}s", epoch_ms / 1000);
     let rows: Vec<(&str, &str)> = vec![
         ("RPC URL", &fullnode_rpc_url),
-        ("Faucet", faucet_display),
         ("Admin", &admin_url),
         ("Epoch", &epoch_display),
         ("Persistence", persistence),
@@ -1573,7 +1398,6 @@ async fn genesis(
     working_dir: Option<PathBuf>,
     force: bool,
     epoch_duration_ms: Option<u64>,
-    with_faucet: bool,
     committee_size: Option<usize>,
 ) -> Result<(), anyhow::Error> {
     let soma_config_dir = &match working_dir {
@@ -1643,11 +1467,6 @@ async fn genesis(
             }
         }
     };
-
-    if with_faucet {
-        info!("Adding faucet account to genesis config...");
-        genesis_conf = genesis_conf.add_faucet_account();
-    }
 
     if let Some(path) = write_config {
         let persisted = genesis_conf.persisted(&path);
@@ -1861,22 +1680,3 @@ fn update_wallet_config_rpc(
     Ok(wallet_context)
 }
 
-/// Parse a faucet host:port string like "0.0.0.0:9123" or just a port number.
-fn parse_faucet_host_port(input: &str) -> Result<(String, u16), anyhow::Error> {
-    if let Ok(port) = input.parse::<u16>() {
-        return Ok(("0.0.0.0".to_string(), port));
-    }
-
-    if let Ok(addr) = input.parse::<SocketAddr>() {
-        return Ok((addr.ip().to_string(), addr.port()));
-    }
-
-    // Try host:port format
-    if let Some((host, port_str)) = input.rsplit_once(':') {
-        let port: u16 =
-            port_str.parse().map_err(|_| anyhow!("Invalid port in faucet address: {input}"))?;
-        return Ok((host.to_string(), port));
-    }
-
-    bail!("Invalid faucet address format: {input}. Expected host:port or just a port number.")
-}

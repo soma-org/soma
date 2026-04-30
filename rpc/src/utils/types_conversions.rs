@@ -1218,6 +1218,9 @@ impl From<ExecutionError> for types::effects::ExecutionFailureStatus {
     fn from(value: ExecutionError) -> Self {
         match value {
             ExecutionError::InsufficientGas => Self::InsufficientGas,
+            ExecutionError::InvalidGasCoinType { object_id } => {
+                Self::InvalidGasCoinType { object_id: object_id.into() }
+            }
             ExecutionError::InvalidOwnership { object_id } => Self::InvalidOwnership {
                 object_id: object_id.into(),
                 expected_owner: object_id.into(), // TODO: change this

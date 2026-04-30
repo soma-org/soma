@@ -371,18 +371,7 @@ async fn test_safe_mode_reconfig() {
         test_cluster.wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
     assert_eq!(system_state.epoch(), 2);
-    assert_eq!(system_state.safe_mode_accumulated_fees(), 0); // fees from just this epoch
-    // Emissions should have been accumulated
-    assert!(
-        system_state.safe_mode_accumulated_emissions() > 0,
-        "Should have accumulated emissions during safe mode"
-    );
-
-    info!(
-        "Safe mode activated: fees={}, emissions={}",
-        system_state.safe_mode_accumulated_fees(),
-        system_state.safe_mode_accumulated_emissions()
-    );
+    info!("Safe mode activated at epoch 2 (emissions forfeited, fees route to fund inline)");
 
     // Verify transactions still work during safe mode
     let sender = test_cluster.get_addresses()[0];
@@ -395,10 +384,13 @@ async fn test_safe_mode_reconfig() {
     if let Some(gas_object) =
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
     {
+        // AddStake principal must be SOMA; gas is USDC.
+        let (stake_coin, _) =
+            test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().unwrap();
         let tx_data = types::transaction::TransactionData::new(
             types::transaction::TransactionKind::AddStake {
                 address: validator_address,
-                coin_ref: gas_object,
+                coin_ref: stake_coin,
                 amount: Some(1_000_000),
             },
             sender,
@@ -418,8 +410,6 @@ async fn test_safe_mode_reconfig() {
         test_cluster.wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode(), "Should have recovered from safe mode at epoch 3");
     assert_eq!(system_state.epoch(), 3);
-    assert_eq!(system_state.safe_mode_accumulated_fees(), 0);
-    assert_eq!(system_state.safe_mode_accumulated_emissions(), 0);
 
     info!("Safe mode recovery complete at epoch 3");
 
@@ -458,22 +448,13 @@ async fn test_safe_mode_multi_epoch() {
     let system_state =
         test_cluster.wait_for_epoch_with_timeout(Some(2), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should be in safe mode at epoch 2");
-    let epoch2_emissions = system_state.safe_mode_accumulated_emissions();
-    assert!(epoch2_emissions > 0, "Should have accumulated emissions");
 
-    // Wait for epoch 3 (still safe mode, more accumulation)
+    // Wait for epoch 3 (still safe mode)
     let system_state =
         test_cluster.wait_for_epoch_with_timeout(Some(3), Duration::from_secs(60)).await;
     assert!(system_state.safe_mode(), "Should still be in safe mode at epoch 3");
-    assert!(
-        system_state.safe_mode_accumulated_emissions() >= epoch2_emissions,
-        "Accumulated emissions should increase across safe mode epochs"
-    );
 
-    info!(
-        "Multi-epoch safe mode: total accumulated emissions={}",
-        system_state.safe_mode_accumulated_emissions()
-    );
+    info!("Multi-epoch safe mode held across epochs 2-3 (emissions forfeited)");
 
     // Disable failure injection so epoch 4 recovers
     INJECT_FAILURE.store(false, Ordering::SeqCst);
@@ -482,8 +463,6 @@ async fn test_safe_mode_multi_epoch() {
     let system_state =
         test_cluster.wait_for_epoch_with_timeout(Some(4), Duration::from_secs(60)).await;
     assert!(!system_state.safe_mode(), "Should recover from safe mode at epoch 4");
-    assert_eq!(system_state.safe_mode_accumulated_fees(), 0, "Accumulators should be drained");
-    assert_eq!(system_state.safe_mode_accumulated_emissions(), 0, "Accumulators should be drained");
 
     info!("Multi-epoch safe mode recovery complete at epoch 4");
 
@@ -610,10 +589,16 @@ async fn test_crash_during_reconfig_with_tx_load() {
         if let Some(gas_object) =
             test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
         {
+            // Stake principal must be SOMA; gas is USDC.
+            let stake_coin =
+                match test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap() {
+                    Some((c, _)) => c,
+                    None => break,
+                };
             let tx_data = types::transaction::TransactionData::new(
                 types::transaction::TransactionKind::AddStake {
                     address: validator_address,
-                    coin_ref: gas_object,
+                    coin_ref: stake_coin,
                     amount: Some(1_000_000),
                 },
                 sender,

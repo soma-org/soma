@@ -20,7 +20,6 @@ members = [
   "data-ingestion",
   "protocol-config",
   "protocol-config-macros",
-  "faucet",
   "admin",
   "soma-field-count-derive",
   "soma-field-count",
@@ -106,7 +105,6 @@ store = { path = "store" }
 data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
-faucet = { path = "faucet" }
 admin = { path = "admin" }
 soma-field-count-derive = { path = "soma-field-count-derive" }
 soma-field-count = { path = "soma-field-count" }

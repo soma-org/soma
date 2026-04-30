@@ -108,6 +108,8 @@ impl GenesisConfig {
             accounts.push(AccountConfig {
                 address: None,
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
+                // USDC is the gas currency on Soma; every test account needs some.
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT * 10; num_objects_per_account],
                 ..Default::default()
             })
         }
@@ -124,6 +126,8 @@ impl GenesisConfig {
             accounts.push(AccountConfig {
                 address: Some(address),
                 gas_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
+                // USDC is the gas currency on Soma; every test account needs some.
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT; num_objects_per_account],
                 ..Default::default()
             })
         }

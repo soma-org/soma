@@ -548,6 +548,23 @@ impl GenesisBuilder {
             }
         }
 
+        // Give every validator a starter USDC balance so they can submit
+        // user-level txs (AddStake, etc.) without needing to bridge USDC in
+        // first. Trivial amount; tests rely on this for validator-as-sender
+        // scenarios. Not load-bearing for production: in production, validators
+        // bridge USDC in like anyone else if they need it.
+        const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
+        for v in &self.validators {
+            let coin_object = Object::new_coin(
+                Self::deterministic_object_id(&mut id_counter),
+                CoinType::Usdc,
+                VALIDATOR_GENESIS_USDC,
+                Owner::AddressOwner(v.info.account_address),
+                TransactionDigest::default(),
+            );
+            objects.push(coin_object);
+        }
+
         // Set voting power and build committee
         system_state.validators_mut().set_voting_power();
 

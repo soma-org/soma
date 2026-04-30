@@ -44,8 +44,10 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
         staking += v.staking_pool.soma_balance as u128;
         staking += v.staking_pool.pending_stake as u128;
     }
-    let safe_mode =
-        ss.safe_mode_accumulated_fees() as u128 + ss.safe_mode_accumulated_emissions() as u128;
+    // Safe-mode accumulators no longer exist (Phase 1 fee model). Safe mode now
+    // routes fees inline to protocol_fund and forfeits emissions. Returning 0
+    // preserves the tuple shape for callers that still expect three values.
+    let safe_mode = 0u128;
 
     (emission, staking, safe_mode)
 }
@@ -72,7 +74,11 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             5
         ])
         .build()
@@ -93,11 +99,17 @@ async fn test_supply_conservation_across_epoch_with_staking() {
             .await
             .unwrap()
             .expect("Should have gas");
+        let (stake_coin, _) = test_cluster
+            .wallet
+            .get_richest_soma_coin(sender)
+            .await
+            .unwrap()
+            .expect("Should have SOMA coin");
 
         let tx_data = TransactionData::new(
             TransactionKind::AddStake {
                 address: validator_address,
-                coin_ref: gas,
+                coin_ref: stake_coin,
                 amount: Some(1_000_000),
             },
             sender,
@@ -147,7 +159,11 @@ async fn test_supply_conservation_multi_epoch() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             10
         ])
         .build()
@@ -171,11 +187,17 @@ async fn test_supply_conservation_multi_epoch() {
             .await
             .unwrap()
             .expect("Should have gas");
+        let (stake_coin, _) = test_cluster
+            .wallet
+            .get_richest_soma_coin(sender)
+            .await
+            .unwrap()
+            .expect("Should have SOMA coin");
 
         let tx_data = TransactionData::new(
             TransactionKind::AddStake {
                 address: validator_address,
-                coin_ref: gas,
+                coin_ref: stake_coin,
                 amount: Some(500_000),
             },
             sender,
@@ -219,7 +241,11 @@ async fn test_emission_pool_accounting() {
     let test_cluster = TestClusterBuilder::new()
         .with_num_validators(4)
         .with_accounts(vec![
-            AccountConfig { gas_amounts: vec![DEFAULT_GAS_AMOUNT], usdc_amounts: vec![], address: None };
+            AccountConfig {
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT],
+                address: None,
+            };
             3
         ])
         .build()
@@ -237,13 +263,16 @@ async fn test_emission_pool_accounting() {
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
     let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
+    // Gas is USDC; stake principal must be SOMA.
     let gas =
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
+    let (stake_coin, _) =
+        test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
             address: validator_address,
-            coin_ref: gas,
+            coin_ref: stake_coin,
             amount: Some(1_000_000),
         },
         sender,

@@ -5,7 +5,7 @@ expression: stdout
 ---
 Start a local SOMA network for development and testing
 
-Launches local validators, a fullnode, and optionally a faucet. State is persisted in ~/.soma/ by default, or use --force-regenesis for an ephemeral network that starts fresh each time.
+Launches local validators and a fullnode. State is persisted in ~/.soma/ by default, or use --force-regenesis for an ephemeral network that starts fresh each time.
 
 Usage: soma start localnet [OPTIONS]
 
@@ -38,15 +38,8 @@ Options:
           
           [default: info]
 
-      --with-faucet[=<FAUCET_HOST_PORT>]
-          Faucet host:port (default: 0.0.0.0:9123). Use --no-faucet to disable
-
-      --no-faucet
-          Disable the faucet server
-
   -h, --help
           Print help (see a summary with '-h')
 
 EXAMPLES:
     soma start localnet --force-regenesis
-    soma start localnet --no-faucet

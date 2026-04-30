@@ -13,7 +13,6 @@ Commands:
   transfer-object  Transfer an object to a recipient
   stake            Stake SOMA with a validator
   unstake          Withdraw staked SOMA
-  faucet           Request test tokens from a faucet server
   merge            Merge dust coins to reduce object count [aliases: merge-coins]
   status           Show network connection status, version info, and active address
   objects          Query on-chain objects by owner or ID
@@ -21,7 +20,7 @@ Commands:
   wallet           Manage wallet addresses and keys
   env              Manage network environments (switch, add, list)
   validator        Manage validators (register, set gas price, commission)
-  start            Start a long-running service (localnet, validator, faucet)
+  start            Start a long-running service (localnet, validator)
   network          Inspect local network configuration and validator addresses
   genesis          Bootstrap and initialize a new SOMA network
   keytool          Low-level keystore operations (generate, import, export keys)

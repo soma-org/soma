@@ -597,10 +597,17 @@ async fn execute_add_stake_transaction(
         .await
         .unwrap()
         .expect("Can't get gas object for address");
+    // Stake principal must be SOMA; gas (above) is USDC.
+    let (stake_coin, _) = test_cluster
+        .wallet
+        .get_richest_soma_coin((&signer.public()).into())
+        .await
+        .unwrap()
+        .expect("Can't get SOMA coin for address");
 
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
-            TransactionKind::AddStake { address, coin_ref: gas_object, amount: Some(stake) },
+            TransactionKind::AddStake { address, coin_ref: stake_coin, amount: Some(stake) },
             (&signer.public()).into(),
             vec![gas_object],
         ),
@@ -890,15 +897,17 @@ async fn test_create_advance_epoch_tx_race() {
             break;
         }
 
-        // Get a gas object and submit a stake transaction.
+        // Get a gas object (USDC) and a stake coin (SOMA), then submit a stake tx.
         let gas_object =
             test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap();
+        let stake_coin =
+            test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().map(|(r, _)| r);
 
-        if let Some(gas_object) = gas_object {
+        if let (Some(gas_object), Some(stake_coin)) = (gas_object, stake_coin) {
             let tx_data = TransactionData::new(
                 TransactionKind::AddStake {
                     address: validator_address,
-                    coin_ref: gas_object,
+                    coin_ref: stake_coin,
                     amount: Some(1_000_000),
                 },
                 sender,

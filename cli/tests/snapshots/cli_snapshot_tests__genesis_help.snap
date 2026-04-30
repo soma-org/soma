@@ -23,8 +23,6 @@ Options:
           Forces overwriting existing configuration
       --epoch-duration-ms <EPOCH_DURATION_MS>
           
-      --with-faucet
-          Creates an extra faucet configuration for soma persisted runs.
       --committee-size <COMMITTEE_SIZE>
           Set number of validators in the network
   -h, --help

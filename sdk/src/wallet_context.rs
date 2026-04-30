@@ -235,7 +235,8 @@ impl WalletContext {
         let page_size = limit.unwrap_or(100).min(1000) as u32;
         request.page_size = Some(page_size);
 
-        request.object_type = Some("Coin".to_string());
+        // Gas is paid in USDC; filter for USDC coins.
+        request.object_type = Some("Coin(USDC)".to_string());
         request.read_mask = Some(FieldMask::from_paths([
             "object_id",
             "version",
@@ -252,7 +253,7 @@ impl WalletContext {
         let object_refs: Vec<ObjectRef> = Vec::new();
         tokio::pin!(stream);
 
-        // Convert the objects to ObjectRef
+        // The RPC filter pre-narrows to USDC coins (gas currency on Soma).
         let mut object_refs = Vec::new();
         while let Some(object) = stream.try_next().await? {
             object_refs.push(object.compute_object_reference());
@@ -310,7 +311,8 @@ impl WalletContext {
         let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
         request.owner = Some(address.to_string());
         request.page_size = Some(1000);
-        request.object_type = Some("Coin".to_string());
+        // Gas is paid in USDC; filter for USDC coins.
+        request.object_type = Some("Coin(USDC)".to_string());
         request.read_mask = Some(FieldMask::from_paths([
             "object_id",
             "version",
@@ -326,6 +328,7 @@ impl WalletContext {
 
         let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
         while let Some(object) = stream.try_next().await? {
+            // RPC pre-filters to USDC; just collect.
             let balance = object.as_coin().unwrap_or(0);
             let obj_ref = object.compute_object_reference();
             coins.push((obj_ref, balance));
@@ -403,6 +406,57 @@ impl WalletContext {
         address: SomaAddress,
     ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
         Ok(self.get_usdc_coins_sorted_by_balance(address).await?.into_iter().next())
+    }
+
+    /// Return up to `MAX_COINS` SOMA coins owned by `address`, sorted
+    /// richest-first, with their balances (in shannons). Useful for picking
+    /// a stake principal for AddStake (gas itself is paid in USDC).
+    pub async fn get_soma_coins_sorted_by_balance(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
+        const MAX_COINS: usize = 256;
+
+        let client = self.get_client().await?;
+
+        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+        request.owner = Some(address.to_string());
+        request.page_size = Some(1000);
+        // Filter for SOMA coins specifically
+        request.object_type = Some("Coin(SOMA)".to_string());
+        request.read_mask = Some(FieldMask::from_paths([
+            "object_id",
+            "version",
+            "digest",
+            "object_type",
+            "owner",
+            "contents",
+            "previous_transaction",
+        ]));
+
+        let stream = client.list_owned_objects(request).await;
+        tokio::pin!(stream);
+
+        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
+        while let Some(object) = stream.try_next().await? {
+            let balance = object.as_coin().unwrap_or(0);
+            let obj_ref = object.compute_object_reference();
+            coins.push((obj_ref, balance));
+            if coins.len() >= MAX_COINS {
+                break;
+            }
+        }
+
+        coins.sort_by(|a, b| b.1.cmp(&a.1));
+        Ok(coins)
+    }
+
+    /// Return the richest SOMA coin owned by this address, with its balance.
+    pub async fn get_richest_soma_coin(
+        &self,
+        address: SomaAddress,
+    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
+        Ok(self.get_soma_coins_sorted_by_balance(address).await?.into_iter().next())
     }
 
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {

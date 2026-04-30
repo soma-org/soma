@@ -5,7 +5,6 @@
 // Command modules for top-level CLI commands
 pub mod balance;
 pub mod env;
-pub mod faucet;
 pub mod merge;
 pub mod objects;
 pub mod pay;

@@ -51,11 +51,18 @@ async fn execute_stake_tx(
         .await
         .unwrap()
         .expect("Should have a gas object");
+    // Stake principal must be SOMA; gas is USDC.
+    let (stake_coin, _) = test_cluster
+        .wallet
+        .get_richest_soma_coin(sender)
+        .await
+        .unwrap()
+        .expect("Should have a SOMA coin");
 
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
             address: validator_address,
-            coin_ref: gas,
+            coin_ref: stake_coin,
             amount: Some(1_000_000),
         },
         sender,

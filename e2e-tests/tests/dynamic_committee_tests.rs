@@ -224,10 +224,18 @@ mod add_stake {
                 .await
                 .unwrap()
                 .unwrap();
+            // Stake principal must be SOMA; gas (above) is USDC.
+            let (stake_coin, _) = runner
+                .test_cluster
+                .wallet
+                .get_richest_soma_coin(address)
+                .await
+                .unwrap()
+                .expect("staker should have a SOMA coin");
 
             let kind = TransactionKind::AddStake {
                 address: self.staked_with,
-                coin_ref: gas_object,
+                coin_ref: stake_coin,
                 amount: Some(self.stake_amount),
             };
 

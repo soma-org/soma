@@ -199,15 +199,6 @@ fn test_keytool_help() {
 }
 
 #[test]
-fn test_faucet_help() {
-    let output =
-        soma_cmd().args(["faucet", "--help"]).output().expect("failed to run soma faucet --help");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    insta::assert_snapshot!("faucet_help", stdout);
-}
-
-#[test]
 fn test_completions_help() {
     let output = soma_cmd()
         .args(["completions", "--help"])

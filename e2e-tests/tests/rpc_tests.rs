@@ -259,21 +259,47 @@ async fn test_get_balance_and_list_owned_objects() {
 
     assert!(!objects.is_empty(), "Funded address should own at least one object");
 
-    // List with explicit Coin type filter
-    let mut coin_request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-    coin_request.owner = Some(funded_address.to_string());
-    coin_request.object_type = Some("Coin".to_string());
-    let coins: Vec<_> = client
-        .list_owned_objects(coin_request)
+    // List SOMA coins owned by funded address.
+    let mut soma_request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+    soma_request.owner = Some(funded_address.to_string());
+    soma_request.object_type = Some("Coin(SOMA)".to_string());
+    let soma_coins: Vec<_> = client
+        .list_owned_objects(soma_request)
         .await
         .collect::<Vec<_>>()
         .await
         .into_iter()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
+    assert!(!soma_coins.is_empty(), "Funded address should own at least one SOMA Coin");
 
-    assert!(!coins.is_empty(), "Funded address should own at least one Coin");
-    assert_eq!(objects.len(), coins.len(), "All objects for a funded address should be Coins");
+    // List USDC coins owned by funded address.
+    let mut usdc_request = rpc::proto::soma::ListOwnedObjectsRequest::default();
+    usdc_request.owner = Some(funded_address.to_string());
+    usdc_request.object_type = Some("Coin(USDC)".to_string());
+    let usdc_coins: Vec<_> = client
+        .list_owned_objects(usdc_request)
+        .await
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(!usdc_coins.is_empty(), "Funded address should own at least one USDC Coin");
 
-    info!("Balance for {} = {}, objects owned = {}", funded_address, balance, objects.len());
+    // SOMA + USDC should account for all owned objects (no other types at genesis).
+    assert_eq!(
+        objects.len(),
+        soma_coins.len() + usdc_coins.len(),
+        "All owned objects should be SOMA or USDC coins"
+    );
+
+    info!(
+        "Balance for {} = {}, total objects = {} (SOMA={}, USDC={})",
+        funded_address,
+        balance,
+        objects.len(),
+        soma_coins.len(),
+        usdc_coins.len()
+    );
 }
