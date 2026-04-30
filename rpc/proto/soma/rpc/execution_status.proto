@@ -223,6 +223,9 @@ message ExecutionError {
 
     // Model decryption key commitment mismatch
     MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH = 57;
+
+    // Gas coin must be USDC
+    INVALID_GAS_COIN_TYPE = 58;
   }
 
   optional ExecutionErrorKind kind = 2;

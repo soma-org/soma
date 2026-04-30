@@ -305,9 +305,9 @@ async fn test_bridge_withdraw_wrong_coin_type_rejected() {
     let sender_key = SomaKeyPair::Ed25519(key);
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    // Try to withdraw with a SOMA coin
+    // Try to withdraw with a SOMA coin (BridgeWithdraw expects USDC).
     let soma_id = ObjectID::random();
-    let soma = Object::with_id_owner_coin_for_testing(soma_id, sender, 10_000_000);
+    let soma = Object::with_id_owner_soma_coin_for_testing(soma_id, sender, 10_000_000);
     let soma_ref = soma.compute_object_reference();
     authority_state.insert_genesis_object(soma).await;
 

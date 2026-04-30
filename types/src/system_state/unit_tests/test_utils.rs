@@ -125,53 +125,70 @@ pub fn unstake(system_state: &mut SystemState, staked_soma: StakedSomaV1) -> u64
 }
 
 // Helper function to distribute rewards and advance epoch.
-// `reward_amount` is in SOMA and represents the total transaction fees for the epoch.
-// Tests set validator_reward_allocation_bps=10000 so 100% of fees go to validators.
+//
+// Under the current fee model, fees route to protocol_fund (not validators).
+// To keep tests asserting validator reward distribution, we inject
+// `reward_amount` (in SOMA) into the emission pool's
+// `current_distribution_amount` so it flows to validators via emissions.
 pub fn advance_epoch_with_reward_amounts(
     system_state: &mut SystemState,
     reward_amount: u64,
     validator_stakes: &mut ValidatorRewards,
 ) {
-    // Calculate next epoch
     let next_epoch = system_state.epoch() + 1;
-
-    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
         system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    // Inject reward budget into the emission pool so it goes to validators.
+    let reward_shannons = reward_amount * SHANNONS_PER_SOMA;
+    match system_state {
+        SystemState::V1(v1) => {
+            v1.emission_pool.current_distribution_amount = reward_shannons;
+            if v1.emission_pool.balance < reward_shannons {
+                v1.emission_pool.balance = reward_shannons;
+            }
+        }
+    }
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
         protocol_config::Chain::default(),
     );
 
-    // Advance the epoch
+    // Pass 0 fees — they route to protocol_fund, not validators.
     let rewards = system_state
-        .advance_epoch(
-            next_epoch,
-            &protocol_config,
-            reward_amount * SHANNONS_PER_SOMA,
-            new_timestamp,
-            vec![0; 32],
-        )
+        .advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
         .expect("Failed to advance epoch");
 
     validator_stakes.add_commission_rewards(next_epoch, rewards);
 }
 
-// Helper function to advance epoch with reward amounts and slashing rates.
-// `reward_amount` is in SOMA and represents the total transaction fees for the epoch.
+// Helper function to advance epoch with a SOMA reward budget and slashing rate.
+//
+// Under the current fee model, transaction fees are routed to the protocol fund
+// (not to validators). To keep these tests asserting validator reward
+// distribution, we inject `reward_amount` into the emission pool's
+// `current_distribution_amount` so it flows to validators via emissions.
 pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     system_state: &mut SystemState,
     reward_amount: u64,
     reward_slashing_rate: u64,
     validator_stakes: &mut ValidatorRewards,
 ) {
-    // Calculate next epoch
     let next_epoch = system_state.epoch() + 1;
-
-    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
         system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    // Inject reward budget into the emission pool so it goes to validators.
+    let reward_shannons = reward_amount * SHANNONS_PER_SOMA;
+    match system_state {
+        SystemState::V1(v1) => {
+            v1.emission_pool.current_distribution_amount = reward_shannons;
+            if v1.emission_pool.balance < reward_shannons {
+                v1.emission_pool.balance = reward_shannons;
+            }
+        }
+    }
 
     let mut protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
@@ -181,15 +198,9 @@ pub fn advance_epoch_with_reward_amounts_and_slashing_rates(
     // Override the slashing rate with the test-specified value
     protocol_config.set_reward_slashing_rate_bps_for_testing(reward_slashing_rate);
 
-    // Advance the epoch
+    // Pass 0 fees — they would route to protocol_fund, not validators.
     let rewards = system_state
-        .advance_epoch(
-            next_epoch,
-            &protocol_config,
-            reward_amount * SHANNONS_PER_SOMA,
-            new_timestamp,
-            vec![0; 32],
-        )
+        .advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
         .expect("Failed to advance epoch");
 
     validator_stakes.add_commission_rewards(next_epoch, rewards);
@@ -460,34 +471,40 @@ pub fn set_up_system_state(addrs: Vec<SomaAddress>) -> SystemState {
     create_test_system_state(validators, 1000, 0)
 }
 
-/// Advance epoch with rewards.
-/// `reward_amount` is in shannons and represents the total transaction fees for the epoch.
-/// Tests set validator_reward_allocation_bps=10000 so 100% of fees go to validators.
+/// Advance epoch with a test reward budget. `reward_amount` is in shannons and
+/// represents the total SOMA emitted to validators this epoch.
+///
+/// Under the current fee model, transaction fees are routed to the protocol fund
+/// (not to validators), so this helper injects `reward_amount` into the emission
+/// pool's `current_distribution_amount` to put it on the validator path. Tests
+/// that assert validators receive a share of `reward_amount` continue to work.
 #[allow(clippy::result_large_err)]
 pub fn advance_epoch_with_rewards(
     system_state: &mut SystemState,
     reward_amount: u64,
 ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
-    // Calculate next epoch
     let next_epoch = system_state.epoch() + 1;
-
-    // Calculate new timestamp (ensuring it's at least epoch_duration_ms later)
     let new_timestamp =
         system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
+
+    // Inject the reward budget into the emission pool so it goes to validators.
+    match system_state {
+        SystemState::V1(v1) => {
+            v1.emission_pool.current_distribution_amount = reward_amount;
+            // Make sure pool balance can support the emission.
+            if v1.emission_pool.balance < reward_amount {
+                v1.emission_pool.balance = reward_amount;
+            }
+        }
+    }
 
     let protocol_config = protocol_config::ProtocolConfig::get_for_version(
         ProtocolVersion::MAX,
         protocol_config::Chain::default(),
     );
 
-    // Advance the epoch
-    system_state.advance_epoch(
-        next_epoch,
-        &protocol_config,
-        reward_amount,
-        new_timestamp,
-        vec![0; 32],
-    )
+    // Pass 0 fees — fees no longer go to validators under the new model.
+    system_state.advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
 }
 
 // Helper to add a validator candidate

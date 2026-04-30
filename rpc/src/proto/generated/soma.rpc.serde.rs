@@ -5623,6 +5623,7 @@ impl serde::Serialize for execution_error::ExecutionErrorKind {
             Self::MissingProofOfPossession => "MISSING_PROOF_OF_POSSESSION",
             Self::InvalidProofOfPossession => "INVALID_PROOF_OF_POSSESSION",
             Self::ModelDecryptionKeyCommitmentMismatch => "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
+            Self::InvalidGasCoinType => "INVALID_GAS_COIN_TYPE",
         };
         serializer.serialize_str(variant)
     }
@@ -5691,6 +5692,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
             "MISSING_PROOF_OF_POSSESSION",
             "INVALID_PROOF_OF_POSSESSION",
             "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH",
+            "INVALID_GAS_COIN_TYPE",
         ];
 
         struct GeneratedVisitor;
@@ -5788,6 +5790,7 @@ impl<'de> serde::Deserialize<'de> for execution_error::ExecutionErrorKind {
                     "MISSING_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::MissingProofOfPossession),
                     "INVALID_PROOF_OF_POSSESSION" => Ok(execution_error::ExecutionErrorKind::InvalidProofOfPossession),
                     "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH" => Ok(execution_error::ExecutionErrorKind::ModelDecryptionKeyCommitmentMismatch),
+                    "INVALID_GAS_COIN_TYPE" => Ok(execution_error::ExecutionErrorKind::InvalidGasCoinType),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }

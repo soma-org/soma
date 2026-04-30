@@ -132,6 +132,7 @@ impl TransactionExecutor for ChangeEpochExecutor {
                 state = state_backup;
                 state.advance_epoch_safe_mode(
                     change_epoch.epoch,
+                    change_epoch.protocol_version.as_u64(),
                     change_epoch.fees,
                     epoch_start_timestamp_ms,
                 );

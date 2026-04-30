@@ -197,8 +197,10 @@ pub struct ProtocolConfig {
     reward_slashing_rate_bps: Option<u64>,
 
     // === Fee Parameters ===
-    /// Per-unit fee. The fee for a transaction is `unit_fee * executor.fee_units(...)`.
+    /// Per-unit fee in USDC microdollars (1 USDC = 1_000_000 µUSDC).
+    /// The fee for a transaction is `unit_fee * executor.fee_units(...)`.
     /// Each executor decides how many units its operation costs based on op shape.
+    /// All fees on Soma are paid in USDC; the gas coin must be Coin(Usdc).
     unit_fee: Option<u64>,
 
     // === Execution Versioning ===
@@ -285,8 +287,9 @@ impl ProtocolConfig {
             // Reward parameters
             reward_slashing_rate_bps: Some(5000), // 50%
 
-            // Fee parameters
-            unit_fee: Some(1000), // shannons per unit
+            // Fee parameters: 1000 µUSDC = $0.001 per unit. A simple Transfer
+            // (1 coin + 1 recipient = 2 units) costs ~$0.002.
+            unit_fee: Some(1000),
 
             // Execution versioning
             execution_version: Some(0), // Initial execution version

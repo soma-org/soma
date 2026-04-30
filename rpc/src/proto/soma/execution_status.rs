@@ -27,6 +27,11 @@ impl From<crate::types::ExecutionError> for ExecutionError {
         let (kind, error_details) = match value {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
 
+            E::InvalidGasCoinType { object_id } => (
+                ExecutionErrorKind::InvalidGasCoinType,
+                Some(ErrorDetails::ObjectId(object_id.to_string())),
+            ),
+
             E::InvalidOwnership { object_id } => (
                 ExecutionErrorKind::InvalidOwnership,
                 Some(ErrorDetails::ObjectId(object_id.to_string())),
@@ -208,6 +213,18 @@ impl TryFrom<&ExecutionError> for crate::types::ExecutionError {
             }
 
             K::InsufficientGas => Ok(Self::InsufficientGas),
+
+            K::InvalidGasCoinType => {
+                if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {
+                    Ok(Self::InvalidGasCoinType {
+                        object_id: object_id
+                            .parse()
+                            .map_err(|e| TryFromProtoError::invalid("object_id", e))?,
+                    })
+                } else {
+                    Err(TryFromProtoError::missing("object_id for InvalidGasCoinType"))
+                }
+            }
 
             K::InvalidOwnership => {
                 if let Some(ErrorDetails::ObjectId(object_id)) = &value.error_details {

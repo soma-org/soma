@@ -65,7 +65,8 @@ mod validator_pop_tests;
 /// Derived from SystemParameters at epoch start
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FeeParameters {
-    /// Per-unit fee. Tx fee = `unit_fee * executor.fee_units(...)`.
+    /// Per-unit fee in USDC microdollars. Tx fee = `unit_fee * executor.fee_units(...)`.
+    /// All fees on Soma are paid in USDC.
     pub unit_fee: u64,
 }
 
@@ -132,21 +133,19 @@ pub struct SystemStateV1 {
     /// Marketplace configuration parameters
     pub marketplace_params: MarketplaceParameters,
 
-    /// Accumulated USDC from marketplace value fees (AcceptBid)
+    /// Accumulated USDC microdollars collected from transaction fees.
+    /// Grows monotonically until withdrawn via WithdrawProtocolFund (future).
+    /// All user-paid gas fees route here; eventually used to buy back and burn SOMA.
     pub protocol_fund_balance: u64,
 
     /// Bridge state for USDC bridge between Ethereum and Soma
     pub bridge_state: BridgeState,
 
     /// Whether the system is in safe mode due to a failed epoch transition.
-    /// Set to true when advance_epoch() fails; reset to false on next successful advance.
+    /// Set to true when advance_epoch() fails; cleared on next successful advance.
+    /// During safe mode: emissions are forfeited (schedule pauses), fees still
+    /// route to protocol_fund inline.
     pub safe_mode: bool,
-
-    /// Transaction fees accumulated during safe mode epochs, waiting to be distributed.
-    pub safe_mode_accumulated_fees: u64,
-
-    /// Emission rewards accumulated during safe mode epochs, waiting to be distributed.
-    pub safe_mode_accumulated_emissions: u64,
 }
 
 impl SystemStateV1 {
@@ -192,8 +191,6 @@ impl SystemStateV1 {
             protocol_fund_balance: 0,
             bridge_state: BridgeState::new(bridge_committee),
             safe_mode: false,
-            safe_mode_accumulated_fees: 0,
-            safe_mode_accumulated_emissions: 0,
         }
     }
 
@@ -492,18 +489,11 @@ impl SystemStateV1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
         }
 
-        // Drain safe mode accumulators if recovering from safe mode
-        let mut safe_mode_extra_rewards = 0u64;
+        // Clear safe mode flag if recovering. Nothing to drain — fees were routed
+        // to protocol_fund inline during safe mode, and emissions for those epochs
+        // were forfeited (schedule paused).
         if self.safe_mode {
-            info!(
-                "Recovering from safe mode — draining accumulated rewards: fees={}, emissions={}",
-                self.safe_mode_accumulated_fees, self.safe_mode_accumulated_emissions
-            );
-            safe_mode_extra_rewards = self
-                .safe_mode_accumulated_fees
-                .saturating_add(self.safe_mode_accumulated_emissions);
-            self.safe_mode_accumulated_fees = 0;
-            self.safe_mode_accumulated_emissions = 0;
+            info!("Recovering from safe mode at epoch {}", new_epoch);
             self.safe_mode = false;
         }
 
@@ -521,21 +511,24 @@ impl SystemStateV1 {
         // Get reward_slashing_rate from protocol config
         let reward_slashing_rate = next_protocol_config.reward_slashing_rate_bps();
 
-        // 2. Calculate total rewards (emissions + fees + safe mode accumulators)
-        // All emissions + gas fees go to validators
-        let mut total_rewards =
-            epoch_total_transaction_fees.saturating_add(safe_mode_extra_rewards);
+        // 2. Route this epoch's USDC fees to the protocol fund.
+        // Validators are paid from SOMA emissions only; fees fund future buybacks.
+        self.protocol_fund_balance =
+            self.protocol_fund_balance.saturating_add(epoch_total_transaction_fees);
+
+        // 3. Calculate validator rewards — pure SOMA emissions.
+        let mut total_rewards = 0u64;
         if epoch_start_timestamp_ms
             >= prev_epoch_start_timestamp + self.parameters.epoch_duration_ms
         {
-            total_rewards = total_rewards.saturating_add(self.emission_pool.advance_epoch());
+            total_rewards = self.emission_pool.advance_epoch();
         }
 
-        // 3. Increment epoch and update protocol version
+        // 4. Increment epoch and update protocol version
         self.epoch = new_epoch;
         self.protocol_version = next_protocol_version;
 
-        // 4. Process validator rewards — all rewards go to validators
+        // 5. Process validator rewards (SOMA emissions only).
         let mut validator_reward_pool = total_rewards;
         let validator_rewards = self.validators.advance_epoch(
             new_epoch,
@@ -560,39 +553,34 @@ impl SystemStateV1 {
     ///
     /// It only:
     /// - Sets `safe_mode = true`
-    /// - Increments epoch + timestamp
-    /// - Accumulates fees and emissions into holding fields
+    /// - Bumps epoch, timestamp, and protocol_version (so a fix can land via upgrade)
+    /// - Routes this epoch's fees to `protocol_fund_balance` (saturating_add, can't fail)
     ///
-    /// Everything else (validator rewards, model processing, target generation,
-    /// difficulty adjustment) is skipped. The committee, parameters, and all
-    /// registries remain frozen until a successful `advance_epoch()` recovers.
+    /// Emissions are forfeited — `emission_pool` is untouched, the schedule pauses.
+    /// Validators get nothing for safe-mode epochs but fees keep flowing to the fund.
+    /// All registries and the committee remain frozen until `advance_epoch()` recovers.
     pub fn advance_epoch_safe_mode(
         &mut self,
         new_epoch: u64,
+        next_protocol_version: u64,
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
     ) {
         self.safe_mode = true;
         self.epoch = new_epoch;
+        self.protocol_version = next_protocol_version;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
-        // Accumulate fees — will be distributed on recovery
-        self.safe_mode_accumulated_fees =
-            self.safe_mode_accumulated_fees.saturating_add(epoch_total_transaction_fees);
+        // Fees → fund directly. saturating_add can't fail.
+        self.protocol_fund_balance =
+            self.protocol_fund_balance.saturating_add(epoch_total_transaction_fees);
 
-        // Accumulate emissions if the emission pool has balance
-        let emission = self.emission_pool.current_epoch_emission();
-        self.emission_pool.balance = self.emission_pool.balance.saturating_sub(emission);
-        self.safe_mode_accumulated_emissions =
-            self.safe_mode_accumulated_emissions.saturating_add(emission);
-
-        // No validator rewards, no model processing, no target generation,
-        // no difficulty adjustment, no staking pool processing.
-        // The committee, parameters, and all registries remain frozen.
+        // Emissions: forfeited. emission_pool is untouched (matches Sui's
+        // stake_subsidy behavior during safe mode).
 
         info!(
-            "Safe mode activated for epoch {}. Accumulated fees: {}, accumulated emissions: {}",
-            new_epoch, self.safe_mode_accumulated_fees, self.safe_mode_accumulated_emissions
+            "Safe mode activated for epoch {} (protocol v{}). Fees routed to fund: {}",
+            new_epoch, next_protocol_version, epoch_total_transaction_fees
         );
     }
 
@@ -762,16 +750,6 @@ impl SystemState {
             Self::V1(v1) => v1.safe_mode,
         }
     }
-    pub fn safe_mode_accumulated_fees(&self) -> u64 {
-        match self {
-            Self::V1(v1) => v1.safe_mode_accumulated_fees,
-        }
-    }
-    pub fn safe_mode_accumulated_emissions(&self) -> u64 {
-        match self {
-            Self::V1(v1) => v1.safe_mode_accumulated_emissions,
-        }
-    }
     pub fn validator_report_records(&self) -> &BTreeMap<SomaAddress, BTreeSet<SomaAddress>> {
         match self {
             Self::V1(v1) => &v1.validator_report_records,
@@ -909,12 +887,14 @@ impl SystemState {
     pub fn advance_epoch_safe_mode(
         &mut self,
         new_epoch: u64,
+        next_protocol_version: u64,
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
     ) {
         match self {
             Self::V1(v1) => v1.advance_epoch_safe_mode(
                 new_epoch,
+                next_protocol_version,
                 epoch_total_transaction_fees,
                 epoch_start_timestamp_ms,
             ),

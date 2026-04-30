@@ -712,6 +712,8 @@ pub mod execution_error {
         InvalidProofOfPossession = 56,
         /// Model decryption key commitment mismatch
         ModelDecryptionKeyCommitmentMismatch = 57,
+        /// Gas coin must be USDC
+        InvalidGasCoinType = 58,
     }
     impl ExecutionErrorKind {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -783,6 +785,7 @@ pub mod execution_error {
                 Self::ModelDecryptionKeyCommitmentMismatch => {
                     "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH"
                 }
+                Self::InvalidGasCoinType => "INVALID_GAS_COIN_TYPE",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
@@ -855,6 +858,7 @@ pub mod execution_error {
                 "MODEL_DECRYPTION_KEY_COMMITMENT_MISMATCH" => {
                     Some(Self::ModelDecryptionKeyCommitmentMismatch)
                 }
+                "INVALID_GAS_COIN_TYPE" => Some(Self::InvalidGasCoinType),
                 _ => None,
             }
         }

@@ -144,11 +144,14 @@ async fn test_execute_sequenced_shared_object_transaction() {
     // Execute a shared-object transaction through the sequenced path
     // (assign versions then execute), verifying correct execution.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
+    // Stake coin is SOMA; gas coin is USDC.
+    let stake_coin =
+        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
+    let gas_coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    authority_state.insert_genesis_object(stake_coin.clone()).await;
+    authority_state.insert_genesis_object(gas_coin.clone()).await;
 
     // Get the first validator's address from the system state
     let validator_address = {
@@ -156,11 +159,14 @@ async fn test_execute_sequenced_shared_object_transaction() {
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    let coin_ref = coin.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
+        TransactionKind::AddStake {
+            address: validator_address,
+            coin_ref: stake_coin.compute_object_reference(),
+            amount: Some(1_000_000),
+        },
         sender,
-        vec![coin_ref],
+        vec![gas_coin.compute_object_reference()],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();

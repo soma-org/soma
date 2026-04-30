@@ -5,7 +5,7 @@
 use types::base::SomaAddress;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{ObjectID, ObjectRef};
+use types::object::{CoinType, ObjectID, ObjectRef};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 use types::tx_fee::TransactionFee;
@@ -97,7 +97,7 @@ fn smash_gas_coins(
 
     // Skip if only one gas coin
     if gas_payment.len() == 1 {
-        // Still need to check ownership and verify it's a coin
+        // Still need to check ownership and verify it's a USDC coin
         let primary_gas_obj = store
             .read_object(&primary_gas_id)
             .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: primary_gas_id })?;
@@ -111,10 +111,7 @@ fn smash_gas_coins(
             });
         }
 
-        // Verify it's a coin
-        let _balance = primary_gas_obj.as_coin().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-        })?;
+        verify_usdc_coin(&primary_gas_obj)?;
 
         return Ok(primary_gas_id);
     }
@@ -132,10 +129,8 @@ fn smash_gas_coins(
         });
     }
 
-    // Get balance of primary gas object
-    let primary_balance = primary_gas_obj.as_coin().ok_or_else(|| {
-        ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-    })?;
+    // Get balance of primary gas object (must be USDC)
+    let primary_balance = verify_usdc_coin(&primary_gas_obj)?;
 
     let mut total_balance = primary_balance;
 
@@ -155,10 +150,8 @@ fn smash_gas_coins(
             });
         }
 
-        // Verify it's a coin and add balance
-        let balance = gas_obj.as_coin().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
-        })?;
+        // Verify it's a USDC coin and add balance
+        let balance = verify_usdc_coin(&gas_obj)?;
 
         total_balance =
             total_balance.checked_add(balance).ok_or(ExecutionFailureStatus::ArithmeticOverflow)?;
@@ -173,6 +166,18 @@ fn smash_gas_coins(
     store.mutate_input_object(updated_gas);
 
     Ok(primary_gas_id)
+}
+
+/// Verify a gas-payment object is a USDC coin and return its balance.
+/// All fees on Soma are paid in USDC.
+fn verify_usdc_coin(obj: &types::object::Object) -> ExecutionResult<u64> {
+    let balance = obj.as_coin().ok_or_else(|| {
+        ExecutionFailureStatus::SomaError(SomaError::from("Gas object is not a coin"))
+    })?;
+    match obj.coin_type() {
+        Some(CoinType::Usdc) => Ok(balance),
+        _ => Err(ExecutionFailureStatus::InvalidGasCoinType { object_id: obj.id() }),
+    }
 }
 
 fn deduct_gas_fee(store: &mut TemporaryStore, fee: &TransactionFee) -> ExecutionResult<u64> {

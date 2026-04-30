@@ -696,6 +696,9 @@ pub enum ExecutionFailureStatus {
     /// Transaction ran out of gas before completion
     #[error("Insufficient Gas.")]
     InsufficientGas,
+    /// Gas coin is not USDC. All fees on Soma are paid in USDC.
+    #[error("Gas coin must be USDC for object {object_id}")]
+    InvalidGasCoinType { object_id: ObjectID },
     #[error(
         "Invalid owner for object {object_id}. Expected: {expected_owner}, Actual: \
          {actual_owner:?}"

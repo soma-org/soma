@@ -1635,9 +1635,6 @@ impl AuthorityState {
 
         // Emission pool
         system_state_balance += system_state.emission_pool().balance as u128;
-        // Safe mode accumulators
-        system_state_balance += system_state.safe_mode_accumulated_fees() as u128;
-        system_state_balance += system_state.safe_mode_accumulated_emissions() as u128;
 
         // Validator staking pools (active, pending, inactive)
         for v in &system_state.validators().validators {

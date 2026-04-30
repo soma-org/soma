@@ -343,21 +343,42 @@ impl Object {
     }
 
     pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
-        // For testing, we provide sufficient gas by default.
+        // For testing, we provide sufficient gas by default. Gas is always USDC.
         Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
     }
 
     pub fn with_id_owner_version_for_testing(id: ObjectID, version: Version, owner: Owner) -> Self {
+        // USDC coin (used as gas in tests).
         let data = ObjectData::new_with_id(
             id,
-            ObjectType::Coin(CoinType::Soma),
+            ObjectType::Coin(CoinType::Usdc),
             version,
             bcs::to_bytes(&GAS_VALUE_FOR_TESTING).unwrap(),
         );
         Self::new(data, owner, TransactionDigest::genesis_marker())
     }
 
+    /// Default test coin is USDC because all gas on Soma is paid in USDC.
+    /// Use [`Self::with_id_owner_soma_coin_for_testing`] when a test needs a
+    /// SOMA coin explicitly (transfers, staking).
     pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::Coin(CoinType::Usdc),
+            Version::MIN,
+            bcs::to_bytes(&balance).unwrap(),
+        );
+        Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
+    }
+
+    /// SOMA-specific test coin helper. Use when the test exercises SOMA semantics
+    /// (transfers, staking principal). Gas coins should always use the default
+    /// USDC helper [`Self::with_id_owner_coin_for_testing`].
+    pub fn with_id_owner_soma_coin_for_testing(
+        id: ObjectID,
+        owner: SomaAddress,
+        balance: u64,
+    ) -> Self {
         let data = ObjectData::new_with_id(
             id,
             ObjectType::Coin(CoinType::Soma),

@@ -53,15 +53,9 @@ impl Processor for SomaEpochState {
         let ep = system_state.emission_pool();
 
         // Access fields via V1 variant
-        let (safe_mode, safe_mode_fees, safe_mode_emissions, protocol_fund_balance) =
-            match &system_state {
-                SystemState::V1(v1) => (
-                    v1.safe_mode,
-                    v1.safe_mode_accumulated_fees as i64,
-                    v1.safe_mode_accumulated_emissions as i64,
-                    v1.protocol_fund_balance as i64,
-                ),
-            };
+        let (safe_mode, protocol_fund_balance) = match &system_state {
+            SystemState::V1(v1) => (v1.safe_mode, v1.protocol_fund_balance as i64),
+        };
 
         Ok(vec![StoredEpochState {
             epoch,
@@ -72,8 +66,8 @@ impl Processor for SomaEpochState {
             decrease_rate: ep.decrease_rate as i32,
             protocol_fund_balance,
             safe_mode,
-            safe_mode_accumulated_fees: safe_mode_fees,
-            safe_mode_accumulated_emissions: safe_mode_emissions,
+            safe_mode_accumulated_fees: 0,
+            safe_mode_accumulated_emissions: 0,
         }])
     }
 }

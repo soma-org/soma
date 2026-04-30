@@ -27,6 +27,7 @@ pub enum ExecutionStatus {
 pub enum ExecutionError {
     // General transaction errors
     InsufficientGas,
+    InvalidGasCoinType { object_id: Address },
     InvalidOwnership { object_id: Address },
     ObjectNotFound { object_id: Address },
     InvalidObjectType { object_id: Address },

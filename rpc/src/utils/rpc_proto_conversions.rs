@@ -57,6 +57,9 @@ impl From<types::effects::ExecutionFailureStatus> for ExecutionError {
 
         let (kind, details) = match value {
             E::InsufficientGas => (ExecutionErrorKind::InsufficientGas, None),
+            E::InvalidGasCoinType { object_id } => {
+                (ExecutionErrorKind::InvalidGasCoinType, Some(object_id.to_hex()))
+            }
             E::InvalidOwnership { object_id, .. } => {
                 (ExecutionErrorKind::InvalidOwnership, Some(object_id.to_hex()))
             }
@@ -905,10 +908,6 @@ impl TryFrom<SystemState> for types::system_state::SystemState {
                 bridge_state: types::bridge::BridgeState::new(types::bridge::BridgeCommittee::empty()),
 
                 safe_mode: proto_state.safe_mode.unwrap_or(false),
-                safe_mode_accumulated_fees: proto_state.safe_mode_accumulated_fees.unwrap_or(0),
-                safe_mode_accumulated_emissions: proto_state
-                    .safe_mode_accumulated_emissions
-                    .unwrap_or(0),
             });
 
         Ok(system_state)
@@ -1259,8 +1258,8 @@ impl TryFrom<types::system_state::SystemState> for SystemState {
             model_registry: None,
             submission_report_records: std::collections::BTreeMap::new(),
             safe_mode: Some(v1.safe_mode),
-            safe_mode_accumulated_fees: Some(v1.safe_mode_accumulated_fees),
-            safe_mode_accumulated_emissions: Some(v1.safe_mode_accumulated_emissions),
+            safe_mode_accumulated_fees: None,
+            safe_mode_accumulated_emissions: None,
         })
     }
 }
