@@ -43,7 +43,7 @@ use url::Url;
 
 use crate::client_commands::{SomaClientCommands, TxProcessingArgs};
 use crate::commands;
-use crate::commands::{EnvCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand};
+use crate::commands::{EnvCommand, InferenceCommand, ObjectsCommand, SomaValidatorCommand, WalletCommand};
 use crate::keytool::KeyToolCommand;
 use crate::soma_amount::SomaAmount;
 use crate::usdc_amount::UsdcAmount;
@@ -374,6 +374,19 @@ EXAMPLES:
     // =========================================================================
     // OPERATOR COMMANDS
     // =========================================================================
+    /// Run the inference proxy or provider server
+    #[clap(
+        name = "inference",
+        after_help = "\
+EXAMPLES:
+    soma inference serve --config provider.toml
+    soma inference proxy --config client.toml"
+    )]
+    Inference {
+        #[clap(subcommand)]
+        cmd: InferenceCommand,
+    },
+
     /// Manage validators (register, set gas price, commission)
     #[clap(
         name = "validator",
@@ -889,6 +902,8 @@ impl SomaCommand {
                 result.print(json);
                 Ok(())
             }
+
+            SomaCommand::Inference { cmd } => cmd.execute().await,
 
             // =================================================================
             // OPERATOR COMMANDS

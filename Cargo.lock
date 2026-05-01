@@ -1072,12 +1072,27 @@ dependencies = [
 
 [[package]]
 name = "bit-set"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0700ddab506f33b20a03b13996eccd309a48e5ff77d0d95926aa0210fb4e95f1"
+dependencies = [
+ "bit-vec 0.6.3",
+]
+
+[[package]]
+name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.8.0",
 ]
+
+[[package]]
+name = "bit-vec"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
 
 [[package]]
 name = "bit-vec"
@@ -2008,6 +2023,7 @@ dependencies = [
  "fastcrypto",
  "futures",
  "hex",
+ "inference",
  "inquire",
  "insta",
  "json_to_table",
@@ -3766,6 +3782,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
+name = "fancy-regex"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "531e46835a22af56d1e3b66f04844bed63158bc094a628bec1d321d9b4c44bf2"
+dependencies = [
+ "bit-set 0.5.3",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "fast_chemail"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4047,6 +4074,16 @@ checksum = "73fde052dbfc920003cfd2c8e2c6e6d4cc7c1091538c3a24226cec0665ab08c0"
 dependencies = [
  "autocfg",
  "tokio",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -5296,6 +5333,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "inference"
+version = "0.1.21"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "clap",
+ "dirs 6.0.0",
+ "fastcrypto",
+ "fs2",
+ "futures",
+ "hex",
+ "http",
+ "once_cell",
+ "rand 0.8.5",
+ "reqwest",
+ "sdk",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "soma-keys",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tiktoken-rs",
+ "tokio",
+ "tokio-stream",
+ "toml 0.8.23",
+ "tower 0.5.3",
+ "tracing",
+ "types",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6180,7 +6254,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "916cbc7cb27db60be930a4e2da243cf4bc39569195f22fd8ee419cd31d5b662c"
 dependencies = [
  "arrayvec 0.7.6",
- "bit-set",
+ "bit-set 0.8.0",
  "bitflags 2.11.0",
  "cfg-if",
  "cfg_aliases",
@@ -9654,6 +9728,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiktoken-rs"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44075987ee2486402f0808505dd65692163d243a337fc54363d49afac41087f6"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "bstr",
+ "fancy-regex",
+ "lazy_static",
+ "parking_lot",
+ "regex",
+ "rustc-hash 1.1.0",
+]
+
+[[package]]
 name = "time"
 version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11077,8 +11167,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5f62f1053bd28c2268f42916f31588f81f64796e2ff91b81293515017ca8bd9"
 dependencies = [
  "arrayvec 0.7.6",
- "bit-set",
- "bit-vec",
+ "bit-set 0.8.0",
+ "bit-vec 0.8.0",
  "bitflags 2.11.0",
  "cfg_aliases",
  "document-features",
@@ -11137,7 +11227,7 @@ dependencies = [
  "android_system_properties",
  "arrayvec 0.7.6",
  "ash",
- "bit-set",
+ "bit-set 0.8.0",
  "bitflags 2.11.0",
  "block",
  "bytemuck",

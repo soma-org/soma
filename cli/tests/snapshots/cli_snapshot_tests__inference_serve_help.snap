@@ -1,0 +1,23 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 89
+expression: stdout
+---
+Run the provider-side server.
+
+Fronts an OpenAI-compatible upstream behind SomaPay-authorized `/v1/chat/completions`. Backends today: openrouter, vast.
+
+Usage: soma inference serve [OPTIONS] --config <CONFIG>
+
+Options:
+      --config <CONFIG>
+          Path to the provider TOML config
+
+      --address <ADDRESS>
+          Address whose keypair signs the channel; defaults to the keystore's active address
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+EXAMPLE:
+    soma inference serve --config provider.toml

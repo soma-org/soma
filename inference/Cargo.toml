@@ -1,0 +1,52 @@
+[package]
+name = "inference"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+# Workspace
+types = { path = "../types", default-features = false }
+sdk = { path = "../sdk" }
+soma-keys.workspace = true
+
+# Async + HTTP
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+futures.workspace = true
+http.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tower.workspace = true
+
+# Serde + persistence
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml.workspace = true
+
+# Crypto
+fastcrypto.workspace = true
+sha2 = "0.10"
+base64.workspace = true
+
+# Misc
+thiserror.workspace = true
+tracing.workspace = true
+once_cell = "1"
+fs2 = "0.4"
+tiktoken-rs = "0.6"
+uuid = { version = "1", features = ["v4"] }
+dirs.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { version = "1", features = ["full", "test-util"] }
+wiremock.workspace = true
+rand.workspace = true
+
+[lints]
+workspace = true

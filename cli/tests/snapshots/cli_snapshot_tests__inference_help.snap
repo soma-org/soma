@@ -1,0 +1,20 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 78
+expression: stdout
+---
+Run the inference proxy or provider server
+
+Usage: soma inference <COMMAND>
+
+Commands:
+  serve  Run the provider-side server
+  proxy  Run the local agent-facing proxy on `127.0.0.1:<port>`
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+EXAMPLES:
+    soma inference serve --config provider.toml
+    soma inference proxy --config client.toml

@@ -68,6 +68,39 @@ fn test_balance_help() {
 }
 
 #[test]
+fn test_inference_help() {
+    let output = soma_cmd()
+        .args(["inference", "--help"])
+        .output()
+        .expect("failed to run soma inference --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("inference_help", stdout);
+}
+
+#[test]
+fn test_inference_serve_help() {
+    let output = soma_cmd()
+        .args(["inference", "serve", "--help"])
+        .output()
+        .expect("failed to run soma inference serve --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("inference_serve_help", stdout);
+}
+
+#[test]
+fn test_inference_proxy_help() {
+    let output = soma_cmd()
+        .args(["inference", "proxy", "--help"])
+        .output()
+        .expect("failed to run soma inference proxy --help");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    insta::assert_snapshot!("inference_proxy_help", stdout);
+}
+
+#[test]
 fn test_send_help() {
     let output =
         soma_cmd().args(["send", "--help"]).output().expect("failed to run soma send --help");

@@ -34,6 +34,7 @@ members = [
   "indexer-e2e-tests",
   "soma-tool",
   "bridge-node",
+  "inference",
 ]
 
 
@@ -117,6 +118,7 @@ indexer-alt = { path = "indexer-alt" }
 indexer-kvstore = { path = "indexer-kvstore" }
 soma-graphql = { path = "soma-graphql" }
 bridge-node = { path = "bridge-node" }
+inference = { path = "inference" }
 
 msim = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim" }
 msim-macros = { git = "https://github.com/MystenLabs/mysten-sim.git", rev = "213e543d83b91c4aa904166bef255a6c0054c8a7", package = "msim-macros" }

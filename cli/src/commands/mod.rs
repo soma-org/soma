@@ -5,6 +5,7 @@
 // Command modules for top-level CLI commands
 pub mod balance;
 pub mod env;
+pub mod inference;
 pub mod merge;
 pub mod objects;
 pub mod pay;
@@ -17,6 +18,7 @@ pub mod wallet;
 
 // Re-export subcommand enums for use in soma_commands.rs
 pub use env::EnvCommand;
+pub use inference::InferenceCommand;
 pub use objects::ObjectsCommand;
 pub use validator::SomaValidatorCommand;
 pub use wallet::WalletCommand;

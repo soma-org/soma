@@ -19,6 +19,7 @@ Commands:
   tx               Get transaction details or execute serialized transactions
   wallet           Manage wallet addresses and keys
   env              Manage network environments (switch, add, list)
+  inference        Run the inference proxy or provider server
   validator        Manage validators (register, set gas price, commission)
   start            Start a long-running service (localnet, validator)
   network          Inspect local network configuration and validator addresses

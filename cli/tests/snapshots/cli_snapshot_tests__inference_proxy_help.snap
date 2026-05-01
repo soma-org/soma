@@ -1,0 +1,23 @@
+---
+source: cli/tests/cli_snapshot_tests.rs
+assertion_line: 100
+expression: stdout
+---
+Run the local agent-facing proxy on `127.0.0.1:<port>`.
+
+Agent CLIs point at it via `OPENAI_BASE_URL`. The proxy discovers providers, picks the cheapest one for each model, and signs each request.
+
+Usage: soma inference proxy [OPTIONS] --config <CONFIG>
+
+Options:
+      --config <CONFIG>
+          Path to the proxy TOML config
+
+      --address <ADDRESS>
+          Address whose keypair signs the channel; defaults to the keystore's active address
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+EXAMPLE:
+    soma inference proxy --config client.toml
