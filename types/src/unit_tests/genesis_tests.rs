@@ -12,16 +12,17 @@ use protocol_config::ProtocolVersion;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use crate::SYSTEM_STATE_OBJECT_ID;
+use crate::{CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION, SYSTEM_STATE_OBJECT_ID};
 use crate::base::SomaAddress;
 use crate::config::genesis_config::{
     GenesisCeremonyParameters, SHANNONS_PER_SOMA, TokenAllocation,
-    TokenDistributionSchedule, TokenDistributionScheduleBuilder, ValidatorGenesisConfigBuilder,
+    TokenDistributionSchedule, TokenDistributionScheduleBuilder, UsdcAllocation,
+    ValidatorGenesisConfigBuilder,
 };
 use crate::effects::{ExecutionStatus, TransactionEffectsAPI};
 use crate::envelope::Message;
 use crate::genesis_builder::GenesisBuilder;
-use crate::object::{ObjectType, Owner};
+use crate::object::{CoinType, ObjectType, Owner};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait;
 use crate::system_state::{SystemStateTrait, get_system_state};
 use crate::transaction::TransactionKind;
@@ -628,6 +629,49 @@ fn test_genesis_staked_allocations() {
 // Test 18: Genesis BCS serialization roundtrip for UnsignedGenesis
 // ===========================================================================
 
+// ===========================================================================
+// Clock object: present at genesis, ts=0, shared owner at the reserved ID
+// ===========================================================================
+
+#[test]
+fn test_genesis_creates_clock_at_reserved_id() {
+    let (unsigned, _configs) = build_unsigned_genesis_with_validators(4);
+
+    let clock_obj = unsigned
+        .object(CLOCK_OBJECT_ID)
+        .expect("Clock object must exist at the reserved ID");
+
+    assert_eq!(*clock_obj.type_(), ObjectType::Clock, "Object at 0x6 must be ObjectType::Clock");
+    assert!(clock_obj.is_shared(), "Clock must be a shared object");
+
+    // Genesis lamport timestamp is 1, so initial_shared_version is set to 1
+    // (= CLOCK_OBJECT_SHARED_VERSION). This must match the constant the
+    // prologue uses to declare Clock as a shared input.
+    if let Owner::Shared { initial_shared_version } = clock_obj.owner {
+        assert_eq!(
+            initial_shared_version, CLOCK_OBJECT_SHARED_VERSION,
+            "Clock initial_shared_version must equal the constant the prologue declares"
+        );
+    } else {
+        panic!("Clock must have Shared ownership, got {:?}", clock_obj.owner);
+    }
+
+    let clock = clock_obj.as_clock().expect("Clock object contents must deserialize");
+    assert_eq!(clock.timestamp_ms, 0, "Genesis Clock must start at timestamp 0");
+}
+
+#[test]
+fn test_genesis_clock_distinct_from_system_state() {
+    let (unsigned, _configs) = build_unsigned_genesis_with_validators(4);
+
+    // Both well-known objects exist and are distinct.
+    let ss = unsigned.object(SYSTEM_STATE_OBJECT_ID).expect("SystemState present");
+    let clock = unsigned.object(CLOCK_OBJECT_ID).expect("Clock present");
+    assert_ne!(ss.id(), clock.id(), "SystemState and Clock must have distinct IDs");
+    assert_eq!(*ss.type_(), ObjectType::SystemState);
+    assert_eq!(*clock.type_(), ObjectType::Clock);
+}
+
 #[test]
 fn test_genesis_unsigned_serialization_roundtrip() {
     let (unsigned, _configs) = build_unsigned_genesis_with_validators(4);
@@ -663,5 +707,285 @@ fn test_genesis_unsigned_serialization_roundtrip() {
         original_system_state.emission_pool(),
         deser_system_state.emission_pool(),
         "EmissionPool must survive roundtrip"
+    );
+}
+
+// ===========================================================================
+// Stage 1c: balance accumulator seeded at genesis
+// ===========================================================================
+//
+// These tests exercise the migration from coin-object-only state to the
+// account-based balance accumulator. At genesis we still emit coin objects
+// (deleted in Stage 13) AND we mirror every fungible allocation into the
+// `balances` map so the balance column family is non-empty from epoch 0.
+
+const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000;
+
+#[test]
+fn test_genesis_balances_unstaked_soma_allocation() {
+    let configs = make_validator_configs(2);
+    let coin_addr = SomaAddress::random();
+    let coin_amount = 500 * SHANNONS_PER_SOMA;
+
+    let schedule = make_schedule_with_coins(
+        &configs,
+        1_000 * SHANNONS_PER_SOMA,
+        &[(coin_addr, coin_amount)],
+    );
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    // Unstaked SOMA recipient must have an entry whose amount matches the
+    // sum of all matching coin objects.
+    let bal = unsigned
+        .balances()
+        .get(&(coin_addr, CoinType::Soma))
+        .copied()
+        .expect("recipient must have a SOMA balance entry");
+    assert_eq!(bal, coin_amount, "balance entry must equal allocation");
+
+    let coin_object_total: u64 = unsigned
+        .objects()
+        .iter()
+        .filter(|o| {
+            matches!(o.type_(), ObjectType::Coin(CoinType::Soma))
+                && o.owner == Owner::AddressOwner(coin_addr)
+        })
+        .map(|o| o.as_coin().expect("coin object"))
+        .sum();
+    assert_eq!(
+        bal, coin_object_total,
+        "balance must mirror the coin objects until Stage 13"
+    );
+}
+
+#[test]
+fn test_genesis_balances_staked_allocation_does_not_credit_balance() {
+    let configs = make_validator_configs(3);
+    let per_validator = 1_000 * SHANNONS_PER_SOMA;
+    let schedule = make_schedule_for_validators(&configs, per_validator);
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs.clone())
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    // Staked allocations live in the validator's StakingPool, not in the
+    // accumulator-balance map. Validators must NOT have a SOMA balance from
+    // their own self-stake at genesis.
+    for config in &configs {
+        let addr = SomaAddress::from(&config.account_key_pair.public());
+        assert!(
+            unsigned.balances().get(&(addr, CoinType::Soma)).is_none(),
+            "validator self-stake must not produce a SOMA balance entry for {}",
+            addr,
+        );
+    }
+}
+
+#[test]
+fn test_genesis_balances_usdc_allocation() {
+    let configs = make_validator_configs(2);
+    let usdc_addr = SomaAddress::random();
+    let usdc_amount = 5_000_000u64; // 5 USDC microdollars
+
+    let mut builder = TokenDistributionScheduleBuilder::new();
+    for config in &configs {
+        let address = SomaAddress::from(&config.account_key_pair.public());
+        builder.add_allocation(TokenAllocation {
+            recipient_address: address,
+            amount_shannons: 1_000 * SHANNONS_PER_SOMA,
+            staked_with_validator: Some(address),
+        });
+    }
+    builder.add_usdc_allocation(UsdcAllocation {
+        recipient_address: usdc_addr,
+        amount_microdollars: usdc_amount,
+    });
+    let schedule = builder.build();
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    let bal = unsigned
+        .balances()
+        .get(&(usdc_addr, CoinType::Usdc))
+        .copied()
+        .expect("USDC recipient must have a balance entry");
+    assert_eq!(bal, usdc_amount, "USDC balance entry must equal allocation");
+
+    // No SOMA entry for a USDC-only recipient.
+    assert!(
+        unsigned.balances().get(&(usdc_addr, CoinType::Soma)).is_none(),
+        "USDC-only recipient must not get a SOMA balance entry"
+    );
+}
+
+#[test]
+fn test_genesis_balances_validator_starter_usdc() {
+    let (unsigned, configs) = build_unsigned_genesis_with_validators(4);
+
+    for config in &configs {
+        let addr = SomaAddress::from(&config.account_key_pair.public());
+        let bal = unsigned
+            .balances()
+            .get(&(addr, CoinType::Usdc))
+            .copied()
+            .expect("each validator must receive a starter USDC balance");
+        assert_eq!(
+            bal, VALIDATOR_GENESIS_USDC,
+            "validator starter USDC balance must match the constant"
+        );
+    }
+}
+
+#[test]
+fn test_genesis_balances_repeated_recipient_summed() {
+    let configs = make_validator_configs(2);
+    let recipient = SomaAddress::random();
+
+    // Two separate SOMA allocations to the same address must sum into a
+    // single balance entry — order-independent and parallel-safe.
+    let mut builder = TokenDistributionScheduleBuilder::new();
+    for config in &configs {
+        let address = SomaAddress::from(&config.account_key_pair.public());
+        builder.add_allocation(TokenAllocation {
+            recipient_address: address,
+            amount_shannons: 1_000 * SHANNONS_PER_SOMA,
+            staked_with_validator: Some(address),
+        });
+    }
+    let amount_a = 100 * SHANNONS_PER_SOMA;
+    let amount_b = 250 * SHANNONS_PER_SOMA;
+    builder.add_allocation(TokenAllocation {
+        recipient_address: recipient,
+        amount_shannons: amount_a,
+        staked_with_validator: None,
+    });
+    builder.add_allocation(TokenAllocation {
+        recipient_address: recipient,
+        amount_shannons: amount_b,
+        staked_with_validator: None,
+    });
+    let schedule = builder.build();
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    let bal = unsigned
+        .balances()
+        .get(&(recipient, CoinType::Soma))
+        .copied()
+        .expect("recipient must have a summed SOMA balance entry");
+    assert_eq!(bal, amount_a + amount_b);
+}
+
+#[test]
+fn test_genesis_balances_zero_when_no_schedule() {
+    // No token distribution schedule = no allocations to process. Validators
+    // still get their starter USDC, so the table is not strictly empty.
+    let configs = make_validator_configs(2);
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs.clone())
+        .build_unsigned_genesis();
+
+    assert_eq!(
+        unsigned.balances().len(),
+        configs.len(),
+        "without a schedule, only validator USDC starters should populate the balance map"
+    );
+    for config in &configs {
+        let addr = SomaAddress::from(&config.account_key_pair.public());
+        assert_eq!(
+            unsigned.balances().get(&(addr, CoinType::Usdc)).copied(),
+            Some(VALIDATOR_GENESIS_USDC),
+        );
+    }
+}
+
+#[test]
+fn test_genesis_balances_total_matches_coin_objects() {
+    // Invariant during the transition (Stage 1c → Stage 13): for every
+    // (owner, coin_type) entry in the balance map, the sum of matching coin
+    // objects must equal that entry. If they diverge, the chain is broken.
+    let configs = make_validator_configs(3);
+    let r1 = SomaAddress::random();
+    let r2 = SomaAddress::random();
+    let mut builder = TokenDistributionScheduleBuilder::new();
+    for config in &configs {
+        let address = SomaAddress::from(&config.account_key_pair.public());
+        builder.add_allocation(TokenAllocation {
+            recipient_address: address,
+            amount_shannons: 1_000 * SHANNONS_PER_SOMA,
+            staked_with_validator: Some(address),
+        });
+    }
+    builder.add_allocation(TokenAllocation {
+        recipient_address: r1,
+        amount_shannons: 17 * SHANNONS_PER_SOMA,
+        staked_with_validator: None,
+    });
+    builder.add_allocation(TokenAllocation {
+        recipient_address: r2,
+        amount_shannons: 31 * SHANNONS_PER_SOMA,
+        staked_with_validator: None,
+    });
+    builder.add_usdc_allocation(UsdcAllocation {
+        recipient_address: r1,
+        amount_microdollars: 999_999,
+    });
+    let schedule = builder.build();
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    for ((owner, coin_type), expected) in unsigned.balances() {
+        let total: u64 = unsigned
+            .objects()
+            .iter()
+            .filter(|o| {
+                matches!(o.type_(), ObjectType::Coin(ct) if ct == coin_type)
+                    && o.owner == Owner::AddressOwner(*owner)
+            })
+            .map(|o| o.as_coin().expect("coin object contents"))
+            .sum();
+        assert_eq!(
+            total, *expected,
+            "coin objects for ({owner}, {coin_type:?}) must sum to balance entry"
+        );
+    }
+}
+
+#[test]
+fn test_genesis_balances_survive_bcs_roundtrip() {
+    // The balance map is part of the BCS-serialized genesis blob. Loaders
+    // that round-trip through BCS must observe identical balance entries.
+    let configs = make_validator_configs(3);
+    let coin_addr = SomaAddress::random();
+    let schedule = make_schedule_with_coins(
+        &configs,
+        1_000 * SHANNONS_PER_SOMA,
+        &[(coin_addr, 100 * SHANNONS_PER_SOMA)],
+    );
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    let bytes = bcs::to_bytes(&unsigned).unwrap();
+    let restored: crate::genesis::UnsignedGenesis = bcs::from_bytes(&bytes).unwrap();
+    assert_eq!(
+        unsigned.balances(),
+        restored.balances(),
+        "balance map must survive a BCS roundtrip byte-for-byte"
     );
 }

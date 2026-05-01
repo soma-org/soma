@@ -468,6 +468,15 @@ impl Merge<&types::object::Object> for Object {
 // ObjectReference
 //
 
+/// Stable string label for a CoinType — round-trips with
+/// `parse_coin_type` in `types_conversions.rs`.
+fn coin_type_label(t: types::object::CoinType) -> &'static str {
+    match t {
+        types::object::CoinType::Soma => "SOMA",
+        types::object::CoinType::Usdc => "USDC",
+    }
+}
+
 fn object_ref_to_proto(value: types::object::ObjectRef) -> ObjectReference {
     let (object_id, version, digest) = value;
     ObjectReference {
@@ -611,6 +620,56 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             K::BridgeEmergencyUnpause(args) => Kind::BridgeEmergencyUnpause(BridgeEmergencyUnpause {
                 aggregated_signature: Some(args.aggregated_signature.into()),
                 signer_bitmap: Some(args.signer_bitmap.into()),
+            }),
+
+            // Payment-channel tx kinds.
+            K::OpenChannel(args) => Kind::OpenChannel(OpenChannel {
+                payee: Some(args.payee.to_string()),
+                authorized_signer: Some(args.authorized_signer.to_string()),
+                token: Some(coin_type_label(args.token).to_string()),
+                deposit_coin: Some(object_ref_to_proto(args.deposit_coin)),
+                deposit_amount: Some(args.deposit_amount),
+            }),
+            K::Settle(args) => Kind::Settle(Settle {
+                channel_id: Some(args.channel_id.to_string()),
+                cumulative_amount: Some(args.cumulative_amount),
+                voucher_signature: Some(args.voucher_signature.as_ref().to_vec().into()),
+            }),
+            K::RequestClose(args) => Kind::RequestClose(RequestClose {
+                channel_id: Some(args.channel_id.to_string()),
+            }),
+            K::WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(WithdrawAfterTimeout {
+                channel_id: Some(args.channel_id.to_string()),
+            }),
+
+            K::Settlement(settlement) => Kind::Settlement(Settlement {
+                epoch: Some(settlement.epoch),
+                round: Some(settlement.round),
+                sub_dag_index: settlement.sub_dag_index,
+                changes: settlement
+                    .changes
+                    .into_iter()
+                    .map(|ev| {
+                        let (owner, coin_type, amount, is_credit) = match ev {
+                            types::balance::BalanceEvent::Deposit {
+                                owner,
+                                coin_type,
+                                amount,
+                            } => (owner, coin_type, amount, true),
+                            types::balance::BalanceEvent::Withdraw {
+                                owner,
+                                coin_type,
+                                amount,
+                            } => (owner, coin_type, amount, false),
+                        };
+                        SettlementChange {
+                            owner: Some(owner.to_string()),
+                            coin_type: Some(coin_type_label(coin_type).to_string()),
+                            amount: Some(amount),
+                            is_credit: Some(is_credit),
+                        }
+                    })
+                    .collect(),
             }),
         };
 
@@ -921,6 +980,10 @@ impl TryFrom<SystemParameters> for protocol_config::SystemParameters {
         Ok(protocol_config::SystemParameters {
             epoch_duration_ms: proto_params.epoch_duration_ms.ok_or("Missing epoch_duration_ms")?,
             unit_fee: proto_params.unit_fee.ok_or("Missing unit_fee")?,
+            // Defaulted when missing from proto so older RPC clients
+            // remain compatible. Real on-chain SystemParameters always
+            // carry a value (set in `build_system_parameters`).
+            channel_grace_period_ms: 10 * 60 * 1000,
         })
     }
 }

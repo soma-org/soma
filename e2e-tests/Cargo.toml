@@ -20,6 +20,7 @@ anyhow.workspace = true
 rpc.workspace = true
 sdk.workspace = true
 fastcrypto.workspace = true
+soma-keys.workspace = true
 url.workspace = true
 tempfile.workspace = true
 

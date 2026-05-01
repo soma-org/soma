@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::balance::BalanceEvent;
 use crate::base::FullObjectID;
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 use crate::full_checkpoint_content::ObjectSet;
@@ -27,6 +28,14 @@ pub struct TransactionOutputs {
 
     pub locks_to_delete: Vec<ObjectRef>,
     pub new_locks_to_init: Vec<ObjectRef>,
+
+    /// Balance accumulator events emitted by this transaction. Empty
+    /// for every existing tx kind today (Stage 2 plumbing only); will
+    /// be populated as gas (Stage 6), transfers (Stage 7), and
+    /// channels/staking migrate to the address-balance model. The
+    /// per-commit settlement system tx aggregates these across all
+    /// txs in the commit and applies the net deltas atomically.
+    pub balance_events: Vec<BalanceEvent>,
 }
 
 impl TransactionOutputs {
@@ -42,6 +51,7 @@ impl TransactionOutputs {
             mutable_inputs,
             written,
             lamport_version,
+            balance_events,
         } = inner_temporary_store;
 
         let tx_digest = *transaction.digest();
@@ -132,6 +142,7 @@ impl TransactionOutputs {
             written,
             locks_to_delete,
             new_locks_to_init,
+            balance_events,
         }
     }
 }

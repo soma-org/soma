@@ -600,6 +600,15 @@ pub enum ObjectType {
     StakedSoma,
     /// Pending USDC withdrawal from Soma to Ethereum
     PendingWithdrawal,
+    /// Global wall-clock object updated every consensus commit. Single
+    /// instance lives at CLOCK_OBJECT_ID. User transactions may declare it
+    /// as an immutable shared input only — only the consensus commit
+    /// prologue mutates it.
+    Clock,
+    /// Unidirectional payment channel between a payer and a payee. See
+    /// [`crate::channel::Channel`] for the on-chain layout. Created by
+    /// `OpenChannel`, deleted on `Close` or `WithdrawAfterTimeout`.
+    Channel,
 }
 
 impl fmt::Display for ObjectType {
@@ -609,6 +618,8 @@ impl fmt::Display for ObjectType {
             ObjectType::Coin(ct) => write!(f, "Coin({})", ct),
             ObjectType::StakedSoma => write!(f, "StakedSoma"),
             ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
+            ObjectType::Clock => write!(f, "Clock"),
+            ObjectType::Channel => write!(f, "Channel"),
         }
     }
 }
@@ -623,6 +634,8 @@ impl FromStr for ObjectType {
             "Coin(USDC)" => Ok(ObjectType::Coin(CoinType::Usdc)),
             "StakedSoma" => Ok(ObjectType::StakedSoma),
             "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
+            "Clock" => Ok(ObjectType::Clock),
+            "Channel" => Ok(ObjectType::Channel),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }

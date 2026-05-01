@@ -237,45 +237,74 @@ impl SharedObjVerManager {
         shared_input_next_versions: &mut HashMap<ConsensusObjectSequenceKey, Version>,
     ) -> AssignedVersions {
         let shared_input_objects: Vec<_> = assignable.shared_input_objects(epoch_store).collect();
+        let non_shared_input_keys = assignable.non_shared_input_object_keys();
+        let receiving_object_keys = assignable.receiving_object_keys();
 
-        if shared_input_objects.is_empty() {
-            // No shared object used by this transaction. No need to assign versions.
-            return AssignedVersions::new(vec![]);
-        }
+        let assigned = assign_versions_for_shared_inputs_inner(
+            &shared_input_objects,
+            &non_shared_input_keys,
+            &receiving_object_keys,
+            shared_input_next_versions,
+        );
 
         let tx_key = assignable.key();
+        trace!(?tx_key, assigned_versions = ?assigned, "locking shared objects");
 
-        let mut input_object_keys = assignable.non_shared_input_object_keys();
-        let mut assigned_versions = Vec::with_capacity(shared_input_objects.len());
-
-        // Record receiving object versions towards the shared version computation.
-        let receiving_object_keys = assignable.receiving_object_keys();
-        input_object_keys.extend(receiving_object_keys);
-
-        for (SharedInputObject { id, initial_shared_version, mutable }, assigned_version) in
-            shared_input_objects
-                .iter()
-                .map(|obj| (obj, *shared_input_next_versions.get(&obj.id_and_version()).unwrap()))
-        {
-            assigned_versions.push(((*id, *initial_shared_version), assigned_version));
-            input_object_keys.push(ObjectKey(*id, assigned_version));
-        }
-
-        let next_version = Version::lamport_increment(input_object_keys.iter().map(|obj| obj.1));
-        assert!(next_version.is_valid(), "Assigned version must be valid. Got {:?}", next_version);
-
-        // Update the next version for the shared objects.
-        assigned_versions.iter().for_each(|(id, version)| {
-            assert!(version.is_valid(), "Assigned version must be a valid version.");
-            shared_input_next_versions
-                .insert(*id, next_version)
-                .expect("Object must exist in shared_input_next_versions.");
-        });
-
-        trace!(?tx_key, ?assigned_versions, ?next_version, "locking shared objects");
-
-        AssignedVersions::new(assigned_versions)
+        assigned
     }
+}
+
+/// Pure version-assignment logic, decoupled from `AuthorityPerEpochStore`.
+///
+/// Read-only shared inputs (`mutable: false`) deliberately do NOT bump
+/// their `next_version` entry, so subsequent readers in the same commit
+/// window see the same version and can be scheduled in parallel. This is
+/// the Sui-Clock parallelism property: `0x6` is mutated by the prologue
+/// once per commit, then thousands of user transactions read it without
+/// contention.
+///
+/// Mutable shared inputs bump `next_version` to `lamport_increment(all
+/// inputs of this tx)` so the next transaction sees the post-mutation
+/// version.
+pub(crate) fn assign_versions_for_shared_inputs_inner(
+    shared_input_objects: &[SharedInputObject],
+    non_shared_input_keys: &[ObjectKey],
+    receiving_object_keys: &[ObjectKey],
+    shared_input_next_versions: &mut HashMap<ConsensusObjectSequenceKey, Version>,
+) -> AssignedVersions {
+    if shared_input_objects.is_empty() {
+        return AssignedVersions::new(vec![]);
+    }
+
+    let mut input_object_keys: Vec<ObjectKey> = non_shared_input_keys.to_vec();
+    input_object_keys.extend_from_slice(receiving_object_keys);
+
+    let mut assigned_versions = Vec::with_capacity(shared_input_objects.len());
+    let mut mutated_keys: Vec<ConsensusObjectSequenceKey> =
+        Vec::with_capacity(shared_input_objects.len());
+
+    for SharedInputObject { id, initial_shared_version, mutable } in shared_input_objects {
+        let key = (*id, *initial_shared_version);
+        let assigned_version = *shared_input_next_versions
+            .get(&key)
+            .expect("shared input must be in next_versions map");
+        assigned_versions.push((key, assigned_version));
+        input_object_keys.push(ObjectKey(*id, assigned_version));
+        if *mutable {
+            mutated_keys.push(key);
+        }
+    }
+
+    let next_version = Version::lamport_increment(input_object_keys.iter().map(|obj| obj.1));
+    assert!(next_version.is_valid(), "Assigned version must be valid. Got {:?}", next_version);
+
+    for key in &mutated_keys {
+        shared_input_next_versions
+            .insert(*key, next_version)
+            .expect("Object must exist in shared_input_next_versions.");
+    }
+
+    AssignedVersions::new(assigned_versions)
 }
 
 fn get_or_init_versions<'a>(
@@ -290,4 +319,206 @@ fn get_or_init_versions<'a>(
     shared_input_objects.dedup();
 
     epoch_store.get_or_init_next_object_versions(&shared_input_objects, cache_reader)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use types::object::ObjectID;
+    use types::{
+        CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION, SYSTEM_STATE_OBJECT_ID,
+        SYSTEM_STATE_OBJECT_SHARED_VERSION,
+    };
+
+    fn clock_read() -> SharedInputObject {
+        SharedInputObject::CLOCK_OBJ_READ
+    }
+
+    fn clock_mut() -> SharedInputObject {
+        SharedInputObject::CLOCK_OBJ_MUT
+    }
+
+    fn system_state_mut() -> SharedInputObject {
+        SharedInputObject::SYSTEM_OBJ
+    }
+
+    /// Read-only refs to Clock must NOT bump `next_version` — this is the
+    /// parallelism property. Two consecutive reader transactions see the
+    /// same Clock version.
+    #[test]
+    fn read_only_shared_input_does_not_bump_next_version() {
+        let key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(key, Version::from_u64(5));
+
+        let assigned1 = assign_versions_for_shared_inputs_inner(
+            &[clock_read()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(assigned1.as_slice(), &[(key, Version::from_u64(5))]);
+        assert_eq!(next[&key], Version::from_u64(5), "first read must not bump");
+
+        let assigned2 = assign_versions_for_shared_inputs_inner(
+            &[clock_read()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(
+            assigned2.as_slice(),
+            &[(key, Version::from_u64(5))],
+            "second reader sees the same version as the first"
+        );
+        assert_eq!(next[&key], Version::from_u64(5), "second read must not bump either");
+    }
+
+    /// Mutable refs to a shared object DO bump `next_version` so the next
+    /// transaction sees the post-mutation state.
+    #[test]
+    fn mutable_shared_input_bumps_next_version() {
+        let key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(key, Version::from_u64(5));
+
+        let assigned = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(assigned.as_slice(), &[(key, Version::from_u64(5))]);
+        // lamport_increment over the single shared input version 5 → 6
+        assert_eq!(next[&key], Version::from_u64(6), "mutable ref must bump");
+    }
+
+    /// Sui-Clock pattern: prologue mutates Clock (bumps), then many readers
+    /// see the new version without further bumps.
+    #[test]
+    fn prologue_then_many_readers_serialize_only_on_prologue() {
+        let key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(key, Version::from_u64(10));
+
+        // Prologue: mutates Clock at v=10 → bumps to 11
+        let prologue = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(prologue.as_slice(), &[(key, Version::from_u64(10))]);
+        assert_eq!(next[&key], Version::from_u64(11));
+
+        // Now N readers all see v=11 without bumping
+        for _ in 0..1000 {
+            let r = assign_versions_for_shared_inputs_inner(
+                &[clock_read()],
+                &[],
+                &[],
+                &mut next,
+            );
+            assert_eq!(r.as_slice(), &[(key, Version::from_u64(11))]);
+        }
+        assert_eq!(
+            next[&key],
+            Version::from_u64(11),
+            "1000 reads must not bump Clock's next_version"
+        );
+
+        // Next prologue mutates v=11 → bumps to 12
+        let prologue2 = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(prologue2.as_slice(), &[(key, Version::from_u64(11))]);
+        assert_eq!(next[&key], Version::from_u64(12));
+    }
+
+    /// Read-only access to one shared object must not interfere with
+    /// mutation tracking of another shared object in the same tx.
+    #[test]
+    fn mixed_mutable_and_readonly_shared_inputs() {
+        let clock_key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let ss_key = (SYSTEM_STATE_OBJECT_ID, SYSTEM_STATE_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(clock_key, Version::from_u64(5));
+        next.insert(ss_key, Version::from_u64(7));
+
+        // Tx mutates SystemState, reads Clock.
+        let assigned = assign_versions_for_shared_inputs_inner(
+            &[system_state_mut(), clock_read()],
+            &[],
+            &[],
+            &mut next,
+        );
+        // Both inputs assigned at their current versions
+        assert!(assigned.as_slice().contains(&(ss_key, Version::from_u64(7))));
+        assert!(assigned.as_slice().contains(&(clock_key, Version::from_u64(5))));
+
+        // SystemState bumped (max(5,7)+1 = 8); Clock unchanged
+        assert_eq!(next[&ss_key], Version::from_u64(8), "SystemState must bump");
+        assert_eq!(next[&clock_key], Version::from_u64(5), "Clock must not bump");
+    }
+
+    /// Empty shared input list short-circuits without panicking.
+    #[test]
+    fn no_shared_inputs_returns_empty_assignment() {
+        let mut next = HashMap::new();
+        let assigned =
+            assign_versions_for_shared_inputs_inner(&[], &[], &[], &mut next);
+        assert!(assigned.as_slice().is_empty());
+    }
+
+    /// Subsequent mutators see the bumped version, so updates serialize as
+    /// expected (lamport-correct).
+    #[test]
+    fn consecutive_mutators_chain_versions() {
+        let key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(key, Version::from_u64(1));
+
+        let a = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(a.as_slice()[0].1, Version::from_u64(1));
+        assert_eq!(next[&key], Version::from_u64(2));
+
+        let b = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            &[],
+            &[],
+            &mut next,
+        );
+        assert_eq!(b.as_slice()[0].1, Version::from_u64(2));
+        assert_eq!(next[&key], Version::from_u64(3));
+    }
+
+    /// Lamport increment must include non-shared and receiving object
+    /// versions, not just shared ones.
+    #[test]
+    fn lamport_increment_uses_all_input_versions() {
+        let key = (CLOCK_OBJECT_ID, CLOCK_OBJECT_SHARED_VERSION);
+        let mut next = HashMap::new();
+        next.insert(key, Version::from_u64(2));
+
+        // Owned input at version 100 should dominate the lamport increment.
+        let other_id = ObjectID::random();
+        let owned = ObjectKey(other_id, Version::from_u64(100));
+
+        let _ = assign_versions_for_shared_inputs_inner(
+            &[clock_mut()],
+            std::slice::from_ref(&owned),
+            &[],
+            &mut next,
+        );
+        // max(2, 100) + 1 = 101
+        assert_eq!(next[&key], Version::from_u64(101));
+    }
 }

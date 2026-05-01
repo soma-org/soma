@@ -5534,6 +5534,36 @@ mod _field_impls {
             number: 43i32,
             message_fields: Some(BridgeEmergencyUnpause::FIELDS),
         };
+        pub const OPEN_CHANNEL_FIELD: &'static MessageField = &MessageField {
+            name: "open_channel",
+            json_name: "openChannel",
+            number: 50i32,
+            message_fields: Some(OpenChannel::FIELDS),
+        };
+        pub const SETTLE_FIELD: &'static MessageField = &MessageField {
+            name: "settle",
+            json_name: "settle",
+            number: 51i32,
+            message_fields: Some(Settle::FIELDS),
+        };
+        pub const REQUEST_CLOSE_FIELD: &'static MessageField = &MessageField {
+            name: "request_close",
+            json_name: "requestClose",
+            number: 52i32,
+            message_fields: Some(RequestClose::FIELDS),
+        };
+        pub const WITHDRAW_AFTER_TIMEOUT_FIELD: &'static MessageField = &MessageField {
+            name: "withdraw_after_timeout",
+            json_name: "withdrawAfterTimeout",
+            number: 53i32,
+            message_fields: Some(WithdrawAfterTimeout::FIELDS),
+        };
+        pub const SETTLEMENT_FIELD: &'static MessageField = &MessageField {
+            name: "settlement",
+            json_name: "settlement",
+            number: 60i32,
+            message_fields: Some(Settlement::FIELDS),
+        };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5571,6 +5601,11 @@ mod _field_impls {
             Self::BRIDGE_WITHDRAW_FIELD,
             Self::BRIDGE_EMERGENCY_PAUSE_FIELD,
             Self::BRIDGE_EMERGENCY_UNPAUSE_FIELD,
+            Self::OPEN_CHANNEL_FIELD,
+            Self::SETTLE_FIELD,
+            Self::REQUEST_CLOSE_FIELD,
+            Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
+            Self::SETTLEMENT_FIELD,
         ];
     }
     impl TransactionKind {
@@ -5736,6 +5771,26 @@ mod _field_impls {
         ) -> BridgeEmergencyUnpauseFieldPathBuilder {
             self.path.push(TransactionKind::BRIDGE_EMERGENCY_UNPAUSE_FIELD.name);
             BridgeEmergencyUnpauseFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn open_channel(mut self) -> OpenChannelFieldPathBuilder {
+            self.path.push(TransactionKind::OPEN_CHANNEL_FIELD.name);
+            OpenChannelFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn settle(mut self) -> SettleFieldPathBuilder {
+            self.path.push(TransactionKind::SETTLE_FIELD.name);
+            SettleFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn request_close(mut self) -> RequestCloseFieldPathBuilder {
+            self.path.push(TransactionKind::REQUEST_CLOSE_FIELD.name);
+            RequestCloseFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn withdraw_after_timeout(mut self) -> WithdrawAfterTimeoutFieldPathBuilder {
+            self.path.push(TransactionKind::WITHDRAW_AFTER_TIMEOUT_FIELD.name);
+            WithdrawAfterTimeoutFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn settlement(mut self) -> SettlementFieldPathBuilder {
+            self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
+            SettlementFieldPathBuilder::new_with_base(self.path)
         }
     }
     impl BridgeDeposit {
@@ -7651,6 +7706,148 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl Settlement {
+        pub const EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "epoch",
+            json_name: "epoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ROUND_FIELD: &'static MessageField = &MessageField {
+            name: "round",
+            json_name: "round",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const SUB_DAG_INDEX_FIELD: &'static MessageField = &MessageField {
+            name: "sub_dag_index",
+            json_name: "subDagIndex",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const CHANGES_FIELD: &'static MessageField = &MessageField {
+            name: "changes",
+            json_name: "changes",
+            number: 4i32,
+            message_fields: Some(SettlementChange::FIELDS),
+        };
+    }
+    impl MessageFields for Settlement {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::EPOCH_FIELD,
+            Self::ROUND_FIELD,
+            Self::SUB_DAG_INDEX_FIELD,
+            Self::CHANGES_FIELD,
+        ];
+    }
+    impl Settlement {
+        pub fn path_builder() -> SettlementFieldPathBuilder {
+            SettlementFieldPathBuilder::new()
+        }
+    }
+    pub struct SettlementFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettlementFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn epoch(mut self) -> String {
+            self.path.push(Settlement::EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn round(mut self) -> String {
+            self.path.push(Settlement::ROUND_FIELD.name);
+            self.finish()
+        }
+        pub fn sub_dag_index(mut self) -> String {
+            self.path.push(Settlement::SUB_DAG_INDEX_FIELD.name);
+            self.finish()
+        }
+        pub fn changes(mut self) -> SettlementChangeFieldPathBuilder {
+            self.path.push(Settlement::CHANGES_FIELD.name);
+            SettlementChangeFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl SettlementChange {
+        pub const OWNER_FIELD: &'static MessageField = &MessageField {
+            name: "owner",
+            json_name: "owner",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const IS_CREDIT_FIELD: &'static MessageField = &MessageField {
+            name: "is_credit",
+            json_name: "isCredit",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for SettlementChange {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OWNER_FIELD,
+            Self::COIN_TYPE_FIELD,
+            Self::AMOUNT_FIELD,
+            Self::IS_CREDIT_FIELD,
+        ];
+    }
+    impl SettlementChange {
+        pub fn path_builder() -> SettlementChangeFieldPathBuilder {
+            SettlementChangeFieldPathBuilder::new()
+        }
+    }
+    pub struct SettlementChangeFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettlementChangeFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn owner(mut self) -> String {
+            self.path.push(SettlementChange::OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(SettlementChange::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(SettlementChange::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn is_credit(mut self) -> String {
+            self.path.push(SettlementChange::IS_CREDIT_FIELD.name);
+            self.finish()
+        }
+    }
     impl SubmitData {
         pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
             name: "target_id",
@@ -8003,6 +8200,220 @@ mod _field_impls {
         }
         pub fn challenge_id(mut self) -> String {
             self.path.push(ClaimChallengeBond::CHALLENGE_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl OpenChannel {
+        pub const PAYEE_FIELD: &'static MessageField = &MessageField {
+            name: "payee",
+            json_name: "payee",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const AUTHORIZED_SIGNER_FIELD: &'static MessageField = &MessageField {
+            name: "authorized_signer",
+            json_name: "authorizedSigner",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const TOKEN_FIELD: &'static MessageField = &MessageField {
+            name: "token",
+            json_name: "token",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const DEPOSIT_COIN_FIELD: &'static MessageField = &MessageField {
+            name: "deposit_coin",
+            json_name: "depositCoin",
+            number: 4i32,
+            message_fields: Some(ObjectReference::FIELDS),
+        };
+        pub const DEPOSIT_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "deposit_amount",
+            json_name: "depositAmount",
+            number: 5i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for OpenChannel {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::PAYEE_FIELD,
+            Self::AUTHORIZED_SIGNER_FIELD,
+            Self::TOKEN_FIELD,
+            Self::DEPOSIT_COIN_FIELD,
+            Self::DEPOSIT_AMOUNT_FIELD,
+        ];
+    }
+    impl OpenChannel {
+        pub fn path_builder() -> OpenChannelFieldPathBuilder {
+            OpenChannelFieldPathBuilder::new()
+        }
+    }
+    pub struct OpenChannelFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl OpenChannelFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn payee(mut self) -> String {
+            self.path.push(OpenChannel::PAYEE_FIELD.name);
+            self.finish()
+        }
+        pub fn authorized_signer(mut self) -> String {
+            self.path.push(OpenChannel::AUTHORIZED_SIGNER_FIELD.name);
+            self.finish()
+        }
+        pub fn token(mut self) -> String {
+            self.path.push(OpenChannel::TOKEN_FIELD.name);
+            self.finish()
+        }
+        pub fn deposit_coin(mut self) -> ObjectReferenceFieldPathBuilder {
+            self.path.push(OpenChannel::DEPOSIT_COIN_FIELD.name);
+            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn deposit_amount(mut self) -> String {
+            self.path.push(OpenChannel::DEPOSIT_AMOUNT_FIELD.name);
+            self.finish()
+        }
+    }
+    impl Settle {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const CUMULATIVE_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "cumulative_amount",
+            json_name: "cumulativeAmount",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const VOUCHER_SIGNATURE_FIELD: &'static MessageField = &MessageField {
+            name: "voucher_signature",
+            json_name: "voucherSignature",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for Settle {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::CHANNEL_ID_FIELD,
+            Self::CUMULATIVE_AMOUNT_FIELD,
+            Self::VOUCHER_SIGNATURE_FIELD,
+        ];
+    }
+    impl Settle {
+        pub fn path_builder() -> SettleFieldPathBuilder {
+            SettleFieldPathBuilder::new()
+        }
+    }
+    pub struct SettleFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl SettleFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(Settle::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn cumulative_amount(mut self) -> String {
+            self.path.push(Settle::CUMULATIVE_AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn voucher_signature(mut self) -> String {
+            self.path.push(Settle::VOUCHER_SIGNATURE_FIELD.name);
+            self.finish()
+        }
+    }
+    impl RequestClose {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for RequestClose {
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHANNEL_ID_FIELD];
+    }
+    impl RequestClose {
+        pub fn path_builder() -> RequestCloseFieldPathBuilder {
+            RequestCloseFieldPathBuilder::new()
+        }
+    }
+    pub struct RequestCloseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl RequestCloseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(RequestClose::CHANNEL_ID_FIELD.name);
+            self.finish()
+        }
+    }
+    impl WithdrawAfterTimeout {
+        pub const CHANNEL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "channel_id",
+            json_name: "channelId",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for WithdrawAfterTimeout {
+        const FIELDS: &'static [&'static MessageField] = &[Self::CHANNEL_ID_FIELD];
+    }
+    impl WithdrawAfterTimeout {
+        pub fn path_builder() -> WithdrawAfterTimeoutFieldPathBuilder {
+            WithdrawAfterTimeoutFieldPathBuilder::new()
+        }
+    }
+    pub struct WithdrawAfterTimeoutFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl WithdrawAfterTimeoutFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn channel_id(mut self) -> String {
+            self.path.push(WithdrawAfterTimeout::CHANNEL_ID_FIELD.name);
             self.finish()
         }
     }

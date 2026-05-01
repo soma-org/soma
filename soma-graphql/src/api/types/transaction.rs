@@ -28,6 +28,11 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
         TransactionKind::BridgeWithdraw(_) => "BridgeWithdraw",
         TransactionKind::BridgeEmergencyPause(_) => "BridgeEmergencyPause",
         TransactionKind::BridgeEmergencyUnpause(_) => "BridgeEmergencyUnpause",
+        TransactionKind::OpenChannel(_) => "OpenChannel",
+        TransactionKind::Settle(_) => "Settle",
+        TransactionKind::RequestClose(_) => "RequestClose",
+        TransactionKind::WithdrawAfterTimeout(_) => "WithdrawAfterTimeout",
+        TransactionKind::Settlement(_) => "Settlement",
     }
 }
 

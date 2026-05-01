@@ -4493,6 +4493,180 @@ mod _getter_impls {
             );
             self
         }
+        pub fn open_channel(&self) -> &OpenChannel {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &self.kind {
+                field as _
+            } else {
+                OpenChannel::default_instance() as _
+            }
+        }
+        pub fn open_channel_opt(&self) -> Option<&OpenChannel> {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn open_channel_opt_mut(&mut self) -> Option<&mut OpenChannel> {
+            if let Some(transaction_kind::Kind::OpenChannel(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn open_channel_mut(&mut self) -> &mut OpenChannel {
+            if self.open_channel_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::OpenChannel(OpenChannel::default()),
+                );
+            }
+            self.open_channel_opt_mut().unwrap()
+        }
+        pub fn with_open_channel(mut self, field: OpenChannel) -> Self {
+            self.kind = Some(transaction_kind::Kind::OpenChannel(field.into()));
+            self
+        }
+        pub fn settle(&self) -> &Settle {
+            if let Some(transaction_kind::Kind::Settle(field)) = &self.kind {
+                field as _
+            } else {
+                Settle::default_instance() as _
+            }
+        }
+        pub fn settle_opt(&self) -> Option<&Settle> {
+            if let Some(transaction_kind::Kind::Settle(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settle_opt_mut(&mut self) -> Option<&mut Settle> {
+            if let Some(transaction_kind::Kind::Settle(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settle_mut(&mut self) -> &mut Settle {
+            if self.settle_opt_mut().is_none() {
+                self.kind = Some(transaction_kind::Kind::Settle(Settle::default()));
+            }
+            self.settle_opt_mut().unwrap()
+        }
+        pub fn with_settle(mut self, field: Settle) -> Self {
+            self.kind = Some(transaction_kind::Kind::Settle(field.into()));
+            self
+        }
+        pub fn request_close(&self) -> &RequestClose {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &self.kind {
+                field as _
+            } else {
+                RequestClose::default_instance() as _
+            }
+        }
+        pub fn request_close_opt(&self) -> Option<&RequestClose> {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn request_close_opt_mut(&mut self) -> Option<&mut RequestClose> {
+            if let Some(transaction_kind::Kind::RequestClose(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn request_close_mut(&mut self) -> &mut RequestClose {
+            if self.request_close_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::RequestClose(RequestClose::default()),
+                );
+            }
+            self.request_close_opt_mut().unwrap()
+        }
+        pub fn with_request_close(mut self, field: RequestClose) -> Self {
+            self.kind = Some(transaction_kind::Kind::RequestClose(field.into()));
+            self
+        }
+        pub fn withdraw_after_timeout(&self) -> &WithdrawAfterTimeout {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &self.kind
+            {
+                field as _
+            } else {
+                WithdrawAfterTimeout::default_instance() as _
+            }
+        }
+        pub fn withdraw_after_timeout_opt(&self) -> Option<&WithdrawAfterTimeout> {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &self.kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn withdraw_after_timeout_opt_mut(
+            &mut self,
+        ) -> Option<&mut WithdrawAfterTimeout> {
+            if let Some(transaction_kind::Kind::WithdrawAfterTimeout(field)) = &mut self
+                .kind
+            {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn withdraw_after_timeout_mut(&mut self) -> &mut WithdrawAfterTimeout {
+            if self.withdraw_after_timeout_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::WithdrawAfterTimeout(
+                        WithdrawAfterTimeout::default(),
+                    ),
+                );
+            }
+            self.withdraw_after_timeout_opt_mut().unwrap()
+        }
+        pub fn with_withdraw_after_timeout(
+            mut self,
+            field: WithdrawAfterTimeout,
+        ) -> Self {
+            self.kind = Some(transaction_kind::Kind::WithdrawAfterTimeout(field.into()));
+            self
+        }
+        pub fn settlement(&self) -> &Settlement {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
+                field as _
+            } else {
+                Settlement::default_instance() as _
+            }
+        }
+        pub fn settlement_opt(&self) -> Option<&Settlement> {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settlement_opt_mut(&mut self) -> Option<&mut Settlement> {
+            if let Some(transaction_kind::Kind::Settlement(field)) = &mut self.kind {
+                Some(field as _)
+            } else {
+                None
+            }
+        }
+        pub fn settlement_mut(&mut self) -> &mut Settlement {
+            if self.settlement_opt_mut().is_none() {
+                self.kind = Some(
+                    transaction_kind::Kind::Settlement(Settlement::default()),
+                );
+            }
+            self.settlement_opt_mut().unwrap()
+        }
+        pub fn with_settlement(mut self, field: Settlement) -> Self {
+            self.kind = Some(transaction_kind::Kind::Settlement(field.into()));
+            self
+        }
     }
     impl BridgeDeposit {
         pub const fn const_default() -> Self {
@@ -5566,6 +5740,74 @@ mod _getter_impls {
             self
         }
     }
+    impl Settlement {
+        pub const fn const_default() -> Self {
+            Self {
+                epoch: None,
+                round: None,
+                sub_dag_index: None,
+                changes: Vec::new(),
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Settlement = Settlement::const_default();
+            &DEFAULT
+        }
+        pub fn with_epoch(mut self, field: u64) -> Self {
+            self.epoch = Some(field.into());
+            self
+        }
+        pub fn with_round(mut self, field: u64) -> Self {
+            self.round = Some(field.into());
+            self
+        }
+        pub fn with_sub_dag_index(mut self, field: u64) -> Self {
+            self.sub_dag_index = Some(field.into());
+            self
+        }
+        pub fn changes(&self) -> &[SettlementChange] {
+            &self.changes
+        }
+        pub fn changes_mut(&mut self) -> &mut Vec<SettlementChange> {
+            &mut self.changes
+        }
+        pub fn with_changes(mut self, field: Vec<SettlementChange>) -> Self {
+            self.changes = field;
+            self
+        }
+    }
+    impl SettlementChange {
+        pub const fn const_default() -> Self {
+            Self {
+                owner: None,
+                coin_type: None,
+                amount: None,
+                is_credit: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: SettlementChange = SettlementChange::const_default();
+            &DEFAULT
+        }
+        pub fn with_owner(mut self, field: String) -> Self {
+            self.owner = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
+            self
+        }
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
+            self
+        }
+        pub fn with_is_credit(mut self, field: bool) -> Self {
+            self.is_credit = Some(field.into());
+            self
+        }
+    }
     impl SubmitData {
         pub const fn const_default() -> Self {
             Self {
@@ -5782,6 +6024,111 @@ mod _getter_impls {
         }
         pub fn with_challenge_id(mut self, field: String) -> Self {
             self.challenge_id = Some(field.into());
+            self
+        }
+    }
+    impl OpenChannel {
+        pub const fn const_default() -> Self {
+            Self {
+                payee: None,
+                authorized_signer: None,
+                token: None,
+                deposit_coin: None,
+                deposit_amount: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: OpenChannel = OpenChannel::const_default();
+            &DEFAULT
+        }
+        pub fn with_payee(mut self, field: String) -> Self {
+            self.payee = Some(field.into());
+            self
+        }
+        pub fn with_authorized_signer(mut self, field: String) -> Self {
+            self.authorized_signer = Some(field.into());
+            self
+        }
+        pub fn with_token(mut self, field: String) -> Self {
+            self.token = Some(field.into());
+            self
+        }
+        pub fn deposit_coin(&self) -> &ObjectReference {
+            self.deposit_coin
+                .as_ref()
+                .map(|field| field as _)
+                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        }
+        pub fn deposit_coin_opt(&self) -> Option<&ObjectReference> {
+            self.deposit_coin.as_ref().map(|field| field as _)
+        }
+        pub fn deposit_coin_opt_mut(&mut self) -> Option<&mut ObjectReference> {
+            self.deposit_coin.as_mut().map(|field| field as _)
+        }
+        pub fn deposit_coin_mut(&mut self) -> &mut ObjectReference {
+            self.deposit_coin.get_or_insert_default()
+        }
+        pub fn with_deposit_coin(mut self, field: ObjectReference) -> Self {
+            self.deposit_coin = Some(field.into());
+            self
+        }
+        pub fn with_deposit_amount(mut self, field: u64) -> Self {
+            self.deposit_amount = Some(field.into());
+            self
+        }
+    }
+    impl Settle {
+        pub const fn const_default() -> Self {
+            Self {
+                channel_id: None,
+                cumulative_amount: None,
+                voucher_signature: None,
+            }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: Settle = Settle::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+        pub fn with_cumulative_amount(mut self, field: u64) -> Self {
+            self.cumulative_amount = Some(field.into());
+            self
+        }
+        pub fn with_voucher_signature(mut self, field: ::prost::bytes::Bytes) -> Self {
+            self.voucher_signature = Some(field.into());
+            self
+        }
+    }
+    impl RequestClose {
+        pub const fn const_default() -> Self {
+            Self { channel_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: RequestClose = RequestClose::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
+            self
+        }
+    }
+    impl WithdrawAfterTimeout {
+        pub const fn const_default() -> Self {
+            Self { channel_id: None }
+        }
+        #[doc(hidden)]
+        pub fn default_instance() -> &'static Self {
+            static DEFAULT: WithdrawAfterTimeout = WithdrawAfterTimeout::const_default();
+            &DEFAULT
+        }
+        pub fn with_channel_id(mut self, field: String) -> Self {
+            self.channel_id = Some(field.into());
             self
         }
     }

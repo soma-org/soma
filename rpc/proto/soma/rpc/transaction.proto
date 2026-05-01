@@ -86,6 +86,15 @@ message TransactionKind {
     BridgeWithdraw bridge_withdraw = 41;
     BridgeEmergencyPause bridge_emergency_pause = 42;
     BridgeEmergencyUnpause bridge_emergency_unpause = 43;
+
+    // Payment-channel transactions (Phase 1)
+    OpenChannel open_channel = 50;
+    Settle settle = 51;
+    RequestClose request_close = 52;
+    WithdrawAfterTimeout withdraw_after_timeout = 53;
+
+    // Per-commit accumulator settlement system transaction (Stage 6a).
+    Settlement settlement = 60;
   }
 }
 
@@ -327,6 +336,45 @@ message ConsensusCommitPrologue {
   optional string additional_state_digest = 6;
 }
 
+// Per-consensus-commit accumulator settlement system transaction.
+//
+// The consensus handler injects exactly one of these per commit. Its
+// `changes` field carries the aggregated net (owner, coin_type) deltas
+// from every user transaction's emitted balance events; the executor
+// applies them as deltas to the on-chain accumulator-balance table.
+//
+// Sender is always the system address (0x0...0). The
+// (epoch, round, sub_dag_index) triplet makes the digest unique per
+// commit even when `changes` is empty.
+message Settlement {
+  // Epoch of the commit this settlement belongs to.
+  optional uint64 epoch = 1;
+
+  // Consensus round of the commit.
+  optional uint64 round = 2;
+
+  // Sub-DAG index, populated when a round has multiple commits.
+  optional uint64 sub_dag_index = 3;
+
+  // Aggregated net per-(owner, coin_type) deltas. May be empty.
+  // Indexers that don't track balances can ignore this field.
+  repeated SettlementChange changes = 4;
+}
+
+// One entry in a Settlement's `changes` list. Equivalent to a
+// post-aggregation BalanceEvent: net positive deltas surface as
+// `is_credit=true`, net negatives as `is_credit=false`. `amount` is
+// the absolute magnitude of the net delta.
+message SettlementChange {
+  optional string owner = 1;
+  // Coin type label ("USDC", "SOMA", etc.) — same encoding as
+  // elsewhere in the proto.
+  optional string coin_type = 2;
+  optional uint64 amount = 3;
+  // True for net deposits, false for net withdrawals.
+  optional bool is_credit = 4;
+}
+
 // Submit data to a target in the data submission competition.
 message SubmitData {
   optional string target_id = 1;
@@ -384,4 +432,53 @@ message UndoReportChallenge {
 message ClaimChallengeBond {
   // Challenge ID (ObjectID hex string)
   optional string challenge_id = 1;
+}
+
+// === Payment-channel messages ===
+
+// Open a new payment channel. The transaction sender becomes the
+// channel's `payer`. `token` is "SOMA" or "USDC" — Phase 1 only
+// supports USDC.
+message OpenChannel {
+  optional string payee = 1;
+  // Address whose key will sign vouchers. Typically equal to the
+  // payer; differs when the payer wants a hot/cold key split.
+  optional string authorized_signer = 2;
+  // Coin denomination as a string ("SOMA" / "USDC"). Must match the
+  // coin object's actual type.
+  optional string token = 3;
+  // Coin object to draw the deposit from. May coincide with the gas
+  // coin.
+  optional ObjectReference deposit_coin = 4;
+  optional uint64 deposit_amount = 5;
+}
+
+// Submit a voucher to the channel for partial payment. Channel
+// stays open. Caller MUST be the payee.
+message Settle {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+  // Cumulative amount the voucher authorizes — must be strictly
+  // greater than the channel's current settled_amount and at most
+  // the deposit + settled_amount.
+  optional uint64 cumulative_amount = 2;
+  // Voucher signature: BCS-encoded `IntentMessage<Voucher>` with
+  // `IntentScope::PaymentVoucher` signed by the channel's
+  // `authorized_signer`. Encoded via `GenericSignature` so MultiSig
+  // signers work transparently. Bytes form is `flag || sig || pk`.
+  optional bytes voucher_signature = 3;
+}
+
+// Payer-only: start the forced-close grace timer. The Clock's
+// current timestamp is recorded onto the channel.
+message RequestClose {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
+}
+
+// Payer-only: after the grace period elapses, return the
+// remaining deposit to the payer and delete the channel.
+message WithdrawAfterTimeout {
+  // Channel object ID (hex string).
+  optional string channel_id = 1;
 }

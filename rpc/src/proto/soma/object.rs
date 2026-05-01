@@ -170,6 +170,8 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::Coin(types::object::CoinType::Usdc) => "Coin(USDC)".to_string(),
             crate::types::ObjectType::StakedSoma => "StakedSoma".to_string(),
             crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
+            crate::types::ObjectType::Clock => "Clock".to_string(),
+            crate::types::ObjectType::Channel => "Channel".to_string(),
         }
     }
 }
@@ -184,6 +186,8 @@ impl FromStr for crate::types::ObjectType {
             "Coin(USDC)" => Ok(Self::Coin(types::object::CoinType::Usdc)),
             "StakedSoma" => Ok(Self::StakedSoma),
             "PendingWithdrawal" => Ok(Self::PendingWithdrawal),
+            "Clock" => Ok(Self::Clock),
+            "Channel" => Ok(Self::Channel),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }

@@ -62,11 +62,24 @@ async fn test_change_epoch_system_transaction_executes() {
 }
 
 #[tokio::test]
-async fn test_consensus_commit_prologue_system_transaction_executes() {
-    // FINDING: ConsensusCommitPrologueV1 is system-only conceptually, but the authority
-    // pipeline does NOT reject it at the execution level. In production, these are
-    // only created by the consensus handler.
+async fn test_user_submitted_consensus_commit_prologue_rejected() {
+    // Sui-parity defense: a CCP submitted by a user (i.e. signed by a
+    // non-system address) must NOT mutate the Clock. The
+    // `ConsensusCommitExecutor` enforces `signer == SomaAddress::ZERO`,
+    // mirroring sui::clock's `assert!(ctx.sender() == @0x0)`. Real
+    // CCPs are constructed by the consensus handler via
+    // `TransactionData::new_system_transaction` which uses ZERO; a
+    // user-signed Transaction can never produce that sender, so this
+    // path is closed at execution.
+    //
+    // Prior to the sender check this test asserted the CCP succeeded
+    // (and the original "FINDING" comment noted that user submission
+    // wasn't blocked at the execution level). The check now blocks it.
+    // End-to-end success of legitimate (system-built) CCPs is covered
+    // by the msim e2e tests in `e2e-tests/tests/clock_tests.rs`.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
+    assert_ne!(sender, SomaAddress::ZERO, "test invariant: user sender != system");
+
     let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
     let gas_ref = gas.compute_object_reference();
 
@@ -87,10 +100,26 @@ async fn test_consensus_commit_prologue_system_transaction_executes() {
     );
     let tx = to_sender_signed_transaction(data, &key);
 
-    // ConsensusCommitPrologueV1 doesn't need shared objects in current impl
-    let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
-    // Currently succeeds — system transaction rejection is at the network/consensus layer
-    assert!(result.is_ok(), "ConsensusCommitPrologueV1 should reach execution: {:?}", result.err());
+    let (_cert, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
+        .await
+        .expect("cert is built; rejection happens at the executor level");
+
+    assert!(
+        !effects.status().is_ok(),
+        "user-signed CCP must fail at execution; got status={:?}",
+        effects.status(),
+    );
+
+    // And the Clock must NOT have advanced.
+    let clock = authority_state
+        .get_object(&types::CLOCK_OBJECT_ID)
+        .await
+        .expect("Clock must still exist");
+    assert_eq!(
+        clock.clock_timestamp_ms(),
+        0,
+        "Clock must NOT advance from a rejected user-signed CCP",
+    );
 }
 
 // =============================================================================

@@ -2,6 +2,7 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use types::balance::BalanceEvent;
 use types::base::SomaAddress;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
@@ -22,20 +23,37 @@ pub(crate) struct GasPreparationResult {
 
 /// Prepare gas for a transaction.
 ///
-/// For system transactions, this does nothing.
-/// For user transactions:
-///   1. Smashes gas coins into one primary coin.
-///   2. Computes total fee = `unit_fee * executor.fee_units(...)`.
-///   3. Deducts the fee from the gas coin in one shot.
+/// Two gas modes are supported:
 ///
-/// On insufficient balance, drains whatever's available and returns
-/// `InsufficientGas` so the caller can record the failed effect.
+/// **Coin mode** (`!gas_payment.is_empty()`): the legacy path — smash
+/// the provided owned USDC coin objects into one primary, deduct the
+/// fee in-place, mutate-or-delete the gas coin object.
+///
+/// **Balance mode** (`gas_payment.is_empty()`, Stage 6c): no owned
+/// gas coin. The caller must have pre-read the sender's USDC balance
+/// from the accumulator and pass it as `sender_usdc_balance`. The
+/// scheduler's reservation pre-pass (Stage 4) and the validator's
+/// `is_replay_protected()` check (Stage 5.5c) together guarantee
+/// the tx has both the funds and a valid `TransactionExpiration`
+/// before this function runs. We compute the fee, verify the
+/// pre-read balance covers it, and emit a `BalanceEvent::Withdraw`
+/// for the fee amount. Settlement (Stage 6a) actually applies the
+/// debit to the on-chain accumulator at commit boundary.
+///
+/// For system transactions both branches are skipped — system txs
+/// pay no fee and have no gas object.
+///
+/// On insufficient gas, both modes return `InsufficientGas`. Coin
+/// mode drains the partial balance to record a failed effect; balance
+/// mode emits no Withdraw event (settlement won't see it) so the
+/// debit doesn't happen.
 pub fn prepare_gas(
     temporary_store: &mut TemporaryStore,
     kind: &TransactionKind,
     signer: &SomaAddress,
     gas_payment: Vec<ObjectRef>,
     executor: &dyn TransactionExecutor,
+    sender_usdc_balance: Option<u64>,
 ) -> Result<GasPreparationResult, (ExecutionFailureStatus, TransactionFee)> {
     // Skip gas handling for system transactions
     if kind.is_system_tx() {
@@ -45,7 +63,57 @@ pub fn prepare_gas(
         });
     }
 
-    // Smash gas coins and get primary gas ID
+    // Compute total fee = unit_fee × fee_units (same calculation in
+    // both modes — the protocol charges identically regardless of how
+    // the sender funds it).
+    let unit_fee = temporary_store.fee_parameters.unit_fee;
+    let units = executor.fee_units(temporary_store, kind) as u64;
+    let total_fee = unit_fee.saturating_mul(units);
+
+    // Stage 6c: branch on gas mode.
+    if gas_payment.is_empty() {
+        // Balance mode. Verify the caller pre-read a balance.
+        let balance = match sender_usdc_balance {
+            Some(b) => b,
+            None => {
+                // Stateless tx with no balance pre-read is a caller bug —
+                // balance-mode prepare_gas must always be invoked with a
+                // pre-computed balance. Surface as a structured error
+                // rather than panic so the failed-effect path runs.
+                return Err((
+                    ExecutionFailureStatus::SomaError(SomaError::from(
+                        "Balance-mode gas requires pre-computed sender USDC balance".to_string(),
+                    )),
+                    TransactionFee::default(),
+                ));
+            }
+        };
+
+        if balance < total_fee {
+            // Underfunded. The reservation pre-pass should have caught
+            // this before execution; reaching here indicates either a
+            // race (sender's balance dropped between reservation and
+            // execution) or a missing pre-pass. Fail without emitting
+            // the Withdraw event so settlement doesn't try to debit.
+            return Err((ExecutionFailureStatus::InsufficientGas, TransactionFee::default()));
+        }
+
+        // Emit a Withdraw event for the fee amount. Settlement
+        // aggregates these per (owner, coin_type) and applies the net
+        // delta atomically at commit boundary.
+        temporary_store.emit_balance_event(BalanceEvent::withdraw(
+            *signer,
+            CoinType::Usdc,
+            total_fee,
+        ));
+
+        return Ok(GasPreparationResult {
+            primary_gas_id: None,
+            transaction_fee: TransactionFee::new(total_fee),
+        });
+    }
+
+    // Coin mode (legacy). Smash gas coins and get primary gas ID.
     let gas_id = match smash_gas_coins(temporary_store, signer, gas_payment) {
         Ok(id) => id,
         Err(err) => {
@@ -56,11 +124,6 @@ pub fn prepare_gas(
     // Set gas object ID in temporary store
     let primary_gas_id = Some(gas_id);
     temporary_store.gas_object_id = primary_gas_id;
-
-    // Compute total fee = unit_fee × fee_units
-    let unit_fee = temporary_store.fee_parameters.unit_fee;
-    let units = executor.fee_units(temporary_store, kind) as u64;
-    let total_fee = unit_fee.saturating_mul(units);
 
     // Get gas object with merged balance
     let gas_obj = temporary_store.read_object(&gas_id).unwrap();

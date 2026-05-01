@@ -11,6 +11,7 @@ use crate::digests::{
     AdditionalConsensusStateDigest, ConsensusCommitDigest, ObjectDigest,
 };
 use crate::envelope::Message;
+use crate::error::SomaError;
 use crate::intent::{Intent, IntentMessage};
 use crate::object::{ObjectID, ObjectRef, Version};
 use crate::transaction::*;
@@ -765,7 +766,8 @@ fn test_input_objects_system_tx() {
     let inputs = genesis.input_objects().expect("should succeed");
     assert!(inputs.is_empty(), "Genesis should have no input objects");
 
-    // CCP has no input objects
+    // CCP declares Clock as a mutable shared input — that's how the
+    // prologue executor mutates the wall-clock timestamp each commit.
     let ccp = TransactionKind::ConsensusCommitPrologueV1(ConsensusCommitPrologueV1 {
         epoch: 0,
         round: 1,
@@ -775,10 +777,14 @@ fn test_input_objects_system_tx() {
         additional_state_digest: AdditionalConsensusStateDigest::new([0; 32]),
     });
     let inputs = ccp.input_objects().expect("should succeed");
-    assert!(
-        inputs.is_empty(),
-        "CCP should have no input objects (not validator/staking/model/submission)"
-    );
+    assert_eq!(inputs.len(), 1, "CCP must declare exactly Clock as input");
+    match &inputs[0] {
+        crate::transaction::InputObjectKind::SharedObject { id, mutable, .. } => {
+            assert_eq!(*id, crate::CLOCK_OBJECT_ID, "CCP input must be the Clock object");
+            assert!(*mutable, "CCP must declare Clock as mutable");
+        }
+        other => panic!("CCP input must be a SharedObject, got {:?}", other),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -814,6 +820,112 @@ fn test_input_objects_user_txs() {
     assert!(!inputs[1].is_shared_object());
     assert_eq!(inputs[1].object_id(), coin_ref2.0);
 
+}
+
+// ---------------------------------------------------------------------------
+// Channel tx kind input shapes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_input_objects_open_channel() {
+    // OpenChannel: deposit coin (owned). No shared inputs (Channel is created).
+    let deposit = random_object_ref();
+    let kind = TransactionKind::OpenChannel(OpenChannelArgs {
+        payee: SomaAddress::random(),
+        authorized_signer: SomaAddress::random(),
+        token: crate::object::CoinType::Usdc,
+        deposit_coin: deposit,
+        deposit_amount: 1_000,
+    });
+    let inputs = kind.input_objects().expect("OpenChannel inputs build");
+    assert_eq!(inputs.len(), 1, "OpenChannel takes only the deposit coin as input");
+    assert!(!inputs[0].is_shared_object(), "deposit coin is owned, not shared");
+    assert_eq!(inputs[0].object_id(), deposit.0);
+
+    // No shared inputs declared.
+    assert_eq!(kind.shared_input_objects().count(), 0);
+}
+
+#[test]
+fn test_input_objects_settle() {
+    // Settle: declares the Channel as a mutable shared input only.
+    let channel_id = ObjectID::random();
+    let kind = TransactionKind::Settle(SettleArgs {
+        channel_id,
+        cumulative_amount: 100,
+        voucher_signature: dummy_voucher_signature(),
+    });
+    let inputs = kind.input_objects().expect("Settle inputs build");
+    assert_eq!(inputs.len(), 1);
+    assert!(inputs[0].is_shared_object());
+    assert_eq!(inputs[0].object_id(), channel_id);
+    assert!(inputs[0].is_mutable());
+
+    let shared: Vec<_> = kind.shared_input_objects().collect();
+    assert_eq!(shared.len(), 1);
+    assert_eq!(shared[0].id, channel_id);
+    assert!(shared[0].mutable);
+}
+
+#[test]
+fn test_input_objects_request_close() {
+    // RequestClose: Channel (mutable shared) + Clock (immutable shared).
+    let channel_id = ObjectID::random();
+    let kind = TransactionKind::RequestClose(RequestCloseArgs { channel_id });
+    let inputs = kind.input_objects().expect("RequestClose inputs build");
+    assert_eq!(inputs.len(), 2);
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&crate::CLOCK_OBJECT_ID), "Clock must be declared");
+    assert!(ids.contains(&channel_id), "Channel must be declared");
+
+    // Clock must be immutable.
+    let clock_input = inputs.iter().find(|i| i.object_id() == crate::CLOCK_OBJECT_ID).unwrap();
+    assert!(!clock_input.is_mutable(), "Clock must be read-only for user txs");
+    // Channel must be mutable.
+    let channel_input = inputs.iter().find(|i| i.object_id() == channel_id).unwrap();
+    assert!(channel_input.is_mutable(), "Channel is mutated by RequestClose");
+}
+
+#[test]
+fn test_input_objects_withdraw_after_timeout() {
+    // WithdrawAfterTimeout: Channel (mutable) + Clock (read) + SystemState (read).
+    let channel_id = ObjectID::random();
+    let kind =
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id });
+    let inputs = kind.input_objects().expect("WithdrawAfterTimeout inputs build");
+    assert_eq!(inputs.len(), 3);
+
+    let ids: Vec<_> = inputs.iter().map(|i| i.object_id()).collect();
+    assert!(ids.contains(&channel_id));
+    assert!(ids.contains(&crate::CLOCK_OBJECT_ID));
+    assert!(ids.contains(&SYSTEM_STATE_OBJECT_ID));
+
+    // Channel mutable, Clock read-only, SystemState read-only.
+    for input in &inputs {
+        let id = input.object_id();
+        let expected_mut = id == channel_id;
+        assert_eq!(
+            input.is_mutable(),
+            expected_mut,
+            "object {} mutability should be {}",
+            id,
+            expected_mut
+        );
+    }
+}
+
+/// Helper: a syntactically-valid GenericSignature for shape tests. The
+/// signature does not need to verify since we're testing input-object
+/// declarations, not execution.
+fn dummy_voucher_signature() -> crate::crypto::GenericSignature {
+    use fastcrypto::ed25519::Ed25519KeyPair;
+    let (_, kp): (SomaAddress, Ed25519KeyPair) = crate::crypto::get_key_pair();
+    let voucher = crate::channel::Voucher::new(ObjectID::ZERO, 0);
+    let intent_msg = crate::intent::IntentMessage::new(
+        crate::intent::Intent::soma_app(crate::intent::IntentScope::PaymentVoucher),
+        voucher,
+    );
+    crate::crypto::Signature::new_secure(&intent_msg, &kp).into()
 }
 
 // ---------------------------------------------------------------------------
@@ -931,4 +1043,320 @@ fn test_envelope_shared_object_methods() {
     let tx2 = Transaction::new(ssd2);
     assert!(!tx2.contains_shared_object());
     assert!(!tx2.is_consensus_tx());
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2: TransactionData::reservations() placeholder contract
+// ---------------------------------------------------------------------------
+//
+// The scheduler's reservation pre-pass (Stage 4) calls `tx.reservations()`
+// for every tx in a commit. Until per-kind balance plumbing lands
+// (Stages 6-10), every kind must return `vec![]` so the pre-pass is a
+// no-op and existing behaviour is preserved.
+
+#[test]
+fn test_reservations_transfer_coin_is_empty() {
+    let (data, _) = make_transfer_coin_data();
+    assert!(
+        data.reservations().is_empty(),
+        "TransferCoin must not yet declare balance reservations (Stage 7)"
+    );
+}
+
+#[test]
+fn test_reservations_genesis_is_empty() {
+    // System txs never declare reservations — they don't pay gas and
+    // they only produce balance events (mints), never consume them.
+    let data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
+        objects: vec![],
+    }));
+    assert!(data.reservations().is_empty());
+}
+
+#[test]
+fn test_reservations_change_epoch_is_empty() {
+    let data = make_system_tx_data(TransactionKind::ChangeEpoch(ChangeEpoch {
+        epoch: 1,
+        epoch_start_timestamp_ms: 1000,
+        protocol_version: protocol_config::ProtocolVersion::MIN,
+        fees: 0,
+        epoch_randomness: vec![],
+    }));
+    assert!(data.reservations().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Stage 5.5a: TransactionExpiration / replay-protection declaration
+// ---------------------------------------------------------------------------
+//
+// Structural validation of the expiration declaration. The "is the digest
+// in the executed cache?" check happens elsewhere and is tested in the
+// authority crate (Stage 5.5b/c).
+
+use crate::digests::ChainIdentifier;
+
+fn fresh_chain_id() -> ChainIdentifier {
+    // Build a deterministic non-default chain id for tests.
+    crate::digests::CheckpointDigest::new([7u8; 32]).into()
+}
+
+#[test]
+fn test_expiration_default_is_none() {
+    let (data, _) = make_transfer_coin_data();
+    assert!(matches!(data.expiration(), TransactionExpiration::None));
+    assert!(!data.expiration().is_replay_protected());
+}
+
+#[test]
+fn test_expiration_none_check_passes() {
+    // `None` always passes structural check — replay protection comes
+    // from owned-input version-bumps for these.
+    let (data, _) = make_transfer_coin_data();
+    let chain = fresh_chain_id();
+    data.check_expiration(0, &chain).expect("None expiration is always structurally valid");
+    data.check_expiration(999, &chain).expect("None expiration ignores epoch");
+}
+
+#[test]
+fn test_expiration_valid_during_within_window_passes() {
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        sender,
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 42,
+        },
+    );
+
+    data.check_expiration(5, &chain).expect("at min_epoch");
+    data.check_expiration(6, &chain).expect("at max_epoch");
+    assert!(data.expiration().is_replay_protected());
+}
+
+#[test]
+fn test_expiration_valid_during_premature_rejected() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(4, &chain).expect_err("epoch < min must reject");
+    assert!(matches!(err, SomaError::TransactionExpired { current_epoch: 4, .. }));
+}
+
+#[test]
+fn test_expiration_valid_during_expired_rejected() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(7, &chain).expect_err("epoch > max must reject");
+    assert!(matches!(err, SomaError::TransactionExpired { current_epoch: 7, .. }));
+}
+
+#[test]
+fn test_expiration_chain_mismatch_rejected() {
+    let chain_a = fresh_chain_id();
+    let chain_b: ChainIdentifier = crate::digests::CheckpointDigest::new([9u8; 32]).into();
+    assert_ne!(chain_a, chain_b);
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(5),
+            chain: chain_a,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(5, &chain_b).expect_err("cross-chain replay must reject");
+    assert!(matches!(err, SomaError::InvalidChainId { .. }));
+}
+
+#[test]
+fn test_expiration_oversized_window_rejected() {
+    // Width > 2 epochs would unbound the digest cache.
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(7), // width 3 — too wide
+            chain,
+            nonce: 0,
+        },
+    );
+    let err = data.check_expiration(5, &chain).expect_err("width > 2 must reject");
+    assert!(matches!(err, SomaError::UnsupportedFeatureError { .. }));
+    assert!(!data.expiration().is_replay_protected(), "oversized window is not replay-protected");
+}
+
+#[test]
+fn test_expiration_missing_min_or_max_rejected() {
+    let chain = fresh_chain_id();
+    let cases = [
+        (None, Some(5)),
+        (Some(5), None),
+        (None, None),
+    ];
+    for (min_epoch, max_epoch) in cases {
+        let data = TransactionData::new_with_expiration(
+            TransactionKind::Transfer {
+                coins: vec![random_object_ref()],
+                amounts: None,
+                recipients: vec![SomaAddress::random()],
+            },
+            SomaAddress::random(),
+            vec![random_object_ref()],
+            TransactionExpiration::ValidDuring { min_epoch, max_epoch, chain, nonce: 0 },
+        );
+        let err = data.check_expiration(5, &chain).expect_err("missing bound must reject");
+        assert!(matches!(err, SomaError::UnsupportedFeatureError { .. }));
+        assert!(!data.expiration().is_replay_protected());
+    }
+}
+
+#[test]
+fn test_expiration_nonce_distinguishes_otherwise_identical_txs() {
+    // Different nonces produce different tx digests. This is the
+    // mechanism that lets clients legitimately re-send "the same"
+    // logical tx without colliding in the digest cache.
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let kind = TransactionKind::Transfer {
+        coins: vec![random_object_ref()],
+        amounts: None,
+        recipients: vec![SomaAddress::random()],
+    };
+    let gas = vec![random_object_ref()];
+
+    let d1 = TransactionData::new_with_expiration(
+        kind.clone(),
+        sender,
+        gas.clone(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 1,
+        },
+    );
+    let d2 = TransactionData::new_with_expiration(
+        kind,
+        sender,
+        gas,
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(5),
+            max_epoch: Some(6),
+            chain,
+            nonce: 2,
+        },
+    );
+    assert_ne!(d1.digest(), d2.digest(), "different nonces must produce different digests");
+}
+
+/// Critical: signing a tx with `ValidDuring` must produce a signature
+/// that round-trips through verification. If the BCS encoding of the
+/// new `expiration` field doesn't get included in the signed payload
+/// — or the verification path skips it — signatures break for every
+/// stateless tx. Catches Stage 5.5a regression.
+#[test]
+fn test_signed_transaction_with_valid_during_expiration() {
+    let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: Some(vec![1]),
+            recipients: vec![SomaAddress::random()],
+        },
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 99,
+        },
+    );
+
+    let tx = Transaction::from_data_and_signer(data.clone(), vec![&kp]);
+    let inner_data = tx.data().transaction_data();
+    assert_eq!(*inner_data, data, "TransactionData must round-trip through signed envelope");
+    assert!(matches!(
+        inner_data.expiration(),
+        TransactionExpiration::ValidDuring { nonce: 99, .. }
+    ));
+
+    // The actual signature verification path (used by validators).
+    crate::transaction::verify_sender_signed_data_message_signatures(tx.data())
+        .expect("ValidDuring tx signature must verify");
+}
+
+#[test]
+fn test_expiration_bcs_roundtrip() {
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: None,
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        vec![random_object_ref()],
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(10),
+            max_epoch: Some(11),
+            chain,
+            nonce: 999_999,
+        },
+    );
+
+    let bytes = bcs::to_bytes(&data).expect("BCS serialize");
+    let decoded: TransactionData = bcs::from_bytes(&bytes).expect("BCS deserialize");
+    assert_eq!(data, decoded);
+    assert_eq!(data.digest(), decoded.digest());
 }

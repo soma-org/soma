@@ -3743,7 +3743,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 60"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3833,6 +3833,18 @@ pub mod transaction_kind {
         BridgeEmergencyPause(super::BridgeEmergencyPause),
         #[prost(message, tag = "43")]
         BridgeEmergencyUnpause(super::BridgeEmergencyUnpause),
+        /// Payment-channel transactions (Phase 1)
+        #[prost(message, tag = "50")]
+        OpenChannel(super::OpenChannel),
+        #[prost(message, tag = "51")]
+        Settle(super::Settle),
+        #[prost(message, tag = "52")]
+        RequestClose(super::RequestClose),
+        #[prost(message, tag = "53")]
+        WithdrawAfterTimeout(super::WithdrawAfterTimeout),
+        /// Per-commit accumulator settlement system transaction (Stage 6a).
+        #[prost(message, tag = "60")]
+        Settlement(super::Settlement),
     }
 }
 #[non_exhaustive]
@@ -4203,6 +4215,52 @@ pub struct ConsensusCommitPrologue {
     #[prost(string, optional, tag = "6")]
     pub additional_state_digest: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Per-consensus-commit accumulator settlement system transaction.
+///
+/// The consensus handler injects exactly one of these per commit. Its
+/// `changes` field carries the aggregated net (owner, coin_type) deltas
+/// from every user transaction's emitted balance events; the executor
+/// applies them as deltas to the on-chain accumulator-balance table.
+///
+/// Sender is always the system address (0x0...0). The
+/// (epoch, round, sub_dag_index) triplet makes the digest unique per
+/// commit even when `changes` is empty.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Settlement {
+    /// Epoch of the commit this settlement belongs to.
+    #[prost(uint64, optional, tag = "1")]
+    pub epoch: ::core::option::Option<u64>,
+    /// Consensus round of the commit.
+    #[prost(uint64, optional, tag = "2")]
+    pub round: ::core::option::Option<u64>,
+    /// Sub-DAG index, populated when a round has multiple commits.
+    #[prost(uint64, optional, tag = "3")]
+    pub sub_dag_index: ::core::option::Option<u64>,
+    /// Aggregated net per-(owner, coin_type) deltas. May be empty.
+    /// Indexers that don't track balances can ignore this field.
+    #[prost(message, repeated, tag = "4")]
+    pub changes: ::prost::alloc::vec::Vec<SettlementChange>,
+}
+/// One entry in a Settlement's `changes` list. Equivalent to a
+/// post-aggregation BalanceEvent: net positive deltas surface as
+/// `is_credit=true`, net negatives as `is_credit=false`. `amount` is
+/// the absolute magnitude of the net delta.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SettlementChange {
+    #[prost(string, optional, tag = "1")]
+    pub owner: ::core::option::Option<::prost::alloc::string::String>,
+    /// Coin type label ("USDC", "SOMA", etc.) — same encoding as
+    /// elsewhere in the proto.
+    #[prost(string, optional, tag = "2")]
+    pub coin_type: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "3")]
+    pub amount: ::core::option::Option<u64>,
+    /// True for net deposits, false for net withdrawals.
+    #[prost(bool, optional, tag = "4")]
+    pub is_credit: ::core::option::Option<bool>,
+}
 /// Submit data to a target in the data submission competition.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -4281,6 +4339,67 @@ pub struct ClaimChallengeBond {
     /// Challenge ID (ObjectID hex string)
     #[prost(string, optional, tag = "1")]
     pub challenge_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Open a new payment channel. The transaction sender becomes the
+/// channel's `payer`. `token` is "SOMA" or "USDC" — Phase 1 only
+/// supports USDC.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenChannel {
+    #[prost(string, optional, tag = "1")]
+    pub payee: ::core::option::Option<::prost::alloc::string::String>,
+    /// Address whose key will sign vouchers. Typically equal to the
+    /// payer; differs when the payer wants a hot/cold key split.
+    #[prost(string, optional, tag = "2")]
+    pub authorized_signer: ::core::option::Option<::prost::alloc::string::String>,
+    /// Coin denomination as a string ("SOMA" / "USDC"). Must match the
+    /// coin object's actual type.
+    #[prost(string, optional, tag = "3")]
+    pub token: ::core::option::Option<::prost::alloc::string::String>,
+    /// Coin object to draw the deposit from. May coincide with the gas
+    /// coin.
+    #[prost(message, optional, tag = "4")]
+    pub deposit_coin: ::core::option::Option<ObjectReference>,
+    #[prost(uint64, optional, tag = "5")]
+    pub deposit_amount: ::core::option::Option<u64>,
+}
+/// Submit a voucher to the channel for partial payment. Channel
+/// stays open. Caller MUST be the payee.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Settle {
+    /// Channel object ID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Cumulative amount the voucher authorizes — must be strictly
+    /// greater than the channel's current settled_amount and at most
+    /// the deposit + settled_amount.
+    #[prost(uint64, optional, tag = "2")]
+    pub cumulative_amount: ::core::option::Option<u64>,
+    /// Voucher signature: BCS-encoded `IntentMessage<Voucher>` with
+    /// `IntentScope::PaymentVoucher` signed by the channel's
+    /// `authorized_signer`. Encoded via `GenericSignature` so MultiSig
+    /// signers work transparently. Bytes form is `flag || sig || pk`.
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub voucher_signature: ::core::option::Option<::prost::bytes::Bytes>,
+}
+/// Payer-only: start the forced-close grace timer. The Clock's
+/// current timestamp is recorded onto the channel.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestClose {
+    /// Channel object ID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Payer-only: after the grace period elapses, return the
+/// remaining deposit to the payer and delete the channel.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WithdrawAfterTimeout {
+    /// Channel object ID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub channel_id: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -309,6 +309,20 @@ pub enum SomaError {
     #[error("Use of disabled feature: {error}")]
     UnsupportedFeatureError { error: String },
 
+    /// Stage 5.5: tx declared a chain identifier that doesn't match this validator's.
+    #[error("Transaction chain identifier mismatch: expected {expected}, got {actual}")]
+    InvalidChainId { expected: String, actual: String },
+
+    /// Stage 5.5: tx outside its validity window (current_epoch ∉ [min, max]).
+    #[error(
+        "Transaction expired: current_epoch={current_epoch}, valid range [{min_epoch}, {max_epoch}]"
+    )]
+    TransactionExpired { current_epoch: u64, min_epoch: u64, max_epoch: u64 },
+
+    /// Stage 5.5: tx digest already executed in the previous epoch — replay rejected.
+    #[error("Transaction already executed: {digest:?}")]
+    TransactionAlreadyExecuted { digest: TransactionDigest },
+
     #[error("Too many requests")]
     TooManyRequests,
 

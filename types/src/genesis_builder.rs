@@ -173,7 +173,7 @@ impl GenesisBuilder {
         // Sort validators by account address for deterministic genesis output
         self.validators.sort_by_key(|v| v.info.account_address);
 
-        let (system_state, objects) = self.create_genesis_state();
+        let (system_state, objects, balances) = self.create_genesis_state();
         let (transaction, effects, final_objects) =
             self.create_genesis_transaction(objects, &system_state);
         let (checkpoint, checkpoint_contents) =
@@ -185,6 +185,7 @@ impl GenesisBuilder {
             transaction,
             effects,
             objects: final_objects,
+            balances,
         };
 
         self.built_genesis = Some(unsigned.clone());
@@ -208,6 +209,7 @@ impl GenesisBuilder {
             unsigned.transaction,
             unsigned.effects,
             unsigned.objects,
+            unsigned.balances,
         )
     }
 
@@ -432,8 +434,14 @@ impl GenesisBuilder {
         ObjectID::new(hash.digest[..ObjectID::LENGTH].try_into().unwrap())
     }
 
-    fn create_genesis_state(&self) -> (SystemState, Vec<Object>) {
+    fn create_genesis_state(
+        &self,
+    ) -> (SystemState, Vec<Object>, BTreeMap<(SomaAddress, CoinType), u64>) {
         let mut objects = Vec::new();
+        // Accumulator-balance entries seeded alongside coin objects. Stake
+        // allocations do NOT contribute here — those tokens live in the
+        // validator's StakingPool, not the holder's spendable balance.
+        let mut balances: BTreeMap<(SomaAddress, CoinType), u64> = BTreeMap::new();
         let mut id_counter: u64 = 0;
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
@@ -532,6 +540,13 @@ impl GenesisBuilder {
                         TransactionDigest::default(),
                     );
                     objects.push(coin_object);
+                    // Mirror into the accumulator-balance table.
+                    let entry = balances
+                        .entry((allocation.recipient_address, CoinType::Soma))
+                        .or_insert(0);
+                    *entry = entry
+                        .checked_add(allocation.amount_shannons)
+                        .expect("genesis SOMA balance overflow");
                 }
             }
 
@@ -545,6 +560,11 @@ impl GenesisBuilder {
                     TransactionDigest::default(),
                 );
                 objects.push(coin_object);
+                let entry =
+                    balances.entry((usdc.recipient_address, CoinType::Usdc)).or_insert(0);
+                *entry = entry
+                    .checked_add(usdc.amount_microdollars)
+                    .expect("genesis USDC balance overflow");
             }
         }
 
@@ -563,6 +583,11 @@ impl GenesisBuilder {
                 TransactionDigest::default(),
             );
             objects.push(coin_object);
+            let entry =
+                balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
+            *entry = entry
+                .checked_add(VALIDATOR_GENESIS_USDC)
+                .expect("genesis validator USDC balance overflow");
         }
 
         // Set voting power and build committee
@@ -581,7 +606,13 @@ impl GenesisBuilder {
         );
         objects.push(state_object);
 
-        (system_state, objects)
+        // Create the global Clock object at the reserved CLOCK_OBJECT_ID.
+        // Mutated only by ConsensusCommitPrologueV1; user transactions
+        // declare it as an immutable shared input so the scheduler can run
+        // readers in parallel.
+        objects.push(Object::new_genesis_clock());
+
+        (system_state, objects, balances)
     }
 
     fn create_genesis_transaction(

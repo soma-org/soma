@@ -4,6 +4,8 @@ expression: config.attr_map()
 ---
 buffer_stake_for_protocol_upgrade_bps:
   u64: 5000
+channel_grace_period_ms:
+  u64: 600000
 consensus_bad_nodes_stake_threshold:
   u64: 30
 consensus_commit_rate_estimation_window_size:

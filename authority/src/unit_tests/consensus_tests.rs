@@ -137,10 +137,13 @@ async fn test_consensus_handler_deduplication() {
     let total_schedulables: usize =
         captured.iter().map(|(schedulables, _, _)| schedulables.len()).sum();
 
-    // commit1: 1 CCP + 1 user tx = 2; commit2: 1 CCP + 0 user tx (deduped) = 1
-    // Total should be <= 3 (allowing for CCP in each commit + 1 user tx)
+    // commit1: 1 CCP + 1 user tx + 1 Settlement = 3
+    // commit2: 1 CCP + 0 user tx (deduped) + 1 Settlement = 2
+    // Total = 5; bound to <= 5 to leave a small slack for CCP-skip cases.
+    // (Stage 6a added the per-commit Settlement injection — see
+    // `process_transactions` in consensus_handler.rs.)
     assert!(
-        total_schedulables <= 4,
+        total_schedulables <= 5,
         "Expected deduplication to prevent duplicate user tx: got {} total schedulables",
         total_schedulables,
     );

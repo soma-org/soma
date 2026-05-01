@@ -16,7 +16,7 @@ use store::rocks::{DBBatch, DBMap};
 use store::{Map as _, TypedStoreError};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tracing::{debug, error, info, instrument, trace};
-use types::base::{FullObjectID, VerifiedExecutionData};
+use types::base::{FullObjectID, SomaAddress, VerifiedExecutionData};
 use types::checkpoints::{CheckpointSequenceNumber, GlobalStateHash};
 use types::committee::{Committee, EpochId};
 use types::config::node_config::{AuthorityStorePruningConfig, NodeConfig};
@@ -26,7 +26,11 @@ use types::envelope::Message;
 use types::error::{SomaError, SomaResult};
 use types::genesis::Genesis;
 use types::mutex_table::{Lock, MutexGuard, MutexTable, RwLockGuard, RwLockTable};
-use types::object::{self, LiveObject, Object, ObjectID, ObjectRef, Version};
+use types::balance::{
+    BalanceEvent, BalanceUpdate, ReservationDecision, WithdrawalReservation,
+    apply_delta_to_balance, check_reservations,
+};
+use types::object::{self, CoinType, LiveObject, Object, ObjectID, ObjectRef, Version};
 use types::storage::object_store::ObjectStore;
 use types::storage::{FullObjectKey, MarkerValue, ObjectKey, ObjectOrTombstone};
 use types::system_state::{SystemState, SystemStateTrait, get_system_state};
@@ -145,6 +149,10 @@ impl AuthorityStore {
                 .bulk_insert_genesis_objects(genesis.objects())
                 .expect("Cannot bulk insert genesis objects");
 
+            store
+                .bulk_insert_genesis_balances(genesis.balances())
+                .expect("Cannot bulk insert genesis balances");
+
             // insert txn and effects of genesis
             let transaction = VerifiedTransaction::new_unchecked(genesis.transaction().clone());
 
@@ -241,6 +249,71 @@ impl AuthorityStore {
 
     pub fn is_tx_already_executed(&self, digest: &TransactionDigest) -> SomaResult<bool> {
         Ok(self.perpetual_tables.executed_effects.contains_key(digest)?)
+    }
+
+    /// Stage 5.5d: prune the `executed_transaction_digests` column
+    /// family at an epoch boundary, retaining exactly current +
+    /// previous epoch.
+    ///
+    /// Range-deletes all entries with epoch `< current_epoch - 1`. This
+    /// is what bounds the cache: combined with the 2-epoch validity
+    /// width, anything older than `current_epoch - 1` would already be
+    /// rejected as `TransactionExpired` at submission time, so
+    /// retaining it serves no purpose.
+    ///
+    /// At `current_epoch < 2` this is a no-op (no full window has yet
+    /// elapsed). Mirrors Sui SIP-58's `prune_executed_tx_digests`.
+    pub fn prune_executed_transaction_digests(&self, current_epoch: EpochId) -> SomaResult<()> {
+        Self::prune_executed_transaction_digests_inner(&self.perpetual_tables, current_epoch)
+    }
+
+    /// Same as `prune_executed_transaction_digests` but takes the
+    /// perpetual tables directly. Used by the per-epoch pruner
+    /// orchestrator which doesn't have an `AuthorityStore` handle.
+    pub fn prune_executed_transaction_digests_inner(
+        perpetual_db: &AuthorityPerpetualTables,
+        current_epoch: EpochId,
+    ) -> SomaResult<()> {
+        if current_epoch < 2 {
+            return Ok(());
+        }
+        let target_epoch = current_epoch - 1;
+        // Range delete is half-open `[start, end)`. The endpoint
+        // `(target_epoch, ZERO)` excludes any entry from `target_epoch`
+        // onwards, so we retain `target_epoch` (= prev) and beyond.
+        let start_key = (0u64, TransactionDigest::ZERO);
+        let end_key = (target_epoch, TransactionDigest::ZERO);
+        let mut batch = perpetual_db.executed_transaction_digests.batch();
+        batch.schedule_delete_range(
+            &perpetual_db.executed_transaction_digests,
+            &start_key,
+            &end_key,
+        )?;
+        batch.write()?;
+        Ok(())
+    }
+
+    /// Stage 5.5: was this digest executed in the *previous* epoch
+    /// (`current_epoch - 1`)?
+    ///
+    /// Returns `false` for `current_epoch == 0` since there is no
+    /// previous epoch to consult. The asymmetric semantic mirrors Sui's
+    /// `was_transaction_executed_in_last_epoch`: a current-epoch hit is
+    /// surfaced separately (it indicates a re-vote, not a replay), and
+    /// this method exists specifically so the validation path can hard-
+    /// reject prev-epoch replays with `TransactionAlreadyExecuted`.
+    pub fn was_transaction_executed_in_last_epoch(
+        &self,
+        digest: &TransactionDigest,
+        current_epoch: EpochId,
+    ) -> SomaResult<bool> {
+        if current_epoch == 0 {
+            return Ok(false);
+        }
+        Ok(self
+            .perpetual_tables
+            .executed_transaction_digests
+            .contains_key(&(current_epoch - 1, *digest))?)
     }
 
     pub fn get_marker_value(
@@ -428,6 +501,22 @@ impl AuthorityStore {
         Ok(())
     }
 
+    /// Seed the accumulator-balance column family at genesis. Skips zero
+    /// entries (the balance helpers treat absent and zero as equivalent).
+    #[instrument(level = "debug", skip_all)]
+    pub(crate) fn bulk_insert_genesis_balances(
+        &self,
+        balances: &BTreeMap<(SomaAddress, CoinType), u64>,
+    ) -> SomaResult<()> {
+        let mut batch = self.perpetual_tables.accumulator_balances.batch();
+        batch.insert_batch(
+            &self.perpetual_tables.accumulator_balances,
+            balances.iter().filter(|(_, v)| **v != 0).map(|(k, v)| (*k, *v)),
+        )?;
+        batch.write()?;
+        Ok(())
+    }
+
     pub fn bulk_insert_live_objects(
         perpetual_db: &AuthorityPerpetualTables,
         live_objects: impl Iterator<Item = LiveObject>,
@@ -535,6 +624,7 @@ impl AuthorityStore {
 
             locks_to_delete,
             new_locks_to_init,
+            balance_events,
             ..
         } = tx_outputs;
 
@@ -547,7 +637,32 @@ impl AuthorityStore {
             .insert_batch(
                 &self.perpetual_tables.executed_effects,
                 [(transaction_digest, effects_digest)],
+            )?
+            // Stage 5.5: record the digest under (epoch, digest) so
+            // the validator can reject replays of stateless txs in
+            // their previous-epoch validity window. Atomic with the
+            // rest of the commit's writes.
+            .insert_batch(
+                &self.perpetual_tables.executed_transaction_digests,
+                [((epoch_id, *transaction_digest), ())],
             )?;
+
+        // Stage 3: apply per-commit balance settlement. Only the
+        // Settlement tx's events touch the accumulator — other txs'
+        // events are intent records, aggregated into the *next*
+        // settlement and applied through this code path then.
+        //
+        // The aggregator (Stage 6+ consensus handler) guarantees: at
+        // most one entry per (owner, coin_type) and no zero deltas, so
+        // we can apply each event independently. The reservation
+        // pre-pass (Stage 4) prevents underflow before execution; we
+        // surface it here loudly because reaching this branch means a
+        // pipeline bug, not a user error.
+        if transaction.transaction_data().kind().is_settlement_tx()
+            && !balance_events.is_empty()
+        {
+            self.apply_settlement_events(write_batch, balance_events)?;
+        }
 
         // Store the certificate indexed by transaction digest
         write_batch.insert_batch(
@@ -583,6 +698,52 @@ impl AuthorityStore {
 
         debug!(effects_digest = ?effects.digest(), "commit_certificate finished");
 
+        Ok(())
+    }
+
+    /// Apply the aggregated balance changes from a settlement tx to
+    /// the `accumulator_balances` column family within the same write
+    /// batch as the rest of the commit's outputs. The aggregator
+    /// upstream guarantees at most one event per `(owner, coin_type)`,
+    /// so per-event reads see committed pre-commit state and writes
+    /// don't conflict.
+    ///
+    /// Underflow/overflow here indicates a pipeline bug — the Stage 4
+    /// scheduler reservation pre-pass prevents user-driven underflow
+    /// before execution — so we return a structured error rather than
+    /// silently clamping or panicking.
+    pub(crate) fn apply_settlement_events(
+        &self,
+        write_batch: &mut DBBatch,
+        events: &[BalanceEvent],
+    ) -> SomaResult<()> {
+        let new_balances: Vec<((SomaAddress, CoinType), u64)> = events
+            .iter()
+            .map(|ev| {
+                let key = (ev.owner(), ev.coin_type());
+                let current = self.perpetual_tables.accumulator_balances.get(&key)?.unwrap_or(0);
+                let delta = ev.signed_delta();
+                let new_balance = match apply_delta_to_balance(current, delta) {
+                    BalanceUpdate::Ok(v) => v,
+                    BalanceUpdate::Underflow { current, delta } => {
+                        return Err(SomaError::from(format!(
+                            "settlement underflow for {:?}: current={}, delta={}",
+                            key, current, delta
+                        )));
+                    }
+                    BalanceUpdate::Overflow { current, delta } => {
+                        return Err(SomaError::from(format!(
+                            "settlement overflow for {:?}: current={}, delta={}",
+                            key, current, delta
+                        )));
+                    }
+                };
+                Ok((key, new_balance))
+            })
+            .collect::<SomaResult<Vec<_>>>()?;
+
+        write_batch
+            .insert_batch(&self.perpetual_tables.accumulator_balances, new_balances)?;
         Ok(())
     }
 
@@ -1006,6 +1167,212 @@ impl AuthorityStore {
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
             .len()
+    }
+
+    // ===========================================================================
+    // Account-balance accumulator accessors
+    //
+    // The accumulator stores per-(SomaAddress, CoinType) balances as a separate
+    // RocksDB column family. User transactions don't mutate this table directly
+    // — they emit `BalanceEvent`s that are aggregated into a settlement system
+    // transaction at consensus-commit construction. Settlement applies the net
+    // deltas atomically through `multi_apply_balance_deltas`.
+    //
+    // Genesis writes initial balances directly via `set_balance` (the genesis
+    // path bypasses settlement entirely; it's the only allowed direct write
+    // path outside of settlement-tx execution).
+    // ===========================================================================
+
+    /// Read the current balance for `(owner, coin_type)`. Returns 0 if no
+    /// entry exists — this is correct: an address that has never received
+    /// or held this currency has balance 0, indistinguishable from one
+    /// that drained to zero and was pruned. Both cases want the same
+    /// answer here.
+    pub fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> SomaResult<u64> {
+        Ok(self
+            .perpetual_tables
+            .accumulator_balances
+            .get(&(owner, coin_type))?
+            .unwrap_or(0))
+    }
+
+    /// Direct balance write. **Only valid from genesis or settlement
+    /// execution paths.** User transactions must go through the
+    /// settlement pipeline (events → aggregate → multi_apply).
+    pub fn set_balance(
+        &self,
+        owner: SomaAddress,
+        coin_type: CoinType,
+        balance: u64,
+    ) -> SomaResult<()> {
+        self.perpetual_tables
+            .accumulator_balances
+            .insert(&(owner, coin_type), &balance)?;
+        Ok(())
+    }
+
+    /// Apply a single signed delta to a balance. Returns the new balance
+    /// on success. Used by tests; settlement should batch via
+    /// `multi_apply_balance_deltas` instead.
+    ///
+    /// Defense-in-depth: although the scheduler should have prevented
+    /// underflow by rejecting underfunded transactions before
+    /// execution, this method still validates and returns a
+    /// `BalanceMismatch` error if a delta would underflow or overflow.
+    pub fn apply_balance_delta(
+        &self,
+        owner: SomaAddress,
+        coin_type: CoinType,
+        delta: i128,
+    ) -> SomaResult<u64> {
+        let current = self.get_balance(owner, coin_type)?;
+        match apply_delta_to_balance(current, delta) {
+            BalanceUpdate::Ok(new_balance) => {
+                self.set_balance(owner, coin_type, new_balance)?;
+                Ok(new_balance)
+            }
+            BalanceUpdate::Underflow { current, delta } => Err(SomaError::from(format!(
+                "Balance underflow: owner={} coin_type={:?} current={} delta={}",
+                owner, coin_type, current, delta
+            ))),
+            BalanceUpdate::Overflow { current, delta } => Err(SomaError::from(format!(
+                "Balance overflow: owner={} coin_type={:?} current={} delta={}",
+                owner, coin_type, current, delta
+            ))),
+        }
+    }
+
+    /// Apply a batch of signed deltas atomically — the settlement-tx hot
+    /// path. Iteration order over the input map is deterministic
+    /// (`BTreeMap`), so all validators apply deltas in the same order;
+    /// any failure aborts the batch without partial application.
+    ///
+    /// Failures here indicate an invariant violation upstream
+    /// (scheduler should have rejected underfunded txs). They're
+    /// surfaced as errors rather than panics so the executor can fail
+    /// the settlement transaction gracefully.
+    pub fn multi_apply_balance_deltas(
+        &self,
+        deltas: &BTreeMap<(SomaAddress, CoinType), i128>,
+    ) -> SomaResult<Vec<((SomaAddress, CoinType), u64)>> {
+        let mut batch = self.perpetual_tables.accumulator_balances.batch();
+        let mut new_balances = Vec::with_capacity(deltas.len());
+
+        for ((owner, coin_type), delta) in deltas {
+            let current = self.get_balance(*owner, *coin_type)?;
+            match apply_delta_to_balance(current, *delta) {
+                BalanceUpdate::Ok(new_balance) => {
+                    batch.insert_batch(
+                        &self.perpetual_tables.accumulator_balances,
+                        std::iter::once((&(*owner, *coin_type), &new_balance)),
+                    )?;
+                    new_balances.push(((*owner, *coin_type), new_balance));
+                }
+                BalanceUpdate::Underflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "Settlement underflow: owner={} coin_type={:?} current={} delta={}",
+                        owner, coin_type, current, delta
+                    )));
+                }
+                BalanceUpdate::Overflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "Settlement overflow: owner={} coin_type={:?} current={} delta={}",
+                        owner, coin_type, current, delta
+                    )));
+                }
+            }
+        }
+
+        batch.write()?;
+        Ok(new_balances)
+    }
+
+    /// Iterate every `(owner, coin_type) -> balance` entry. O(n).
+    /// Intended for debug, snapshot, and full-state inspection paths,
+    /// not the hot path. RPC `GetBalance` for a specific owner should
+    /// use [`Self::get_balance`] or [`Self::iter_balances_for_owner`].
+    pub fn iter_all_balances(
+        &self,
+    ) -> SomaResult<Vec<((SomaAddress, CoinType), u64)>> {
+        let mut out = Vec::new();
+        for entry in self.perpetual_tables.accumulator_balances.safe_iter() {
+            let (k, v) = entry?;
+            out.push((k, v));
+        }
+        Ok(out)
+    }
+
+    /// Iterate all `(coin_type, balance)` entries owned by `owner`.
+    /// Implemented as a prefix scan: `(SomaAddress, CoinType)` is
+    /// BCS-encoded with the address first, so all entries for one
+    /// owner sort contiguously.
+    pub fn iter_balances_for_owner(
+        &self,
+        owner: SomaAddress,
+    ) -> SomaResult<Vec<(CoinType, u64)>> {
+        // We use the cheapest possible bound expression: address inclusive
+        // lower bound at (owner, CoinType::Soma=first variant), exclusive
+        // upper bound at the next address.
+        // Because CoinType derives PartialOrd in BCS form, we filter
+        // explicitly on owner match — robust against future CoinType
+        // variants.
+        let mut out = Vec::new();
+        for entry in self.perpetual_tables.accumulator_balances.safe_iter() {
+            let ((entry_owner, coin_type), balance) = entry?;
+            if entry_owner == owner {
+                out.push((coin_type, balance));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Run the scheduler reservation pre-pass against this store's
+    /// current accumulator balances. Each tx contributes its
+    /// `WithdrawalReservation`s as a slice; decisions come back in the
+    /// same order. See `types::balance::check_reservations` for the
+    /// underlying semantics — this method is a thin bridge that wires
+    /// the store's `get_balance` in as the oracle.
+    ///
+    /// Until Stage 6 every tx kind returns `[]` from `reservations()`,
+    /// so the entire result will be `Accept` and this is effectively a
+    /// no-op. Wiring it in early lets us start exercising the path on
+    /// every commit and catch regressions before they matter.
+    ///
+    /// Errors only on storage failure; all underflow/overflow are
+    /// reported as `ReservationDecision::Drop`, never as `Err`.
+    pub fn check_tx_reservations(
+        &self,
+        txs: &[&[WithdrawalReservation]],
+    ) -> SomaResult<Vec<ReservationDecision>> {
+        // We propagate storage errors via a sentinel: read fails ->
+        // record the (owner, coin_type) and return 0, which will fail
+        // any non-zero reservation deterministically. Then surface the
+        // error to the caller so the commit can be reported as
+        // unhealthy. Treating storage errors as a *deterministic drop*
+        // is wrong — DB read failures are local-validator state, not
+        // chain state.
+        use std::cell::RefCell;
+        let storage_err: RefCell<Option<types::error::SomaError>> = RefCell::new(None);
+
+        let decisions = check_reservations(txs, |owner, coin_type| {
+            // If we already saw an error, short-circuit reads to 0;
+            // the caller will discard the decisions list anyway.
+            if storage_err.borrow().is_some() {
+                return 0;
+            }
+            match self.get_balance(owner, coin_type) {
+                Ok(v) => v,
+                Err(e) => {
+                    *storage_err.borrow_mut() = Some(e);
+                    0
+                }
+            }
+        });
+
+        if let Some(e) = storage_err.into_inner() {
+            return Err(e);
+        }
+        Ok(decisions)
     }
 }
 

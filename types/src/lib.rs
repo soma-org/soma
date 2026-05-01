@@ -2,13 +2,16 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod balance;
 pub mod balance_change;
 pub mod base;
 pub mod bridge;
+pub mod channel;
 pub mod checkpoints;
 pub mod checksum;
 #[cfg(feature = "tls")]
 pub mod client;
+pub mod clock;
 pub mod committee;
 pub mod config;
 pub mod consensus;
@@ -74,9 +77,15 @@ const fn builtin_address(suffix: u16) -> SomaAddress {
 
 built_in_ids! {
     SYSTEM_STATE_ADDRESS / SYSTEM_STATE_OBJECT_ID = 0x5;
+    CLOCK_ADDRESS / CLOCK_OBJECT_ID = 0x6;
 }
 
 /// The initial shared version for the SystemState object created at genesis.
 /// After genesis execution, the lamport timestamp is Version(1) = OBJECT_START_VERSION.
 pub const SYSTEM_STATE_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
+
+/// The initial shared version for the Clock object created at genesis. Same
+/// rule as SystemState — created with Version::new() and rewritten to the
+/// genesis lamport timestamp (1) before being persisted.
+pub const CLOCK_OBJECT_SHARED_VERSION: Version = OBJECT_START_VERSION;
 

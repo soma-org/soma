@@ -209,6 +209,13 @@ pub struct ProtocolConfig {
     /// This ensures state sync determinism: a node replaying old epochs uses the
     /// execution version from that epoch, even if its binary supports newer versions.
     execution_version: Option<u64>,
+
+    // === Payment-Channel Parameters ===
+    /// How long after `RequestClose` the payer must wait before they
+    /// can call `WithdrawAfterTimeout` to reclaim the deposit. Gives
+    /// the payee a window to submit any final `Settle` before the
+    /// channel deletes. Defaults to 10 minutes.
+    channel_grace_period_ms: Option<u64>,
 }
 
 // Instantiations for each protocol version.
@@ -294,8 +301,13 @@ impl ProtocolConfig {
             // Execution versioning
             execution_version: Some(0), // Initial execution version
 
-                                        // When adding a new constant, set it to None in the earliest version, like this:
-                                        // new_constant: None,
+            // Payment-channel grace period: 10 minutes. Time the payee
+            // has after `RequestClose` to submit any final voucher via
+            // `Settle`/`Close` before the payer can `WithdrawAfterTimeout`.
+            channel_grace_period_ms: Some(10 * 60 * 1000),
+
+            // When adding a new constant, set it to None in the earliest version, like this:
+            // new_constant: None,
         };
         if version.0 >= 2 {
             // V2: Bump execution_version to fix permanent object lock on
@@ -323,6 +335,12 @@ impl ProtocolConfig {
             // (the standard BFT threshold), not 2/3 + 50% buffer. This makes 3/4 validators
             // sufficient for upgrades in tests.
             cfg.buffer_stake_for_protocol_upgrade_bps = Some(0);
+
+            // Shorten the channel grace period so e2e tests don't have
+            // to advance the simulated clock by 10 minutes to verify
+            // the timed-close path. 5 seconds is plenty under msim,
+            // where Clock advances on every consensus commit.
+            cfg.channel_grace_period_ms = Some(5_000);
         }
 
         cfg
@@ -375,7 +393,11 @@ impl ProtocolConfig {
 
     /// Build SystemParameters from protocol config.
     pub fn build_system_parameters(&self) -> SystemParameters {
-        SystemParameters { epoch_duration_ms: self.epoch_duration_ms(), unit_fee: self.unit_fee() }
+        SystemParameters {
+            epoch_duration_ms: self.epoch_duration_ms(),
+            unit_fee: self.unit_fee(),
+            channel_grace_period_ms: self.channel_grace_period_ms(),
+        }
     }
 }
 
@@ -386,6 +408,11 @@ pub struct SystemParameters {
 
     /// Per-unit fee. Tx fee = `unit_fee * executor.fee_units(...)`.
     pub unit_fee: u64,
+
+    /// Payment-channel forced-close grace period (ms). After
+    /// `RequestClose`, the payer must wait this long before
+    /// `WithdrawAfterTimeout` succeeds.
+    pub channel_grace_period_ms: u64,
 }
 
 // =============================================================================

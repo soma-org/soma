@@ -657,8 +657,18 @@ impl TestClusterBuilder {
         mut self,
         addresses: impl IntoIterator<Item = SomaAddress>,
     ) -> Self {
+        // Seed candidates with both SOMA (for stake) and USDC (the gas
+        // currency on Soma — every account that submits a tx needs a
+        // USDC coin to pay gas). Pre-fix only `gas_amounts` was set,
+        // which left candidates unable to send any tx and failed
+        // tests like `test_validator_candidate_pool_read` that try to
+        // submit AddValidator from the candidate's address.
         self.get_or_init_genesis_config().accounts.extend(addresses.into_iter().map(|address| {
-            AccountConfig { address: Some(address), gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10], ..Default::default() }
+            AccountConfig {
+                address: Some(address),
+                gas_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
+                usdc_amounts: vec![DEFAULT_GAS_AMOUNT * 10],
+            }
         }));
         self
     }

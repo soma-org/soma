@@ -6,9 +6,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
+use channel::ChannelExecutor;
 use coin::CoinExecutor;
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, prepare_gas};
+use settlement::SettlementExecutor;
 use staking::StakingExecutor;
 use system::{ConsensusCommitExecutor, GenesisExecutor};
 use tracing::info;
@@ -31,9 +33,11 @@ use validator::ValidatorExecutor;
 
 mod bridge;
 mod change_epoch;
+mod channel;
 mod coin;
 mod object;
 mod prepare_gas;
+mod settlement;
 mod staking;
 mod system;
 mod validator;
@@ -108,6 +112,11 @@ pub fn execute_transaction(
     execution_params: ExecutionOrEarlyError,
     fee_parameters: FeeParameters,
     chain: protocol_config::Chain,
+    // Stage 6c: pre-read sender USDC balance for balance-mode gas.
+    // `Some(balance)` when `gas_payment.is_empty()` and the tx is not
+    // a system tx; `None` otherwise. The caller is responsible for
+    // reading the accumulator before calling.
+    sender_usdc_balance: Option<u64>,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
@@ -129,7 +138,14 @@ pub fn execute_transaction(
 
     // Phase 1: Gas preparation (validation, smashing, base fee deduction)
     let gas_result =
-        match prepare_gas(&mut temporary_store, &kind, &signer, gas_payment, &*executor) {
+        match prepare_gas(
+            &mut temporary_store,
+            &kind,
+            &signer,
+            gas_payment,
+            &*executor,
+            sender_usdc_balance,
+        ) {
             Ok(result) => result,
             Err((error_status, transaction_fee)) => {
                 // Gas preparation failed.
@@ -306,6 +322,15 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         | TransactionKind::BridgeWithdraw(_)
         | TransactionKind::BridgeEmergencyPause(_)
         | TransactionKind::BridgeEmergencyUnpause(_) => Box::new(BridgeExecutor::new()),
+
+        // Payment-channel transactions
+        TransactionKind::OpenChannel(_)
+        | TransactionKind::Settle(_)
+        | TransactionKind::RequestClose(_)
+        | TransactionKind::WithdrawAfterTimeout(_) => Box::new(ChannelExecutor::new()),
+
+        // Per-commit balance settlement (Stage 3)
+        TransactionKind::Settlement(_) => Box::new(SettlementExecutor::new()),
     }
 }
 
@@ -644,6 +669,7 @@ fn handle_shared_object_transaction(
         mutable_inputs,
         Version::MAX,    // Use MAX as lamport_timestamp
         BTreeMap::new(), // No deleted shared objects
+        Vec::new(),      // No balance events emitted on this path
     );
 
     (inner_store, effects, execution_error)
@@ -679,6 +705,7 @@ fn error_result(
         BTreeMap::new(),
         Version::MAX,
         BTreeMap::new(),
+        Vec::new(),
     );
 
     (inner_store, effects, execution_error)

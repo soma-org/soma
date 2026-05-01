@@ -1849,11 +1849,9 @@ impl AuthorityPerEpochStore {
         }
 
         // EOP can only be sent after finalizing remaining transactions.
+        // (Stage 5b: previously also gated on `get_num_fastpath_certified() == 0`,
+        // which is vacuously true now that no tx is ever set to FastpathCertified.)
         self.pending_consensus_certificates_empty()
-            && self
-                .consensus_tx_status_cache
-                .as_ref()
-                .is_none_or(|c| c.get_num_fastpath_certified() == 0)
     }
 
     pub(crate) fn write_pending_checkpoint(

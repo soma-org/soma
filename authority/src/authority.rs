@@ -25,7 +25,7 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, trace, warn};
 use types::SYSTEM_STATE_OBJECT_ID;
-use types::base::{AuthorityName, ConciseableName as _, FullObjectID};
+use types::base::{AuthorityName, ConciseableName as _, FullObjectID, SomaAddress};
 use types::checkpoints::{
     CheckpointCommitment, CheckpointContents, CheckpointRequest, CheckpointResponse,
     CheckpointSequenceNumber, CheckpointSummary, CheckpointSummaryResponse, CheckpointTimestamp,
@@ -99,8 +99,6 @@ use crate::{consensus_quarantine, transaction_checks};
 // #[cfg(test)]
 // #[path = "unit_tests/authority_tests.rs"]
 // pub mod authority_tests;
-
-pub const WAIT_FOR_FASTPATH_INPUT_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub const DEV_INSPECT_GAS_COIN_VALUE: u64 = 1_000_000_000_000_000_000;
 
@@ -382,11 +380,10 @@ impl AuthorityState {
             return Ok(HandleTransactionResponse { status });
         }
 
-        if !self.wait_for_fastpath_dependency_objects(&transaction, epoch_store.epoch()).await? {
-            debug!("fastpath input objects are still unavailable after waiting");
-            // Proceed with input checks to generate a proper error.
-        }
-
+        // Stage 5c: previously waited for fastpath dependency objects
+        // here. Without fastpath, the consensus path provides ordering;
+        // unavailable inputs surface as an `InputObjectError` from
+        // input-checks below, which is the correct behavior.
         self.handle_sign_transaction(epoch_store, transaction).await
     }
 
@@ -455,13 +452,57 @@ impl AuthorityState {
             return Err(SomaError::ValidatorHaltedAtEpochEnd.into());
         }
 
+        // Stage 5.5c: replay protection.
+        //
+        // Asymmetric semantics, mirroring Sui SIP-58:
+        // - Current-epoch already-executed → Ok(()) (idempotent re-vote)
+        // - Previous-epoch already-executed → hard reject as replay
+        //
+        // The current-epoch check is below (existing); the prev-epoch
+        // check goes here.
+        let tx_digest = *transaction.digest();
+        let current_epoch = epoch_store.epoch();
+        if self
+            .get_transaction_cache_reader()
+            .was_transaction_executed_in_last_epoch(&tx_digest, current_epoch)
+        {
+            return Err(SomaError::TransactionAlreadyExecuted { digest: tx_digest }.into());
+        }
+
+        // Stage 5.5c: structural expiration check (chain id, window,
+        // width-bound). Runs even for txs with owned inputs — width
+        // bound prevents pathological 100-epoch windows from ever
+        // entering the cache.
+        let tx_data = transaction.data().transaction_data();
+        tx_data.check_expiration(current_epoch, &epoch_store.get_chain_identifier())?;
+
+        // Stage 5.5c: every user tx must have replay protection from
+        // *some* source — either an owned input (gas coin or other)
+        // whose version-bump catches replays, or a `ValidDuring`
+        // declaration. System txs (sender == ZERO) are exempt: they
+        // are injected by the consensus handler and uniqueness is
+        // guaranteed structurally (e.g., commit metadata in
+        // SettlementTransaction).
+        if tx_data.sender() != SomaAddress::ZERO
+            && !tx_data.expiration().is_replay_protected()
+            && tx_data.gas().is_empty()
+        {
+            return Err(SomaError::UnsupportedFeatureError {
+                error: "Stateless transaction must declare \
+                        TransactionExpiration::ValidDuring with both \
+                        min_epoch and max_epoch set"
+                    .to_string(),
+            }
+            .into());
+        }
+
         // Accept executed transactions, instead of voting to reject them.
         // Execution is limited to the current epoch. Otherwise there can be a race where
         // the transaction is accepted but the executed effects are pruned.
         if let Some(effects) =
-            self.get_transaction_cache_reader().get_executed_effects(transaction.digest())
+            self.get_transaction_cache_reader().get_executed_effects(&tx_digest)
         {
-            if effects.executed_epoch() == epoch_store.epoch() {
+            if effects.executed_epoch() == current_epoch {
                 return Ok(());
             }
         }
@@ -524,88 +565,7 @@ impl AuthorityState {
         Ok(())
     }
 
-    /// Waits for fastpath (owned, package) dependency objects to become available.
-    /// Returns true if a chosen set of fastpath dependency objects are available,
-    /// returns false otherwise after an internal timeout.
-    pub(crate) async fn wait_for_fastpath_dependency_objects(
-        &self,
-        transaction: &VerifiedTransaction,
-        epoch: EpochId,
-    ) -> SomaResult<bool> {
-        let txn_data = transaction.data().transaction_data();
-        let (objects, receiving_objects) = txn_data.fastpath_dependency_objects()?;
 
-        // Gather and filter input objects to wait for.
-        let fastpath_dependency_objects: Vec<_> = objects
-            .into_iter()
-            .filter_map(|obj_ref| self.should_wait_for_dependency_object(obj_ref))
-            .collect();
-        let receiving_keys: HashSet<_> = receiving_objects
-            .into_iter()
-            .filter_map(|receiving_obj_ref| {
-                self.should_wait_for_dependency_object(receiving_obj_ref)
-            })
-            .collect();
-        if fastpath_dependency_objects.is_empty() && receiving_keys.is_empty() {
-            return Ok(true);
-        }
-
-        // Use shorter wait timeout in simtests to exercise server-side error paths and
-        // client-side retry logic.
-        let max_wait =
-            if cfg!(msim) { Duration::from_millis(200) } else { WAIT_FOR_FASTPATH_INPUT_TIMEOUT };
-
-        match timeout(
-            max_wait,
-            self.get_object_cache_reader().notify_read_input_objects(
-                &fastpath_dependency_objects,
-                &receiving_keys,
-                epoch,
-            ),
-        )
-        .await
-        {
-            Ok(()) => Ok(true),
-            // Maybe return an error for unavailable input objects,
-            // and allow the caller to skip the rest of input checks?
-            Err(_) => Ok(false),
-        }
-    }
-
-    /// Returns Some(inputKey) if the object reference should be waited on until it is
-    /// finalized, before proceeding to input checks.
-    ///
-    /// Incorrect decisions here should only affect user experience, not safety:
-    /// - Waiting unnecessarily adds latency to transaction signing and submission.
-    /// - Not waiting when needed may cause the transaction to be rejected because input object is unavailable.
-    fn should_wait_for_dependency_object(&self, obj_ref: ObjectRef) -> Option<InputKey> {
-        let (obj_id, cur_version, _digest) = obj_ref;
-        let Some(latest_obj_ref) =
-            self.get_object_cache_reader().get_latest_object_ref_or_tombstone(obj_id)
-        else {
-            // Object might not have been created.
-            return Some(InputKey::VersionedObject {
-                id: FullObjectID::new(obj_id, None),
-                version: cur_version,
-            });
-        };
-        let latest_digest = latest_obj_ref.2;
-        if latest_digest == ObjectDigest::OBJECT_DIGEST_DELETED {
-            // Do not wait for deleted object and rely on input check instead.
-            return None;
-        }
-        let latest_version = latest_obj_ref.1;
-        if cur_version <= latest_version {
-            // Do not wait for version that already exists or has been consumed.
-            // Let the input check to handle them and return the proper error.
-            return None;
-        }
-        // Wait for the object version to become available.
-        Some(InputKey::VersionedObject {
-            id: FullObjectID::new(obj_id, None),
-            version: cur_version,
-        })
-    }
 
     /// Wait for a certificate to be executed.
     /// For consensus transactions, it needs to be sequenced by the consensus.
@@ -744,36 +704,20 @@ impl AuthorityState {
             return ExecutionOutput::EpochEnded;
         }
 
-        let scheduling_source = execution_env.scheduling_source;
-        let mysticeti_fp_outputs = tx_cache_reader.get_mysticeti_fastpath_outputs(tx_digest);
-
-        let (transaction_outputs, execution_error_opt) = if let Some(outputs) = mysticeti_fp_outputs
-        {
-            assert!(
-                !certificate.is_consensus_tx(),
-                "Mysticeti fastpath executed transactions cannot be consensus transactions"
-            );
-            // If this transaction is not scheduled from fastpath, it must be either
-            // from consensus or from checkpoint, i.e. it must be finalized.
-            // To avoid re-executing fastpath transactions, we check if the outputs are already
-            // in the mysticeti fastpath outputs cache. If so, we skip the execution and commit the transaction.
-            debug!(
-                ?tx_digest,
-                "Mysticeti fastpath certified transaction outputs found in cache, skipping execution and committing"
-            );
-            (outputs, None)
-        } else {
-            let (transaction_outputs, execution_error_opt) = match self.process_certificate(
-                &tx_guard,
-                &execution_guard,
-                certificate,
-                execution_env,
-                epoch_store,
-            ) {
-                ExecutionOutput::Success(result) => result,
-                output => return output.unwrap_err(),
-            };
-            (Arc::new(transaction_outputs), execution_error_opt)
+        // Stage 5c: pre-fastpath-removal we'd first check the
+        // mysticeti-fastpath outputs cache and short-circuit re-execution
+        // if the tx had already been certified. The cache is gone, the
+        // certificates' producers are gone, so every certificate now
+        // goes through `process_certificate`.
+        let (transaction_outputs, execution_error_opt) = match self.process_certificate(
+            &tx_guard,
+            &execution_guard,
+            certificate,
+            execution_env,
+            epoch_store,
+        ) {
+            ExecutionOutput::Success(result) => (Arc::new(result.0), result.1),
+            output => return output.unwrap_err(),
         };
 
         let effects = transaction_outputs.effects.clone();
@@ -784,17 +728,16 @@ impl AuthorityState {
             (execution_start_time.elapsed().as_micros() as f64) / 1000.0
         );
 
-        if scheduling_source == SchedulingSource::MysticetiFastPath {
-            self.get_cache_writer().write_fastpath_transaction_outputs(transaction_outputs);
-        } else {
-            utils::fail_point!("crash-before-commit-certificate");
-            let commit_result =
-                self.commit_certificate(certificate, transaction_outputs, epoch_store);
-            if let Err(err) = commit_result {
-                error!(?tx_digest, "Error committing transaction: {err}");
-                tx_guard.release();
-                return ExecutionOutput::Fatal(err);
-            }
+        // Stage 5b: previously branched on `scheduling_source ==
+        // MysticetiFastPath` to write to a separate fastpath cache.
+        // The fastpath path is gone — every certificate now goes
+        // through the consensus commit path.
+        utils::fail_point!("crash-before-commit-certificate");
+        let commit_result = self.commit_certificate(certificate, transaction_outputs, epoch_store);
+        if let Err(err) = commit_result {
+            error!(?tx_digest, "Error committing transaction: {err}");
+            tx_guard.release();
+            return ExecutionOutput::Fatal(err);
         }
 
         tx_guard.commit_tx();
@@ -1010,6 +953,20 @@ impl AuthorityState {
             None => ExecutionOrEarlyError::Ok(()),
         };
 
+        // Stage 6c: pre-read sender's USDC balance for balance-mode gas.
+        // We only need this when `gas_payment` is empty AND the tx isn't
+        // a system tx — otherwise prepare_gas's coin-mode (or system-tx
+        // skip) handles fees without consulting the accumulator.
+        let sender_usdc_balance = if gas_payment.is_empty() && !kind.is_system_tx() {
+            Some(
+                self.database_for_testing()
+                    .get_balance(signer, types::object::CoinType::Usdc)
+                    .unwrap_or(0),
+            )
+        } else {
+            None
+        };
+
         #[allow(unused_mut)]
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
@@ -1023,6 +980,7 @@ impl AuthorityState {
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
+            sender_usdc_balance,
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1158,6 +1116,17 @@ impl AuthorityState {
             None => ExecutionOrEarlyError::Ok(()),
         };
 
+        // Stage 6c: pre-read sender's USDC balance for balance-mode gas.
+        let sender_usdc_balance = if gas_payment.is_empty() && !kind.is_system_tx() {
+            Some(
+                self.database_for_testing()
+                    .get_balance(signer, types::object::CoinType::Usdc)
+                    .unwrap_or(0),
+            )
+        } else {
+            None
+        };
+
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
             epoch_store.protocol_config().execution_version(),
@@ -1170,6 +1139,7 @@ impl AuthorityState {
             execution_params,
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
+            sender_usdc_balance,
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {

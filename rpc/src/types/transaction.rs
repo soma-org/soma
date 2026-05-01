@@ -160,6 +160,27 @@ pub enum TransactionKind {
     BridgeWithdraw(BridgeWithdrawArgs),
     BridgeEmergencyPause(BridgeEmergencyPauseArgs),
     BridgeEmergencyUnpause(BridgeEmergencyUnpauseArgs),
+
+    // Payment-channel transactions (Phase 1)
+    OpenChannel(OpenChannelArgs),
+    Settle(SettleArgs),
+    RequestClose(RequestCloseArgs),
+    WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
+
+    /// Per-commit accumulator settlement system transaction (Stage 6a).
+    /// Injected by the consensus handler exactly once per commit;
+    /// applies aggregated balance-event deltas to the on-chain
+    /// accumulator-balance table.
+    Settlement(SettlementTransaction),
+}
+
+/// Per-commit balance-accumulator settlement.
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SettlementTransaction {
+    pub epoch: u64,
+    pub round: u64,
+    pub sub_dag_index: Option<u64>,
+    pub changes: Vec<types::balance::BalanceEvent>,
 }
 
 // Bridge arg types
@@ -191,6 +212,39 @@ pub struct BridgeEmergencyPauseArgs {
 pub struct BridgeEmergencyUnpauseArgs {
     pub aggregated_signature: Vec<u8>,
     pub signer_bitmap: Vec<u8>,
+}
+
+// Payment-channel arg types (Phase 1)
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct OpenChannelArgs {
+    pub payee: Address,
+    pub authorized_signer: Address,
+    /// Coin denomination as a string label ("SOMA" / "USDC"). Round-trips
+    /// through the proto layer; the executor verifies it matches the
+    /// coin object's actual type.
+    pub token: String,
+    pub deposit_coin: ObjectReference,
+    pub deposit_amount: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct SettleArgs {
+    pub channel_id: Address,
+    pub cumulative_amount: u64,
+    /// `GenericSignature` byte form (`flag || sig || pk`). Decoded
+    /// to `types::crypto::GenericSignature` by the executor.
+    pub voucher_signature: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct RequestCloseArgs {
+    pub channel_id: Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct WithdrawAfterTimeoutArgs {
+    pub channel_id: Address,
 }
 
 // Supporting types for validator management

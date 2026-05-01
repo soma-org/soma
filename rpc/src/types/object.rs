@@ -153,4 +153,6 @@ pub enum ObjectType {
     Coin(types::object::CoinType),
     StakedSoma,
     PendingWithdrawal,
+    Clock,
+    Channel,
 }

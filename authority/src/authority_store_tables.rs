@@ -20,7 +20,7 @@ use types::digests::{ObjectDigest, TransactionDigest, TransactionEffectsDigest};
 use types::effects::TransactionEffects;
 use types::error::{SomaError, SomaResult};
 use types::object::{
-    LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version,
+    CoinType, LiveObject, Object, ObjectID, ObjectInner, ObjectRef, ObjectType, Owner, Version,
 };
 use types::storage::object_store::ObjectStore;
 use types::storage::{FullObjectKey, MarkerValue, ObjectKey};
@@ -125,6 +125,51 @@ pub struct AuthorityPerpetualTables {
     /// objects that have been deleted. This table is meant to be pruned per-epoch, and all
     /// previous epochs other than the current epoch may be pruned safely.
     pub(crate) object_per_epoch_marker_table: DBMap<(EpochId, FullObjectKey), MarkerValue>,
+
+    /// Account-balance accumulator for fungible tokens (USDC, SOMA).
+    ///
+    /// Each `(SomaAddress, CoinType)` maps to its current balance. Soma
+    /// uses an account-balance model for fungibles (see SIP-58 / Sui's
+    /// address-balance design adapted for Soma's simpler architecture):
+    /// user transactions don't mutate this table directly; they emit
+    /// `BalanceEvent`s during execution that are aggregated into a
+    /// settlement system transaction at consensus-commit construction.
+    /// Settlement applies the net deltas atomically.
+    ///
+    /// The table is read by:
+    /// - The scheduler's reservation pre-pass (underflow check)
+    /// - RPC `GetBalance` endpoints (O(1) lookup)
+    /// - Genesis seeding (initial token allocations)
+    ///
+    /// Tuple key encoding (BCS): the SomaAddress comes first, so all
+    /// entries for one address sort contiguously and prefix scans
+    /// over a single owner are efficient.
+    ///
+    /// State sync: settlement transactions' effects carry the balance
+    /// deltas, so fullnodes replaying effects automatically rebuild
+    /// this table without needing a special sync path.
+    pub(crate) accumulator_balances: DBMap<(SomaAddress, CoinType), u64>,
+
+    /// Stage 5.5: replay-protection cache for stateless transactions.
+    ///
+    /// Records every executed transaction's digest under
+    /// `(EpochId, TransactionDigest)` so the validator can reject
+    /// replays. Stateless txs (post-Stage 6, no owned input) declare a
+    /// 2-epoch validity window via `TransactionExpiration::ValidDuring`;
+    /// the validator consults this cache to drop any tx whose digest
+    /// is already in the previous epoch's prefix.
+    ///
+    /// Epoch-prefixed key: at epoch boundary, the pruner runs a
+    /// `schedule_delete_range` over `(0, ZERO)..(current_epoch - 1, ZERO)`
+    /// to drop entries from epochs older than `current - 1`, retaining
+    /// exactly current + previous. Memory bound: ~2 × epoch_throughput
+    /// × 32 bytes (≈64 MiB at 1 M txs / epoch). Mirrors Sui SIP-58's
+    /// `executed_transaction_digests` column family.
+    ///
+    /// Write site: `write_one_transaction_outputs` inserts in the same
+    /// `DBBatch` as effects/transactions, so the digest record is
+    /// atomic with execution.
+    pub(crate) executed_transaction_digests: DBMap<(EpochId, TransactionDigest), ()>,
 }
 
 impl AuthorityPerpetualTables {
@@ -150,6 +195,15 @@ impl AuthorityPerpetualTables {
             ),
             ("transactions".to_string(), transactions_table_config(db_options.clone())),
             ("effects".to_string(), effects_table_config(db_options.clone())),
+            // Stage 5.5d: the digest cache uses range-delete pruning; we
+            // need reads to honor range tombstones immediately rather
+            // than waiting for compaction, otherwise just-pruned
+            // entries stay visible to `was_transaction_executed_in_last_epoch`
+            // and over-reject legitimate retransmits.
+            (
+                "executed_transaction_digests".to_string(),
+                executed_transaction_digests_table_config(db_options.clone()),
+            ),
         ]));
 
         Self::open_tables_read_write(
@@ -513,6 +567,16 @@ fn owned_object_transaction_locks_table_config(db_options: DBOptions) -> DBOptio
             .optimize_for_write_throughput()
             .optimize_for_read(read_size_from_env(ENV_VAR_LOCKS_BLOCK_CACHE_SIZE).unwrap_or(1024))
             .options,
+        rw_options: db_options.rw_options.set_ignore_range_deletions(false),
+    }
+}
+
+/// Stage 5.5d: digest cache config — same `set_ignore_range_deletions(false)`
+/// trick as the locks table so the per-epoch pruner's range tombstones
+/// take effect immediately on reads, not only after compaction.
+fn executed_transaction_digests_table_config(db_options: DBOptions) -> DBOptions {
+    DBOptions {
+        options: db_options.clone().optimize_for_write_throughput().options,
         rw_options: db_options.rw_options.set_ignore_range_deletions(false),
     }
 }

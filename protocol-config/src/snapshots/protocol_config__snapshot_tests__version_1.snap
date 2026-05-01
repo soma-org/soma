@@ -19,3 +19,4 @@ epoch_duration_ms: 86400000
 reward_slashing_rate_bps: 5000
 unit_fee: 1000
 execution_version: 0
+channel_grace_period_ms: 600000

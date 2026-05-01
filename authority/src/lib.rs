@@ -108,6 +108,14 @@ mod batch_transaction_tests;
 mod epoch_store_tests;
 
 #[cfg(test)]
+#[path = "unit_tests/balance_storage_tests.rs"]
+mod balance_storage_tests;
+
+#[cfg(test)]
+#[path = "unit_tests/replay_cache_tests.rs"]
+mod replay_cache_tests;
+
+#[cfg(test)]
 #[path = "unit_tests/execution_driver_tests.rs"]
 mod execution_driver_tests;
 

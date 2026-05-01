@@ -61,6 +61,7 @@ pub enum IntentScope {
     ValidatorSet = 6,            // Used for a signature on a validator set.
     CheckpointSummary = 7,
     ProofOfPossession = 8, // Used for validator proof of possession of protocol key.
+    PaymentVoucher = 9,    // Used for off-chain payment-channel vouchers (see types::channel).
 }
 
 impl TryFrom<u8> for IntentScope {

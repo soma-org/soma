@@ -19,9 +19,17 @@ use crate::authority_per_epoch_store::AuthorityPerEpochStore;
 use crate::cache::{ObjectCacheRead, TransactionCacheRead};
 use crate::shared_obj_version_manager::Schedulable;
 
+/// Scheduling-source tag carried alongside a transaction through the
+/// execution scheduler.
+///
+/// Pre-Stage-5b this had a `MysticetiFastPath` variant for the
+/// pre-consensus signing path; Stage 5b removed it. Currently only the
+/// consensus-commit path exists (`NonFastPath`). The enum is retained
+/// instead of removed so callsites (`with_scheduling_source(...)`,
+/// `ExecutionEnv::scheduling_source`) stay stable; a future cleanup
+/// can drop it entirely.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SchedulingSource {
-    MysticetiFastPath,
     NonFastPath,
 }
 

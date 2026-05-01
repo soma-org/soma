@@ -60,6 +60,8 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::Coin(ct) => ObjectType::Coin(*ct),
             types::object::ObjectType::StakedSoma => ObjectType::StakedSoma,
             types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
+            types::object::ObjectType::Clock => ObjectType::Clock,
+            types::object::ObjectType::Channel => ObjectType::Channel,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -86,6 +88,8 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::Coin(ct) => types::object::ObjectType::Coin(ct),
             ObjectType::StakedSoma => types::object::ObjectType::StakedSoma,
             ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
+            ObjectType::Clock => types::object::ObjectType::Clock,
+            ObjectType::Channel => types::object::ObjectType::Channel,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -390,6 +394,15 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 TransactionKind::WithdrawStake { staked_soma: staked_soma.into() }
             }
 
+            TK::Settlement(settlement) => {
+                TransactionKind::Settlement(crate::types::SettlementTransaction {
+                    epoch: settlement.epoch,
+                    round: settlement.round,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes: settlement.changes,
+                })
+            }
+
             _ => return Err(SdkTypeConversionError("Marketplace/bridge tx type conversion not yet implemented".to_string())),
         })
     }
@@ -532,9 +545,70 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 })
             }
 
+            // Payment-channel transactions
+            TransactionKind::OpenChannel(args) => {
+                let token = parse_coin_type(&args.token)?;
+                TK::OpenChannel(types::transaction::OpenChannelArgs {
+                    payee: args.payee.into(),
+                    authorized_signer: args.authorized_signer.into(),
+                    token,
+                    deposit_coin: args.deposit_coin.into(),
+                    deposit_amount: args.deposit_amount,
+                })
+            }
+            TransactionKind::Settle(args) => {
+                use fastcrypto::traits::ToFromBytes;
+                let voucher_signature =
+                    types::crypto::GenericSignature::from_bytes(&args.voucher_signature)
+                        .map_err(|e| {
+                            SdkTypeConversionError(format!("invalid voucher_signature: {}", e))
+                        })?;
+                TK::Settle(types::transaction::SettleArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                    cumulative_amount: args.cumulative_amount,
+                    voucher_signature,
+                })
+            }
+            TransactionKind::RequestClose(args) => {
+                TK::RequestClose(types::transaction::RequestCloseArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                })
+            }
+            TransactionKind::WithdrawAfterTimeout(args) => {
+                TK::WithdrawAfterTimeout(types::transaction::WithdrawAfterTimeoutArgs {
+                    channel_id: types::object::ObjectID::from(types::base::SomaAddress::from(
+                        args.channel_id,
+                    )),
+                })
+            }
+
+            TransactionKind::Settlement(settlement) => {
+                TK::Settlement(types::transaction::SettlementTransaction {
+                    epoch: settlement.epoch,
+                    round: settlement.round,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes: settlement.changes,
+                })
+            }
+
             // Model/Target/Submission transaction kinds have been removed from the domain
             _ => return Err(SdkTypeConversionError("Unsupported transaction kind".into())),
         })
+    }
+}
+
+/// Parse a CoinType from its proto string representation. Accepts the
+/// labels emitted by `Object::object_type` (e.g. "Coin(SOMA)") and the
+/// short forms used by OpenChannelArgs::token ("SOMA", "USDC").
+fn parse_coin_type(s: &str) -> Result<types::object::CoinType, SdkTypeConversionError> {
+    match s {
+        "SOMA" | "Coin(SOMA)" | "Coin" => Ok(types::object::CoinType::Soma),
+        "USDC" | "Coin(USDC)" => Ok(types::object::CoinType::Usdc),
+        other => Err(SdkTypeConversionError(format!("Unknown coin type: {}", other))),
     }
 }
 

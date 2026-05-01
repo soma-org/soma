@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
+use crate::balance::BalanceEvent;
 use crate::base::{FullObjectID, SomaAddress};
 use crate::committee::EpochId;
 use crate::digests::{ObjectDigest, TransactionDigest};
@@ -256,6 +257,19 @@ pub struct TemporaryStore {
     /// Which chain we are running on. Used by executors that need chain-specific
     /// protocol config (e.g. ChangeEpochExecutor).
     pub chain: protocol_config::Chain,
+
+    /// Balance accumulator events emitted by executors during this
+    /// transaction. Each `Deposit`/`Withdraw` is an *intent* — it does
+    /// not touch the `accumulator_balances` column family directly.
+    /// The settlement system transaction (Stage 3) drains these from
+    /// every tx in a consensus commit, aggregates per `(owner, coin_type)`,
+    /// and applies the net delta atomically.
+    ///
+    /// Order is preserved (insertion order). Stage 1a's `aggregate_events`
+    /// is order-independent for the *summed delta*, so settlement can
+    /// reorder freely; we keep insertion order here purely for debugging
+    /// and for the audit trail in transaction effects.
+    balance_events: Vec<BalanceEvent>,
 }
 
 impl TemporaryStore {
@@ -302,7 +316,23 @@ impl TemporaryStore {
             fee_parameters,
             execution_version,
             chain,
+            balance_events: Vec::new(),
         }
+    }
+
+    /// Record a balance accumulator event from this transaction.
+    /// Called by executors that move fungibles via the address-balance
+    /// model (Stage 6+: gas, transfers, channels, staking). Idempotency
+    /// and ordering guarantees: events are deduplicated downstream by
+    /// `aggregate_events`, so callers may emit independent events freely.
+    pub fn emit_balance_event(&mut self, event: BalanceEvent) {
+        self.balance_events.push(event);
+    }
+
+    /// Read-only view of balance events emitted so far. Useful for tests
+    /// and for executors that need to introspect their own emissions.
+    pub fn balance_events(&self) -> &[BalanceEvent] {
+        &self.balance_events
     }
 
     pub fn update_object_version_and_prev_tx(&mut self) {
@@ -464,6 +494,19 @@ impl TemporaryStore {
             .or_else(|| self.input_objects.get(id).cloned())
     }
 
+    /// Read the current consensus-agreed wall-clock timestamp from the
+    /// Clock object. The transaction must have declared
+    /// [`crate::transaction::SharedInputObject::CLOCK_OBJ_READ`] (or
+    /// `CLOCK_OBJ_MUT` for the prologue) in `shared_input_objects` so the
+    /// scheduler loaded Clock into the input set. Returns `None` if Clock
+    /// was not declared as an input.
+    pub fn read_clock_timestamp_ms(&self) -> Option<crate::base::TimestampMs> {
+        self.read_object(&crate::CLOCK_OBJECT_ID)
+            .as_ref()
+            .and_then(Object::as_clock)
+            .map(|c| c.timestamp_ms)
+    }
+
     pub fn mutate_input_object(&mut self, object: Object) {
         let id = object.id();
         debug_assert!(self.input_objects.contains_key(&id));
@@ -580,6 +623,7 @@ impl TemporaryStore {
             self.mutable_input_refs,
             self.lamport_timestamp,
             self.deleted_consensus_objects,
+            self.balance_events,
         )
     }
 
@@ -679,6 +723,10 @@ pub struct InnerTemporaryStore {
 
     /// Shared objects that were deleted during the transaction
     pub deleted_shared_objects: BTreeMap<ObjectID, Version /* start_version */>,
+
+    /// Balance accumulator events emitted during this transaction.
+    /// Drained by the per-commit settlement transaction (Stage 3).
+    pub balance_events: Vec<BalanceEvent>,
 }
 
 impl InnerTemporaryStore {
@@ -688,8 +736,16 @@ impl InnerTemporaryStore {
         mutable_inputs: BTreeMap<ObjectID, (VersionDigest, Owner)>,
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
+        balance_events: Vec<BalanceEvent>,
     ) -> Self {
-        Self { input_objects, written, mutable_inputs, lamport_version, deleted_shared_objects }
+        Self {
+            input_objects,
+            written,
+            mutable_inputs,
+            lamport_version,
+            deleted_shared_objects,
+            balance_events,
+        }
     }
 
     pub fn get_output_keys(&self, effects: &TransactionEffects) -> Vec<InputKey> {
@@ -734,5 +790,75 @@ impl InnerTemporaryStore {
         }
 
         output_keys
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Stage 2 plumbing tests: balance events flow through
+    //! TemporaryStore → InnerTemporaryStore correctly. End-to-end
+    //! verification (events → settlement tx → balance table delta) is
+    //! Stage 3.
+
+    use super::*;
+    use crate::object::CoinType;
+    use crate::system_state::FeeParameters;
+    use crate::transaction::InputObjects;
+
+    fn empty_store() -> TemporaryStore {
+        TemporaryStore::new(
+            InputObjects::new(Vec::new()),
+            Vec::new(),
+            TransactionDigest::default(),
+            0,
+            FeeParameters { unit_fee: 0 },
+            0,
+            protocol_config::Chain::Unknown,
+        )
+    }
+
+    #[test]
+    fn balance_events_default_empty() {
+        let store = empty_store();
+        assert!(store.balance_events().is_empty());
+    }
+
+    #[test]
+    fn emit_balance_event_records_in_order() {
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        let bob = SomaAddress::random();
+        let e1 = BalanceEvent::withdraw(alice, CoinType::Usdc, 100);
+        let e2 = BalanceEvent::deposit(bob, CoinType::Usdc, 100);
+        let e3 = BalanceEvent::withdraw(alice, CoinType::Soma, 7);
+
+        store.emit_balance_event(e1);
+        store.emit_balance_event(e2);
+        store.emit_balance_event(e3);
+
+        // Insertion order is preserved — settlement may reorder freely
+        // (sums are commutative) but we keep insertion order for the
+        // audit trail.
+        assert_eq!(store.balance_events(), &[e1, e2, e3]);
+    }
+
+    #[test]
+    fn balance_events_propagate_to_inner_store() {
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        let event = BalanceEvent::deposit(alice, CoinType::Usdc, 42);
+        store.emit_balance_event(event);
+
+        let inner = store.into_inner();
+        assert_eq!(inner.balance_events, vec![event]);
+    }
+
+    #[test]
+    fn inner_store_balance_events_default_empty() {
+        // Sanity: a store that emitted no events produces an InnerTemporaryStore
+        // with no events. Settlement must treat this as a no-op.
+        let store = empty_store();
+        let inner = store.into_inner();
+        assert!(inner.balance_events.is_empty());
     }
 }

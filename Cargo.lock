@@ -3473,6 +3473,7 @@ dependencies = [
  "rand 0.8.5",
  "rpc",
  "sdk",
+ "soma-keys",
  "tempfile",
  "test-cluster",
  "tokio",

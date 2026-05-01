@@ -305,6 +305,62 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 aggregated_signature: Some(args.aggregated_signature.clone().into()),
                 signer_bitmap: Some(args.signer_bitmap.clone().into()),
             }),
+
+            // Payment-channel transactions
+            OpenChannel(args) => Kind::OpenChannel(super::OpenChannel {
+                payee: Some(args.payee.to_string()),
+                authorized_signer: Some(args.authorized_signer.to_string()),
+                token: Some(args.token.clone()),
+                deposit_coin: Some(args.deposit_coin.into()),
+                deposit_amount: Some(args.deposit_amount),
+            }),
+            Settle(args) => Kind::Settle(super::Settle {
+                channel_id: Some(args.channel_id.to_string()),
+                cumulative_amount: Some(args.cumulative_amount),
+                voucher_signature: Some(args.voucher_signature.clone().into()),
+            }),
+            RequestClose(args) => Kind::RequestClose(super::RequestClose {
+                channel_id: Some(args.channel_id.to_string()),
+            }),
+            WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(super::WithdrawAfterTimeout {
+                channel_id: Some(args.channel_id.to_string()),
+            }),
+
+            Settlement(settlement) => Kind::Settlement(super::Settlement {
+                epoch: Some(settlement.epoch),
+                round: Some(settlement.round),
+                sub_dag_index: settlement.sub_dag_index,
+                changes: settlement
+                    .changes
+                    .iter()
+                    .map(|ev| {
+                        let (owner, coin_type, amount, is_credit) = match ev {
+                            types::balance::BalanceEvent::Deposit {
+                                owner,
+                                coin_type,
+                                amount,
+                            } => (*owner, *coin_type, *amount, true),
+                            types::balance::BalanceEvent::Withdraw {
+                                owner,
+                                coin_type,
+                                amount,
+                            } => (*owner, *coin_type, *amount, false),
+                        };
+                        super::SettlementChange {
+                            owner: Some(owner.to_string()),
+                            coin_type: Some(
+                                match coin_type {
+                                    types::object::CoinType::Usdc => "USDC",
+                                    types::object::CoinType::Soma => "SOMA",
+                                }
+                                .to_string(),
+                            ),
+                            amount: Some(amount),
+                            is_credit: Some(is_credit),
+                        }
+                    })
+                    .collect(),
+            }),
         };
 
         TransactionKind { kind: Some(kind) }
@@ -628,6 +684,121 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     "kind",
                     "challenge transactions are no longer supported",
                 ));
+            }
+
+            // Payment-channel variants
+            Kind::OpenChannel(args) => Self::OpenChannel(crate::types::OpenChannelArgs {
+                payee: args
+                    .payee
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("payee"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("payee", e))?,
+                authorized_signer: args
+                    .authorized_signer
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("authorized_signer"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("authorized_signer", e))?,
+                token: args
+                    .token
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("token"))?,
+                deposit_coin: args
+                    .deposit_coin
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("deposit_coin"))?
+                    .try_into()?,
+                deposit_amount: args
+                    .deposit_amount
+                    .ok_or_else(|| TryFromProtoError::missing("deposit_amount"))?,
+            }),
+
+            Kind::Settle(args) => Self::Settle(crate::types::SettleArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                cumulative_amount: args
+                    .cumulative_amount
+                    .ok_or_else(|| TryFromProtoError::missing("cumulative_amount"))?,
+                voucher_signature: args
+                    .voucher_signature
+                    .as_deref()
+                    .ok_or_else(|| TryFromProtoError::missing("voucher_signature"))?
+                    .to_vec(),
+            }),
+
+            Kind::RequestClose(args) => Self::RequestClose(crate::types::RequestCloseArgs {
+                channel_id: args
+                    .channel_id
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+            }),
+
+            Kind::WithdrawAfterTimeout(args) => {
+                Self::WithdrawAfterTimeout(crate::types::WithdrawAfterTimeoutArgs {
+                    channel_id: args
+                        .channel_id
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("channel_id"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("channel_id", e))?,
+                })
+            }
+
+            Kind::Settlement(settlement) => {
+                let mut changes = Vec::with_capacity(settlement.changes.len());
+                for change in &settlement.changes {
+                    let owner = change
+                        .owner
+                        .as_ref()
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.owner"))?
+                        .parse()
+                        .map_err(|e| TryFromProtoError::invalid("settlement.changes.owner", e))?;
+                    let coin_type_label = change
+                        .coin_type
+                        .as_ref()
+                        .ok_or_else(|| {
+                            TryFromProtoError::missing("settlement.changes.coin_type")
+                        })?
+                        .as_str();
+                    let coin_type = match coin_type_label {
+                        "USDC" => types::object::CoinType::Usdc,
+                        "SOMA" => types::object::CoinType::Soma,
+                        other => {
+                            return Err(TryFromProtoError::invalid(
+                                "settlement.changes.coin_type",
+                                format!("unknown coin type {other:?}"),
+                            ));
+                        }
+                    };
+                    let amount = change
+                        .amount
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.amount"))?;
+                    let is_credit = change
+                        .is_credit
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.changes.is_credit"))?;
+                    changes.push(if is_credit {
+                        types::balance::BalanceEvent::deposit(owner, coin_type, amount)
+                    } else {
+                        types::balance::BalanceEvent::withdraw(owner, coin_type, amount)
+                    });
+                }
+                Self::Settlement(crate::types::SettlementTransaction {
+                    epoch: settlement
+                        .epoch
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.epoch"))?,
+                    round: settlement
+                        .round
+                        .ok_or_else(|| TryFromProtoError::missing("settlement.round"))?,
+                    sub_dag_index: settlement.sub_dag_index,
+                    changes,
+                })
             }
         }
         .pipe(Ok)
