@@ -125,12 +125,17 @@ impl Merge<crate::types::Transaction> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = source.gas_payment.into_iter().map(Into::into).collect();
         }
+
+        // Stage 5.5: expiration is part of the signed BCS payload —
+        // dropping it on the wire breaks signature verification for
+        // any tx with non-default expiration.
+        self.expiration = Some(transaction_expiration_to_proto(&source.expiration));
     }
 }
 
 impl Merge<&Transaction> for Transaction {
     fn merge(&mut self, source: &Transaction, mask: &FieldMaskTree) {
-        let Transaction { digest, kind, sender, gas_payment } = source;
+        let Transaction { digest, kind, sender, gas_payment, expiration } = source;
 
         if mask.contains(Self::DIGEST_FIELD.name) {
             self.digest = digest.clone();
@@ -147,6 +152,8 @@ impl Merge<&Transaction> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = gas_payment.clone();
         }
+
+        self.expiration = expiration.clone();
     }
 }
 
@@ -154,12 +161,6 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
     type Error = TryFromProtoError;
 
     fn try_from(value: &Transaction) -> Result<Self, Self::Error> {
-        // if let Some(bcs) = &value.bcs {
-        //     return bcs
-        //         .deserialize()
-        //         .map_err(|e| TryFromProtoError::invalid(Transaction::BCS_FIELD, e));
-        // }
-
         let kind =
             value.kind.as_ref().ok_or_else(|| TryFromProtoError::missing("kind"))?.try_into()?;
 
@@ -173,8 +174,67 @@ impl TryFrom<&Transaction> for crate::types::Transaction {
         let gas_payment =
             value.gas_payment.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
 
-        Ok(Self { kind, sender, gas_payment })
+        // Stage 5.5: parse expiration. If absent on the wire, default
+        // to None (covers older clients submitting txs without
+        // declared expiration). If present, decode the variant.
+        let expiration = match &value.expiration {
+            Some(proto) => transaction_expiration_from_proto(proto)?,
+            None => types::transaction::TransactionExpiration::None,
+        };
+
+        Ok(Self { kind, sender, gas_payment, expiration })
     }
+}
+
+/// Convert a domain `TransactionExpiration` to its proto form. The
+/// chain identifier is encoded via BCS (32 bytes of the underlying
+/// CheckpointDigest) to round-trip cleanly.
+fn transaction_expiration_to_proto(
+    src: &types::transaction::TransactionExpiration,
+) -> super::TransactionExpiration {
+    use super::transaction_expiration::Value;
+    let value = match src {
+        types::transaction::TransactionExpiration::None => Value::None(()),
+        types::transaction::TransactionExpiration::ValidDuring {
+            min_epoch,
+            max_epoch,
+            chain,
+            nonce,
+        } => Value::ValidDuring(super::ValidDuring {
+            min_epoch: *min_epoch,
+            max_epoch: *max_epoch,
+            chain: Some(bcs::to_bytes(chain).expect("ChainIdentifier serialize").into()),
+            nonce: Some(*nonce),
+        }),
+    };
+    super::TransactionExpiration { value: Some(value) }
+}
+
+/// Convert a proto `TransactionExpiration` back to the domain type.
+fn transaction_expiration_from_proto(
+    src: &super::TransactionExpiration,
+) -> Result<types::transaction::TransactionExpiration, TryFromProtoError> {
+    use super::transaction_expiration::Value;
+    let Some(value) = &src.value else {
+        return Ok(types::transaction::TransactionExpiration::None);
+    };
+    Ok(match value {
+        Value::None(_) => types::transaction::TransactionExpiration::None,
+        Value::ValidDuring(v) => {
+            let chain_bytes = v
+                .chain
+                .as_ref()
+                .ok_or_else(|| TryFromProtoError::missing("expiration.valid_during.chain"))?;
+            let chain: types::digests::ChainIdentifier = bcs::from_bytes(chain_bytes)
+                .map_err(|e| TryFromProtoError::invalid("expiration.valid_during.chain", e))?;
+            types::transaction::TransactionExpiration::ValidDuring {
+                min_epoch: v.min_epoch,
+                max_epoch: v.max_epoch,
+                chain,
+                nonce: v.nonce.unwrap_or(0),
+            }
+        }
+    })
 }
 
 //
@@ -293,7 +353,6 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 signer_bitmap: Some(args.signer_bitmap.clone().into()),
             }),
             BridgeWithdraw(args) => Kind::BridgeWithdraw(super::BridgeWithdraw {
-                payment_coin: Some(args.payment_coin.clone().into()),
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.clone().into()),
             }),
@@ -311,7 +370,6 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                 payee: Some(args.payee.to_string()),
                 authorized_signer: Some(args.authorized_signer.to_string()),
                 token: Some(args.token.clone()),
-                deposit_coin: Some(args.deposit_coin.into()),
                 deposit_amount: Some(args.deposit_amount),
             }),
             Settle(args) => Kind::Settle(super::Settle {
@@ -358,6 +416,18 @@ impl From<crate::types::TransactionKind> for TransactionKind {
                             amount: Some(amount),
                             is_credit: Some(is_credit),
                         }
+                    })
+                    .collect(),
+            }),
+
+            BalanceTransfer(args) => Kind::BalanceTransfer(super::BalanceTransfer {
+                coin_type: Some(args.coin_type.clone()),
+                transfers: args
+                    .transfers
+                    .iter()
+                    .map(|(recipient, amount)| super::BalanceTransferEntry {
+                        recipient: Some(recipient.to_string()),
+                        amount: Some(*amount),
                     })
                     .collect(),
             }),
@@ -660,9 +730,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 signer_bitmap: args.signer_bitmap.as_deref().unwrap_or_default().to_vec(),
             }),
             Kind::BridgeWithdraw(args) => Self::BridgeWithdraw(crate::types::BridgeWithdrawArgs {
-                payment_coin: args.payment_coin.as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("payment_coin"))?
-                    .try_into()?,
                 amount: args.amount.unwrap_or(0),
                 recipient_eth_address: args.recipient_eth_address.as_deref().unwrap_or_default().to_vec(),
             }),
@@ -704,11 +771,6 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .token
                     .clone()
                     .ok_or_else(|| TryFromProtoError::missing("token"))?,
-                deposit_coin: args
-                    .deposit_coin
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("deposit_coin"))?
-                    .try_into()?,
                 deposit_amount: args
                     .deposit_amount
                     .ok_or_else(|| TryFromProtoError::missing("deposit_amount"))?,
@@ -798,6 +860,37 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("settlement.round"))?,
                     sub_dag_index: settlement.sub_dag_index,
                     changes,
+                })
+            }
+
+            Kind::BalanceTransfer(args) => {
+                let coin_type = args
+                    .coin_type
+                    .clone()
+                    .ok_or_else(|| TryFromProtoError::missing("balance_transfer.coin_type"))?;
+                let mut transfers = Vec::with_capacity(args.transfers.len());
+                for entry in &args.transfers {
+                    let recipient = entry
+                        .recipient
+                        .as_ref()
+                        .ok_or_else(|| {
+                            TryFromProtoError::missing("balance_transfer.transfers.recipient")
+                        })?
+                        .parse()
+                        .map_err(|e| {
+                            TryFromProtoError::invalid(
+                                "balance_transfer.transfers.recipient",
+                                e,
+                            )
+                        })?;
+                    let amount = entry.amount.ok_or_else(|| {
+                        TryFromProtoError::missing("balance_transfer.transfers.amount")
+                    })?;
+                    transfers.push((recipient, amount));
+                }
+                Self::BalanceTransfer(crate::types::BalanceTransferArgs {
+                    coin_type,
+                    transfers,
                 })
             }
         }

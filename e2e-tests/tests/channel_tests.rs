@@ -102,17 +102,28 @@ async fn open_channel(
     payee: SomaAddress,
     deposit_amount: u64,
 ) -> ObjectID {
-    let coin = one_coin(test_cluster, payer).await;
-    let tx_data = TransactionData::new(
+    // Stage 8: OpenChannel is balance-mode for both gas and deposit.
+    // Sender's USDC accumulator covers `deposit_amount + gas_fee`;
+    // the executor emits a single Withdraw event for the deposit.
+    let chain = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_chain_identifier());
+    let tx_data = TransactionData::new_with_expiration(
         TransactionKind::OpenChannel(OpenChannelArgs {
             payee,
             authorized_signer: payer,
             token: CoinType::Usdc,
-            deposit_coin: coin,
             deposit_amount,
         }),
         payer,
-        vec![coin],
+        Vec::new(),
+        types::transaction::TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 0,
+        },
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(
@@ -217,6 +228,11 @@ async fn drive_one_commit(test_cluster: &TestCluster) {
 /// Full happy-path lifecycle: open → settle (twice) → request_close →
 /// withdraw_after_timeout. Verifies channel state transitions, payee
 /// receives delta, payer gets remainder, channel deleted on close.
+///
+/// Stage 8 also asserts the accumulator balance flow:
+///   OpenChannel  → payer USDC drops by deposit
+///   Settle       → payee USDC rises by delta (channel deposit drops)
+///   Withdraw…    → payer USDC recovers by remainder
 #[cfg(msim)]
 #[msim::sim_test]
 async fn channel_full_lifecycle() {
@@ -226,6 +242,19 @@ async fn channel_full_lifecycle() {
     let addrs = test_cluster.wallet.get_addresses();
     let payer = addrs[0];
     let payee = addrs[1];
+
+    let read_usdc = |addr: SomaAddress| -> u64 {
+        test_cluster
+            .fullnode_handle
+            .soma_node
+            .with(|node| node.state().database_for_testing().get_balance(addr, CoinType::Usdc))
+            .unwrap_or(0)
+    };
+
+    // Snapshot balances; deltas must equal the funds-flow predicted by
+    // the channel ops below (modulo gas, which the assertions discount).
+    let payer_initial = read_usdc(payer);
+    let payee_initial = read_usdc(payee);
 
     // 1. Open with 100_000 µUSDC deposit.
     let channel_id = open_channel(&test_cluster, payer, payee, 100_000).await;
@@ -237,6 +266,17 @@ async fn channel_full_lifecycle() {
     assert_eq!(ch.deposit, 100_000);
     assert_eq!(ch.settled_amount, 0);
     assert!(ch.close_requested_at_ms.is_none());
+
+    // After OpenChannel: payer USDC dropped by *at least* the deposit
+    // (gas fee adds a small extra debit). Stage 8 invariant: the
+    // deposit lands as a Withdraw event in the accumulator.
+    let payer_after_open = read_usdc(payer);
+    assert!(
+        payer_initial - payer_after_open >= 100_000,
+        "payer must be debited at least 100_000 USDC on OpenChannel: initial={}, after_open={}",
+        payer_initial,
+        payer_after_open,
+    );
 
     // 2. Settle at cumulative=10_000.
     let voucher_sig = sign_voucher(&test_cluster, payer, channel_id, 10_000).await;
@@ -258,6 +298,18 @@ async fn channel_full_lifecycle() {
     let ch = read_channel(&test_cluster, channel_id).unwrap();
     assert_eq!(ch.deposit, 75_000);
     assert_eq!(ch.settled_amount, 25_000);
+
+    // After two Settles: payee USDC rose by exactly 25_000 minus the
+    // gas fees they paid (Settle is a payee-signed tx). The two
+    // Settles are coin-mode-gas in this test, so the accumulator delta
+    // for the payee is exactly the cumulative of the deposits — no
+    // gas debit lands on the accumulator in coin-mode.
+    let payee_after_settles = read_usdc(payee);
+    assert_eq!(
+        payee_after_settles - payee_initial,
+        25_000,
+        "payee accumulator must equal exactly the settled total (Stage 8: Deposit events from Settle land in the accumulator)",
+    );
 
     // 4. Request close — Clock timestamp gets stamped onto channel.
     let pre_close_ts = read_clock_ts(&test_cluster);
@@ -294,11 +346,27 @@ async fn channel_full_lifecycle() {
         "Channel must be deleted after WithdrawAfterTimeout"
     );
 
-    // Channel state already verifies the 25_000 µUSDC of payments
-    // applied (settled_amount = 25_000); the payout coins were
-    // created in the Settle effects and credited to `payee`'s
-    // address-owned set. The on-chain `Channel` field is the
-    // canonical signal that the payee got paid.
+    // Stage 8 closing invariant: payer's net debit is exactly the
+    // 25_000 µUSDC paid out via Settle (plus gas fees they spent on
+    // OpenChannel/RequestClose/Withdraw). Compare to:
+    //   payer_initial - payer_final >= 25_000  (settle total)
+    // and at-most: 25_000 + reasonable_gas_budget.
+    //
+    // The remainder (75_000) flowed back through a Deposit event on
+    // WithdrawAfterTimeout, conserving total accumulator supply
+    // (channel.deposit = 0 at deletion).
+    let payer_final = read_usdc(payer);
+    let payer_net_debit = payer_initial - payer_final;
+    assert!(
+        payer_net_debit >= 25_000,
+        "payer net debit must cover the 25_000 paid to payee: net_debit={}",
+        payer_net_debit,
+    );
+    assert!(
+        payer_net_debit < 100_000,
+        "payer net debit must be far less than the full deposit (remainder returned): net_debit={}",
+        payer_net_debit,
+    );
 }
 
 /// A user-signed `Settle` with the wrong sender (payer instead of

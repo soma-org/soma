@@ -159,33 +159,33 @@ async fn test_bridge_deposit_nonce_replay_rejected() {
 // BridgeWithdraw tests
 // =============================================================================
 
+/// Stage 12: BridgeWithdraw is balance-mode. The sender's USDC
+/// accumulator is debited via a Withdraw event; the executor no
+/// longer reads a payment coin object. Funds-availability is enforced
+/// by the reservation pre-pass in production. Here we verify the
+/// happy path: a PendingWithdrawal object is created and a Withdraw
+/// event is emitted for the right (sender, amount).
 #[tokio::test]
-async fn test_bridge_withdraw_burns_usdc() {
+async fn test_bridge_withdraw_creates_pending_and_emits_withdraw() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let sender_key = SomaKeyPair::Ed25519(key);
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    // Create USDC coin for sender
-    let usdc_id = ObjectID::random();
-    let usdc_balance = 5_000_000u64;
-    let usdc = Object::new_coin(
-        usdc_id,
-        CoinType::Usdc,
-        usdc_balance,
-        types::object::Owner::AddressOwner(sender),
-        TransactionDigest::genesis_marker(),
-    );
-    let usdc_ref = usdc.compute_object_reference();
-    authority_state.insert_genesis_object(usdc).await;
+    // Seed sender's USDC accumulator so the post-execution settlement
+    // (which applies the Withdraw event) doesn't underflow.
+    let withdraw_amount = 2_000_000u64;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Usdc, withdraw_amount * 2)
+        .unwrap();
 
-    // Gas coin (SOMA)
+    // Gas coin (SOMA — coin-mode gas, since we're not exercising the
+    // balance-mode-gas path here).
     let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
     let gas_ref = gas.compute_object_reference();
     authority_state.insert_genesis_object(gas).await;
 
-    let withdraw_amount = 2_000_000u64;
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
-        payment_coin: usdc_ref,
         amount: withdraw_amount,
         recipient_eth_address: [0xABu8; 20],
     });
@@ -197,11 +197,8 @@ async fn test_bridge_withdraw_burns_usdc() {
     let effects_data = effects.into_data();
     assert_eq!(*effects_data.status(), ExecutionStatus::Success);
 
-    // USDC coin should have reduced balance
-    let usdc_after = authority_state.get_object(&usdc_id).await.unwrap();
-    assert_eq!(usdc_after.as_coin().unwrap(), usdc_balance - withdraw_amount);
-
-    // A PendingWithdrawal object should be created
+    // A PendingWithdrawal object must be created with the right
+    // sender / amount / eth recipient. Bridge nodes consume this.
     assert!(effects_data.created().len() >= 1);
     let mut found_pending = false;
     for (oref, _owner) in effects_data.created() {
@@ -216,33 +213,46 @@ async fn test_bridge_withdraw_burns_usdc() {
         }
     }
     assert!(found_pending, "PendingWithdrawal should be created");
+
+    // Stage 12 invariant: sender's USDC accumulator dropped by exactly
+    // the withdraw amount. The Withdraw event emitted by the executor
+    // landed via the per-tx settlement path.
+    //
+    // Flush the writeback cache so the perpetual_tables reflect the
+    // tx's writes (unit tests skip the checkpoint executor that does
+    // this in production — same plumbing concern as the staking
+    // dual-write integrity test).
+    let tx_digest = effects_data.transaction_digest();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
+    let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
+    authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+
+    let final_balance = authority_state
+        .database_for_testing()
+        .get_balance(sender, CoinType::Usdc)
+        .unwrap();
+    assert_eq!(
+        final_balance,
+        withdraw_amount * 2 - withdraw_amount,
+        "sender's USDC accumulator must drop by exactly the bridge withdraw amount",
+    );
 }
 
+/// Stage 12: zero-amount withdrawals are rejected at the executor.
+/// They're meaningless on-chain (no PendingWithdrawal worth signing
+/// off-chain) and almost always indicate a wallet bug.
 #[tokio::test]
-async fn test_bridge_withdraw_exact_amount_deletes_coin() {
+async fn test_bridge_withdraw_rejects_zero_amount() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let sender_key = SomaKeyPair::Ed25519(key);
     let authority_state = TestAuthorityBuilder::new().build().await;
-
-    let usdc_id = ObjectID::random();
-    let usdc_balance = 1_000_000u64;
-    let usdc = Object::new_coin(
-        usdc_id,
-        CoinType::Usdc,
-        usdc_balance,
-        types::object::Owner::AddressOwner(sender),
-        TransactionDigest::genesis_marker(),
-    );
-    let usdc_ref = usdc.compute_object_reference();
-    authority_state.insert_genesis_object(usdc).await;
 
     let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
     let gas_ref = gas.compute_object_reference();
     authority_state.insert_genesis_object(gas).await;
 
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
-        payment_coin: usdc_ref,
-        amount: usdc_balance, // exact balance
+        amount: 0,
         recipient_eth_address: [0x01; 20],
     });
     let data = TransactionData::new(kind, sender, vec![gas_ref]);
@@ -251,85 +261,7 @@ async fn test_bridge_withdraw_exact_amount_deletes_coin() {
         .await
         .unwrap();
     let effects_data = effects.into_data();
-    assert_eq!(*effects_data.status(), ExecutionStatus::Success);
-
-    // USDC coin should be deleted
-    let deleted_ids: Vec<ObjectID> = effects_data.deleted().iter().map(|d| d.0).collect();
-    assert!(
-        deleted_ids.contains(&usdc_id),
-        "USDC coin should be deleted when exact amount withdrawn"
-    );
-}
-
-#[tokio::test]
-async fn test_bridge_withdraw_insufficient_balance_rejected() {
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let sender_key = SomaKeyPair::Ed25519(key);
-    let authority_state = TestAuthorityBuilder::new().build().await;
-
-    let usdc_id = ObjectID::random();
-    let usdc = Object::new_coin(
-        usdc_id,
-        CoinType::Usdc,
-        100, // small balance
-        types::object::Owner::AddressOwner(sender),
-        TransactionDigest::genesis_marker(),
-    );
-    let usdc_ref = usdc.compute_object_reference();
-    authority_state.insert_genesis_object(usdc).await;
-
-    let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
-    let gas_ref = gas.compute_object_reference();
-    authority_state.insert_genesis_object(gas).await;
-
-    let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
-        payment_coin: usdc_ref,
-        amount: 999_999, // way more than balance
-        recipient_eth_address: [0x01; 20],
-    });
-    let data = TransactionData::new(kind, sender, vec![gas_ref]);
-    let tx = to_sender_signed_transaction(data, &sender_key);
-    let (_, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
-        .await
-        .unwrap();
-    let effects_data = effects.into_data();
-    assert!(matches!(
-        effects_data.status(),
-        ExecutionStatus::Failure { error: ExecutionFailureStatus::InsufficientCoinBalance }
-    ));
-}
-
-#[tokio::test]
-async fn test_bridge_withdraw_wrong_coin_type_rejected() {
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let sender_key = SomaKeyPair::Ed25519(key);
-    let authority_state = TestAuthorityBuilder::new().build().await;
-
-    // Try to withdraw with a SOMA coin (BridgeWithdraw expects USDC).
-    let soma_id = ObjectID::random();
-    let soma = Object::with_id_owner_soma_coin_for_testing(soma_id, sender, 10_000_000);
-    let soma_ref = soma.compute_object_reference();
-    authority_state.insert_genesis_object(soma).await;
-
-    let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
-    let gas_ref = gas.compute_object_reference();
-    authority_state.insert_genesis_object(gas).await;
-
-    let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
-        payment_coin: soma_ref,
-        amount: 1_000_000,
-        recipient_eth_address: [0x01; 20],
-    });
-    let data = TransactionData::new(kind, sender, vec![gas_ref]);
-    let tx = to_sender_signed_transaction(data, &sender_key);
-    let (_, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
-        .await
-        .unwrap();
-    let effects_data = effects.into_data();
-    assert!(matches!(
-        effects_data.status(),
-        ExecutionStatus::Failure { error: ExecutionFailureStatus::WrongCoinTypeForPayment }
-    ));
+    assert!(!effects_data.status().is_ok(), "zero-amount withdraw must be rejected");
 }
 
 // =============================================================================
@@ -436,18 +368,23 @@ async fn test_bridge_deposit_with_real_ecdsa_signatures() {
         effects.status()
     );
 
-    // Verify USDC coin was minted
-    let created = effects.created();
-    assert!(!created.is_empty(), "Should create USDC coin");
-    let mut found_usdc = false;
-    for (oref, _owner) in &created {
-        let obj = authority_state.get_object(&oref.0).await.unwrap();
-        if obj.coin_type() == Some(CoinType::Usdc) {
-            assert_eq!(obj.as_coin().unwrap(), amount);
-            found_usdc = true;
-        }
-    }
-    assert!(found_usdc, "Should mint CoinType::Usdc coin");
+    // Stage 12: BridgeDeposit no longer mints a coin object — it
+    // emits a Deposit event that credits the recipient's USDC
+    // accumulator. Flush the writeback cache so the perpetual_tables
+    // reflect the post-execution settlement.
+    let tx_digest = effects.transaction_digest();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
+    let batch = authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
+    authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+
+    let recipient_balance = authority_state
+        .database_for_testing()
+        .get_balance(recipient, CoinType::Usdc)
+        .unwrap();
+    assert_eq!(
+        recipient_balance, amount,
+        "BridgeDeposit must credit the recipient's USDC accumulator by `amount`",
+    );
 }
 
 #[tokio::test]

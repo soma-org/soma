@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::balance::BalanceEvent;
-use crate::base::FullObjectID;
+use crate::base::{FullObjectID, SomaAddress};
+use crate::committee::EpochId;
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
 use crate::full_checkpoint_content::ObjectSet;
 use crate::object::{Object, ObjectID, ObjectRef, Owner, Version, VersionDigest};
@@ -36,6 +37,12 @@ pub struct TransactionOutputs {
     /// per-commit settlement system tx aggregates these across all
     /// txs in the commit and applies the net deltas atomically.
     pub balance_events: Vec<BalanceEvent>,
+
+    /// Stage 9b: signed delegation deltas
+    /// `(pool_id, staker, activation_epoch, delta)` to apply to the
+    /// `delegations` column family. Populated by the staking executor
+    /// alongside the StakedSomaV1 object writes.
+    pub delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
 }
 
 impl TransactionOutputs {
@@ -52,6 +59,7 @@ impl TransactionOutputs {
             written,
             lamport_version,
             balance_events,
+            delegation_events,
         } = inner_temporary_store;
 
         let tx_digest = *transaction.digest();
@@ -143,6 +151,7 @@ impl TransactionOutputs {
             locks_to_delete,
             new_locks_to_init,
             balance_events,
+            delegation_events,
         }
     }
 }

@@ -76,3 +76,63 @@ pub async fn execute_unstake(
 
     crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
 }
+
+/// Stage 9d: list a staker's active delegations using the new
+/// `ListDelegations` RPC endpoint. Replaces the equivalent
+/// owned-StakedSomaV1-object scan path; eventually the only path once
+/// Stage 9d full-removal lands.
+pub async fn execute_list_stakes(
+    context: &mut WalletContext,
+    staker: SomaAddress,
+    json: bool,
+) -> Result<()> {
+    let client = context.get_client().await?;
+
+    let request = rpc::proto::soma::ListDelegationsRequest::default()
+        .with_staker(staker.to_string());
+    let response = client
+        .list_delegations(request)
+        .await
+        .map_err(|e| anyhow!("ListDelegations RPC failed: {}", e.message()))?;
+
+    if json {
+        let rows: Vec<_> = response
+            .delegations
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "pool_id": d.pool_id,
+                    "activation_epoch": d.activation_epoch,
+                    "principal": d.principal,
+                })
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "staker": staker.to_string(),
+            "total_principal": response.total_principal.unwrap_or(0),
+            "delegations": rows,
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else if response.delegations.is_empty() {
+        println!("No active stakes for {}", staker);
+    } else {
+        println!("Stakes for {}:", staker);
+        println!(
+            "  {:<66}  {:<16}  {}",
+            "POOL", "ACTIVATION_EPOCH", "PRINCIPAL"
+        );
+        for d in &response.delegations {
+            println!(
+                "  {:<66}  {:<16}  {}",
+                d.pool_id.as_deref().unwrap_or(""),
+                d.activation_epoch.unwrap_or(0),
+                d.principal.unwrap_or(0),
+            );
+        }
+        println!(
+            "Total principal: {} shannons",
+            response.total_principal.unwrap_or(0)
+        );
+    }
+    Ok(())
+}

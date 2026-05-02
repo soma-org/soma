@@ -170,6 +170,28 @@ pub struct AuthorityPerpetualTables {
     /// `DBBatch` as effects/transactions, so the digest record is
     /// atomic with execution.
     pub(crate) executed_transaction_digests: DBMap<(EpochId, TransactionDigest), ()>,
+
+    /// Stage 9a: delegation principal per `(pool_id, staker, activation_epoch)`.
+    ///
+    /// Shadow of the per-stake `StakedSomaV1` object's `principal`
+    /// field, indexed for efficient sum-by-pool and sum-by-staker
+    /// queries. Triplet key matches the StakedSoma identity: the
+    /// activation epoch is included because two stakes from the same
+    /// staker into the same pool but in different epochs lock in
+    /// different exchange rates and so must be tracked separately for
+    /// rewards math.
+    ///
+    /// **Stage 9a is additive:** the table exists and has accessor
+    /// methods, but no execution path writes to it yet. Stage 9b will
+    /// route AddStake / WithdrawStake through this table; Stage 9c
+    /// routes epoch-end reward distribution; Stage 9d removes the
+    /// `StakedSomaV1` object once all callers have migrated.
+    ///
+    /// Tuple-key encoding (BCS): `pool_id` first means all delegations
+    /// for one pool sort contiguously — the validator-removal /
+    /// model-deactivation paths can iterate a single pool's delegators
+    /// efficiently.
+    pub(crate) delegations: DBMap<(ObjectID, SomaAddress, EpochId), u64>,
 }
 
 impl AuthorityPerpetualTables {

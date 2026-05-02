@@ -3148,6 +3148,151 @@ mod _field_impls {
             self.finish()
         }
     }
+    impl ListDelegationsRequest {
+        pub const STAKER_FIELD: &'static MessageField = &MessageField {
+            name: "staker",
+            json_name: "staker",
+            number: 1i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListDelegationsRequest {
+        const FIELDS: &'static [&'static MessageField] = &[Self::STAKER_FIELD];
+    }
+    impl ListDelegationsRequest {
+        pub fn path_builder() -> ListDelegationsRequestFieldPathBuilder {
+            ListDelegationsRequestFieldPathBuilder::new()
+        }
+    }
+    pub struct ListDelegationsRequestFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListDelegationsRequestFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn staker(mut self) -> String {
+            self.path.push(ListDelegationsRequest::STAKER_FIELD.name);
+            self.finish()
+        }
+    }
+    impl DelegationEntry {
+        pub const POOL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "pool_id",
+            json_name: "poolId",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const ACTIVATION_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "activation_epoch",
+            json_name: "activationEpoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const PRINCIPAL_FIELD: &'static MessageField = &MessageField {
+            name: "principal",
+            json_name: "principal",
+            number: 3i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for DelegationEntry {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::POOL_ID_FIELD,
+            Self::ACTIVATION_EPOCH_FIELD,
+            Self::PRINCIPAL_FIELD,
+        ];
+    }
+    impl DelegationEntry {
+        pub fn path_builder() -> DelegationEntryFieldPathBuilder {
+            DelegationEntryFieldPathBuilder::new()
+        }
+    }
+    pub struct DelegationEntryFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl DelegationEntryFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn pool_id(mut self) -> String {
+            self.path.push(DelegationEntry::POOL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn activation_epoch(mut self) -> String {
+            self.path.push(DelegationEntry::ACTIVATION_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn principal(mut self) -> String {
+            self.path.push(DelegationEntry::PRINCIPAL_FIELD.name);
+            self.finish()
+        }
+    }
+    impl ListDelegationsResponse {
+        pub const DELEGATIONS_FIELD: &'static MessageField = &MessageField {
+            name: "delegations",
+            json_name: "delegations",
+            number: 1i32,
+            message_fields: Some(DelegationEntry::FIELDS),
+        };
+        pub const TOTAL_PRINCIPAL_FIELD: &'static MessageField = &MessageField {
+            name: "total_principal",
+            json_name: "totalPrincipal",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ListDelegationsResponse {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::DELEGATIONS_FIELD,
+            Self::TOTAL_PRINCIPAL_FIELD,
+        ];
+    }
+    impl ListDelegationsResponse {
+        pub fn path_builder() -> ListDelegationsResponseFieldPathBuilder {
+            ListDelegationsResponseFieldPathBuilder::new()
+        }
+    }
+    pub struct ListDelegationsResponseFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ListDelegationsResponseFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn delegations(mut self) -> DelegationEntryFieldPathBuilder {
+            self.path.push(ListDelegationsResponse::DELEGATIONS_FIELD.name);
+            DelegationEntryFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn total_principal(mut self) -> String {
+            self.path.push(ListDelegationsResponse::TOTAL_PRINCIPAL_FIELD.name);
+            self.finish()
+        }
+    }
     impl GetTargetRequest {
         pub const TARGET_ID_FIELD: &'static MessageField = &MessageField {
             name: "target_id",
@@ -5283,6 +5428,12 @@ mod _field_impls {
             number: 4i32,
             message_fields: Some(ObjectReference::FIELDS),
         };
+        pub const EXPIRATION_FIELD: &'static MessageField = &MessageField {
+            name: "expiration",
+            json_name: "expiration",
+            number: 5i32,
+            message_fields: Some(TransactionExpiration::FIELDS),
+        };
     }
     impl MessageFields for Transaction {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5290,6 +5441,7 @@ mod _field_impls {
             Self::KIND_FIELD,
             Self::SENDER_FIELD,
             Self::GAS_PAYMENT_FIELD,
+            Self::EXPIRATION_FIELD,
         ];
     }
     impl Transaction {
@@ -5327,6 +5479,130 @@ mod _field_impls {
         pub fn gas_payment(mut self) -> ObjectReferenceFieldPathBuilder {
             self.path.push(Transaction::GAS_PAYMENT_FIELD.name);
             ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        }
+        pub fn expiration(mut self) -> TransactionExpirationFieldPathBuilder {
+            self.path.push(Transaction::EXPIRATION_FIELD.name);
+            TransactionExpirationFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl TransactionExpiration {
+        pub const NONE_FIELD: &'static MessageField = &MessageField {
+            name: "none",
+            json_name: "none",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const VALID_DURING_FIELD: &'static MessageField = &MessageField {
+            name: "valid_during",
+            json_name: "validDuring",
+            number: 2i32,
+            message_fields: Some(ValidDuring::FIELDS),
+        };
+    }
+    impl MessageFields for TransactionExpiration {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::NONE_FIELD,
+            Self::VALID_DURING_FIELD,
+        ];
+    }
+    impl TransactionExpiration {
+        pub fn path_builder() -> TransactionExpirationFieldPathBuilder {
+            TransactionExpirationFieldPathBuilder::new()
+        }
+    }
+    pub struct TransactionExpirationFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl TransactionExpirationFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn none(mut self) -> String {
+            self.path.push(TransactionExpiration::NONE_FIELD.name);
+            self.finish()
+        }
+        pub fn valid_during(mut self) -> ValidDuringFieldPathBuilder {
+            self.path.push(TransactionExpiration::VALID_DURING_FIELD.name);
+            ValidDuringFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl ValidDuring {
+        pub const MIN_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "min_epoch",
+            json_name: "minEpoch",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const MAX_EPOCH_FIELD: &'static MessageField = &MessageField {
+            name: "max_epoch",
+            json_name: "maxEpoch",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const CHAIN_FIELD: &'static MessageField = &MessageField {
+            name: "chain",
+            json_name: "chain",
+            number: 3i32,
+            message_fields: None,
+        };
+        pub const NONCE_FIELD: &'static MessageField = &MessageField {
+            name: "nonce",
+            json_name: "nonce",
+            number: 4i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for ValidDuring {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::MIN_EPOCH_FIELD,
+            Self::MAX_EPOCH_FIELD,
+            Self::CHAIN_FIELD,
+            Self::NONCE_FIELD,
+        ];
+    }
+    impl ValidDuring {
+        pub fn path_builder() -> ValidDuringFieldPathBuilder {
+            ValidDuringFieldPathBuilder::new()
+        }
+    }
+    pub struct ValidDuringFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl ValidDuringFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn min_epoch(mut self) -> String {
+            self.path.push(ValidDuring::MIN_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn max_epoch(mut self) -> String {
+            self.path.push(ValidDuring::MAX_EPOCH_FIELD.name);
+            self.finish()
+        }
+        pub fn chain(mut self) -> String {
+            self.path.push(ValidDuring::CHAIN_FIELD.name);
+            self.finish()
+        }
+        pub fn nonce(mut self) -> String {
+            self.path.push(ValidDuring::NONCE_FIELD.name);
+            self.finish()
         }
     }
     impl TransactionKind {
@@ -5564,6 +5840,12 @@ mod _field_impls {
             number: 60i32,
             message_fields: Some(Settlement::FIELDS),
         };
+        pub const BALANCE_TRANSFER_FIELD: &'static MessageField = &MessageField {
+            name: "balance_transfer",
+            json_name: "balanceTransfer",
+            number: 61i32,
+            message_fields: Some(BalanceTransfer::FIELDS),
+        };
     }
     impl MessageFields for TransactionKind {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -5606,6 +5888,7 @@ mod _field_impls {
             Self::REQUEST_CLOSE_FIELD,
             Self::WITHDRAW_AFTER_TIMEOUT_FIELD,
             Self::SETTLEMENT_FIELD,
+            Self::BALANCE_TRANSFER_FIELD,
         ];
     }
     impl TransactionKind {
@@ -5792,6 +6075,108 @@ mod _field_impls {
             self.path.push(TransactionKind::SETTLEMENT_FIELD.name);
             SettlementFieldPathBuilder::new_with_base(self.path)
         }
+        pub fn balance_transfer(mut self) -> BalanceTransferFieldPathBuilder {
+            self.path.push(TransactionKind::BALANCE_TRANSFER_FIELD.name);
+            BalanceTransferFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BalanceTransfer {
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const TRANSFERS_FIELD: &'static MessageField = &MessageField {
+            name: "transfers",
+            json_name: "transfers",
+            number: 2i32,
+            message_fields: Some(BalanceTransferEntry::FIELDS),
+        };
+    }
+    impl MessageFields for BalanceTransfer {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::COIN_TYPE_FIELD,
+            Self::TRANSFERS_FIELD,
+        ];
+    }
+    impl BalanceTransfer {
+        pub fn path_builder() -> BalanceTransferFieldPathBuilder {
+            BalanceTransferFieldPathBuilder::new()
+        }
+    }
+    pub struct BalanceTransferFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BalanceTransferFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(BalanceTransfer::COIN_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn transfers(mut self) -> BalanceTransferEntryFieldPathBuilder {
+            self.path.push(BalanceTransfer::TRANSFERS_FIELD.name);
+            BalanceTransferEntryFieldPathBuilder::new_with_base(self.path)
+        }
+    }
+    impl BalanceTransferEntry {
+        pub const RECIPIENT_FIELD: &'static MessageField = &MessageField {
+            name: "recipient",
+            json_name: "recipient",
+            number: 1i32,
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 2i32,
+            message_fields: None,
+        };
+    }
+    impl MessageFields for BalanceTransferEntry {
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::RECIPIENT_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
+    }
+    impl BalanceTransferEntry {
+        pub fn path_builder() -> BalanceTransferEntryFieldPathBuilder {
+            BalanceTransferEntryFieldPathBuilder::new()
+        }
+    }
+    pub struct BalanceTransferEntryFieldPathBuilder {
+        path: Vec<&'static str>,
+    }
+    impl BalanceTransferEntryFieldPathBuilder {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self { path: Default::default() }
+        }
+        #[doc(hidden)]
+        pub fn new_with_base(base: Vec<&'static str>) -> Self {
+            Self { path: base }
+        }
+        pub fn finish(self) -> String {
+            self.path.join(".")
+        }
+        pub fn recipient(mut self) -> String {
+            self.path.push(BalanceTransferEntry::RECIPIENT_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(BalanceTransferEntry::AMOUNT_FIELD.name);
+            self.finish()
+        }
     }
     impl BridgeDeposit {
         pub const NONCE_FIELD: &'static MessageField = &MessageField {
@@ -5887,12 +6272,6 @@ mod _field_impls {
         }
     }
     impl BridgeWithdraw {
-        pub const PAYMENT_COIN_FIELD: &'static MessageField = &MessageField {
-            name: "payment_coin",
-            json_name: "paymentCoin",
-            number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
         pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "amount",
             json_name: "amount",
@@ -5908,7 +6287,6 @@ mod _field_impls {
     }
     impl MessageFields for BridgeWithdraw {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::PAYMENT_COIN_FIELD,
             Self::AMOUNT_FIELD,
             Self::RECIPIENT_ETH_ADDRESS_FIELD,
         ];
@@ -5932,10 +6310,6 @@ mod _field_impls {
         }
         pub fn finish(self) -> String {
             self.path.join(".")
-        }
-        pub fn payment_coin(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(BridgeWithdraw::PAYMENT_COIN_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
         pub fn amount(mut self) -> String {
             self.path.push(BridgeWithdraw::AMOUNT_FIELD.name);
@@ -8222,12 +8596,6 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
-        pub const DEPOSIT_COIN_FIELD: &'static MessageField = &MessageField {
-            name: "deposit_coin",
-            json_name: "depositCoin",
-            number: 4i32,
-            message_fields: Some(ObjectReference::FIELDS),
-        };
         pub const DEPOSIT_AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "deposit_amount",
             json_name: "depositAmount",
@@ -8240,7 +8608,6 @@ mod _field_impls {
             Self::PAYEE_FIELD,
             Self::AUTHORIZED_SIGNER_FIELD,
             Self::TOKEN_FIELD,
-            Self::DEPOSIT_COIN_FIELD,
             Self::DEPOSIT_AMOUNT_FIELD,
         ];
     }
@@ -8275,10 +8642,6 @@ mod _field_impls {
         pub fn token(mut self) -> String {
             self.path.push(OpenChannel::TOKEN_FIELD.name);
             self.finish()
-        }
-        pub fn deposit_coin(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(OpenChannel::DEPOSIT_COIN_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
         pub fn deposit_amount(mut self) -> String {
             self.path.push(OpenChannel::DEPOSIT_AMOUNT_FIELD.name);

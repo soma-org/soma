@@ -153,6 +153,13 @@ impl AuthorityStore {
                 .bulk_insert_genesis_balances(genesis.balances())
                 .expect("Cannot bulk insert genesis balances");
 
+            // Stage 9d: seed the delegations column family with
+            // genesis stake principals so the table is in sync from
+            // epoch 0.
+            store
+                .bulk_insert_genesis_delegations(genesis.delegations())
+                .expect("Cannot bulk insert genesis delegations");
+
             // insert txn and effects of genesis
             let transaction = VerifiedTransaction::new_unchecked(genesis.transaction().clone());
 
@@ -517,6 +524,26 @@ impl AuthorityStore {
         Ok(())
     }
 
+    /// Stage 9d: seed the `delegations` column family with the genesis
+    /// stake principals, mirroring every genesis-issued StakedSomaV1
+    /// object. Without this, the table only carries dual-writes from
+    /// AddStake (9b) and epoch rewards (9c) — the genesis stakes
+    /// would be invisible to any consumer reading from the table.
+    /// Like `bulk_insert_genesis_balances`, zero entries are skipped.
+    #[instrument(level = "debug", skip_all)]
+    pub(crate) fn bulk_insert_genesis_delegations(
+        &self,
+        delegations: &BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+    ) -> SomaResult<()> {
+        let mut batch = self.perpetual_tables.delegations.batch();
+        batch.insert_batch(
+            &self.perpetual_tables.delegations,
+            delegations.iter().filter(|(_, v)| **v != 0).map(|(k, v)| (*k, *v)),
+        )?;
+        batch.write()?;
+        Ok(())
+    }
+
     pub fn bulk_insert_live_objects(
         perpetual_db: &AuthorityPerpetualTables,
         live_objects: impl Iterator<Item = LiveObject>,
@@ -625,6 +652,7 @@ impl AuthorityStore {
             locks_to_delete,
             new_locks_to_init,
             balance_events,
+            delegation_events,
             ..
         } = tx_outputs;
 
@@ -647,21 +675,31 @@ impl AuthorityStore {
                 [((epoch_id, *transaction_digest), ())],
             )?;
 
-        // Stage 3: apply per-commit balance settlement. Only the
-        // Settlement tx's events touch the accumulator — other txs'
-        // events are intent records, aggregated into the *next*
-        // settlement and applied through this code path then.
+        // Stage 6a/6c: apply balance events from this tx to the
+        // accumulator. Two paths produce events:
+        //   1. User txs in balance-mode gas (Stage 6c): prepare_gas
+        //      emits a Withdraw for the gas fee. Applied per-tx so
+        //      the debit lands without waiting for settlement.
+        //   2. Settlement system tx (Stage 3+6a): pre-aggregated
+        //      changes from the consensus handler. Applied identically.
         //
-        // The aggregator (Stage 6+ consensus handler) guarantees: at
-        // most one entry per (owner, coin_type) and no zero deltas, so
-        // we can apply each event independently. The reservation
-        // pre-pass (Stage 4) prevents underflow before execution; we
-        // surface it here loudly because reaching this branch means a
-        // pipeline bug, not a user error.
-        if transaction.transaction_data().kind().is_settlement_tx()
-            && !balance_events.is_empty()
-        {
+        // Direct per-tx apply works because txs in a commit execute
+        // sequentially. The (future) reservation pre-pass (Stage 6d)
+        // adds defense-in-depth against same-sender-multiple-txs-
+        // in-one-commit underflow; for single-sender single-tx the
+        // direct apply is sound on its own.
+        if !balance_events.is_empty() {
             self.apply_settlement_events(write_batch, balance_events)?;
+        }
+
+        // Stage 9b: apply delegation deltas to the `delegations`
+        // column family. Atomic with the rest of the commit's writes —
+        // either every change in this tx lands or none do. Aggregate
+        // first so multiple events on the same key (rare today, but
+        // possible if a tx adds and partially withdraws in one go)
+        // collapse to a single net delta and a single row write.
+        if !delegation_events.is_empty() {
+            self.apply_delegation_events(write_batch, delegation_events)?;
         }
 
         // Store the certificate indexed by transaction digest
@@ -717,33 +755,101 @@ impl AuthorityStore {
         write_batch: &mut DBBatch,
         events: &[BalanceEvent],
     ) -> SomaResult<()> {
-        let new_balances: Vec<((SomaAddress, CoinType), u64)> = events
-            .iter()
-            .map(|ev| {
-                let key = (ev.owner(), ev.coin_type());
-                let current = self.perpetual_tables.accumulator_balances.get(&key)?.unwrap_or(0);
-                let delta = ev.signed_delta();
-                let new_balance = match apply_delta_to_balance(current, delta) {
-                    BalanceUpdate::Ok(v) => v,
-                    BalanceUpdate::Underflow { current, delta } => {
-                        return Err(SomaError::from(format!(
-                            "settlement underflow for {:?}: current={}, delta={}",
-                            key, current, delta
-                        )));
-                    }
-                    BalanceUpdate::Overflow { current, delta } => {
-                        return Err(SomaError::from(format!(
-                            "settlement overflow for {:?}: current={}, delta={}",
-                            key, current, delta
-                        )));
-                    }
-                };
-                Ok((key, new_balance))
-            })
-            .collect::<SomaResult<Vec<_>>>()?;
+        // Two events with the same `(owner, coin_type)` key would each
+        // read the same current balance, compute their own
+        // `current ± delta`, and the later write would clobber the
+        // earlier — losing one of the deltas. Concretely, a
+        // BalanceTransfer in balance-mode emits both a fee Withdraw
+        // (from prepare_gas) and a transfer Withdraw (from the
+        // executor) under the same key; without aggregation only the
+        // larger debit lands. Aggregating first makes the apply
+        // delta-additive and order-independent.
+        let aggregated = types::balance::aggregate_events(events);
+        let mut new_balances: Vec<((SomaAddress, CoinType), u64)> =
+            Vec::with_capacity(aggregated.len());
+        for (key, net_delta) in aggregated {
+            if net_delta == 0 {
+                continue;
+            }
+            let current = self.perpetual_tables.accumulator_balances.get(&key)?.unwrap_or(0);
+            let new_balance = match apply_delta_to_balance(current, net_delta) {
+                BalanceUpdate::Ok(v) => v,
+                BalanceUpdate::Underflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "settlement underflow for {:?}: current={}, delta={}",
+                        key, current, delta
+                    )));
+                }
+                BalanceUpdate::Overflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "settlement overflow for {:?}: current={}, delta={}",
+                        key, current, delta
+                    )));
+                }
+            };
+            new_balances.push((key, new_balance));
+        }
 
         write_batch
             .insert_batch(&self.perpetual_tables.accumulator_balances, new_balances)?;
+        Ok(())
+    }
+
+    /// Stage 9b: apply per-tx delegation deltas to the `delegations`
+    /// column family inside the same `DBBatch` as the rest of the
+    /// commit's outputs. Mirrors `apply_settlement_events`'s
+    /// aggregate-first design — multiple events on the same key
+    /// collapse to a single row write, avoiding the read-then-write
+    /// race where two events with the same key clobber each other.
+    pub(crate) fn apply_delegation_events(
+        &self,
+        write_batch: &mut DBBatch,
+        events: &[(ObjectID, SomaAddress, EpochId, i128)],
+    ) -> SomaResult<()> {
+        // Aggregate per (pool_id, staker, activation_epoch).
+        let mut aggregated: BTreeMap<(ObjectID, SomaAddress, EpochId), i128> = BTreeMap::new();
+        for (pool_id, staker, activation_epoch, delta) in events {
+            *aggregated.entry((*pool_id, *staker, *activation_epoch)).or_insert(0) += *delta;
+        }
+
+        let mut updates: Vec<((ObjectID, SomaAddress, EpochId), u64)> =
+            Vec::with_capacity(aggregated.len());
+        let mut deletes: Vec<(ObjectID, SomaAddress, EpochId)> = Vec::new();
+
+        for (key, net_delta) in aggregated {
+            if net_delta == 0 {
+                continue;
+            }
+            let current = self.perpetual_tables.delegations.get(&key)?.unwrap_or(0);
+            match apply_delta_to_balance(current, net_delta) {
+                BalanceUpdate::Ok(new_principal) => {
+                    if new_principal == 0 {
+                        // Drain to zero → drop the row entirely so it
+                        // doesn't show up in `iter_delegations_for_staker`
+                        // scans. Mirrors `set_delegation`'s zero-deletes
+                        // contract.
+                        deletes.push(key);
+                    } else {
+                        updates.push((key, new_principal));
+                    }
+                }
+                BalanceUpdate::Underflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "Delegation underflow: key={:?} current={} delta={}",
+                        key, current, delta
+                    )));
+                }
+                BalanceUpdate::Overflow { current, delta } => {
+                    return Err(SomaError::from(format!(
+                        "Delegation overflow: key={:?} current={} delta={}",
+                        key, current, delta
+                    )));
+                }
+            }
+        }
+
+        write_batch.insert_batch(&self.perpetual_tables.delegations, updates)?;
+        write_batch.delete_batch(&self.perpetual_tables.delegations, deletes)?;
         Ok(())
     }
 
@@ -1321,6 +1427,187 @@ impl AuthorityStore {
             let ((entry_owner, coin_type), balance) = entry?;
             if entry_owner == owner {
                 out.push((coin_type, balance));
+            }
+        }
+        Ok(out)
+    }
+
+    // ===========================================================================
+    // Stage 9a: delegation-balance accessors (additive — no execution
+    // path writes here yet).
+    //
+    // Mirrors the per-stake `StakedSomaV1` object's `principal` field,
+    // keyed `(pool_id, staker, activation_epoch)`. Stage 9b will start
+    // populating; Stage 9c routes epoch reward distribution through
+    // this table; Stage 9d removes the StakedSoma object once all
+    // callers are migrated.
+    // ===========================================================================
+
+    /// Read the principal staked into `pool_id` by `staker` with
+    /// `activation_epoch`. Returns 0 when no entry exists — same
+    /// semantics as `get_balance`: missing == zero.
+    pub fn get_delegation(
+        &self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        activation_epoch: EpochId,
+    ) -> SomaResult<u64> {
+        Ok(self
+            .perpetual_tables
+            .delegations
+            .get(&(pool_id, staker, activation_epoch))?
+            .unwrap_or(0))
+    }
+
+    /// Direct delegation write. **Only valid from genesis,
+    /// AddStake/WithdrawStake execution, or epoch reward distribution
+    /// paths.** Like `set_balance`, this is the privileged path —
+    /// regular user txs go through executors that enforce the
+    /// invariants.
+    pub fn set_delegation(
+        &self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        activation_epoch: EpochId,
+        principal: u64,
+    ) -> SomaResult<()> {
+        if principal == 0 {
+            // A zero entry is identical to absence — store nothing,
+            // and prune any existing entry. Matches what fully
+            // withdrawing a stake should do at the row level.
+            self.perpetual_tables
+                .delegations
+                .remove(&(pool_id, staker, activation_epoch))?;
+            return Ok(());
+        }
+        self.perpetual_tables
+            .delegations
+            .insert(&(pool_id, staker, activation_epoch), &principal)?;
+        Ok(())
+    }
+
+    /// Apply a signed delta to a delegation row. Returns the new
+    /// principal on success. Underflow is a hard error — no row goes
+    /// negative.
+    ///
+    /// Used by tests; production paths (Stage 9b+) will batch their
+    /// per-commit changes through a `DBBatch` written atomically with
+    /// the rest of the commit's outputs.
+    pub fn apply_delegation_delta(
+        &self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        activation_epoch: EpochId,
+        delta: i128,
+    ) -> SomaResult<u64> {
+        let current = self.get_delegation(pool_id, staker, activation_epoch)?;
+        match apply_delta_to_balance(current, delta) {
+            BalanceUpdate::Ok(new_principal) => {
+                self.set_delegation(pool_id, staker, activation_epoch, new_principal)?;
+                Ok(new_principal)
+            }
+            BalanceUpdate::Underflow { current, delta } => Err(SomaError::from(format!(
+                "Delegation underflow: pool={} staker={} activation_epoch={} current={} delta={}",
+                pool_id, staker, activation_epoch, current, delta
+            ))),
+            BalanceUpdate::Overflow { current, delta } => Err(SomaError::from(format!(
+                "Delegation overflow: pool={} staker={} activation_epoch={} current={} delta={}",
+                pool_id, staker, activation_epoch, current, delta
+            ))),
+        }
+    }
+
+    /// Sum every active delegation against `pool_id`, across all
+    /// stakers and activation epochs. The pool-token math at epoch
+    /// boundaries needs this aggregate; Stage 9c will read here
+    /// instead of summing individual `StakedSomaV1` objects.
+    pub fn sum_delegations_for_pool(&self, pool_id: ObjectID) -> SomaResult<u64> {
+        let mut total: u64 = 0;
+        for entry in self.perpetual_tables.delegations.safe_iter() {
+            let ((entry_pool, _, _), principal) = entry?;
+            if entry_pool == pool_id {
+                total = total
+                    .checked_add(principal)
+                    .ok_or_else(|| SomaError::from("Delegation sum overflow".to_string()))?;
+            }
+        }
+        Ok(total)
+    }
+
+    /// Iterate every `(pool_id, staker, activation_epoch) -> principal`
+    /// entry. O(n). Intended for tests, snapshots, and full-state
+    /// inspection — RPC's per-staker path should use
+    /// [`Self::iter_delegations_for_staker`] instead.
+    pub fn iter_all_delegations(
+        &self,
+    ) -> SomaResult<Vec<((ObjectID, SomaAddress, EpochId), u64)>> {
+        let mut out = Vec::new();
+        for entry in self.perpetual_tables.delegations.safe_iter() {
+            let (k, v) = entry?;
+            out.push((k, v));
+        }
+        Ok(out)
+    }
+
+    /// Sum every delegation principal owned by `staker` across all
+    /// pools and activation epochs. Used by aggregate-balance queries
+    /// (eventually RPC's "total stake" endpoint, dashboard summaries,
+    /// etc.) — saturating add intentionally: total supply is far below
+    /// `u64::MAX`, so saturation indicates a corruption upstream and
+    /// we surface it as `Err`.
+    pub fn total_delegated_principal_for_staker(
+        &self,
+        staker: SomaAddress,
+    ) -> SomaResult<u64> {
+        let mut total: u64 = 0;
+        for entry in self.perpetual_tables.delegations.safe_iter() {
+            let ((_, entry_staker, _), principal) = entry?;
+            if entry_staker == staker {
+                total = total.checked_add(principal).ok_or_else(|| {
+                    SomaError::from(format!(
+                        "Delegation total overflowed for staker {}",
+                        staker
+                    ))
+                })?;
+            }
+        }
+        Ok(total)
+    }
+
+    /// List every active delegation into `pool_id` — symmetric to
+    /// [`Self::iter_delegations_for_staker`]. Used by future RPC
+    /// endpoints surfacing a validator's delegator set.
+    ///
+    /// The triplet key sorts pool-first, so this could be a prefix
+    /// scan in principle. Today it's a full scan with a filter,
+    /// matching the staker-side helper. If we need this on a hot
+    /// path, the prefix-scan optimization is a single-line change.
+    pub fn iter_delegators_for_pool(
+        &self,
+        pool_id: ObjectID,
+    ) -> SomaResult<Vec<(SomaAddress, EpochId, u64)>> {
+        let mut out = Vec::new();
+        for entry in self.perpetual_tables.delegations.safe_iter() {
+            let ((entry_pool, staker, activation_epoch), principal) = entry?;
+            if entry_pool == pool_id {
+                out.push((staker, activation_epoch, principal));
+            }
+        }
+        Ok(out)
+    }
+
+    /// List every active delegation by `staker`. Used by RPC for the
+    /// "show me my stakes" path; eventually replaces the owned-object
+    /// scan that today returns StakedSomaV1 objects.
+    pub fn iter_delegations_for_staker(
+        &self,
+        staker: SomaAddress,
+    ) -> SomaResult<Vec<(ObjectID, EpochId, u64)>> {
+        let mut out = Vec::new();
+        for entry in self.perpetual_tables.delegations.safe_iter() {
+            let ((pool_id, entry_staker, activation_epoch), principal) = entry?;
+            if entry_staker == staker {
+                out.push((pool_id, activation_epoch, principal));
             }
         }
         Ok(out)

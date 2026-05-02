@@ -110,8 +110,22 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         match result {
             Ok(validator_rewards) => {
-                // Normal path: create reward objects for validators
+                // Normal path: create reward objects for validators.
+                // Stage 9c: also dual-write to the delegations table —
+                // mirrors the AddStake/WithdrawStake dual-write from
+                // Stage 9b. The StakedSomaV1 reward and the delegation
+                // row carry the same (pool_id, validator,
+                // activation_epoch, principal) tuple. Stage 9d will
+                // remove the StakedSomaV1 object once all reward
+                // consumers (rpc, indexer, withdrawal flow) read from
+                // the table.
                 for (validator, reward) in validator_rewards {
+                    store.emit_delegation_event(
+                        reward.pool_id,
+                        validator,
+                        reward.stake_activation_epoch,
+                        reward.principal as i128,
+                    );
                     let staked_soma_object = Object::new_staked_soma_object(
                         ObjectID::derive_id(tx_digest, store.next_creation_num()),
                         reward,

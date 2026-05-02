@@ -510,6 +510,11 @@ pub trait RpcIndexes: Send + Sync {
 
     fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
 
+    /// Stage 9d: list every active delegation owned by `staker`.
+    /// Reads directly from the post-migration `delegations` column
+    /// family; eventual replacement for scanning StakedSomaV1 objects.
+    fn list_delegations(&self, staker: &SomaAddress) -> Result<Vec<DelegationInfo>>;
+
     fn get_highest_indexed_checkpoint_seq_number(&self)
     -> Result<Option<CheckpointSequenceNumber>>;
 
@@ -584,4 +589,14 @@ pub struct EpochInfo {
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
 pub struct BalanceInfo {
     pub balance: u64,
+}
+
+/// Stage 9d: a single row of the `delegations` table — the
+/// post-migration analogue of a StakedSomaV1 object. Pool-token
+/// reward math is applied at withdrawal time, not stored here.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DelegationInfo {
+    pub pool_id: ObjectID,
+    pub activation_epoch: EpochId,
+    pub principal: u64,
 }

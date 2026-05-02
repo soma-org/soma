@@ -115,6 +115,18 @@ pub enum TransactionKind {
     RequestClose(RequestCloseArgs),
     WithdrawAfterTimeout(WithdrawAfterTimeoutArgs),
 
+    /// Stage 7: stateless value transfer — debits sender's
+    /// accumulator balance, credits each recipient's. No owned
+    /// coin objects involved on either side. Sender pays gas
+    /// from the same accumulator (balance-mode), so the tx is
+    /// fully stateless and requires `TransactionExpiration::ValidDuring`.
+    ///
+    /// Replay protection: digest cache + validity window
+    /// (Stage 5.5). Parallel safety: scheduler reservation
+    /// pre-pass (Stage 6d) ensures sender has sufficient balance
+    /// across all txs in a commit.
+    BalanceTransfer(BalanceTransferArgs),
+
     /// Per-consensus-commit settlement of the account-balance accumulator.
     /// The consensus handler aggregates `BalanceEvent`s emitted by every
     /// user tx in the commit, dedupes by `(owner, coin_type)`, and packs
@@ -217,9 +229,11 @@ pub struct BridgeDepositArgs {
     pub signer_bitmap: Vec<u8>,
 }
 
+/// Args for `BridgeWithdraw`. Stage 12: the withdrawn USDC is debited
+/// from the sender's accumulator (no `payment_coin` input). The
+/// reservation pre-pass enforces sufficient balance before execution.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct BridgeWithdrawArgs {
-    pub payment_coin: ObjectRef,
     pub amount: u64,
     pub recipient_eth_address: [u8; 20],
 }
@@ -233,7 +247,10 @@ pub struct BridgeEmergencyPauseArgs {
 // --- Payment-channel arg structs ---
 
 /// Args for `OpenChannel`. The signer of the transaction becomes the
-/// channel's `payer`; no separate payer field is needed.
+/// channel's `payer`; no separate payer field is needed. Stage 8: the
+/// deposit is drawn from the sender's accumulator balance rather than
+/// a coin object — the executor emits a single `Withdraw` event for
+/// `deposit_amount` against the signer in the chosen `token`.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct OpenChannelArgs {
     pub payee: SomaAddress,
@@ -241,9 +258,6 @@ pub struct OpenChannelArgs {
     /// payer; differs when the payer wants a hot-key delegation.
     pub authorized_signer: SomaAddress,
     pub token: crate::object::CoinType,
-    /// Coin being drawn from for the deposit. May coincide with the
-    /// gas coin.
-    pub deposit_coin: ObjectRef,
     pub deposit_amount: u64,
 }
 
@@ -281,6 +295,24 @@ pub struct WithdrawAfterTimeoutArgs {
 pub struct BridgeEmergencyUnpauseArgs {
     pub aggregated_signature: Vec<u8>,
     pub signer_bitmap: Vec<u8>,
+}
+
+/// Stage 7: balance-mode value transfer.
+///
+/// `transfers` is a list of `(recipient, amount)` pairs all in the
+/// same `coin_type`. Multiple recipients let a single tx fan out a
+/// payment (analogous to `PayCoins` in coin-mode), but with one
+/// shared `coin_type` because the executor emits one Withdraw per
+/// (sender, coin_type) and one Deposit per recipient.
+///
+/// All amounts are in the smallest unit (microdollars for USDC,
+/// shannons for SOMA). Empty `transfers` is rejected by the executor.
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub struct BalanceTransferArgs {
+    pub coin_type: crate::object::CoinType,
+    /// (recipient, amount) pairs. Order matters for the digest but not
+    /// for execution.
+    pub transfers: Vec<(SomaAddress, u64)>,
 }
 
 impl TransactionKind {
@@ -394,6 +426,48 @@ impl TransactionKind {
 
     pub fn is_epoch_change(&self) -> bool {
         matches!(self, TransactionKind::ChangeEpoch(_))
+    }
+
+    /// Number of fee units this kind is charged for. Mirrors what each
+    /// executor's `TransactionExecutor::fee_units` returns — extracted
+    /// here so non-execution code (e.g., the scheduler reservation
+    /// pre-pass in Stage 6d) can compute the gas fee without
+    /// instantiating an executor.
+    ///
+    /// System txs return 0 (they're gasless).
+    /// Most ops return 1.
+    /// Linear-in-input ops (Transfer, MergeCoins, TransferObjects)
+    /// return cost proportional to input count. Stake/Bridge ops
+    /// return 2.
+    pub fn fee_units(&self) -> u32 {
+        if self.is_system_tx() {
+            return 0;
+        }
+        match self {
+            // Transfer: 1 unit per input + 1 unit per output, min 2.
+            TransactionKind::Transfer { coins, recipients, .. } => {
+                let n = coins.len().saturating_add(recipients.len());
+                n.try_into().unwrap_or(u32::MAX)
+            }
+            TransactionKind::MergeCoins { coins } => {
+                coins.len().try_into().unwrap_or(u32::MAX)
+            }
+            TransactionKind::TransferObjects { objects, .. } => {
+                objects.len().try_into().unwrap_or(u32::MAX)
+            }
+            // Stage 7: balance transfer cost is 1 + 1 unit per recipient
+            // (one withdraw event for sender, one deposit per recipient).
+            TransactionKind::BalanceTransfer(args) => {
+                let n = 1usize.saturating_add(args.transfers.len());
+                n.try_into().unwrap_or(u32::MAX)
+            }
+            // Staking: flat 2.
+            TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => 2,
+            // Bridge user op: 2.
+            TransactionKind::BridgeWithdraw(_) => 2,
+            // All other user ops (validator mgmt, channel ops, etc.): 1.
+            _ => 1,
+        }
     }
 
     pub fn contains_shared_object(&self) -> bool {
@@ -515,13 +589,15 @@ impl TransactionKind {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
             }
 
-            TransactionKind::BridgeWithdraw(args) => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.payment_coin));
-            }
+            // Stage 12: BridgeWithdraw is balance-mode — no payment
+            // coin to read. The Withdraw event the executor emits is
+            // covered by `reservations()`.
+            TransactionKind::BridgeWithdraw(_) => {}
 
-            TransactionKind::OpenChannel(args) => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(args.deposit_coin));
-            }
+            // Stage 8: OpenChannel no longer reads a deposit coin —
+            // the deposit is drawn from the accumulator. The executor
+            // emits a Withdraw event covered by `reservations()`.
+            TransactionKind::OpenChannel(_) => {}
 
             _ => {}
         }
@@ -1141,21 +1217,77 @@ impl TransactionData {
 
     /// Withdrawal reservations this transaction needs against the
     /// account-balance accumulator. The scheduler runs a pre-pass
-    /// (Stage 4) that sums these per `(owner, coin_type)` for every tx
-    /// in a commit and drops any tx whose reservations exceed the
-    /// pre-commit balance. Returning `vec![]` opts the tx out of the
-    /// pre-pass entirely — appropriate for tx kinds that do not yet
-    /// touch balances.
+    /// that sums these per `(owner, coin_type)` for every tx in a
+    /// commit and drops any tx whose reservations exceed the
+    /// pre-commit balance.
     ///
-    /// Stage 2 only wires the API. Per-kind reservations are filled in
-    /// during the corresponding migration stages:
-    /// - Stage 6: gas (USDC reservations on every user tx)
-    /// - Stage 7: TransferCoin / PayCoins (value reservations)
-    /// - Stage 8: channels (OpenChannel locks initial deposit)
-    /// - Stage 10: AddStake (stake amount reservation)
-    pub fn reservations(&self) -> Vec<WithdrawalReservation> {
-        // No tx kind reads balances yet; will be filled in per-stage.
-        Vec::new()
+    /// Stage 6d: balance-mode txs (empty `gas_payment`, non-system)
+    /// declare a USDC reservation for `unit_fee × kind.fee_units()`.
+    /// Coin-mode txs declare nothing (replay/insufficiency caught at
+    /// execution by the smash + version check).
+    ///
+    /// `unit_fee` is the per-unit fee from the active epoch's
+    /// `FeeParameters`; the caller supplies it so this method stays
+    /// pure (no global state). Pass 0 if you only want the non-gas
+    /// reservations (currently no kind has any).
+    pub fn reservations(&self, unit_fee: u64) -> Vec<WithdrawalReservation> {
+        let mut out = Vec::new();
+        if !self.is_system_tx() && self.gas().is_empty() {
+            // Balance-mode gas: reserve unit_fee × fee_units(kind) USDC.
+            let fee = unit_fee.saturating_mul(self.kind().fee_units() as u64);
+            if fee > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Usdc,
+                    fee,
+                ));
+            }
+        }
+        // Stage 7: BalanceTransfer also reserves the total transfer
+        // amount in the chosen coin type. The pre-pass aggregates
+        // per-(owner, coin_type), so a USDC transfer adds to the gas
+        // reservation above and is checked together against the
+        // sender's balance.
+        if let TransactionKind::BalanceTransfer(args) = self.kind() {
+            let total: u64 = args
+                .transfers
+                .iter()
+                .map(|(_, amt)| *amt)
+                .fold(0u64, |a, b| a.saturating_add(b));
+            if total > 0 {
+                out.push(WithdrawalReservation::new(self.sender(), args.coin_type, total));
+            }
+        }
+        // Stage 8: OpenChannel debits the deposit from the sender's
+        // accumulator. Settle/RequestClose/WithdrawAfterTimeout move
+        // funds *out* of the channel object's internal balance, not
+        // the sender's accumulator, so they have no caller-side
+        // reservation here — only OpenChannel needs one.
+        if let TransactionKind::OpenChannel(args) = self.kind() {
+            if args.deposit_amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    args.token,
+                    args.deposit_amount,
+                ));
+            }
+        }
+        // Stage 12: BridgeWithdraw debits USDC from the sender's
+        // accumulator (the bridge "burns" the local balance and the
+        // off-chain bridge nodes release the corresponding ETH-side
+        // amount). BridgeDeposit only credits a recipient, so it has
+        // no caller-side reservation. EmergencyPause/Unpause move no
+        // funds.
+        if let TransactionKind::BridgeWithdraw(args) = self.kind() {
+            if args.amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Usdc,
+                    args.amount,
+                ));
+            }
+        }
+        out
     }
 
 }

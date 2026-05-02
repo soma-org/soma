@@ -86,7 +86,14 @@ fn check_transaction_input_inner(
 ) -> SomaResult {
     let gas = if gas_override.is_empty() { &transaction.gas() } else { gas_override };
 
-    check_gas(input_objects, gas, transaction.kind())?;
+    // Stage 6c: balance-mode gas (empty gas_payment) — gas comes from
+    // the address-balance accumulator, validated by prepare_gas at
+    // execution time. The "stateless requires ValidDuring" check in
+    // handle_vote_transaction is the replay-protection guarantee.
+    // Skip check_gas entirely in this case.
+    if !gas.is_empty() {
+        check_gas(input_objects, gas, transaction.kind())?;
+    }
     check_objects(transaction, input_objects)?;
 
     Ok(())
@@ -236,7 +243,16 @@ fn check_objects(transaction: &TransactionData, objects: &InputObjects) -> SomaR
         }
     }
 
-    if !(transaction.is_genesis_tx() || transaction.is_system_tx()) && objects.is_empty() {
+    // Stage 7: stateless balance-mode txs (e.g. BalanceTransfer) have
+    // no owned inputs and no gas coin — empty `InputObjects` is the
+    // correct shape, not an arity violation. The replay-protection
+    // path (`is_replay_protected()` + `executed_transaction_digests`)
+    // covers the safety hole that owned-object versioning used to
+    // close.
+    let is_balance_mode = transaction.gas().is_empty();
+    if !(transaction.is_genesis_tx() || transaction.is_system_tx() || is_balance_mode)
+        && objects.is_empty()
+    {
         return Err(SomaError::ObjectInputArityViolation);
     }
 

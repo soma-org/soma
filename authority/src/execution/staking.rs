@@ -68,6 +68,19 @@ impl StakingExecutor {
         }
 
         let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
+
+        // Stage 9b: dual-write to the delegations table. Records the
+        // same `(pool_id, staker, activation_epoch) -> principal` as
+        // the StakedSomaV1 object below, indexed for O(pool) and
+        // O(staker) reads. Stage 9c will route reward distribution
+        // through this; Stage 9d removes the object.
+        store.emit_delegation_event(
+            staked_soma.pool_id,
+            signer,
+            staked_soma.stake_activation_epoch,
+            staked_soma.principal as i128,
+        );
+
         let staked_soma_object = Object::new_staked_soma_object(
             ObjectID::derive_id(tx_digest, store.next_creation_num()),
             staked_soma,
@@ -145,8 +158,29 @@ impl StakingExecutor {
                 )))
             })?;
 
+        // Stage 9b: capture the delegation row identity before the
+        // StakedSomaV1 is consumed by `request_withdraw_stake` so we
+        // can emit the matching negative delegation delta below.
+        let pool_id = staked_soma.pool_id;
+        let activation_epoch = staked_soma.stake_activation_epoch;
+        let principal = staked_soma.principal;
+
         // Process withdrawal
         let withdrawn_amount = state.request_withdraw_stake(staked_soma)?;
+
+        // Stage 9b: clear the delegation row. The principal field on
+        // the StakedSomaV1 doesn't change over a stake's lifetime
+        // (rewards accrue via the pool's exchange-rate book, not by
+        // mutating principal), so subtracting `principal` always
+        // drains the row to zero. `apply_delegation_events` deletes
+        // the row outright on a zero-balance result, keeping the
+        // table prune-clean.
+        store.emit_delegation_event(
+            pool_id,
+            signer,
+            activation_epoch,
+            -(principal as i128),
+        );
 
         // Delete StakedSoma object
         store.delete_input_object(&staked_soma_ref.0);

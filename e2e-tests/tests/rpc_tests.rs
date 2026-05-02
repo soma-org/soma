@@ -303,3 +303,66 @@ async fn test_get_balance_and_list_owned_objects() {
         usdc_coins.len()
     );
 }
+
+/// Stage 9d: `ListDelegations` RPC reads delegations directly from the
+/// post-migration `delegations` column family (instead of scanning a
+/// staker's owned StakedSomaV1 objects). After at least one epoch
+/// boundary, the validator's self-stake address has at least one
+/// delegation row, and `total_principal` matches the sum.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_list_delegations() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new()
+        .with_num_validators(4)
+        .with_epoch_duration_ms(5_000)
+        .build()
+        .await;
+    let client = &test_cluster.fullnode_handle.soma_client;
+
+    // Pick a validator address — it'll have at least its self-stake
+    // row in the delegations table (Stage 9d genesis backfill).
+    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
+            .metadata
+            .soma_address
+    });
+
+    let request = rpc::proto::soma::ListDelegationsRequest::default()
+        .with_staker(validator_address.to_string());
+    let response = client.list_delegations(request).await.unwrap();
+
+    assert!(
+        !response.delegations.is_empty(),
+        "validator should have at least one delegation row at genesis (got 0)",
+    );
+
+    // Server-computed total_principal must equal the client-side sum.
+    // Catches a class of bugs where the server forgets to populate the
+    // total or computes it wrong.
+    let client_total: u64 = response
+        .delegations
+        .iter()
+        .map(|d| d.principal.unwrap_or(0))
+        .sum();
+    assert_eq!(
+        response.total_principal.unwrap_or(0),
+        client_total,
+        "server total_principal must match client-side sum of delegation principals",
+    );
+
+    // A staker who never staked has zero delegations and zero total.
+    let fresh_request = rpc::proto::soma::ListDelegationsRequest::default()
+        .with_staker(types::base::SomaAddress::random().to_string());
+    let fresh_response = client.list_delegations(fresh_request).await.unwrap();
+    assert!(fresh_response.delegations.is_empty());
+    assert_eq!(fresh_response.total_principal.unwrap_or(0), 0);
+
+    info!(
+        "validator {} has {} delegation rows totaling {} shannons",
+        validator_address,
+        response.delegations.len(),
+        response.total_principal.unwrap_or(0),
+    );
+}

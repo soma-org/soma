@@ -2200,6 +2200,44 @@ pub struct ListOwnedObjectsResponse {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
+/// Stage 9d: List one staker's active delegations across all
+/// validator pools. Returns the same `(pool_id, activation_epoch,
+/// principal)` tuples that the on-chain `delegations` table holds —
+/// no scanning of StakedSomaV1 objects required.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListDelegationsRequest {
+    /// Required. The staker address.
+    #[prost(string, optional, tag = "1")]
+    pub staker: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DelegationEntry {
+    /// Validator's StakingPool ObjectID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub pool_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Epoch the stake activated in. Two stakes from the same staker
+    /// into the same pool but in different epochs lock in different
+    /// exchange rates and so are tracked as separate rows.
+    #[prost(uint64, optional, tag = "2")]
+    pub activation_epoch: ::core::option::Option<u64>,
+    /// Principal in shannons. The Stage 9d delegations row is the
+    /// canonical source for this; pool-token-based reward math is
+    /// applied at withdrawal time, not stored on the row.
+    #[prost(uint64, optional, tag = "3")]
+    pub principal: ::core::option::Option<u64>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListDelegationsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub delegations: ::prost::alloc::vec::Vec<DelegationEntry>,
+    /// Sum of every entry's principal — convenient for "total stake"
+    /// dashboards without a second round-trip.
+    #[prost(uint64, optional, tag = "2")]
+    pub total_principal: ::core::option::Option<u64>,
+}
 /// Request message for `StateService.GetTarget`.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2421,6 +2459,33 @@ pub mod state_service_client {
                 .insert(GrpcMethod::new("soma.rpc.StateService", "GetBalance"));
             self.inner.unary(req, path, codec).await
         }
+        /// Stage 9d: list a staker's delegations from the accumulator-style
+        /// 'delegations' table. Eventual replacement for the StakedSomaV1
+        /// owned-object list path.
+        pub async fn list_delegations(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListDelegationsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListDelegationsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/soma.rpc.StateService/ListDelegations",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("soma.rpc.StateService", "ListDelegations"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn get_target(
             &mut self,
             request: impl tonic::IntoRequest<super::GetTargetRequest>,
@@ -2544,6 +2609,16 @@ pub mod state_service_server {
             request: tonic::Request<super::GetBalanceRequest>,
         ) -> std::result::Result<
             tonic::Response<super::GetBalanceResponse>,
+            tonic::Status,
+        >;
+        /// Stage 9d: list a staker's delegations from the accumulator-style
+        /// 'delegations' table. Eventual replacement for the StakedSomaV1
+        /// owned-object list path.
+        async fn list_delegations(
+            &self,
+            request: tonic::Request<super::ListDelegationsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListDelegationsResponse>,
             tonic::Status,
         >;
         async fn get_target(
@@ -2727,6 +2802,51 @@ pub mod state_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = GetBalanceSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/soma.rpc.StateService/ListDelegations" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListDelegationsSvc<T: StateService>(pub Arc<T>);
+                    impl<
+                        T: StateService,
+                    > tonic::server::UnaryService<super::ListDelegationsRequest>
+                    for ListDelegationsSvc<T> {
+                        type Response = super::ListDelegationsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListDelegationsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as StateService>::list_delegations(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListDelegationsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -3736,6 +3856,52 @@ pub struct Transaction {
     pub sender: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, repeated, tag = "4")]
     pub gas_payment: ::prost::alloc::vec::Vec<ObjectReference>,
+    /// Replay-protection declaration (Stage 5.5). Default `None` for txs
+    /// with owned inputs (replay-protected by version-bump); stateless
+    /// txs (post-Stage 6 gas-from-balance) must declare `ValidDuring`.
+    /// CRITICAL: this field MUST be in the BCS encoding of TransactionData
+    /// because it's covered by the user's signature; dropping it on the
+    /// wire causes signature verification failures.
+    #[prost(message, optional, tag = "5")]
+    pub expiration: ::core::option::Option<TransactionExpiration>,
+}
+/// Transaction expiration: replay-protection declaration on a tx.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionExpiration {
+    #[prost(oneof = "transaction_expiration::Value", tags = "1, 2")]
+    pub value: ::core::option::Option<transaction_expiration::Value>,
+}
+/// Nested message and enum types in `TransactionExpiration`.
+pub mod transaction_expiration {
+    #[non_exhaustive]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Value {
+        /// No declared expiration. Used by txs with owned inputs (where
+        /// version-bump on consumption provides replay protection).
+        #[prost(message, tag = "1")]
+        None(()),
+        #[prost(message, tag = "2")]
+        ValidDuring(super::ValidDuring),
+    }
+}
+/// Stateless replay-protection window. Width is bound to 2 epochs:
+/// `max_epoch == min_epoch` or `max_epoch == min_epoch + 1`.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ValidDuring {
+    #[prost(uint64, optional, tag = "1")]
+    pub min_epoch: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub max_epoch: ::core::option::Option<u64>,
+    /// Chain identifier this tx is valid on (32-byte CheckpointDigest of
+    /// genesis). Cross-chain replay defense.
+    #[prost(bytes = "bytes", optional, tag = "3")]
+    pub chain: ::core::option::Option<::prost::bytes::Bytes>,
+    /// Arbitrary u32 to differentiate otherwise-identical txs in the
+    /// digest cache. Not consulted by the protocol; only affects digest.
+    #[prost(uint32, optional, tag = "4")]
+    pub nonce: ::core::option::Option<u32>,
 }
 /// Transaction type.
 #[non_exhaustive]
@@ -3743,7 +3909,7 @@ pub struct Transaction {
 pub struct TransactionKind {
     #[prost(
         oneof = "transaction_kind::Kind",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 60"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29, 26, 30, 31, 32, 40, 41, 42, 43, 50, 51, 52, 53, 60, 61"
     )]
     pub kind: ::core::option::Option<transaction_kind::Kind>,
 }
@@ -3845,7 +4011,32 @@ pub mod transaction_kind {
         /// Per-commit accumulator settlement system transaction (Stage 6a).
         #[prost(message, tag = "60")]
         Settlement(super::Settlement),
+        /// Stateless value transfer from sender's accumulator balance to
+        /// one or more recipients (Stage 7). Sender pays gas balance-mode
+        /// too, so the entire tx has zero owned inputs.
+        #[prost(message, tag = "61")]
+        BalanceTransfer(super::BalanceTransfer),
     }
+}
+/// Stage 7: stateless balance-mode value transfer.
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BalanceTransfer {
+    /// Coin type label ("USDC", "SOMA"). All transfers in one tx share
+    /// the same coin type.
+    #[prost(string, optional, tag = "1")]
+    pub coin_type: ::core::option::Option<::prost::alloc::string::String>,
+    /// (recipient, amount) pairs.
+    #[prost(message, repeated, tag = "2")]
+    pub transfers: ::prost::alloc::vec::Vec<BalanceTransferEntry>,
+}
+#[non_exhaustive]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BalanceTransferEntry {
+    #[prost(string, optional, tag = "1")]
+    pub recipient: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "2")]
+    pub amount: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3866,8 +4057,8 @@ pub struct BridgeDeposit {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BridgeWithdraw {
-    #[prost(message, optional, tag = "1")]
-    pub payment_coin: ::core::option::Option<ObjectReference>,
+    /// Stage 12: amount is debited from the sender's USDC accumulator;
+    /// no payment coin object is read. Field 1 (payment_coin) was removed.
     #[prost(uint64, optional, tag = "2")]
     pub amount: ::core::option::Option<u64>,
     #[prost(bytes = "bytes", optional, tag = "3")]
@@ -4352,14 +4543,11 @@ pub struct OpenChannel {
     /// payer; differs when the payer wants a hot/cold key split.
     #[prost(string, optional, tag = "2")]
     pub authorized_signer: ::core::option::Option<::prost::alloc::string::String>,
-    /// Coin denomination as a string ("SOMA" / "USDC"). Must match the
-    /// coin object's actual type.
+    /// Coin denomination as a string ("SOMA" / "USDC").
     #[prost(string, optional, tag = "3")]
     pub token: ::core::option::Option<::prost::alloc::string::String>,
-    /// Coin object to draw the deposit from. May coincide with the gas
-    /// coin.
-    #[prost(message, optional, tag = "4")]
-    pub deposit_coin: ::core::option::Option<ObjectReference>,
+    /// Stage 8: deposit is debited from the sender's accumulator
+    /// balance, not a coin object. Field 4 (deposit_coin) was removed.
     #[prost(uint64, optional, tag = "5")]
     pub deposit_amount: ::core::option::Option<u64>,
 }

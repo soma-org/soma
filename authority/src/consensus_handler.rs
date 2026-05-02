@@ -656,7 +656,24 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let protocol_config = self.epoch_store.protocol_config();
         let epoch = self.epoch_store.epoch();
 
-        let transactions_to_schedule = user_transactions;
+        // Stage 6d: scheduler reservation pre-pass. Drop balance-mode
+        // txs whose declared `WithdrawalReservation`s exceed the
+        // sender's pre-commit accumulator balance. This is the
+        // parallel-safety primitive (multiple txs from one sender in
+        // a single commit can each individually pass `prepare_gas`'s
+        // balance read, but their cumulative withdraws would underflow
+        // settlement; the pre-pass deterministically drops the later
+        // ones).
+        //
+        // For now no kind reserves anything except gas (Stage 6c+).
+        // Coin-mode txs return [] from `reservations()` and fall
+        // through unaffected.
+        let unit_fee = self
+            .epoch_store
+            .epoch_start_state()
+            .fee_parameters()
+            .unit_fee;
+        let transactions_to_schedule = self.run_reservation_prepass(user_transactions, unit_fee);
 
         let consensus_commit_prologue = self.add_consensus_commit_prologue_transaction(
             state,
@@ -706,6 +723,62 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         self.epoch_store.process_user_signatures(schedulables.iter());
 
         (schedulables, assigned_versions)
+    }
+
+    /// Stage 6d: deterministic reservation pre-pass.
+    ///
+    /// Walks `txs` in commit order, asks each for its
+    /// `WithdrawalReservation`s, and uses the pure
+    /// `check_reservations` to maintain running tentative balances
+    /// per `(owner, coin_type)`. Txs whose reservations would
+    /// underflow are filtered out — they will not reach execution.
+    ///
+    /// Determinism: the running tentatives are seeded from
+    /// `cache_reader.get_balance` (which all validators see
+    /// identically as of pre-commit state), and the pure check is
+    /// itself deterministic. Every validator drops the same set.
+    fn run_reservation_prepass(
+        &self,
+        txs: Vec<VerifiedExecutableTransaction>,
+        unit_fee: u64,
+    ) -> Vec<VerifiedExecutableTransaction> {
+        // Pre-compute reservations once per tx; pure function over
+        // immutable tx data, no IO.
+        let per_tx_reservations: Vec<Vec<types::balance::WithdrawalReservation>> = txs
+            .iter()
+            .map(|tx| tx.transaction_data().reservations(unit_fee))
+            .collect();
+
+        // Fast path: if no tx declares any reservation, nothing to
+        // check. Saves the cache_reader hit for the common (current)
+        // case where all txs are coin-mode.
+        if per_tx_reservations.iter().all(|r| r.is_empty()) {
+            return txs;
+        }
+
+        let reservation_refs: Vec<&[types::balance::WithdrawalReservation]> =
+            per_tx_reservations.iter().map(|v| v.as_slice()).collect();
+
+        let cache_reader = self.cache_reader.clone();
+        let decisions = types::balance::check_reservations(&reservation_refs, |owner, coin_type| {
+            cache_reader.get_balance(owner, coin_type)
+        });
+
+        // Filter txs by Accept; log Drops for observability.
+        txs.into_iter()
+            .zip(decisions)
+            .filter_map(|(tx, decision)| match decision {
+                types::balance::ReservationDecision::Accept => Some(tx),
+                types::balance::ReservationDecision::Drop { reason } => {
+                    debug!(
+                        digest = ?tx.digest(),
+                        ?reason,
+                        "reservation pre-pass dropping underfunded tx"
+                    );
+                    None
+                }
+            })
+            .collect()
     }
 
     // Adds the consensus commit prologue transaction to the beginning of input `transactions` to update

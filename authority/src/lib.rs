@@ -112,6 +112,10 @@ mod epoch_store_tests;
 mod balance_storage_tests;
 
 #[cfg(test)]
+#[path = "unit_tests/delegation_storage_tests.rs"]
+mod delegation_storage_tests;
+
+#[cfg(test)]
 #[path = "unit_tests/replay_cache_tests.rs"]
 mod replay_cache_tests;
 

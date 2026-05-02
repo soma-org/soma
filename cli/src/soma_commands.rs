@@ -273,6 +273,22 @@ EXAMPLES:
         json: bool,
     },
 
+    /// List active stakes for an address (reads the post-9d delegations table)
+    #[clap(
+        name = "stakes",
+        after_help = "\
+EXAMPLES:
+    soma stakes
+    soma stakes --staker 0xADDR..."
+    )]
+    Stakes {
+        /// Staker address (defaults to the active wallet address)
+        #[clap(long)]
+        staker: Option<SomaAddress>,
+        #[clap(long, global = true, help = "Output as JSON")]
+        json: bool,
+    },
+
     /// Merge dust coins to reduce object count
     #[clap(
         name = "merge",
@@ -754,6 +770,15 @@ impl SomaCommand {
                     std::process::exit(1);
                 }
                 Ok(())
+            }
+
+            SomaCommand::Stakes { staker, json } => {
+                let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
+                let staker = match staker {
+                    Some(addr) => addr,
+                    None => context.active_address()?,
+                };
+                commands::stake::execute_list_stakes(&mut context, staker, json).await
             }
 
             SomaCommand::Status { json } => {

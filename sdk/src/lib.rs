@@ -227,6 +227,16 @@ impl SomaClient {
         client.get_balance(owner).await
     }
 
+    /// Stage 9d: list a staker's active delegations from the on-chain
+    /// `delegations` table.
+    pub async fn list_delegations(
+        &self,
+        request: impl tonic::IntoRequest<rpc::proto::soma::ListDelegationsRequest>,
+    ) -> Result<rpc::proto::soma::ListDelegationsResponse, tonic::Status> {
+        let client = self.inner.read().await.clone();
+        client.list_delegations(request).await
+    }
+
     /// Get the chain identifier from the network
     pub async fn get_chain_identifier(&self) -> Result<String, tonic::Status> {
         let mut client = self.inner.write().await;

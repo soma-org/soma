@@ -9,10 +9,12 @@ use crate::proto::soma::{
     GetChallengeRequest, GetChallengeResponse,
     GetTargetRequest, GetTargetResponse,
     ListChallengesRequest, ListChallengesResponse,
+    ListDelegationsRequest, ListDelegationsResponse,
     ListOwnedObjectsRequest, ListOwnedObjectsResponse,
     ListTargetsRequest, ListTargetsResponse,
 };
 mod get_balance;
+mod list_delegations;
 mod list_owned_objects;
 
 #[tonic::async_trait]
@@ -31,6 +33,15 @@ impl StateService for RpcService {
         request: tonic::Request<GetBalanceRequest>,
     ) -> Result<tonic::Response<GetBalanceResponse>, tonic::Status> {
         get_balance::get_balance(self, request.into_inner())
+            .map(tonic::Response::new)
+            .map_err(Into::into)
+    }
+
+    async fn list_delegations(
+        &self,
+        request: tonic::Request<ListDelegationsRequest>,
+    ) -> Result<tonic::Response<ListDelegationsResponse>, tonic::Status> {
+        list_delegations::list_delegations(self, request.into_inner())
             .map(tonic::Response::new)
             .map_err(Into::into)
     }

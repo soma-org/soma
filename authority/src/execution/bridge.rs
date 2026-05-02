@@ -14,6 +14,7 @@ use fastcrypto::secp256k1::Secp256k1PublicKey;
 use fastcrypto::secp256k1::recoverable::Secp256k1RecoverableSignature;
 use fastcrypto::traits::{RecoverableSignature, ToFromBytes};
 use types::SYSTEM_STATE_OBJECT_ID;
+use types::balance::BalanceEvent;
 use types::base::SomaAddress;
 use types::bridge::{BridgeCommittee, PendingWithdrawal};
 use types::digests::TransactionDigest;
@@ -27,8 +28,7 @@ use types::transaction::{
     TransactionKind,
 };
 
-use super::object::check_ownership;
-use super::{TransactionExecutor, checked_add, checked_sub};
+use super::TransactionExecutor;
 
 pub struct BridgeExecutor;
 
@@ -176,7 +176,7 @@ impl BridgeExecutor {
         &self,
         store: &mut TemporaryStore,
         args: BridgeDepositArgs,
-        tx_digest: TransactionDigest,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         let (state_object, mut state) = Self::read_system_state(store)?;
         let bridge = state.bridge_state_mut();
@@ -210,15 +210,11 @@ impl BridgeExecutor {
             bridge.bridge_committee.threshold_deposit,
         )?;
 
-        // Mint USDC coin to recipient
-        let coin = Object::new_coin(
-            ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            CoinType::Usdc,
-            args.amount,
-            Owner::AddressOwner(args.recipient),
-            tx_digest,
-        );
-        store.create_object(coin);
+        // Stage 12: credit recipient's USDC accumulator. The off-chain
+        // bridge has already locked the corresponding ETH-side amount,
+        // so this Deposit completes the bridge transfer with no coin
+        // object materialized.
+        store.emit_balance_event(BalanceEvent::deposit(args.recipient, CoinType::Usdc, args.amount));
 
         // Record nonce and update total
         bridge.processed_deposit_nonces.insert(args.nonce);
@@ -253,36 +249,19 @@ impl BridgeExecutor {
             return Err(ExecutionFailureStatus::BridgePaused);
         }
 
-        // Validate payment coin is USDC
-        let coin_id = args.payment_coin.0;
-        let coin_object = store
-            .read_object(&coin_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: coin_id })?
-            .clone();
-
-        check_ownership(&coin_object, signer)?;
-
-        if coin_object.coin_type() != Some(CoinType::Usdc) {
-            return Err(ExecutionFailureStatus::WrongCoinTypeForPayment);
+        if args.amount == 0 {
+            return Err(ExecutionFailureStatus::SomaError(SomaError::from(
+                "BridgeWithdraw amount must be non-zero".to_string(),
+            )));
         }
 
-        let coin_balance = coin_object
-            .as_coin()
-            .ok_or(ExecutionFailureStatus::InsufficientCoinBalance)?;
-
-        if coin_balance < args.amount {
-            return Err(ExecutionFailureStatus::InsufficientCoinBalance);
-        }
-
-        // Burn: deduct amount from coin (or delete if exact)
-        let remaining = checked_sub(coin_balance, args.amount)?;
-        if remaining == 0 {
-            store.delete_input_object(&coin_id);
-        } else {
-            let mut updated_coin = coin_object;
-            updated_coin.update_coin_balance(remaining);
-            store.mutate_input_object(updated_coin);
-        }
+        // Stage 12: debit sender's USDC accumulator. The reservation
+        // pre-pass already verified the sender has the funds; the
+        // settlement pipeline applies the delta atomically with the
+        // PendingWithdrawal object's creation. Bridge nodes observe
+        // the PendingWithdrawal in checkpoints and sign for the
+        // Ethereum-side release.
+        store.emit_balance_event(BalanceEvent::withdraw(signer, CoinType::Usdc, args.amount));
 
         // Create PendingWithdrawal — bridge nodes observe this in checkpoints
         // and begin off-chain signing for Ethereum release

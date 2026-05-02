@@ -17,6 +17,37 @@ message Transaction {
   optional TransactionKind kind = 2;
   optional string sender = 3;
   repeated ObjectReference gas_payment = 4;
+
+  // Replay-protection declaration (Stage 5.5). Default `None` for txs
+  // with owned inputs (replay-protected by version-bump); stateless
+  // txs (post-Stage 6 gas-from-balance) must declare `ValidDuring`.
+  // CRITICAL: this field MUST be in the BCS encoding of TransactionData
+  // because it's covered by the user's signature; dropping it on the
+  // wire causes signature verification failures.
+  optional TransactionExpiration expiration = 5;
+}
+
+// Transaction expiration: replay-protection declaration on a tx.
+message TransactionExpiration {
+  oneof value {
+    // No declared expiration. Used by txs with owned inputs (where
+    // version-bump on consumption provides replay protection).
+    google.protobuf.Empty none = 1;
+    ValidDuring valid_during = 2;
+  }
+}
+
+// Stateless replay-protection window. Width is bound to 2 epochs:
+// `max_epoch == min_epoch` or `max_epoch == min_epoch + 1`.
+message ValidDuring {
+  optional uint64 min_epoch = 1;
+  optional uint64 max_epoch = 2;
+  // Chain identifier this tx is valid on (32-byte CheckpointDigest of
+  // genesis). Cross-chain replay defense.
+  optional bytes chain = 3;
+  // Arbitrary u32 to differentiate otherwise-identical txs in the
+  // digest cache. Not consulted by the protocol; only affects digest.
+  optional uint32 nonce = 4;
 }
 
 // Transaction type.
@@ -95,7 +126,26 @@ message TransactionKind {
 
     // Per-commit accumulator settlement system transaction (Stage 6a).
     Settlement settlement = 60;
+
+    // Stateless value transfer from sender's accumulator balance to
+    // one or more recipients (Stage 7). Sender pays gas balance-mode
+    // too, so the entire tx has zero owned inputs.
+    BalanceTransfer balance_transfer = 61;
   }
+}
+
+// Stage 7: stateless balance-mode value transfer.
+message BalanceTransfer {
+  // Coin type label ("USDC", "SOMA"). All transfers in one tx share
+  // the same coin type.
+  optional string coin_type = 1;
+  // (recipient, amount) pairs.
+  repeated BalanceTransferEntry transfers = 2;
+}
+
+message BalanceTransferEntry {
+  optional string recipient = 1;
+  optional uint64 amount = 2;
 }
 
 // Bridge messages
@@ -110,7 +160,8 @@ message BridgeDeposit {
 }
 
 message BridgeWithdraw {
-  optional ObjectReference payment_coin = 1;
+  // Stage 12: amount is debited from the sender's USDC accumulator;
+  // no payment coin object is read. Field 1 (payment_coin) was removed.
   optional uint64 amount = 2;
   optional bytes recipient_eth_address = 3;
 }
@@ -444,12 +495,10 @@ message OpenChannel {
   // Address whose key will sign vouchers. Typically equal to the
   // payer; differs when the payer wants a hot/cold key split.
   optional string authorized_signer = 2;
-  // Coin denomination as a string ("SOMA" / "USDC"). Must match the
-  // coin object's actual type.
+  // Coin denomination as a string ("SOMA" / "USDC").
   optional string token = 3;
-  // Coin object to draw the deposit from. May coincide with the gas
-  // coin.
-  optional ObjectReference deposit_coin = 4;
+  // Stage 8: deposit is debited from the sender's accumulator
+  // balance, not a coin object. Field 4 (deposit_coin) was removed.
   optional uint64 deposit_amount = 5;
 }
 

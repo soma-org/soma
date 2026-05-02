@@ -13,6 +13,10 @@ import "soma/rpc/transaction.proto";
 service StateService {
   rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  // Stage 9d: list a staker's delegations from the accumulator-style
+  // 'delegations' table. Eventual replacement for the StakedSomaV1
+  // owned-object list path.
+  rpc ListDelegations(ListDelegationsRequest) returns (ListDelegationsResponse);
   rpc GetTarget(GetTargetRequest) returns (GetTargetResponse);
   rpc ListTargets(ListTargetsRequest) returns (ListTargetsResponse);
   rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
@@ -65,6 +69,35 @@ message ListOwnedObjectsResponse {
   // A token, which can be sent as `page_token` to retrieve the next page.
   // If this field is omitted, there are no subsequent pages.
   optional bytes next_page_token = 2;
+}
+
+// Stage 9d: List one staker's active delegations across all
+// validator pools. Returns the same `(pool_id, activation_epoch,
+// principal)` tuples that the on-chain `delegations` table holds —
+// no scanning of StakedSomaV1 objects required.
+message ListDelegationsRequest {
+  // Required. The staker address.
+  optional string staker = 1;
+}
+
+message DelegationEntry {
+  // Validator's StakingPool ObjectID (hex string).
+  optional string pool_id = 1;
+  // Epoch the stake activated in. Two stakes from the same staker
+  // into the same pool but in different epochs lock in different
+  // exchange rates and so are tracked as separate rows.
+  optional uint64 activation_epoch = 2;
+  // Principal in shannons. The Stage 9d delegations row is the
+  // canonical source for this; pool-token-based reward math is
+  // applied at withdrawal time, not stored on the row.
+  optional uint64 principal = 3;
+}
+
+message ListDelegationsResponse {
+  repeated DelegationEntry delegations = 1;
+  // Sum of every entry's principal — convenient for "total stake"
+  // dashboards without a second round-trip.
+  optional uint64 total_principal = 2;
 }
 
 // Request message for `StateService.GetTarget`.

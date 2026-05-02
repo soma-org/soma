@@ -113,6 +113,10 @@ impl TryFrom<types::transaction::TransactionData> for Transaction {
                 kind: v1.kind.try_into()?,
                 sender: v1.sender.into(),
                 gas_payment: v1.gas_payment.into_iter().map(Into::into).collect(),
+                // Stage 5.5/6c: forward expiration so it round-trips
+                // through wire encoding and the validator's signature
+                // check sees the same BCS bytes the wallet signed.
+                expiration: v1.expiration,
             }),
         }
     }
@@ -122,10 +126,11 @@ impl TryFrom<Transaction> for types::transaction::TransactionData {
     type Error = SdkTypeConversionError;
 
     fn try_from(value: Transaction) -> Result<Self, Self::Error> {
-        Ok(types::transaction::TransactionData::new(
+        Ok(types::transaction::TransactionData::new_with_expiration(
             value.kind.try_into()?,
             value.sender.into(),
             value.gas_payment.into_iter().map(Into::into).collect(),
+            value.expiration,
         ))
     }
 }
@@ -403,6 +408,20 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 })
             }
 
+            TK::BalanceTransfer(args) => {
+                TransactionKind::BalanceTransfer(crate::types::BalanceTransferArgs {
+                    coin_type: match args.coin_type {
+                        types::object::CoinType::Soma => "SOMA".to_string(),
+                        types::object::CoinType::Usdc => "USDC".to_string(),
+                    },
+                    transfers: args
+                        .transfers
+                        .into_iter()
+                        .map(|(addr, amount)| (addr.into(), amount))
+                        .collect(),
+                })
+            }
+
             _ => return Err(SdkTypeConversionError("Marketplace/bridge tx type conversion not yet implemented".to_string())),
         })
     }
@@ -527,7 +546,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             }
             TransactionKind::BridgeWithdraw(args) => {
                 TK::BridgeWithdraw(types::transaction::BridgeWithdrawArgs {
-                    payment_coin: args.payment_coin.into(),
                     amount: args.amount,
                     recipient_eth_address: args.recipient_eth_address.try_into().unwrap_or([0u8; 20]),
                 })
@@ -552,7 +570,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     payee: args.payee.into(),
                     authorized_signer: args.authorized_signer.into(),
                     token,
-                    deposit_coin: args.deposit_coin.into(),
                     deposit_amount: args.deposit_amount,
                 })
             }
@@ -592,6 +609,18 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     round: settlement.round,
                     sub_dag_index: settlement.sub_dag_index,
                     changes: settlement.changes,
+                })
+            }
+
+            TransactionKind::BalanceTransfer(args) => {
+                let coin_type = parse_coin_type(&args.coin_type)?;
+                TK::BalanceTransfer(types::transaction::BalanceTransferArgs {
+                    coin_type,
+                    transfers: args
+                        .transfers
+                        .into_iter()
+                        .map(|(addr, amount)| (addr.into(), amount))
+                        .collect(),
                 })
             }
 

@@ -30,6 +30,7 @@ use crate::effects::{ExecutionStatus, TransactionEffects};
 use crate::envelope::Message as _;
 use crate::genesis::{Genesis, UnsignedGenesis};
 use crate::intent::{Intent, IntentMessage, IntentScope};
+use crate::committee::EpochId;
 use crate::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, Version};
 use crate::system_state::epoch_start::EpochStartSystemStateTrait as _;
 use crate::system_state::staking::StakingPool;
@@ -173,7 +174,7 @@ impl GenesisBuilder {
         // Sort validators by account address for deterministic genesis output
         self.validators.sort_by_key(|v| v.info.account_address);
 
-        let (system_state, objects, balances) = self.create_genesis_state();
+        let (system_state, objects, balances, delegations) = self.create_genesis_state();
         let (transaction, effects, final_objects) =
             self.create_genesis_transaction(objects, &system_state);
         let (checkpoint, checkpoint_contents) =
@@ -186,6 +187,7 @@ impl GenesisBuilder {
             effects,
             objects: final_objects,
             balances,
+            delegations,
         };
 
         self.built_genesis = Some(unsigned.clone());
@@ -210,6 +212,7 @@ impl GenesisBuilder {
             unsigned.effects,
             unsigned.objects,
             unsigned.balances,
+            unsigned.delegations,
         )
     }
 
@@ -436,12 +439,21 @@ impl GenesisBuilder {
 
     fn create_genesis_state(
         &self,
-    ) -> (SystemState, Vec<Object>, BTreeMap<(SomaAddress, CoinType), u64>) {
+    ) -> (
+        SystemState,
+        Vec<Object>,
+        BTreeMap<(SomaAddress, CoinType), u64>,
+        BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+    ) {
         let mut objects = Vec::new();
         // Accumulator-balance entries seeded alongside coin objects. Stake
         // allocations do NOT contribute here — those tokens live in the
         // validator's StakingPool, not the holder's spendable balance.
         let mut balances: BTreeMap<(SomaAddress, CoinType), u64> = BTreeMap::new();
+        // Stage 9d: delegation entries seeded alongside StakedSomaV1
+        // objects. Mirrors the per-stake principal so the delegations
+        // table is in sync from epoch 0.
+        let mut delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64> = BTreeMap::new();
         let mut id_counter: u64 = 0;
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
@@ -523,6 +535,22 @@ impl GenesisBuilder {
                             allocation.amount_shannons,
                         )
                         .expect("Failed to stake with validator at genesis");
+
+                    // Stage 9d: mirror the genesis StakedSomaV1 into
+                    // the delegations table. Without this, the table
+                    // only carries dual-writes from AddStake (9b) and
+                    // epoch rewards (9c), missing genesis stakes —
+                    // breaking the "table is the canonical source"
+                    // invariant Stage 9d depends on.
+                    let key = (
+                        staked_soma.pool_id,
+                        allocation.recipient_address,
+                        staked_soma.stake_activation_epoch,
+                    );
+                    let entry = delegations.entry(key).or_insert(0);
+                    *entry = entry
+                        .checked_add(staked_soma.principal)
+                        .expect("genesis delegation principal overflow");
 
                     let staked_object = Object::new_staked_soma_object(
                         Self::deterministic_object_id(&mut id_counter),
@@ -612,7 +640,7 @@ impl GenesisBuilder {
         // readers in parallel.
         objects.push(Object::new_genesis_clock());
 
-        (system_state, objects, balances)
+        (system_state, objects, balances, delegations)
     }
 
     fn create_genesis_transaction(

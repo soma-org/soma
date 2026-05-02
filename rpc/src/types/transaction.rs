@@ -28,6 +28,10 @@ pub struct Transaction {
     pub kind: TransactionKind,
     pub sender: Address,
     pub gas_payment: Vec<ObjectReference>,
+    /// Stage 5.5 replay-protection declaration. CRITICAL: must round-
+    /// trip through proto/wire encoding because it's part of the
+    /// signed BCS payload — dropping it breaks signature verification.
+    pub expiration: types::transaction::TransactionExpiration,
 }
 
 #[derive(Clone, Debug, PartialEq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -172,6 +176,17 @@ pub enum TransactionKind {
     /// applies aggregated balance-event deltas to the on-chain
     /// accumulator-balance table.
     Settlement(SettlementTransaction),
+
+    /// Stage 7: stateless balance-mode value transfer.
+    BalanceTransfer(BalanceTransferArgs),
+}
+
+/// Stage 7 args struct (rpc::types layer).
+#[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct BalanceTransferArgs {
+    /// Coin type label ("USDC", "SOMA").
+    pub coin_type: String,
+    pub transfers: Vec<(Address, u64)>,
 }
 
 /// Per-commit balance-accumulator settlement.
@@ -197,7 +212,6 @@ pub struct BridgeDepositArgs {
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct BridgeWithdrawArgs {
-    pub payment_coin: ObjectReference,
     pub amount: u64,
     pub recipient_eth_address: Vec<u8>,
 }
@@ -221,10 +235,8 @@ pub struct OpenChannelArgs {
     pub payee: Address,
     pub authorized_signer: Address,
     /// Coin denomination as a string label ("SOMA" / "USDC"). Round-trips
-    /// through the proto layer; the executor verifies it matches the
-    /// coin object's actual type.
+    /// through the proto layer.
     pub token: String,
-    pub deposit_coin: ObjectReference,
     pub deposit_amount: u64,
 }
 
@@ -526,6 +538,7 @@ struct TransactionDataRef<'a> {
     kind: &'a TransactionKind,
     sender: &'a Address,
     gas_payment: &'a Vec<ObjectReference>,
+    expiration: &'a types::transaction::TransactionExpiration,
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -534,6 +547,7 @@ struct TransactionData {
     kind: TransactionKind,
     sender: Address,
     gas_payment: Vec<ObjectReference>,
+    expiration: types::transaction::TransactionExpiration,
 }
 
 impl Serialize for Transaction {
@@ -545,6 +559,7 @@ impl Serialize for Transaction {
             kind: &self.kind,
             sender: &self.sender,
             gas_payment: &self.gas_payment,
+            expiration: &self.expiration,
         };
 
         transaction.serialize(serializer)
@@ -556,8 +571,9 @@ impl<'de> Deserialize<'de> for Transaction {
     where
         D: Deserializer<'de>,
     {
-        let TransactionData { kind, sender, gas_payment } = Deserialize::deserialize(deserializer)?;
+        let TransactionData { kind, sender, gas_payment, expiration } =
+            Deserialize::deserialize(deserializer)?;
 
-        Ok(Transaction { kind, sender, gas_payment })
+        Ok(Transaction { kind, sender, gas_payment, expiration })
     }
 }

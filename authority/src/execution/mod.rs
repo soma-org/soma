@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use balance_transfer::BalanceTransferExecutor;
 use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use channel::ChannelExecutor;
@@ -31,6 +32,7 @@ use types::transaction::{
 use types::tx_fee::TransactionFee;
 use validator::ValidatorExecutor;
 
+mod balance_transfer;
 mod bridge;
 mod change_epoch;
 mod channel;
@@ -331,6 +333,9 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
 
         // Per-commit balance settlement (Stage 3)
         TransactionKind::Settlement(_) => Box::new(SettlementExecutor::new()),
+
+        // Balance-mode value transfer (Stage 7)
+        TransactionKind::BalanceTransfer(_) => Box::new(BalanceTransferExecutor::new()),
     }
 }
 
@@ -670,6 +675,7 @@ fn handle_shared_object_transaction(
         Version::MAX,    // Use MAX as lamport_timestamp
         BTreeMap::new(), // No deleted shared objects
         Vec::new(),      // No balance events emitted on this path
+        Vec::new(),      // No delegation events emitted on this path
     );
 
     (inner_store, effects, execution_error)
@@ -705,6 +711,7 @@ fn error_result(
         BTreeMap::new(),
         Version::MAX,
         BTreeMap::new(),
+        Vec::new(),
         Vec::new(),
     );
 

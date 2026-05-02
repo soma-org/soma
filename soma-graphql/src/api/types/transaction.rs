@@ -33,6 +33,7 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
         TransactionKind::RequestClose(_) => "RequestClose",
         TransactionKind::WithdrawAfterTimeout(_) => "WithdrawAfterTimeout",
         TransactionKind::Settlement(_) => "Settlement",
+        TransactionKind::BalanceTransfer(_) => "BalanceTransfer",
     }
 }
 

@@ -18,7 +18,7 @@ use types::config::node_config::ExecutionCacheConfig;
 use types::digests::{TransactionDigest, TransactionEffectsDigest};
 use types::effects::TransactionEffects;
 use types::error::{SomaError, SomaResult};
-use types::object::{Object, ObjectID, ObjectRef, Version};
+use types::object::{CoinType, Object, ObjectID, ObjectRef, Version};
 use types::storage::object_store::ObjectStore;
 use types::storage::{FullObjectKey, InputKey, MarkerValue, ObjectKey, ObjectOrTombstone};
 use types::system_state::SystemState;
@@ -121,6 +121,14 @@ pub trait ExecutionCacheCommit: Send + Sync {
 
 pub trait ObjectCacheRead: Send + Sync {
     fn get_object(&self, id: &ObjectID) -> Option<Object>;
+
+    /// Stage 6d: read sender's balance from the accumulator. Used by
+    /// the consensus-handler reservation pre-pass to drop underfunded
+    /// balance-mode txs before dispatch.
+    ///
+    /// Returns 0 for accounts that have never held this currency
+    /// (matching the same convention as `AuthorityStore::get_balance`).
+    fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> u64;
 
     fn get_objects(&self, objects: &[ObjectID]) -> Vec<Option<Object>> {
         let mut ret = Vec::with_capacity(objects.len());

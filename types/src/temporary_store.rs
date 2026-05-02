@@ -270,6 +270,21 @@ pub struct TemporaryStore {
     /// reorder freely; we keep insertion order here purely for debugging
     /// and for the audit trail in transaction effects.
     balance_events: Vec<BalanceEvent>,
+
+    /// Stage 9b: signed deltas to the delegation-balance table emitted
+    /// by the staking executor during this transaction. Each entry is
+    /// `(pool_id, staker, activation_epoch, signed_delta)` — positive
+    /// for AddStake, negative for WithdrawStake. The post-execution
+    /// write path (`AuthorityStore::write_one_transaction_outputs`)
+    /// applies these to the `delegations` column family in the same
+    /// `DBBatch` as the rest of the commit's outputs, atomic with the
+    /// per-stake `StakedSomaV1` object writes.
+    ///
+    /// Stage 9b is dual-write: both the StakedSomaV1 object and this
+    /// table are populated, and an integrity check verifies they stay
+    /// in sync. Stage 9c routes reward distribution through this
+    /// table; Stage 9d removes the object entirely.
+    delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
 }
 
 impl TemporaryStore {
@@ -317,6 +332,7 @@ impl TemporaryStore {
             execution_version,
             chain,
             balance_events: Vec::new(),
+            delegation_events: Vec::new(),
         }
     }
 
@@ -333,6 +349,25 @@ impl TemporaryStore {
     /// and for executors that need to introspect their own emissions.
     pub fn balance_events(&self) -> &[BalanceEvent] {
         &self.balance_events
+    }
+
+    /// Stage 9b: record a signed delegation delta. Positive for
+    /// AddStake, negative for WithdrawStake. The store's write path
+    /// applies these to the `delegations` column family atomically
+    /// with the rest of the tx outputs.
+    pub fn emit_delegation_event(
+        &mut self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        activation_epoch: EpochId,
+        delta: i128,
+    ) {
+        self.delegation_events.push((pool_id, staker, activation_epoch, delta));
+    }
+
+    /// Read-only view of delegation events emitted so far.
+    pub fn delegation_events(&self) -> &[(ObjectID, SomaAddress, EpochId, i128)] {
+        &self.delegation_events
     }
 
     pub fn update_object_version_and_prev_tx(&mut self) {
@@ -624,6 +659,7 @@ impl TemporaryStore {
             self.lamport_timestamp,
             self.deleted_consensus_objects,
             self.balance_events,
+            self.delegation_events,
         )
     }
 
@@ -727,6 +763,12 @@ pub struct InnerTemporaryStore {
     /// Balance accumulator events emitted during this transaction.
     /// Drained by the per-commit settlement transaction (Stage 3).
     pub balance_events: Vec<BalanceEvent>,
+
+    /// Stage 9b: signed delegation deltas
+    /// `(pool_id, staker, activation_epoch, delta)` to apply to the
+    /// `delegations` column family. Applied per-tx in the same write
+    /// batch as object outputs.
+    pub delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
 }
 
 impl InnerTemporaryStore {
@@ -737,6 +779,7 @@ impl InnerTemporaryStore {
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
         balance_events: Vec<BalanceEvent>,
+        delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
     ) -> Self {
         Self {
             input_objects,
@@ -745,6 +788,7 @@ impl InnerTemporaryStore {
             lamport_version,
             deleted_shared_objects,
             balance_events,
+            delegation_events,
         }
     }
 

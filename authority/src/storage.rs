@@ -478,6 +478,34 @@ impl RpcIndexes for RestReadStore {
         self.index()?.get_balance(owner)?.map(|info| info.into()).pipe(Ok)
     }
 
+    /// Stage 9d: route through `AuthorityStore::iter_delegations_for_staker`
+    /// which scans the on-chain `delegations` column family directly.
+    /// The data is already in the perpetual store (no separate index
+    /// to maintain), so we read straight from there.
+    fn list_delegations(
+        &self,
+        staker: &SomaAddress,
+    ) -> types::storage::storage_error::Result<
+        Vec<types::storage::read_store::DelegationInfo>,
+    > {
+        let store = self.state.database_for_testing();
+        let rows = store
+            .iter_delegations_for_staker(*staker)
+            .map_err(types::storage::storage_error::Error::custom)?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(pool_id, activation_epoch, principal)| {
+                    types::storage::read_store::DelegationInfo {
+                        pool_id,
+                        activation_epoch,
+                        principal,
+                    }
+                },
+            )
+            .collect())
+    }
+
     fn get_highest_indexed_checkpoint_seq_number(
         &self,
     ) -> types::storage::storage_error::Result<Option<CheckpointSequenceNumber>> {

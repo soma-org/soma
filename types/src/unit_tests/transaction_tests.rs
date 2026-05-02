@@ -333,7 +333,6 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             signer_bitmap: vec![],
         }),
         TransactionKind::BridgeWithdraw(crate::transaction::BridgeWithdrawArgs {
-            payment_coin: random_object_ref(),
             amount: 500,
             recipient_eth_address: [0u8; 20],
         }),
@@ -828,21 +827,18 @@ fn test_input_objects_user_txs() {
 
 #[test]
 fn test_input_objects_open_channel() {
-    // OpenChannel: deposit coin (owned). No shared inputs (Channel is created).
-    let deposit = random_object_ref();
+    // Stage 8: OpenChannel debits the deposit from the sender's
+    // accumulator balance, not a coin object. Input set is empty —
+    // funds-availability is enforced by the reservation pre-pass via
+    // `TransactionData::reservations()`, not by reading a coin input.
     let kind = TransactionKind::OpenChannel(OpenChannelArgs {
         payee: SomaAddress::random(),
         authorized_signer: SomaAddress::random(),
         token: crate::object::CoinType::Usdc,
-        deposit_coin: deposit,
         deposit_amount: 1_000,
     });
     let inputs = kind.input_objects().expect("OpenChannel inputs build");
-    assert_eq!(inputs.len(), 1, "OpenChannel takes only the deposit coin as input");
-    assert!(!inputs[0].is_shared_object(), "deposit coin is owned, not shared");
-    assert_eq!(inputs[0].object_id(), deposit.0);
-
-    // No shared inputs declared.
+    assert!(inputs.is_empty(), "OpenChannel has no owned inputs in balance-mode");
     assert_eq!(kind.shared_input_objects().count(), 0);
 }
 
@@ -1049,28 +1045,31 @@ fn test_envelope_shared_object_methods() {
 // Stage 2: TransactionData::reservations() placeholder contract
 // ---------------------------------------------------------------------------
 //
-// The scheduler's reservation pre-pass (Stage 4) calls `tx.reservations()`
-// for every tx in a commit. Until per-kind balance plumbing lands
-// (Stages 6-10), every kind must return `vec![]` so the pre-pass is a
-// no-op and existing behaviour is preserved.
+// The scheduler's reservation pre-pass (Stage 4 + 6d) calls
+// `tx.reservations(unit_fee)` for every tx in a commit. Coin-mode txs
+// (non-empty gas_payment) never declare reservations — replay/
+// insufficiency is caught at execution. Balance-mode txs (empty
+// gas_payment + ValidDuring) declare a USDC reservation for the gas
+// fee.
+
+const TEST_UNIT_FEE: u64 = 1_000;
 
 #[test]
 fn test_reservations_transfer_coin_is_empty() {
+    // Coin-mode tx (gas_payment = vec![coin_ref]) — no reservation.
     let (data, _) = make_transfer_coin_data();
     assert!(
-        data.reservations().is_empty(),
-        "TransferCoin must not yet declare balance reservations (Stage 7)"
+        data.reservations(TEST_UNIT_FEE).is_empty(),
+        "Coin-mode TransferCoin must not declare gas reservation"
     );
 }
 
 #[test]
 fn test_reservations_genesis_is_empty() {
-    // System txs never declare reservations — they don't pay gas and
-    // they only produce balance events (mints), never consume them.
     let data = make_system_tx_data(TransactionKind::Genesis(GenesisTransaction {
         objects: vec![],
     }));
-    assert!(data.reservations().is_empty());
+    assert!(data.reservations(TEST_UNIT_FEE).is_empty());
 }
 
 #[test]
@@ -1082,7 +1081,68 @@ fn test_reservations_change_epoch_is_empty() {
         fees: 0,
         epoch_randomness: vec![],
     }));
-    assert!(data.reservations().is_empty());
+    assert!(data.reservations(TEST_UNIT_FEE).is_empty());
+}
+
+#[test]
+fn test_reservations_balance_mode_returns_gas_reservation() {
+    // Stage 6d: balance-mode tx (empty gas_payment) declares
+    // a USDC reservation = unit_fee × kind.fee_units().
+    use crate::balance::WithdrawalReservation;
+    use crate::object::CoinType;
+
+    let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let recipient = SomaAddress::random();
+    let coin_ref = random_object_ref();
+
+    // Transfer with 1 input + 1 output → fee_units = 2.
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![coin_ref],
+            amounts: Some(vec![1]),
+            recipients: vec![recipient],
+        },
+        sender,
+        Vec::new(), // empty gas_payment → balance-mode
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 0,
+        },
+    );
+
+    let reservations = data.reservations(TEST_UNIT_FEE);
+    assert_eq!(reservations.len(), 1, "balance-mode tx must declare exactly one gas reservation");
+    assert_eq!(
+        reservations[0],
+        WithdrawalReservation::new(sender, CoinType::Usdc, TEST_UNIT_FEE * 2),
+        "gas reservation is unit_fee × kind.fee_units()"
+    );
+}
+
+#[test]
+fn test_reservations_balance_mode_zero_unit_fee_skips_reservation() {
+    // If unit_fee is 0 (e.g., a chain-wide fee waiver), we don't emit
+    // a zero-amount reservation. Cleaner for the scheduler and tests.
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: Some(vec![1]),
+            recipients: vec![SomaAddress::random()],
+        },
+        SomaAddress::random(),
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(0),
+            chain,
+            nonce: 0,
+        },
+    );
+    assert!(data.reservations(0).is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -1334,6 +1394,50 @@ fn test_signed_transaction_with_valid_during_expiration() {
     // The actual signature verification path (used by validators).
     crate::transaction::verify_sender_signed_data_message_signatures(tx.data())
         .expect("ValidDuring tx signature must verify");
+}
+
+/// Mimic what the e2e wallet does (`keystore.sign_secure` ⇒
+/// `Signature::new_secure(&IntentMessage::new(intent, msg), key)`)
+/// vs. what the validator does (BCS-hash IntentMessage<TransactionData>
+/// and verify). Bytes signed and bytes verified must be identical for
+/// any sig to validate.
+///
+/// This is a no-op-looking but load-bearing test: if it passes here
+/// but the e2e fails, the divergence has to be in the test-cluster
+/// chain_identifier or some msim quirk — NOT in the bytes themselves.
+#[test]
+fn test_e2e_wallet_signing_path_for_valid_during() {
+    use crate::crypto::Signature;
+
+    let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
+    let chain = fresh_chain_id();
+    let data = TransactionData::new_with_expiration(
+        TransactionKind::Transfer {
+            coins: vec![random_object_ref()],
+            amounts: Some(vec![1]),
+            recipients: vec![SomaAddress::random()],
+        },
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(0),
+            max_epoch: Some(1),
+            chain,
+            nonce: 0,
+        },
+    );
+
+    // Sign mimicking the e2e wallet path: build IntentMessage<&T>,
+    // sign with the keypair, wrap in Transaction::from_data.
+    let sig = Signature::new_secure(
+        &IntentMessage::new(Intent::soma_transaction(), &data),
+        &kp,
+    );
+    let tx = Transaction::from_data(data.clone(), vec![sig]);
+
+    // Verify via the validator's path. Same data, same intent → same bytes.
+    crate::transaction::verify_sender_signed_data_message_signatures(tx.data())
+        .expect("e2e-wallet-equivalent signing path must produce verifying signature");
 }
 
 #[test]

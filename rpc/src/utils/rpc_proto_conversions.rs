@@ -542,7 +542,34 @@ impl Merge<&types::transaction::TransactionData> for Transaction {
         if mask.contains(Self::GAS_PAYMENT_FIELD.name) {
             self.gas_payment = source.gas().into_iter().map(object_ref_to_proto).collect();
         }
+
+        // Stage 5.5/6c: expiration is part of the signed BCS payload —
+        // dropping it on the wire breaks signature verification for
+        // any tx with non-default expiration (e.g., balance-mode gas
+        // txs that declare ValidDuring).
+        self.expiration = Some(transaction_expiration_to_proto(source.expiration()));
     }
+}
+
+fn transaction_expiration_to_proto(
+    src: &types::transaction::TransactionExpiration,
+) -> crate::proto::soma::TransactionExpiration {
+    use crate::proto::soma::transaction_expiration::Value;
+    let value = match src {
+        types::transaction::TransactionExpiration::None => Value::None(()),
+        types::transaction::TransactionExpiration::ValidDuring {
+            min_epoch,
+            max_epoch,
+            chain,
+            nonce,
+        } => Value::ValidDuring(crate::proto::soma::ValidDuring {
+            min_epoch: *min_epoch,
+            max_epoch: *max_epoch,
+            chain: Some(bcs::to_bytes(chain).expect("ChainIdentifier serialize").into()),
+            nonce: Some(*nonce),
+        }),
+    };
+    crate::proto::soma::TransactionExpiration { value: Some(value) }
 }
 
 //
@@ -609,7 +636,6 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 signer_bitmap: Some(args.signer_bitmap.into()),
             }),
             K::BridgeWithdraw(args) => Kind::BridgeWithdraw(BridgeWithdraw {
-                payment_coin: Some(object_ref_to_proto(args.payment_coin)),
                 amount: Some(args.amount),
                 recipient_eth_address: Some(args.recipient_eth_address.to_vec().into()),
             }),
@@ -627,7 +653,6 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 payee: Some(args.payee.to_string()),
                 authorized_signer: Some(args.authorized_signer.to_string()),
                 token: Some(coin_type_label(args.token).to_string()),
-                deposit_coin: Some(object_ref_to_proto(args.deposit_coin)),
                 deposit_amount: Some(args.deposit_amount),
             }),
             K::Settle(args) => Kind::Settle(Settle {
@@ -640,6 +665,18 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
             }),
             K::WithdrawAfterTimeout(args) => Kind::WithdrawAfterTimeout(WithdrawAfterTimeout {
                 channel_id: Some(args.channel_id.to_string()),
+            }),
+
+            K::BalanceTransfer(args) => Kind::BalanceTransfer(BalanceTransfer {
+                coin_type: Some(coin_type_label(args.coin_type).to_string()),
+                transfers: args
+                    .transfers
+                    .into_iter()
+                    .map(|(recipient, amount)| BalanceTransferEntry {
+                        recipient: Some(recipient.to_string()),
+                        amount: Some(amount),
+                    })
+                    .collect(),
             }),
 
             K::Settlement(settlement) => Kind::Settlement(Settlement {

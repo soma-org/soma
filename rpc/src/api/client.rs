@@ -255,6 +255,22 @@ impl Client {
         response.balance.ok_or_else(|| tonic::Status::not_found("balance not found in response"))
     }
 
+    /// Stage 9d: list a staker's active delegations from the on-chain
+    /// `delegations` table. Returns the full response including the
+    /// server-computed `total_principal` so callers don't have to sum
+    /// again (and can't be lied to by a malicious node omitting rows
+    /// — the total is over-the-wire authoritative).
+    pub async fn list_delegations(
+        mut self,
+        request: impl tonic::IntoRequest<proto::ListDelegationsRequest>,
+    ) -> Result<proto::ListDelegationsResponse> {
+        self.0
+            .state_client()
+            .list_delegations(request)
+            .await
+            .map(|r| r.into_inner())
+    }
+
     pub async fn get_chain_identifier(&mut self) -> Result<String> {
         let request = crate::proto::soma::GetServiceInfoRequest::default();
         let response = self.0.ledger_client().get_service_info(request).await?.into_inner();
