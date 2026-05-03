@@ -22,7 +22,8 @@ use types::crypto::SignatureScheme;
 use types::digests::{ObjectDigest, TransactionDigest};
 use types::effects::{ExecutionStatus, TransactionEffects, TransactionEffectsAPI};
 use types::object::{Object, ObjectID, ObjectRef, ObjectType, Owner, Version};
-use types::system_state::staking::StakedSomaV1;
+// Stage 9d-C5: StakedSomaV1 deleted; the CLI's response shape no
+// longer carries stake-object contents.
 use types::tx_fee::TransactionFee;
 
 // =============================================================================
@@ -813,16 +814,8 @@ impl Display for ChainInfoOutput {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ObjectContent {
     Coin { balance: u64 },
-    StakedSoma(StakedSomaDisplay),
     SystemState,
     Unknown,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct StakedSomaDisplay {
-    pub pool_id: ObjectID,
-    pub stake_activation_epoch: u64,
-    pub principal: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -863,13 +856,10 @@ impl ObjectOutput {
     fn extract_content(obj: &Object) -> Option<ObjectContent> {
         match obj.type_() {
             ObjectType::Coin(_) => obj.as_coin().map(|balance| ObjectContent::Coin { balance }),
-            ObjectType::StakedSoma => obj.as_staked_soma().map(|s| {
-                ObjectContent::StakedSoma(StakedSomaDisplay {
-                    pool_id: s.pool_id,
-                    stake_activation_epoch: s.stake_activation_epoch,
-                    principal: s.principal,
-                })
-            }),
+            // Stage 9d-C5: StakedSomaV1 deleted. Stale objects of
+            // this type may exist in old chain history but the CLI
+            // no longer surfaces their contents.
+            ObjectType::StakedSoma => None,
             ObjectType::SystemState => Some(ObjectContent::SystemState),
             _ => None,
         }
@@ -918,25 +908,7 @@ impl Display for ObjectOutput {
                     table.with(tabled::settings::style::BorderSpanCorrection);
                     writeln!(f, "{}", table)?;
                 }
-                ObjectContent::StakedSoma(staked) => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Pool ID", &staked.pool_id.to_string()]);
-                    builder.push_record(["Principal (shannons)", &staked.principal.to_string()]);
-                    builder
-                        .push_record(["Principal (SOMA)", &format_soma(staked.principal as u128)]);
-                    builder.push_record([
-                        "Activation Epoch",
-                        &staked.stake_activation_epoch.to_string(),
-                    ]);
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Staked SOMA Data"));
-                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
-
+                // Stage 9d-C5: StakedSomaV1 variant gone.
                 ObjectContent::SystemState => {
                     writeln!(
                         f,

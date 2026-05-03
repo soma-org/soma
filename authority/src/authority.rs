@@ -1639,18 +1639,26 @@ impl AuthorityState {
         // Emission pool
         system_state_balance += system_state.emission_pool().balance as u128;
 
-        // Validator staking pools (active, pending, inactive)
+        // Stage 9d-C5: validator staking pools — total_stake replaces
+        // soma_balance, and pending_stake/withdraw fields are gone.
+        // F1 reward inflow lands in `current_rewards` between folds
+        // and `accumulated_commission` (validator-only credit) so we
+        // include those too — they're real shannons sitting on the
+        // pool until the next stake-set change folds them out.
         for v in &system_state.validators().validators {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.total_stake as u128;
+            system_state_balance += v.staking_pool.pool_rewards as u128;
+            system_state_balance += v.staking_pool.accumulated_commission as u128;
         }
         for v in &system_state.validators().pending_validators {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.total_stake as u128;
+            system_state_balance += v.staking_pool.pool_rewards as u128;
+            system_state_balance += v.staking_pool.accumulated_commission as u128;
         }
         for v in system_state.validators().inactive_validators.values() {
-            system_state_balance += v.staking_pool.soma_balance as u128;
-            system_state_balance += v.staking_pool.pending_stake as u128;
+            system_state_balance += v.staking_pool.total_stake as u128;
+            system_state_balance += v.staking_pool.pool_rewards as u128;
+            system_state_balance += v.staking_pool.accumulated_commission as u128;
         }
 
         // Iterate all live objects to sum coin balances

@@ -79,8 +79,12 @@ fn extract_validators(system_state: &types::system_state::SystemState) -> Vec<St
                 commission_rate: v.commission_rate as i64,
                 next_epoch_commission_rate: v.next_epoch_commission_rate as i64,
                 staking_pool_id: v.staking_pool.id.to_vec(),
-                stake: v.staking_pool.soma_balance as i64,
-                pending_stake: v.staking_pool.pending_stake as i64,
+                // Stage 9d-C5: pool-token fields collapsed into
+                // total_stake; pending_stake is gone. The indexer
+                // schema still has a `pending_stake` column — wire
+                // 0 until a follow-up trims the schema.
+                stake: v.staking_pool.total_stake as i64,
+                pending_stake: 0,
                 name: None, // ValidatorMetadata doesn't have a name field
                 network_address: Some(v.metadata.net_address.to_string()),
                 proxy_address: Some(v.metadata.proxy_address.to_string()),

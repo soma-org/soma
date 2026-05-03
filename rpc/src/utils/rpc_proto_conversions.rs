@@ -1276,54 +1276,26 @@ impl TryFrom<StakingPool> for types::system_state::staking::StakingPool {
     fn try_from(proto_pool: StakingPool) -> Result<Self, Self::Error> {
         let id = proto_pool.id.ok_or("Missing id")?.parse().map_err(|_| "Invalid ObjectID")?;
 
-        let exchange_rates = proto_pool
-            .exchange_rates
-            .into_iter()
-            .map(|(k, v)| {
-                let rate = v.try_into()?;
-                Ok((k, rate))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-        // Stage 9d-A: F1 fields default to zero / empty when reconstructing
-        // from the proto wire shape — the proto schema hasn't been
-        // extended yet because Stage 9d-B will rewrite this whole
-        // struct. Defaults preserve the SystemState round-trip
-        // semantics for queries that only care about pool-token data.
+        // Stage 9d-C5: pool-token fields on the proto schema are
+        // ignored; the F1-only domain StakingPool reads `total_stake`
+        // out of `soma_balance` for now (the proto schema still
+        // carries that field — a follow-up trims the proto). F1
+        // fields default to zero on inbound: the proto wire still
+        // doesn't carry them, and any consumer reconstructing a
+        // StakingPool here has only the dashboard-grade view.
+        let _ = proto_pool.exchange_rates;
         let mut cumulative_index = BTreeMap::new();
         cumulative_index.insert(0u64, 0u128);
         Ok(types::system_state::staking::StakingPool {
             id,
             activation_epoch: proto_pool.activation_epoch,
             deactivation_epoch: proto_pool.deactivation_epoch,
-            soma_balance: proto_pool.soma_balance.ok_or("Missing soma_balance")?,
-            rewards_pool: proto_pool.rewards_pool.ok_or("Missing rewards_pool")?,
-            pool_token_balance: proto_pool
-                .pool_token_balance
-                .ok_or("Missing pool_token_balance")?,
-            exchange_rates,
-            pending_stake: proto_pool.pending_stake.ok_or("Missing pending_stake")?,
-            pending_total_soma_withdraw: proto_pool
-                .pending_total_soma_withdraw
-                .ok_or("Missing pending_total_soma_withdraw")?,
-            pending_pool_token_withdraw: proto_pool
-                .pending_pool_token_withdraw
-                .ok_or("Missing pending_pool_token_withdraw")?,
+            total_stake: proto_pool.soma_balance.ok_or("Missing soma_balance")?,
+            pool_rewards: 0,
+            pending_fold_rewards: 0,
             current_period: 0,
-            current_rewards: 0,
             cumulative_index,
             accumulated_commission: 0,
-        })
-    }
-}
-
-impl TryFrom<PoolTokenExchangeRate> for types::system_state::staking::PoolTokenExchangeRate {
-    type Error = String;
-
-    fn try_from(proto_rate: PoolTokenExchangeRate) -> Result<Self, Self::Error> {
-        Ok(types::system_state::staking::PoolTokenExchangeRate {
-            soma_amount: proto_rate.soma_amount.ok_or("Missing soma_amount")?,
-            pool_token_amount: proto_rate.pool_token_amount.ok_or("Missing pool_token_amount")?,
         })
     }
 }
@@ -1528,39 +1500,22 @@ impl TryFrom<types::system_state::staking::StakingPool> for StakingPool {
     fn try_from(
         domain_pool: types::system_state::staking::StakingPool,
     ) -> Result<Self, Self::Error> {
-        let exchange_rates = domain_pool
-            .exchange_rates
-            .into_iter()
-            .map(|(k, v)| {
-                let proto_rate: PoolTokenExchangeRate = v.try_into()?;
-                Ok((k, proto_rate))
-            })
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
-
+        // Stage 9d-C5: pool-token fields on the proto schema are
+        // populated with zeros / empty for backward compatibility
+        // until a follow-up commit reshapes the proto.
+        // `soma_balance` carries `total_stake` since dashboards
+        // already read it as the validator's stake.
         Ok(StakingPool {
             id: Some(domain_pool.id.to_string()),
             activation_epoch: domain_pool.activation_epoch,
             deactivation_epoch: domain_pool.deactivation_epoch,
-            soma_balance: Some(domain_pool.soma_balance),
-            rewards_pool: Some(domain_pool.rewards_pool),
-            pool_token_balance: Some(domain_pool.pool_token_balance),
-            exchange_rates,
-            pending_stake: Some(domain_pool.pending_stake),
-            pending_total_soma_withdraw: Some(domain_pool.pending_total_soma_withdraw),
-            pending_pool_token_withdraw: Some(domain_pool.pending_pool_token_withdraw),
-        })
-    }
-}
-
-impl TryFrom<types::system_state::staking::PoolTokenExchangeRate> for PoolTokenExchangeRate {
-    type Error = String;
-
-    fn try_from(
-        domain_rate: types::system_state::staking::PoolTokenExchangeRate,
-    ) -> Result<Self, Self::Error> {
-        Ok(PoolTokenExchangeRate {
-            soma_amount: Some(domain_rate.soma_amount),
-            pool_token_amount: Some(domain_rate.pool_token_amount),
+            soma_balance: Some(domain_pool.total_stake),
+            rewards_pool: Some(0),
+            pool_token_balance: Some(0),
+            exchange_rates: BTreeMap::new(),
+            pending_stake: Some(0),
+            pending_total_soma_withdraw: Some(0),
+            pending_pool_token_withdraw: Some(0),
         })
     }
 }

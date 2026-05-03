@@ -54,24 +54,11 @@ impl Processor for SomaStakedSoma {
                 }
             }
 
-            // Output StakedSoma objects
-            for obj in tx.output_objects(object_set) {
-                if let Some(staked) = obj.as_staked_soma() {
-                    let owner = match obj.owner() {
-                        Owner::AddressOwner(addr) => addr.to_vec(),
-                        _ => continue,
-                    };
-
-                    values.push(StoredStakedSoma {
-                        staked_soma_id: obj.id().to_vec(),
-                        cp_sequence_number,
-                        owner: Some(owner),
-                        pool_id: Some(staked.pool_id.to_vec()),
-                        stake_activation_epoch: Some(staked.stake_activation_epoch as i64),
-                        principal: Some(staked.principal as i64),
-                    });
-                }
-            }
+            // Stage 9d-C5: StakedSomaV1 deleted; no new objects of
+            // this type are produced. The handler still emits
+            // tombstones above for legacy chain history.
+            let _ = object_set;
+            let _ = Owner::AddressOwner;
         }
 
         Ok(values)

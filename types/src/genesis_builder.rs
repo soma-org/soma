@@ -531,25 +531,17 @@ impl GenesisBuilder {
         if let Some(schedule) = &self.token_distribution_schedule {
             for allocation in &schedule.allocations {
                 if let Some(validator) = allocation.staked_with_validator {
-                    let staked_soma = system_state
-                        .request_add_stake_at_genesis(
-                            allocation.recipient_address,
-                            validator,
-                            allocation.amount_shannons,
-                        )
+                    // Stage 9d-C5: bump the validator's pool
+                    // total_stake; the (pool, staker) row is captured
+                    // in the genesis delegations map below.
+                    let pool_id = system_state
+                        .add_stake_to_validator_at_genesis(validator, allocation.amount_shannons)
                         .expect("Failed to stake with validator at genesis");
 
-                    // Stage 9d-C1: mirror the genesis StakedSomaV1 into
-                    // the F1-shaped delegations table. ONE row per
-                    // (pool, staker) — repeat allocations from the
-                    // same staker into the same validator sum.
-                    // Stage 9d-C4: genesis no longer materialises a
-                    // StakedSomaV1 object — the delegation row is
-                    // the sole record.
-                    let key = (staked_soma.pool_id, allocation.recipient_address);
+                    let key = (pool_id, allocation.recipient_address);
                     let entry = delegations.entry(key).or_insert(0);
                     *entry = entry
-                        .checked_add(staked_soma.principal)
+                        .checked_add(allocation.amount_shannons)
                         .expect("genesis delegation principal overflow");
                 } else {
                     let coin_object = Object::new_coin(

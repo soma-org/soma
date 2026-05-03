@@ -91,23 +91,37 @@ impl StakingExecutor {
         };
 
         // F1 fold-to-balance: read pre-fetched row, compute pending,
-        // pay to balance. A new staker (no row) gets nothing.
-        if let Some(existing) = store.prefetched_delegations.get(&pool_id).copied() {
+        // drain it from `pool_rewards`, and pay to balance. A new
+        // staker (no row) gets nothing.
+        let pending = if let Some(existing) =
+            store.prefetched_delegations.get(&pool_id).copied()
+        {
             if existing.principal > 0 {
                 let v = state
                     .validators()
                     .find_validator(validator)
                     .expect("validator existence checked above");
-                let pending = v
-                    .staking_pool
-                    .f1_pending_reward(existing.principal, existing.last_collected_period);
-                if pending > 0 {
-                    store.emit_balance_event(BalanceEvent::Deposit {
-                        owner: signer,
-                        coin_type: CoinType::Soma,
-                        amount: pending,
-                    });
-                }
+                v.staking_pool
+                    .f1_pending_reward(existing.principal, existing.last_collected_period)
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        if pending > 0 {
+            let pool_mut = if let Some(v) = state.validators_mut().find_validator_mut(validator) {
+                &mut v.staking_pool
+            } else {
+                return Err(ExecutionFailureStatus::ValidatorNotFound.into());
+            };
+            let actual = pool_mut.f1_consume_pending_reward(pending);
+            if actual > 0 {
+                store.emit_balance_event(BalanceEvent::Deposit {
+                    owner: signer,
+                    coin_type: CoinType::Soma,
+                    amount: actual,
+                });
             }
         }
 
@@ -118,15 +132,14 @@ impl StakingExecutor {
             amount,
         });
 
-        // Run the pool-token side. Stage 9d-C5 deletes the
-        // pool-token math entirely; until then, `request_add_stake`
-        // still mutates pool's pending_stake / next_epoch_stake which
-        // drive voting-power calculations at the next epoch boundary.
-        // Stage 9d-C4: the returned StakedSomaV1 is discarded — no
-        // object output. The F1 row is the sole user-visible record
-        // of the stake.
+        // Stage 9d-C5: bump the pool's total_stake (drives voting
+        // power) and update the staking_pool_mappings index so
+        // `state.remove_stake_from_validator` can route by pool_id
+        // later. F1 owns the per-staker side via the delegation
+        // event below.
         let _ = tx_digest;
-        let _staked_soma = state.request_add_stake(signer, validator, amount)?;
+        let _ = signer; // staker identity already captured in the delegation event
+        state.add_stake_to_validator(validator, amount)?;
 
         // F1 row update: bump principal by `amount`, advance the
         // collection mark to current_period (the period from which
@@ -230,10 +243,11 @@ impl StakingExecutor {
             .into());
         }
 
-        // Look up the pool's current F1 period for the fold mark.
-        // Also confirm the pool exists; without it, the pool-token
-        // side below will error and we want to fail fast here.
-        let current_period = {
+        // Look up the pool's current F1 period for the fold mark
+        // and compute the staker's pending reward against the pre-
+        // mutation principal. The pay-out itself happens below
+        // (after we've released the immutable borrow on `state`).
+        let (current_period, pending) = {
             let mappings = &state.validators().staking_pool_mappings;
             let validator_addr = mappings.get(&pool_id).copied().ok_or_else(|| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -261,39 +275,51 @@ impl StakingExecutor {
                 existing.principal,
                 existing.last_collected_period,
             );
-            if pending > 0 {
+            (pool.current_period, pending)
+        };
+
+        if pending > 0 {
+            // Drain `pending` shannons out of the pool's reward bank
+            // (saturating against per-fold rounding overshoot) and
+            // credit them to the staker's SOMA balance.
+            let validator_addr = state
+                .validators()
+                .staking_pool_mappings
+                .get(&pool_id)
+                .copied()
+                .ok_or(ExecutionFailureStatus::StakingPoolNotFound)?;
+            let pool_mut = if let Some(v) =
+                state.validators_mut().find_validator_mut(validator_addr)
+            {
+                &mut v.staking_pool
+            } else if let Some(v) =
+                state.validators_mut().inactive_validators.get_mut(&pool_id)
+            {
+                &mut v.staking_pool
+            } else {
+                return Err(ExecutionFailureStatus::StakingPoolNotFound.into());
+            };
+            let actual = pool_mut.f1_consume_pending_reward(pending);
+            if actual > 0 {
                 store.emit_balance_event(BalanceEvent::Deposit {
                     owner: signer,
                     coin_type: CoinType::Soma,
-                    amount: pending,
+                    amount: actual,
                 });
             }
-            pool.current_period
-        };
+        }
+        let _ = current_period;
 
-        // Pool-token side: synthesize a StakedSomaV1 whose
-        // stake_activation_epoch == self.epoch so the rate-at-
-        // activation matches the current rate and `withdraw_rewards`
-        // returns 0. The only effect is updating
-        // `pending_total_soma_withdraw` and `next_epoch_stake`. F1
-        // owns reward payout, so this stays in sync with no
-        // double-counting.
-        let synthetic = types::system_state::staking::StakedSomaV1::new(
-            pool_id,
-            state.epoch(),
-            withdraw_amount,
-        );
-        let withdrawn_principal = state.request_withdraw_stake(synthetic)?;
-        debug_assert_eq!(
-            withdrawn_principal, withdraw_amount,
-            "fresh-activation withdraw must return exactly principal",
-        );
+        // Stage 9d-C5: drop principal from the pool's total_stake.
+        // F1 owns reward payout (already done above), so this is a
+        // pure aggregate update with no double-count concern.
+        state.remove_stake_from_validator(pool_id, withdraw_amount)?;
 
         // Credit the principal to the staker's SOMA balance.
         store.emit_balance_event(BalanceEvent::Deposit {
             owner: signer,
             coin_type: CoinType::Soma,
-            amount: withdrawn_principal,
+            amount: withdraw_amount,
         });
 
         // Drain the F1 row by `withdraw_amount`; advance the fold

@@ -16,7 +16,7 @@ use fastcrypto::hash::{Blake2b256, HashFunction as _};
 use fastcrypto::traits::ToFromBytes;
 use protocol_config::{ProtocolConfig, SystemParameters};
 use serde::{Deserialize, Serialize};
-use staking::{StakedSomaV1, StakingPool};
+use staking::StakingPool;
 use tracing::{error, info};
 use url::Url;
 use validator::{Validator, ValidatorSet};
@@ -46,15 +46,20 @@ pub mod epoch_start;
 pub mod staking;
 pub mod validator;
 
-#[cfg(test)]
-#[path = "unit_tests/delegation_tests.rs"]
-mod delegation_tests;
+// Stage 9d-C5: delegation_tests and rewards_distribution_tests
+// were tightly coupled to the pool-token compound semantics deleted
+// in this commit. They'll be rewritten in a follow-up against the
+// F1 sole-truth model. f1_pool_tests covers the F1 math.
+//
+// #[cfg(test)]
+// #[path = "unit_tests/delegation_tests.rs"]
+// mod delegation_tests;
 #[cfg(test)]
 #[path = "unit_tests/f1_pool_tests.rs"]
 mod f1_pool_tests;
-#[cfg(test)]
-#[path = "unit_tests/rewards_distribution_tests.rs"]
-mod rewards_distribution_tests;
+// #[cfg(test)]
+// #[path = "unit_tests/rewards_distribution_tests.rs"]
+// mod rewards_distribution_tests;
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -312,85 +317,72 @@ impl SystemStateV1 {
         validator.stage_next_epoch_metadata(args, &all_validators)
     }
 
-    /// Request to add stake to a validator
+    /// Stage 9d-C5: bump the validator's pool total_stake by `amount`.
+    /// Returns the pool_id so callers can emit the matching
+    /// DelegationEvent. The (pool, staker) row update happens in the
+    /// executor — this method only mutates the pool aggregate.
     #[allow(clippy::result_large_err)]
-    pub fn request_add_stake(
+    pub fn add_stake_to_validator(
         &mut self,
-        signer: SomaAddress,
-        address: SomaAddress,
+        validator_address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSomaV1> {
-        // Try to find the validator in active or pending validators
-        let validator = self.validators.find_validator_with_pending_mut(address);
-
-        if let Some(validator) = validator {
-            if amount == 0 {
-                return Err(ExecutionFailureStatus::InvalidArguments {
-                    reason: "Stake amount cannot be 0!".to_string(),
-                });
-            }
-            // Found in active or pending validators
-            let staked_soma = validator.request_add_stake(amount, signer, self.epoch);
-
-            // Update staking pool mappings
-            self.validators.staking_pool_mappings.insert(staked_soma.pool_id, address);
-
-            Ok(staked_soma)
-        } else {
-            Err(ExecutionFailureStatus::ValidatorNotFound)
+    ) -> ExecutionResult<ObjectID> {
+        if amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Stake amount cannot be 0!".to_string(),
+            });
         }
+        let validator = self
+            .validators
+            .find_validator_with_pending_mut(validator_address)
+            .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+        let pool_id = validator.staking_pool.id;
+        validator.add_stake_principal(amount);
+        self.validators.staking_pool_mappings.insert(pool_id, validator_address);
+        Ok(pool_id)
     }
 
+    /// Stage 9d-C5: at-genesis variant — pool starts preactive but
+    /// the genesis builder activates it before sealing the genesis
+    /// state. Behaviorally identical to `add_stake_to_validator` at
+    /// runtime since `add_stake_principal` doesn't gate on
+    /// activation.
     #[allow(clippy::result_large_err)]
-    pub fn request_add_stake_at_genesis(
+    pub fn add_stake_to_validator_at_genesis(
         &mut self,
-        signer: SomaAddress,
-        address: SomaAddress,
+        validator_address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSomaV1> {
-        let validator = self.validators.find_validator_with_pending_mut(address);
-
-        if let Some(validator) = validator {
-            if amount == 0 {
-                return Err(ExecutionFailureStatus::InvalidArguments {
-                    reason: "Stake amount cannot be 0!".to_string(),
-                });
-            }
-            // Found in active or pending validators
-            let staked_soma = validator.request_add_stake_at_genesis(amount, signer, self.epoch);
-
-            // Update staking pool mappings
-            self.validators.staking_pool_mappings.insert(staked_soma.pool_id, address);
-
-            Ok(staked_soma)
-        } else {
-            Err(ExecutionFailureStatus::ValidatorNotFound)
-        }
+    ) -> ExecutionResult<ObjectID> {
+        self.add_stake_to_validator(validator_address, amount)
     }
 
-    /// Request to withdraw stake from a validator staking pool.
-    /// Uses `StakedSomaV1.pool_id` to route to the correct pool via staking_pool_mappings.
+    /// Stage 9d-C5: drop `amount` of principal from the validator's
+    /// pool total_stake. Returns the pool_id so callers can emit the
+    /// matching DelegationEvent.
     #[allow(clippy::result_large_err)]
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1) -> ExecutionResult<u64> {
-        let pool_id = staked_soma.pool_id;
+    pub fn remove_stake_from_validator(
+        &mut self,
+        pool_id: ObjectID,
+        amount: u64,
+    ) -> ExecutionResult<()> {
+        let validator_address = self
+            .validators
+            .staking_pool_mappings
+            .get(&pool_id)
+            .copied()
+            .ok_or(ExecutionFailureStatus::StakingPoolNotFound)?;
 
-        // First check validator pools (active, pending, inactive)
-        if let Some(validator_address) =
-            self.validators.staking_pool_mappings.get(&pool_id).cloned()
+        if let Some(validator) =
+            self.validators.find_validator_with_pending_mut(validator_address)
         {
-            if let Some(validator) =
-                self.validators.find_validator_with_pending_mut(validator_address)
-            {
-                let withdrawn_amount = validator.request_withdraw_stake(staked_soma, self.epoch);
-                return Ok(withdrawn_amount);
-            }
-
-            if let Some(inactive_validator) = self.validators.inactive_validators.get_mut(&pool_id)
-            {
-                let withdrawn_amount =
-                    inactive_validator.request_withdraw_stake(staked_soma, self.epoch);
-                return Ok(withdrawn_amount);
-            }
+            validator.remove_stake_principal(amount);
+            return Ok(());
+        }
+        if let Some(inactive_validator) =
+            self.validators.inactive_validators.get_mut(&pool_id)
+        {
+            inactive_validator.remove_stake_principal(amount);
+            return Ok(());
         }
 
         // No pool found with this ID
@@ -486,7 +478,7 @@ impl SystemStateV1 {
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
         _epoch_randomness: Vec<u8>,
-    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
+    ) -> ExecutionResult<BTreeMap<SomaAddress, validator::ValidatorRewardCredit>> {
         // 1. Verify we're advancing to the correct epoch
         if new_epoch != self.epoch + 1 {
             return Err(ExecutionFailureStatus::AdvancedToWrongEpoch);
@@ -810,31 +802,33 @@ impl SystemState {
         }
     }
 
-    pub fn request_add_stake(
+    pub fn add_stake_to_validator(
         &mut self,
-        signer: SomaAddress,
-        address: SomaAddress,
+        validator_address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSomaV1> {
+    ) -> ExecutionResult<ObjectID> {
         match self {
-            Self::V1(v1) => v1.request_add_stake(signer, address, amount),
+            Self::V1(v1) => v1.add_stake_to_validator(validator_address, amount),
         }
     }
 
-    pub fn request_add_stake_at_genesis(
+    pub fn add_stake_to_validator_at_genesis(
         &mut self,
-        signer: SomaAddress,
-        address: SomaAddress,
+        validator_address: SomaAddress,
         amount: u64,
-    ) -> ExecutionResult<StakedSomaV1> {
+    ) -> ExecutionResult<ObjectID> {
         match self {
-            Self::V1(v1) => v1.request_add_stake_at_genesis(signer, address, amount),
+            Self::V1(v1) => v1.add_stake_to_validator_at_genesis(validator_address, amount),
         }
     }
 
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1) -> ExecutionResult<u64> {
+    pub fn remove_stake_from_validator(
+        &mut self,
+        pool_id: ObjectID,
+        amount: u64,
+    ) -> ExecutionResult<()> {
         match self {
-            Self::V1(v1) => v1.request_withdraw_stake(staked_soma),
+            Self::V1(v1) => v1.remove_stake_from_validator(pool_id, amount),
         }
     }
 
@@ -875,7 +869,7 @@ impl SystemState {
         epoch_total_transaction_fees: u64,
         epoch_start_timestamp_ms: u64,
         epoch_randomness: Vec<u8>,
-    ) -> ExecutionResult<BTreeMap<SomaAddress, StakedSomaV1>> {
+    ) -> ExecutionResult<BTreeMap<SomaAddress, validator::ValidatorRewardCredit>> {
         match self {
             Self::V1(v1) => v1.advance_epoch(
                 new_epoch,

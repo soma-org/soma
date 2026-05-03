@@ -132,19 +132,17 @@ fn examine_objects(genesis: &UnsignedGenesis) {
                 }
                 print_divider("SOMA");
             }
+            // Stage 9d-C5: StakedSomaV1 deleted; genesis no longer
+            // produces such objects. The category is kept in the
+            // inspector menu for legacy chain history but always
+            // surfaces an empty list.
             Ok(name) if name == STR_STAKED_SOMA => {
-                for object in genesis.objects() {
-                    if object.as_staked_soma().is_some() {
-                        println!("ID: {}", object.id());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
-                }
+                println!("(no StakedSomaV1 objects post Stage 9d-C5)");
                 print_divider("StakedSoma");
             }
             Ok(name) if name == STR_OTHER => {
                 for object in genesis.objects() {
-                    if object.as_coin().is_none() && object.as_staked_soma().is_none() {
+                    if object.as_coin().is_none() {
                         println!("ID: {}", object.id());
                         println!("Type: {:?}", object.type_());
                         println!("Owner: {:?}", object.owner());
@@ -202,7 +200,7 @@ fn display_validator(validator: &Validator) {
     println!("Voting Power: {}", validator.voting_power);
     println!("Commission Rate: {}", validator.commission_rate);
     println!("Staking Pool ID: {}", validator.staking_pool.id);
-    println!("Staking Pool SOMA Balance: {}", validator.staking_pool.soma_balance);
+    println!("Staking Pool Total Stake: {}", validator.staking_pool.total_stake);
     println!("Next Epoch Stake: {}", validator.next_epoch_stake);
     print_divider(&validator.metadata.soma_address.to_string());
 }

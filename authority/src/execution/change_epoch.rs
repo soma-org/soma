@@ -32,14 +32,14 @@ fn maybe_inject_advance_epoch_failure(
     result: ExecutionResult<
         std::collections::BTreeMap<
             types::base::SomaAddress,
-            types::system_state::staking::StakedSomaV1,
+            types::system_state::validator::ValidatorRewardCredit,
         >,
     >,
     new_epoch: u64,
 ) -> ExecutionResult<
     std::collections::BTreeMap<
         types::base::SomaAddress,
-        types::system_state::staking::StakedSomaV1,
+        types::system_state::validator::ValidatorRewardCredit,
     >,
 > {
     let should_fail = utils::fp::handle_fail_point_if("advance_epoch_result_injection");

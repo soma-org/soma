@@ -50,14 +50,14 @@ async fn test_add_stake_balance_mode_succeeds() {
 
     // Stage 9d-C4: AddStake no longer creates a StakedSomaV1
     // object — the F1 delegation row is the sole user-visible
-    // record of the stake.
-    for created in effects.created() {
-        let obj = res.authority_state.get_object(&created.0.0).await.unwrap();
-        assert!(
-            types::object::Object::as_staked_soma(&obj).is_none(),
-            "Stage 9d-C4: AddStake must not create StakedSomaV1 objects",
-        );
-    }
+    // record of the stake. Stage 9d-C5 deleted the StakedSomaV1 type
+    // and the `as_staked_soma` accessor; the cheapest invariant here
+    // is the count of created objects.
+    assert_eq!(
+        effects.created().len(),
+        0,
+        "Stage 9d-C5: AddStake creates no objects (F1 row only)",
+    );
 
     // Flush so the writeback cache's settlement events land in the
     // perpetual store (unit tests skip the checkpoint executor that

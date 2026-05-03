@@ -32,17 +32,23 @@ fn system_state_balances(ss: &SystemState) -> (u128, u128, u128) {
     let emission = ss.emission_pool().balance as u128;
 
     let mut staking: u128 = 0;
+    // Stage 9d-C5: pool-token fields collapsed into total_stake.
+    // F1 reward inflow (current_rewards) and validator commission
+    // accumulator are also live shannons on the pool.
     for v in &ss.validators().validators {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.total_stake as u128;
+        staking += v.staking_pool.pool_rewards as u128;
+        staking += v.staking_pool.accumulated_commission as u128;
     }
     for v in &ss.validators().pending_validators {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.total_stake as u128;
+        staking += v.staking_pool.pool_rewards as u128;
+        staking += v.staking_pool.accumulated_commission as u128;
     }
     for v in ss.validators().inactive_validators.values() {
-        staking += v.staking_pool.soma_balance as u128;
-        staking += v.staking_pool.pending_stake as u128;
+        staking += v.staking_pool.total_stake as u128;
+        staking += v.staking_pool.pool_rewards as u128;
+        staking += v.staking_pool.accumulated_commission as u128;
     }
     // Safe-mode accumulators no longer exist (Phase 1 fee model). Safe mode now
     // routes fees inline to protocol_fund and forfeits emissions. Returning 0

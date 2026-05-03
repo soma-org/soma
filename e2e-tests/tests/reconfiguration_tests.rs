@@ -754,7 +754,7 @@ async fn test_validator_candidate_pool_read() {
             pending.staking_pool.deactivation_epoch.is_none(),
             "Pending validator pool should not be deactivated"
         );
-        assert!(pending.staking_pool.soma_balance > 0, "Pending validator should have stake");
+        assert!(pending.staking_pool.total_stake > 0, "Pending validator should have stake");
     });
 
     // Verify the committee hasn't changed yet.
@@ -896,12 +896,12 @@ async fn test_create_advance_epoch_tx_race() {
         let stake_coin =
             test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().map(|(r, _)| r);
 
-        if let (Some(gas_object), Some(stake_coin)) = (gas_object, stake_coin) {
+        if let (Some(gas_object), Some(_stake_coin)) = (gas_object, stake_coin) {
+            // Stage 9d-C2: balance-mode AddStake.
             let tx_data = TransactionData::new(
                 TransactionKind::AddStake {
-                    address: validator_address,
-                    coin_ref: stake_coin,
-                    amount: Some(1_000_000),
+                    validator: validator_address,
+                    amount: 1_000_000,
                 },
                 sender,
                 vec![gas_object],
@@ -986,12 +986,15 @@ async fn test_expired_locks() {
         .unwrap()
         .expect("Should have a SOMA coin to stake");
 
-    // Stake in epoch 0 — this consumes the SOMA coin's pre-tx version.
+    // Stage 9d-C2: balance-mode AddStake. The original test used a
+    // SOMA coin ref that expired at epoch boundary; under balance-
+    // mode there's no coin ref to expire, so this leg of the test
+    // is now just a happy-path stake.
+    let _ = stake_coin_epoch0;
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin_epoch0,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas_object_epoch0],
@@ -1016,11 +1019,14 @@ async fn test_expired_locks() {
         .await
         .unwrap()
         .expect("Should still have a USDC gas object in epoch 1");
+    // Stage 9d-C2: AddStake no longer consumes a coin ref, so the
+    // "stale stake-coin" angle is gone. The remaining stale input
+    // is the gas coin (`stale_gas`), which still exercises the
+    // input-version rejection path.
     let stale_tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin_epoch0, // intentionally stale
-            amount: Some(500_000),
+            validator: validator_address,
+            amount: 500_000,
         },
         sender,
         vec![stale_gas],
@@ -1060,11 +1066,11 @@ async fn test_expired_locks() {
         .unwrap()
         .expect("Should still have a USDC gas object in epoch 1");
 
+    let _ = fresh_stake_coin;
     let fresh_tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: fresh_stake_coin,
-            amount: Some(500_000),
+            validator: validator_address,
+            amount: 500_000,
         },
         sender,
         vec![fresh_gas],
@@ -1119,12 +1125,12 @@ async fn test_passive_reconfig_with_tx_load() {
         let stake_coin =
             test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().map(|(r, _)| r);
 
-        if let (Some(gas_object), Some(stake_coin)) = (gas_object, stake_coin) {
+        if let (Some(gas_object), Some(_stake_coin)) = (gas_object, stake_coin) {
+            // Stage 9d-C2: balance-mode AddStake.
             let tx_data = TransactionData::new(
                 TransactionKind::AddStake {
-                    address: validator_address,
-                    coin_ref: stake_coin,
-                    amount: Some(1_000_000),
+                    validator: validator_address,
+                    amount: 1_000_000,
                 },
                 sender,
                 vec![gas_object],

@@ -26,7 +26,8 @@ use crate::crypto::{DefaultHash, default_hash};
 use crate::digests::{ObjectDigest, TransactionDigest};
 use crate::error::{SomaError, SomaResult};
 use crate::serde::Readable;
-use crate::system_state::staking::StakedSomaV1;
+// Stage 9d-C5: StakedSomaV1 deleted — F1 (pool, staker) row is the
+// sole on-chain record of stake.
 
 /// The starting version for all newly created objects
 pub const OBJECT_START_VERSION: Version = Version::from_u64(1);
@@ -388,36 +389,11 @@ impl Object {
         Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
     }
 
-    /// Create a new Object containing a StakedSoma
-    pub fn new_staked_soma_object(
-        id: ObjectID,
-        staked_soma: StakedSomaV1,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Object {
-        // Serialize StakedSoma to bytes
-        let staked_soma_bytes = bcs::to_bytes(&staked_soma).unwrap();
-
-        // Create ObjectData
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::StakedSoma, // Assuming you've added this to your ObjectType enum
-            Version::MIN,           // Start with minimum version
-            staked_soma_bytes,
-        );
-
-        // Create and return the Object
-        Object::new(data, owner, previous_transaction)
-    }
-
-    /// Extract StakedSoma from an Object
-    pub fn as_staked_soma(&self) -> Option<StakedSomaV1> {
-        if *self.data.object_type() == ObjectType::StakedSoma {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
+    // Stage 9d-C5: `new_staked_soma_object` and `as_staked_soma`
+    // deleted along with the StakedSomaV1 type. The
+    // `ObjectType::StakedSoma` variant is kept as a backward-
+    // compatibility marker for old chain history, but no new
+    // execution path produces it.
 
     /// Deserialize an object's contents as a specific type.
     pub fn deserialize_contents<T: serde::de::DeserializeOwned>(

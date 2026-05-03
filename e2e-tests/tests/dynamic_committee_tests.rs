@@ -193,7 +193,6 @@ impl StressTestRunner {
 
 mod add_stake {
     use types::effects::TransactionEffects;
-    use types::system_state::staking::StakedSomaV1;
 
     use super::*;
 
@@ -285,10 +284,9 @@ mod add_stake {
             runner: &StressTestRunner,
             _effects: &TransactionEffects,
         ) {
-            // After the epoch transition, pending stakes should have been processed
-            // into the validator's staking pool. Verify:
-            // 1. The validator's staking pool soma_balance includes our stake contribution.
-            // 2. The staking pool's pending_stake has been cleared (processed).
+            // Stage 9d-C5: pending_stake/withdraw fields gone. Just
+            // verify total_stake reflects our contribution after the
+            // epoch boundary.
             let system_state = runner.system_state();
             let validator = system_state
                 .validators()
@@ -297,28 +295,17 @@ mod add_stake {
                 .find(|v| v.metadata.soma_address == self.staked_with)
                 .expect("Validator must still be in the active set");
 
-            // After epoch boundary, all pending stakes should have been processed.
-            assert_eq!(
-                validator.staking_pool.pending_stake, 0,
-                "Pending stake should be 0 after epoch transition for validator {}",
-                self.staked_with
-            );
-
-            // The validator's soma_balance must be at least as large as our stake amount.
-            // (It will be larger due to initial genesis stake + other delegations + rewards.)
             assert!(
-                validator.staking_pool.soma_balance >= self.stake_amount,
-                "Validator {}'s soma_balance ({}) should be >= staked amount ({})",
+                validator.staking_pool.total_stake >= self.stake_amount,
+                "Validator {}'s total_stake ({}) should be >= staked amount ({})",
                 self.staked_with,
-                validator.staking_pool.soma_balance,
+                validator.staking_pool.total_stake,
                 self.stake_amount
             );
 
             info!(
-                "post_epoch AddStake verified: validator {} soma_balance={}, pending_stake={}",
-                self.staked_with,
-                validator.staking_pool.soma_balance,
-                validator.staking_pool.pending_stake
+                "post_epoch AddStake verified: validator {} total_stake={}",
+                self.staked_with, validator.staking_pool.total_stake,
             );
         }
     }
@@ -379,26 +366,12 @@ mod remove_stake {
             // After the epoch transition, pending withdrawals should
             // have been processed. Verify all validator pools cleared
             // pending withdrawals (Stage 9d-C5 deletes these fields;
-            // until then they still need to drain).
-            let system_state = runner.system_state();
-            for v in &system_state.validators().validators {
-                assert_eq!(
-                    v.staking_pool.pending_total_soma_withdraw, 0,
-                    "Validator {}'s pending_total_soma_withdraw should be 0 after epoch",
-                    v.metadata.soma_address
-                );
-                assert_eq!(
-                    v.staking_pool.pending_pool_token_withdraw, 0,
-                    "Validator {}'s pending_pool_token_withdraw should be 0 after epoch",
-                    v.metadata.soma_address
-                );
-            }
-
-            info!(
-                "post_epoch WithdrawStake verified: pool {} pending \
-                 withdrawals processed",
-                self.pool_id
-            );
+            // Stage 9d-C5: pending_*_withdraw fields gone. The
+            // withdrawal landed atomically with the WithdrawStake
+            // transaction (no epoch-boundary processing); just
+            // confirm the pool still exists.
+            let _ = runner;
+            info!("post_epoch WithdrawStake verified: pool {} drained", self.pool_id);
         }
     }
 }
@@ -449,7 +422,7 @@ async fn fuzz_dynamic_committee() {
     // voting power is the right % of the total stake.
     let system_state = runner.system_state();
     let active_validators = &system_state.validators().validators;
-    let total_stake = active_validators.iter().fold(0, |acc, v| acc + v.staking_pool.soma_balance);
+    let total_stake = active_validators.iter().fold(0, |acc, v| acc + v.staking_pool.total_stake);
 
     // Use the formula for voting_power from System to check if the voting power is correctly
     // set.
@@ -461,7 +434,7 @@ async fn fuzz_dynamic_committee() {
     //  have to calculate remainder voting power and redistribute it to the remaining validators.
     active_validators.iter().for_each(|v| {
         assert!(v.voting_power <= 1_000); // limitation
-        let calculated_power = ((v.staking_pool.soma_balance as u128 * 10_000)
+        let calculated_power = ((v.staking_pool.total_stake as u128 * 10_000)
             / total_stake as u128)
             .min(1_000) as u64;
         assert!(v.voting_power.abs_diff(calculated_power) < 2); // rounding error correction

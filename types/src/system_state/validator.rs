@@ -12,7 +12,17 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use super::PublicKey;
-use super::staking::{PoolTokenExchangeRate, StakedSomaV1, StakingPool};
+use super::staking::StakingPool;
+
+/// Stage 9d-C5: validator-commission credit emitted by
+/// `distribute_rewards`. The change_epoch executor consumes these
+/// to emit matching `DelegationEvent`s into the (pool, validator)
+/// rows.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ValidatorRewardCredit {
+    pub pool_id: ObjectID,
+    pub principal: u64,
+}
 use crate::base::SomaAddress;
 use crate::committee::{
     MAX_VOTING_POWER, QUORUM_THRESHOLD, TOTAL_VOTING_POWER, VALIDATOR_CONSENSUS_LOW_POWER,
@@ -156,75 +166,41 @@ impl Validator {
         }
     }
 
-    /// Request to add stake to the validator
-    pub fn request_add_stake(
-        &mut self,
-        stake: u64,
-        staker_address: SomaAddress,
-        current_epoch: u64,
-    ) -> StakedSomaV1 {
-        assert!(stake > 0, "Stake amount must be positive");
-
-        // Calculate activation epoch (typically next epoch)
-        let stake_activation_epoch = current_epoch + 1;
-
-        // Add stake to the staking pool
-        let staked_soma = self.staking_pool.request_add_stake(stake, stake_activation_epoch);
-
-        // If pool is preactive, process stake immediately
-        if self.staking_pool.is_preactive() {
-            self.staking_pool.process_pending_stake();
+    /// Stage 9d-C5: a delegator's stake is growing. Mutate
+    /// total_stake (the F1 fold denominator + voting-power input)
+    /// and the next-epoch voting-power tracker. The (pool, staker)
+    /// row is owned by the delegations table — the executor emits a
+    /// `DelegationEvent` for that side.
+    pub fn add_stake_principal(&mut self, amount: u64) {
+        if amount == 0 {
+            return;
         }
-
-        // Update next epoch stake
-        self.next_epoch_stake += stake;
-
-        staked_soma
+        self.staking_pool.add_principal(amount);
+        self.next_epoch_stake = self.next_epoch_stake.saturating_add(amount);
     }
 
-    pub fn request_add_stake_at_genesis(
-        &mut self,
-        stake: u64,
-        staker_address: SomaAddress,
-        current_epoch: u64,
-    ) -> StakedSomaV1 {
-        assert!(current_epoch == 0, "Must be called during genesis");
-        assert!(stake > 0, "Stake amount must be positive");
-
-        // Add stake to the staking pool
-        let staked_soma = self.staking_pool.request_add_stake(stake, 0);
-
-        self.staking_pool.process_pending_stake();
-        self.next_epoch_stake += stake;
-
-        staked_soma
+    /// Stage 9d-C5: a delegator is shrinking their stake. Mirror of
+    /// `add_stake_principal`. The executor validates against the
+    /// delegation row before calling — saturating sub here is
+    /// defense-in-depth.
+    pub fn remove_stake_principal(&mut self, amount: u64) {
+        if amount == 0 {
+            return;
+        }
+        self.staking_pool.remove_principal(amount);
+        self.next_epoch_stake = self.next_epoch_stake.saturating_sub(amount);
     }
 
-    /// Request to withdraw stake from the validator
-    pub fn request_withdraw_stake(&mut self, staked_soma: StakedSomaV1, current_epoch: u64) -> u64 {
-        // Process withdrawal in staking pool
-        let withdrawn_amount = self.staking_pool.request_withdraw_stake(staked_soma, current_epoch);
-
-        // Update next epoch stake
-        self.next_epoch_stake -= withdrawn_amount;
-
-        withdrawn_amount
-    }
-
-    /// Add rewards to staking pool for delegation rewards
+    /// Stage 9d-C5: deposit a post-commission reward into the F1
+    /// pool. `f1_fold_rewards` (called at epoch boundaries)
+    /// distributes them to delegators in proportion to their share.
+    /// No auto-compound — rewards accrue via the cumulative index
+    /// and are paid to the staker's balance on their next
+    /// AddStake/WithdrawStake.
     pub fn deposit_staker_rewards(&mut self, amount: u64) {
         if amount == 0 {
             return;
         }
-
-        // Credit rewards to staking pool for auto-compounding
-        self.next_epoch_stake += amount;
-        self.staking_pool.deposit_rewards(amount);
-
-        // Stage 9d-A: dual-update F1 accumulator. The pool-token path
-        // above remains authoritative for now; this runs alongside so
-        // Stage 9d-B can switch reads with confidence the two paths
-        // agree.
         self.staking_pool.f1_deposit_pool_reward(amount);
     }
 
@@ -240,22 +216,10 @@ impl Validator {
         Ok(())
     }
 
-    /// Activate this validator and its staking pool
+    /// Activate this validator and its staking pool.
     pub fn activate(&mut self, activation_epoch: u64) {
-        // Add initial exchange rate to staking pool
-        self.staking_pool.exchange_rates.insert(
-            activation_epoch,
-            PoolTokenExchangeRate {
-                soma_amount: self.staking_pool.soma_balance,
-                pool_token_amount: self.staking_pool.pool_token_balance,
-            },
-        );
-
-        // Ensure pool is preactive
         assert!(self.staking_pool.is_preactive(), "Pool is already active");
         assert!(!self.staking_pool.is_inactive(), "Cannot activate inactive pool");
-
-        // Set activation epoch
         self.staking_pool.activation_epoch = Some(activation_epoch);
     }
 
@@ -535,23 +499,9 @@ impl Validator {
     }
 }
 
-#[cfg(test)]
-impl Validator {
-    /// Get the pool token exchange rate at a specific epoch
-    pub fn pool_token_exchange_rate_at_epoch(&self, epoch: u64) -> PoolTokenExchangeRate {
-        self.staking_pool.pool_token_exchange_rate_at_epoch(epoch)
-    }
-
-    /// Calculate rewards for this validator's initial stake (self-stake)
-    pub fn calculate_rewards(
-        &self,
-        initial_stake: u64,
-        stake_activation_epoch: u64,
-        current_epoch: u64,
-    ) -> u64 {
-        self.staking_pool.calculate_rewards(initial_stake, stake_activation_epoch, current_epoch)
-    }
-}
+// Stage 9d-C5 deleted Validator's test-only pool-token wrappers.
+// Tests that need to inspect F1 reward state read pool fields
+// (current_period, cumulative_index, total_stake) directly.
 
 /// # ValidatorSet
 ///
@@ -604,7 +554,7 @@ impl ValidatorSet {
     /// calculated total stake
     pub fn new(validators: Vec<Validator>) -> Self {
         // Calculate total stake
-        let total_stake: u64 = validators.iter().map(|v| v.staking_pool.soma_balance).sum();
+        let total_stake: u64 = validators.iter().map(|v| v.staking_pool.total_stake).sum();
 
         let mut staking_pool_mappings = BTreeMap::new();
 
@@ -702,7 +652,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &mut BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         validator_low_stake_grace_period: u64,
-    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
+    ) -> BTreeMap<SomaAddress, ValidatorRewardCredit> {
         let validator_rewards = self.calculate_and_distribute_rewards(
             total_rewards,
             reward_slashing_rate,
@@ -917,7 +867,7 @@ impl ValidatorSet {
         reward_slashing_rate: u64,
         validator_report_records: &BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
         new_epoch: u64,
-    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
+    ) -> BTreeMap<SomaAddress, ValidatorRewardCredit> {
         // Only consensus validators participate in rewards
         let total_voting_power: u64 = self.validators.iter().map(|v| v.voting_power).sum();
 
@@ -1001,13 +951,20 @@ impl ValidatorSet {
         adjusted_rewards
     }
 
-    /// Distribute rewards to validators and their stakers
+    /// Distribute rewards to validators and their stakers.
+    ///
+    /// Stage 9d-C5: returns the validator-commission credits as
+    /// (pool_id, validator_address, principal) tuples — change_epoch
+    /// emits the matching `DelegationEvent` so the (pool, validator)
+    /// row picks up the commission. Staker rewards (post-commission)
+    /// land in `current_rewards` via `deposit_staker_rewards` and
+    /// distribute via the F1 fold at the end of advance_epoch.
     pub fn distribute_rewards(
         &mut self,
         adjusted_rewards: &[u64],
         total_rewards: &mut u64,
-        new_epoch: u64,
-    ) -> BTreeMap<SomaAddress, StakedSomaV1> {
+        _new_epoch: u64,
+    ) -> BTreeMap<SomaAddress, ValidatorRewardCredit> {
         assert!(!self.validators.is_empty(), "Validator set empty");
 
         let mut rewards = BTreeMap::new();
@@ -1016,22 +973,24 @@ impl ValidatorSet {
         for (i, validator) in self.validators.iter_mut().enumerate() {
             let reward_amount = adjusted_rewards[i];
 
-            // Validator commission
             let commission_amount =
                 (reward_amount as u128) * (validator.commission_rate as u128) / 10000;
-
-            // Split rewards between validator and stakers
             let validator_commission = commission_amount as u64;
             let staker_reward = reward_amount - validator_commission;
 
-            // Apply rewards
             if validator_commission > 0 {
-                let reward = validator.request_add_stake(
-                    validator_commission,
+                // Commission accrues into the (pool, validator)
+                // delegation row via change_epoch's emitted event.
+                // The pool's total_stake also rises by the commission
+                // amount so voting power tracks compounded self-stake.
+                validator.add_stake_principal(validator_commission);
+                rewards.insert(
                     validator.metadata.soma_address,
-                    new_epoch - 1,
+                    ValidatorRewardCredit {
+                        pool_id: validator.staking_pool.id,
+                        principal: validator_commission,
+                    },
                 );
-                rewards.insert(validator.metadata.soma_address, reward);
             }
 
             validator.deposit_staker_rewards(staker_reward);
@@ -1039,14 +998,13 @@ impl ValidatorSet {
             distributed_total += reward_amount;
         }
 
-        // Deduct distributed rewards from total
         *total_rewards = total_rewards.saturating_sub(distributed_total);
         rewards
     }
 
     /// Calculate total stake across all validators
     pub fn calculate_total_stake(&self) -> u64 {
-        self.validators.iter().map(|v| v.staking_pool.soma_balance).sum()
+        self.validators.iter().map(|v| v.staking_pool.total_stake).sum()
     }
 
     /// Calculate total stake INCLUDING pending (for threshold calculations)
@@ -1054,7 +1012,7 @@ impl ValidatorSet {
         let active_stake = self.calculate_total_stake();
 
         let pending_stake: u64 =
-            self.pending_validators.iter().map(|v| v.staking_pool.soma_balance).sum();
+            self.pending_validators.iter().map(|v| v.staking_pool.total_stake).sum();
 
         active_stake + pending_stake
     }
@@ -1092,15 +1050,15 @@ impl ValidatorSet {
         // Sort validators by stake in descending order for consistent processing
         all_validators.sort_by(|a, b| {
             b.staking_pool
-                .soma_balance
-                .cmp(&a.staking_pool.soma_balance)
+                .total_stake
+                .cmp(&a.staking_pool.total_stake)
                 .then_with(|| a.metadata.soma_address.cmp(&b.metadata.soma_address))
         });
 
         // First pass: calculate capped voting power based on stake
         let mut total_power = 0;
         for validator in &mut all_validators {
-            let stake_fraction = (validator.staking_pool.soma_balance as u128)
+            let stake_fraction = (validator.staking_pool.total_stake as u128)
                 * (TOTAL_VOTING_POWER as u128)
                 / (total_stake as u128);
             validator.voting_power = std::cmp::min(stake_fraction as u64, threshold);
@@ -1140,7 +1098,7 @@ impl ValidatorSet {
             info!(
                 "Final: Validator {} stake: {}, voting_power: {}",
                 validator.metadata.soma_address,
-                validator.staking_pool.soma_balance,
+                validator.staking_pool.total_stake,
                 validator.voting_power,
             );
         }
@@ -1155,8 +1113,8 @@ impl ValidatorSet {
         for i in 0..all_validators.len() {
             info!("Validator {} voting power is: {}", i, all_validators[i].voting_power);
             for j in i + 1..all_validators.len() {
-                let stake_i = all_validators[i].staking_pool.soma_balance;
-                let stake_j = all_validators[j].staking_pool.soma_balance;
+                let stake_i = all_validators[i].staking_pool.total_stake;
+                let stake_j = all_validators[j].staking_pool.total_stake;
                 let power_i = all_validators[i].voting_power;
                 let power_j = all_validators[j].voting_power;
 
@@ -1187,7 +1145,7 @@ impl ValidatorSet {
 
             let validator_address = validator.metadata.soma_address;
             let voting_power = derive_raw_voting_power(
-                validator.staking_pool.soma_balance,
+                validator.staking_pool.total_stake,
                 total_stake_for_thresholds,
             );
 
@@ -1232,7 +1190,7 @@ impl ValidatorSet {
         while i < self.pending_validators.len() {
             let validator = &mut self.pending_validators[i];
             let voting_power = derive_raw_voting_power(
-                validator.staking_pool.soma_balance,
+                validator.staking_pool.total_stake,
                 total_stake_for_thresholds,
             );
 
@@ -1267,7 +1225,7 @@ impl ValidatorSet {
         self.at_risk_validators.remove(&validator_address);
 
         // Update total stake
-        // self.total_stake -= validator.staking_pool.soma_balance;
+        // self.total_stake -= validator.staking_pool.total_stake;
 
         // Clean up report records
         self.clean_report_records(validator_report_records, validator_address);
@@ -1298,55 +1256,20 @@ impl ValidatorSet {
         validator_report_records.retain(|_, reporters| !reporters.is_empty());
     }
 
-    /// Process pending stakes and withdrawals for all validators
-    fn process_active_validator_stakes(&mut self, new_epoch: u64) {
-        // Process consensus validators
+    /// Stage 9d-C5: at every epoch boundary, fold each pool's
+    /// `current_rewards` into its cumulative index using
+    /// `total_stake` as the denominator. F1 owns reward distribution
+    /// fully — there's no pool-token bookkeeping to update.
+    fn process_active_validator_stakes(&mut self, _new_epoch: u64) {
         for validator in &mut self.validators {
-            // Stage 9d-B: fold F1 rewards into the cumulative index
-            // using the *principal* (un-compounded) stake during the
-            // just-ended epoch as the denominator. F1 has no auto-
-            // compound — `total_stake` in the algorithm means "sum of
-            // delegator principals", which under pool-token
-            // bookkeeping is `soma_balance - rewards_pool` (total
-            // contributed minus total reward residue).
-            //
-            // Why not soma_balance: that compounds rewards into the
-            // total each epoch, inflating the denominator and
-            // shrinking each delegator's per-epoch index delta. F1
-            // pays rewards to balance (Step C) instead of
-            // compounding, so principal must be the basis.
-            //
-            // Why not pool_token_balance: it represents shares minted
-            // at varying exchange rates (a 1000-SOMA stake at rate
-            // 1.5 mints 666 pool tokens), not principal SOMA.
-            let pool = &validator.staking_pool;
-            let total_principal =
-                pool.soma_balance.saturating_sub(pool.rewards_pool);
-            validator.staking_pool.f1_fold_rewards(total_principal);
-
-            validator.staking_pool.process_pending_stake_withdraw();
-            validator.staking_pool.process_pending_stake();
-            validator.staking_pool.exchange_rates.insert(
-                new_epoch,
-                PoolTokenExchangeRate {
-                    soma_amount: validator.staking_pool.soma_balance,
-                    pool_token_amount: validator.staking_pool.pool_token_balance,
-                },
-            );
+            let total = validator.staking_pool.total_stake;
+            validator.staking_pool.f1_fold_rewards(total);
         }
     }
 
-    /// Process pending stakes for pending validators
-    fn process_pending_validator_stakes(&mut self, new_epoch: u64) {
-        for validator in &mut self.pending_validators {
-            // Process pending stakes and withdrawals
-            validator.staking_pool.process_pending_stake_withdraw();
-            validator.staking_pool.process_pending_stake();
-
-            // Note: We don't update exchange rates for pending validators
-            // since they don't have active pools yet
-        }
-    }
+    /// Pending validators have no committed stake yet, so nothing to
+    /// fold. Kept as a hook in case future logic needs it.
+    fn process_pending_validator_stakes(&mut self, _new_epoch: u64) {}
 
     /// Process validators that have requested removal
     pub fn process_pending_removals(
