@@ -11,8 +11,6 @@ use diesel::serialize;
 use diesel::sql_types::SmallInt;
 use soma_field_count::FieldCount;
 
-use crate::schema::coin_balance_buckets;
-use crate::schema::coin_balance_buckets_deletion_reference;
 use crate::schema::kv_objects;
 use crate::schema::obj_info;
 use crate::schema::obj_info_deletion_reference;
@@ -57,13 +55,8 @@ pub enum StoredOwnerKind {
     Shared = 3,
 }
 
-#[derive(AsExpression, FromSqlRow, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[diesel(sql_type = SmallInt)]
-#[repr(i16)]
-pub enum StoredCoinOwnerKind {
-    Fastpath = 0,
-    Consensus = 1,
-}
+// Stage 13i: StoredCoinOwnerKind removed alongside the
+// coin_balance_buckets handler.
 
 #[derive(Insertable, Debug, Clone, FieldCount, Queryable)]
 #[diesel(table_name = obj_info, primary_key(object_id, cp_sequence_number))]
@@ -86,24 +79,8 @@ pub struct StoredObjInfoDeletionReference {
     pub cp_sequence_number: i64,
 }
 
-#[derive(Insertable, Queryable, Debug, Clone, FieldCount, Eq, PartialEq)]
-#[diesel(table_name = coin_balance_buckets, primary_key(object_id, cp_sequence_number))]
-#[diesel(treat_none_as_default_value = false)]
-pub struct StoredCoinBalanceBucket {
-    pub object_id: Vec<u8>,
-    pub cp_sequence_number: i64,
-    pub owner_kind: Option<StoredCoinOwnerKind>,
-    pub owner_id: Option<Vec<u8>>,
-    pub coin_type: Option<Vec<u8>>,
-    pub coin_balance_bucket: Option<i16>,
-}
-
-#[derive(Insertable, Queryable, Debug, Clone, FieldCount, Eq, PartialEq)]
-#[diesel(table_name = coin_balance_buckets_deletion_reference, primary_key(cp_sequence_number, object_id))]
-pub struct StoredCoinBalanceBucketDeletionReference {
-    pub object_id: Vec<u8>,
-    pub cp_sequence_number: i64,
-}
+// Stage 13i: StoredCoinBalanceBucket and StoredCoinBalanceBucketDeletionReference
+// removed.
 
 impl<DB: Backend> serialize::ToSql<SmallInt, DB> for StoredOwnerKind
 where
@@ -134,27 +111,4 @@ where
     }
 }
 
-impl<DB: Backend> serialize::ToSql<SmallInt, DB> for StoredCoinOwnerKind
-where
-    i16: serialize::ToSql<SmallInt, DB>,
-{
-    fn to_sql<'b>(&'b self, out: &mut serialize::Output<'b, '_, DB>) -> serialize::Result {
-        match self {
-            StoredCoinOwnerKind::Fastpath => 0.to_sql(out),
-            StoredCoinOwnerKind::Consensus => 1.to_sql(out),
-        }
-    }
-}
-
-impl<DB: Backend> deserialize::FromSql<SmallInt, DB> for StoredCoinOwnerKind
-where
-    i16: deserialize::FromSql<SmallInt, DB>,
-{
-    fn from_sql(raw: DB::RawValue<'_>) -> deserialize::Result<Self> {
-        Ok(match i16::from_sql(raw)? {
-            0 => StoredCoinOwnerKind::Fastpath,
-            1 => StoredCoinOwnerKind::Consensus,
-            o => return Err(format!("Unexpected StoredCoinOwnerKind: {o}").into()),
-        })
-    }
-}
+// Stage 13i: StoredCoinOwnerKind diesel ToSql/FromSql impls removed.

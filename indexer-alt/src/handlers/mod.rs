@@ -11,7 +11,7 @@ use types::effects::TransactionEffectsAPI;
 use types::full_checkpoint_content::Checkpoint;
 use types::object::{Object, ObjectID, Owner};
 
-pub mod coin_balance_buckets;
+// Stage 13i: coin_balance_buckets handler removed.
 pub mod cp_sequence_numbers;
 pub mod kv_checkpoints;
 pub mod kv_epoch_ends;

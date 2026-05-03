@@ -28,8 +28,8 @@ pub(crate) mod test_utils;
 /// - **Tier B (Indexes)**: `tx_digests`, `tx_affected_*`, `tx_balance_changes`,
 ///   `tx_kinds`, `tx_calls`. No BigTable equivalent — pruning shrinks the queryable
 ///   window for historical index-backed queries.
-/// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`, `coin_balance_buckets`.
-///   Prunable — only latest versions needed for explorer, BigTable has historical BCS.
+/// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`. Prunable — only latest
+///   versions needed for explorer; BigTable has historical BCS.
 /// - **Tier C (Never prune)**: `cp_sequence_numbers` and all `soma_*` tables.
 #[derive(Debug, Clone, Default)]
 pub struct PruningConfig {
@@ -146,13 +146,9 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .await
         .context("Failed to register obj_info pipeline")?;
 
-    indexer
-        .concurrent_pipeline(
-            handlers::coin_balance_buckets::CoinBalanceBuckets,
-            index_config.clone(),
-        )
-        .await
-        .context("Failed to register coin_balance_buckets pipeline")?;
+    // Stage 13i: coin_balance_buckets pipeline removed. The
+    // accumulator is the sole source of truth for fungible
+    // balances; the indexer doesn't need to track Coin objects.
 
     // --- Tier C: Soma-specific pipelines (never pruned) ---
     indexer

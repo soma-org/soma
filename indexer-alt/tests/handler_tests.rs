@@ -410,30 +410,8 @@ async fn test_obj_info_commit() {
     assert_eq!(rows, values.len());
 }
 
-// ===========================================================================
-// coin_balance_buckets
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_coin_balance_buckets_process() {
-    let cp = Arc::new(simple_checkpoint());
-    let values = coin_balance_buckets::CoinBalanceBuckets.process(&cp).await.unwrap();
-    // Should detect the coins created
-    assert!(!values.is_empty());
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_coin_balance_buckets_commit() {
-    let (db, _temp) = setup().await;
-    let cp = Arc::new(simple_checkpoint());
-    let values = coin_balance_buckets::CoinBalanceBuckets.process(&cp).await.unwrap();
-
-    let mut conn = db.connect().await.unwrap();
-    let rows = coin_balance_buckets::CoinBalanceBuckets::commit(&values, &mut conn).await.unwrap();
-    assert_eq!(rows, values.len());
-}
+// Stage 13i: coin_balance_buckets handler tests removed alongside
+// the handler itself.
 
 // ===========================================================================
 // Idempotency — double commit should not fail (on_conflict_do_nothing)

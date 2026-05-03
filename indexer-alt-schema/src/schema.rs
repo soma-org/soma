@@ -4,23 +4,9 @@
 
 // @generated automatically by Diesel CLI.
 
-diesel::table! {
-    coin_balance_buckets (object_id, cp_sequence_number) {
-        object_id -> Bytea,
-        cp_sequence_number -> Int8,
-        owner_kind -> Nullable<Int2>,
-        owner_id -> Nullable<Bytea>,
-        coin_type -> Nullable<Bytea>,
-        coin_balance_bucket -> Nullable<Int2>,
-    }
-}
-
-diesel::table! {
-    coin_balance_buckets_deletion_reference (cp_sequence_number, object_id) {
-        object_id -> Bytea,
-        cp_sequence_number -> Int8,
-    }
-}
+// Stage 13i: coin_balance_buckets and coin_balance_buckets_deletion_reference
+// tables removed. The accumulator is the sole source of truth for fungible
+// balances; the indexer no longer tracks Coin objects.
 
 diesel::table! {
     cp_sequence_numbers (cp_sequence_number) {
@@ -290,8 +276,6 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
-    coin_balance_buckets,
-    coin_balance_buckets_deletion_reference,
     cp_sequence_numbers,
     kv_checkpoints,
     kv_epoch_ends,

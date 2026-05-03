@@ -445,7 +445,6 @@ impl RpcIndexes for RestReadStore {
         let cursor = cursor.map(|cursor| OwnerIndexKey {
             owner: cursor.owner,
             object_type: cursor.object_type,
-            inverted_balance: cursor.balance.map(std::ops::Not::not),
             object_id: cursor.object_id,
         });
 
@@ -453,16 +452,10 @@ impl RpcIndexes for RestReadStore {
             result
                 .map(
                     |(
-                        OwnerIndexKey { owner, object_id, object_type, inverted_balance },
+                        OwnerIndexKey { owner, object_id, object_type },
                         OwnerIndexInfo { version },
                     )| {
-                        OwnedObjectInfo {
-                            owner,
-                            object_type,
-                            balance: inverted_balance.map(std::ops::Not::not),
-                            object_id,
-                            version,
-                        }
+                        OwnedObjectInfo { owner, object_type, object_id, version }
                     },
                 )
                 .map_err(Into::into)

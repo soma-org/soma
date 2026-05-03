@@ -555,7 +555,6 @@ pub trait RpcIndexes: Send + Sync {
 pub struct OwnedObjectInfo {
     pub owner: SomaAddress,
     pub object_type: ObjectType,
-    pub balance: Option<u64>,
     pub object_id: ObjectID,
     pub version: Version,
 }
