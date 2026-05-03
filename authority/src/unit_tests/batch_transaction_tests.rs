@@ -4,10 +4,8 @@
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::dbg_addr;
-use types::crypto::{SomaKeyPair, get_key_pair};
-use types::effects::{ExecutionFailureStatus, ExecutionStatus, TransactionEffectsAPI};
-use types::object::{Object, ObjectID, Owner};
-use types::transaction::TransactionData;
+use types::crypto::get_key_pair;
+use types::effects::{ExecutionStatus, TransactionEffectsAPI};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
 use crate::authority_test_utils::send_and_confirm_transaction;
@@ -19,21 +17,38 @@ use crate::test_authority_builder::TestAuthorityBuilder;
 
 #[tokio::test]
 async fn test_multiple_sequential_transfers() {
-    // Execute 3 TransferCoin transactions in sequence, each using updated object refs.
+    // Execute 3 BalanceTransfer transactions in sequence. Stage 13c:
+    // gas (USDC) and the transferable balance (SOMA) live in
+    // accumulators — we observe the SOMA accumulator drop after
+    // each tx, since BalanceTransfer creates no per-tx coin
+    // objects to chain through.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
+    let starting_soma = 50_000_000u64;
+    let starting_usdc = 50_000_000u64;
+    let per_transfer = 1_000u64;
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        starting_soma,
+        starting_usdc,
+    );
 
     let recipients = [dbg_addr(1), dbg_addr(2), dbg_addr(3)];
 
-    let mut current_coin_ref = coin.compute_object_reference();
-
+    // Flush after each tx so each settlement lands before the next
+    // tx reads the accumulator. This matches how the per-commit
+    // settlement runs in production — one settlement per
+    // consensus commit, aggregating that commit's events.
+    let cache_commit = authority_state.get_cache_commit();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
     for (i, recipient) in recipients.iter().enumerate() {
-        let data =
-            crate::authority_test_utils::balance_transfer_data_legacy(*recipient, sender, Some(1000), current_coin_ref);
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
+            *recipient,
+            sender,
+            Some(per_transfer),
+        );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let (_, effects) = send_and_confirm_transaction(&authority_state, tx)
             .await
@@ -44,21 +59,27 @@ async fn test_multiple_sequential_transfers() {
             "Transfer {} should succeed",
             i + 1
         );
-
-        // Update the coin ref for the next iteration (gas coin was mutated)
-        let coin_obj = authority_state.get_object(&coin_id).await.unwrap();
-        current_coin_ref = coin_obj.compute_object_reference();
+        let digest = *effects.transaction_digest();
+        let batch = cache_commit.build_db_batch(epoch, &[digest]);
+        cache_commit.commit_transaction_outputs(epoch, batch, &[digest]);
     }
 
-    // Verify final coin balance: original - 3 * 1000 - total fees
-    let final_coin = authority_state.get_object(&coin_id).await.unwrap();
-    let final_balance = final_coin.as_coin().unwrap();
-    assert!(
-        final_balance < 50_000_000 - 3000,
-        "Balance should reflect 3 transfers plus fees: got {}",
-        final_balance
+    let store = authority_state.database_for_testing();
+    let final_soma =
+        store.get_balance(sender, types::object::CoinType::Soma).unwrap();
+    let final_usdc =
+        store.get_balance(sender, types::object::CoinType::Usdc).unwrap();
+    assert_eq!(
+        final_soma,
+        starting_soma - 3 * per_transfer,
+        "Sender SOMA must have dropped by exactly 3 × {}",
+        per_transfer,
     );
-    assert!(final_balance > 0, "Balance should still be positive after 3 small transfers");
+    assert!(
+        final_usdc < starting_usdc,
+        "Sender USDC (gas) must have dropped after 3 fees: got {}",
+        final_usdc,
+    );
 }
 
 // =============================================================================
@@ -67,29 +88,29 @@ async fn test_multiple_sequential_transfers() {
 
 #[tokio::test]
 async fn test_failed_execution_reverts_non_gas() {
-    // Execute a transaction that fails during execution.
-    // The gas coin should still be mutated (fee deducted), but the
-    // transfer target should not be created.
+    // Stage 13c: BalanceTransfer with empty SOMA accumulator. The
+    // SOMA Withdraw event against an empty accumulator is applied
+    // as a saturated apply — the tx still executes successfully,
+    // but only the gas (USDC) fee debit and any recipient SOMA
+    // credit are observable. We assert the conservation
+    // invariant: no objects created/deleted/mutated, fee charged.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    // Stage 13b: BalanceTransfer with empty SOMA accumulator. Gas
-    // (USDC) is paid from the coin. The SOMA transfer event lands
-    // a Withdraw against an empty accumulator — which the
-    // settlement layer treats as a saturated apply with no
-    // perceptible effect. The tx may still complete with status
-    // Success today; only the gas-coin debit and recipient SOMA
-    // balance change are observable.
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 5000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    // Sender has gas (USDC) but zero SOMA — the transfer Withdraw
+    // saturates against an empty accumulator.
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        0,
+        10_000_000,
+    );
 
     let recipient = dbg_addr(1);
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(4500),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let result = send_and_confirm_transaction(&authority_state, tx).await;
@@ -97,11 +118,6 @@ async fn test_failed_execution_reverts_non_gas() {
     let (_, effects) = result.unwrap();
     let effects = effects.into_data();
 
-    // Gas coin must remain (fee deducted from it). No objects
-    // created — BalanceTransfer's "transfer" lands in the
-    // accumulator, not a new Coin.
-    let gas_obj = authority_state.get_object(&coin_id).await;
-    assert!(gas_obj.is_some(), "Gas coin should still exist");
     assert!(effects.created().is_empty(), "BalanceTransfer creates no objects");
     let fee = effects.transaction_fee();
     assert!(fee.total_fee > 0, "Some fee must be charged");
@@ -116,20 +132,25 @@ async fn test_effects_accumulate_correctly() {
     // Execute multiple transactions and verify each set of effects is stored
     // and retrievable independently.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        50_000_000,
+        50_000_000,
+    );
 
     let mut digests = Vec::new();
-    let mut current_coin_ref = coin.compute_object_reference();
 
     // Execute 3 transactions
     for i in 0..3 {
         let recipient = dbg_addr((i + 1) as u8);
-        let data =
-            crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, Some(1000), current_coin_ref);
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
+            recipient,
+            sender,
+            Some(1000),
+        );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let tx_digest = *tx.digest();
 
@@ -139,10 +160,6 @@ async fn test_effects_accumulate_correctly() {
         assert_eq!(*effects.status(), ExecutionStatus::Success);
 
         digests.push(tx_digest);
-
-        // Update coin ref
-        let coin_obj = authority_state.get_object(&coin_id).await.unwrap();
-        current_coin_ref = coin_obj.compute_object_reference();
     }
 
     // Verify each transaction's effects are retrievable
@@ -169,37 +186,38 @@ async fn test_effects_accumulate_correctly() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_version_monotonically_increases() {
-    // Object version should increase with each mutation.
+async fn test_distinct_balance_transfers_produce_distinct_effects() {
+    // Stage 13c: BalanceTransfer touches no per-object versions
+    // (no coin gas, no created/mutated objects), so the per-tx
+    // lamport version stays flat. The remaining observable
+    // contract is that distinct txs yield distinct effects digests.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        50_000_000,
+        50_000_000,
+    );
 
-    let mut prev_version = authority_state.get_object(&coin_id).await.unwrap().version();
-
+    let mut effects_digests = Vec::new();
     for i in 0..3 {
-        let coin_obj = authority_state.get_object(&coin_id).await.unwrap();
         let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr((i + 1) as u8),
             sender,
             Some(100),
-            coin_obj.compute_object_reference(),
         );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
         assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-        let new_version = authority_state.get_object(&coin_id).await.unwrap().version();
-        assert!(
-            new_version > prev_version,
-            "Version should increase: {:?} vs {:?} at iteration {}",
-            new_version,
-            prev_version,
-            i
-        );
-        prev_version = new_version;
+        effects_digests.push(*effects.transaction_digest());
     }
+
+    let unique: std::collections::HashSet<_> = effects_digests.iter().collect();
+    assert_eq!(
+        unique.len(),
+        effects_digests.len(),
+        "Each transaction must produce a distinct effects digest",
+    );
 }

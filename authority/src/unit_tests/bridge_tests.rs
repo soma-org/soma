@@ -171,25 +171,23 @@ async fn test_bridge_withdraw_creates_pending_and_emits_withdraw() {
     let sender_key = SomaKeyPair::Ed25519(key);
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    // Seed sender's USDC accumulator so the post-execution settlement
-    // (which applies the Withdraw event) doesn't underflow.
+    // Stage 13c: bridge withdraw burns USDC from the sender's
+    // accumulator (the value being withdrawn) AND debits gas (USDC)
+    // from the same accumulator. Seed enough to cover both, plus
+    // a margin we'll verify isn't touched by the settlement layer
+    // beyond the expected delta.
     let withdraw_amount = 2_000_000u64;
+    let starting_usdc = withdraw_amount * 2 + 100_000_000;
     authority_state
         .database_for_testing()
-        .set_balance(sender, CoinType::Usdc, withdraw_amount * 2)
+        .set_balance(sender, CoinType::Usdc, starting_usdc)
         .unwrap();
-
-    // Gas coin (SOMA — coin-mode gas, since we're not exercising the
-    // balance-mode-gas path here).
-    let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
-    let gas_ref = gas.compute_object_reference();
-    authority_state.insert_genesis_object(gas).await;
 
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
         amount: withdraw_amount,
         recipient_eth_address: [0xABu8; 20],
     });
-    let data = TransactionData::new(kind, sender, vec![gas_ref]);
+    let data = TransactionData::new(kind, sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
         .await
@@ -231,10 +229,13 @@ async fn test_bridge_withdraw_creates_pending_and_emits_withdraw() {
         .database_for_testing()
         .get_balance(sender, CoinType::Usdc)
         .unwrap();
+    let total_fee = effects_data.transaction_fee().total_fee;
     assert_eq!(
         final_balance,
-        withdraw_amount * 2 - withdraw_amount,
-        "sender's USDC accumulator must drop by exactly the bridge withdraw amount",
+        starting_usdc - withdraw_amount - total_fee,
+        "sender's USDC must drop by withdraw + gas fee (got {}, expected {})",
+        final_balance,
+        starting_usdc - withdraw_amount - total_fee,
     );
 }
 
@@ -247,15 +248,16 @@ async fn test_bridge_withdraw_rejects_zero_amount() {
     let sender_key = SomaKeyPair::Ed25519(key);
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 100_000_000);
-    let gas_ref = gas.compute_object_reference();
-    authority_state.insert_genesis_object(gas).await;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Usdc, 100_000_000)
+        .unwrap();
 
     let kind = TransactionKind::BridgeWithdraw(BridgeWithdrawArgs {
         amount: 0,
         recipient_eth_address: [0x01; 20],
     });
-    let data = TransactionData::new(kind, sender, vec![gas_ref]);
+    let data = TransactionData::new(kind, sender, vec![]);
     let tx = to_sender_signed_transaction(data, &sender_key);
     let (_, effects) = send_and_confirm_transaction_(&authority_state, None, tx, true)
         .await

@@ -957,7 +957,9 @@ impl AuthorityState {
         // We only need this when `gas_payment` is empty AND the tx isn't
         // a system tx — otherwise prepare_gas's coin-mode (or system-tx
         // skip) handles fees without consulting the accumulator.
-        let sender_usdc_balance = if gas_payment.is_empty() && !kind.is_system_tx() {
+        // Stage 13c: balance-mode gas is the sole path. Always
+        // pre-read the sender's USDC balance for non-system txs.
+        let sender_usdc_balance = if !kind.is_system_tx() {
             Some(
                 self.database_for_testing()
                     .get_balance(signer, types::object::CoinType::Usdc)
@@ -1135,7 +1137,9 @@ impl AuthorityState {
         };
 
         // Stage 6c: pre-read sender's USDC balance for balance-mode gas.
-        let sender_usdc_balance = if gas_payment.is_empty() && !kind.is_system_tx() {
+        // Stage 13c: balance-mode gas is the sole path. Always
+        // pre-read the sender's USDC balance for non-system txs.
+        let sender_usdc_balance = if !kind.is_system_tx() {
             Some(
                 self.database_for_testing()
                     .get_balance(signer, types::object::CoinType::Usdc)

@@ -4,14 +4,12 @@
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::dbg_addr;
-use types::crypto::{SomaKeyPair, get_key_pair};
+use types::crypto::get_key_pair;
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
-use types::object::{Object, ObjectID};
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
-use types::transaction::TransactionData;
 use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::authority_test_utils::send_and_confirm_transaction;
+use crate::authority_test_utils::{seed_balance_mode_funds, send_and_confirm_transaction};
 use crate::test_authority_builder::TestAuthorityBuilder;
 
 // =============================================================================
@@ -59,17 +57,14 @@ async fn test_epoch_store_signed_transaction_storage() {
     // After executing a transaction, the epoch store should have the signed
     // transaction retrievable by digest.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 10_000_000, 10_000_000);
 
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let tx_digest = *tx.digest();
@@ -109,17 +104,14 @@ async fn test_epoch_store_effects_signatures() {
     // After executing a transaction, the epoch store should have an effects
     // signature stored that is retrievable by the transaction digest.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 10_000_000, 10_000_000);
 
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let tx_digest = *tx.digest();

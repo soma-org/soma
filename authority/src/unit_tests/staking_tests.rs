@@ -196,27 +196,21 @@ async fn test_withdraw_stake_drains_delegation_row() {
 
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    // Seed sender's SOMA balance so balance-mode AddStake can debit it.
-    authority_state
-        .database_for_testing()
-        .set_balance(sender, CoinType::Soma, 50_000_000)
-        .unwrap();
-
-    let gas_coin =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
-    let gas_ref = gas_coin.compute_object_reference();
-    authority_state.insert_genesis_object(gas_coin).await;
+    // Stage 13c: seed both SOMA (stake principal) and USDC (gas).
+    let store = authority_state.database_for_testing();
+    store.set_balance(sender, CoinType::Soma, 50_000_000).unwrap();
+    store.set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
 
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    // Step 1: AddStake (Stage 9d-C2: balance-mode).
+    // Step 1: AddStake (Stage 13c: balance-mode for stake + gas).
     let add_data = TransactionData::new(
         TransactionKind::AddStake { validator: validator_address, amount: stake_amount },
         sender,
-        vec![gas_ref],
+        vec![],
     );
     let add_tx = to_sender_signed_transaction(add_data, &sender_key);
     let (_, add_effects) =
@@ -244,16 +238,13 @@ async fn test_withdraw_stake_drains_delegation_row() {
         "delegation row's principal must equal the staked amount",
     );
 
-    // Step 2: WithdrawStake (Stage 9d-C3: balance-mode, drains the row).
-    let gas_coin2 =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
-    let gas_ref2 = gas_coin2.compute_object_reference();
-    authority_state.insert_genesis_object(gas_coin2).await;
-
+    // Step 2: WithdrawStake (Stage 13c: balance-mode, drains the row).
+    // Top up USDC so the second tx can pay gas.
+    store.set_balance(sender, CoinType::Usdc, 10_000_000).unwrap();
     let withdraw_data = TransactionData::new(
         TransactionKind::WithdrawStake { pool_id: pool, amount: None },
         sender,
-        vec![gas_ref2],
+        vec![],
     );
     let withdraw_tx = to_sender_signed_transaction(withdraw_data, &sender_key);
     let (_, withdraw_effects) =
@@ -298,16 +289,14 @@ async fn test_withdraw_stake_drains_delegation_row() {
 #[tokio::test]
 async fn test_withdraw_stake_nonexistent_object() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let gas_id = ObjectID::random();
-    // Gas coin is USDC.
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(gas.clone()).await;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Usdc, 10_000_000)
+        .unwrap();
 
-    let gas_ref = gas.compute_object_reference();
-
-    // Stage 9d-C3: WithdrawStake against a pool the sender has no
+    // Stage 13c: WithdrawStake against a pool the sender has no
     // stake in. Executor reads the prefetched (pool, sender) row,
     // finds none, errors out.
     let data = TransactionData::new(
@@ -316,7 +305,7 @@ async fn test_withdraw_stake_nonexistent_object() {
             amount: None,
         },
         sender,
-        vec![gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &key);
     let result = send_and_confirm_transaction_(&authority_state, None, tx, true).await;
@@ -361,17 +350,11 @@ async fn execute_add_stake_with_gas(
 ) -> TransactionResult {
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    // Stage 9d-C2: AddStake debits the sender's SOMA balance directly.
-    authority_state
-        .database_for_testing()
-        .set_balance(sender, CoinType::Soma, soma_balance)
-        .unwrap();
-
-    // USDC gas coin.
-    let gas_coin =
-        Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, gas_balance);
-    let gas_ref = gas_coin.compute_object_reference();
-    authority_state.insert_genesis_object(gas_coin).await;
+    // Stage 13c: AddStake debits SOMA from the accumulator and gas
+    // (USDC) from the accumulator. Both balances are seeded directly.
+    let store = authority_state.database_for_testing();
+    store.set_balance(sender, CoinType::Soma, soma_balance).unwrap();
+    store.set_balance(sender, CoinType::Usdc, gas_balance).unwrap();
 
     let validator_address = {
         let system_state = authority_state.get_system_state_object_for_testing().unwrap();
@@ -381,7 +364,7 @@ async fn execute_add_stake_with_gas(
     let data = TransactionData::new(
         TransactionKind::AddStake { validator: validator_address, amount },
         sender,
-        vec![gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let txn_result = send_and_confirm_transaction_(&authority_state, None, tx, true)

@@ -263,16 +263,15 @@ pub fn init_transfer_transaction(
     authority_state.epoch_store_for_testing().verify_transaction(tx).unwrap()
 }
 
-/// Stage 13b helper: construct a coin-mode-gas BalanceTransfer
-/// TransactionData. Replaces the deleted `new_transfer_coin`. The
-/// `coin_ref` becomes the gas-payment object; the SOMA debit comes
-/// out of the sender's balance accumulator. Signature mirrors the
-/// old `new_transfer_coin` (Option<u64>) for drop-in replacement.
+/// Stage 13c helper: construct a balance-mode BalanceTransfer
+/// TransactionData. Gas comes from the sender's USDC accumulator
+/// (callers must seed it via `seed_balance_mode_funds`); the SOMA
+/// debit comes from the sender's SOMA accumulator. The
+/// `gas_payment` is empty — no coin gas object exists anymore.
 pub fn balance_transfer_data_legacy(
     recipient: SomaAddress,
     sender: SomaAddress,
     amount: Option<u64>,
-    coin_ref: ObjectRef,
 ) -> TransactionData {
     use types::object::CoinType;
     use types::transaction::{BalanceTransferArgs, TransactionKind};
@@ -283,8 +282,28 @@ pub fn balance_transfer_data_legacy(
             transfers: vec![(recipient, amt)],
         }),
         sender,
-        vec![coin_ref],
+        vec![],
     )
+}
+
+/// Stage 13c helper: seed the sender's balance accumulator for
+/// balance-mode tests. Tests that previously created a Coin gas
+/// object should now call this to fund USDC (gas) and SOMA (the
+/// transferable balance), then submit a tx with empty `gas_payment`.
+pub fn seed_balance_mode_funds(
+    authority_state: &AuthorityState,
+    sender: SomaAddress,
+    soma: u64,
+    usdc: u64,
+) {
+    use types::object::CoinType;
+    let store = authority_state.database_for_testing();
+    if soma > 0 {
+        store.set_balance(sender, CoinType::Soma, soma).unwrap();
+    }
+    if usdc > 0 {
+        store.set_balance(sender, CoinType::Usdc, usdc).unwrap();
+    }
 }
 
 pub fn init_certified_transfer_transaction(

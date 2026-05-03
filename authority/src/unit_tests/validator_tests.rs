@@ -16,7 +16,7 @@ use types::base::SomaAddress;
 use types::config::network_config::ConfigBuilder;
 use types::crypto::{SomaKeyPair, get_key_pair};
 use types::effects::{ExecutionStatus, TransactionEffectsAPI};
-use types::object::{Object, ObjectID};
+use types::object::ObjectID;
 use types::transaction::{TransactionData, TransactionKind, UpdateValidatorMetadataArgs};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
@@ -32,10 +32,6 @@ struct ValidatorTestSetup {
     authority_state: Arc<AuthorityState>,
     /// Address of validator 0 (signer for most tests)
     v0_address: SomaAddress,
-    /// Gas coin ObjectID for validator 0
-    v0_gas_id: ObjectID,
-    /// Gas coin ObjectRef for validator 0
-    v0_gas_ref: types::object::ObjectRef,
 }
 
 async fn setup_validator_test() -> (ValidatorTestSetup, SomaKeyPair) {
@@ -50,13 +46,13 @@ async fn setup_validator_test() -> (ValidatorTestSetup, SomaKeyPair) {
     let authority_state =
         TestAuthorityBuilder::new().with_network_config(&network_config, 0).build().await;
 
-    // Insert a gas coin for validator 0
-    let v0_gas_id = ObjectID::random();
-    let gas = Object::with_id_owner_coin_for_testing(v0_gas_id, v0_address, 50_000_000);
-    let v0_gas_ref = gas.compute_object_reference();
-    authority_state.insert_genesis_object(gas).await;
+    // Stage 13c: seed USDC accumulator for balance-mode gas.
+    authority_state
+        .database_for_testing()
+        .set_balance(v0_address, types::object::CoinType::Usdc, 50_000_000)
+        .unwrap();
 
-    (ValidatorTestSetup { authority_state, v0_address, v0_gas_id, v0_gas_ref }, v0_key)
+    (ValidatorTestSetup { authority_state, v0_address }, v0_key)
 }
 
 // =============================================================================
@@ -72,7 +68,7 @@ async fn test_set_commission_rate_success() {
     let data = TransactionData::new(
         TransactionKind::SetCommissionRate { new_rate },
         setup.v0_address,
-        vec![setup.v0_gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &v0_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -107,15 +103,16 @@ async fn test_set_commission_rate_not_a_validator() {
     let (setup, _v0_key) = setup_validator_test().await;
 
     let (random_sender, random_key): (_, Ed25519KeyPair) = get_key_pair();
-    let gas_id = ObjectID::random();
-    let gas = Object::with_id_owner_coin_for_testing(gas_id, random_sender, 10_000_000);
-    let gas_ref = gas.compute_object_reference();
-    setup.authority_state.insert_genesis_object(gas).await;
+    setup
+        .authority_state
+        .database_for_testing()
+        .set_balance(random_sender, types::object::CoinType::Usdc, 10_000_000)
+        .unwrap();
 
     let data = TransactionData::new(
         TransactionKind::SetCommissionRate { new_rate: 500 },
         random_sender,
-        vec![gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &random_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -157,7 +154,7 @@ async fn test_update_validator_metadata_success() {
             next_epoch_proof_of_possession: None,
         }),
         setup.v0_address,
-        vec![setup.v0_gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &v0_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -177,14 +174,16 @@ async fn test_report_validator_not_a_validator_reporter() {
     let (setup, _v0_key) = setup_validator_test().await;
 
     let (random_sender, random_key): (_, Ed25519KeyPair) = get_key_pair();
-    let gas = Object::with_id_owner_coin_for_testing(ObjectID::random(), random_sender, 10_000_000);
-    let gas_ref = gas.compute_object_reference();
-    setup.authority_state.insert_genesis_object(gas).await;
+    setup
+        .authority_state
+        .database_for_testing()
+        .set_balance(random_sender, types::object::CoinType::Usdc, 10_000_000)
+        .unwrap();
 
     let data = TransactionData::new(
         TransactionKind::ReportValidator { reportee: setup.v0_address },
         random_sender,
-        vec![gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &random_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -208,7 +207,7 @@ async fn test_report_validator_nonexistent_reportee() {
     let data = TransactionData::new(
         TransactionKind::ReportValidator { reportee: fake_reportee },
         setup.v0_address,
-        vec![setup.v0_gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &v0_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -234,7 +233,7 @@ async fn test_report_validator_self_report() {
     let data = TransactionData::new(
         TransactionKind::ReportValidator { reportee: setup.v0_address },
         setup.v0_address,
-        vec![setup.v0_gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &v0_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;
@@ -262,7 +261,7 @@ async fn test_undo_report_validator_no_record() {
     let data = TransactionData::new(
         TransactionKind::UndoReportValidator { reportee: fake_reportee },
         setup.v0_address,
-        vec![setup.v0_gas_ref],
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &v0_key);
     let result = send_and_confirm_transaction_(&setup.authority_state, None, tx, true).await;

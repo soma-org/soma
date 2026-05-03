@@ -14,12 +14,11 @@ use std::sync::Arc;
 
 use fastcrypto::ed25519::Ed25519KeyPair;
 use types::base::dbg_addr;
-use types::crypto::{SomaKeyPair, get_key_pair};
-use types::object::{Object, ObjectID};
-use types::transaction::{CertifiedTransaction, TransactionData};
+use types::crypto::get_key_pair;
+use types::transaction::CertifiedTransaction;
 use types::unit_tests::utils::to_sender_signed_transaction;
 
-use crate::authority_test_utils::certify_transaction;
+use crate::authority_test_utils::{certify_transaction, seed_balance_mode_funds};
 use crate::signature_verifier::SignatureVerifier;
 use crate::test_authority_builder::TestAuthorityBuilder;
 
@@ -36,17 +35,14 @@ async fn test_batch_verify_valid_certificates() {
     let committee = authority_state.clone_committee_for_testing();
     let verifier = SignatureVerifier::new(Arc::new(committee.clone()));
 
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
+
     let mut certs = Vec::new();
     for i in 0..4u8 {
-        let coin_id = ObjectID::random();
-        let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-        authority_state.insert_genesis_object(coin.clone()).await;
-
         let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
-            coin.compute_object_reference(),
         );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -68,15 +64,12 @@ async fn test_batch_verify_caching() {
     let committee = authority_state.clone_committee_for_testing();
     let verifier = SignatureVerifier::new(Arc::new(committee.clone()));
 
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -105,15 +98,12 @@ async fn test_async_verify_single_cert() {
     let committee = authority_state.clone_committee_for_testing();
     let verifier = SignatureVerifier::new(Arc::new(committee.clone()));
 
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -131,17 +121,14 @@ async fn test_multi_verify_certs_async() {
     let committee = authority_state.clone_committee_for_testing();
     let verifier = SignatureVerifier::new(Arc::new(committee.clone()));
 
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
+
     let mut certs = Vec::new();
     for i in 0..4u8 {
-        let coin_id = ObjectID::random();
-        let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-        authority_state.insert_genesis_object(coin.clone()).await;
-
         let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
-            coin.compute_object_reference(),
         );
         let tx = to_sender_signed_transaction(data, &sender_key);
         let cert = certify_transaction(&authority_state, tx).await.unwrap();
@@ -164,15 +151,12 @@ async fn test_verify_tx_sender_signature() {
     let committee = authority_state.clone_committee_for_testing();
     let verifier = SignatureVerifier::new(Arc::new(committee.clone()));
 
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
-    authority_state.insert_genesis_object(coin.clone()).await;
+    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
 
     let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
-        coin.compute_object_reference(),
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
 
