@@ -50,6 +50,9 @@ pub mod validator;
 #[path = "unit_tests/delegation_tests.rs"]
 mod delegation_tests;
 #[cfg(test)]
+#[path = "unit_tests/f1_pool_tests.rs"]
+mod f1_pool_tests;
+#[cfg(test)]
 #[path = "unit_tests/rewards_distribution_tests.rs"]
 mod rewards_distribution_tests;
 #[cfg(test)]

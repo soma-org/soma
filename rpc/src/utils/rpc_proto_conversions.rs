@@ -1285,6 +1285,13 @@ impl TryFrom<StakingPool> for types::system_state::staking::StakingPool {
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
 
+        // Stage 9d-A: F1 fields default to zero / empty when reconstructing
+        // from the proto wire shape — the proto schema hasn't been
+        // extended yet because Stage 9d-B will rewrite this whole
+        // struct. Defaults preserve the SystemState round-trip
+        // semantics for queries that only care about pool-token data.
+        let mut cumulative_index = BTreeMap::new();
+        cumulative_index.insert(0u64, 0u128);
         Ok(types::system_state::staking::StakingPool {
             id,
             activation_epoch: proto_pool.activation_epoch,
@@ -1302,6 +1309,10 @@ impl TryFrom<StakingPool> for types::system_state::staking::StakingPool {
             pending_pool_token_withdraw: proto_pool
                 .pending_pool_token_withdraw
                 .ok_or("Missing pending_pool_token_withdraw")?,
+            current_period: 0,
+            current_rewards: 0,
+            cumulative_index,
+            accumulated_commission: 0,
         })
     }
 }

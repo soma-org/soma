@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::object::ObjectID;
 
+/// F1 index scaling factor: cumulative reward indices are stored as fixed-point
+/// numbers with this denominator. 1e18 mirrors Cosmos SDK's `Dec` scale and
+/// keeps rounding error well below 1 shannon for any realistic stake size.
+pub const F1_INDEX_SCALE: u128 = 1_000_000_000_000_000_000;
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct StakingPool {
     pub id: ObjectID,
@@ -29,10 +34,57 @@ pub struct StakingPool {
     pub pending_total_soma_withdraw: u64,
     /// Pending pool token withdrawals
     pub pending_pool_token_withdraw: u64,
+
+    // ---------------------------------------------------------------
+    // F1 fee-distribution algorithm (Cosmos x/distribution model).
+    //
+    // Stage 9d-A is additive: these fields are populated alongside the
+    // pool-token bookkeeping above so that follow-up stages can switch
+    // reads over to F1 and delete the old fields. While both shapes
+    // coexist they must agree on per-staker reward arithmetic — the
+    // dual-update tests in `unit_tests/f1_dual_update_tests.rs` pin
+    // that invariant.
+    //
+    // Algorithm sketch:
+    //   * `current_rewards` accumulates reward shannons paid into the
+    //     pool by `deposit_staker_rewards` between stake-set changes.
+    //   * `current_period` is the index into `cumulative_index` for
+    //     the next snapshot. Snapshots are taken whenever the
+    //     stake-set changes (add/withdraw/restake) — this is the
+    //     "fold" that converts pending rewards into a per-share index.
+    //   * `cumulative_index[p]` is the monotonically-increasing total
+    //     reward-per-stake from genesis through period `p`, scaled by
+    //     `F1_INDEX_SCALE` to avoid integer truncation.
+    //   * A delegator's pending reward = principal *
+    //     (R(current_period) − R(last_collected_period)) / scale.
+    //   * Commission is split off the top in `deposit_staker_rewards`
+    //     so `current_rewards` always holds the *post-commission*
+    //     pool. The commission portion accrues in
+    //     `accumulated_commission` for the validator to withdraw.
+    // ---------------------------------------------------------------
+    /// F1 period counter. Starts at 0; incremented by `fold_rewards`
+    /// whenever the stake-set changes.
+    #[serde(default)]
+    pub current_period: u64,
+    /// Reward shannons (post-commission) accumulated since the last fold.
+    /// Folded into `cumulative_index[current_period + 1]` on the next
+    /// stake-set change.
+    #[serde(default)]
+    pub current_rewards: u128,
+    /// Cumulative reward-per-stake index. `cumulative_index[p]` =
+    /// Σ over periods 0..=p of (rewards in period / total_stake at fold time),
+    /// scaled by `F1_INDEX_SCALE`.
+    #[serde(default)]
+    pub cumulative_index: BTreeMap<u64, u128>,
+    /// Validator's accumulated commission shannons, withdrawable to balance.
+    #[serde(default)]
+    pub accumulated_commission: u64,
 }
 
 impl StakingPool {
     pub fn new(id: ObjectID) -> Self {
+        let mut cumulative_index = BTreeMap::new();
+        cumulative_index.insert(0, 0u128);
         Self {
             id,
             activation_epoch: None,
@@ -44,7 +96,86 @@ impl StakingPool {
             pending_stake: 0,
             pending_pool_token_withdraw: 0,
             pending_total_soma_withdraw: 0,
+            current_period: 0,
+            current_rewards: 0,
+            cumulative_index,
+            accumulated_commission: 0,
         }
+    }
+
+    // ---------------------------------------------------------------
+    // F1 helpers (Stage 9d-A: dual-update with the pool-token logic).
+    // ---------------------------------------------------------------
+
+    /// Look up the cumulative reward-per-stake index at period `p`.
+    /// Periods that pre-date pool activation report 0; later folds
+    /// monotonically increase the value. Out-of-range queries clamp
+    /// to the latest recorded period (a delegator that hasn't been
+    /// touched since the last fold sees the most recent index).
+    pub fn f1_index_at(&self, p: u64) -> u128 {
+        if let Some(v) = self.cumulative_index.get(&p) {
+            return *v;
+        }
+        self.cumulative_index
+            .range(..=p)
+            .next_back()
+            .map(|(_, v)| *v)
+            .unwrap_or(0)
+    }
+
+    /// Compute pending reward for a delegator with `principal` whose
+    /// last collection was at `last_collected_period`. The result is
+    /// in shannons; the index scaling (`F1_INDEX_SCALE`) is divided
+    /// out here.
+    pub fn f1_pending_reward(&self, principal: u64, last_collected_period: u64) -> u64 {
+        let cur = self.f1_index_at(self.current_period);
+        let last = self.f1_index_at(last_collected_period);
+        if cur <= last {
+            return 0;
+        }
+        let delta = cur - last;
+        ((principal as u128).saturating_mul(delta) / F1_INDEX_SCALE) as u64
+    }
+
+    /// Fold `current_rewards` into the index using `total_stake` as
+    /// the divisor and advance `current_period`. Called at the moment
+    /// a delegator's stake is about to change (add/withdraw/restake)
+    /// so that pending rewards are pinned at the rate that applied
+    /// while their old principal was in the pool.
+    ///
+    /// `total_stake` is the snapshot to use as denominator. F1 keeps
+    /// it as an explicit parameter so callers can distinguish "stake
+    /// at the start of the period" from any in-flight changes.
+    pub fn f1_fold_rewards(&mut self, total_stake: u64) {
+        if total_stake == 0 || self.current_rewards == 0 {
+            // Nothing to fold; still advance the period so a fresh
+            // delegator that joins now starts from this index.
+            self.current_period += 1;
+            self.cumulative_index.insert(
+                self.current_period,
+                self.f1_index_at(self.current_period - 1),
+            );
+            self.current_rewards = 0;
+            return;
+        }
+        let prev = self.f1_index_at(self.current_period);
+        let added = self
+            .current_rewards
+            .saturating_mul(F1_INDEX_SCALE)
+            / (total_stake as u128);
+        self.current_period += 1;
+        self.cumulative_index
+            .insert(self.current_period, prev.saturating_add(added));
+        self.current_rewards = 0;
+    }
+
+    /// Deposit a post-commission reward amount into the F1 pool. The
+    /// next call to `f1_fold_rewards` will distribute these to
+    /// delegators in proportion to their stake at fold time.
+    pub fn f1_deposit_pool_reward(&mut self, amount: u64) {
+        self.current_rewards = self
+            .current_rewards
+            .saturating_add(amount as u128);
     }
 
     /// Request to add stake to the staking pool

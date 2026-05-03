@@ -220,6 +220,12 @@ impl Validator {
         // Credit rewards to staking pool for auto-compounding
         self.next_epoch_stake += amount;
         self.staking_pool.deposit_rewards(amount);
+
+        // Stage 9d-A: dual-update F1 accumulator. The pool-token path
+        // above remains authoritative for now; this runs alongside so
+        // Stage 9d-B can switch reads with confidence the two paths
+        // agree.
+        self.staking_pool.f1_deposit_pool_reward(amount);
     }
 
     /// Set commission rate for the next epoch
