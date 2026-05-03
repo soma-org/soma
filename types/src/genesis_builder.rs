@@ -544,15 +544,10 @@ impl GenesisBuilder {
                         .checked_add(allocation.amount_shannons)
                         .expect("genesis delegation principal overflow");
                 } else {
-                    let coin_object = Object::new_coin(
-                        Self::deterministic_object_id(&mut id_counter),
-                        CoinType::Soma,
-                        allocation.amount_shannons,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(coin_object);
-                    // Mirror into the accumulator-balance table.
+                    // Stage 13a: SOMA allocations land directly in
+                    // the balance accumulator; no Coin object output.
+                    // The accumulator is the sole source of truth
+                    // for fungible balances post-Stage-13.
                     let entry = balances
                         .entry((allocation.recipient_address, CoinType::Soma))
                         .or_insert(0);
@@ -562,16 +557,9 @@ impl GenesisBuilder {
                 }
             }
 
-            // Process USDC allocations (test environments only)
+            // Stage 13a: USDC allocations (test environments only)
+            // also land balance-only.
             for usdc in &schedule.usdc_allocations {
-                let coin_object = Object::new_coin(
-                    Self::deterministic_object_id(&mut id_counter),
-                    CoinType::Usdc,
-                    usdc.amount_microdollars,
-                    Owner::AddressOwner(usdc.recipient_address),
-                    TransactionDigest::default(),
-                );
-                objects.push(coin_object);
                 let entry =
                     balances.entry((usdc.recipient_address, CoinType::Usdc)).or_insert(0);
                 *entry = entry
@@ -580,21 +568,12 @@ impl GenesisBuilder {
             }
         }
 
-        // Give every validator a starter USDC balance so they can submit
-        // user-level txs (AddStake, etc.) without needing to bridge USDC in
-        // first. Trivial amount; tests rely on this for validator-as-sender
-        // scenarios. Not load-bearing for production: in production, validators
-        // bridge USDC in like anyone else if they need it.
+        // Stage 13a: validator starter USDC also lands in the
+        // accumulator only. Validators submit balance-mode txs (gas
+        // is debited from this USDC balance directly) so they don't
+        // need a Coin object hand-out.
         const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
         for v in &self.validators {
-            let coin_object = Object::new_coin(
-                Self::deterministic_object_id(&mut id_counter),
-                CoinType::Usdc,
-                VALIDATOR_GENESIS_USDC,
-                Owner::AddressOwner(v.info.account_address),
-                TransactionDigest::default(),
-            );
-            objects.push(coin_object);
             let entry =
                 balances.entry((v.info.account_address, CoinType::Usdc)).or_insert(0);
             *entry = entry

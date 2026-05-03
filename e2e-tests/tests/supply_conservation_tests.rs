@@ -97,6 +97,9 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     // Execute several AddStake transactions to move SOMA from coins -> staking pools.
     let validator_address = pre_ss.validators().validators[0].metadata.soma_address;
 
+    // Stage 13a: AddStake is balance-mode and there are no SOMA
+    // coin objects to fetch. Gas (USDC) still works as a coin
+    // object until the broader Coin-deletion stages.
     for i in 0..3 {
         let sender = test_cluster.get_addresses()[i];
         let gas = test_cluster
@@ -105,18 +108,11 @@ async fn test_supply_conservation_across_epoch_with_staking() {
             .await
             .unwrap()
             .expect("Should have gas");
-        let (stake_coin, _) = test_cluster
-            .wallet
-            .get_richest_soma_coin(sender)
-            .await
-            .unwrap()
-            .expect("Should have SOMA coin");
 
         let tx_data = TransactionData::new(
             TransactionKind::AddStake {
-                address: validator_address,
-                coin_ref: stake_coin,
-                amount: Some(1_000_000),
+                validator: validator_address,
+                amount: 1_000_000,
             },
             sender,
             vec![gas],
@@ -193,18 +189,11 @@ async fn test_supply_conservation_multi_epoch() {
             .await
             .unwrap()
             .expect("Should have gas");
-        let (stake_coin, _) = test_cluster
-            .wallet
-            .get_richest_soma_coin(sender)
-            .await
-            .unwrap()
-            .expect("Should have SOMA coin");
 
         let tx_data = TransactionData::new(
             TransactionKind::AddStake {
-                address: validator_address,
-                coin_ref: stake_coin,
-                amount: Some(500_000),
+                validator: validator_address,
+                amount: 500_000,
             },
             sender,
             vec![gas],
@@ -269,17 +258,14 @@ async fn test_emission_pool_accounting() {
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
     let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
-    // Gas is USDC; stake principal must be SOMA.
+    // Stage 13a: AddStake is balance-mode. Gas is USDC.
     let gas =
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-    let (stake_coin, _) =
-        test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().unwrap();
 
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas],

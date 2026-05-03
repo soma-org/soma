@@ -1661,7 +1661,9 @@ impl AuthorityState {
             system_state_balance += v.staking_pool.accumulated_commission as u128;
         }
 
-        // Iterate all live objects to sum coin balances
+        // Stage 13a: SOMA also lives in the balance accumulator.
+        // Sum SOMA entries from the accumulator (USDC entries are
+        // bridged-in shannons, not part of SOMA supply).
         let mut coin_balance: u128 = 0;
         let mut object_count: u64 = 0;
 
@@ -1671,18 +1673,26 @@ impl AuthorityState {
             };
             object_count += 1;
 
-            match obj.type_() {
-                ObjectType::Coin(CoinType::Soma) => {
-                    if let Some(balance) = obj.as_coin() {
-                        coin_balance += balance as u128;
-                    }
+            // Stage 13a kept ObjectType::Coin around for legacy
+            // chain history, but genesis no longer mints any. Any
+            // surviving Coin object here would still be SOMA supply.
+            if let ObjectType::Coin(CoinType::Soma) = obj.type_() {
+                if let Some(balance) = obj.as_coin() {
+                    coin_balance += balance as u128;
                 }
-                // USDC coins are minted via bridge and are not part of SOMA supply
-                ObjectType::Coin(CoinType::Usdc) => {}
-                // SystemState: accounted above via get_system_state_object_for_testing
-                _ => {}
             }
         }
+
+        // Sum the balance accumulator's SOMA entries.
+        let mut accumulator_soma: u128 = 0;
+        if let Ok(rows) = self.database_for_testing().iter_all_balances() {
+            for ((_, coin_type), balance) in rows {
+                if matches!(coin_type, CoinType::Soma) {
+                    accumulator_soma += balance as u128;
+                }
+            }
+        }
+        coin_balance += accumulator_soma;
 
         let total_accounted = coin_balance + system_state_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;

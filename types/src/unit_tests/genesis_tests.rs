@@ -152,6 +152,10 @@ fn test_genesis_creates_validators() {
 // ===========================================================================
 
 #[test]
+/// Stage 13a: genesis no longer creates Coin objects for SOMA
+/// allocations — they land balance-only in the accumulator. This
+/// test checks that the recipient's balance matches the allocation
+/// and that no Coin objects were materialised.
 fn test_genesis_creates_initial_coins() {
     let configs = make_validator_configs(2);
     let coin_addr = SomaAddress::random();
@@ -165,25 +169,25 @@ fn test_genesis_creates_initial_coins() {
         .with_token_distribution_schedule(schedule)
         .build_unsigned_genesis();
 
-    // Find Coin objects owned by coin_addr
     let coin_objects: Vec<_> = unsigned
         .objects()
         .iter()
         .filter(|o| matches!(o.type_(), ObjectType::Coin(_)) && o.owner == Owner::AddressOwner(coin_addr))
         .collect();
+    assert!(
+        coin_objects.is_empty(),
+        "Stage 13a: genesis must not produce Coin objects for SOMA allocations",
+    );
 
-    assert!(!coin_objects.is_empty(), "Must have at least one coin object for the recipient");
-
-    // Verify balance
-    let total_coin_balance: u64 = coin_objects
-        .iter()
-        .map(|o| {
-            let balance: u64 = bcs::from_bytes(o.as_inner().data.contents()).unwrap();
-            balance
-        })
-        .sum();
-
-    assert_eq!(total_coin_balance, coin_amount, "Total coin balance must match allocation");
+    let balance = unsigned
+        .balances()
+        .get(&(coin_addr, CoinType::Soma))
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        balance, coin_amount,
+        "balance accumulator must hold the allocation amount",
+    );
 }
 
 // ===========================================================================
@@ -730,6 +734,8 @@ fn test_genesis_unsigned_serialization_roundtrip() {
 
 const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000;
 
+/// Stage 13a: unstaked SOMA allocations land in the accumulator
+/// only. No Coin objects are produced.
 #[test]
 fn test_genesis_balances_unstaked_soma_allocation() {
     let configs = make_validator_configs(2);
@@ -747,8 +753,6 @@ fn test_genesis_balances_unstaked_soma_allocation() {
         .with_token_distribution_schedule(schedule)
         .build_unsigned_genesis();
 
-    // Unstaked SOMA recipient must have an entry whose amount matches the
-    // sum of all matching coin objects.
     let bal = unsigned
         .balances()
         .get(&(coin_addr, CoinType::Soma))
@@ -756,18 +760,17 @@ fn test_genesis_balances_unstaked_soma_allocation() {
         .expect("recipient must have a SOMA balance entry");
     assert_eq!(bal, coin_amount, "balance entry must equal allocation");
 
-    let coin_object_total: u64 = unsigned
+    let coin_object_count = unsigned
         .objects()
         .iter()
         .filter(|o| {
             matches!(o.type_(), ObjectType::Coin(CoinType::Soma))
                 && o.owner == Owner::AddressOwner(coin_addr)
         })
-        .map(|o| o.as_coin().expect("coin object"))
-        .sum();
+        .count();
     assert_eq!(
-        bal, coin_object_total,
-        "balance must mirror the coin objects until Stage 13"
+        coin_object_count, 0,
+        "Stage 13a: genesis must not produce Coin objects for SOMA allocations",
     );
 }
 
@@ -919,11 +922,11 @@ fn test_genesis_balances_zero_when_no_schedule() {
     }
 }
 
+/// Stage 13a invariant: genesis allocations land entirely in the
+/// balance accumulator. No Coin objects are produced for the
+/// allocated funds; the accumulator is the sole record.
 #[test]
-fn test_genesis_balances_total_matches_coin_objects() {
-    // Invariant during the transition (Stage 1c → Stage 13): for every
-    // (owner, coin_type) entry in the balance map, the sum of matching coin
-    // objects must equal that entry. If they diverge, the chain is broken.
+fn test_genesis_allocations_land_in_accumulator_only() {
     let configs = make_validator_configs(3);
     let r1 = SomaAddress::random();
     let r2 = SomaAddress::random();
@@ -957,21 +960,31 @@ fn test_genesis_balances_total_matches_coin_objects() {
         .with_token_distribution_schedule(schedule)
         .build_unsigned_genesis();
 
-    for ((owner, coin_type), expected) in unsigned.balances() {
-        let total: u64 = unsigned
-            .objects()
-            .iter()
-            .filter(|o| {
-                matches!(o.type_(), ObjectType::Coin(ct) if ct == coin_type)
-                    && o.owner == Owner::AddressOwner(*owner)
-            })
-            .map(|o| o.as_coin().expect("coin object contents"))
-            .sum();
-        assert_eq!(
-            total, *expected,
-            "coin objects for ({owner}, {coin_type:?}) must sum to balance entry"
-        );
-    }
+    // No Coin objects in the genesis object set.
+    let coin_count = unsigned
+        .objects()
+        .iter()
+        .filter(|o| matches!(o.type_(), ObjectType::Coin(_)))
+        .count();
+    assert_eq!(
+        coin_count, 0,
+        "Stage 13a: genesis must not produce Coin objects",
+    );
+
+    // r1 has both a SOMA and USDC entry.
+    assert_eq!(
+        unsigned.balances().get(&(r1, CoinType::Soma)).copied(),
+        Some(17 * SHANNONS_PER_SOMA),
+    );
+    assert_eq!(
+        unsigned.balances().get(&(r1, CoinType::Usdc)).copied(),
+        Some(999_999),
+    );
+    // r2 has only a SOMA entry.
+    assert_eq!(
+        unsigned.balances().get(&(r2, CoinType::Soma)).copied(),
+        Some(31 * SHANNONS_PER_SOMA),
+    );
 }
 
 #[test]

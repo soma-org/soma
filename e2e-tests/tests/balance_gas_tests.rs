@@ -65,19 +65,10 @@ async fn test_balance_mode_gas_addstake_succeeds() {
     let initial_balance = read_usdc_balance(&test_cluster, sender);
     assert!(initial_balance > 0, "sender must start with USDC balance for balance-mode gas");
 
-    // Get a SOMA coin to stake. Gas is balance-mode; only the stake
-    // principal needs an owned input.
-    let (stake_coin, _) = test_cluster
-        .wallet
-        .get_richest_soma_coin(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a SOMA coin to stake");
-
-    // Stage 9d-C2: AddStake is balance-mode — both stake and gas
-    // come out of the sender's accumulator. ValidDuring covers the
-    // current epoch.
-    let _ = stake_coin;
+    // Stage 9d-C2 + 13a: AddStake is balance-mode — both stake and
+    // gas come out of the sender's accumulator. No SOMA coin object
+    // is needed (and Stage 13a's genesis no longer creates them).
+    // ValidDuring covers the current epoch.
     let tx_data = TransactionData::new_with_expiration(
         TransactionKind::AddStake {
             validator: validator_address,
@@ -155,16 +146,9 @@ async fn test_balance_mode_gas_without_valid_during_is_rejected() {
             .soma_address
     });
 
-    let (stake_coin, _) = test_cluster
-        .wallet
-        .get_richest_soma_coin(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a SOMA coin");
-
-    // Stateless tx (empty gas_payment) but expiration = None.
-    // This should be rejected by the validator at signing time.
-    let _ = stake_coin;
+    // Stage 13a: AddStake is balance-mode — no SOMA coin object
+    // input. Stateless tx (empty gas_payment) but expiration = None
+    // — should be rejected by the validator at signing time.
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
             validator: validator_address,
