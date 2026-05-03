@@ -1,658 +1,470 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
+//
+// F1 reward-distribution tests (Stage 9d-C5+).
+//
+// The pre-Stage-9d versions of these tests asserted compounded
+// per-staker amounts against pool-token / exchange-rate semantics.
+// Under F1 the math is different:
+//
+//   * Validator rewards are split into commission (added to the
+//     validator's own row → bumps the pool's `total_stake`) and the
+//     post-commission staker_reward (parked in `pool_rewards`, the
+//     un-paid reward bank, with a matching `pending_fold_rewards`
+//     entry that drains into the cumulative index on the next fold).
+//   * `total_stake` reflects committed principal only — it does NOT
+//     compound with rewards. Pre-Stage-9d's "soma_balance grows by
+//     reward share" assertions don't apply.
+//   * Per-staker reward is computed at withdrawal time via
+//     `f1_pending_reward(principal, last_collected_period)` and
+//     drained from `pool_rewards`.
+//
+// These tests verify the pool-aggregate invariants:
+//   1. Conservation: emission_pool drops by E, validators' total_stake
+//      + pool_rewards rises by E exactly.
+//   2. Per-validator share: voting-power-proportional split before
+//      slashing.
+//   3. Commission credit lands in validator's total_stake; the rest
+//      lands in pool_rewards.
+//   4. F1 cumulative_index advances per epoch; pending_fold_rewards
+//      drains.
+//   5. Slashing: reported validator's reward is reduced by
+//      `reward_slashing_rate_bps`; the slashed amount redistributes
+//      proportionally to unslashed validators.
+//
+// Per-staker (multi-delegator) reward payout lives in the executor
+// + delegations-table layer; tests for that path live in
+// `authority::unit_tests::staking_tests`.
 
 #[cfg(test)]
 #[allow(clippy::module_inception, clippy::unwrap_used, clippy::expect_used)]
 mod rewards_distribution_tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use crate::base::{SomaAddress, dbg_addr};
     use crate::config::genesis_config::SHANNONS_PER_SOMA;
-    use crate::system_state::SystemState;
+    use crate::system_state::{SystemState, SystemStateTrait};
     use crate::system_state::test_utils::{
-        self, ValidatorRewards, advance_epoch_with_reward_amounts,
-        advance_epoch_with_reward_amounts_and_slashing_rates,
-        assert_validator_non_self_stake_amounts, assert_validator_self_stake_amounts,
-        assert_validator_total_stake_amounts, stake_with, total_soma_balance, unstake,
+        ValidatorRewards, advance_epoch_with_reward_amounts, create_test_system_state,
+        create_validator_for_testing,
     };
-    use crate::system_state::validator::Validator;
 
-    // Create constant validator addresses for testing
-    fn validator_addr_1() -> SomaAddress {
-        dbg_addr(1)
-    }
-    fn validator_addr_2() -> SomaAddress {
-        dbg_addr(2)
-    }
-    fn validator_addr_3() -> SomaAddress {
-        dbg_addr(3)
-    }
-    fn validator_addr_4() -> SomaAddress {
-        dbg_addr(4)
+    fn validator_addr(seed: u8) -> SomaAddress {
+        dbg_addr(seed)
     }
 
-    // Create constant staker addresses for testing
-    fn staker_addr_1() -> SomaAddress {
-        dbg_addr(5)
-    }
-    fn staker_addr_2() -> SomaAddress {
-        dbg_addr(6)
-    }
-    fn staker_addr_3() -> SomaAddress {
-        dbg_addr(7)
-    }
-    fn staker_addr_4() -> SomaAddress {
-        dbg_addr(8)
+    fn validator_addrs(n: u8) -> Vec<SomaAddress> {
+        (1..=n).map(validator_addr).collect()
     }
 
+    /// Standard 4-validator setup: stakes 100, 200, 300, 400 SOMA.
+    /// 1000 SOMA in subsidy fund, no auto-distribution (tests inject
+    /// per-epoch reward amounts manually).
+    fn set_up_4_validators() -> SystemState {
+        let stakes = [100u64, 200, 300, 400];
+        let validators = stakes
+            .iter()
+            .enumerate()
+            .map(|(i, &stake)| {
+                create_validator_for_testing(validator_addr(i as u8 + 1), stake * SHANNONS_PER_SOMA)
+            })
+            .collect();
+        create_test_system_state(validators, 1000, 0)
+    }
+
+    fn set_commission_rate(state: &mut SystemState, validator: SomaAddress, rate_bps: u64) {
+        state.request_set_commission_rate(validator, rate_bps).expect("set commission");
+    }
+
+    fn report_validator(state: &mut SystemState, reporter: SomaAddress, reportee: SomaAddress) {
+        state.report_validator(reporter, reportee).expect("report validator");
+    }
+
+    /// At each epoch boundary, the per-validator F1 pool aggregates a
+    /// reward share proportional to voting power. After a no-reward
+    /// bootstrap epoch (so genesis stakes activate) and one 100-SOMA
+    /// reward epoch, `total_stake + pool_rewards` rises by exactly
+    /// the validator's reward share — and the sum across all
+    /// validators recovers the full 100 SOMA.
     #[test]
-    fn test_validator_rewards() {
-        let mut system_state = set_up_system_state();
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Need to advance epoch so validator's staking starts counting
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Each validator gets 25 SOMA (total 100 SOMA rewards)
-        advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
-
-        // Validator total stake should increase by their share of rewards
-        // Voting power: v1=1500, v2=2500, v3=3000, v4=3000
-        // Rewards (100 SOMA): v1=15, v2=25, v3=30, v4=30
-        assert_validator_total_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![115_000_000_000, 225_000_000_000, 330_000_000_000, 430_000_000_000],
-        );
-
-        // Add a lot more stake to validator 2 to test voting power cap
-        stake_with(&mut system_state, validator_addr_2(), validator_addr_2(), 720);
-
-        // Advance epoch to activate new stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Distribute more rewards (100 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
-
-        // Voting power recalculated after v2's large stake increase:
-        // v1=1304, v2=3174, v3=2486, v4=3036
-        // Rewards (100 SOMA): v1=13.04, v2=31.74, v3=24.86, v4=30.36
-        assert_validator_total_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![128_040_000_000, 976_740_000_000, 354_860_000_000, 460_360_000_000],
-        );
-    }
-
-    #[test]
-    fn test_stake_subsidy() {
-        let mut system_state = set_up_system_state_with_big_amounts();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Need to advance epoch so validator's staking starts counting
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Each validator gets 25 SOMA (total 100 SOMA rewards)
-        advance_epoch_with_reward_amounts(&mut system_state, 100, &mut validator_stakes);
-
-        // Validator total stake should increase by their share of rewards
-        // Voting power: v1=1500, v2=2500, v3=3000, v4=3000
-        // Rewards (100 SOMA): v1=15, v2=25, v3=30, v4=30
-        assert_validator_total_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![
-                100_000_015 * SHANNONS_PER_SOMA,
-                200_000_025 * SHANNONS_PER_SOMA,
-                300_000_030 * SHANNONS_PER_SOMA,
-                400_000_030 * SHANNONS_PER_SOMA,
-            ],
-        );
-    }
-
-    #[test]
-    fn test_stake_rewards() {
-        let mut system_state = set_up_system_state();
-        let mut staker_withdrawals: BTreeMap<SomaAddress, u64> = BTreeMap::new();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Add stake to validators
-        let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 200);
-        let staked_soma_2 = stake_with(&mut system_state, staker_addr_2(), validator_addr_2(), 100);
-
-        // Advance epoch to activate stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Verify total stake amounts
-        assert_validator_total_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![
-                300 * SHANNONS_PER_SOMA,
-                300 * SHANNONS_PER_SOMA,
-                300 * SHANNONS_PER_SOMA,
-                400 * SHANNONS_PER_SOMA,
-            ],
-        );
-
-        // Verify validator self-stake amounts - just initial stakes at this point
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![
-                100 * SHANNONS_PER_SOMA,
-                200 * SHANNONS_PER_SOMA,
-                300 * SHANNONS_PER_SOMA,
-                400 * SHANNONS_PER_SOMA,
-            ],
-            &validator_stakes,
-        );
-
-        // Each validator gets 30 SOMA (total 120 SOMA rewards)
-        advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
-
-        // Verify validator self-stake amounts after rewards
-        // Self-stake grows proportionally to their share of the pool
-        // Voting power: v1=2452, v2=2452, v3=2451, v4=2645
-        // Pool rewards: v1=29.424, v2=29.424, v3=29.412, v4=31.740 SOMA
-        // v1 self: 100/300 * 29.424 = 9.808 → 109.808
-        // v2 self: 200/300 * 29.424 = 19.616 → 219.616
-        // v3 self: 300/300 * 29.412 = 29.412 → 329.412
-        // v4 self: 400/400 * 31.740 = 31.740 → 431.740
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![109_808_000_000, 219_616_000_000, 329_412_000_000, 431_740_000_000],
-            &validator_stakes,
-        );
-
-        // Unstake and track withdrawal amount
-        let withdrawn_1 = unstake(&mut system_state, staked_soma_1);
-        staker_withdrawals.insert(staker_addr_1(), withdrawn_1);
-
-        // Add more stake to validator 1
-        let staked_soma_3 = stake_with(&mut system_state, staker_addr_2(), validator_addr_1(), 600);
-
-        // Distribute more rewards (120 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
-
-        // Staker 1 should have received rewards proportional to their stake
-        // Withdrawal: 200 SOMA principal + 200/300 * 29.424 SOMA reward = 219.616 SOMA
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 219_616_000_000);
-
-        // Validator self-stake amounts after second round of 120 SOMA rewards
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![139_268_000_000, 239_256_000_000, 358_860_000_000, 463_372_000_000],
-            &validator_stakes,
-        );
-
-        // Unstake staker 2's first stake and track withdrawal
-        let withdrawn_2 = unstake(&mut system_state, staked_soma_2);
-        staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
-
-        // Verify staker 2's first withdrawal includes rewards
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 119_628_000_000);
-
-        // Distribute more rewards (40 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 40, &mut validator_stakes);
-
-        // Unstake staker 2's second stake and add to tracked withdrawals
-        let withdrawn_3 = unstake(&mut system_state, staked_soma_3);
-        staker_withdrawals.insert(
-            staker_addr_2(),
-            total_soma_balance(&staker_withdrawals, staker_addr_2()) + withdrawn_3,
-        );
-
-        // Verify total withdrawal amount for staker 2
-        let staker_2_balance = total_soma_balance(&staker_withdrawals, staker_addr_2());
-        assert_eq!(staker_2_balance, 728_841_438_157);
-    }
-
-    #[test]
-    fn test_stake_tiny_rewards() {
-        let mut system_state = set_up_system_state_with_big_amounts();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Stake a large amount
-        let staked_soma_1 =
-            stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 200_000_000);
-
-        // Advance epoch to activate stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Distribute significant rewards
-        advance_epoch_with_reward_amounts(&mut system_state, 150_000, &mut validator_stakes);
-
-        // Stake a small amount to the same validator
-        let staked_soma_2 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 10);
-
-        // Distribute small rewards
-        advance_epoch_with_reward_amounts(&mut system_state, 130, &mut validator_stakes);
-
-        // Unstake the small stake
-        unstake(&mut system_state, staked_soma_2);
-
-        // Distribute more rewards and ensure no errors
-        advance_epoch_with_reward_amounts(&mut system_state, 150, &mut validator_stakes);
-
-        // Unstake the large stake and verify it succeeded
-        let withdrawn = unstake(&mut system_state, staked_soma_1);
-        assert!(withdrawn > 200_000_000 * SHANNONS_PER_SOMA, "Should have received rewards");
-    }
-
-    #[test]
-    fn test_validator_commission() {
-        let mut system_state = set_up_system_state();
-        let mut staker_withdrawals: BTreeMap<SomaAddress, u64> = BTreeMap::new();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Add stake to validators
-        let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 100);
-        let staked_soma_2 = stake_with(&mut system_state, staker_addr_2(), validator_addr_2(), 100);
-
-        // Advance epoch to activate stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Set commission rate for validator 2 to 20% (2000 basis points)
-        set_commission_rate(&mut system_state, validator_addr_2(), 2000);
-
-        // Advance epoch to apply commission rate change
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Distribute rewards (120 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
-
-        // Check non-self stake amounts
-        // v1 (0% commission): non-self = 100/200 * 22.488 = 11.244 → 111.244
-        // v2 (20% commission): staker_reward = 32.508 * 0.8 = 26.0064, non-self = 100/300 * 26.0064 = 8.6688 → 108.6688
-        assert_validator_non_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![111_244_000_000, 108_668_800_000, 0, 0],
-            &validator_stakes,
-        );
-
-        // Check validator self stake amounts
-        // v1: self 100/200 * 22.488 = 11.244 → 111.244
-        // v2: self 200/300 * 26.0064 + 6.5016 commission = 17.3376 + 6.5016 = 23.8392 → 223.8392
-        // v3: 300 + 32.496 = 332.496
-        // v4: 400 + 32.508 = 432.508
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![111_244_000_000, 223_839_200_000, 332_496_000_000, 432_508_000_000],
-            &validator_stakes,
-        );
-
-        // Set commission rate for validator 1 to 10% (1000 basis points)
-        set_commission_rate(&mut system_state, validator_addr_1(), 1000);
-
-        // Advance epoch to apply commission rate change
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Distribute more rewards (240 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 240, &mut validator_stakes);
-
-        // Verify total stake amounts after 240 SOMA more rewards
-        assert_validator_total_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![267_800_000_000, 397_404_000_000, 397_392_000_000, 497_404_000_000],
-        );
-
-        // Verify split between validator and staker stakes
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![136_165_600_000, 271_767_980_095, 397_392_000_000, 497_404_000_000],
-            &validator_stakes,
-        );
-
-        assert_validator_non_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![131_634_400_000, 125_636_019_905, 0, 0],
-            &validator_stakes,
-        );
-    }
-
-    #[test]
-    fn test_rewards_slashing() {
-        let mut system_state = set_up_system_state();
-        let mut staker_withdrawals: BTreeMap<SomaAddress, u64> = BTreeMap::new();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Advance epoch to start reward counting
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Add stake to validators
-        let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 100);
-        let staked_soma_2 = stake_with(&mut system_state, staker_addr_2(), validator_addr_2(), 100);
-
-        // Advance epoch to activate stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Report validator 2 by 3 other validators (75% of stake)
-        report_validator(&mut system_state, validator_addr_1(), validator_addr_2());
-        report_validator(&mut system_state, validator_addr_3(), validator_addr_2());
-        report_validator(&mut system_state, validator_addr_4(), validator_addr_2());
-
-        // Report validator 1 by only 1 other validator (25% of stake)
-        report_validator(&mut system_state, validator_addr_3(), validator_addr_1());
-
-        // Distribute rewards (3600 SOMA) with 10% reward slashing for reported validators
-        // In our implementation, advance_epoch has a built-in slashing mechanism
-        advance_epoch_with_reward_amounts_and_slashing_rates(
-            &mut system_state,
-            3600,
-            1000,
-            &mut validator_stakes,
-        );
-
-        // Validator 2 should have 10% of rewards slashed (reward_slashing_rate=1000 bps)
-        // v2 reported by quorum → 10% of v2's reward redistributed to others
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![449_853_258_537, 785_144_000_000, 1_311_102_053_490, 1_411_475_429_433],
-            &validator_stakes,
-        );
-
-        // Unstake to check rewards
-        let withdrawn_1 = unstake(&mut system_state, staked_soma_1);
-        let withdrawn_2 = unstake(&mut system_state, staked_soma_2);
-
-        staker_withdrawals.insert(staker_addr_1(), withdrawn_1);
-        staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
-
-        // Staker 1 gets full rewards (same share as v1 self-stake)
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 449_853_258_537);
-
-        // Staker 2 gets reduced rewards (v2 was slashed 10%)
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 392_572_000_000);
-    }
-
-    #[test]
-    fn test_entire_rewards_slashing() {
-        let mut system_state = set_up_system_state();
-        let mut staker_withdrawals: BTreeMap<SomaAddress, u64> = BTreeMap::new();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Advance epoch to start reward counting
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Add stake to validators
-        let staked_soma_1 = stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 100);
-        let staked_soma_2 = stake_with(&mut system_state, staker_addr_2(), validator_addr_2(), 100);
-
-        // Advance epoch to activate stake
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Report validator 2 by 3 other validators (75% of stake)
-        report_validator(&mut system_state, validator_addr_1(), validator_addr_2());
-        report_validator(&mut system_state, validator_addr_3(), validator_addr_2());
-        report_validator(&mut system_state, validator_addr_4(), validator_addr_2());
-
-        // Distribute rewards (3600 SOMA) with 100% reward slashing
-        advance_epoch_with_reward_amounts_and_slashing_rates(
-            &mut system_state,
-            3600,
-            10000,
-            &mut validator_stakes,
-        );
-
-        // Validator 2 should have all rewards slashed (reward_slashing_rate=10000 bps = 100%)
-        // v2's entire reward redistributed to other validators
-        assert_validator_self_stake_amounts(
-            &system_state,
-            validator_addrs(),
-            vec![562_652_585_379, 200_000_000_000, 1_637_100_534_906, 1_737_594_294_335],
-            &validator_stakes,
-        );
-
-        // Unstake to check rewards
-        let withdrawn_1 = unstake(&mut system_state, staked_soma_1);
-        let withdrawn_2 = unstake(&mut system_state, staked_soma_2);
-
-        staker_withdrawals.insert(staker_addr_1(), withdrawn_1);
-        staker_withdrawals.insert(staker_addr_2(), withdrawn_2);
-
-        // Staker 1 gets enhanced rewards (redistribution from slashed v2)
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_1()), 562_652_585_379);
-
-        // Staker 2 only gets principal back (v2 was 100% slashed on rewards)
-        assert_eq!(total_soma_balance(&staker_withdrawals, staker_addr_2()), 100_000_000_000);
-    }
-
-    #[test]
-    fn test_mul_rewards_withdraws_at_same_epoch() {
-        let mut system_state = set_up_system_state();
-        let mut staker_withdrawals: BTreeMap<SomaAddress, u64> = BTreeMap::new();
-
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Add stake to validator 1
-        let staked_soma_1_1 =
-            stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 220);
-
-        // Distribute rewards (40 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 40, &mut validator_stakes);
-
-        // Add more stake
-        let staked_soma_2_1 =
-            stake_with(&mut system_state, staker_addr_2(), validator_addr_1(), 480);
-
-        // Distribute rewards (120 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 120, &mut validator_stakes);
-
-        // Add more stakes
-        let staked_soma_1_2 =
-            stake_with(&mut system_state, staker_addr_1(), validator_addr_1(), 130);
-        let staked_soma_3_1 =
-            stake_with(&mut system_state, staker_addr_3(), validator_addr_1(), 390);
-
-        // Distribute rewards (280 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 280, &mut validator_stakes);
-
-        // Add more stakes
-        let staked_soma_3_2 =
-            stake_with(&mut system_state, staker_addr_3(), validator_addr_1(), 280);
-        let staked_soma_4_1 =
-            stake_with(&mut system_state, staker_addr_4(), validator_addr_1(), 1400);
-
-        // Distribute rewards (440 SOMA)
-        advance_epoch_with_reward_amounts(&mut system_state, 440, &mut validator_stakes);
-
-        // Verify total stake in validator 1's pool
-        let validator_1 = system_state
+    fn validators_receive_voting_power_proportional_rewards() {
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
+
+        // Snapshot pre-reward stakes so we can compute deltas.
+        let pre_stakes: Vec<u64> = state
             .validators()
             .validators
             .iter()
-            .find(|v| v.metadata.soma_address == validator_addr_1())
-            .expect("Validator 1 not found");
+            .map(|v| v.staking_pool.total_stake)
+            .collect();
+        let pre_emission = state.emission_pool().balance;
 
-        // Verify total stake in validator 1's pool
-        // Rewards are proportional to voting power, not equal splits
-        assert_eq!(
-            validator_1.staking_pool.soma_balance, 3_264_872_000_000,
-            "Unexpected validator 1 pool balance"
-        );
+        // Bootstrap epoch — no rewards.
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+        // First reward epoch.
+        advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
 
-        // Withdraw all stakes at once
-        let withdrawals = vec![
-            (staker_addr_1(), unstake(&mut system_state, staked_soma_1_1)),
-            (staker_addr_1(), unstake(&mut system_state, staked_soma_1_2)),
-            (staker_addr_2(), unstake(&mut system_state, staked_soma_2_1)),
-            (staker_addr_3(), unstake(&mut system_state, staked_soma_3_1)),
-            (staker_addr_3(), unstake(&mut system_state, staked_soma_3_2)),
-            (staker_addr_4(), unstake(&mut system_state, staked_soma_4_1)),
-        ];
-
-        // Process withdrawals
-        for (addr, amount) in withdrawals {
-            staker_withdrawals.insert(addr, total_soma_balance(&staker_withdrawals, addr) + amount);
+        // Reward share by voting power — each validator's
+        // (total_stake - pre_stake) + pool_rewards equals their share.
+        // Across all four, total reward must equal 100 SOMA.
+        let reward_shannons = 100 * SHANNONS_PER_SOMA;
+        let mut total_distributed: u128 = 0;
+        for (i, v) in state.validators().validators.iter().enumerate() {
+            let delta_stake = v.staking_pool.total_stake - pre_stakes[i];
+            let pool_rewards = v.staking_pool.pool_rewards;
+            total_distributed += delta_stake as u128 + pool_rewards as u128;
         }
-
-        // Verify staker balances after withdrawals
         assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_1()) / SHANNONS_PER_SOMA,
-            435,
-            "Incorrect withdrawal amount for staker 1"
+            total_distributed, reward_shannons as u128,
+            "sum of (Δtotal_stake + pool_rewards) must equal the full reward emitted",
         );
 
+        // Conservation: emission_pool dropped by exactly the reward.
+        let post_emission = state.emission_pool().balance;
         assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_2()) / SHANNONS_PER_SOMA,
-            580,
-            "Incorrect withdrawal amount for staker 2"
+            pre_emission - post_emission,
+            reward_shannons,
+            "emission_pool decrement must match the reward emitted",
         );
+    }
 
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_3()) / SHANNONS_PER_SOMA,
-            708,
-            "Incorrect withdrawal amount for staker 3"
-        );
+    /// With the default 0-bps commission rate, *all* of a validator's
+    /// reward lands in `pool_rewards` (the staker pool) and none in
+    /// `total_stake`. F1 fold drains `pending_fold_rewards`; the
+    /// cumulative index advances; `pool_rewards` stays as the bank.
+    #[test]
+    fn zero_commission_routes_full_reward_to_pool_rewards() {
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
 
-        // Staker 4 joined and left in the same epoch, so no rewards
-        assert_eq!(
-            total_soma_balance(&staker_withdrawals, staker_addr_4()),
-            1400 * SHANNONS_PER_SOMA,
-            "Incorrect withdrawal amount for staker 4"
-        );
-
-        // Advance epoch one more time
-        advance_epoch_with_reward_amounts(&mut system_state, 0, &mut validator_stakes);
-
-        // Verify validator pool after all withdrawals
-        let validator_1 = system_state
+        let pre_stakes: Vec<u64> = state
             .validators()
             .validators
             .iter()
-            .find(|v| v.metadata.soma_address == validator_addr_1())
-            .expect("Validator 1 not found");
+            .map(|v| v.staking_pool.total_stake)
+            .collect();
 
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+        advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
+
+        for (i, v) in state.validators().validators.iter().enumerate() {
+            assert_eq!(
+                v.staking_pool.total_stake, pre_stakes[i],
+                "0-bps commission must not bump total_stake (validator {})",
+                v.metadata.soma_address,
+            );
+            // pool_rewards holds the staker share. Index has folded,
+            // so `pending_fold_rewards` drained to 0.
+            assert!(
+                v.staking_pool.pool_rewards > 0,
+                "validator {} must accrue reward bank",
+                v.metadata.soma_address,
+            );
+            assert_eq!(
+                v.staking_pool.pending_fold_rewards, 0,
+                "fold must drain pending_fold_rewards",
+            );
+            // Index advanced (bootstrap fold + reward fold = period 2).
+            assert_eq!(v.staking_pool.current_period, 2);
+        }
+    }
+
+    /// Non-zero commission diverts the commission share into the
+    /// validator's row (bumps `total_stake`); the post-commission
+    /// staker_reward goes to `pool_rewards`. Assert the split sums
+    /// to the validator's total reward share.
+    #[test]
+    fn commission_credits_validator_total_stake_remainder_to_pool_rewards() {
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
+
+        // Bootstrap.
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+
+        // Set v2 to 20% commission. Commission rate updates take
+        // effect at the next epoch boundary, so advance once before
+        // injecting rewards.
+        set_commission_rate(&mut state, validator_addr(2), 2000);
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+
+        // Snapshot just before the reward epoch.
+        let v2_pre_stake = state.validators().validators[1].staking_pool.total_stake;
+
+        // 100 SOMA reward — v2's share by voting power.
+        advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
+
+        let v2 = &state.validators().validators[1];
+        let delta_stake = v2.staking_pool.total_stake - v2_pre_stake;
+        let staker_pool = v2.staking_pool.pool_rewards;
+        let total_reward_to_v2 = delta_stake + staker_pool;
+
+        // Commission rate 2000 bps = 20%. Commission lands in
+        // total_stake; post-commission lands in pool_rewards.
+        assert!(total_reward_to_v2 > 0, "v2 must receive a reward share");
+        let commission_share = (total_reward_to_v2 as u128 * 2000) / 10000;
         assert_eq!(
-            validator_1.staking_pool.soma_balance, 140_929_659_227,
-            "Unexpected validator 1 pool after all withdrawals"
+            delta_stake as u128, commission_share,
+            "commission share must land in total_stake",
+        );
+        assert_eq!(
+            staker_pool as u128,
+            total_reward_to_v2 as u128 - commission_share,
+            "remainder must land in pool_rewards",
+        );
+
+        // Validators with default 0% commission see pool_rewards-only.
+        for i in [0usize, 2, 3] {
+            let v = &state.validators().validators[i];
+            // After bootstrap + commission-rate-change epoch + 100 SOMA
+            // epoch, default validators' total_stake hasn't moved.
+            assert_eq!(
+                v.staking_pool.total_stake,
+                if i == 0 {
+                    100 * SHANNONS_PER_SOMA
+                } else if i == 2 {
+                    300 * SHANNONS_PER_SOMA
+                } else {
+                    400 * SHANNONS_PER_SOMA
+                },
+                "validator {} (0% commission) total_stake must not move",
+                v.metadata.soma_address,
+            );
+            assert!(v.staking_pool.pool_rewards > 0);
+        }
+    }
+
+    /// F1 cumulative_index advances exactly once per epoch boundary,
+    /// monotonically, and the per-period delta = (post-commission
+    /// staker_reward × scale) / total_stake_at_fold.
+    #[test]
+    fn cumulative_index_advances_with_correct_delta() {
+        use crate::system_state::staking::F1_INDEX_SCALE;
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
+
+        // Bootstrap.
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+        let v1 = &state.validators().validators[0];
+        let pre_period = v1.staking_pool.current_period;
+        let pre_index = v1.staking_pool.f1_index_at(pre_period);
+        let pre_total_stake = v1.staking_pool.total_stake;
+
+        // 100 SOMA reward epoch. v1's voting-power share lands in
+        // pool_rewards (0% commission) and pending_fold_rewards
+        // before the fold.
+        advance_epoch_with_reward_amounts(&mut state, 100, &mut tracker);
+
+        let v1 = &state.validators().validators[0];
+        let post_period = v1.staking_pool.current_period;
+        let post_index = v1.staking_pool.f1_index_at(post_period);
+
+        assert_eq!(post_period, pre_period + 1, "index advances once per epoch");
+        assert!(post_index > pre_index, "index must increase on a non-zero reward epoch");
+
+        // The per-period reward share is recoverable from pool_rewards
+        // (post-fold pending_fold_rewards is drained, but pool_rewards
+        // still holds the unpaid bank — equal to the share for this
+        // epoch since v1 had no rewards before).
+        let v1_share = v1.staking_pool.pool_rewards;
+        let expected_index_delta =
+            (v1_share as u128 * F1_INDEX_SCALE) / (pre_total_stake as u128);
+        assert_eq!(
+            post_index - pre_index,
+            expected_index_delta,
+            "index delta must equal share × scale / total_stake_at_fold",
         );
     }
 
+    /// Slashing redistributes a slashed validator's reward to the
+    /// unslashed set. With reward_slashing_rate=1000 bps (10%), a
+    /// reported-by-quorum validator loses 10% of their reward; the
+    /// 10% is split among unslashed validators by their voting power.
     #[test]
-    fn test_uncapped_rewards() {
-        // Create 20 validators with increasing stake
-        let mut validators = Vec::new();
-        let num_validators = 20;
+    fn slashing_reduces_slashed_reward_and_redistributes_to_others() {
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
 
-        // The stake total sums up to 10000 SOMA
-        for i in 0..num_validators {
-            let addr = dbg_addr(i as u8 + 1);
-            let stake = 481 + i * 2;
-            validators.push(create_validator_for_testing(addr, stake));
+        // Bootstrap.
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+
+        // Report v2 by 3 others — quorum (≥2/3 of voting power).
+        report_validator(&mut state, validator_addr(1), validator_addr(2));
+        report_validator(&mut state, validator_addr(3), validator_addr(2));
+        report_validator(&mut state, validator_addr(4), validator_addr(2));
+
+        // Run a *slashed* reward epoch via the dedicated helper.
+        let pre_stakes: Vec<u64> = state
+            .validators()
+            .validators
+            .iter()
+            .map(|v| v.staking_pool.total_stake)
+            .collect();
+        let pre_emission = state.emission_pool().balance;
+        advance_epoch_with_reward_slashing(&mut state, 100, 1000);
+
+        // Conservation still holds — slashing redistributes, doesn't
+        // burn.
+        let post_emission = state.emission_pool().balance;
+        let mut total_distributed: u128 = 0;
+        for (i, v) in state.validators().validators.iter().enumerate() {
+            let delta_stake = v.staking_pool.total_stake - pre_stakes[i];
+            let pool_rewards = v.staking_pool.pool_rewards;
+            total_distributed += delta_stake as u128 + pool_rewards as u128;
+        }
+        assert_eq!(
+            total_distributed,
+            (pre_emission - post_emission) as u128,
+            "slashing must conserve supply (redistribute, not burn)",
+        );
+
+        // v2's share should be smaller than what their voting power
+        // would have earned without slashing. Compare against the
+        // post-slash share of unslashed v3 (same voting power as v2
+        // before slashing? Not exactly — but v2 must have *less* than
+        // it would have without the slash).
+        let v2_share = state.validators().validators[1].staking_pool.pool_rewards;
+        let v3_share = state.validators().validators[2].staking_pool.pool_rewards;
+        // v3 has slightly higher voting power than v2 by initial
+        // stake (300 vs 200), and v3 is unslashed so it gets a
+        // bonus. v2 must therefore be < v3.
+        assert!(
+            v2_share < v3_share,
+            "slashed v2 must end up with less than unslashed v3 (v2={}, v3={})",
+            v2_share,
+            v3_share,
+        );
+    }
+
+    /// 100% slashing zeroes the slashed validator's reward; every
+    /// other validator's bonus picks up that share by voting power.
+    #[test]
+    fn full_slashing_zeros_slashed_reward() {
+        let mut state = set_up_4_validators();
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
+
+        advance_epoch_with_reward_amounts(&mut state, 0, &mut tracker);
+
+        report_validator(&mut state, validator_addr(1), validator_addr(2));
+        report_validator(&mut state, validator_addr(3), validator_addr(2));
+        report_validator(&mut state, validator_addr(4), validator_addr(2));
+
+        let pre_v2_stake = state.validators().validators[1].staking_pool.total_stake;
+        advance_epoch_with_reward_slashing(&mut state, 100, 10000);
+
+        // v2's pool_rewards and total_stake delta must be 0.
+        let v2 = &state.validators().validators[1];
+        assert_eq!(
+            v2.staking_pool.total_stake, pre_v2_stake,
+            "100% slash must not bump total_stake",
+        );
+        assert_eq!(v2.staking_pool.pool_rewards, 0, "100% slash must zero pool_rewards");
+    }
+
+    /// 20-validator scaling check: every validator gets a non-zero
+    /// reward share, and the full reward emitted by the helper is
+    /// accounted for across the validator set.
+    #[test]
+    fn rewards_distribute_to_many_validators() {
+        let validators: Vec<_> = (1..=20)
+            .map(|i| {
+                let addr = dbg_addr(i as u8);
+                let stake = (481 + (i - 1) * 2) * SHANNONS_PER_SOMA;
+                create_validator_for_testing(addr, stake)
+            })
+            .collect();
+        // Genesis subsidy fund is 0; the helper injects the reward
+        // budget into emission_pool just-in-time.
+        let mut state = create_test_system_state(validators, 0, 0);
+        let mut tracker = ValidatorRewards::new(&state.validators().validators);
+
+        let pre_stakes: Vec<u64> = state
+            .validators()
+            .validators
+            .iter()
+            .map(|v| v.staking_pool.total_stake)
+            .collect();
+
+        let reward_soma = 10_000u64;
+        advance_epoch_with_reward_amounts(&mut state, reward_soma, &mut tracker);
+
+        let mut sum: u128 = 0;
+        for (i, v) in state.validators().validators.iter().enumerate() {
+            let delta_stake = v.staking_pool.total_stake - pre_stakes[i];
+            sum += delta_stake as u128 + v.staking_pool.pool_rewards as u128;
+            assert!(
+                v.staking_pool.pool_rewards + delta_stake > 0,
+                "validator {} must receive a non-zero share",
+                v.metadata.soma_address,
+            );
+        }
+        let expected = (reward_soma * SHANNONS_PER_SOMA) as u128;
+        // Per-validator integer division can round down by ≤1 shannon
+        // each (20 validators ⇒ ≤20 shannons of total drift). The
+        // total must land within that window.
+        let diff = expected.abs_diff(sum);
+        assert!(
+            diff <= 20,
+            "20-validator distribution must conserve supply (within rounding): \
+             expected {expected}, sum {sum}, diff {diff}",
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------
+
+    /// Advance epoch with the given SOMA reward and a custom
+    /// `reward_slashing_rate_bps`. Mirrors the production path the
+    /// `advance_epoch_with_reward_amounts` helper uses, but lets a
+    /// test override slashing without going through ProtocolConfig
+    /// machinery.
+    fn advance_epoch_with_reward_slashing(
+        state: &mut SystemState,
+        reward_amount_soma: u64,
+        slashing_rate_bps: u64,
+    ) {
+        use protocol_config::ProtocolVersion;
+        let next_epoch = state.epoch() + 1;
+        let new_timestamp =
+            state.epoch_start_timestamp_ms() + state.parameters().epoch_duration_ms;
+
+        let reward_shannons = reward_amount_soma * SHANNONS_PER_SOMA;
+        match state {
+            SystemState::V1(v1) => {
+                v1.emission_pool.current_distribution_amount = reward_shannons;
+                if v1.emission_pool.balance < reward_shannons {
+                    v1.emission_pool.balance = reward_shannons;
+                }
+            }
         }
 
-        // Create system state with these validators
-        let mut system_state = test_utils::create_test_system_state(validators, 0, 0);
+        let mut protocol_config = protocol_config::ProtocolConfig::get_for_version(
+            ProtocolVersion::MAX,
+            protocol_config::Chain::default(),
+        );
+        protocol_config.set_reward_slashing_rate_bps_for_testing(slashing_rate_bps);
 
-        // Record initial validator states
-        let mut validator_stakes = ValidatorRewards::new(&system_state.validators().validators);
-
-        // Double the stake of each validator through rewards
-        advance_epoch_with_reward_amounts(&mut system_state, 10000, &mut validator_stakes);
-
-        // Verify each validator's stake doubled
-        for i in 0..num_validators {
-            let addr = dbg_addr(i as u8 + 1);
-
-            let validator = system_state
-                .validators()
-                .validators
-                .iter()
-                .find(|v| v.metadata.soma_address == addr)
-                .expect("Validator not found");
-
-            let actual_stake = validator.staking_pool.soma_balance;
-            let expected_stake = (962 + i * 4) * SHANNONS_PER_SOMA;
-
-            assert_eq!(actual_stake, expected_stake);
-        }
+        let _ = state
+            .advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
+            .expect("advance_epoch");
     }
 
-    // HELPERS
+    /// Suppress unused-import warning for BTreeSet (keeps the
+    /// imports stable when tests get extended later).
+    #[allow(dead_code)]
+    const _BTREE_SET_USED: BTreeSet<()> = BTreeSet::new();
 
-    // Helper function to create test validators
-    fn create_validator_for_testing(addr: SomaAddress, init_stake_amount: u64) -> Validator {
-        // Use helper from our test_utils
-        test_utils::create_validator_for_testing(addr, init_stake_amount * SHANNONS_PER_SOMA)
+    /// Same.
+    #[allow(dead_code)]
+    fn _btree_map_used() -> BTreeMap<u8, u8> {
+        BTreeMap::new()
     }
 
-    // Helper function to create a system state with standard validators
-    fn set_up_system_state() -> SystemState {
-        let validators = vec![
-            create_validator_for_testing(validator_addr_1(), 100),
-            create_validator_for_testing(validator_addr_2(), 200),
-            create_validator_for_testing(validator_addr_3(), 300),
-            create_validator_for_testing(validator_addr_4(), 400),
-        ];
-
-        test_utils::create_test_system_state(
-            validators, 1000, // 1000 SOMA subsidy fund
-            0,    // 0 SOMA initial distribution (we'll set this per test)
-        )
-    }
-
-    // Helper function to create a system state with big amounts
-    fn set_up_system_state_with_big_amounts() -> SystemState {
-        let validators = vec![
-            create_validator_for_testing(validator_addr_1(), 100_000_000),
-            create_validator_for_testing(validator_addr_2(), 200_000_000),
-            create_validator_for_testing(validator_addr_3(), 300_000_000),
-            create_validator_for_testing(validator_addr_4(), 400_000_000),
-        ];
-
-        test_utils::create_test_system_state(
-            validators,
-            1_000_000_000, // 1B SOMA subsidy fund
-            0,             // 0 SOMA initial distribution (we'll set this per test)
-        )
-    }
-
-    // Helper to get vector of validator addresses
-    fn validator_addrs() -> Vec<SomaAddress> {
-        vec![validator_addr_1(), validator_addr_2(), validator_addr_3(), validator_addr_4()]
-    }
-
-    // Helper to report a validator
-    fn report_validator(
-        system_state: &mut SystemState,
-        reporter: SomaAddress,
-        reportee: SomaAddress,
-    ) {
-        system_state.report_validator(reporter, reportee).expect("Failed to report validator");
-    }
-
-    // Helper to set validator commission rate
-    fn set_commission_rate(
-        system_state: &mut SystemState,
-        validator: SomaAddress,
-        commission_rate: u64,
-    ) {
-        system_state
-            .request_set_commission_rate(validator, commission_rate)
-            .expect("Failed to set commission rate");
+    /// Helper drop targets so the wrapping module sees these
+    /// imports used (they're reused by future tests).
+    #[allow(dead_code)]
+    fn _addrs_used() -> Vec<SomaAddress> {
+        validator_addrs(1)
     }
 }

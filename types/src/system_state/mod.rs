@@ -46,20 +46,15 @@ pub mod epoch_start;
 pub mod staking;
 pub mod validator;
 
-// Stage 9d-C5: delegation_tests and rewards_distribution_tests
-// were tightly coupled to the pool-token compound semantics deleted
-// in this commit. They'll be rewritten in a follow-up against the
-// F1 sole-truth model. f1_pool_tests covers the F1 math.
-//
-// #[cfg(test)]
-// #[path = "unit_tests/delegation_tests.rs"]
-// mod delegation_tests;
+#[cfg(test)]
+#[path = "unit_tests/delegation_tests.rs"]
+mod delegation_tests;
 #[cfg(test)]
 #[path = "unit_tests/f1_pool_tests.rs"]
 mod f1_pool_tests;
-// #[cfg(test)]
-// #[path = "unit_tests/rewards_distribution_tests.rs"]
-// mod rewards_distribution_tests;
+#[cfg(test)]
+#[path = "unit_tests/rewards_distribution_tests.rs"]
+mod rewards_distribution_tests;
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
