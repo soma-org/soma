@@ -114,80 +114,13 @@ async fn test_full_node_run_with_range_epoch() {
     info!("Fullnode shut down at epoch 0 boundary as expected");
 }
 
-/// Transfer a coin to mutate the gas object, then try to use the old (stale) ObjectRef.
-/// The fullnode's early validation should detect the version mismatch (newer version in
-/// cache) and return ObjectVersionUnavailableForConsumption.
-///
-/// Note: We intentionally do NOT prune objects. Pruning removes the newer version from
-/// the cache, causing early validation to miss the stale ref. That edge case (pruned
-/// objects not cleanly rejected) is a known limitation — see E2E_TESTING_GUIDE.md.
-#[cfg(msim)]
-#[msim::sim_test]
-async fn test_access_stale_object_version() {
-    init_tracing();
-
-    let test_cluster = TestClusterBuilder::new().build().await;
-
-    let addresses = test_cluster.wallet.get_addresses();
-    let sender = addresses[0];
-    let recipient = addresses[1];
-
-    // Get a gas object and record its current ref
-    let old_gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    // Mutate the gas object via a transfer (creates version N+1)
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![old_gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
-        sender,
-        vec![old_gas],
-    );
-    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
-    assert!(response.effects.status().is_ok());
-
-    // Now try to use the OLD ref (version N) — the fullnode should reject it
-    // because the live version in cache is N+1.
-    let tx_data_stale = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![old_gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
-        sender,
-        vec![old_gas],
-    );
-    let tx_stale = test_cluster.sign_transaction(&tx_data_stale).await;
-
-    let orchestrator = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|n| n.transaction_orchestrator().expect("fullnode must have orchestrator"));
-
-    let request = ExecuteTransactionRequest {
-        transaction: tx_stale,
-        include_input_objects: false,
-        include_output_objects: false,
-    };
-
-    let result = orchestrator
-        .execute_transaction_block(
-            request,
-            ExecuteTransactionRequestType::WaitForLocalExecution,
-            None,
-        )
-        .await;
-
-    assert!(result.is_err(), "Transaction with stale object version should fail");
-    let err_msg = format!("{:?}", result.err().unwrap());
-    assert!(
-        err_msg.contains("ObjectVersionUnavailableForConsumption")
-            || err_msg.contains("not available for consumption"),
-        "Error should indicate object version unavailable, got: {}",
-        err_msg
-    );
-
-    info!("Correctly rejected transaction with stale object version");
-}
+// Stage 13c: test_access_stale_object_version was a coin-mode-only
+// test — it relied on a Coin gas object being mutated and then
+// re-used at the old ref. With balance-mode gas, there is no per-tx
+// object ref to go stale; the analogous stale-state failure mode
+// is "underfunded after Settlement", which is covered by
+// `test_balance_transfer_underfunded_dropped_by_prepass` in
+// balance_transfer_tests.rs.
 
 /// Get orchestrator from fullnode. Execute a coin transfer via the orchestrator.
 /// Assert executed locally, effects exist, status ok.
@@ -205,17 +138,11 @@ async fn test_full_node_transaction_orchestrator_basic() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
     let tx = test_cluster.sign_transaction(&tx_data).await;
     let digest = *tx.digest();
@@ -257,17 +184,11 @@ async fn test_execute_tx_with_serialized_signature() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
     let tx = test_cluster.sign_transaction(&tx_data).await;
 

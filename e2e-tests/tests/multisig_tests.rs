@@ -33,39 +33,26 @@ fn test_keys() -> Vec<SomaKeyPair> {
     vec![kp1, kp2, kp3]
 }
 
-/// Fund a multisig address by sending coins from a funded wallet account.
-/// Returns the ObjectRef of the gas coin sent to the multisig address.
+/// Fund a multisig address by transferring USDC from a funded wallet
+/// account into the multisig's accumulator. Stage 13c: balance-mode
+/// transfer — no Coin object is created.
 async fn fund_multisig_address(
     test_cluster: &test_cluster::TestCluster,
     multisig_addr: SomaAddress,
     amount: u64,
-) -> types::object::ObjectRef {
+) {
     let addresses = test_cluster.wallet.get_addresses();
     let funder = addresses[0];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(funder)
-        .await
-        .unwrap()
-        .expect("funder must have gas");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(amount).map(|a| vec![a]), recipients: vec![multisig_addr] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        test_cluster,
+        types::object::CoinType::Usdc,
         funder,
-        vec![gas],
+        vec![(multisig_addr, amount)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok(), "Funding transaction should succeed");
-
-    // Find the created coin for the multisig address
-    let created = response.effects.created();
-    assert!(!created.is_empty(), "Funding should create at least one object");
-
-    // Return the first created object reference (the new coin for the multisig address)
-    let (obj_ref, _owner) = &created[0];
-    *obj_ref
 }
 
 /// Build a multisig-signed transaction
@@ -119,60 +106,40 @@ async fn test_multisig_e2e() {
             .expect("MultiSigPublicKey creation should succeed");
     let multisig_addr = SomaAddress::from(&multisig_pk);
 
-    // Fund the multisig address
-    let gas = fund_multisig_address(&test_cluster, multisig_addr, 20_000_000_000).await;
+    // Fund the multisig address (USDC accumulator).
+    fund_multisig_address(&test_cluster, multisig_addr, 20_000_000_000).await;
+
+    let make_balance_transfer = |sender: SomaAddress, recipient: SomaAddress| {
+        e2e_tests::balance_transfer_data(
+            &test_cluster,
+            types::object::CoinType::Usdc,
+            sender,
+            vec![(recipient, 1_000_000)],
+        )
+    };
+    let recipient = SomaAddress::random();
 
     // 1. Sign with keys 0 and 1 — meets threshold (weight 2 >= 2), should succeed
     info!("Test 1: Two signatures meeting threshold");
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![gas],
-            amounts: Some(1_000_000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
-        multisig_addr,
-        vec![gas],
-    );
+    let tx_data = make_balance_transfer(multisig_addr, recipient);
 
     let tx1 = build_multisig_tx(tx_data, multisig_pk.clone(), &[&keys[0], &keys[1]], 0b011);
     let res = test_cluster.wallet.execute_transaction_must_succeed(tx1).await;
     assert!(res.effects.status().is_ok());
     info!("Test 1 passed: 2-of-3 multisig with keys 0,1 succeeded");
 
-    // Re-fund for next test
-    let gas = fund_multisig_address(&test_cluster, multisig_addr, 20_000_000_000).await;
-
     // 2. Sign with keys 1 and 2 — meets threshold
     info!("Test 2: Different two signatures meeting threshold");
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![gas],
-            amounts: Some(1_000_000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
-        multisig_addr,
-        vec![gas],
-    );
+    let tx_data = make_balance_transfer(multisig_addr, recipient);
 
     let tx2 = build_multisig_tx(tx_data, multisig_pk.clone(), &[&keys[1], &keys[2]], 0b110);
     let res = test_cluster.wallet.execute_transaction_must_succeed(tx2).await;
     assert!(res.effects.status().is_ok());
     info!("Test 2 passed: 2-of-3 multisig with keys 1,2 succeeded");
 
-    // Re-fund for next test
-    let gas = fund_multisig_address(&test_cluster, multisig_addr, 20_000_000_000).await;
-
     // 3. Sign with key 0 only — below threshold (weight 1 < 2), should fail
     info!("Test 3: Single signature below threshold");
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![gas],
-            amounts: Some(1_000_000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
-        multisig_addr,
-        vec![gas],
-    );
+    let tx_data = make_balance_transfer(multisig_addr, recipient);
 
     let tx3 = build_multisig_tx(tx_data, multisig_pk.clone(), &[&keys[0]], 0b001);
     let res = test_cluster.wallet.execute_transaction_may_fail(tx3).await;
@@ -184,15 +151,7 @@ async fn test_multisig_e2e() {
 
     // 4. Multisig with no signatures — should fail at combine time
     info!("Test 4: No signatures");
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![gas],
-            amounts: Some(1_000_000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
-        multisig_addr,
-        vec![gas],
-    );
+    let tx_data = make_balance_transfer(multisig_addr, recipient);
 
     let intent_msg = IntentMessage::new(Intent::soma_transaction(), &tx_data);
     let empty_combine = MultiSig::combine(vec![], multisig_pk.clone());
@@ -213,17 +172,9 @@ async fn test_multisig_e2e() {
     let wrong_sender = SomaAddress::from(&wrong_multisig_pk);
 
     // Fund the wrong sender address
-    let wrong_gas = fund_multisig_address(&test_cluster, wrong_sender, 20_000_000_000).await;
+    fund_multisig_address(&test_cluster, wrong_sender, 20_000_000_000).await;
 
-    let tx_data_wrong = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![wrong_gas],
-            amounts: Some(1_000_000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
-        wrong_sender,
-        vec![wrong_gas],
-    );
+    let tx_data_wrong = make_balance_transfer(wrong_sender, recipient);
 
     // Sign with key 2 (which is in original multisig_pk but NOT in wrong_multisig_pk)
     let intent_msg_wrong = IntentMessage::new(Intent::soma_transaction(), &tx_data_wrong);

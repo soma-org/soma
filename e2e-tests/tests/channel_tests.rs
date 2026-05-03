@@ -204,19 +204,16 @@ async fn submit_withdraw(
         .unwrap_or(false)
 }
 
-/// Drive consensus by submitting a self-transfer. Used to advance the
-/// Clock past the grace period and to flush any in-flight state.
+/// Drive consensus by submitting a balance-mode self-transfer. Used to
+/// advance the Clock past the grace period and to flush any in-flight
+/// state. Stage 13c: no gas coin needed.
 async fn drive_one_commit(test_cluster: &TestCluster) {
     let addrs = test_cluster.wallet.get_addresses();
-    let coin = one_coin(test_cluster, addrs[0]).await;
-    let tx = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![coin],
-            amounts: Some(1).map(|a| vec![a]),
-            recipients: vec![addrs[1]],
-        },
+    let tx = e2e_tests::balance_transfer_data(
+        test_cluster,
+        types::object::CoinType::Usdc,
         addrs[0],
-        vec![coin],
+        vec![(addrs[1], 1)],
     );
     let _ = test_cluster.sign_and_execute_transaction(&tx).await;
 }

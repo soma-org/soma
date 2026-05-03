@@ -42,7 +42,10 @@ async fn test_get_service_info() {
     info!("chain_id={}, server_version={}", chain_id, server_version);
 }
 
-/// Get a genesis gas object by its ObjectID via the gRPC endpoint.
+/// Fetch a genesis shared object (the SystemState) by its ObjectID
+/// via the gRPC endpoint. Stage 13a: addresses no longer own Coin
+/// objects, so we use the always-present SystemState instead of a
+/// gas coin to exercise the get_object path.
 #[cfg(msim)]
 #[msim::sim_test]
 async fn test_get_object() {
@@ -51,25 +54,17 @@ async fn test_get_object() {
     let test_cluster = TestClusterBuilder::new().build().await;
     let client = &test_cluster.fullnode_handle.soma_client;
 
-    let addresses = test_cluster.wallet.get_addresses();
-    let sender = addresses[0];
+    let obj = client.get_object(types::SYSTEM_STATE_OBJECT_ID).await.unwrap();
+    assert_eq!(obj.id(), types::SYSTEM_STATE_OBJECT_ID, "Object ID should match");
+    assert!(matches!(obj.owner, types::object::Owner::Shared { .. }), "SystemState is shared");
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let obj = client.get_object(gas.0).await.unwrap();
-    assert_eq!(obj.id(), gas.0, "Object ID should match");
-    assert_eq!(obj.owner.get_owner_address().unwrap(), sender, "Owner should be sender");
-
-    info!("Got object {} owned by {}", obj.id(), sender);
+    info!("Got SystemState object at version {}", obj.version().value());
 }
 
-/// Transfer a coin (which mutates the gas object), then query the object
-/// at the new version. Verify version matches.
+/// Use AddStake (which mutates the shared SystemState) to advance an
+/// object version, then query the object at the new version via RPC.
+/// Stage 13c: BalanceTransfer touches no per-object versions, so we
+/// exercise `get_object_with_version` against SystemState instead.
 #[cfg(msim)]
 #[msim::sim_test]
 async fn test_get_object_with_version() {
@@ -78,37 +73,45 @@ async fn test_get_object_with_version() {
     let test_cluster = TestClusterBuilder::new().build().await;
     let client = &test_cluster.fullnode_handle.soma_client;
 
-    let addresses = test_cluster.wallet.get_addresses();
-    let sender = addresses[0];
-    let recipient = addresses[1];
+    let sender = test_cluster.wallet.get_addresses()[0];
+    let validator = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
+            .metadata
+            .soma_address
+    });
+    let chain = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_chain_identifier());
+    let current_epoch = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().epoch_store_for_testing().epoch());
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = types::transaction::TransactionData::new_with_expiration(
+        types::transaction::TransactionKind::AddStake { validator, amount: 1_000 },
         sender,
-        vec![gas],
+        Vec::new(),
+        types::transaction::TransactionExpiration::ValidDuring {
+            min_epoch: Some(current_epoch),
+            max_epoch: Some(current_epoch + 1),
+            chain,
+            nonce: 0,
+        },
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());
 
-    // The gas object was mutated — get its new version from effects
     let changed = response.effects.all_changed_objects();
-    let (gas_ref, _, _) = changed
+    let (obj_ref, _, _) = changed
         .iter()
-        .find(|(obj_ref, _, _)| obj_ref.0 == gas.0)
-        .expect("Gas object should be in changed objects");
+        .next()
+        .expect("AddStake must mutate SystemState (a shared object)");
+    let obj = client.get_object_with_version(obj_ref.0, obj_ref.1).await.unwrap();
+    assert_eq!(obj.version(), obj_ref.1, "Version should match");
 
-    let obj = client.get_object_with_version(gas_ref.0, gas_ref.1).await.unwrap();
-    assert_eq!(obj.version(), gas_ref.1, "Version should match");
-
-    info!("Got object at version {}", gas_ref.1.value());
+    info!("Got object {} at version {}", obj_ref.0, obj_ref.1.value());
 }
 
 /// Execute a transfer, then query the transaction by its digest.
@@ -125,17 +128,11 @@ async fn test_get_transaction() {
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -164,13 +161,12 @@ async fn test_get_checkpoint() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
     test_cluster.sign_and_execute_transaction(&tx_data).await;
 
@@ -236,16 +232,30 @@ async fn test_get_balance_and_list_owned_objects() {
     let addresses = test_cluster.wallet.get_addresses();
     let funded_address = addresses[0];
 
-    // Query balance for a funded address
-    let balance = client.get_balance(&funded_address).await.unwrap();
-    assert!(balance > 0, "Funded address should have balance > 0, got {}", balance);
+    // Stage 13c: balance lives in the per-(owner, coin_type) accumulator.
+    // The default `get_balance` reads USDC; check both currencies.
+    let usdc = client.get_balance(&funded_address).await.unwrap();
+    assert!(usdc > 0, "Funded address should have USDC > 0, got {}", usdc);
 
-    // Query balance for a fresh (unfunded) address
+    let soma = client
+        .get_balance_by_coin_type(&funded_address, types::object::CoinType::Soma)
+        .await
+        .unwrap();
+    assert!(soma > 0, "Funded address should have SOMA > 0, got {}", soma);
+
+    // A fresh address has no accumulator row → balance 0.
     let fresh_address = types::base::SomaAddress::random();
-    let fresh_balance = client.get_balance(&fresh_address).await.unwrap();
-    assert_eq!(fresh_balance, 0, "Fresh address should have balance 0");
+    let fresh_usdc = client.get_balance(&fresh_address).await.unwrap();
+    assert_eq!(fresh_usdc, 0, "Fresh address should have USDC balance 0");
+    let fresh_soma = client
+        .get_balance_by_coin_type(&fresh_address, types::object::CoinType::Soma)
+        .await
+        .unwrap();
+    assert_eq!(fresh_soma, 0, "Fresh address should have SOMA balance 0");
 
-    // List owned objects for funded address (no type filter — lists all types)
+    // Stage 13a stopped materializing Coin objects, so a funded
+    // address owns no objects at genesis. ListOwnedObjects should
+    // return an empty stream — that's the balance-mode contract.
     let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
     request.owner = Some(funded_address.to_string());
     let objects: Vec<_> = client
@@ -256,52 +266,13 @@ async fn test_get_balance_and_list_owned_objects() {
         .into_iter()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-
-    assert!(!objects.is_empty(), "Funded address should own at least one object");
-
-    // List SOMA coins owned by funded address.
-    let mut soma_request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-    soma_request.owner = Some(funded_address.to_string());
-    soma_request.object_type = Some("Coin(SOMA)".to_string());
-    let soma_coins: Vec<_> = client
-        .list_owned_objects(soma_request)
-        .await
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    assert!(!soma_coins.is_empty(), "Funded address should own at least one SOMA Coin");
-
-    // List USDC coins owned by funded address.
-    let mut usdc_request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-    usdc_request.owner = Some(funded_address.to_string());
-    usdc_request.object_type = Some("Coin(USDC)".to_string());
-    let usdc_coins: Vec<_> = client
-        .list_owned_objects(usdc_request)
-        .await
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    assert!(!usdc_coins.is_empty(), "Funded address should own at least one USDC Coin");
-
-    // SOMA + USDC should account for all owned objects (no other types at genesis).
-    assert_eq!(
+    assert!(
+        objects.is_empty(),
+        "Stage 13a: funded address owns no Coin objects (balance-mode); got {} objects",
         objects.len(),
-        soma_coins.len() + usdc_coins.len(),
-        "All owned objects should be SOMA or USDC coins"
     );
 
-    info!(
-        "Balance for {} = {}, total objects = {} (SOMA={}, USDC={})",
-        funded_address,
-        balance,
-        objects.len(),
-        soma_coins.len(),
-        usdc_coins.len()
-    );
+    info!("Balance for {}: USDC={}, SOMA={}", funded_address, usdc, soma);
 }
 
 /// Stage 9d: `ListDelegations` RPC reads delegations directly from the

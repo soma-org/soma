@@ -1199,22 +1199,18 @@ async fn test_replay_rejected_across_epoch_boundary() {
     let sender = test_cluster.get_addresses()[0];
     let recipient = SomaAddress::random();
 
-    // Build and sign a TransferCoin once. The signed bytes — and
+    // Build and sign a BalanceTransfer once. The signed bytes — and
     // therefore the digest — are identical for both submissions.
-    let gas_object = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("Should have a USDC gas object in epoch 0");
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![gas_object],
-            amounts: Some(vec![1]),
-            recipients: vec![recipient],
-        },
+    // Stage 13c: balance-mode tx, no gas coin. ValidDuring [0, 1]
+    // so the same signed bytes remain valid both at epoch 0 (initial
+    // submission) and epoch 1 (replay attempt).
+    let tx_data = e2e_tests::balance_transfer_data_with_window(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas_object],
+        vec![(recipient, 1)],
+        0,
+        1,
     );
     let signed_tx = test_cluster.wallet.sign_transaction(&tx_data).await;
     let tx_digest = *signed_tx.digest();
@@ -1295,23 +1291,18 @@ async fn test_replay_rejected_across_epoch_boundary() {
     }
 
     // The fresh-tx control: in epoch 1, a brand-new tx (different
-    // digest, fresh gas object ref) must still execute. This
+    // digest — different recipient) must still execute. This
     // verifies we haven't accidentally broken the validation path
     // for legitimate txs in the new epoch.
-    let fresh_gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("Should still have a gas object in epoch 1");
-    let fresh_tx_data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![fresh_gas],
-            amounts: Some(vec![1]),
-            recipients: vec![recipient],
-        },
+    let fresh_recipient = SomaAddress::random();
+    // The fresh tx runs at epoch 1, so its window must include 1.
+    let fresh_tx_data = e2e_tests::balance_transfer_data_with_window(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![fresh_gas],
+        vec![(fresh_recipient, 1)],
+        1,
+        2,
     );
     let fresh_response = test_cluster.sign_and_execute_transaction(&fresh_tx_data).await;
     assert!(

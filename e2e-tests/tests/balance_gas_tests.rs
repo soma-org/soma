@@ -214,10 +214,7 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
             .metadata
             .soma_address
     });
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
+    let _ = validator_address;
 
     // Use a freshly-generated address that has zero USDC balance —
     // any balance-mode tx from this address must be dropped by the
@@ -228,37 +225,18 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
     let (unfunded_sender, kp): (types::base::SomaAddress, Ed25519KeyPair) =
         types::crypto::get_key_pair();
 
-    // The unfunded sender doesn't even have a SOMA coin to stake, so
-    // we can't exercise AddStake here. Instead use a Transfer kind
-    // that *would* execute if it had funds. The Transfer's `coins`
-    // points at a non-existent ObjectRef, which would normally fail
-    // input-checks, but the pre-pass drops the tx before that —
-    // exactly the property we want to verify.
-    //
-    // (For the positive case we already have
-    //  test_balance_mode_gas_addstake_succeeds; this test focuses
-    //  specifically on the pre-pass dropping underfunded txs.)
-    let bogus_coin = (
-        types::object::ObjectID::random(),
-        types::object::Version::from_u64(1),
-        types::digests::ObjectDigest::random(),
-    );
+    // The unfunded sender has zero USDC, so the reservation pre-pass
+    // must drop the tx before it gets a chance to execute. Use a
+    // BalanceTransfer (the simplest balance-mode kind) — for the
+    // positive case we already have
+    // test_balance_mode_gas_addstake_succeeds.
     let recipient = types::base::SomaAddress::random();
 
-    let tx_data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![bogus_coin],
-            amounts: Some(vec![1]),
-            recipients: vec![recipient],
-        },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         unfunded_sender,
-        Vec::new(), // empty gas → balance-mode
-        TransactionExpiration::ValidDuring {
-            min_epoch: Some(0),
-            max_epoch: Some(1),
-            chain,
-            nonce: 0,
-        },
+        vec![(recipient, 1)],
     );
     let signed_tx = types::transaction::Transaction::from_data_and_signer(tx_data, vec![&kp]);
 

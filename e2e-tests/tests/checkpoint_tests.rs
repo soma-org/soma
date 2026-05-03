@@ -30,18 +30,16 @@ async fn basic_checkpoints_integration_test() {
 
     let test_cluster = TestClusterBuilder::new().build().await;
 
-    // Create and execute a coin transfer
+    // Stage 13c: balance-mode USDC transfer.
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
 
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
