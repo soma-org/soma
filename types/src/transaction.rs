@@ -1905,14 +1905,6 @@ impl ObjectReadResult {
         }
     }
 
-    pub fn new_from_gas_object(gas: &Object) -> Self {
-        let objref = gas.compute_object_reference();
-        Self {
-            input_object_kind: InputObjectKind::ImmOrOwnedObject(objref),
-            object: ObjectReadResultKind::Object(gas.clone()),
-        }
-    }
-
     pub fn is_mutable(&self) -> bool {
         match (&self.input_object_kind, &self.object) {
             (InputObjectKind::ImmOrOwnedObject(_), ObjectReadResultKind::Object(object)) => {

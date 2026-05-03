@@ -1093,7 +1093,7 @@ impl AuthorityState {
             &self.config.transaction_deny_config,
         )?;
 
-        let (mut input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
+        let (input_objects, receiving_objects) = self.input_loader.read_objects_for_signing(
             // We don't want to cache this transaction since it's a simulation.
             None,
             &input_object_kinds,
@@ -1101,22 +1101,11 @@ impl AuthorityState {
             epoch_store.epoch(),
         )?;
 
-        // mock a gas object if one was not provided
-        let mock_gas_id = if transaction.gas().is_empty() {
-            let mock_gas_object = Object::new_coin(
-                ObjectID::MAX,
-                CoinType::Soma,
-                DEV_INSPECT_GAS_COIN_VALUE,
-                Owner::AddressOwner(transaction.sender()),
-                TransactionDigest::genesis_marker(),
-            );
-            let mock_gas_object_ref = mock_gas_object.compute_object_reference();
-            *transaction.gas_mut() = vec![mock_gas_object_ref];
-            input_objects.push(ObjectReadResult::new_from_gas_object(&mock_gas_object));
-            Some(mock_gas_object.id())
-        } else {
-            None
-        };
+        // Stage 13c: gas is balance-mode. Simulation no longer
+        // mocks a gas object — `transaction.gas()` is expected to
+        // be empty for non-system txs and the executor reads the
+        // sender's USDC accumulator directly (see
+        // `sender_usdc_balance` below).
 
         let checked_input_objects = transaction_checks::check_transaction_input(
             epoch_store.protocol_config(),
@@ -1211,7 +1200,6 @@ impl AuthorityState {
             objects: object_set,
             effects,
             execution_result,
-            mock_gas_id,
         })
     }
 

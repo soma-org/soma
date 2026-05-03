@@ -2,18 +2,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use itertools::Itertools;
 use protocol_config::ProtocolConfig;
 use types::balance_change::derive_balance_changes_2;
-use types::base::SomaAddress;
 use types::effects::TransactionEffectsAPI;
-use types::object::{CoinType, ObjectID, ObjectRef, ObjectType};
+use types::object::ObjectID;
 use types::system_state::SystemStateTrait;
 use types::transaction_executor::{SimulateTransactionResult, TransactionChecks};
 
 use crate::api::RpcService;
 use crate::api::error::{Result, RpcError};
-use crate::api::reader::StateReader;
 use crate::proto::google::rpc::bad_request::FieldViolation;
 use crate::proto::soma::{
     ErrorReason, ExecutedTransaction, Object, ObjectSet, SimulateTransactionRequest,
@@ -21,8 +18,6 @@ use crate::proto::soma::{
 };
 use crate::utils::field::FieldMaskTree;
 use crate::utils::merge::Merge;
-
-const GAS_COIN_SIZE_BYTES: u64 = 40;
 
 pub fn simulate_transaction(
     service: &RpcService,
@@ -70,26 +65,11 @@ pub fn simulate_transaction(
         }
     };
 
-    if checks.enabled() && transaction.gas().is_empty() {
-        let input_objects = transaction
-            .input_objects()
-            .map_err(anyhow::Error::from)?
-            .iter()
-            .flat_map(|obj| match obj {
-                types::transaction::InputObjectKind::ImmOrOwnedObject((id, _, _)) => Some(*id),
-                _ => None,
-            })
-            .collect_vec();
-        let gas_coins = select_gas(
-            &service.reader,
-            transaction.sender(),
-            100, // TODO: protocol_config.max_gas_payment_objects(),
-            &input_objects,
-        )?;
-        *transaction.gas_mut() = gas_coins;
-    }
+    // Stage 13c: gas is balance-mode. `transaction.gas()` MUST be
+    // empty for non-system txs — we no longer pre-fetch coin gas
+    // objects on the caller's behalf.
 
-    let SimulateTransactionResult { effects, objects, execution_result, mock_gas_id: _ } =
+    let SimulateTransactionResult { effects, objects, execution_result } =
         executor.simulate_transaction(transaction.clone(), checks).map_err(anyhow::Error::from)?;
 
     let transaction = if let Some(submask) = read_mask.subtree("transaction") {
@@ -159,36 +139,3 @@ pub fn simulate_transaction(
     Ok(response)
 }
 
-fn select_gas(
-    reader: &StateReader,
-    owner: SomaAddress,
-    max_gas_payment_objects: u32,
-    input_objects: &[ObjectID],
-) -> Result<Vec<ObjectRef>> {
-    let gas_coins = reader
-        .inner()
-        .indexes()
-        .ok_or_else(RpcError::not_found)?
-        .owned_objects_iter(owner, Some(ObjectType::Coin(CoinType::Soma)), None)?
-        .filter_ok(|info| !input_objects.contains(&info.object_id))
-        .filter_map_ok(|info| reader.inner().get_object(&info.object_id))
-        // filter for objects which are not ConsensusAddress owned,
-        // since only Address owned can be used for gas payments today
-        .filter_ok(|object| !object.is_shared())
-        .filter_map_ok(|object| {
-            object.as_coin().map(|coin| (object.compute_object_reference(), coin))
-        })
-        .take(max_gas_payment_objects as usize);
-
-    let mut selected_gas = vec![];
-    let mut selected_gas_value = 0;
-
-    for maybe_coin in gas_coins {
-        let (object_ref, value) =
-            maybe_coin.map_err(|e| RpcError::new(tonic::Code::Internal, e.to_string()))?;
-        selected_gas.push(object_ref);
-        selected_gas_value += value;
-    }
-
-    Ok(selected_gas)
-}

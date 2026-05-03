@@ -41,23 +41,6 @@ pub fn check_transaction_input(
     Ok(input_objects.into_checked())
 }
 
-pub fn check_transaction_input_with_given_gas(
-    protocol_config: &ProtocolConfig,
-
-    transaction: &TransactionData,
-    mut input_objects: InputObjects,
-    receiving_objects: ReceivingObjects,
-    gas_object: Object,
-) -> SomaResult<CheckedInputObjects> {
-    let gas_object_ref = gas_object.compute_object_reference();
-    input_objects.push(ObjectReadResult::new_from_gas_object(&gas_object));
-
-    check_transaction_input_inner(protocol_config, transaction, &input_objects, &[gas_object_ref])?;
-    check_receiving_objects(&input_objects, &receiving_objects)?;
-
-    Ok(input_objects.into_checked())
-}
-
 // Since the purpose of this function is to audit certified transactions,
 // the checks here should be a strict subset of the checks in check_transaction_input().
 // For checks not performed in this function but in check_transaction_input(),
@@ -86,13 +69,17 @@ fn check_transaction_input_inner(
 ) -> SomaResult {
     let gas = if gas_override.is_empty() { &transaction.gas() } else { gas_override };
 
-    // Stage 6c: balance-mode gas (empty gas_payment) — gas comes from
-    // the address-balance accumulator, validated by prepare_gas at
-    // execution time. The "stateless requires ValidDuring" check in
-    // handle_vote_transaction is the replay-protection guarantee.
-    // Skip check_gas entirely in this case.
-    if !gas.is_empty() {
-        check_gas(input_objects, gas, transaction.kind())?;
+    // Stage 13c: gas is balance-mode for non-system txs — gas
+    // comes from the sender's USDC accumulator, validated by
+    // `prepare_gas` at execution time. A non-empty `gas_payment`
+    // on a non-system tx means the caller is using an obsolete
+    // coin-mode path; reject up-front. System txs may carry a
+    // non-empty `gas_payment` from older test fixtures; the
+    // executor ignores it for them.
+    if !gas.is_empty() && !transaction.is_system_tx() {
+        return Err(SomaError::GasPaymentError(
+            "Stage 13c: gas_payment must be empty (balance-mode gas only)".to_string(),
+        ));
     }
     check_objects(transaction, input_objects)?;
 
@@ -182,50 +169,6 @@ fn check_receiving_objects(
 
         objects_in_txn.insert(*object_id);
     }
-    Ok(())
-}
-
-/// Check transaction gas data/info and gas coins consistency.
-fn check_gas(objects: &InputObjects, gas: &[ObjectRef], tx_kind: &TransactionKind) -> SomaResult {
-    if tx_kind.is_system_tx() {
-        return Ok(()); // System transactions don't need gas
-    }
-
-    // Check 1: Ensure we have at least one gas object
-    if gas.is_empty() {
-        return Err(SomaError::GasPaymentError("No gas payment provided".to_string()));
-    }
-
-    // Build a map of object ID to ObjectReadResult for efficient lookup
-    let objects_map: BTreeMap<ObjectID, &ObjectReadResult> =
-        objects.iter().map(|o| (o.id(), o)).collect();
-
-    // Check 2: Load all gas objects and verify they exist
-    for obj_ref in gas {
-        let obj_result = objects_map
-            .get(&obj_ref.0)
-            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
-
-        // Get the actual object
-        let object = obj_result
-            .as_object()
-            .ok_or(SomaError::ObjectNotFound { object_id: obj_ref.0, version: Some(obj_ref.1) })?;
-
-        // Check 3: Verify gas object is owned by an address (not shared/immutable)
-        if !object.owner.is_address_owned() {
-            return Err(SomaError::GasPaymentError(format!(
-                "Gas object {:?} must be owned by an address, not {:?}",
-                obj_ref.0, object.owner
-            )));
-        }
-
-        // Check 4: Verify it's actually a coin
-        let balance = object.as_coin().ok_or(SomaError::GasPaymentError(format!(
-            "Gas object {:?} is not a coin",
-            obj_ref.0
-        )))?;
-    }
-
     Ok(())
 }
 
