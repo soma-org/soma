@@ -6,7 +6,8 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{Object, ObjectID, Owner};
+// Object/Owner no longer needed once Stage 9d-C4 removed StakedSomaV1
+// creation from the validator-reward path.
 use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
@@ -110,14 +111,14 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         match result {
             Ok(validator_rewards) => {
-                // Normal path: create reward objects for validators.
-                // Stage 9d-C1: dual-write the validator commission
-                // into the F1-shaped delegations table. ONE row per
-                // (pool, validator); successive epochs accumulate
-                // into that single row. `set_period: None` because
-                // this isn't a fold — the validator collects their
-                // pending reward (including this credit) on their
-                // next AddStake / WithdrawStake / Restake.
+                // Stage 9d-C4: validator commission credits flow only
+                // through the F1 row — no StakedSomaV1 object output.
+                // ONE row per (pool, validator); successive epochs
+                // accumulate into that single row. `set_period: None`
+                // because this isn't a fold — the validator collects
+                // pending rewards (including this credit) on their
+                // next AddStake / WithdrawStake.
+                let _ = tx_digest;
                 for (validator, reward) in validator_rewards {
                     store.emit_delegation_event(
                         reward.pool_id,
@@ -125,13 +126,6 @@ impl TransactionExecutor for ChangeEpochExecutor {
                         reward.principal as i128,
                         None,
                     );
-                    let staked_soma_object = Object::new_staked_soma_object(
-                        ObjectID::derive_id(tx_digest, store.next_creation_num()),
-                        reward,
-                        Owner::AddressOwner(validator),
-                        tx_digest,
-                    );
-                    store.create_object(staked_soma_object);
                 }
             }
             Err(e) => {

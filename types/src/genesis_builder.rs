@@ -543,19 +543,14 @@ impl GenesisBuilder {
                     // the F1-shaped delegations table. ONE row per
                     // (pool, staker) — repeat allocations from the
                     // same staker into the same validator sum.
+                    // Stage 9d-C4: genesis no longer materialises a
+                    // StakedSomaV1 object — the delegation row is
+                    // the sole record.
                     let key = (staked_soma.pool_id, allocation.recipient_address);
                     let entry = delegations.entry(key).or_insert(0);
                     *entry = entry
                         .checked_add(staked_soma.principal)
                         .expect("genesis delegation principal overflow");
-
-                    let staked_object = Object::new_staked_soma_object(
-                        Self::deterministic_object_id(&mut id_counter),
-                        staked_soma,
-                        Owner::AddressOwner(allocation.recipient_address),
-                        TransactionDigest::default(),
-                    );
-                    objects.push(staked_object);
                 } else {
                     let coin_object = Object::new_coin(
                         Self::deterministic_object_id(&mut id_counter),

@@ -17,7 +17,7 @@ use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
 };
 use types::error::SomaError;
-use types::object::{CoinType, Object, ObjectID, ObjectRef};
+use types::object::{CoinType, Object, ObjectID};
 use types::transaction::{TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
@@ -48,8 +48,16 @@ async fn test_add_stake_balance_mode_succeeds() {
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Should create a StakedSomaV1 object (still dual-written until C5).
-    assert!(effects.created().len() >= 1, "Should create StakedSomaV1");
+    // Stage 9d-C4: AddStake no longer creates a StakedSomaV1
+    // object — the F1 delegation row is the sole user-visible
+    // record of the stake.
+    for created in effects.created() {
+        let obj = res.authority_state.get_object(&created.0.0).await.unwrap();
+        assert!(
+            types::object::Object::as_staked_soma(&obj).is_none(),
+            "Stage 9d-C4: AddStake must not create StakedSomaV1 objects",
+        );
+    }
 
     // Flush so the writeback cache's settlement events land in the
     // perpetual store (unit tests skip the checkpoint executor that
@@ -123,13 +131,12 @@ async fn test_add_stake_insufficient_gas() {
     );
 }
 
-/// A successful AddStake writes the F1 delegation row alongside the
-/// StakedSomaV1 object until Stage 9d-C5 collapses to one source.
-/// Verifies the row's principal matches the StakedSomaV1's principal,
-/// and that `last_collected_period` advanced from 0 to the pool's
-/// current period.
+/// A successful AddStake records a (pool, staker) row whose
+/// principal equals the staked amount, with `last_collected_period`
+/// pinned to the pool's current F1 period — that's the fold mark
+/// from which any future rewards on this principal will count.
 #[tokio::test]
-async fn test_add_stake_dual_writes_delegation_row() {
+async fn test_add_stake_writes_delegation_row() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 7_500_000u64;
 
@@ -150,34 +157,19 @@ async fn test_add_stake_dual_writes_delegation_row() {
     let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
     res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
 
-    // Find the created StakedSomaV1 to compare against the delegation row.
+    // Find the validator's pool_id. The sender just staked there, so
+    // exactly one row should exist for them.
     let store = res.authority_state.database_for_testing();
-    let mut staked_pool: Option<types::object::ObjectID> = None;
-    let mut staked_principal: Option<u64> = None;
-
-    for created in effects.created() {
-        let obj = res.authority_state.get_object(&created.0.0).await.unwrap();
-        if let Some(staked) = types::object::Object::as_staked_soma(&obj) {
-            staked_pool = Some(staked.pool_id);
-            staked_principal = Some(staked.principal);
-            break;
-        }
-    }
-    let pool = staked_pool.expect("a StakedSomaV1 must have been created");
-    let principal = staked_principal.unwrap();
+    let listed = store.iter_delegations_for_staker(sender).unwrap();
+    assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
+    let (pool, delegation) = listed[0];
     assert_eq!(
-        principal, stake_amount,
-        "StakedSomaV1.principal must equal the requested stake amount",
+        delegation.principal, stake_amount,
+        "delegation row's principal must equal the staked amount",
     );
 
-    let delegation = store.get_delegation(pool, sender).unwrap();
-    assert_eq!(
-        delegation.principal, principal,
-        "delegations[(pool, staker)].principal must equal StakedSomaV1.principal",
-    );
-
-    // F1 fold semantics: AddStake advances last_collected_period to the
-    // pool's current period.
+    // F1 fold semantics: AddStake advances last_collected_period to
+    // the pool's current period.
     let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
     let pool_state = &system_state
         .validators()
@@ -190,23 +182,14 @@ async fn test_add_stake_dual_writes_delegation_row() {
         delegation.last_collected_period, pool_state.current_period,
         "AddStake must advance last_collected_period to the pool's current period",
     );
-
-    let listed = store.iter_delegations_for_staker(sender).unwrap();
-    assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
-    assert_eq!(listed[0].0, pool);
-    assert_eq!(listed[0].1.principal, principal);
 }
 
-/// A successful WithdrawStake removes both the StakedSomaV1 object
-/// **and** the matching delegation row. Verifies the negative side of
-/// the dual-write — the executor emits `-principal`, and the
-/// post-execution write path drains the row to zero (which
-/// `apply_delegation_events` then deletes outright per the row-deletion
-/// contract).
+/// A successful WithdrawStake drains the (pool, sender) delegation
+/// row to zero — `apply_delegation_events` then deletes it outright
+/// per the row-deletion contract. The withdrawn principal lands in
+/// the sender's SOMA balance accumulator.
 #[tokio::test]
-async fn test_withdraw_stake_dual_writes_delegation_removal() {
-    use types::object::Owner;
-
+async fn test_withdraw_stake_drains_delegation_row() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let sender_key = SomaKeyPair::Ed25519(key);
     let stake_amount = 4_500_000u64;
@@ -253,38 +236,20 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
     );
 
     let store = authority_state.database_for_testing();
-    let mut staked_oref: Option<ObjectRef> = None;
-    let mut staked_pool: Option<ObjectID> = None;
-    for created in add_effects.created() {
-        let obj = authority_state.get_object(&created.0.0).await.unwrap();
-        if let Some(_staked) = types::object::Object::as_staked_soma(&obj) {
-            // Owner check: genesis stakes also exist; we want the new one.
-            if matches!(obj.owner(), Owner::AddressOwner(addr) if *addr == sender) {
-                staked_oref = Some(obj.compute_object_reference());
-                staked_pool = Some(_staked.pool_id);
-                break;
-            }
-        }
-    }
-    let staked_oref = staked_oref.expect("StakedSomaV1 must exist after AddStake");
-    let pool = staked_pool.unwrap();
-
+    let listed = store.iter_delegations_for_staker(sender).unwrap();
+    assert_eq!(listed.len(), 1, "AddStake must create exactly one row");
+    let pool = listed[0].0;
     assert_eq!(
-        store.get_delegation(pool, sender).unwrap().principal,
-        stake_amount,
-        "delegation row must mirror StakedSomaV1 post-AddStake",
+        listed[0].1.principal, stake_amount,
+        "delegation row's principal must equal the staked amount",
     );
 
-    // Step 2: WithdrawStake — produces a Coin output and removes the
-    // StakedSomaV1. The dual-write should also clear the delegation row.
+    // Step 2: WithdrawStake (Stage 9d-C3: balance-mode, drains the row).
     let gas_coin2 =
         Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
     let gas_ref2 = gas_coin2.compute_object_reference();
     authority_state.insert_genesis_object(gas_coin2).await;
 
-    // Stage 9d-C3: WithdrawStake is balance-mode and keys off
-    // (pool_id, sender). Use `amount: None` to drain the entire row.
-    let _ = staked_oref;
     let withdraw_data = TransactionData::new(
         TransactionKind::WithdrawStake { pool_id: pool, amount: None },
         sender,

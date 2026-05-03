@@ -7,7 +7,7 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{CoinType, Object, ObjectID, Owner};
+use types::object::{CoinType, ObjectID};
 use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
@@ -118,10 +118,15 @@ impl StakingExecutor {
             amount,
         });
 
-        // Run the pool-token side. Stage 9d-C5 deletes the StakedSomaV1
-        // creation and the pool-token math; today they remain as a
-        // safety net.
-        let staked_soma = state.request_add_stake(signer, validator, amount)?;
+        // Run the pool-token side. Stage 9d-C5 deletes the
+        // pool-token math entirely; until then, `request_add_stake`
+        // still mutates pool's pending_stake / next_epoch_stake which
+        // drive voting-power calculations at the next epoch boundary.
+        // Stage 9d-C4: the returned StakedSomaV1 is discarded — no
+        // object output. The F1 row is the sole user-visible record
+        // of the stake.
+        let _ = tx_digest;
+        let _staked_soma = state.request_add_stake(signer, validator, amount)?;
 
         // F1 row update: bump principal by `amount`, advance the
         // collection mark to current_period (the period from which
@@ -132,14 +137,6 @@ impl StakingExecutor {
             amount as i128,
             Some(current_period),
         );
-
-        let staked_soma_object = Object::new_staked_soma_object(
-            ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            staked_soma,
-            Owner::AddressOwner(signer),
-            tx_digest,
-        );
-        store.create_object(staked_soma_object);
 
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(

@@ -592,11 +592,15 @@ fn test_genesis_no_token_distribution() {
 }
 
 // ===========================================================================
-// Test 17: Staked allocations create StakedSoma objects
+// Test 17: Staged allocations seed the F1 delegation table
 // ===========================================================================
 
+/// Stage 9d-C4: genesis no longer materialises StakedSomaV1 objects.
+/// Each staked allocation lands as a row in the F1 (pool, staker)
+/// delegations map on `UnsignedGenesis`, with `principal` matching
+/// the allocation amount.
 #[test]
-fn test_genesis_staked_allocations() {
+fn test_genesis_staked_allocations_populate_delegations() {
     let configs = make_validator_configs(4);
     let per_validator = 1_000 * SHANNONS_PER_SOMA;
     let schedule = make_schedule_for_validators(&configs, per_validator);
@@ -606,21 +610,26 @@ fn test_genesis_staked_allocations() {
         .with_token_distribution_schedule(schedule)
         .build_unsigned_genesis();
 
-    // There should be StakedSoma objects for each validator's staked allocation
+    // No StakedSomaV1 objects in the genesis object set.
     let staked_objects: Vec<_> =
         unsigned.objects().iter().filter(|o| *o.type_() == ObjectType::StakedSoma).collect();
-
-    assert_eq!(
-        staked_objects.len(),
-        configs.len(),
-        "Must have one StakedSoma object per validator allocation"
+    assert!(
+        staked_objects.is_empty(),
+        "Stage 9d-C4: genesis must not produce StakedSomaV1 objects",
     );
 
-    // Each StakedSoma should be owned by an address
-    for obj in &staked_objects {
-        assert!(
-            matches!(obj.owner, Owner::AddressOwner(_)),
-            "StakedSoma objects must be address-owned"
+    // Each validator's allocation should produce one delegation row
+    // with a non-zero principal.
+    assert_eq!(
+        unsigned.delegations.len(),
+        configs.len(),
+        "exactly one delegation row per validator allocation",
+    );
+    for (&(_, _), &principal) in &unsigned.delegations {
+        assert!(principal > 0, "delegation principals must be > 0");
+        assert_eq!(
+            principal, per_validator,
+            "delegation principal must match the allocation amount",
         );
     }
 }

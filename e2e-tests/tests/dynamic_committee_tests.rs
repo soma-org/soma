@@ -244,27 +244,40 @@ mod add_stake {
         async fn pre_epoch_post_condition(
             &mut self,
             runner: &mut StressTestRunner,
-            effects: &TransactionEffects,
+            _effects: &TransactionEffects,
         ) {
-            // Assert that a `StakedSoma` object matching the amount delegated is created.
-            // Assert that this staked soma
-            let object =
-                runner.get_created_object_of_type(effects, ObjectType::StakedSoma).await.unwrap();
+            // Stage 9d-C4: AddStake no longer creates a StakedSomaV1
+            // object — the F1 (pool, sender) row is the source of
+            // truth. Read the row back from the delegations table.
+            let staker_addr = self.sender.with(|node| node.get_config().soma_address());
+            let pool_id = self
+                .sender
+                .with(|node| {
+                    node.state()
+                        .database_for_testing()
+                        .iter_delegations_for_staker(staker_addr)
+                        .expect("delegation read")
+                        .into_iter()
+                        .find(|(pool, delegation)| {
+                            // Pick the row matching this validator. With ONE
+                            // row per (pool, staker), repeat AddStakes against
+                            // the same validator collapse — verify principal
+                            // is at least our stake_amount.
+                            let mappings =
+                                &node.state().get_system_state_object_for_testing().unwrap();
+                            let mapping_addr = mappings
+                                .validators()
+                                .staking_pool_mappings
+                                .get(pool)
+                                .copied();
+                            mapping_addr == Some(self.staked_with)
+                                && delegation.principal >= self.stake_amount
+                        })
+                        .map(|(pool, _)| pool)
+                })
+                .expect("AddStake must record a delegation row for this (validator, sender)");
 
-            // Get object contents and make sure that the values in it are correct.
-            let staked_soma: StakedSomaV1 = object.as_staked_soma().unwrap();
-
-            assert_eq!(staked_soma.principal, self.stake_amount);
-            assert_eq!(
-                object.owner.get_owner_address().unwrap(),
-                self.sender.with(|node| node.get_config().soma_address())
-            );
-
-            // Stage 9d-C3: track the (sender, pool_id) pair so the
-            // withdrawal stress generator can later target this row.
-            runner
-                .delegations
-                .push((self.sender.clone(), staked_soma.pool_id));
+            runner.delegations.push((self.sender.clone(), pool_id));
         }
 
         async fn post_epoch_post_condition(
