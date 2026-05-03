@@ -1653,29 +1653,12 @@ impl AuthorityState {
             system_state_balance += v.staking_pool.accumulated_commission as u128;
         }
 
-        // Stage 13a: SOMA also lives in the balance accumulator.
-        // Sum SOMA entries from the accumulator (USDC entries are
-        // bridged-in shannons, not part of SOMA supply).
-        let mut coin_balance: u128 = 0;
-        let mut object_count: u64 = 0;
-
-        for live_obj in self.get_global_state_hash_store().iter_live_object_set() {
-            let obj = match live_obj {
-                types::object::LiveObject::Normal(obj) => obj,
-            };
-            object_count += 1;
-
-            // Stage 13a kept ObjectType::Coin around for legacy
-            // chain history, but genesis no longer mints any. Any
-            // surviving Coin object here would still be SOMA supply.
-            if let ObjectType::Coin(CoinType::Soma) = obj.type_() {
-                if let Some(balance) = obj.as_coin() {
-                    coin_balance += balance as u128;
-                }
-            }
-        }
-
-        // Sum the balance accumulator's SOMA entries.
+        // Stage 13a+13k: SOMA lives entirely in the balance
+        // accumulator post-Stage-13a (no Coin objects in genesis)
+        // and the production Coin object API was deleted in
+        // Stage 13k. Sum SOMA entries from the accumulator only;
+        // USDC entries are bridged-in microdollars, not part of
+        // SOMA supply.
         let mut accumulator_soma: u128 = 0;
         if let Ok(rows) = self.database_for_testing().iter_all_balances() {
             for ((_, coin_type), balance) in rows {
@@ -1684,17 +1667,16 @@ impl AuthorityState {
                 }
             }
         }
-        coin_balance += accumulator_soma;
 
-        let total_accounted = coin_balance + system_state_balance;
+        let total_accounted = accumulator_soma + system_state_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;
 
         if total_accounted != expected {
             let msg = format!(
                 "SUPPLY CONSERVATION VIOLATION at epoch {}! \
                  Expected {expected}, got {total_accounted} \
-                 (coins={coin_balance}, system_state={system_state_balance}, \
-                 objects_scanned={object_count})",
+                 (accumulator_soma={accumulator_soma}, \
+                 system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );
             if cfg!(msim) {
@@ -1705,9 +1687,8 @@ impl AuthorityState {
         } else {
             info!(
                 "Supply conservation check passed for epoch {} \
-                 (total={expected}, coins={coin_balance}, \
-                 system_state={system_state_balance}, \
-                 objects={object_count})",
+                 (total={expected}, accumulator_soma={accumulator_soma}, \
+                 system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );
         }

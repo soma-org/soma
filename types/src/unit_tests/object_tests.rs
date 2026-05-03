@@ -57,44 +57,10 @@ fn test_object_id_derive_deterministic() {
     assert_ne!(id1, id4, "Different digest should yield different IDs");
 }
 
-#[test]
-fn test_coin_object() {
-    let id = ObjectID::random();
-    let balance: u64 = 1_000_000;
-    let owner = Owner::AddressOwner(SomaAddress::default());
-    let prev_tx = TransactionDigest::genesis_marker();
-
-    let coin = Object::new_coin(id, CoinType::Soma, balance, owner, prev_tx);
-
-    // Verify it roundtrips
-    let extracted = coin.as_coin();
-    assert!(extracted.is_some(), "as_coin() should return Some for a coin object");
-    assert_eq!(extracted.unwrap(), balance, "Coin balance should roundtrip correctly");
-    assert_eq!(*coin.type_(), ObjectType::Coin(CoinType::Soma));
-    assert_eq!(coin.id(), id);
-}
-
-#[test]
-fn test_coin_balance_update() {
-    let id = ObjectID::random();
-    let initial_balance: u64 = 500;
-    let owner = Owner::AddressOwner(SomaAddress::default());
-    let prev_tx = TransactionDigest::genesis_marker();
-
-    let mut coin = Object::new_coin(id, CoinType::Soma, initial_balance, owner, prev_tx);
-    assert_eq!(coin.as_coin().unwrap(), initial_balance);
-
-    let new_balance: u64 = 999;
-    coin.update_coin_balance(new_balance);
-    assert_eq!(
-        coin.as_coin().unwrap(),
-        new_balance,
-        "Balance should be updated after update_coin_balance"
-    );
-
-    // ID should remain unchanged after balance update
-    assert_eq!(coin.id(), id, "Object ID should not change after balance update");
-}
+// Stage 13k: test_coin_object / test_coin_balance_update deleted.
+// They tested Object::new_coin / as_coin / update_coin_balance —
+// all removed in Stage 13k now that production never constructs
+// or reads Coin objects.
 
 #[test]
 fn test_object_type_variants() {

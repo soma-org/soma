@@ -898,122 +898,19 @@ impl Query {
 
     /// Get the SOMA balance for an address.
     ///
-    /// Stage 13a: balances live in a per-(owner, coin_type) accumulator,
-    /// not as Coin objects. The indexer-alt schema does not yet have an
-    /// accumulator-balances table, so the legacy "iterate Coin objects"
-    /// query path returns 0 for every address. This query is kept as a
-    /// surface stub so existing GraphQL clients don't error out, and
-    /// will be re-implemented once the indexer ships an accumulator
-    /// pipeline. Use the gRPC `LiveDataService.GetBalance` for an
-    /// authoritative read in the meantime.
-    async fn balance(&self, ctx: &Context<'_>, address: String) -> Result<BigInt> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
+    /// Stage 13a/13k: balances live in a per-(owner, coin_type)
+    /// accumulator, not as Coin objects. The indexer-alt schema
+    /// does not yet have an accumulator-balances table and the
+    /// production `Object::as_coin` API was deleted in Stage 13k,
+    /// so this query is a hard stub that always returns 0. Use the
+    /// gRPC `LiveDataService.GetBalance` for an authoritative read
+    /// until the indexer ships an accumulator pipeline.
+    async fn balance(&self, _ctx: &Context<'_>, address: String) -> Result<BigInt> {
+        // Validate the address format so callers still get a clear
+        // error for malformed input; otherwise return 0.
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
-        let addr_bytes =
-            hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
-
-        use indexer_alt_schema::schema::{kv_objects, obj_info, obj_versions};
-
-        // Step 1: Find Coin object IDs owned by this address (latest cp per object_id).
-        // We load all obj_info rows for this owner where module='Coin', ordered by
-        // object_id ASC, cp DESC, then deduplicate by object_id.
-        type ObjInfoRow = (Vec<u8>, i64);
-
-        let info_rows: Vec<ObjInfoRow> = obj_info::table
-            .select((obj_info::object_id, obj_info::cp_sequence_number))
-            .filter(obj_info::owner_id.eq(&addr_bytes))
-            .filter(obj_info::module.eq("Coin"))
-            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Deduplicate by object_id (keep latest cp)
-        let mut seen_ids = std::collections::HashSet::new();
-        let mut coin_object_ids: Vec<Vec<u8>> = Vec::new();
-        for (oid, _cp) in &info_rows {
-            if seen_ids.insert(oid.clone()) {
-                coin_object_ids.push(oid.clone());
-            }
-        }
-
-        if coin_object_ids.is_empty() {
-            return Ok(BigInt(0));
-        }
-
-        // Step 1.5: Verify each candidate is still owned by this address.
-        // The owner-filtered query above may return stale rows for coins that
-        // were transferred to another address at a later checkpoint.
-        let verify_rows: Vec<(Vec<u8>, Option<Vec<u8>>)> = obj_info::table
-            .select((obj_info::object_id, obj_info::owner_id))
-            .filter(obj_info::object_id.eq_any(&coin_object_ids))
-            .order((obj_info::object_id.asc(), obj_info::cp_sequence_number.desc()))
-            .load(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let mut still_owned = std::collections::HashSet::new();
-        let mut seen_verify = std::collections::HashSet::new();
-        for (oid, owner) in &verify_rows {
-            if seen_verify.insert(oid.clone()) {
-                if owner.as_deref() == Some(addr_bytes.as_slice()) {
-                    still_owned.insert(oid.clone());
-                }
-            }
-        }
-        coin_object_ids.retain(|oid| still_owned.contains(oid));
-
-        if coin_object_ids.is_empty() {
-            return Ok(BigInt(0));
-        }
-
-        // Step 2: For each coin object, get the latest version and extract balance.
-        let kv = kv_loader(ctx);
-        let mut total: i64 = 0;
-        for oid in &coin_object_ids {
-            let version: Option<i64> = obj_versions::table
-                .select(obj_versions::object_version)
-                .filter(obj_versions::object_id.eq(oid))
-                .order(obj_versions::object_version.desc())
-                .first(conn.deref_mut())
-                .await
-                .optional()
-                .map_err(|e| Error::new(e.to_string()))?;
-
-            let Some(ver) = version else { continue };
-
-            // Step 3: Load object and extract coin balance.
-            let balance: Option<u64> = if let Some(kv) = kv {
-                let obj_id = types::object::ObjectID::from_bytes(oid.as_slice())
-                    .map_err(|e| Error::new(e.to_string()))?;
-                let obj: Option<types::object::Object> =
-                    kv.get_object(&obj_id, ver as u64)
-                        .await
-                        .map_err(|e: anyhow::Error| Error::new(e.to_string()))?;
-                obj.and_then(|o| o.as_coin())
-            } else {
-                let serialized: Option<Option<Vec<u8>>> = kv_objects::table
-                    .select(kv_objects::serialized_object)
-                    .filter(kv_objects::object_id.eq(oid))
-                    .filter(kv_objects::object_version.eq(ver))
-                    .first(conn.deref_mut())
-                    .await
-                    .optional()
-                    .map_err(|e| Error::new(e.to_string()))?;
-                serialized
-                    .flatten()
-                    .and_then(|bytes| bcs::from_bytes::<types::object::Object>(&bytes).ok())
-                    .and_then(|obj| obj.as_coin())
-            };
-
-            if let Some(value) = balance {
-                total = total.saturating_add(value as i64);
-            }
-        }
-
-        Ok(BigInt(total))
+        hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+        Ok(BigInt(0))
     }
 
     /// Look up the epoch state for a given epoch (or latest).

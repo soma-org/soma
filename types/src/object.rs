@@ -304,52 +304,35 @@ impl Object {
         &self.0.owner
     }
 
-    /// Create a new coin with the specified balance and coin type
-    pub fn new_coin(
-        id: ObjectID,
-        coin_type: CoinType,
-        balance: u64,
-        owner: Owner,
-        previous_transaction: TransactionDigest,
-    ) -> Self {
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Coin(coin_type),
-            Version::MIN,
-            bcs::to_bytes(&balance).unwrap(),
-        );
-        Self::new(data, owner, previous_transaction)
-    }
+    // Stage 13k: production-facing Coin object API deleted.
+    // - `new_coin` / `update_coin_balance` / `coin_type` / `as_coin`
+    //   were used by coin-mode execution (Stage 13b deleted those
+    //   executors) and by callers iterating Coin balances (Stage
+    //   13a stopped genesis from creating Coin objects, so all
+    //   such iterations now produce empty results).
+    // - `with_id_owner_soma_coin_for_testing` had no callers.
+    //
+    // The `ObjectType::Coin(CoinType)` variant + the legacy test
+    // fixtures `with_id_owner_for_testing` /
+    // `with_id_owner_coin_for_testing` /
+    // `with_id_owner_version_for_testing` are kept ONLY so e2e and
+    // unit tests have an arbitrary address-owned object type to
+    // exercise object-machinery code (TransferObjects, lock
+    // checks, version tracking). No production path constructs or
+    // reads Coin objects anymore.
 
-    /// Extract the coin balance if this is a coin object (any CoinType)
-    pub fn as_coin(&self) -> Option<u64> {
-        if matches!(self.data.object_type(), ObjectType::Coin(_)) {
-            bcs::from_bytes(self.data.contents()).ok()
-        } else {
-            None
-        }
-    }
-
-    /// Returns the CoinType if this is a coin object
-    pub fn coin_type(&self) -> Option<CoinType> {
-        match self.data.object_type() {
-            ObjectType::Coin(ct) => Some(*ct),
-            _ => None,
-        }
-    }
-
-    /// Update the balance of a coin object
-    pub fn update_coin_balance(&mut self, new_balance: u64) {
-        self.data.update_contents(bcs::to_bytes(&new_balance).unwrap());
-    }
-
+    /// Test fixture: arbitrary address-owned object. Returns a
+    /// Coin(USDC)-typed Object with placeholder contents. Callers
+    /// in production must NOT depend on the variant — read
+    /// balances via the accumulator.
     pub fn with_id_owner_for_testing(id: ObjectID, owner: SomaAddress) -> Self {
-        // For testing, we provide sufficient gas by default. Gas is always USDC.
         Self::with_id_owner_coin_for_testing(id, owner, GAS_VALUE_FOR_TESTING)
     }
 
+    /// Test fixture: arbitrary address-owned object at a specific
+    /// version, with arbitrary owner shape (AddressOwner / Shared /
+    /// Immutable). Used to seed cache-test scenarios.
     pub fn with_id_owner_version_for_testing(id: ObjectID, version: Version, owner: Owner) -> Self {
-        // USDC coin (used as gas in tests).
         let data = ObjectData::new_with_id(
             id,
             ObjectType::Coin(CoinType::Usdc),
@@ -359,9 +342,9 @@ impl Object {
         Self::new(data, owner, TransactionDigest::genesis_marker())
     }
 
-    /// Default test coin is USDC because all gas on Soma is paid in USDC.
-    /// Use [`Self::with_id_owner_soma_coin_for_testing`] when a test needs a
-    /// SOMA coin explicitly (transfers, staking).
+    /// Test fixture: arbitrary address-owned object with an explicit
+    /// payload byte count. Most tests don't care about contents;
+    /// the `balance` argument is the placeholder payload.
     pub fn with_id_owner_coin_for_testing(id: ObjectID, owner: SomaAddress, balance: u64) -> Self {
         let data = ObjectData::new_with_id(
             id,
@@ -371,29 +354,6 @@ impl Object {
         );
         Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
     }
-
-    /// SOMA-specific test coin helper. Use when the test exercises SOMA semantics
-    /// (transfers, staking principal). Gas coins should always use the default
-    /// USDC helper [`Self::with_id_owner_coin_for_testing`].
-    pub fn with_id_owner_soma_coin_for_testing(
-        id: ObjectID,
-        owner: SomaAddress,
-        balance: u64,
-    ) -> Self {
-        let data = ObjectData::new_with_id(
-            id,
-            ObjectType::Coin(CoinType::Soma),
-            Version::MIN,
-            bcs::to_bytes(&balance).unwrap(),
-        );
-        Self::new(data, Owner::AddressOwner(owner), TransactionDigest::genesis_marker())
-    }
-
-    // Stage 9d-C5: `new_staked_soma_object` and `as_staked_soma`
-    // deleted along with the StakedSomaV1 type. The
-    // `ObjectType::StakedSoma` variant is kept as a backward-
-    // compatibility marker for old chain history, but no new
-    // execution path produces it.
 
     /// Deserialize an object's contents as a specific type.
     pub fn deserialize_contents<T: serde::de::DeserializeOwned>(

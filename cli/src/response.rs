@@ -813,7 +813,6 @@ impl Display for ChainInfoOutput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ObjectContent {
-    Coin { balance: u64 },
     SystemState,
     Unknown,
 }
@@ -855,11 +854,10 @@ impl ObjectOutput {
 
     fn extract_content(obj: &Object) -> Option<ObjectContent> {
         match obj.type_() {
-            ObjectType::Coin(_) => obj.as_coin().map(|balance| ObjectContent::Coin { balance }),
-            // Stage 9d-C5: StakedSomaV1 deleted. Stale objects of
-            // this type may exist in old chain history but the CLI
-            // no longer surfaces their contents.
-            ObjectType::StakedSoma => None,
+            // Stage 13k: Object::as_coin deleted. Coin objects don't
+            // exist in production (Stage 13a stopped genesis from
+            // creating them), so the CLI doesn't surface coin
+            // balances via this path. Use `soma balance` instead.
             ObjectType::SystemState => Some(ObjectContent::SystemState),
             _ => None,
         }
@@ -896,18 +894,7 @@ impl Display for ObjectOutput {
         if let Some(content) = &self.content {
             writeln!(f)?;
             match content {
-                ObjectContent::Coin { balance } => {
-                    let mut builder = TableBuilder::default();
-                    builder.push_record(["Balance (shannons)", &balance.to_string()]);
-                    builder.push_record(["Balance (SOMA)", &format_soma(*balance as u128)]);
-
-                    let mut table = builder.build();
-                    table.with(TableStyle::rounded());
-                    table.with(TablePanel::header("Coin Data"));
-                    table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-                    table.with(tabled::settings::style::BorderSpanCorrection);
-                    writeln!(f, "{}", table)?;
-                }
+                // Stage 13k: ObjectContent::Coin variant deleted.
                 // Stage 9d-C5: StakedSomaV1 variant gone.
                 ObjectContent::SystemState => {
                     writeln!(
