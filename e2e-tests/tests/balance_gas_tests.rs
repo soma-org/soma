@@ -209,13 +209,6 @@ async fn test_balance_mode_gas_underfunded_tx_dropped_by_prepass() {
 
     let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
 
-    let validator_address = test_cluster.fullnode_handle.soma_node.with(|node| {
-        node.state().get_system_state_object_for_testing().unwrap().validators().validators[0]
-            .metadata
-            .soma_address
-    });
-    let _ = validator_address;
-
     // Use a freshly-generated address that has zero USDC balance —
     // any balance-mode tx from this address must be dropped by the
     // pre-pass. We can't easily create-and-fund a fresh wallet

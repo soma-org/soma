@@ -395,12 +395,24 @@ async fn test_orchestrator_execute_transaction() {
     // Verify effects are present
     assert!(effects.status().is_ok(), "Transaction should succeed");
 
-    // Stage 13c: BalanceTransfer touches no per-object versions
-    // (gas + transfer both land in accumulators), so
-    // `all_changed_objects()` is empty for a stateless tx like
-    // this one. The status-is-ok check above is the meaningful
-    // post-condition.
-    let _ = effects.all_changed_objects();
+    // Stage 13c: BalanceTransfer touches no per-object versions —
+    // both gas (USDC) and the transferred SOMA live in
+    // accumulators. Verify the balance-mode contract holds:
+    // no objects created/mutated/deleted, fee charged, and the
+    // effects digest records the right transaction.
+    assert!(
+        effects.all_changed_objects().is_empty(),
+        "BalanceTransfer must produce zero per-object changes; got {:?}",
+        effects.all_changed_objects(),
+    );
+    assert!(effects.created().is_empty());
+    assert!(effects.mutated().is_empty());
+    assert!(effects.deleted().is_empty());
+    assert!(
+        effects.transaction_fee().total_fee > 0,
+        "Some gas fee must be charged: {:?}",
+        effects.transaction_fee(),
+    );
 
     info!("Orchestrator execute transaction test passed");
 }

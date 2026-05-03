@@ -279,20 +279,20 @@ async fn channel_full_lifecycle() {
     // After two Settles: payee USDC rose by 25_000 (the cumulative
     // settled amount) minus gas fees. Stage 13c: gas is balance-
     // mode, so each Settle debits the payee's USDC accumulator for
-    // its fee in addition to the +Deposit delta. We only require
-    // that the payee gained between (25_000 - max_gas_per_tx * 2)
-    // and 25_000, since the exact unit_fee is protocol-tunable.
+    // its fee in addition to the +Deposit delta. Settle's
+    // fee_units = 1 (catch-all branch in TransactionKind::fee_units),
+    // so total gas across two Settles is 2 × unit_fee.
+    let unit_fee = test_cluster.fullnode_handle.soma_node.with(|node| {
+        node.state().get_system_state_object_for_testing().unwrap().fee_parameters().unit_fee
+    });
+    let expected_gas = 2 * unit_fee;
     let payee_after_settles = read_usdc(payee);
-    let payee_delta = payee_after_settles - payee_initial;
-    assert!(
-        payee_delta <= 25_000,
-        "payee delta must be at most settled total: got {}",
-        payee_delta,
-    );
-    assert!(
-        payee_delta >= 25_000 - 10_000,
-        "payee delta must be close to settled total minus a small gas overhead: got {}",
-        payee_delta,
+    assert_eq!(
+        payee_after_settles - payee_initial,
+        25_000 - expected_gas,
+        "payee accumulator delta must equal settled total ({}) minus exact gas ({}) over 2 Settles",
+        25_000,
+        expected_gas,
     );
 
     // 4. Request close — Clock timestamp gets stamped onto channel.

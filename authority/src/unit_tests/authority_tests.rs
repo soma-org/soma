@@ -184,12 +184,23 @@ async fn test_effects_internal_consistency() {
         assert!(!deleted_ids.contains(id), "Object {:?} in both mutated and deleted", id);
     }
 
-    // Stage 13c: BalanceTransfer creates no objects — both gas
-    // (USDC) and the SOMA debit/credit live in accumulators only.
+    // Stage 13c: BalanceTransfer creates / mutates / deletes
+    // nothing — both gas (USDC) and the SOMA debit/credit live
+    // in accumulators only.
     assert!(
         created_ids.is_empty(),
         "Stage 13c BalanceTransfer must create no objects; got {:?}",
         created_ids,
+    );
+    assert!(
+        mutated_ids.is_empty(),
+        "Stage 13c BalanceTransfer must mutate no objects; got {:?}",
+        mutated_ids,
+    );
+    assert!(
+        deleted_ids.is_empty(),
+        "Stage 13c BalanceTransfer must delete no objects; got {:?}",
+        deleted_ids,
     );
 }
 
@@ -233,9 +244,10 @@ async fn test_effects_retrievable_after_execution() {
 #[tokio::test]
 async fn test_object_version_increments_after_mutation() {
     // Object version (lamport timestamp) should increment after each
-    // mutation. Stage 13c: gas is balance-mode, so we observe the
-    // SystemState (a shared object touched by ConsensusCommitPrologue
-    // when `with_shared = true`) rather than a coin gas object.
+    // mutation. Stage 13c: BalanceTransfer mutates no objects, so
+    // we exercise this invariant with AddStake — which mutates the
+    // shared SystemState — and assert that the SystemState's
+    // version strictly increases.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
 
     let authority_state = TestAuthorityBuilder::new().build().await;
@@ -246,25 +258,41 @@ async fn test_object_version_increments_after_mutation() {
         10_000_000,
     );
 
-    // Execute a transfer (BalanceTransfer doesn't mutate any objects,
-    // but we can confirm the tx executes successfully and has a
-    // non-zero version on the effects.)
-    let data = crate::authority_test_utils::balance_transfer_data_legacy(
-        dbg_addr(1),
+    let initial_system_state_version = authority_state
+        .get_object(&types::SYSTEM_STATE_OBJECT_ID)
+        .await
+        .expect("SystemState exists")
+        .version();
+
+    let validator_address = authority_state
+        .get_system_state_object_for_testing()
+        .unwrap()
+        .validators()
+        .validators[0]
+        .metadata
+        .soma_address;
+
+    let data = TransactionData::new(
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
-        Some(1000),
+        vec![],
     );
     let tx = to_sender_signed_transaction(data, &sender_key);
-    let (_, effects) = send_and_confirm_transaction(&authority_state, tx).await.unwrap();
+    let (_, effects) =
+        send_and_confirm_transaction_(&authority_state, None, tx, true).await.unwrap();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Stage 13c: with no coin objects in play, BalanceTransfer
-    // touches no per-object versions. The effects' lamport version
-    // is still meaningful — it must be non-zero post-execution.
-    use types::effects::TransactionEffectsAPI as _;
+    let after_system_state_version = authority_state
+        .get_object(&types::SYSTEM_STATE_OBJECT_ID)
+        .await
+        .expect("SystemState exists")
+        .version();
     assert!(
-        effects.version().value() > 0,
-        "Lamport version should advance after a successful tx",
+        after_system_state_version > initial_system_state_version,
+        "SystemState version must strictly increase after AddStake mutation: \
+         was {:?}, now {:?}",
+        initial_system_state_version,
+        after_system_state_version,
     );
 }
 

@@ -75,25 +75,37 @@ async fn test_multiple_sequential_transfers() {
         "Sender SOMA must have dropped by exactly 3 × {}",
         per_transfer,
     );
-    assert!(
-        final_usdc < starting_usdc,
-        "Sender USDC (gas) must have dropped after 3 fees: got {}",
+    // BalanceTransfer with 1 recipient: fee_units = 1 + 1 = 2.
+    // Three transfers × 2 fee_units × unit_fee = 6 × unit_fee.
+    use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+    let unit_fee = authority_state
+        .epoch_store_for_testing()
+        .epoch_start_state()
+        .fee_parameters()
+        .unit_fee;
+    let expected_total_fee = 6 * unit_fee;
+    assert_eq!(
         final_usdc,
+        starting_usdc - expected_total_fee,
+        "Sender USDC must drop by exactly 3 × 2 × unit_fee ({} × {}) over the 3 transfers",
+        6,
+        unit_fee,
     );
 }
 
 // =============================================================================
-// Failed execution reverts non-gas changes
+// BalanceTransfer with empty sender accumulator
 // =============================================================================
 
 #[tokio::test]
-async fn test_failed_execution_reverts_non_gas() {
-    // Stage 13c: BalanceTransfer with empty SOMA accumulator. The
-    // SOMA Withdraw event against an empty accumulator is applied
-    // as a saturated apply — the tx still executes successfully,
-    // but only the gas (USDC) fee debit and any recipient SOMA
-    // credit are observable. We assert the conservation
-    // invariant: no objects created/deleted/mutated, fee charged.
+async fn test_balance_transfer_saturates_on_empty_sender() {
+    // Stage 13c: BalanceTransfer from a sender with zero SOMA
+    // succeeds at the protocol level — the Withdraw event against
+    // an empty accumulator is applied as a saturated apply (clamped
+    // to 0). The settlement layer doesn't reject; the tx commits.
+    // What's observable: no objects touched, gas charged at the
+    // exact unit_fee × fee_units rate, and nothing actually moved
+    // on the SOMA accumulator (since it was already 0).
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
 
     let authority_state = TestAuthorityBuilder::new().build().await;
@@ -118,9 +130,28 @@ async fn test_failed_execution_reverts_non_gas() {
     let (_, effects) = result.unwrap();
     let effects = effects.into_data();
 
+    // Stage 13c invariants for a saturated-SOMA BalanceTransfer:
+    // tx succeeds, no objects created/mutated/deleted, gas fee
+    // charged at the exact unit_fee × fee_units rate.
+    assert!(effects.status().is_ok(), "BalanceTransfer with empty SOMA still succeeds (saturate)");
     assert!(effects.created().is_empty(), "BalanceTransfer creates no objects");
-    let fee = effects.transaction_fee();
-    assert!(fee.total_fee > 0, "Some fee must be charged");
+    assert!(effects.mutated().is_empty(), "BalanceTransfer mutates no objects");
+    assert!(effects.deleted().is_empty(), "BalanceTransfer deletes no objects");
+
+    use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+    let unit_fee = authority_state
+        .epoch_store_for_testing()
+        .epoch_start_state()
+        .fee_parameters()
+        .unit_fee;
+    // BalanceTransfer with 1 recipient: fee_units = 1 + 1 = 2.
+    let expected_fee = 2 * unit_fee;
+    assert_eq!(
+        effects.transaction_fee().total_fee,
+        expected_fee,
+        "Gas fee must equal exactly fee_units (2) × unit_fee ({})",
+        unit_fee,
+    );
 }
 
 // =============================================================================

@@ -177,36 +177,75 @@ async fn test_dependent_transactions_execute_in_order() {
     // same sender execute in order with monotonically advancing
     // lamport versions.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let starting_soma = 50_000_000u64;
+    let starting_usdc = 50_000_000u64;
+    let per_transfer = 100u64;
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    seed_balance_mode_funds(&authority_state, sender, 50_000_000, 50_000_000);
+    seed_balance_mode_funds(&authority_state, sender, starting_soma, starting_usdc);
+
+    let cache_commit = authority_state.get_cache_commit();
+    let epoch = authority_state.epoch_store_for_testing().epoch();
 
     let data1 = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
-        Some(100),
+        Some(per_transfer),
     );
     let tx1 = to_sender_signed_transaction(data1, &sender_key);
     let (_, effects1) = send_and_confirm_transaction(&authority_state, tx1).await.unwrap();
     assert_eq!(*effects1.status(), ExecutionStatus::Success);
+    let digest1 = *effects1.transaction_digest();
+    let batch = cache_commit.build_db_batch(epoch, &[digest1]);
+    cache_commit.commit_transaction_outputs(epoch, batch, &[digest1]);
+
+    // After flushing tx1's settlement, the sender's accumulator
+    // must reflect tx1's effects exactly: SOMA dropped by transfer
+    // amount, USDC dropped by gas fee. tx2 must see this state.
+    use types::system_state::epoch_start::EpochStartSystemStateTrait as _;
+    let unit_fee = authority_state
+        .epoch_store_for_testing()
+        .epoch_start_state()
+        .fee_parameters()
+        .unit_fee;
+    let per_tx_gas = 2 * unit_fee; // BalanceTransfer 1 recipient: fee_units=2.
+    let store = authority_state.database_for_testing();
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Soma).unwrap(),
+        starting_soma - per_transfer,
+        "Sender SOMA must reflect tx1's debit before tx2 runs",
+    );
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Usdc).unwrap(),
+        starting_usdc - per_tx_gas,
+        "Sender USDC must reflect tx1's gas debit before tx2 runs",
+    );
 
     let data2 = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(2),
         sender,
-        Some(100),
+        Some(per_transfer),
     );
     let tx2 = to_sender_signed_transaction(data2, &sender_key);
     let (_, effects2) = send_and_confirm_transaction(&authority_state, tx2).await.unwrap();
     assert_eq!(*effects2.status(), ExecutionStatus::Success);
+    let digest2 = *effects2.transaction_digest();
+    let batch = cache_commit.build_db_batch(epoch, &[digest2]);
+    cache_commit.commit_transaction_outputs(epoch, batch, &[digest2]);
 
-    assert_ne!(
-        effects1.transaction_digest(),
-        effects2.transaction_digest(),
-        "Should be different transactions"
+    assert_ne!(digest1, digest2, "Should be different transactions");
+
+    // After both txs + settlements, the sender's SOMA must reflect
+    // both debits and USDC must reflect both gas charges — proves
+    // tx2 read the post-tx1 accumulator state, not the genesis state.
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Soma).unwrap(),
+        starting_soma - 2 * per_transfer,
     );
-    // Stage 13c: BalanceTransfer touches no per-object versions, so
-    // the per-tx lamport version is unchanged across consecutive
-    // user-only txs. Distinct digests are the meaningful invariant.
+    assert_eq!(
+        store.get_balance(sender, types::object::CoinType::Usdc).unwrap(),
+        starting_usdc - 2 * per_tx_gas,
+    );
 }
 
 #[tokio::test]
