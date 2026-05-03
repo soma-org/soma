@@ -676,12 +676,13 @@ impl SomaCommand {
                         .collect::<Result<Vec<u64>, _>>()
                 }).transpose()?;
 
+                // Stage 13b: balance-mode only — `coins` arg dropped.
+                let _ = coins;
                 let result = commands::transfer::execute(
                     &mut context,
                     base_amount,
                     recipients,
                     per_recipient_amounts,
-                    coins,
                     usdc,
                     tx_args,
                 )
@@ -705,12 +706,12 @@ impl SomaCommand {
             }
 
             SomaCommand::Send { to, amount, coin, tx_args, json } => {
-                // Backward compat: delegate to unified transfer
+                // Stage 13b: balance-mode only. `coin` arg ignored.
                 ensure!(amount.shannons() > 0, "Amount must be greater than 0");
+                let _ = coin;
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result =
-                    commands::send::execute(&mut context, to, amount.shannons(), coin, tx_args)
-                        .await?;
+                    commands::send::execute(&mut context, to, amount.shannons(), tx_args).await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);
@@ -731,11 +732,12 @@ impl SomaCommand {
                 }
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let amounts_shannons: Vec<u64> = amounts.iter().map(|a| a.shannons()).collect();
+                // Stage 13b: balance-mode only — `coins` arg dropped.
+                let _ = coins;
                 let result = commands::pay::execute(
                     &mut context,
                     recipients,
                     amounts_shannons,
-                    coins,
                     tx_args,
                 )
                 .await?;

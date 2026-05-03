@@ -46,7 +46,7 @@ async fn test_execution_scheduler_basic_enqueue() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),
@@ -79,7 +79,7 @@ async fn test_execution_scheduler_multiple_independent_txns() {
         let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
         authority_state.insert_genesis_object(coin.clone()).await;
 
-        let data = TransactionData::new_transfer_coin(
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
@@ -203,7 +203,7 @@ async fn test_dependent_transactions_execute_in_order() {
     authority_state.insert_genesis_object(coin.clone()).await;
 
     // First transfer
-    let data1 = TransactionData::new_transfer_coin(
+    let data1 = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
@@ -218,7 +218,7 @@ async fn test_dependent_transactions_execute_in_order() {
     let updated_ref = updated_coin.compute_object_reference();
 
     // Second transfer using updated ref
-    let data2 = TransactionData::new_transfer_coin(dbg_addr(2), sender, Some(100), updated_ref);
+    let data2 = crate::authority_test_utils::balance_transfer_data_legacy(dbg_addr(2), sender, Some(100), updated_ref);
     let tx2 = to_sender_signed_transaction(data2, &sender_key);
     let (_, effects2) = send_and_confirm_transaction(&authority_state, tx2).await.unwrap();
     assert_eq!(*effects2.status(), ExecutionStatus::Success);
@@ -248,7 +248,7 @@ async fn test_effects_idempotent_reexecution() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),

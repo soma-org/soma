@@ -8,7 +8,8 @@ use balance_transfer::BalanceTransferExecutor;
 use bridge::BridgeExecutor;
 use change_epoch::ChangeEpochExecutor;
 use channel::ChannelExecutor;
-use coin::CoinExecutor;
+// Stage 13b: CoinExecutor deleted along with the Transfer /
+// MergeCoins tx kinds.
 use object::ObjectExecutor;
 use prepare_gas::{GasPreparationResult, prepare_gas};
 use settlement::SettlementExecutor;
@@ -36,7 +37,7 @@ mod balance_transfer;
 mod bridge;
 mod change_epoch;
 mod channel;
-mod coin;
+// Stage 13b: mod coin removed.
 mod object;
 mod prepare_gas;
 mod settlement;
@@ -318,10 +319,7 @@ fn create_executor(kind: &TransactionKind) -> Box<dyn TransactionExecutor> {
         TransactionKind::Genesis(_) => Box::new(GenesisExecutor::new()),
         TransactionKind::ConsensusCommitPrologueV1(_) => Box::new(ConsensusCommitExecutor::new()),
 
-        // Coin and object transactions
-        TransactionKind::Transfer { .. } | TransactionKind::MergeCoins { .. } => {
-            Box::new(CoinExecutor::new())
-        }
+        // Object transactions (Stage 13b: Transfer / MergeCoins deleted)
         TransactionKind::TransferObjects { .. } => Box::new(ObjectExecutor::new()),
 
         // Staking transactions (validator only)

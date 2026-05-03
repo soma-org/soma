@@ -612,60 +612,10 @@ impl SomaClient {
     /// Merge all coins owned by the sender into as few as possible.
     ///
     /// Uses a single on-chain transaction: the smallest coin is
-    /// "transferred" to self while all other coins are passed as gas
-    /// payment (smash_gas merges them). Result: 2 coins max.
-    ///
-    /// Merges up to 1000 coins per call (one RPC page). Run again if
-    /// the address has more.
-    pub async fn merge_coins(
-        &self,
-        keypair: &keypair::Keypair,
-        sender: SomaAddress,
-    ) -> Result<TransactionEffects, error::Error> {
-        use futures::TryStreamExt as _;
-
-        const MAX_COINS: usize = 256;
-
-        let mut request = ListOwnedObjectsRequest::default();
-        request.owner = Some(sender.to_string());
-        request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some("Coin".to_string());
-
-        let stream = self.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(types::object::ObjectRef, u64)> = Vec::new();
-        while let Some(obj) =
-            stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
-        {
-            let balance = obj.as_coin().unwrap_or(0);
-            let obj_ref = obj.compute_object_reference();
-            coins.push((obj_ref, balance));
-            if coins.len() >= MAX_COINS {
-                break;
-            }
-        }
-
-        if coins.len() <= 1 {
-            return Err(error::Error::DataError(
-                "Nothing to merge: address has 0 or 1 coins.".to_string(),
-            ));
-        }
-
-        // Sort by balance ascending — smallest first
-        coins.sort_by(|a, b| a.1.cmp(&b.1));
-
-        // Smallest coin is the "transfer coin"
-        let transfer_coin = coins[0].0;
-
-        // All other coins become gas payment (smash_gas merges them)
-        let gas_payment: Vec<_> = coins[1..].iter().map(|(r, _)| *r).collect();
-
-        let kind =
-            TransactionKind::Transfer { coins: vec![transfer_coin], amounts: None, recipients: vec![sender] };
-        let tx_data = TransactionData::new(kind, sender, gas_payment);
-        self.sign_and_execute(keypair, tx_data, "MergeCoins").await
-    }
+    // Stage 13b: `merge_coins` deleted along with the
+    // TransactionKind::Transfer / MergeCoins variants. Coin objects
+    // no longer exist (the balance accumulator is the sole record),
+    // so there's nothing to merge.
 
     /// Request test tokens from the faucet. Returns the gas response.
     pub async fn request_faucet(

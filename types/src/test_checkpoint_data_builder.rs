@@ -175,11 +175,17 @@ impl TestCheckpointBuilder {
 
         let gas_input_version = gas_input.version();
 
-        let tx_data = TransactionData::new_transfer_coin(
-            recipient,
+        // Stage 13b: TransferCoin variant deleted; this builder
+        // emits a BalanceTransfer instead.
+        let tx_data = TransactionData::new(
+            crate::transaction::TransactionKind::BalanceTransfer(
+                crate::transaction::BalanceTransferArgs {
+                    coin_type: crate::object::CoinType::Soma,
+                    transfers: vec![(recipient, amount)],
+                },
+            ),
             sender,
-            Some(amount),
-            gas_input.compute_object_reference(),
+            vec![gas_input.compute_object_reference()],
         );
 
         let changed_objects = vec![

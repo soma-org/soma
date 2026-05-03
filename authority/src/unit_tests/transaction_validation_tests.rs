@@ -127,29 +127,37 @@ async fn test_user_submitted_consensus_commit_prologue_rejected() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_empty_gas_payment_rejected() {
-    // Transaction with no gas payment should fail
+async fn test_empty_gas_payment_without_usdc_balance_fails_insufficient_gas() {
+    // Stage 13b: balance-mode txs (empty gas_payment) draw fees from
+    // the sender's USDC accumulator. A sender with no USDC balance
+    // hits InsufficientGas at execution time. The pre-Stage-13b
+    // "empty gas always rejected" semantic is gone — empty gas is
+    // the normal balance-mode shape.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-
     let authority_state = TestAuthorityBuilder::new().build().await;
 
     let data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![(ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN)],
-            amounts: Some(vec![100]),
-            recipients: vec![SomaAddress::default()],
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::default(), 1)],
+        }),
         sender,
-        vec![], // empty gas payment
+        vec![], // empty gas payment (balance-mode)
     );
     let tx = to_sender_signed_transaction(data, &key);
 
     let result = send_and_confirm_transaction_(&authority_state, None, tx, false).await;
-    assert!(
-        result.is_err(),
-        "Empty gas payment should be rejected: {:?}",
-        result.ok().map(|(_, e)| format!("{:?}", e.status()))
-    );
+    match result {
+        Ok((_, effects)) => {
+            assert!(
+                !effects.status().is_ok(),
+                "balance-mode tx with no USDC must fail at execution",
+            );
+        }
+        Err(_) => {
+            // Also acceptable — earlier validation may reject before execution.
+        }
+    }
 }
 
 #[tokio::test]
@@ -161,11 +169,7 @@ async fn test_nonexistent_gas_object_rejected() {
 
     let fake_gas_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
     let data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![fake_gas_ref],
-            amounts: Some(100).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![fake_gas_ref], // non-existent gas
     );
@@ -186,11 +190,7 @@ async fn test_transaction_data_bcs_roundtrip() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![coin_ref],
-            amounts: Some(1000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![coin_ref],
     );
@@ -209,11 +209,7 @@ async fn test_transaction_digest_determinism() {
     let coin_ref = (ObjectID::random(), (1u64).into(), types::digests::ObjectDigest::MIN);
 
     let data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![coin_ref],
-            amounts: Some(1000).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![coin_ref],
     );
@@ -249,11 +245,7 @@ async fn test_duplicate_gas_coin_rejected() {
     authority_state.insert_genesis_object(coin2).await;
 
     let data = TransactionData::new(
-        TransactionKind::Transfer {
-            coins: vec![coin2_ref],
-            amounts: Some(100).map(|a| vec![a]),
-            recipients: vec![SomaAddress::default()],
-        },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(SomaAddress::default(), 1)] }),
         sender,
         vec![gas_ref, gas_ref], // duplicate gas coin
     );

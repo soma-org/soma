@@ -263,6 +263,30 @@ pub fn init_transfer_transaction(
     authority_state.epoch_store_for_testing().verify_transaction(tx).unwrap()
 }
 
+/// Stage 13b helper: construct a coin-mode-gas BalanceTransfer
+/// TransactionData. Replaces the deleted `new_transfer_coin`. The
+/// `coin_ref` becomes the gas-payment object; the SOMA debit comes
+/// out of the sender's balance accumulator. Signature mirrors the
+/// old `new_transfer_coin` (Option<u64>) for drop-in replacement.
+pub fn balance_transfer_data_legacy(
+    recipient: SomaAddress,
+    sender: SomaAddress,
+    amount: Option<u64>,
+    coin_ref: ObjectRef,
+) -> TransactionData {
+    use types::object::CoinType;
+    use types::transaction::{BalanceTransferArgs, TransactionKind};
+    let amt = amount.unwrap_or(1);
+    TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: CoinType::Soma,
+            transfers: vec![(recipient, amt)],
+        }),
+        sender,
+        vec![coin_ref],
+    )
+}
+
 pub fn init_certified_transfer_transaction(
     sender: SomaAddress,
     secret: &SomaKeyPair,

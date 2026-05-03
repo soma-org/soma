@@ -372,16 +372,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
 
             TK::SetCommissionRate { new_rate } => TransactionKind::SetCommissionRate { new_rate },
 
-            // Transfer operations
-            TK::Transfer { coins, amounts, recipients } => TransactionKind::Transfer {
-                coins: coins.into_iter().map(Into::into).collect(),
-                amounts,
-                recipients: recipients.into_iter().map(Into::into).collect(),
-            },
-
-            TK::MergeCoins { coins } => TransactionKind::MergeCoins {
-                coins: coins.into_iter().map(Into::into).collect(),
-            },
+            // Stage 13b: domain TransactionKind no longer has
+            // Transfer / MergeCoins variants — match arms gone.
 
             TK::TransferObjects { objects, recipient } => TransactionKind::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),
@@ -507,16 +499,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
 
             TransactionKind::SetCommissionRate { new_rate } => TK::SetCommissionRate { new_rate },
 
-            // Transfer operations
-            TransactionKind::Transfer { coins, amounts, recipients } => TK::Transfer {
-                coins: coins.into_iter().map(Into::into).collect(),
-                amounts,
-                recipients: recipients.into_iter().map(Into::into).collect(),
-            },
-
-            TransactionKind::MergeCoins { coins } => TK::MergeCoins {
-                coins: coins.into_iter().map(Into::into).collect(),
-            },
+            // Stage 13b: Transfer / MergeCoins deleted.
 
             TransactionKind::TransferObjects { objects, recipient } => TK::TransferObjects {
                 objects: objects.into_iter().map(Into::into).collect(),

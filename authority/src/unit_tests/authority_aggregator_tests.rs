@@ -69,7 +69,7 @@ fn make_test_transaction() -> Transaction {
     let recipient: SomaAddress = SomaAddress::default();
 
     let data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas_object_ref], amounts: Some(100).map(|a| vec![a]), recipients: vec![recipient] },
+        { let _coin_ref = gas_object_ref; types::transaction::TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs { coin_type: types::object::CoinType::Soma, transfers: vec![(recipient, 100)] }) },
         sender,
         vec![gas_object_ref],
     );

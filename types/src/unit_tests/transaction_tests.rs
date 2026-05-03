@@ -27,12 +27,38 @@ fn random_object_ref() -> ObjectRef {
     (ObjectID::random(), Version::from_u64(1), ObjectDigest::random())
 }
 
-/// Create a simple TransferCoin TransactionData for testing.
+/// Stage 13b helper: build a BalanceTransfer-mode TransactionData
+/// matching what `new_transfer_coin` used to produce in coin-mode.
+fn balance_transfer_data(
+    recipient: SomaAddress,
+    sender: SomaAddress,
+    amount: u64,
+    gas_ref: ObjectRef,
+) -> TransactionData {
+    TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, amount)],
+        }),
+        sender,
+        vec![gas_ref],
+    )
+}
+
+/// Create a simple BalanceTransfer TransactionData for testing.
+/// Stage 13b: was a coin-mode TransferCoin; balance-mode now.
 fn make_transfer_coin_data() -> (TransactionData, SomaAddress) {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(1000), coin_ref);
+    let data = TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1000)],
+        }),
+        sender,
+        vec![coin_ref],
+    );
     (data, sender)
 }
 
@@ -97,7 +123,7 @@ fn test_signed_transaction() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(500), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 500, coin_ref);
 
     let tx = Transaction::from_data_and_signer(data.clone(), vec![&kp]);
 
@@ -190,11 +216,10 @@ fn test_transaction_kind_classification() {
     assert!(withdraw_stake.is_staking_tx());
 
     // Coin/object transactions should not match any category
-    let transfer_coin = TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: Some(100).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    };
+    let transfer_coin = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer_coin.is_system_tx());
     assert!(!transfer_coin.is_validator_tx());
     assert!(!transfer_coin.is_staking_tx());
@@ -299,20 +324,15 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         TransactionKind::UndoReportValidator { reportee: SomaAddress::random() },
         TransactionKind::UpdateValidatorMetadata(UpdateValidatorMetadataArgs::default()),
         TransactionKind::SetCommissionRate { new_rate: 100 },
-        // Coin/object
-        TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: Some(500).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    },
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref(), random_object_ref()],
-            amounts: Some(vec![100, 200]),
-            recipients: vec![SomaAddress::random(), SomaAddress::random()],
-        },
-        TransactionKind::MergeCoins {
-            coins: vec![random_object_ref(), random_object_ref()],
-        },
+        // Object / balance transfers (Stage 13b: Transfer / MergeCoins gone)
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 500)],
+        }),
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 100), (SomaAddress::random(), 200)],
+        }),
         TransactionKind::TransferObjects {
             objects: vec![random_object_ref()],
             recipient: SomaAddress::random(),
@@ -349,10 +369,13 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         }),
     ];
 
+    // Stage 13b: Transfer + MergeCoins variants deleted (-2). The
+    // list above samples 17 variants plus a 2-recipient
+    // BalanceTransfer = 18 entries.
     assert_eq!(
         kinds.len(),
-        19,
-        "Expected 19 TransactionKind variants; if a new variant was added, update this test"
+        18,
+        "Expected 18 TransactionKind sample entries; if a new variant was added, update this test"
     );
 
     for (i, kind) in kinds.iter().enumerate() {
@@ -482,11 +505,10 @@ fn test_shared_input_objects() {
     assert!(shared.is_empty());
 
     // TransferCoin -> no shared input objects
-    let transfer = TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: Some(100).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     let shared: Vec<_> = transfer.shared_input_objects().collect();
     assert!(shared.is_empty());
 }
@@ -503,7 +525,7 @@ fn test_input_objects_no_duplicates() {
     let sender = SomaAddress::random();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(100), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 100, coin_ref);
 
     let inputs = data.input_objects().expect("input_objects should succeed");
     // The coin appears once as ImmOrOwnedObject, and since the gas_payment contains
@@ -519,11 +541,10 @@ fn test_input_objects_no_duplicates() {
 #[test]
 fn test_contains_shared_object() {
     // TransferCoin does NOT touch shared state
-    let transfer = TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: Some(100).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer.contains_shared_object(), "TransferCoin should not contain shared objects");
 
     // AddStake touches SystemState
@@ -564,7 +585,7 @@ fn test_verify_sender_signed_transaction() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let recipient = SomaAddress::random();
     let coin_ref = random_object_ref();
-    let data = TransactionData::new_transfer_coin(recipient, sender, Some(100), coin_ref);
+    let data = balance_transfer_data(recipient, sender, 100, coin_ref);
 
     let tx = Transaction::from_data_and_signer(data, vec![&kp]);
     assert!(tx.verify_signature_for_testing().is_ok(), "Valid signature should pass verification");
@@ -658,8 +679,11 @@ fn test_full_message_digest_deterministic() {
 }
 
 // ---------------------------------------------------------------------------
-// 22. TransactionData::new_transfer and new_pay_coins constructors
+// 22. TransactionData constructor — new_transfer (TransferObjects)
 // ---------------------------------------------------------------------------
+//
+// Stage 13b: new_pay_coins / new_transfer_coin deleted. The
+// remaining `new_transfer` constructs a TransferObjects tx.
 
 #[test]
 fn test_transaction_data_constructors() {
@@ -668,7 +692,6 @@ fn test_transaction_data_constructors() {
     let obj_ref = random_object_ref();
     let gas_ref = random_object_ref();
 
-    // new_transfer
     let transfer_data = TransactionData::new_transfer(recipient, obj_ref, sender, vec![gas_ref]);
     assert_eq!(transfer_data.sender(), sender);
     assert_eq!(transfer_data.gas(), vec![gas_ref]);
@@ -679,29 +702,6 @@ fn test_transaction_data_constructors() {
             assert_eq!(*r, recipient);
         }
         _ => panic!("Expected TransferObjects kind"),
-    }
-
-    // new_pay_coins
-    let coin1 = random_object_ref();
-    let coin2 = random_object_ref();
-    let r1 = SomaAddress::random();
-    let r2 = SomaAddress::random();
-    let pay_data = TransactionData::new_pay_coins(
-        vec![coin1, coin2],
-        Some(vec![100, 200]),
-        vec![r1, r2],
-        sender,
-    );
-    assert_eq!(pay_data.sender(), sender);
-    // Gas payment should be the first coin
-    assert_eq!(pay_data.gas(), vec![coin1]);
-    match pay_data.kind() {
-        TransactionKind::Transfer { coins, amounts, recipients } => {
-            assert_eq!(coins.len(), 2);
-            assert_eq!(*amounts, Some(vec![100, 200]));
-            assert_eq!(recipients.len(), 2);
-        }
-        _ => panic!("Expected Transfer kind"),
     }
 }
 
@@ -742,11 +742,10 @@ fn test_requires_system_state() {
     assert!(epoch.requires_system_state());
 
     // Transfer does NOT require system state
-    let transfer = TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: Some(100).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    };
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     assert!(!transfer.requires_system_state());
 
     // Genesis does NOT require system state
@@ -792,16 +791,16 @@ fn test_input_objects_system_tx() {
 
 #[test]
 fn test_input_objects_user_txs() {
-    // TransferCoin: should have the coin as ImmOrOwnedObject
+    // Stage 13b: BalanceTransfer has no input objects (sender's
+    // accumulator is debited, no coin refs).
     let coin_ref = random_object_ref();
-    let transfer = TransactionKind::Transfer {
-        coins: vec![coin_ref],
-        amounts: Some(100).map(|a| vec![a]),
-        recipients: vec![SomaAddress::random()],
-    };
+    let _ = coin_ref;
+    let transfer = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 100)],
+    });
     let inputs = transfer.input_objects().expect("should succeed");
-    assert_eq!(inputs.len(), 1);
-    assert_eq!(inputs[0].object_id(), coin_ref.0);
+    assert!(inputs.is_empty(), "BalanceTransfer has no input objects");
 
     // AddStake (Stage 9d-C2: balance-mode): SystemState shared only,
     // no coin input.
@@ -1021,11 +1020,11 @@ fn test_envelope_shared_object_methods() {
     assert!(tx.contains_shared_object());
     assert!(tx.is_consensus_tx());
 
-    // TransferCoin -> no shared objects
-    let transfer_data = TransactionData::new_transfer_coin(
+    // BalanceTransfer -> no shared objects
+    let transfer_data = balance_transfer_data(
         SomaAddress::random(),
         sender,
-        Some(100),
+        100,
         random_object_ref(),
     );
     let ssd2 = SenderSignedData::new(transfer_data, vec![]);
@@ -1048,13 +1047,20 @@ fn test_envelope_shared_object_methods() {
 const TEST_UNIT_FEE: u64 = 1_000;
 
 #[test]
-fn test_reservations_transfer_coin_is_empty() {
-    // Coin-mode tx (gas_payment = vec![coin_ref]) — no reservation.
-    let (data, _) = make_transfer_coin_data();
-    assert!(
-        data.reservations(TEST_UNIT_FEE).is_empty(),
-        "Coin-mode TransferCoin must not declare gas reservation"
-    );
+fn test_reservations_with_coin_mode_gas_skips_gas_reservation() {
+    // Stage 13b: BalanceTransfer with non-empty gas_payment (the
+    // legacy coin-mode-gas path) skips the USDC gas reservation
+    // — but still declares a SOMA reservation for the transfer
+    // amount itself. The deleted "TransferCoin had no reservation"
+    // semantic is replaced by this single check.
+    let (data, sender) = make_transfer_coin_data();
+    let reservations = data.reservations(TEST_UNIT_FEE);
+    // gas reservation skipped (gas_payment non-empty); transfer
+    // amount reservation present.
+    assert_eq!(reservations.len(), 1, "expected only the BalanceTransfer amount reservation");
+    assert_eq!(reservations[0].owner, sender);
+    assert_eq!(reservations[0].coin_type, crate::object::CoinType::Soma);
+    assert_eq!(reservations[0].amount, 1000);
 }
 
 #[test]
@@ -1091,11 +1097,10 @@ fn test_reservations_balance_mode_returns_gas_reservation() {
 
     // Transfer with 1 input + 1 output → fee_units = 2.
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![coin_ref],
-            amounts: Some(vec![1]),
-            recipients: vec![recipient],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1)],
+        }),
         sender,
         Vec::new(), // empty gas_payment → balance-mode
         TransactionExpiration::ValidDuring {
@@ -1107,26 +1112,37 @@ fn test_reservations_balance_mode_returns_gas_reservation() {
     );
 
     let reservations = data.reservations(TEST_UNIT_FEE);
-    assert_eq!(reservations.len(), 1, "balance-mode tx must declare exactly one gas reservation");
-    assert_eq!(
-        reservations[0],
-        WithdrawalReservation::new(sender, CoinType::Usdc, TEST_UNIT_FEE * 2),
-        "gas reservation is unit_fee × kind.fee_units()"
-    );
+    // Stage 13b: balance-mode BalanceTransfer declares both the
+    // USDC gas reservation AND the SOMA transfer-amount
+    // reservation.
+    assert_eq!(reservations.len(), 2, "balance-mode BalanceTransfer declares gas + transfer");
+    let gas = reservations
+        .iter()
+        .find(|r| r.coin_type == CoinType::Usdc)
+        .expect("USDC gas reservation");
+    assert_eq!(*gas, WithdrawalReservation::new(sender, CoinType::Usdc, TEST_UNIT_FEE * 2));
+    let transfer = reservations
+        .iter()
+        .find(|r| r.coin_type == CoinType::Soma)
+        .expect("SOMA transfer reservation");
+    assert_eq!(transfer.owner, sender);
+    assert_eq!(transfer.amount, 1);
 }
 
 #[test]
-fn test_reservations_balance_mode_zero_unit_fee_skips_reservation() {
-    // If unit_fee is 0 (e.g., a chain-wide fee waiver), we don't emit
-    // a zero-amount reservation. Cleaner for the scheduler and tests.
+fn test_reservations_balance_mode_zero_unit_fee_skips_gas_reservation() {
+    // If unit_fee is 0 (e.g., a chain-wide fee waiver), the gas
+    // reservation is suppressed. The transfer-amount reservation
+    // still fires (it's independent of the fee model).
     let chain = fresh_chain_id();
+    let sender = SomaAddress::random();
+    let recipient = SomaAddress::random();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: Some(vec![1]),
-            recipients: vec![SomaAddress::random()],
-        },
-        SomaAddress::random(),
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 1)],
+        }),
+        sender,
         Vec::new(),
         TransactionExpiration::ValidDuring {
             min_epoch: Some(0),
@@ -1135,7 +1151,11 @@ fn test_reservations_balance_mode_zero_unit_fee_skips_reservation() {
             nonce: 0,
         },
     );
-    assert!(data.reservations(0).is_empty());
+    let reservations = data.reservations(0);
+    assert_eq!(reservations.len(), 1, "only the transfer reservation remains at 0 unit fee");
+    assert_eq!(reservations[0].coin_type, crate::object::CoinType::Soma);
+    assert_eq!(reservations[0].amount, 1);
+    assert_eq!(reservations[0].owner, sender);
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,11 +1195,10 @@ fn test_expiration_valid_during_within_window_passes() {
     let chain = fresh_chain_id();
     let sender = SomaAddress::random();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         sender,
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {
@@ -1199,11 +1218,10 @@ fn test_expiration_valid_during_within_window_passes() {
 fn test_expiration_valid_during_premature_rejected() {
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         SomaAddress::random(),
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {
@@ -1221,11 +1239,10 @@ fn test_expiration_valid_during_premature_rejected() {
 fn test_expiration_valid_during_expired_rejected() {
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         SomaAddress::random(),
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {
@@ -1245,11 +1262,10 @@ fn test_expiration_chain_mismatch_rejected() {
     let chain_b: ChainIdentifier = crate::digests::CheckpointDigest::new([9u8; 32]).into();
     assert_ne!(chain_a, chain_b);
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         SomaAddress::random(),
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {
@@ -1268,11 +1284,10 @@ fn test_expiration_oversized_window_rejected() {
     // Width > 2 epochs would unbound the digest cache.
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         SomaAddress::random(),
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {
@@ -1297,11 +1312,10 @@ fn test_expiration_missing_min_or_max_rejected() {
     ];
     for (min_epoch, max_epoch) in cases {
         let data = TransactionData::new_with_expiration(
-            TransactionKind::Transfer {
-                coins: vec![random_object_ref()],
-                amounts: None,
-                recipients: vec![SomaAddress::random()],
-            },
+            TransactionKind::BalanceTransfer(BalanceTransferArgs {
+                coin_type: crate::object::CoinType::Soma,
+                transfers: vec![(SomaAddress::random(), 1)],
+            }),
             SomaAddress::random(),
             vec![random_object_ref()],
             TransactionExpiration::ValidDuring { min_epoch, max_epoch, chain, nonce: 0 },
@@ -1319,11 +1333,10 @@ fn test_expiration_nonce_distinguishes_otherwise_identical_txs() {
     // logical tx without colliding in the digest cache.
     let chain = fresh_chain_id();
     let sender = SomaAddress::random();
-    let kind = TransactionKind::Transfer {
-        coins: vec![random_object_ref()],
-        amounts: None,
-        recipients: vec![SomaAddress::random()],
-    };
+    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: crate::object::CoinType::Soma,
+        transfers: vec![(SomaAddress::random(), 1)],
+    });
     let gas = vec![random_object_ref()];
 
     let d1 = TransactionData::new_with_expiration(
@@ -1361,11 +1374,10 @@ fn test_signed_transaction_with_valid_during_expiration() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: Some(vec![1]),
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         sender,
         Vec::new(),
         TransactionExpiration::ValidDuring {
@@ -1405,11 +1417,10 @@ fn test_e2e_wallet_signing_path_for_valid_during() {
     let (sender, kp): (SomaAddress, Ed25519KeyPair) = get_key_pair();
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: Some(vec![1]),
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         sender,
         Vec::new(),
         TransactionExpiration::ValidDuring {
@@ -1437,11 +1448,10 @@ fn test_e2e_wallet_signing_path_for_valid_during() {
 fn test_expiration_bcs_roundtrip() {
     let chain = fresh_chain_id();
     let data = TransactionData::new_with_expiration(
-        TransactionKind::Transfer {
-            coins: vec![random_object_ref()],
-            amounts: None,
-            recipients: vec![SomaAddress::random()],
-        },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(SomaAddress::random(), 1)],
+        }),
         SomaAddress::random(),
         vec![random_object_ref()],
         TransactionExpiration::ValidDuring {

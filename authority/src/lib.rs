@@ -63,17 +63,12 @@ pub mod validator_tx_finalizer;
 #[cfg(test)]
 pub mod test_authority_clients;
 
-#[cfg(test)]
-#[path = "unit_tests/pay_coin_tests.rs"]
-mod pay_coin_tests;
+// Stage 13b: pay_coin_tests + transfer_coin_tests deleted with the
+// Transfer / MergeCoins tx kinds + CoinExecutor.
 
 #[cfg(test)]
 #[path = "unit_tests/gas_tests.rs"]
 mod gas_tests;
-
-#[cfg(test)]
-#[path = "unit_tests/transfer_coin_tests.rs"]
-mod transfer_coin_tests;
 
 #[cfg(test)]
 #[path = "unit_tests/staking_tests.rs"]

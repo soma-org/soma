@@ -2,55 +2,32 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
-use types::object::ObjectID;
-use types::transaction::TransactionKind;
+use types::object::CoinType;
+use types::transaction::{BalanceTransferArgs, TransactionKind};
 
 use crate::client_commands::TxProcessingArgs;
-use crate::response::{ClientCommandResponse, TransactionResponse};
+use crate::response::ClientCommandResponse;
 
-/// Execute the send command (transfer SOMA to a recipient)
+/// Execute the send command (transfer SOMA to a recipient).
+///
+/// Stage 13b: balance-mode only. Debits SOMA directly from the
+/// sender's accumulator — no coin reference required.
 pub async fn execute(
     context: &mut WalletContext,
     to: KeyIdentity,
     amount: u64,
-    coin: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.active_address()?;
     let recipient = context.get_identity_address(Some(to))?;
-    let client = context.get_client().await?;
 
-    // Get coin reference and gas payment coins in a single fetch.
-    let (coin_ref, gas_payment) = match coin {
-        Some(coin_id) => {
-            let obj = client
-                .get_object(coin_id)
-                .await
-                .map_err(|e| anyhow!("Failed to get coin: {}", e.message()))?;
-            let r = obj.compute_object_reference();
-            (r, vec![r])
-        }
-        None => {
-            let (r, balance) = context
-                .get_richest_coin_with_balance(sender)
-                .await?
-                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
-            if balance < amount {
-                return Err(anyhow!(
-                    "Richest coin has balance {} but transfer requires {}. \
-                     Run `soma merge-coins` to consolidate your coins.",
-                    balance,
-                    amount,
-                ));
-            }
-            (r, vec![r])
-        }
-    };
+    let kind = TransactionKind::BalanceTransfer(BalanceTransferArgs {
+        coin_type: CoinType::Soma,
+        transfers: vec![(recipient, amount)],
+    });
 
-    let kind = TransactionKind::Transfer { coins: vec![coin_ref], amounts: Some(vec![amount]), recipients: vec![recipient] };
-
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
 }

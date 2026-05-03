@@ -602,16 +602,8 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 Kind::SetCommissionRate(SetCommissionRate { new_rate: Some(new_rate) })
             }
 
-            K::Transfer { coins, amounts, recipients } => Kind::PayCoins(PayCoins {
-                coins: coins.into_iter().map(object_ref_to_proto).collect(),
-                amounts: amounts.unwrap_or_default(),
-                recipients: recipients.into_iter().map(|r| r.to_string()).collect(),
-            }),
-            K::MergeCoins { coins } => Kind::PayCoins(PayCoins {
-                coins: coins.into_iter().map(object_ref_to_proto).collect(),
-                amounts: vec![],
-                recipients: vec![],
-            }),
+            // Stage 13b: K::Transfer / K::MergeCoins deleted at the
+            // domain layer.
             K::TransferObjects { objects, recipient } => Kind::TransferObjects(TransferObjects {
                 objects: objects.into_iter().map(object_ref_to_proto).collect(),
                 recipient: Some(recipient.to_string()),

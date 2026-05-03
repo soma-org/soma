@@ -78,15 +78,12 @@ pub enum TransactionKind {
         new_rate: u64,
     },
 
-    // Coin and object transactions
-    Transfer {
-        coins: Vec<ObjectRef>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<SomaAddress>,
-    },
-    MergeCoins {
-        coins: Vec<ObjectRef>,
-    },
+    // Object transactions
+    //
+    // Stage 13b: TransactionKind::Transfer and MergeCoins are gone.
+    // BalanceTransfer (Stage 7) replaces both — there's no longer
+    // any concept of a "coin object" being moved or merged. The
+    // accumulator is the sole record of fungible balances.
     TransferObjects {
         objects: Vec<ObjectRef>,
         recipient: SomaAddress,
@@ -449,22 +446,13 @@ impl TransactionKind {
     ///
     /// System txs return 0 (they're gasless).
     /// Most ops return 1.
-    /// Linear-in-input ops (Transfer, MergeCoins, TransferObjects)
-    /// return cost proportional to input count. Stake/Bridge ops
-    /// return 2.
+    /// Linear-in-input ops (BalanceTransfer, TransferObjects) return
+    /// cost proportional to input count. Stake/Bridge ops return 2.
     pub fn fee_units(&self) -> u32 {
         if self.is_system_tx() {
             return 0;
         }
         match self {
-            // Transfer: 1 unit per input + 1 unit per output, min 2.
-            TransactionKind::Transfer { coins, recipients, .. } => {
-                let n = coins.len().saturating_add(recipients.len());
-                n.try_into().unwrap_or(u32::MAX)
-            }
-            TransactionKind::MergeCoins { coins } => {
-                coins.len().try_into().unwrap_or(u32::MAX)
-            }
             TransactionKind::TransferObjects { objects, .. } => {
                 objects.len().try_into().unwrap_or(u32::MAX)
             }
@@ -584,11 +572,6 @@ impl TransactionKind {
 
         // Add transaction-specific inputs
         match self {
-            TransactionKind::Transfer { coins, .. } | TransactionKind::MergeCoins { coins } => {
-                for coin in coins {
-                    input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin));
-                }
-            }
             TransactionKind::TransferObjects { objects, .. } => {
                 for object in objects {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
@@ -1022,39 +1005,9 @@ impl TransactionData {
         })
     }
 
-    pub fn new_pay_coins(
-        coins: Vec<ObjectRef>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<SomaAddress>,
-        sender: SomaAddress,
-    ) -> Self {
-        // Use the first coin in the list as gas payment
-        if coins.is_empty() {
-            panic!("Transfer transaction must have at least one coin");
-        }
-        Self::new(
-            TransactionKind::Transfer { coins: coins.clone(), amounts, recipients },
-            sender,
-            vec![coins[0]],
-        )
-    }
-
-    pub fn new_transfer_coin(
-        recipient: SomaAddress,
-        sender: SomaAddress,
-        amount: Option<u64>,
-        object_ref: ObjectRef,
-    ) -> Self {
-        Self::new(
-            TransactionKind::Transfer {
-                coins: vec![object_ref],
-                amounts: amount.map(|a| vec![a]),
-                recipients: vec![recipient],
-            },
-            sender,
-            vec![object_ref],
-        )
-    }
+    // Stage 13b: `new_pay_coins` and `new_transfer_coin` deleted —
+    // they constructed the now-removed `TransactionKind::Transfer`
+    // variant. Callers use `BalanceTransfer` directly.
 
     pub fn new_transfer(
         recipient: SomaAddress,

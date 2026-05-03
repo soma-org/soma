@@ -16,8 +16,12 @@ fn make_sender_signed_data() -> SenderSignedData {
     let obj_ref = (obj_id, Version::from_u64(1), ObjectDigest::new([1u8; 32]));
     let recipient = SomaAddress::random();
 
+    // Stage 13b: BalanceTransfer replaces the deleted Transfer kind.
     let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![obj_ref], amounts: Some(vec![100]), recipients: vec![recipient] },
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: crate::object::CoinType::Soma,
+            transfers: vec![(recipient, 100)],
+        }),
         sender,
         vec![obj_ref],
     );

@@ -145,7 +145,7 @@ async fn test_effects_internal_consistency() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),
@@ -170,11 +170,18 @@ async fn test_effects_internal_consistency() {
         assert!(!deleted_ids.contains(id), "Object {:?} in both mutated and deleted", id);
     }
 
-    // Source coin should be mutated (balance deducted)
-    assert!(mutated_ids.contains(&coin_id), "Source coin should be in mutated set");
+    // Source coin (gas) should be mutated (gas fee deducted).
+    assert!(mutated_ids.contains(&coin_id), "Gas coin should be in mutated set");
 
-    // New coin should be created for recipient
-    assert!(!created_ids.is_empty(), "Should have created objects for recipient");
+    // Stage 13b: BalanceTransfer creates no objects — the recipient
+    // balance lands in the accumulator only. The pre-Stage-13b
+    // coin-mode test asserted a created Coin object, which no
+    // longer applies.
+    assert!(
+        created_ids.is_empty(),
+        "Stage 13b BalanceTransfer must create no objects; got {:?}",
+        created_ids,
+    );
 }
 
 #[tokio::test]
@@ -188,7 +195,7 @@ async fn test_effects_retrievable_after_execution() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),
@@ -225,7 +232,7 @@ async fn test_object_version_increments_after_mutation() {
     let initial_version = authority_state.get_object(&coin_id).await.unwrap().version();
 
     // Execute a transfer to mutate the coin
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),
@@ -257,7 +264,7 @@ async fn test_bad_signature_rejected() {
     let coin_id = ObjectID::random();
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),
@@ -280,7 +287,7 @@ async fn test_no_signature_rejected() {
     let coin_id = ObjectID::random();
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 10_000_000);
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(1000),

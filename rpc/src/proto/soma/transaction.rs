@@ -260,13 +260,8 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             UpdateValidatorMetadata(args) => Kind::UpdateValidatorMetadata(args.into()),
             SetCommissionRate { new_rate } => Kind::SetCommissionRate(new_rate.into()),
 
-            // Transfers and payments
-            Transfer { coins, amounts, recipients } => {
-                Kind::PayCoins(PayCoinsArgs { coins, amounts, recipients }.into())
-            }
-            MergeCoins { coins } => {
-                Kind::PayCoins(PayCoinsArgs { coins, amounts: None, recipients: vec![] }.into())
-            }
+            // Stage 13b: Transfer / MergeCoins deleted from the
+            // proto enum.
             TransferObjects { objects, recipient } => {
                 Kind::TransferObjects(TransferObjectsArgs { objects, recipient }.into())
             }
@@ -479,43 +474,20 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                 new_rate: rate.new_rate.ok_or_else(|| TryFromProtoError::missing("new_rate"))?,
             },
 
-            // Transfers and payments
-            Kind::TransferCoin(transfer) => {
-                // Legacy proto: map single-coin TransferCoin to Transfer
-                let coin = transfer
-                    .coin
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin"))?
-                    .try_into()?;
-                let recipient = transfer
-                    .recipient
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("recipient"))?
-                    .parse()
-                    .map_err(|e| TryFromProtoError::invalid("recipient", e))?;
-                Self::Transfer {
-                    coins: vec![coin],
-                    amounts: transfer.amount.map(|a| vec![a]),
-                    recipients: vec![recipient],
-                }
+            // Stage 13b: legacy proto TransferCoin / PayCoins are
+            // rejected — domain Transfer / MergeCoins variants are
+            // gone. Callers must send proto BalanceTransfer.
+            Kind::TransferCoin(_) => {
+                return Err(TryFromProtoError::invalid(
+                    "kind",
+                    "TransferCoin is deleted (Stage 13b). Use BalanceTransfer.",
+                ));
             }
-            Kind::PayCoins(pay) => {
-                let coins: Vec<_> =
-                    pay.coins.iter().map(TryInto::try_into).collect::<Result<_, _>>()?;
-                if pay.recipients.is_empty() {
-                    // MergeCoins: no recipients means merge-only
-                    Self::MergeCoins { coins }
-                } else {
-                    let recipients: Vec<_> = pay
-                        .recipients
-                        .iter()
-                        .map(|r| {
-                            r.parse().map_err(|e| TryFromProtoError::invalid("recipients", e))
-                        })
-                        .collect::<Result<_, _>>()?;
-                    let amounts = if pay.amounts.is_empty() { None } else { Some(pay.amounts.clone()) };
-                    Self::Transfer { coins, amounts, recipients }
-                }
+            Kind::PayCoins(_) => {
+                return Err(TryFromProtoError::invalid(
+                    "kind",
+                    "PayCoins is deleted (Stage 13b). Use BalanceTransfer.",
+                ));
             }
             Kind::TransferObjects(transfer) => Self::TransferObjects {
                 objects: transfer

@@ -47,7 +47,7 @@ async fn test_handle_transaction_basic() {
         )),
     );
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),
@@ -122,7 +122,7 @@ async fn test_handle_transaction_info_request() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         recipient,
         sender,
         Some(1000),

@@ -42,7 +42,7 @@ async fn test_batch_verify_valid_certificates() {
         let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
         authority_state.insert_genesis_object(coin.clone()).await;
 
-        let data = TransactionData::new_transfer_coin(
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
@@ -72,7 +72,7 @@ async fn test_batch_verify_caching() {
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
@@ -109,7 +109,7 @@ async fn test_async_verify_single_cert() {
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),
@@ -137,7 +137,7 @@ async fn test_multi_verify_certs_async() {
         let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
         authority_state.insert_genesis_object(coin.clone()).await;
 
-        let data = TransactionData::new_transfer_coin(
+        let data = crate::authority_test_utils::balance_transfer_data_legacy(
             dbg_addr(i + 1),
             sender,
             Some(100),
@@ -168,7 +168,7 @@ async fn test_verify_tx_sender_signature() {
     let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 50_000_000);
     authority_state.insert_genesis_object(coin.clone()).await;
 
-    let data = TransactionData::new_transfer_coin(
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(
         dbg_addr(1),
         sender,
         Some(100),

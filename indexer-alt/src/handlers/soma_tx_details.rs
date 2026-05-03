@@ -28,8 +28,7 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
         TransactionKind::UndoReportValidator { .. } => "UndoReportValidator",
         TransactionKind::UpdateValidatorMetadata(_) => "UpdateValidatorMetadata",
         TransactionKind::SetCommissionRate { .. } => "SetCommissionRate",
-        TransactionKind::Transfer { .. } => "Transfer",
-        TransactionKind::MergeCoins { .. } => "MergeCoins",
+        // Stage 13b: Transfer / MergeCoins variants gone.
         TransactionKind::TransferObjects { .. } => "TransferObjects",
         TransactionKind::AddStake { .. } => "AddStake",
         TransactionKind::WithdrawStake { .. } => "WithdrawStake",
@@ -49,24 +48,7 @@ fn kind_label(kind: &TransactionKind) -> &'static str {
 /// Extract kind-specific metadata as a JSON string for interesting tx types.
 fn metadata_json(kind: &TransactionKind) -> Option<String> {
     match kind {
-        TransactionKind::Transfer { amounts, recipients, .. } => {
-            let amount_str = match amounts {
-                Some(a) => format!("{:?}", a),
-                None => "null".to_string(),
-            };
-            let recipients_str: Vec<String> = recipients
-                .iter()
-                .map(|r| format!("\"0x{}\"", hex::encode(r.to_vec())))
-                .collect();
-            Some(format!(
-                r#"{{"recipients":[{}],"amounts":{}}}"#,
-                recipients_str.join(","),
-                amount_str,
-            ))
-        }
-        TransactionKind::MergeCoins { coins } => {
-            Some(format!(r#"{{"coin_count":{}}}"#, coins.len()))
-        }
+        // Stage 13b: Transfer / MergeCoins variants gone.
         TransactionKind::AddStake { validator, amount } => {
             Some(format!(
                 r#"{{"validator":"0x{}","amount":{}}}"#,

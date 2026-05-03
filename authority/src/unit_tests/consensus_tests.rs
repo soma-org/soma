@@ -52,7 +52,9 @@ async fn make_add_stake_consensus_tx(
     ConsensusTransaction::new_user_transaction_message(&authority.name, tx)
 }
 
-/// Helper: create a TransferCoin consensus transaction (owned objects only).
+/// Helper: create a BalanceTransfer consensus transaction.
+/// Stage 13b: balance-mode only. Seeds the sender's SOMA
+/// accumulator so the reservation pre-pass admits the tx.
 async fn make_transfer_consensus_tx(
     authority: &crate::authority::AuthorityState,
 ) -> ConsensusTransaction {
@@ -61,10 +63,18 @@ async fn make_transfer_consensus_tx(
     let gas_object_id = ObjectID::random();
     let gas_object = Object::with_id_owner_coin_for_testing(gas_object_id, sender, 10_000_000_000);
     authority.insert_genesis_object(gas_object.clone()).await;
+    // Seed SOMA accumulator so the BalanceTransfer reservation passes.
+    authority
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, 10_000_000_000)
+        .unwrap();
 
     let gas_ref = gas_object.compute_object_reference();
     let data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas_ref], amounts: Some(1_000).map(|a| vec![a]), recipients: vec![recipient] },
+        TransactionKind::BalanceTransfer(types::transaction::BalanceTransferArgs {
+            coin_type: types::object::CoinType::Soma,
+            transfers: vec![(recipient, 1_000)],
+        }),
         sender,
         vec![gas_ref],
     );

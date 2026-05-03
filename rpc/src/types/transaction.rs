@@ -99,15 +99,8 @@ pub enum TransactionKind {
         new_rate: u64,
     },
 
-    // Transfers and payments
-    Transfer {
-        coins: Vec<ObjectReference>,
-        amounts: Option<Vec<u64>>,
-        recipients: Vec<Address>,
-    },
-    MergeCoins {
-        coins: Vec<ObjectReference>,
-    },
+    // Stage 13b: Transfer and MergeCoins variants deleted —
+    // BalanceTransfer (further below) replaces both.
     TransferObjects {
         objects: Vec<ObjectReference>,
         recipient: Address,

@@ -51,12 +51,13 @@ async fn test_fee_deducted_on_success() {
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
     let fee = effects.transaction_fee();
-    // 1 coin + 1 recipient = 2 units
+    // BalanceTransfer fee_units = 1 + transfers.len() = 2 with one recipient.
     assert_eq!(fee.total_fee, 2 * UNIT_FEE);
 
-    // Gas object balance should reflect deduction.
+    // Stage 13b: gas coin gets debited only by the fee. The transfer
+    // amount comes out of the sender's SOMA balance accumulator.
     let gas_obj = res.authority_state.get_object(&coin_ref.0).await.unwrap();
-    assert_eq!(gas_obj.as_coin().unwrap(), 10_000_000 - transfer_amount - fee.total_fee);
+    assert_eq!(gas_obj.as_coin().unwrap(), 10_000_000 - fee.total_fee);
 }
 
 #[tokio::test]
@@ -99,40 +100,10 @@ async fn test_zero_balance_coin_fails() {
     );
 }
 
-#[tokio::test]
-async fn test_gas_smashing_merges_balances() {
-    // Multiple gas coins get smashed into the primary; secondaries are deleted.
-    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let id1 = ObjectID::random();
-    let id2 = ObjectID::random();
-    let id3 = ObjectID::random();
-    let coin1 = Object::with_id_owner_coin_for_testing(id1, sender, 5_000_000);
-    let coin2 = Object::with_id_owner_coin_for_testing(id2, sender, 3_000);
-    let coin3 = Object::with_id_owner_coin_for_testing(id3, sender, 7_000);
-
-    let recipient = dbg_addr(1);
-
-    let res = execute_pay_coin(
-        vec![coin1, coin2, coin3],
-        vec![recipient],
-        Some(vec![100]),
-        sender,
-        SomaKeyPair::Ed25519(sender_key),
-    )
-    .await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-    let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
-    assert!(deleted_ids.contains(&id2));
-    assert!(deleted_ids.contains(&id3));
-
-    let gas_used = effects.transaction_fee().total_fee;
-    let gas_obj = res.authority_state.get_object(&id1).await.unwrap();
-    let total_original = 5_000_000 + 3_000 + 7_000;
-    assert_eq!(gas_obj.as_coin().unwrap(), total_original - 100 - gas_used);
-}
+// Stage 13b: test_gas_smashing_merges_balances deleted — gas
+// smashing was a coin-mode-only feature (multiple gas coins
+// merged into one to fund larger fees). Balance-mode txs source
+// gas from the USDC accumulator, so there are no coins to smash.
 
 #[tokio::test]
 async fn test_fee_scales_with_recipients() {
@@ -170,37 +141,11 @@ async fn test_fee_scales_with_recipients() {
     assert_eq!(effects2.transaction_fee().total_fee, 4 * UNIT_FEE);
 }
 
-#[tokio::test]
-async fn test_pay_all_drains_gas_coin_when_consumed() {
-    // pay-all should fully drain the gas coin and create one new coin for the recipient
-    // with the remaining balance (after fee).
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let coin_id = ObjectID::random();
-    let coin = Object::with_id_owner_coin_for_testing(coin_id, sender, 5_000_000);
-
-    let recipient = dbg_addr(1);
-
-    let res = execute_pay_coin(
-        vec![coin],
-        vec![recipient],
-        None, // pay-all
-        sender,
-        SomaKeyPair::Ed25519(key),
-    )
-    .await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-    let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
-    assert!(deleted_ids.contains(&coin_id));
-
-    assert_eq!(effects.created().len(), 1);
-    let created_id = effects.created()[0].0.0;
-    let created_obj = res.authority_state.get_object(&created_id).await.unwrap();
-    let gas_used = effects.transaction_fee().total_fee;
-    assert_eq!(created_obj.as_coin().unwrap(), 5_000_000 - gas_used);
-}
+// Stage 13b: test_pay_all_drains_gas_coin_when_consumed deleted —
+// "pay-all" was a coin-mode-only operation (fully drain a coin
+// and produce a new one for the recipient). Balance-mode has no
+// such semantics; the sender always retains a balance accumulator
+// row, drained or not.
 
 // =============================================================================
 // Helpers
@@ -220,9 +165,19 @@ async fn execute_transfer_coin(
 ) -> TransactionResult {
     let authority_state = TestAuthorityBuilder::new().build().await;
     let coin_ref = coin.compute_object_reference();
+    let coin_balance = coin.as_coin().unwrap_or(0);
     authority_state.insert_genesis_object(coin).await;
 
-    let data = TransactionData::new_transfer_coin(recipient, sender, amount, coin_ref);
+    // Stage 13b: BalanceTransfer debits the SOMA accumulator. Seed
+    // the sender's SOMA balance to mirror the gas-coin's balance —
+    // tests that previously deducted "transfer_amount" out of the
+    // gas coin now deduct from the accumulator.
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, coin_balance)
+        .unwrap();
+
+    let data = crate::authority_test_utils::balance_transfer_data_legacy(recipient, sender, amount, coin_ref);
     let tx = to_sender_signed_transaction(data, &sender_key);
     let txn_result =
         send_and_confirm_transaction(&authority_state, tx).await.map(|(_, effects)| effects);
@@ -247,7 +202,19 @@ async fn execute_pay_coin(
         .collect();
     join_all(handles).await;
 
-    let data = TransactionData::new_pay_coins(input_coin_refs, amounts, recipients, sender);
+    // Stage 13b: balance-mode multi-recipient transfer.
+    use types::object::CoinType;
+    use types::transaction::{BalanceTransferArgs, TransactionKind};
+    let amount_vec = amounts.unwrap_or_else(|| vec![1; recipients.len()]);
+    let transfers: Vec<_> = recipients.into_iter().zip(amount_vec.into_iter()).collect();
+    let data = TransactionData::new(
+        TransactionKind::BalanceTransfer(BalanceTransferArgs {
+            coin_type: CoinType::Soma,
+            transfers,
+        }),
+        sender,
+        vec![input_coin_refs[0]],
+    );
     let tx = to_sender_signed_transaction(data, &sender_key);
     let txn_result =
         send_and_confirm_transaction(&authority_state, tx).await.map(|(_, effects)| effects);
