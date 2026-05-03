@@ -96,6 +96,7 @@ authority = { path = "authority" }
 utils = { path = "utils" }
 node = { path = "node" }
 test-cluster = { path = "test-cluster" }
+e2e-tests = { path = "e2e-tests" }
 sync = { path = "sync" }
 bin-version = { path = "bin-version" }
 soma-keys = { path = "soma-keys" }

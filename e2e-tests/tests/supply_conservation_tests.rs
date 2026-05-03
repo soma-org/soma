@@ -97,25 +97,17 @@ async fn test_supply_conservation_across_epoch_with_staking() {
     // Execute several AddStake transactions to move SOMA from coins -> staking pools.
     let validator_address = pre_ss.validators().validators[0].metadata.soma_address;
 
-    // Stage 13a: AddStake is balance-mode and there are no SOMA
-    // coin objects to fetch. Gas (USDC) still works as a coin
-    // object until the broader Coin-deletion stages.
+    // Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+    // gas (USDC) — no per-tx coin object needed.
     for i in 0..3 {
         let sender = test_cluster.get_addresses()[i];
-        let gas = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
-            .expect("Should have gas");
-
-        let tx_data = TransactionData::new(
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            sender,
             TransactionKind::AddStake {
                 validator: validator_address,
                 amount: 1_000_000,
             },
-            sender,
-            vec![gas],
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -181,22 +173,16 @@ async fn test_supply_conservation_multi_epoch() {
     for epoch in 0..3 {
         info!("--- Epoch {epoch}: executing transactions ---");
 
-        // Stake from a different address each epoch.
+        // Stake from a different address each epoch. Stage 13c:
+        // balance-mode for both stake and gas.
         let sender = test_cluster.get_addresses()[epoch];
-        let gas = test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(sender)
-            .await
-            .unwrap()
-            .expect("Should have gas");
-
-        let tx_data = TransactionData::new(
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            sender,
             TransactionKind::AddStake {
                 validator: validator_address,
                 amount: 500_000,
             },
-            sender,
-            vec![gas],
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -258,17 +244,14 @@ async fn test_emission_pool_accounting() {
     // Execute a tx to ensure the epoch isn't empty.
     let sender = test_cluster.get_addresses()[0];
     let validator_address = initial_ss.validators().validators[0].metadata.soma_address;
-    // Stage 13a: AddStake is balance-mode. Gas is USDC.
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-    let tx_data = TransactionData::new(
+    // Stage 13c: AddStake is balance-mode for both stake and gas.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        sender,
         TransactionKind::AddStake {
             validator: validator_address,
             amount: 1_000_000,
         },
-        sender,
-        vec![gas],
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(response.effects.status().is_ok());

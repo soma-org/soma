@@ -394,15 +394,13 @@ async fn test_orchestrator_execute_transaction() {
 
     // Verify effects are present
     assert!(effects.status().is_ok(), "Transaction should succeed");
-    assert!(!effects.all_changed_objects().is_empty(), "Should have changed objects");
 
-    // If input/output objects were requested, verify they match effects
-    if let Some(input_objects) = &response.input_objects {
-        assert!(!input_objects.is_empty(), "Should have input objects");
-    }
-    if let Some(output_objects) = &response.output_objects {
-        assert!(!output_objects.is_empty(), "Should have output objects");
-    }
+    // Stage 13c: BalanceTransfer touches no per-object versions
+    // (gas + transfer both land in accumulators), so
+    // `all_changed_objects()` is empty for a stateless tx like
+    // this one. The status-is-ok check above is the meaningful
+    // post-condition.
+    let _ = effects.all_changed_objects();
 
     info!("Orchestrator execute transaction test passed");
 }
@@ -422,25 +420,17 @@ async fn test_orchestrator_execute_staking() {
     let system_state = handle.with(|n| n.state().get_system_state_object_for_testing().unwrap());
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
-    // Get sender and gas object
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a gas object");
-    // Stage 9d-C2: AddStake is balance-mode — the executor debits
-    // the sender's SOMA accumulator directly, no coin reference
-    // required. Gas (above) is USDC.
-    let tx_data = TransactionData::new(
+    // Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+    // gas (USDC) — no per-tx coin object needed.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        sender,
         TransactionKind::AddStake {
             validator: validator_address,
             amount: 1_000_000,
         },
-        sender,
-        vec![gas],
     );
     let tx = sign_tx(&test_cluster, &tx_data).await;
 

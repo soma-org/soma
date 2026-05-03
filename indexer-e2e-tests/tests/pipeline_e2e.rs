@@ -44,13 +44,11 @@ async fn test_transfer_coin_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(1000).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 1000)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -127,13 +125,11 @@ async fn test_watermarks_advance() {
     let recipient = addresses[1];
 
     for _ in 0..3 {
-        let gas =
-            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
-
-        let tx_data = TransactionData::new(
-            TransactionKind::Transfer { coins: vec![gas], amounts: Some(100).map(|a| vec![a]), recipients: vec![recipient] },
+        let tx_data = e2e_tests::balance_transfer_data(
+            &test_cluster,
+            types::object::CoinType::Usdc,
             sender,
-            vec![gas],
+            vec![(recipient, 100)],
         );
 
         let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -187,13 +183,12 @@ async fn test_objects_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 500)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -242,13 +237,12 @@ async fn test_graphql_queries_indexed_data() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(500).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 500)],
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
@@ -319,13 +313,12 @@ async fn test_epoch_boundary_indexed() {
     let addresses = test_cluster.wallet.get_addresses();
     let sender = addresses[0];
     let recipient = addresses[1];
-    let gas =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap().unwrap();
 
-    let tx_data = TransactionData::new(
-        TransactionKind::Transfer { coins: vec![gas], amounts: Some(100).map(|a| vec![a]), recipients: vec![recipient] },
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
         sender,
-        vec![gas],
+        vec![(recipient, 100)],
     );
     let _ = test_cluster.sign_and_execute_transaction(&tx_data).await;
 

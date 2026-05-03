@@ -35,6 +35,10 @@ use utils::logging::init_tracing;
 
 /// Execute an AddStake transaction from the first wallet address to the first validator.
 /// Returns the transaction digest.
+///
+/// Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+/// gas (USDC) — debits the sender's accumulator directly with no
+/// per-tx coin objects.
 async fn execute_stake_tx(
     test_cluster: &test_cluster::TestCluster,
 ) -> types::digests::TransactionDigest {
@@ -45,22 +49,10 @@ async fn execute_stake_tx(
             .soma_address
     });
 
-    let gas = test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(sender)
-        .await
-        .unwrap()
-        .expect("Should have a gas object");
-    // Stake principal must be SOMA; gas is USDC.
-    // Stage 9d-C2: AddStake is balance-mode — debits sender's SOMA
-    // accumulator directly. Gas is USDC.
-    let tx_data = TransactionData::new(
-        TransactionKind::AddStake {
-            validator: validator_address,
-            amount: 1_000_000,
-        },
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
         sender,
-        vec![gas],
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
     );
 
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;

@@ -5181,6 +5181,7 @@ dependencies = [
  "axum",
  "diesel",
  "diesel-async",
+ "e2e-tests",
  "indexer-alt",
  "indexer-alt-schema",
  "indexer-framework",

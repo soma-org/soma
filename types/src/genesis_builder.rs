@@ -571,7 +571,13 @@ impl GenesisBuilder {
         // Stage 13a: validator starter USDC also lands in the
         // accumulator only. Validators submit balance-mode txs (gas
         // is debited from this USDC balance directly) so they don't
-        // need a Coin object hand-out.
+        // need a Coin object hand-out. USDC is a bridged token with
+        // its own supply path, so seeding here is fine.
+        // SOMA total supply is fixed (TOTAL_SUPPLY_SHANNONS) and
+        // accounted for by the genesis schedule, so we do NOT seed
+        // unstaked SOMA into validators here — tests that need a
+        // validator with spendable SOMA should allocate it via the
+        // genesis schedule.
         const VALIDATOR_GENESIS_USDC: u64 = 1_000_000_000_000; // 1M USDC microdollars
         for v in &self.validators {
             let entry =

@@ -220,244 +220,18 @@ impl WalletContext {
         Ok(self.config.active_address.unwrap())
     }
 
-    pub async fn get_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-        limit: Option<usize>,
-    ) -> anyhow::Result<Vec<ObjectRef>> {
-        let client = self.get_client().await?;
-
-        // Create the request for listing owned objects
-        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-        request.owner = Some(address.to_string());
-
-        // Set page size based on limit
-        let page_size = limit.unwrap_or(100).min(1000) as u32;
-        request.page_size = Some(page_size);
-
-        // Gas is paid in USDC; filter for USDC coins.
-        request.object_type = Some("Coin(USDC)".to_string());
-        request.read_mask = Some(FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "object_type",
-            "owner",
-            "contents",
-            "previous_transaction",
-        ]));
-
-        // Call the live data service
-        let stream = client.list_owned_objects(request).await;
-
-        let object_refs: Vec<ObjectRef> = Vec::new();
-        tokio::pin!(stream);
-
-        // The RPC filter pre-narrows to USDC coins (gas currency on Soma).
-        let mut object_refs = Vec::new();
-        while let Some(object) = stream.try_next().await? {
-            object_refs.push(object.compute_object_reference());
-
-            // Stop if we've reached the limit
-            if let Some(limit) = limit {
-                if object_refs.len() >= limit {
-                    break;
-                }
-            }
-        }
-
-        Ok(object_refs)
-    }
-
-    /// Return the coin with the highest balance owned by this address,
-    /// together with its balance.
-    ///
-    /// Unlike [`get_one_gas_object_owned_by_address`] (which returns an
-    /// arbitrary first coin), this fetches all coins and picks the richest
-    /// one so that gas/transfer operations are far less likely to fail due
-    /// to insufficient balance.
-    pub async fn get_richest_coin_with_balance(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
-        Ok(self.get_gas_objects_sorted_by_balance_with_amounts(address).await?.into_iter().next())
-    }
-
-    /// Convenience wrapper that discards the balance.
-    pub async fn get_richest_gas_object_owned_by_address(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<ObjectRef>> {
-        Ok(self.get_richest_coin_with_balance(address).await?.map(|(r, _)| r))
-    }
-
-    /// Return up to `MAX_GAS_COINS` coins owned by `address`, sorted
-    /// richest-first, with their balances.
-    ///
-    /// Caps the number of coins fetched to avoid excessive RPC pagination
-    /// (addresses with thousands of dust coins would otherwise require
-    /// dozens of page requests).
-    pub async fn get_gas_objects_sorted_by_balance_with_amounts(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
-        /// Maximum number of coins to fetch.
-        /// Matches Sui's `max_gas_payment_objects` protocol limit (256)
-        /// to stay well under the consensus transaction size cap.
-        const MAX_GAS_COINS: usize = 256;
-
-        let client = self.get_client().await?;
-
-        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-        request.owner = Some(address.to_string());
-        request.page_size = Some(1000);
-        // Gas is paid in USDC; filter for USDC coins.
-        request.object_type = Some("Coin(USDC)".to_string());
-        request.read_mask = Some(FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "object_type",
-            "owner",
-            "contents",
-            "previous_transaction",
-        ]));
-
-        let stream = client.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
-        while let Some(object) = stream.try_next().await? {
-            // RPC pre-filters to USDC; just collect.
-            let balance = object.as_coin().unwrap_or(0);
-            let obj_ref = object.compute_object_reference();
-            coins.push((obj_ref, balance));
-            if coins.len() >= MAX_GAS_COINS {
-                break;
-            }
-        }
-
-        // Sort descending by balance so the richest coin is first.
-        coins.sort_by(|a, b| b.1.cmp(&a.1));
-        Ok(coins)
-    }
-
-    /// Return up to `MAX_GAS_COINS` coin refs owned by `address`, sorted
-    /// richest-first (without balances).
-    pub async fn get_gas_objects_sorted_by_balance(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Vec<ObjectRef>> {
-        Ok(self
-            .get_gas_objects_sorted_by_balance_with_amounts(address)
-            .await?
-            .into_iter()
-            .map(|(r, _)| r)
-            .collect())
-    }
-
-    /// Return up to `MAX_COINS` USDC coins owned by `address`, sorted
-    /// richest-first, with their balances (in microdollars).
-    pub async fn get_usdc_coins_sorted_by_balance(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
-        const MAX_COINS: usize = 256;
-
-        let client = self.get_client().await?;
-
-        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-        request.owner = Some(address.to_string());
-        request.page_size = Some(1000);
-        // Filter for USDC coins specifically
-        request.object_type = Some("Coin(USDC)".to_string());
-        request.read_mask = Some(FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "object_type",
-            "owner",
-            "contents",
-            "previous_transaction",
-        ]));
-
-        let stream = client.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
-        while let Some(object) = stream.try_next().await? {
-            if object.coin_type() == Some(types::object::CoinType::Usdc) {
-                let balance = object.as_coin().unwrap_or(0);
-                let obj_ref = object.compute_object_reference();
-                coins.push((obj_ref, balance));
-                if coins.len() >= MAX_COINS {
-                    break;
-                }
-            }
-        }
-
-        coins.sort_by(|a, b| b.1.cmp(&a.1));
-        Ok(coins)
-    }
-
-    /// Return the richest USDC coin owned by this address, with its balance.
-    pub async fn get_richest_usdc_coin(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
-        Ok(self.get_usdc_coins_sorted_by_balance(address).await?.into_iter().next())
-    }
-
-    /// Return up to `MAX_COINS` SOMA coins owned by `address`, sorted
-    /// richest-first, with their balances (in shannons). Useful for picking
-    /// a stake principal for AddStake (gas itself is paid in USDC).
-    pub async fn get_soma_coins_sorted_by_balance(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Vec<(ObjectRef, u64)>> {
-        const MAX_COINS: usize = 256;
-
-        let client = self.get_client().await?;
-
-        let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-        request.owner = Some(address.to_string());
-        request.page_size = Some(1000);
-        // Filter for SOMA coins specifically
-        request.object_type = Some("Coin(SOMA)".to_string());
-        request.read_mask = Some(FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "object_type",
-            "owner",
-            "contents",
-            "previous_transaction",
-        ]));
-
-        let stream = client.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(ObjectRef, u64)> = Vec::new();
-        while let Some(object) = stream.try_next().await? {
-            let balance = object.as_coin().unwrap_or(0);
-            let obj_ref = object.compute_object_reference();
-            coins.push((obj_ref, balance));
-            if coins.len() >= MAX_COINS {
-                break;
-            }
-        }
-
-        coins.sort_by(|a, b| b.1.cmp(&a.1));
-        Ok(coins)
-    }
-
-    /// Return the richest SOMA coin owned by this address, with its balance.
-    pub async fn get_richest_soma_coin(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<(ObjectRef, u64)>> {
-        Ok(self.get_soma_coins_sorted_by_balance(address).await?.into_iter().next())
-    }
+    // Stage 13c+: the gas-coin selection helpers
+    // (get_gas_objects_owned_by_address, get_richest_coin_with_balance,
+    // get_richest_gas_object_owned_by_address,
+    // get_gas_objects_sorted_by_balance(_with_amounts),
+    // get_usdc_coins_sorted_by_balance, get_richest_usdc_coin,
+    // get_soma_coins_sorted_by_balance, get_richest_soma_coin) were
+    // deleted. They iterated Coin objects, which Stage 13a removed
+    // from genesis — every call returned an empty list. Gas is now
+    // balance-mode (Stage 13c), so callers should pass an empty
+    // gas_payment to TransactionData and let prepare_gas debit
+    // the sender's USDC accumulator. Read balances via the RPC
+    // get_balance(by_coin_type) (Stage 13e).
 
     pub async fn get_object_owner(&self, id: &ObjectID) -> Result<SomaAddress, anyhow::Error> {
         let client = self.get_client().await?;
@@ -476,18 +250,6 @@ impl WalletContext {
         Ok(owner)
     }
 
-    /// Returns all the account addresses managed by the wallet and their owned gas objects.
-    pub async fn get_all_accounts_and_gas_objects(
-        &self,
-    ) -> anyhow::Result<Vec<(SomaAddress, Vec<ObjectRef>)>> {
-        let mut result = vec![];
-        for address in self.get_addresses() {
-            let objects = self.get_all_gas_objects_owned_by_address(address).await?;
-            result.push((address, objects));
-        }
-        Ok(result)
-    }
-
     pub async fn try_get_object_owner(
         &self,
         id: &Option<ObjectID>,
@@ -495,37 +257,11 @@ impl WalletContext {
         if let Some(id) = id { Ok(Some(self.get_object_owner(id).await?)) } else { Ok(None) }
     }
 
-    pub async fn get_all_gas_objects_owned_by_address(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Vec<ObjectRef>> {
-        self.get_gas_objects_owned_by_address(address, None).await
-    }
-
-    /// Given an address, return one gas object owned by this address.
-    /// The actual implementation just returns the first one returned by the read api.
-    pub async fn get_one_gas_object_owned_by_address(
-        &self,
-        address: SomaAddress,
-    ) -> anyhow::Result<Option<ObjectRef>> {
-        Ok(self.get_gas_objects_owned_by_address(address, Some(1)).await?.pop())
-    }
-
-    /// Returns one address and all gas objects owned by that address.
-    pub async fn get_one_account(&self) -> anyhow::Result<(SomaAddress, Vec<ObjectRef>)> {
-        let address = self.get_addresses().pop().unwrap();
-        Ok((address, self.get_all_gas_objects_owned_by_address(address).await?))
-    }
-
-    /// Return a gas object owned by an arbitrary address managed by the wallet.
-    pub async fn get_one_gas_object(&self) -> anyhow::Result<Option<(SomaAddress, ObjectRef)>> {
-        for address in self.get_addresses() {
-            if let Some(gas_object) = self.get_one_gas_object_owned_by_address(address).await? {
-                return Ok(Some((address, gas_object)));
-            }
-        }
-        Ok(None)
-    }
+    // Stage 13c+: get_all_accounts_and_gas_objects,
+    // get_all_gas_objects_owned_by_address,
+    // get_one_gas_object_owned_by_address, get_one_account,
+    // get_one_gas_object — all deleted. They surfaced lists of
+    // owned Coin objects which Stage 13a stopped creating.
 
     /// Add an account to the wallet
     pub async fn add_account(&mut self, alias: Option<String>, keypair: SomaKeyPair) {

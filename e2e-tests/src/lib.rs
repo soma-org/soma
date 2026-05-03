@@ -74,6 +74,39 @@ pub fn balance_transfer_data_with_window(
     )
 }
 
-/// Tx-local nonce — keeps each `balance_transfer_data` call producing
-/// a distinct digest even when the transfer args are identical.
+/// Build a balance-mode `TransactionData` for an arbitrary
+/// `TransactionKind`. Stage 13c: gas comes from the sender's USDC
+/// accumulator, so `gas_payment` is empty. Wraps the kind in a
+/// fresh-nonce `ValidDuring` expiration spanning the current epoch
+/// and the next one.
+pub fn stateless_tx_data(
+    test_cluster: &TestCluster,
+    sender: SomaAddress,
+    kind: TransactionKind,
+) -> TransactionData {
+    let chain = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().get_chain_identifier());
+    let current_epoch = test_cluster
+        .fullnode_handle
+        .soma_node
+        .with(|node| node.state().epoch_store_for_testing().epoch());
+    let nonce = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    TransactionData::new_with_expiration(
+        kind,
+        sender,
+        Vec::new(),
+        TransactionExpiration::ValidDuring {
+            min_epoch: Some(current_epoch),
+            max_epoch: Some(current_epoch + 1),
+            chain,
+            nonce,
+        },
+    )
+}
+
+/// Tx-local nonce — keeps each `balance_transfer_data` /
+/// `stateless_tx_data` call producing a distinct digest even when
+/// the inputs are identical.
 static NONCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);

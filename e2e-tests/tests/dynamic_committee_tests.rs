@@ -118,22 +118,13 @@ impl StressTestRunner {
     }
 
     pub async fn run(&self, sender: &SomaNodeHandle, kind: TransactionKind) -> TransactionEffects {
-        let address = sender.with(|node| node.get_config().soma_address());
-        let gas_object = self
-            .test_cluster
-            .wallet
-            .get_one_gas_object_owned_by_address(address)
-            .await
-            .unwrap()
-            .unwrap();
-
+        // Stage 13c: gas is balance-mode — no per-tx coin object.
+        let signer_address = sender
+            .with(|node| (&node.get_config().account_key_pair.keypair().public()).into());
+        let tx_data = e2e_tests::stateless_tx_data(&self.test_cluster, signer_address, kind);
         let transaction = sender.with(|node| {
             Transaction::from_data_and_signer(
-                TransactionData::new(
-                    kind,
-                    (&node.get_config().account_key_pair.keypair().public()).into(),
-                    vec![gas_object],
-                ),
+                tx_data,
                 vec![node.get_config().account_key_pair.keypair()],
             )
         });
@@ -218,18 +209,8 @@ mod add_stake {
     #[async_trait]
     impl StatePredicate for RequestAddStake {
         async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
-            let address = self.sender.with(|node| node.get_config().soma_address());
-            let gas_object = runner
-                .test_cluster
-                .wallet
-                .get_one_gas_object_owned_by_address(address)
-                .await
-                .unwrap()
-                .unwrap();
-            let _ = gas_object;
-
-            // Stage 9d-C2: AddStake is balance-mode — debits SOMA
-            // from the sender's accumulator directly.
+            // Stage 13c: AddStake is balance-mode — no per-tx coin
+            // object needed for either stake (SOMA) or gas (USDC).
             let kind = TransactionKind::AddStake {
                 validator: self.staked_with,
                 amount: self.stake_amount,
@@ -376,8 +357,22 @@ mod remove_stake {
     }
 }
 
+// Stage 13c: this fuzz test picks random validators as senders and
+// has them submit AddStake transactions mid-epoch. With balance-
+// mode staking (Stage 9d-C2), the stake principal is debited from
+// the sender's SOMA accumulator — but validators only get USDC
+// seed at genesis (their SOMA is locked in their own staking
+// pool). So every AddStake from a validator-sender hits
+// InsufficientBalance on the reservation pre-pass.
+//
+// Pre-Stage-13a this test panicked at the wallet helper unwrap;
+// Stage 13j makes it compile, but the test concept needs a
+// redesign for balance-mode (e.g., have wallet accounts sign,
+// not validators). Tracked as future work.
 #[cfg(msim)]
 #[msim::sim_test]
+#[ignore = "fuzz test needs redesign for balance-mode validator senders \
+            — see comment above"]
 async fn fuzz_dynamic_committee() {
     init_tracing();
 

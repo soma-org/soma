@@ -36,16 +36,9 @@ use types::transaction::{
 };
 use utils::logging::init_tracing;
 
-/// Pull a USDC gas/payment coin owned by `addr`. Returns the
-/// `ObjectRef` (id, version, digest).
-async fn one_coin(test_cluster: &TestCluster, addr: SomaAddress) -> ObjectRef {
-    test_cluster
-        .wallet
-        .get_one_gas_object_owned_by_address(addr)
-        .await
-        .unwrap()
-        .expect("address has at least one gas coin")
-}
+// Stage 13c: `one_coin` removed — channel txs are balance-mode, so
+// they need no per-tx gas coin. Helpers use `stateless_tx_data` to
+// build a tx with empty `gas_payment` and a `ValidDuring` window.
 
 /// Read a Channel from the fullnode (returns None if it doesn't
 /// exist — e.g. after WithdrawAfterTimeout deletes it).
@@ -105,25 +98,15 @@ async fn open_channel(
     // Stage 8: OpenChannel is balance-mode for both gas and deposit.
     // Sender's USDC accumulator covers `deposit_amount + gas_fee`;
     // the executor emits a single Withdraw event for the deposit.
-    let chain = test_cluster
-        .fullnode_handle
-        .soma_node
-        .with(|node| node.state().get_chain_identifier());
-    let tx_data = TransactionData::new_with_expiration(
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payer,
         TransactionKind::OpenChannel(OpenChannelArgs {
             payee,
             authorized_signer: payer,
             token: CoinType::Usdc,
             deposit_amount,
         }),
-        payer,
-        Vec::new(),
-        types::transaction::TransactionExpiration::ValidDuring {
-            min_epoch: Some(0),
-            max_epoch: Some(1),
-            chain,
-            nonce: 0,
-        },
     );
     let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
     assert!(
@@ -148,15 +131,14 @@ async fn submit_settle(
     cumulative_amount: u64,
     voucher_signature: GenericSignature,
 ) -> bool {
-    let coin = one_coin(test_cluster, payee).await;
-    let tx_data = TransactionData::new(
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
+        payee,
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount,
             voucher_signature,
         }),
-        payee,
-        vec![coin],
     );
     test_cluster
         .wallet
@@ -171,11 +153,10 @@ async fn submit_request_close(
     payer: SomaAddress,
     channel_id: ObjectID,
 ) -> bool {
-    let coin = one_coin(test_cluster, payer).await;
-    let tx_data = TransactionData::new(
-        TransactionKind::RequestClose(RequestCloseArgs { channel_id }),
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
         payer,
-        vec![coin],
+        TransactionKind::RequestClose(RequestCloseArgs { channel_id }),
     );
     test_cluster
         .wallet
@@ -190,11 +171,10 @@ async fn submit_withdraw(
     payer: SomaAddress,
     channel_id: ObjectID,
 ) -> bool {
-    let coin = one_coin(test_cluster, payer).await;
-    let tx_data = TransactionData::new(
-        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id }),
+    let tx_data = e2e_tests::stateless_tx_data(
+        test_cluster,
         payer,
-        vec![coin],
+        TransactionKind::WithdrawAfterTimeout(WithdrawAfterTimeoutArgs { channel_id }),
     );
     test_cluster
         .wallet
@@ -296,16 +276,23 @@ async fn channel_full_lifecycle() {
     assert_eq!(ch.deposit, 75_000);
     assert_eq!(ch.settled_amount, 25_000);
 
-    // After two Settles: payee USDC rose by exactly 25_000 minus the
-    // gas fees they paid (Settle is a payee-signed tx). The two
-    // Settles are coin-mode-gas in this test, so the accumulator delta
-    // for the payee is exactly the cumulative of the deposits — no
-    // gas debit lands on the accumulator in coin-mode.
+    // After two Settles: payee USDC rose by 25_000 (the cumulative
+    // settled amount) minus gas fees. Stage 13c: gas is balance-
+    // mode, so each Settle debits the payee's USDC accumulator for
+    // its fee in addition to the +Deposit delta. We only require
+    // that the payee gained between (25_000 - max_gas_per_tx * 2)
+    // and 25_000, since the exact unit_fee is protocol-tunable.
     let payee_after_settles = read_usdc(payee);
-    assert_eq!(
-        payee_after_settles - payee_initial,
-        25_000,
-        "payee accumulator must equal exactly the settled total (Stage 8: Deposit events from Settle land in the accumulator)",
+    let payee_delta = payee_after_settles - payee_initial;
+    assert!(
+        payee_delta <= 25_000,
+        "payee delta must be at most settled total: got {}",
+        payee_delta,
+    );
+    assert!(
+        payee_delta >= 25_000 - 10_000,
+        "payee delta must be close to settled total minus a small gas overhead: got {}",
+        payee_delta,
     );
 
     // 4. Request close — Clock timestamp gets stamped onto channel.
@@ -382,15 +369,14 @@ async fn channel_settle_rejects_payer_caller() {
     let voucher_sig = sign_voucher(&test_cluster, payer, channel_id, 1_000).await;
 
     // Submit Settle from `payer` instead of `payee`.
-    let coin = one_coin(&test_cluster, payer).await;
-    let tx = TransactionData::new(
+    let tx = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        payer,
         TransactionKind::Settle(SettleArgs {
             channel_id,
             cumulative_amount: 1_000,
             voucher_signature: voucher_sig,
         }),
-        payer,
-        vec![coin],
     );
     let response = test_cluster.sign_and_execute_transaction(&tx).await;
     assert!(

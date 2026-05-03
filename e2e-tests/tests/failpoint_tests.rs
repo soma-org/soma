@@ -381,24 +381,20 @@ async fn test_safe_mode_reconfig() {
             .soma_address
     });
 
-    if let Some(gas_object) =
-        test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
-    {
-        // Stage 9d-C2: AddStake is balance-mode — debits sender's
-        // SOMA accumulator directly.
-        let tx_data = types::transaction::TransactionData::new(
-            types::transaction::TransactionKind::AddStake {
-                validator: validator_address,
-                amount: 1_000_000,
-            },
-            sender,
-            vec![gas_object],
-        );
+    // Stage 13c: AddStake is balance-mode for both stake (SOMA) and
+    // gas (USDC) — no per-tx coin object needed.
+    let tx_data = e2e_tests::stateless_tx_data(
+        &test_cluster,
+        sender,
+        types::transaction::TransactionKind::AddStake {
+            validator: validator_address,
+            amount: 1_000_000,
+        },
+    );
 
-        let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
-        assert!(response.effects.status().is_ok(), "Transactions should work during safe mode");
-        info!("Transaction succeeded during safe mode");
-    }
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(response.effects.status().is_ok(), "Transactions should work during safe mode");
+    info!("Transaction succeeded during safe mode");
 
     // Remove the failure injection so epoch 3 recovers
     INJECT_FAILURE.store(false, Ordering::SeqCst);
@@ -583,30 +579,25 @@ async fn test_crash_during_reconfig_with_tx_load() {
             break;
         }
 
-        // Submit stake transactions while epochs transition
-        if let Some(gas_object) =
-            test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
-        {
-            // Stage 9d-C2: AddStake is balance-mode — no SOMA coin
-            // ref needed.
-            let tx_data = types::transaction::TransactionData::new(
-                types::transaction::TransactionKind::AddStake {
-                    validator: validator_address,
-                    amount: 1_000_000,
-                },
-                sender,
-                vec![gas_object],
-            );
+        // Submit stake transactions while epochs transition.
+        // Stage 13c: balance-mode for both stake and gas.
+        let tx_data = e2e_tests::stateless_tx_data(
+            &test_cluster,
+            sender,
+            types::transaction::TransactionKind::AddStake {
+                validator: validator_address,
+                amount: 1_000_000,
+            },
+        );
 
-            if let Ok(response) = tokio::time::timeout(
-                Duration::from_secs(30),
-                test_cluster.sign_and_execute_transaction(&tx_data),
-            )
-            .await
-            {
-                if response.effects.status().is_ok() {
-                    tx_count += 1;
-                }
+        if let Ok(response) = tokio::time::timeout(
+            Duration::from_secs(30),
+            test_cluster.sign_and_execute_transaction(&tx_data),
+        )
+        .await
+        {
+            if response.effects.status().is_ok() {
+                tx_count += 1;
             }
         }
 

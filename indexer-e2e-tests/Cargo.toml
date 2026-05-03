@@ -8,6 +8,7 @@ edition = "2024"
 test-cluster.workspace = true
 types.workspace = true
 rpc.workspace = true
+e2e-tests.workspace = true
 
 # Indexer stack
 indexer-alt.workspace = true
