@@ -1954,7 +1954,10 @@ mod _getter_impls {
     }
     impl GetBalanceRequest {
         pub const fn const_default() -> Self {
-            Self { owner: None }
+            Self {
+                owner: None,
+                coin_type: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
@@ -1963,6 +1966,10 @@ mod _getter_impls {
         }
         pub fn with_owner(mut self, field: String) -> Self {
             self.owner = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
             self
         }
     }

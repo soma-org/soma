@@ -508,7 +508,18 @@ pub trait RpcIndexes: Send + Sync {
         >,
     >;
 
-    fn get_balance(&self, owner: &SomaAddress) -> Result<Option<BalanceInfo>>;
+    /// Stage 13c: balance lookup is now accumulator-backed and
+    /// per-coin-type. Implementations should read directly from
+    /// the post-Settlement accumulator state, NOT the legacy
+    /// coin-object index (which goes stale because Stage 13a
+    /// stopped materializing Coin objects). `Ok(None)` means the
+    /// (owner, coin_type) row does not exist; callers typically
+    /// treat that as a balance of 0.
+    fn get_balance(
+        &self,
+        owner: &SomaAddress,
+        coin_type: crate::object::CoinType,
+    ) -> Result<Option<BalanceInfo>>;
 
     /// Stage 9d: list every active delegation owned by `staker`.
     /// Reads directly from the post-migration `delegations` column

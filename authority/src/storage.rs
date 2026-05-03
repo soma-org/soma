@@ -474,8 +474,17 @@ impl RpcIndexes for RestReadStore {
     fn get_balance(
         &self,
         owner: &SomaAddress,
+        coin_type: types::object::CoinType,
     ) -> types::storage::storage_error::Result<Option<BalanceInfo>> {
-        self.index()?.get_balance(owner)?.map(|info| info.into()).pipe(Ok)
+        // Stage 13c: bypass the rpc_index entirely. The index
+        // tracked Coin-object balances, but Stage 13a stopped
+        // materializing Coin objects — the accumulator is the
+        // sole source of truth. Read straight from it.
+        let store = self.state.database_for_testing();
+        let balance = store
+            .get_balance(*owner, coin_type)
+            .map_err(types::storage::storage_error::Error::custom)?;
+        Ok(Some(BalanceInfo { balance }))
     }
 
     /// Stage 9d-C1: route through `AuthorityStore::iter_delegations_for_staker`

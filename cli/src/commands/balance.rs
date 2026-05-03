@@ -3,20 +3,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use anyhow::Result;
-use futures::TryStreamExt;
-use rpc::types::ObjectType;
-use rpc::utils::field::{FieldMask, FieldMaskUtil};
 use sdk::wallet_context::WalletContext;
 use soma_keys::key_identity::KeyIdentity;
 use soma_keys::keystore::AccountKeystore as _;
+use types::object::CoinType;
 
 use crate::response::BalanceOutput;
 
-/// Execute the balance command
+/// Stage 13c: read the address's USDC and SOMA accumulator balances.
+/// Coin objects are gone (Stage 13a), so the previous "list owned
+/// Coin objects and sum them" path always returned 0.
+///
+/// `_with_coins` is accepted for backwards-compatible CLI flag
+/// parsing but no longer means anything — there are no per-coin
+/// objects to enumerate.
 pub async fn execute(
     context: &WalletContext,
     address: Option<KeyIdentity>,
-    with_coins: bool,
+    _with_coins: bool,
 ) -> Result<BalanceOutput> {
     let address = match address {
         Some(key_id) => context.config.keystore.get_by_identity(&key_id)?,
@@ -26,42 +30,8 @@ pub async fn execute(
     };
 
     let client = context.get_client().await?;
+    let usdc = client.get_balance_by_coin_type(&address, CoinType::Usdc).await?;
+    let soma = client.get_balance_by_coin_type(&address, CoinType::Soma).await?;
 
-    let mut request = rpc::proto::soma::ListOwnedObjectsRequest::default();
-    request.owner = Some(address.to_string());
-    request.object_type = Some("Coin".to_string());
-    request.page_size = Some(1000);
-    request.read_mask = Some(FieldMask::from_paths([
-        "object_id",
-        "version",
-        "digest",
-        "object_type",
-        "owner",
-        "previous_transaction",
-        "contents",
-    ]));
-
-    let stream = client.list_owned_objects(request).await;
-    tokio::pin!(stream);
-
-    let mut total_balance: u128 = 0;
-    let mut coin_count: usize = 0;
-    let mut coin_details = Vec::new();
-
-    while let Some(obj) = stream.try_next().await? {
-        if let Some(coin) = obj.as_coin() {
-            total_balance += coin as u128;
-            coin_count += 1;
-            if with_coins {
-                coin_details.push((obj.id(), coin));
-            }
-        }
-    }
-
-    Ok(BalanceOutput {
-        address,
-        total_balance,
-        coin_count,
-        coins: if with_coins { Some(coin_details) } else { None },
-    })
+    Ok(BalanceOutput { address, usdc, soma })
 }

@@ -2952,9 +2952,18 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 2i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for GetBalanceRequest {
-        const FIELDS: &'static [&'static MessageField] = &[Self::OWNER_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::OWNER_FIELD,
+            Self::COIN_TYPE_FIELD,
+        ];
     }
     impl GetBalanceRequest {
         pub fn path_builder() -> GetBalanceRequestFieldPathBuilder {
@@ -2978,6 +2987,10 @@ mod _field_impls {
         }
         pub fn owner(mut self) -> String {
             self.path.push(GetBalanceRequest::OWNER_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(GetBalanceRequest::COIN_TYPE_FIELD.name);
             self.finish()
         }
     }

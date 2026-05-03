@@ -218,13 +218,24 @@ impl SomaClient {
         self.inner.read().await.clone().list_owned_objects(request)
     }
 
-    /// Get the balance for an address
+    /// Get the USDC accumulator balance for an address. USDC is the
+    /// gas / typical transferable currency.
     pub async fn get_balance(
         &self,
         owner: &types::base::SomaAddress,
     ) -> Result<u64, tonic::Status> {
         let mut client = self.inner.write().await;
         client.get_balance(owner).await
+    }
+
+    /// Stage 13c: read the accumulator balance for `(owner, coin_type)`.
+    pub async fn get_balance_by_coin_type(
+        &self,
+        owner: &types::base::SomaAddress,
+        coin_type: types::object::CoinType,
+    ) -> Result<u64, tonic::Status> {
+        let mut client = self.inner.write().await;
+        client.get_balance_by_coin_type(owner, coin_type).await
     }
 
     /// Stage 9d: list a staker's active delegations from the on-chain

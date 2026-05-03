@@ -1011,22 +1011,24 @@ impl Display for GasCoinsOutput {
     }
 }
 
+/// Stage 13c: balance-mode CLI output. Coin objects are gone, so
+/// what we display is the per-coin-type accumulator balance for the
+/// address. SOMA balance is shown in both base units (shannons) and
+/// the human-readable SOMA unit; USDC is base-unit only.
 #[derive(Debug, Serialize)]
 pub struct BalanceOutput {
     pub address: SomaAddress,
-    pub total_balance: u128,
-    pub coin_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub coins: Option<Vec<(ObjectID, u64)>>,
+    pub usdc: u64,
+    pub soma: u64,
 }
 
 impl Display for BalanceOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut builder = TableBuilder::default();
         builder.push_record(["Address", &self.address.to_string()]);
-        builder.push_record(["Total (SOMA)", &format_soma(self.total_balance).green().to_string()]);
-        builder.push_record(["Total (shannons)", &self.total_balance.to_string()]);
-        builder.push_record(["Coin Count", &self.coin_count.to_string()]);
+        builder.push_record(["USDC", &self.usdc.to_string().green().to_string()]);
+        builder.push_record(["SOMA", &format_soma(self.soma as u128).green().to_string()]);
+        builder.push_record(["SOMA (shannons)", &self.soma.to_string()]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
@@ -1034,29 +1036,6 @@ impl Display for BalanceOutput {
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
         table.with(tabled::settings::style::BorderSpanCorrection);
         writeln!(f, "{}", table)?;
-
-        if let Some(coins) = &self.coins {
-            writeln!(f)?;
-            let mut builder = TableBuilder::default();
-            builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
-
-            for (id, balance) in coins {
-                builder.push_record([
-                    id.to_string(),
-                    balance.to_string(),
-                    format_soma(*balance as u128),
-                ]);
-            }
-
-            let mut table = builder.build();
-            table.with(TableStyle::rounded());
-            table.with(TablePanel::header("Individual Coins"));
-            table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-            table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
-            table.with(TableModify::new(TableCols::last()).with(TableAlignment::right()));
-            table.with(tabled::settings::style::BorderSpanCorrection);
-            writeln!(f, "{}", table)?;
-        }
 
         Ok(())
     }

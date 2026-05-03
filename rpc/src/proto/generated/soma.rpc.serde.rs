@@ -6358,9 +6358,15 @@ impl serde::Serialize for GetBalanceRequest {
         if self.owner.is_some() {
             len += 1;
         }
+        if self.coin_type.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.GetBalanceRequest", len)?;
         if let Some(v) = self.owner.as_ref() {
             struct_ser.serialize_field("owner", v)?;
+        }
+        if let Some(v) = self.coin_type.as_ref() {
+            struct_ser.serialize_field("coinType", v)?;
         }
         struct_ser.end()
     }
@@ -6373,11 +6379,14 @@ impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
     {
         const FIELDS: &[&str] = &[
             "owner",
+            "coin_type",
+            "coinType",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Owner,
+            CoinType,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -6401,6 +6410,7 @@ impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
                     {
                         match value {
                             "owner" => Ok(GeneratedField::Owner),
+                            "coinType" | "coin_type" => Ok(GeneratedField::CoinType),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -6423,6 +6433,7 @@ impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut owner__ = None;
+                let mut coin_type__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Owner => {
@@ -6431,6 +6442,12 @@ impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
                             }
                             owner__ = map_.next_value()?;
                         }
+                        GeneratedField::CoinType => {
+                            if coin_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("coinType"));
+                            }
+                            coin_type__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -6438,6 +6455,7 @@ impl<'de> serde::Deserialize<'de> for GetBalanceRequest {
                 }
                 Ok(GetBalanceRequest {
                     owner: owner__,
+                    coin_type: coin_type__,
                 })
             }
         }

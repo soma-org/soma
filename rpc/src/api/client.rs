@@ -249,8 +249,29 @@ impl Client {
         })
     }
 
+    /// Read the sender's USDC accumulator balance. USDC is the gas /
+    /// typical transferable currency; for other coin types (e.g.
+    /// SOMA) use [`get_balance_by_coin_type`].
     pub async fn get_balance(&mut self, owner: &types::base::SomaAddress) -> Result<u64> {
-        let request = proto::GetBalanceRequest { owner: Some(owner.to_string()) };
+        self.get_balance_by_coin_type(owner, types::object::CoinType::Usdc).await
+    }
+
+    /// Read the accumulator balance for `(owner, coin_type)`.
+    /// Stage 13c: balances are per-coin-type — there is no "total"
+    /// across coin types.
+    pub async fn get_balance_by_coin_type(
+        &mut self,
+        owner: &types::base::SomaAddress,
+        coin_type: types::object::CoinType,
+    ) -> Result<u64> {
+        let coin_type_str = match coin_type {
+            types::object::CoinType::Usdc => "USDC",
+            types::object::CoinType::Soma => "SOMA",
+        };
+        let request = proto::GetBalanceRequest {
+            owner: Some(owner.to_string()),
+            coin_type: Some(coin_type_str.to_string()),
+        };
         let response = self.0.state_client().get_balance(request).await?.into_inner();
         response.balance.ok_or_else(|| tonic::Status::not_found("balance not found in response"))
     }

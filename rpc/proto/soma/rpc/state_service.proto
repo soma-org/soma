@@ -25,12 +25,16 @@ service StateService {
 
 // Request message for `LiveDataService.GetBalance`.
 message GetBalanceRequest {
-  // Required. The owner's Sui address.
+  // Required. The owner's Soma address.
   optional string owner = 1;
+  // Coin type label ("USDC", "SOMA"). Defaults to "USDC" if absent.
+  // Stage 13c: balances live in the per-(owner, coin_type)
+  // accumulator — there is no single "total" anymore.
+  optional string coin_type = 2;
 }
 
 // Response message for `LiveDataService.GetBalance`.
-// Return the total coin balance for coin, owned by the address owner.
+// Returns the accumulator balance for `(owner, coin_type)`.
 message GetBalanceResponse {
   optional uint64 balance = 1;
 }

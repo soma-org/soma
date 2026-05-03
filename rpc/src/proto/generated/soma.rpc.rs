@@ -2148,12 +2148,17 @@ impl SignatureScheme {
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBalanceRequest {
-    /// Required. The owner's Sui address.
+    /// Required. The owner's Soma address.
     #[prost(string, optional, tag = "1")]
     pub owner: ::core::option::Option<::prost::alloc::string::String>,
+    /// Coin type label ("USDC", "SOMA"). Defaults to "USDC" if absent.
+    /// Stage 13c: balances live in the per-(owner, coin_type)
+    /// accumulator — there is no single "total" anymore.
+    #[prost(string, optional, tag = "2")]
+    pub coin_type: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Response message for `LiveDataService.GetBalance`.
-/// Return the total coin balance for coin, owned by the address owner.
+/// Returns the accumulator balance for `(owner, coin_type)`.
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct GetBalanceResponse {
