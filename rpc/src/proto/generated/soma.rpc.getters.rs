@@ -5351,30 +5351,22 @@ mod _getter_impls {
     }
     impl WithdrawStake {
         pub const fn const_default() -> Self {
-            Self { staked_soma: None }
+            Self {
+                pool_id: None,
+                amount: None,
+            }
         }
         #[doc(hidden)]
         pub fn default_instance() -> &'static Self {
             static DEFAULT: WithdrawStake = WithdrawStake::const_default();
             &DEFAULT
         }
-        pub fn staked_soma(&self) -> &ObjectReference {
-            self.staked_soma
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
+        pub fn with_pool_id(mut self, field: String) -> Self {
+            self.pool_id = Some(field.into());
+            self
         }
-        pub fn staked_soma_opt(&self) -> Option<&ObjectReference> {
-            self.staked_soma.as_ref().map(|field| field as _)
-        }
-        pub fn staked_soma_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.staked_soma.as_mut().map(|field| field as _)
-        }
-        pub fn staked_soma_mut(&mut self) -> &mut ObjectReference {
-            self.staked_soma.get_or_insert_default()
-        }
-        pub fn with_staked_soma(mut self, field: ObjectReference) -> Self {
-            self.staked_soma = Some(field.into());
+        pub fn with_amount(mut self, field: u64) -> Self {
+            self.amount = Some(field.into());
             self
         }
     }

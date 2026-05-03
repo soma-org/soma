@@ -7,12 +7,11 @@ use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
-use types::object::{CoinType, Object, ObjectID, ObjectRef, ObjectType, Owner};
-use types::system_state::SystemState;
+use types::object::{CoinType, Object, ObjectID, Owner};
+use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
-use super::object::check_ownership;
 use super::TransactionExecutor;
 
 pub struct StakingExecutor;
@@ -156,33 +155,37 @@ impl StakingExecutor {
         Ok(())
     }
 
-    /// Execute WithdrawStake transaction
+    /// Execute WithdrawStake (Stage 9d-C3: balance-mode + F1 fold-to-balance).
+    ///
+    /// Flow:
+    /// 1. Read the pre-fetched (pool_id, signer) delegation row.
+    ///    Missing or zero-principal row → error.
+    /// 2. Resolve `amount` (None = entire row). Reject withdrawals
+    ///    larger than the row's principal.
+    /// 3. F1 fold pending rewards via the pool's cumulative index;
+    ///    emit a Deposit balance event paying them to the signer's
+    ///    SOMA balance.
+    /// 4. Run the pool-token side via `state.request_withdraw_stake`
+    ///    with a synthesized StakedSomaV1 whose `stake_activation_epoch`
+    ///    equals the current epoch — that path returns 0 rewards
+    ///    (rate at "activation" == rate now), so the only state
+    ///    change is the bookkeeping for `pending_total_soma_withdraw`
+    ///    and `next_epoch_stake`. No reward double-count: F1 already
+    ///    paid them in step 3.
+    /// 5. Emit a Deposit for the withdrawn principal — the staker's
+    ///    SOMA balance gets credited atomically with the principal
+    ///    reduction.
+    /// 6. Emit a delegation event with `delta = -amount` and
+    ///    `set_period = current_period`. A full drain deletes the
+    ///    row outright per the `apply_delegation_events` contract.
     fn execute_withdraw_stake(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        staked_soma_ref: ObjectRef,
-        tx_digest: TransactionDigest,
+        pool_id: ObjectID,
+        amount: Option<u64>,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        // Get StakedSoma object
-        let staked_soma_object = store
-            .read_object(&staked_soma_ref.0)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: staked_soma_ref.0 })?
-            .clone();
-
-        // Check ownership
-        check_ownership(&staked_soma_object, signer)?;
-
-        // Extract StakedSoma data
-        let staked_soma = Object::as_staked_soma(&staked_soma_object).ok_or_else(|| {
-            ExecutionFailureStatus::InvalidObjectType {
-                object_id: staked_soma_object.id(),
-                expected_type: ObjectType::StakedSoma,
-                actual_type: staked_soma_object.type_().clone(),
-            }
-        })?;
-
-        // Get system state object
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
             .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound {
@@ -190,7 +193,6 @@ impl StakingExecutor {
             })?
             .clone();
 
-        // Deserialize system state
         let mut state = bcs::from_bytes::<SystemState>(state_object.as_inner().data.contents())
             .map_err(|e| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -199,44 +201,114 @@ impl StakingExecutor {
                 )))
             })?;
 
-        // Stage 9b: capture the delegation row identity before the
-        // StakedSomaV1 is consumed by `request_withdraw_stake` so we
-        // can emit the matching negative delegation delta below.
-        let pool_id = staked_soma.pool_id;
-        let activation_epoch = staked_soma.stake_activation_epoch;
-        let principal = staked_soma.principal;
+        // Read the F1 row.
+        let existing = store.prefetched_delegations.get(&pool_id).copied().ok_or_else(|| {
+            ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "No active stake by {} in pool {}",
+                signer, pool_id
+            )))
+        })?;
+        if existing.principal == 0 {
+            return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                "No active stake by {} in pool {}",
+                signer, pool_id
+            )))
+            .into());
+        }
 
-        // Process withdrawal
-        let withdrawn_amount = state.request_withdraw_stake(staked_soma)?;
+        let withdraw_amount = amount.unwrap_or(existing.principal);
+        if withdraw_amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Withdraw amount cannot be 0".to_string(),
+            }
+            .into());
+        }
+        if withdraw_amount > existing.principal {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Withdraw amount {} exceeds delegation principal {}",
+                    withdraw_amount, existing.principal,
+                ),
+            }
+            .into());
+        }
 
-        // Stage 9d-C1: clear the delegation row. With ONE row per
-        // (pool, staker), withdrawing the StakedSomaV1's full
-        // principal drains that row to zero — `apply_delegation_events`
-        // deletes it outright per the row-deletion contract.
-        // `set_period: None` because no fold yet (Stage 9d-C3 wires
-        // the F1 fold-to-balance into WithdrawStake).
-        let _ = activation_epoch; // unused under the new schema
+        // Look up the pool's current F1 period for the fold mark.
+        // Also confirm the pool exists; without it, the pool-token
+        // side below will error and we want to fail fast here.
+        let current_period = {
+            let mappings = &state.validators().staking_pool_mappings;
+            let validator_addr = mappings.get(&pool_id).copied().ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "StakingPool not found: {}",
+                    pool_id
+                )))
+            })?;
+            let validator = state
+                .validators()
+                .find_validator(validator_addr)
+                .or_else(|| {
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator_addr)
+                })
+                .or_else(|| state.validators().inactive_validators.get(&pool_id))
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            let pool = &validator.staking_pool;
+            // F1 fold-to-balance: pay pending rewards on the pre-
+            // mutation principal. Uses the current cumulative index
+            // and the row's last_collected_period.
+            let pending = pool.f1_pending_reward(
+                existing.principal,
+                existing.last_collected_period,
+            );
+            if pending > 0 {
+                store.emit_balance_event(BalanceEvent::Deposit {
+                    owner: signer,
+                    coin_type: CoinType::Soma,
+                    amount: pending,
+                });
+            }
+            pool.current_period
+        };
+
+        // Pool-token side: synthesize a StakedSomaV1 whose
+        // stake_activation_epoch == self.epoch so the rate-at-
+        // activation matches the current rate and `withdraw_rewards`
+        // returns 0. The only effect is updating
+        // `pending_total_soma_withdraw` and `next_epoch_stake`. F1
+        // owns reward payout, so this stays in sync with no
+        // double-counting.
+        let synthetic = types::system_state::staking::StakedSomaV1::new(
+            pool_id,
+            state.epoch(),
+            withdraw_amount,
+        );
+        let withdrawn_principal = state.request_withdraw_stake(synthetic)?;
+        debug_assert_eq!(
+            withdrawn_principal, withdraw_amount,
+            "fresh-activation withdraw must return exactly principal",
+        );
+
+        // Credit the principal to the staker's SOMA balance.
+        store.emit_balance_event(BalanceEvent::Deposit {
+            owner: signer,
+            coin_type: CoinType::Soma,
+            amount: withdrawn_principal,
+        });
+
+        // Drain the F1 row by `withdraw_amount`; advance the fold
+        // mark to current_period so any future rewards on the
+        // remaining principal start from this period.
         store.emit_delegation_event(
             pool_id,
             signer,
-            -(principal as i128),
-            None,
+            -(withdraw_amount as i128),
+            Some(current_period),
         );
 
-        // Delete StakedSoma object
-        store.delete_input_object(&staked_soma_ref.0);
-
-        // Create a Coin object with the withdrawn amount
-        let new_coin = Object::new_coin(
-            ObjectID::derive_id(tx_digest, store.next_creation_num()),
-            CoinType::Soma,
-            withdrawn_amount,
-            Owner::AddressOwner(signer),
-            tx_digest,
-        );
-        store.create_object(new_coin);
-
-        // Update system state
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "Failed to serialize updated system state: {}",
@@ -273,8 +345,8 @@ impl TransactionExecutor for StakingExecutor {
             TransactionKind::AddStake { validator, amount } => {
                 self.execute_add_stake(store, signer, validator, amount, tx_digest)
             }
-            TransactionKind::WithdrawStake { staked_soma } => {
-                self.execute_withdraw_stake(store, signer, staked_soma, tx_digest)
+            TransactionKind::WithdrawStake { pool_id, amount } => {
+                self.execute_withdraw_stake(store, signer, pool_id, amount, tx_digest)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }

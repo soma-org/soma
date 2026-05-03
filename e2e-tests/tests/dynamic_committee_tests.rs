@@ -56,7 +56,10 @@ struct StressTestRunner {
     pub removed_validators: BTreeSet<SomaAddress>,
     pub delegation_requests_this_epoch: BTreeMap<ObjectID, SomaAddress>,
     pub delegation_withdraws_this_epoch: u64,
-    pub delegations: BTreeMap<ObjectID, (SomaNodeHandle, ObjectID, ObjectDigest, Version)>,
+    /// Stage 9d-C3: balance-mode WithdrawStake keys off (pool_id,
+    /// sender). Track the staker's SomaNodeHandle alongside the
+    /// pool_id so the stress runner can later issue a withdrawal.
+    pub delegations: Vec<(SomaNodeHandle, ObjectID)>,
     pub reports: BTreeMap<SomaAddress, BTreeSet<SomaAddress>>,
     pub rng: StdRng,
 }
@@ -85,7 +88,7 @@ impl StressTestRunner {
             removed_validators: BTreeSet::new(),
             delegation_requests_this_epoch: BTreeMap::new(),
             delegation_withdraws_this_epoch: 0,
-            delegations: BTreeMap::new(),
+            delegations: Vec::new(),
             reports: BTreeMap::new(),
             rng: StdRng::from_seed([0; 32]),
         }
@@ -257,11 +260,11 @@ mod add_stake {
                 self.sender.with(|node| node.get_config().soma_address())
             );
 
-            // Keep track of all delegations, we will need it in stake withdrawals.
-            runner.delegations.insert(
-                object.id(),
-                (self.sender.clone(), object.id(), object.digest(), object.version()),
-            );
+            // Stage 9d-C3: track the (sender, pool_id) pair so the
+            // withdrawal stress generator can later target this row.
+            runner
+                .delegations
+                .push((self.sender.clone(), staked_soma.pool_id));
         }
 
         async fn post_epoch_post_condition(
@@ -315,9 +318,7 @@ mod remove_stake {
     pub struct RequestWithdrawStakeGen;
 
     pub struct RequestWithdrawStake {
-        object_id: ObjectID,
-        digest: ObjectDigest,
-        version: Version,
+        pool_id: ObjectID,
         sender: SomaNodeHandle,
     }
 
@@ -325,20 +326,21 @@ mod remove_stake {
         type StateChange = RequestWithdrawStake;
 
         fn create(&self, runner: &mut StressTestRunner) -> Self::StateChange {
-            // pick next delegation object
-            let delegation_object_id = *runner.delegations.keys().next().unwrap();
-            let (sender, object_id, digest, version) =
-                runner.delegations.remove(&delegation_object_id).unwrap();
-
-            RequestWithdrawStake { object_id, digest, sender, version }
+            // Pop a tracked delegation; the stress generator only
+            // schedules a withdrawal when at least one is pending.
+            let (sender, pool_id) = runner.delegations.pop().unwrap();
+            RequestWithdrawStake { pool_id, sender }
         }
     }
 
     #[async_trait]
     impl StatePredicate for RequestWithdrawStake {
         async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
+            // Stage 9d-C3: WithdrawStake is balance-mode. `amount: None`
+            // drains the entire row.
             let kind = TransactionKind::WithdrawStake {
-                staked_soma: (self.object_id, self.version, self.digest),
+                pool_id: self.pool_id,
+                amount: None,
             };
 
             let effects = runner.run(&self.sender, kind).await;
@@ -361,20 +363,10 @@ mod remove_stake {
             runner: &StressTestRunner,
             _effects: &TransactionEffects,
         ) {
-            // After the epoch transition, pending withdrawals should have been processed.
-            // Verify:
-            // 1. The StakedSoma object has been consumed (no longer in the object store).
-            // 2. All validator staking pools have cleared pending withdrawals.
-            let db =
-                runner.test_cluster.fullnode_handle.soma_node.state().get_object_store().clone();
-            let staked_soma_obj = db.get_object(&self.object_id);
-            assert!(
-                staked_soma_obj.is_none(),
-                "StakedSoma object {} should have been consumed by WithdrawStake",
-                self.object_id
-            );
-
-            // Verify all validator pools have processed their pending withdrawals.
+            // After the epoch transition, pending withdrawals should
+            // have been processed. Verify all validator pools cleared
+            // pending withdrawals (Stage 9d-C5 deletes these fields;
+            // until then they still need to drain).
             let system_state = runner.system_state();
             for v in &system_state.validators().validators {
                 assert_eq!(
@@ -390,9 +382,9 @@ mod remove_stake {
             }
 
             info!(
-                "post_epoch WithdrawStake verified: StakedSoma {} consumed, \
-                 all pending withdrawals processed",
-                self.object_id
+                "post_epoch WithdrawStake verified: pool {} pending \
+                 withdrawals processed",
+                self.pool_id
             );
         }
     }

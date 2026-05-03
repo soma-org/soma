@@ -122,8 +122,12 @@ pub enum TransactionKind {
         amount: u64,
     },
 
+    // Stage 9d-C3: WithdrawStake is balance-mode and keys off the
+    // F1 (pool, sender) row. `amount: None` withdraws the entire
+    // row's principal.
     WithdrawStake {
-        staked_soma: ObjectReference,
+        pool_id: Address,
+        amount: Option<u64>,
     },
 
     // Model transactions

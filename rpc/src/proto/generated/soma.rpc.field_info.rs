@@ -7018,15 +7018,24 @@ mod _field_impls {
         }
     }
     impl WithdrawStake {
-        pub const STAKED_SOMA_FIELD: &'static MessageField = &MessageField {
-            name: "staked_soma",
-            json_name: "stakedSoma",
+        pub const POOL_ID_FIELD: &'static MessageField = &MessageField {
+            name: "pool_id",
+            json_name: "poolId",
             number: 1i32,
-            message_fields: Some(ObjectReference::FIELDS),
+            message_fields: None,
+        };
+        pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "amount",
+            json_name: "amount",
+            number: 2i32,
+            message_fields: None,
         };
     }
     impl MessageFields for WithdrawStake {
-        const FIELDS: &'static [&'static MessageField] = &[Self::STAKED_SOMA_FIELD];
+        const FIELDS: &'static [&'static MessageField] = &[
+            Self::POOL_ID_FIELD,
+            Self::AMOUNT_FIELD,
+        ];
     }
     impl WithdrawStake {
         pub fn path_builder() -> WithdrawStakeFieldPathBuilder {
@@ -7048,9 +7057,13 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn staked_soma(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(WithdrawStake::STAKED_SOMA_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
+        pub fn pool_id(mut self) -> String {
+            self.path.push(WithdrawStake::POOL_ID_FIELD.name);
+            self.finish()
+        }
+        pub fn amount(mut self) -> String {
+            self.path.push(WithdrawStake::AMOUNT_FIELD.name);
+            self.finish()
         }
     }
     impl Metadata {

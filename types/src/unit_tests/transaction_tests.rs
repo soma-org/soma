@@ -183,7 +183,10 @@ fn test_transaction_kind_classification() {
     assert!(!add_stake.is_validator_tx());
     assert!(!add_stake.is_system_tx());
 
-    let withdraw_stake = TransactionKind::WithdrawStake { staked_soma: random_object_ref() };
+    let withdraw_stake = TransactionKind::WithdrawStake {
+        pool_id: ObjectID::random(),
+        amount: None,
+    };
     assert!(withdraw_stake.is_staking_tx());
 
     // Coin/object transactions should not match any category
@@ -319,7 +322,10 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             validator: SomaAddress::random(),
             amount: 1000,
         },
-        TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
+        TransactionKind::WithdrawStake {
+            pool_id: ObjectID::random(),
+            amount: Some(500),
+        },
         // Bridge
         TransactionKind::BridgeDeposit(crate::transaction::BridgeDepositArgs {
             nonce: 1,

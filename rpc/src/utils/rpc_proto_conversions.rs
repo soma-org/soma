@@ -621,8 +621,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 amount: Some(amount),
             }),
 
-            K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {
-                staked_soma: Some(object_ref_to_proto(staked_soma)),
+            K::WithdrawStake { pool_id, amount } => Kind::WithdrawStake(WithdrawStake {
+                pool_id: Some(pool_id.to_string()),
+                amount,
             }),
 
             // Bridge transactions

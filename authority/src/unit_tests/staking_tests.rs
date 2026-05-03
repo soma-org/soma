@@ -282,8 +282,11 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
     let gas_ref2 = gas_coin2.compute_object_reference();
     authority_state.insert_genesis_object(gas_coin2).await;
 
+    // Stage 9d-C3: WithdrawStake is balance-mode and keys off
+    // (pool_id, sender). Use `amount: None` to drain the entire row.
+    let _ = staked_oref;
     let withdraw_data = TransactionData::new(
-        TransactionKind::WithdrawStake { staked_soma: staked_oref },
+        TransactionKind::WithdrawStake { pool_id: pool, amount: None },
         sender,
         vec![gas_ref2],
     );
@@ -337,11 +340,16 @@ async fn test_withdraw_stake_nonexistent_object() {
     let authority_state = TestAuthorityBuilder::new().build().await;
     authority_state.insert_genesis_object(gas.clone()).await;
 
-    let fake_staked_ref = (ObjectID::random(), (0u64).into(), types::digests::ObjectDigest::MIN);
     let gas_ref = gas.compute_object_reference();
 
+    // Stage 9d-C3: WithdrawStake against a pool the sender has no
+    // stake in. Executor reads the prefetched (pool, sender) row,
+    // finds none, errors out.
     let data = TransactionData::new(
-        TransactionKind::WithdrawStake { staked_soma: fake_staked_ref },
+        TransactionKind::WithdrawStake {
+            pool_id: ObjectID::random(),
+            amount: None,
+        },
         sender,
         vec![gas_ref],
     );

@@ -241,8 +241,15 @@ message AddStake {
 }
 
 
+// Stage 9d-C3: WithdrawStake is balance-mode and keys off the F1
+// (pool, sender) row. The executor pays pending rewards + the
+// requested principal to the sender's SOMA accumulator.
 message WithdrawStake {
-  optional ObjectReference staked_soma = 1;
+  // StakingPool ObjectID (hex string).
+  optional string pool_id = 1;
+  // Principal to withdraw, in shannons. Omit (or set to 0) to drain
+  // the entire row.
+  optional uint64 amount = 2;
 }
 
 message Metadata {

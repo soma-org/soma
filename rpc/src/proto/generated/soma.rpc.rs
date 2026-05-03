@@ -4186,11 +4186,19 @@ pub struct AddStake {
     #[prost(uint64, optional, tag = "2")]
     pub amount: ::core::option::Option<u64>,
 }
+/// Stage 9d-C3: WithdrawStake is balance-mode and keys off the F1
+/// (pool, sender) row. The executor pays pending rewards + the
+/// requested principal to the sender's SOMA accumulator.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WithdrawStake {
-    #[prost(message, optional, tag = "1")]
-    pub staked_soma: ::core::option::Option<ObjectReference>,
+    /// StakingPool ObjectID (hex string).
+    #[prost(string, optional, tag = "1")]
+    pub pool_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Principal to withdraw, in shannons. Omit (or set to 0) to drain
+    /// the entire row.
+    #[prost(uint64, optional, tag = "2")]
+    pub amount: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]

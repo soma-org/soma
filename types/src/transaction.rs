@@ -93,18 +93,25 @@ pub enum TransactionKind {
     },
     // Staking txs
     //
-    // Stage 9d-C2: AddStake is balance-mode — `amount` SOMA is debited
-    // from the sender's accumulator. The executor folds any pending
-    // F1 rewards on the (validator, sender) row to the sender's
-    // SOMA balance before bumping principal, so the user never loses
-    // accrued rewards by re-staking. WithdrawStake stays object-mode
-    // for one more sub-step (Stage 9d-C3 reshapes it).
+    // Stage 9d-C2/C3: both AddStake and WithdrawStake are balance-mode
+    // and driven by the F1-shaped (pool, sender) delegation row. No
+    // StakedSomaV1 reference required.
+    //
+    // - AddStake: debits `amount` SOMA from the sender's accumulator,
+    //   folds pending rewards to balance, bumps principal, advances
+    //   the F1 fold mark.
+    // - WithdrawStake: pays out pending rewards + the requested
+    //   principal (or the entire row if `amount` is `None`) to the
+    //   sender's SOMA balance, decrements principal, and (if drained)
+    //   removes the row outright.
     AddStake {
         validator: SomaAddress,
         amount: u64,
     },
     WithdrawStake {
-        staked_soma: ObjectRef,
+        pool_id: ObjectID,
+        /// `None` = withdraw all principal on this row.
+        amount: Option<u64>,
     },
 
     // Bridge transactions (system — gasless)
@@ -587,14 +594,13 @@ impl TransactionKind {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
                 }
             }
-            // Stage 9d-C2: AddStake is balance-mode — no SOMA coin
-            // input. The Withdraw event the executor emits is covered
-            // by `reservations()`.
+            // Stage 9d-C2/C3: AddStake / WithdrawStake are
+            // balance-mode and key off the F1 (pool, sender) row —
+            // no SOMA coin or StakedSomaV1 input. Their fund flows
+            // are covered by the per-tx reservations + Deposit
+            // events emitted from the executor.
             TransactionKind::AddStake { .. } => {}
-
-            TransactionKind::WithdrawStake { staked_soma } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
-            }
+            TransactionKind::WithdrawStake { .. } => {}
 
             // Stage 12: BridgeWithdraw is balance-mode — no payment
             // coin to read. The Withdraw event the executor emits is

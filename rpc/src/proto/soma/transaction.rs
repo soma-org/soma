@@ -275,7 +275,9 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             AddStake { validator, amount } => {
                 Kind::AddStake(AddStakeArgs { validator, amount }.into())
             }
-            WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
+            WithdrawStake { pool_id, amount } => {
+                Kind::WithdrawStake(WithdrawStakeArgs { pool_id, amount }.into())
+            }
 
             // Model transactions
             CreateModel(args) => Kind::CreateModel(super::CreateModel {
@@ -543,11 +545,13 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
             },
 
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
-                staked_soma: withdraw
-                    .staked_soma
+                pool_id: withdraw
+                    .pool_id
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("staked_soma"))?
-                    .try_into()?,
+                    .ok_or_else(|| TryFromProtoError::missing("pool_id"))?
+                    .parse()
+                    .map_err(|e| TryFromProtoError::invalid("pool_id", e))?,
+                amount: withdraw.amount,
             },
 
             // Model transactions
@@ -1206,9 +1210,17 @@ impl From<AddStakeArgs> for AddStake {
     }
 }
 
-// WithdrawStake conversions
-impl From<crate::types::ObjectReference> for WithdrawStake {
-    fn from(staked_soma: crate::types::ObjectReference) -> Self {
-        Self { staked_soma: Some(staked_soma.into()) }
+// WithdrawStake conversions (Stage 9d-C3: balance-mode, no staked_soma)
+pub struct WithdrawStakeArgs {
+    pub pool_id: crate::types::Address,
+    pub amount: Option<u64>,
+}
+
+impl From<WithdrawStakeArgs> for WithdrawStake {
+    fn from(args: WithdrawStakeArgs) -> Self {
+        Self {
+            pool_id: Some(args.pool_id.to_string()),
+            amount: args.amount,
+        }
     }
 }

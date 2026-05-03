@@ -259,11 +259,16 @@ EXAMPLES:
         name = "unstake",
         after_help = "\
 EXAMPLES:
-    soma unstake 0xSTAKED_SOMA_ID"
+    soma unstake --pool 0xPOOL_ID
+    soma unstake --pool 0xPOOL_ID --amount 5"
     )]
     Unstake {
-        /// StakedSoma object ID to withdraw
-        staked_soma_id: ObjectID,
+        /// StakingPool ObjectID. Use `soma stakes` to list yours.
+        #[clap(long)]
+        pool: ObjectID,
+        /// Amount to withdraw in SOMA. Omit to drain the entire row.
+        #[clap(long)]
+        amount: Option<SomaAmount>,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
@@ -757,10 +762,15 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Unstake { staked_soma_id, tx_args, json } => {
+            SomaCommand::Unstake { pool, amount, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
-                let result =
-                    commands::stake::execute_unstake(&mut context, staked_soma_id, tx_args).await?;
+                let result = commands::stake::execute_unstake(
+                    &mut context,
+                    pool,
+                    amount.map(|a| a.shannons()),
+                    tx_args,
+                )
+                .await?;
                 result.print(json);
                 if result.has_failed_transaction() {
                     std::process::exit(1);

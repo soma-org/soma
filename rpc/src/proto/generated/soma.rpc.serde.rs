@@ -20906,12 +20906,20 @@ impl serde::Serialize for WithdrawStake {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.staked_soma.is_some() {
+        if self.pool_id.is_some() {
+            len += 1;
+        }
+        if self.amount.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.WithdrawStake", len)?;
-        if let Some(v) = self.staked_soma.as_ref() {
-            struct_ser.serialize_field("stakedSoma", v)?;
+        if let Some(v) = self.pool_id.as_ref() {
+            struct_ser.serialize_field("poolId", v)?;
+        }
+        if let Some(v) = self.amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("amount", ToString::to_string(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -20923,13 +20931,15 @@ impl<'de> serde::Deserialize<'de> for WithdrawStake {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "staked_soma",
-            "stakedSoma",
+            "pool_id",
+            "poolId",
+            "amount",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            StakedSoma,
+            PoolId,
+            Amount,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -20952,7 +20962,8 @@ impl<'de> serde::Deserialize<'de> for WithdrawStake {
                         E: serde::de::Error,
                     {
                         match value {
-                            "stakedSoma" | "staked_soma" => Ok(GeneratedField::StakedSoma),
+                            "poolId" | "pool_id" => Ok(GeneratedField::PoolId),
+                            "amount" => Ok(GeneratedField::Amount),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -20974,14 +20985,23 @@ impl<'de> serde::Deserialize<'de> for WithdrawStake {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut staked_soma__ = None;
+                let mut pool_id__ = None;
+                let mut amount__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::StakedSoma => {
-                            if staked_soma__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("stakedSoma"));
+                        GeneratedField::PoolId => {
+                            if pool_id__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("poolId"));
                             }
-                            staked_soma__ = map_.next_value()?;
+                            pool_id__ = map_.next_value()?;
+                        }
+                        GeneratedField::Amount => {
+                            if amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("amount"));
+                            }
+                            amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
@@ -20989,7 +21009,8 @@ impl<'de> serde::Deserialize<'de> for WithdrawStake {
                     }
                 }
                 Ok(WithdrawStake {
-                    staked_soma: staked_soma__,
+                    pool_id: pool_id__,
+                    amount: amount__,
                 })
             }
         }

@@ -394,8 +394,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 amount,
             },
 
-            TK::WithdrawStake { staked_soma } => {
-                TransactionKind::WithdrawStake { staked_soma: staked_soma.into() }
+            TK::WithdrawStake { pool_id, amount } => {
+                TransactionKind::WithdrawStake { pool_id: pool_id.into(), amount }
             }
 
             TK::Settlement(settlement) => {
@@ -528,8 +528,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                 TK::AddStake { validator: validator.into(), amount }
             }
 
-            TransactionKind::WithdrawStake { staked_soma } => {
-                TK::WithdrawStake { staked_soma: staked_soma.into() }
+            TransactionKind::WithdrawStake { pool_id, amount } => {
+                TK::WithdrawStake { pool_id: pool_id.into(), amount }
             }
 
             // Bridge transactions

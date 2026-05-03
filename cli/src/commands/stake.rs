@@ -32,23 +32,18 @@ pub async fn execute_stake(
     crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
 }
 
-/// Execute the unstake command (withdraw staked SOMA)
+/// Execute the unstake command (Stage 9d-C3: balance-mode).
+/// Pays pending F1 rewards + the requested principal amount to the
+/// sender's SOMA balance. `amount = None` drains the entire row.
 pub async fn execute_unstake(
     context: &mut WalletContext,
-    staked_soma_id: ObjectID,
+    pool_id: ObjectID,
+    amount: Option<u64>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.active_address()?;
-    let client = context.get_client().await?;
 
-    // Get staked soma reference
-    let staked_obj = client
-        .get_object(staked_soma_id)
-        .await
-        .map_err(|e| anyhow!("Failed to get staked SOMA object: {}", e.message()))?;
-    let staked_ref = staked_obj.compute_object_reference();
-
-    let kind = TransactionKind::WithdrawStake { staked_soma: staked_ref };
+    let kind = TransactionKind::WithdrawStake { pool_id, amount };
 
     crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
 }
