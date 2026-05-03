@@ -2,19 +2,18 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use fastcrypto::encoding::Encoding as _;
 use types::base::SomaAddress;
-use types::crypto::SomaKeyPair;
-use types::object::ObjectRef;
 use types::transaction::{Transaction, TransactionData, TransactionKind};
 
 use crate::wallet_context::WalletContext;
 
 /// A builder for constructing and optionally executing transactions.
 ///
-/// This provides a clean interface for CLI commands to build transactions
-/// without dealing with gas selection, signing, and execution details.
+/// Stage 13c: gas is balance-mode for non-system txs — the
+/// builder always emits `gas_payment = vec![]` and lets the
+/// authority's `prepare_gas` debit the sender's USDC accumulator.
 pub struct TransactionBuilder<'a> {
     context: &'a WalletContext,
 }
@@ -25,32 +24,12 @@ impl<'a> TransactionBuilder<'a> {
     }
 
     /// Build unsigned transaction data for a given kind.
-    ///
-    /// If `gas_payment` is non-empty, uses the provided coins directly
-    /// (avoiding an RPC call). If empty, auto-selects the richest coin.
-    pub async fn build_transaction_data(
+    pub fn build_transaction_data(
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas_payment: Vec<ObjectRef>,
     ) -> Result<TransactionData> {
-        let gas_payment = if gas_payment.is_empty() {
-            let coin =
-                self.context.get_richest_gas_object_owned_by_address(sender).await?.ok_or_else(
-                    || {
-                        anyhow!(
-                            "No gas object found for address {}. \
-                         Please ensure the address has coins.",
-                            sender
-                        )
-                    },
-                )?;
-            vec![coin]
-        } else {
-            gas_payment
-        };
-
-        Ok(TransactionData::new(kind, sender, gas_payment))
+        Ok(TransactionData::new(kind, sender, Vec::new()))
     }
 
     /// Build a signed transaction ready for execution.
@@ -58,34 +37,32 @@ impl<'a> TransactionBuilder<'a> {
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas_payment: Vec<ObjectRef>,
     ) -> Result<Transaction> {
-        let tx_data = self.build_transaction_data(sender, kind, gas_payment).await?;
+        let tx_data = self.build_transaction_data(sender, kind)?;
         let tx = self.context.sign_transaction(&tx_data).await;
         Ok(tx)
     }
 
     /// Build and serialize unsigned transaction data as base64.
     /// Useful for offline signing workflows.
-    pub async fn build_serialized_unsigned(
+    pub fn build_serialized_unsigned(
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas_payment: Vec<ObjectRef>,
     ) -> Result<String> {
-        let tx_data = self.build_transaction_data(sender, kind, gas_payment).await?;
+        let tx_data = self.build_transaction_data(sender, kind)?;
         let bytes = bcs::to_bytes(&tx_data)?;
         Ok(fastcrypto::encoding::Base64::encode(&bytes))
     }
 }
 
-/// Options for transaction execution behavior
+/// Options for transaction execution behavior. Stage 13c: gas is
+/// balance-mode and not selectable; the only knob left is whether
+/// to serialize-instead-of-execute.
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionOptions {
     /// If true, serialize the unsigned transaction instead of executing
     pub serialize_unsigned: bool,
-    /// Optional gas object to use (otherwise auto-selected)
-    pub gas: Option<ObjectRef>,
 }
 
 impl ExecutionOptions {
@@ -95,11 +72,6 @@ impl ExecutionOptions {
 
     pub fn serialize_unsigned(mut self) -> Self {
         self.serialize_unsigned = true;
-        self
-    }
-
-    pub fn with_gas(mut self, gas: ObjectRef) -> Self {
-        self.gas = Some(gas);
         self
     }
 }

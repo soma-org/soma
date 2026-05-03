@@ -29,5 +29,5 @@ pub async fn execute(
         transfers: vec![(recipient, amount)],
     });
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }

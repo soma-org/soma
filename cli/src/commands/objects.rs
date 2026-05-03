@@ -90,25 +90,19 @@ pub async fn execute(
         }
 
         ObjectsCommand::Gas { owner } => {
+            // Stage 13c: gas is balance-mode — there are no per-coin
+            // gas objects to enumerate. Read the USDC accumulator
+            // balance and surface it via the same output struct so
+            // existing scripts that parse `soma objects gas` keep
+            // working (with `coins` empty).
             let address = match owner {
                 Some(key_id) => context.config.keystore.get_by_identity(&key_id)?,
                 None => context.active_address()?,
             };
-
-            let gas_objects = context.get_all_gas_objects_owned_by_address(address).await?;
-
-            // Fetch full objects to get balances
-            let client = context.get_client().await?;
-            let mut coins = Vec::new();
-            for obj_ref in gas_objects {
-                if let Ok(obj) = client.get_object(obj_ref.0).await {
-                    if let Some(balance) = obj.as_coin() {
-                        coins.push((obj_ref, balance));
-                    }
-                }
-            }
-
-            Ok(ClientCommandResponse::Gas(GasCoinsOutput { address, coins }))
+            let mut client = context.get_client().await?;
+            let usdc =
+                client.get_balance_by_coin_type(&address, types::object::CoinType::Usdc).await?;
+            Ok(ClientCommandResponse::Gas(GasCoinsOutput { address, usdc, coins: Vec::new() }))
         }
     }
 }

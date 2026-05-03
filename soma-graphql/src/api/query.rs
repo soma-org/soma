@@ -896,7 +896,16 @@ impl Query {
         Ok(connection)
     }
 
-    /// Get the total SOMA coin balance for an address.
+    /// Get the SOMA balance for an address.
+    ///
+    /// Stage 13a: balances live in a per-(owner, coin_type) accumulator,
+    /// not as Coin objects. The indexer-alt schema does not yet have an
+    /// accumulator-balances table, so the legacy "iterate Coin objects"
+    /// query path returns 0 for every address. This query is kept as a
+    /// surface stub so existing GraphQL clients don't error out, and
+    /// will be re-implemented once the indexer ships an accumulator
+    /// pipeline. Use the gRPC `LiveDataService.GetBalance` for an
+    /// authoritative read in the meantime.
     async fn balance(&self, ctx: &Context<'_>, address: String) -> Result<BigInt> {
         let pg: &Arc<PgReader> = ctx.data()?;
         let mut conn = pg.connect().await?;

@@ -123,14 +123,13 @@ fn examine_objects(genesis: &UnsignedGenesis) {
         match ans {
             Ok(name) if name == STR_EXIT => break,
             Ok(name) if name == STR_SOMA => {
-                for object in genesis.objects() {
-                    if object.as_coin().is_some() {
-                        println!("ID: {}", object.id());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
+                // Stage 13a: balances live in the accumulator, not as
+                // Coin objects. Show genesis balance allocations
+                // grouped by coin type.
+                for ((owner, coin_type), amount) in genesis.balances() {
+                    println!("{} {} → {}", coin_type, amount, owner);
                 }
-                print_divider("SOMA");
+                print_divider("Balances");
             }
             // Stage 9d-C5: StakedSomaV1 deleted; genesis no longer
             // produces such objects. The category is kept in the
@@ -141,13 +140,14 @@ fn examine_objects(genesis: &UnsignedGenesis) {
                 print_divider("StakedSoma");
             }
             Ok(name) if name == STR_OTHER => {
+                // All non-balance objects (SystemState, Clock, etc.).
+                // Stage 13a: no Coin objects exist in genesis, so
+                // every object here is "other".
                 for object in genesis.objects() {
-                    if object.as_coin().is_none() {
-                        println!("ID: {}", object.id());
-                        println!("Type: {:?}", object.type_());
-                        println!("Owner: {:?}", object.owner());
-                        println!();
-                    }
+                    println!("ID: {}", object.id());
+                    println!("Type: {:?}", object.type_());
+                    println!("Owner: {:?}", object.owner());
+                    println!();
                 }
                 print_divider("Other");
             }

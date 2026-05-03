@@ -29,7 +29,7 @@ pub async fn execute_stake(
     // required. Gas is balance-mode too (vec![]).
     let kind = TransactionKind::AddStake { validator, amount };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
 
 /// Execute the unstake command (Stage 9d-C3: balance-mode).
@@ -45,7 +45,7 @@ pub async fn execute_unstake(
 
     let kind = TransactionKind::WithdrawStake { pool_id, amount };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
 
 /// Stage 9d: list a staker's active delegations using the new

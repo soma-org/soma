@@ -109,7 +109,6 @@ impl SomaClientBuilder {
 
         Ok(SomaClient {
             inner: Arc::new(RwLock::new(client)),
-            in_flight_coins: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             faucet_client,
             #[cfg(feature = "grpc-services")]
             admin_client,
@@ -127,14 +126,14 @@ impl SomaClientBuilder {
     }
 }
 
-/// The main SOMA client for interacting with the SOMA network via gRPC and TUS
+/// The main SOMA client for interacting with the SOMA network via gRPC and TUS.
+///
+/// Stage 13c: gas is balance-mode — there are no per-tx coin objects to
+/// reserve / lock-retry against, so the SDK no longer tracks in-flight
+/// coin IDs.
 #[derive(Clone)]
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
-    /// Coins currently used by in-flight transactions. Prevents concurrent
-    /// calls from picking the same coin. Uses `std::sync::Mutex` (not tokio)
-    /// since we only hold it briefly with no awaits.
-    in_flight_coins: Arc<std::sync::Mutex<std::collections::HashSet<ObjectID>>>,
     faucet_client: Option<Arc<Mutex<faucet_client::FaucetClient>>>,
     #[cfg(feature = "grpc-services")]
     admin_client: Option<Arc<Mutex<AdminGrpcClient>>>,
@@ -327,51 +326,17 @@ impl SomaClient {
     // Transaction helpers
     // -------------------------------------------------------------------
 
-    /// Build [`TransactionData`] with automatic gas selection.
+    /// Build [`TransactionData`].
     ///
-    /// If `gas` is `None`, queries the chain for the sender's coin with the
-    /// highest balance so that transfers and gas payments are less likely to
-    /// fail due to picking a dust coin.
-    pub async fn build_transaction_data(
+    /// Stage 13c: gas is balance-mode — `gas_payment` is always empty
+    /// for non-system txs. The authority's `prepare_gas` debits the
+    /// sender's USDC accumulator at execution time.
+    pub fn build_transaction_data(
         &self,
         sender: SomaAddress,
         kind: TransactionKind,
-        gas: Option<types::object::ObjectRef>,
-    ) -> Result<TransactionData, error::Error> {
-        let gas_payment = match gas {
-            Some(gas_ref) => vec![gas_ref],
-            None => {
-                use futures::TryStreamExt as _;
-
-                let mut request = ListOwnedObjectsRequest::default();
-                request.owner = Some(sender.to_string());
-                request.page_size = Some(100);
-                request.object_type = Some("Coin".to_string());
-
-                let stream = self.list_owned_objects(request).await;
-                tokio::pin!(stream);
-
-                let mut best: Option<(types::object::ObjectRef, u64)> = None;
-                while let Some(obj) =
-                    stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
-                {
-                    let balance = obj.as_coin().unwrap_or(0);
-                    let obj_ref = obj.compute_object_reference();
-                    if best.as_ref().map_or(true, |(_, b)| balance > *b) {
-                        best = Some((obj_ref, balance));
-                    }
-                }
-
-                let (obj_ref, _) = best.ok_or_else(|| {
-                    error::Error::DataError(format!(
-                        "No gas object found for address {sender}. \
-                         Please ensure the address has coins."
-                    ))
-                })?;
-                vec![obj_ref]
-            }
-        };
-        Ok(TransactionData::new(kind, sender, gas_payment))
+    ) -> TransactionData {
+        TransactionData::new(kind, sender, Vec::new())
     }
 
     /// Sign and execute a transaction, returning the effects.
@@ -400,224 +365,18 @@ impl SomaClient {
         Ok(response.effects)
     }
 
-    /// Build, sign, and execute a transaction with automatic retry on coin conflicts.
-    ///
-    /// Handles two conflict types that arise when coins are used concurrently:
-    /// - **ObjectLockConflict** / "already locked": another in-flight tx holds the lock
-    /// - **Stale version** / "not available for consumption": coin was already consumed
-    ///
-    /// Each attempt picks disjoint coins via randomized top-N selection and
-    /// tracks them as in-flight so concurrent calls use different coins.
+    /// Build, sign, and execute a transaction. Stage 13c: gas is
+    /// balance-mode, so the old "retry on coin conflict" path is gone
+    /// — there is no per-tx gas coin to lock or to come up stale.
     pub async fn sign_and_execute_with_retry(
         &self,
         keypair: &keypair::Keypair,
         sender: SomaAddress,
-        mut kind: TransactionKind,
+        kind: TransactionKind,
         label: &str,
     ) -> Result<TransactionEffects, error::Error> {
-        const MAX_RETRIES: usize = 5;
-        let mut excluded_coins: std::collections::HashSet<ObjectID> = Default::default();
-
-        for attempt in 0..=MAX_RETRIES {
-            // 1. Build exclusion set: permanent excludes + in-flight snapshot
-            let in_flight_snapshot = self.in_flight_coins.lock().unwrap().clone();
-            let mut full_excluded = excluded_coins.clone();
-            full_excluded.extend(&in_flight_snapshot);
-
-            // 2. Select gas coin (single coin, random top-N, from full_excluded)
-            let tx_data = match self
-                .build_transaction_data_excluding(sender, kind.clone(), &full_excluded)
-                .await
-            {
-                Ok(td) => td,
-                Err(e) => return Err(e),
-            };
-
-            // 3. Reserve: insert gas IDs into in_flight_coins
-            let mut reserved = Vec::new();
-            for gas_ref in tx_data.gas() {
-                reserved.push(gas_ref.0);
-            }
-            {
-                let mut in_flight = self.in_flight_coins.lock().unwrap();
-                for id in &reserved {
-                    in_flight.insert(*id);
-                }
-            }
-
-            // 5. Execute transaction
-            let result = self.sign_and_execute(keypair, tx_data, label).await;
-
-            // 6. Release: remove reserved IDs from in_flight_coins (always)
-            {
-                let mut in_flight = self.in_flight_coins.lock().unwrap();
-                for id in &reserved {
-                    in_flight.remove(id);
-                }
-            }
-
-            match result {
-                Ok(effects) => return Ok(effects),
-                Err(e) => {
-                    let err_str = e.to_string();
-                    let is_coin_conflict = err_str.contains("already locked")
-                        || err_str.contains("ObjectLockConflict")
-                        || err_str.contains("not available for consumption");
-
-                    if !is_coin_conflict || attempt == MAX_RETRIES {
-                        return Err(e);
-                    }
-
-                    // 7. On conflict: add conflicting coin to permanent excludes, backoff
-                    let backoff = Duration::from_secs(1 << attempt.min(3));
-                    if let Some(obj_id) = Self::parse_conflict_object_id(&err_str) {
-                        tracing::warn!(
-                            "Coin {} conflict, excluding and retrying {label} in {:?} (attempt {}/{})",
-                            obj_id,
-                            backoff,
-                            attempt + 1,
-                            MAX_RETRIES
-                        );
-                        excluded_coins.insert(obj_id);
-                    } else {
-                        tracing::warn!(
-                            "Coin conflict on {label}, retrying with fresh coins in {:?} (attempt {}/{})",
-                            backoff,
-                            attempt + 1,
-                            MAX_RETRIES
-                        );
-                    }
-                    tokio::time::sleep(backoff).await;
-                }
-            }
-        }
-        unreachable!()
-    }
-
-    /// Build transaction data, excluding specific coins from gas selection.
-    ///
-    /// Picks a **single** gas coin via randomized top-N selection so that
-    /// concurrent callers are unlikely to choose the same coin.
-    ///
-    /// Scans at most one page of coins (page_size) to keep RPC calls to 1.
-    async fn build_transaction_data_excluding(
-        &self,
-        sender: SomaAddress,
-        kind: TransactionKind,
-        excluded: &std::collections::HashSet<ObjectID>,
-    ) -> Result<TransactionData, error::Error> {
-        use futures::TryStreamExt as _;
-
-        const TOP_N: usize = 8;
-        const MAX_COINS: usize = 256;
-
-        let mut request = ListOwnedObjectsRequest::default();
-        request.owner = Some(sender.to_string());
-        request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some("Coin".to_string());
-
-        let stream = self.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(types::object::ObjectRef, u64)> = Vec::new();
-        while let Some(obj) =
-            stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
-        {
-            let obj_ref = obj.compute_object_reference();
-            if excluded.contains(&obj_ref.0) {
-                continue;
-            }
-            let balance = obj.as_coin().unwrap_or(0);
-            coins.push((obj_ref, balance));
-            if coins.len() >= MAX_COINS {
-                break;
-            }
-        }
-
-        if coins.is_empty() {
-            return Err(error::Error::DataError(format!(
-                "No available gas coin for address {sender} \
-                 (excluded {} locked coins). \
-                 Run `soma merge-coins` to consolidate your coins.",
-                excluded.len()
-            )));
-        }
-
-        // Sort richest-first, take top N, pick random
-        coins.sort_by(|a, b| b.1.cmp(&a.1));
-        let top = coins.len().min(TOP_N);
-        let idx = rand::thread_rng().gen_range(0..top);
-        let selected = coins[idx].0;
-        Ok(TransactionData::new(kind, sender, vec![selected]))
-    }
-
-    /// Select a coin owned by `sender`, skipping coins in `excluded`.
-    ///
-    /// Uses randomized top-N selection so concurrent callers are unlikely
-    /// to pick the same coin. This is a standalone coin-selection helper
-    /// for callers that need to embed a coin reference in a
-    /// [`TransactionKind`].
-    ///
-    /// Scans at most one page of coins to keep RPC calls to 1.
-    pub async fn select_coin_excluding(
-        &self,
-        sender: SomaAddress,
-        excluded: &std::collections::HashSet<ObjectID>,
-    ) -> Result<types::object::ObjectRef, error::Error> {
-        use futures::TryStreamExt as _;
-
-        const TOP_N: usize = 8;
-        const MAX_COINS: usize = 256;
-
-        let mut request = ListOwnedObjectsRequest::default();
-        request.owner = Some(sender.to_string());
-        request.page_size = Some(MAX_COINS as u32);
-        request.object_type = Some("Coin".to_string());
-
-        let stream = self.list_owned_objects(request).await;
-        tokio::pin!(stream);
-
-        let mut coins: Vec<(types::object::ObjectRef, u64)> = Vec::new();
-        while let Some(obj) =
-            stream.try_next().await.map_err(|e| error::Error::DataError(e.to_string()))?
-        {
-            let obj_ref = obj.compute_object_reference();
-            if excluded.contains(&obj_ref.0) {
-                continue;
-            }
-            let balance = obj.as_coin().unwrap_or(0);
-            coins.push((obj_ref, balance));
-            if coins.len() >= MAX_COINS {
-                break;
-            }
-        }
-
-        if coins.is_empty() {
-            return Err(error::Error::DataError(format!(
-                "No available coin for address {sender} \
-                 (excluded {} locked coins). \
-                 Ensure the address has multiple coins for concurrent submissions.",
-                excluded.len()
-            )));
-        }
-
-        // Sort richest-first, take top N, pick random
-        coins.sort_by(|a, b| b.1.cmp(&a.1));
-        let top = coins.len().min(TOP_N);
-        let idx = rand::thread_rng().gen_range(0..top);
-        Ok(coins[idx].0)
-    }
-
-    /// Parse an object ID from a coin conflict error string.
-    ///
-    /// Handles both lock conflicts (`"Object (0x..., ...) already locked"`)
-    /// and stale version errors (`"Object (0x..., ...) is not available"`).
-    fn parse_conflict_object_id(err_str: &str) -> Option<ObjectID> {
-        let start = err_str.find("Object (0x")?;
-        let hex_start = start + "Object (".len();
-        let hex_end = err_str[hex_start..].find(',')? + hex_start;
-        let hex_str = &err_str[hex_start..hex_end];
-        ObjectID::from_hex_literal(hex_str).ok()
+        let tx_data = self.build_transaction_data(sender, kind);
+        self.sign_and_execute(keypair, tx_data, label).await
     }
 
     /// Merge all coins owned by the sender into as few as possible.

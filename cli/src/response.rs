@@ -969,44 +969,28 @@ impl Display for ObjectsOutput {
     }
 }
 
+/// Stage 13c: balance-mode "gas" output. There are no per-coin gas
+/// objects anymore; gas comes from the sender's USDC accumulator.
+/// `coins` is kept on the struct for serialization stability with
+/// older client tooling but will always be empty in balance-mode.
 #[derive(Debug, Serialize)]
 pub struct GasCoinsOutput {
     pub address: SomaAddress,
+    pub usdc: u64,
     pub coins: Vec<(ObjectRef, u64)>,
 }
 
 impl Display for GasCoinsOutput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.coins.is_empty() {
-            return writeln!(f, "{}", format!("No gas coins owned by {}", self.address).yellow());
-        }
-
         let mut builder = TableBuilder::default();
-        builder.push_record(["Object ID", "Balance (shannons)", "Balance (SOMA)"]);
-
-        let mut total: u128 = 0;
-        for (obj_ref, balance) in &self.coins {
-            total += *balance as u128;
-            builder.push_record([
-                obj_ref.0.to_string(),
-                balance.to_string(),
-                format_soma(*balance as u128),
-            ]);
-        }
+        builder.push_record(["Address", &self.address.to_string()]);
+        builder.push_record(["USDC (gas)", &self.usdc.to_string().green().to_string()]);
 
         let mut table = builder.build();
         table.with(TableStyle::rounded());
-        table.with(TablePanel::header(format!("Gas Coins ({} coins)", self.coins.len())));
-        table.with(TablePanel::footer(format!(
-            "Total: {} shannons ({})",
-            format_with_commas(total),
-            format_soma(total)
-        )));
+        table.with(TablePanel::header("Gas (balance-mode)"));
         table.with(HorizontalLine::new(1, TableStyle::modern().get_horizontal()));
-        table.with(HorizontalLine::new(2, TableStyle::modern().get_horizontal()));
-        table.with(TableModify::new(TableCols::new(1..)).with(TableAlignment::right()));
         table.with(tabled::settings::style::BorderSpanCorrection);
-
         writeln!(f, "{}", table)
     }
 }

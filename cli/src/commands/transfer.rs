@@ -71,7 +71,7 @@ pub async fn execute(
         transfers,
     });
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }
 
 // Stage 13b: keep `_` to suppress unused-import warning if any
@@ -83,7 +83,7 @@ pub async fn execute_transfer_object(
     context: &mut WalletContext,
     to: KeyIdentity,
     object_id: ObjectID,
-    gas: Option<ObjectID>,
+    _gas: Option<ObjectID>,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.get_object_owner(&object_id).await?;
@@ -96,16 +96,6 @@ pub async fn execute_transfer_object(
 
     let kind = TransactionKind::TransferObjects { objects: vec![object_ref], recipient };
 
-    let gas_payment = match gas {
-        Some(gas_id) => {
-            let gas_obj = client
-                .get_object(gas_id)
-                .await
-                .map_err(|e| anyhow!("Failed to get gas object: {}", e))?;
-            vec![gas_obj.compute_object_reference()]
-        }
-        None => vec![],
-    };
-
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
+    // Stage 13c: gas is balance-mode; the `_gas` arg is ignored.
+    crate::client_commands::execute_or_serialize(context, sender, kind, tx_args).await
 }

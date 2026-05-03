@@ -94,9 +94,8 @@ impl SomaClientCommands {
 
                 let sender = tx_data.sender();
                 let kind = tx_data.kind().clone();
-                let gas_payment = tx_data.gas().to_vec();
 
-                execute_or_serialize(context, sender, kind, gas_payment, processing).await
+                execute_or_serialize(context, sender, kind, processing).await
             }
 
             SomaClientCommands::ExecuteSignedTx { tx_bytes, signatures } => {
@@ -152,15 +151,13 @@ impl SomaClientCommands {
 
 /// Execute a transaction or serialize it based on processing args.
 ///
-/// `gas_payment` is a pre-fetched list of coin refs to use for gas. When
-/// non-empty the coins are used directly (no RPC call). When empty the
-/// `TransactionBuilder` auto-fetches all coins sorted richest-first so
-/// that `smash_gas` can merge dust.
+/// Stage 13c: gas is balance-mode — the builder always emits an empty
+/// `gas_payment` and the authority debits the sender's USDC accumulator.
+/// Callers no longer pass coin refs.
 pub async fn execute_or_serialize(
     context: &mut WalletContext,
     sender: SomaAddress,
     kind: TransactionKind,
-    gas_payment: Vec<ObjectRef>,
     processing: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     ensure!(
@@ -170,7 +167,7 @@ pub async fn execute_or_serialize(
 
     // Build transaction data
     let builder = TransactionBuilder::new(context);
-    let tx_data = builder.build_transaction_data(sender, kind.clone(), gas_payment).await?;
+    let tx_data = builder.build_transaction_data(sender, kind.clone())?;
 
     // Handle tx-digest-only mode
     if processing.tx_digest {
@@ -219,85 +216,11 @@ pub async fn execute_or_serialize(
         return Ok(ClientCommandResponse::SerializedSignedTransaction(encoded));
     }
 
-    // Execute with retry on ObjectLockConflict — re-fetches coins on retry
-    let response = execute_with_lock_retry(context, sender, kind, tx).await?;
-
+    let response = context.execute_transaction_may_fail(tx).await?;
     Ok(ClientCommandResponse::Transaction(TransactionResponse::from_response(&response)))
 }
 
-/// Execute a transaction with retry on ObjectLockConflict.
-///
-/// When a gas coin is locked by a previous (possibly failed) transaction, this
-/// function excludes the locked coin, rebuilds the transaction with the remaining
-/// coins, and retries. Only used when gas is auto-selected.
-async fn execute_with_lock_retry(
-    context: &mut WalletContext,
-    sender: SomaAddress,
-    kind: TransactionKind,
-    initial_tx: Transaction,
-) -> Result<rpc::api::client::TransactionExecutionResponseWithCheckpoint> {
-    const MAX_RETRIES: usize = 3;
-    let mut excluded_coins: HashSet<ObjectID> = HashSet::new();
-    let mut current_tx = initial_tx;
-
-    for attempt in 0..=MAX_RETRIES {
-        match context.execute_transaction_may_fail(current_tx).await {
-            Ok(resp) => return Ok(resp),
-            Err(e) => {
-                let err_str = e.to_string();
-                let is_lock_conflict =
-                    err_str.contains("already locked") || err_str.contains("ObjectLockConflict");
-
-                if !is_lock_conflict || attempt == MAX_RETRIES {
-                    return Err(e);
-                }
-
-                // Parse locked object ID from error message
-                if let Some(obj_id) = parse_locked_object_id(&err_str) {
-                    warn!(
-                        "Gas coin {} is locked, excluding and retrying (attempt {}/{})",
-                        obj_id,
-                        attempt + 1,
-                        MAX_RETRIES
-                    );
-                    excluded_coins.insert(obj_id);
-                } else {
-                    warn!(
-                        "Lock conflict detected but could not parse object ID, \
-                         retrying with fresh coins (attempt {}/{})",
-                        attempt + 1,
-                        MAX_RETRIES
-                    );
-                }
-
-                // Re-fetch coins excluding locked ones and pick the richest
-                let coins = context.get_gas_objects_sorted_by_balance(sender).await?;
-                let gas_coin = coins
-                    .into_iter()
-                    .find(|c| !excluded_coins.contains(&c.0))
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "No available gas coins after excluding locked coins: {:?}. \
-                             Run `soma merge-coins` to consolidate your coins.",
-                            excluded_coins
-                        )
-                    })?;
-
-                let tx_data = TransactionData::new(kind.clone(), sender, vec![gas_coin]);
-                current_tx = context.sign_transaction(&tx_data).await;
-            }
-        }
-    }
-    unreachable!()
-}
-
-/// Parse the locked object ID from an ObjectLockConflict error message.
-/// Expected format: "Object (0x<hex>, Version(...), ...)"
-fn parse_locked_object_id(err_str: &str) -> Option<ObjectID> {
-    // Look for "Object (0x<hex>,"
-    let start = err_str.find("Object (0x")?;
-    let hex_start = start + "Object (".len();
-    let hex_end = err_str[hex_start..].find(',')? + hex_start;
-    let hex_str = &err_str[hex_start..hex_end];
-    ObjectID::from_hex_literal(hex_str).ok()
-}
+// Stage 13c: execute_with_lock_retry / parse_locked_object_id deleted.
+// They retried on coin-mode "gas coin already locked" failures, which
+// can no longer happen because there is no per-tx gas coin object —
+// gas is debited from the USDC accumulator.
