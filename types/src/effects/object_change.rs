@@ -20,8 +20,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::base::SomaAddress;
 use crate::digests::ObjectDigest;
-use crate::object::{Object, Owner, VersionDigest};
+use crate::object::{CoinType, Object, ObjectID, Owner, VersionDigest};
 
 /// # IDOperation
 ///
@@ -142,4 +143,111 @@ pub enum ObjectOut {
     /// Contains the digest and owner of the object
     /// This includes all mutated, created, and unwrapped objects
     ObjectWrite((ObjectDigest, Owner)),
+
+    /// Stage 14c: per-tx accumulator delta record. Mirrors Sui SIP-58's
+    /// `AccumulatorWriteV1`. Multiple transactions in a single
+    /// consensus commit can emit deltas to the same accumulator in
+    /// parallel without write-conflict on its underlying object —
+    /// settlement aggregates them serially per commit.
+    ///
+    /// `address` is the canonical accumulator-object ID, derived
+    /// deterministically by `BalanceAccumulator::derive_id` (or its
+    /// delegation counterpart). The accumulator object itself is
+    /// mutated by the per-commit `Settlement` system tx after the
+    /// per-tx deltas are aggregated.
+    AccumulatorWriteV1(AccumulatorWriteV1),
+}
+
+/// Stage 14c: a single per-tx delta record emitted by an executor
+/// against a specific accumulator. `operation` says merge (deposit)
+/// or split (withdraw); `value` carries the magnitude.
+///
+/// The structure intentionally mirrors Sui's so consumers (indexers,
+/// RPC, light clients) that already know the SIP-58 shape can recognize
+/// it. Soma differs from Sui in that there is no `EventDigest` value
+/// variant yet — Soma's accumulator universe is balance-only at the
+/// moment.
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub struct AccumulatorWriteV1 {
+    /// Identifies the accumulator being written to. For balance
+    /// accumulators this is `BalanceAccumulator::derive_id(owner,
+    /// coin_type)`. The (owner, coin_type) natural key is recovered
+    /// from the matching accumulator-object payload at apply time.
+    pub address: AccumulatorAddress,
+    pub operation: AccumulatorOperation,
+    pub value: AccumulatorValue,
+}
+
+/// Stage 14c: full natural-key address of an accumulator entry.
+/// Carries enough information for indexers to attribute deltas
+/// without fetching the accumulator object — the `(owner, type)`
+/// tuple plus the canonical ObjectID derived from them.
+///
+/// Soma's first accumulator family is balance — `(SomaAddress,
+/// CoinType)` keys. The variant is BCS-stable so adding more
+/// families (e.g., a future delegation accumulator family that
+/// participates in user-tx effects) is non-breaking.
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub enum AccumulatorAddress {
+    Balance { owner: SomaAddress, coin_type: CoinType, id: ObjectID },
+}
+
+impl AccumulatorAddress {
+    /// Construct a `Balance` address with the deterministic ObjectID
+    /// derivation baked in. Prefer this over hand-building the variant
+    /// so the ID stays consistent with the lookup-side.
+    pub fn balance(owner: SomaAddress, coin_type: CoinType) -> Self {
+        let id = crate::accumulator::BalanceAccumulator::derive_id(owner, coin_type);
+        Self::Balance { owner, coin_type, id }
+    }
+
+    /// The canonical ObjectID for this accumulator. Indexers and the
+    /// settlement executor use this to look up the accumulator object.
+    pub fn object_id(&self) -> ObjectID {
+        match self {
+            Self::Balance { id, .. } => *id,
+        }
+    }
+}
+
+/// Stage 14c: operation an executor performs on an accumulator.
+/// `Merge` is a deposit (account gains value); `Split` is a withdraw
+/// (account loses value). Same naming as Sui's SIP-58.
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub enum AccumulatorOperation {
+    Merge,
+    Split,
+}
+
+/// Stage 14c: payload for an accumulator delta. `U64` covers the only
+/// in-use family today (balance amounts are u64). The variant kept
+/// open so future accumulator families can carry richer payloads
+/// (Sui has `Integer` for balances and `IntegerTuple` for vectorized
+/// quantities; we only need the first today).
+#[derive(Eq, PartialEq, Clone, Copy, Debug, Hash, Serialize, Deserialize)]
+pub enum AccumulatorValue {
+    U64(u64),
+}
+
+impl AccumulatorValue {
+    /// Magnitude as u64. Convenience for the common case.
+    pub fn as_u64(&self) -> u64 {
+        match self {
+            Self::U64(v) => *v,
+        }
+    }
+}
+
+impl AccumulatorWriteV1 {
+    /// Signed delta this write contributes to the targeted accumulator's
+    /// balance. Merge → positive, Split → negative. `i128` is wide
+    /// enough that aggregating any realistic mix of u64 deltas cannot
+    /// overflow during summation.
+    pub fn signed_delta(&self) -> i128 {
+        let mag = self.value.as_u64() as i128;
+        match self.operation {
+            AccumulatorOperation::Merge => mag,
+            AccumulatorOperation::Split => -mag,
+        }
+    }
 }

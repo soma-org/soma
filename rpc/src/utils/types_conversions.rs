@@ -62,6 +62,8 @@ impl TryFrom<types::object::Object> for Object {
             types::object::ObjectType::PendingWithdrawal => ObjectType::PendingWithdrawal,
             types::object::ObjectType::Clock => ObjectType::Clock,
             types::object::ObjectType::Channel => ObjectType::Channel,
+            types::object::ObjectType::BalanceAccumulator => ObjectType::BalanceAccumulator,
+            types::object::ObjectType::DelegationAccumulator => ObjectType::DelegationAccumulator,
         };
 
         // Get contents without the ID prefix (ObjectData stores ID in first bytes)
@@ -90,6 +92,8 @@ impl TryFrom<Object> for types::object::Object {
             ObjectType::PendingWithdrawal => types::object::ObjectType::PendingWithdrawal,
             ObjectType::Clock => types::object::ObjectType::Clock,
             ObjectType::Channel => types::object::ObjectType::Channel,
+            ObjectType::BalanceAccumulator => types::object::ObjectType::BalanceAccumulator,
+            ObjectType::DelegationAccumulator => types::object::ObjectType::DelegationAccumulator,
         };
 
         // Create ObjectData with the ID prepended to contents
@@ -396,6 +400,7 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     round: settlement.round,
                     sub_dag_index: settlement.sub_dag_index,
                     changes: settlement.changes,
+                    delegation_changes: settlement.delegation_changes,
                 })
             }
 
@@ -591,6 +596,7 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     round: settlement.round,
                     sub_dag_index: settlement.sub_dag_index,
                     changes: settlement.changes,
+                    delegation_changes: settlement.delegation_changes,
                 })
             }
 
@@ -690,6 +696,15 @@ impl TryFrom<crate::types::TransactionEffects> for types::effects::TransactionEf
                 .into_iter()
                 .map(|object| (object.object_id.into(), object.kind.into()))
                 .collect(),
+            // TODO(stage-13m+): the SDK-side `TransactionEffects` does
+            // not yet mirror `balance_events` / `delegation_events`.
+            // Indexers and the persistent store read these fields off
+            // the domain `TransactionEffects` directly, so the SDK
+            // round-trip path is not load-bearing for balance
+            // attribution today. When the SDK gains those fields,
+            // remove these empty defaults and forward through.
+            balance_events: vec![],
+            delegation_events: vec![],
         }))
     }
 }
@@ -759,6 +774,16 @@ impl From<types::object::Owner> for Owner {
                 Self::Shared(initial_shared_version.value())
             }
             types::object::Owner::Immutable => Self::Immutable,
+            types::object::Owner::Accumulator { kind } => Self::Accumulator {
+                kind: match kind {
+                    types::object::AccumulatorKind::Balance => {
+                        crate::types::AccumulatorKind::Balance
+                    }
+                    types::object::AccumulatorKind::Delegation => {
+                        crate::types::AccumulatorKind::Delegation
+                    }
+                },
+            },
         }
     }
 }
@@ -771,6 +796,16 @@ impl From<Owner> for types::object::Owner {
                 initial_shared_version: types::object::Version::from_u64(initial_shared_version),
             },
             Owner::Immutable => types::object::Owner::Immutable,
+            Owner::Accumulator { kind } => types::object::Owner::Accumulator {
+                kind: match kind {
+                    crate::types::AccumulatorKind::Balance => {
+                        types::object::AccumulatorKind::Balance
+                    }
+                    crate::types::AccumulatorKind::Delegation => {
+                        types::object::AccumulatorKind::Delegation
+                    }
+                },
+            },
         }
     }
 }
@@ -1076,10 +1111,21 @@ impl From<types::effects::object_change::ObjectIn> for ObjectIn {
 
 impl From<types::effects::object_change::ObjectOut> for ObjectOut {
     fn from(value: types::effects::object_change::ObjectOut) -> Self {
+        use types::effects::object_change::AccumulatorOperation;
         match value {
             types::effects::object_change::ObjectOut::NotExist => Self::NotExist,
             types::effects::object_change::ObjectOut::ObjectWrite((digest, owner)) => {
                 Self::ObjectWrite { digest: digest.into(), owner: owner.into() }
+            }
+            types::effects::object_change::ObjectOut::AccumulatorWriteV1(write) => {
+                Self::AccumulatorWriteV1 {
+                    operation: match write.operation {
+                        AccumulatorOperation::Merge => "Merge",
+                        AccumulatorOperation::Split => "Split",
+                    }
+                    .to_string(),
+                    amount: write.value.as_u64(),
+                }
             }
         }
     }
@@ -1109,10 +1155,31 @@ impl From<ObjectIn> for types::effects::object_change::ObjectIn {
 
 impl From<ObjectOut> for types::effects::object_change::ObjectOut {
     fn from(value: ObjectOut) -> Self {
+        // SDK -> domain conversion. The SDK-side AccumulatorWriteV1
+        // doesn't carry the natural-key (owner, coin_type) — only the
+        // operation and amount. To reconstruct the domain
+        // `AccumulatorWriteV1`, callers would need to look up the
+        // accumulator object by its parent ChangedObject's ID; that
+        // requires a store handle the conversion doesn't have.
+        //
+        // Stage 14c.1 leaves this conversion as best-effort: SDK
+        // AccumulatorWriteV1 maps to a domain placeholder so the
+        // round-trip compiles. Production indexers consume domain
+        // effects directly off the wire (BCS), not via SDK
+        // round-trip, so this gap is non-load-bearing today. When
+        // the SDK boundary needs the full record, extend the SDK
+        // type to carry the (owner, coin_type) tuple.
         match value {
             ObjectOut::NotExist => Self::NotExist,
             ObjectOut::ObjectWrite { digest, owner } => {
                 Self::ObjectWrite((digest.into(), owner.into()))
+            }
+            ObjectOut::AccumulatorWriteV1 { .. } => {
+                // TODO(stage-14c+): fill in once the SDK type carries
+                // the natural-key tuple. For now, fall back to
+                // NotExist so any client that round-trips through SDK
+                // doesn't crash.
+                Self::NotExist
             }
         }
     }

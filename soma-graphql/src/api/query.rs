@@ -298,6 +298,7 @@ impl Query {
                 indexer_alt_schema::objects::StoredOwnerKind::Address => "Address",
                 indexer_alt_schema::objects::StoredOwnerKind::Object => "Object",
                 indexer_alt_schema::objects::StoredOwnerKind::Shared => "Shared",
+                indexer_alt_schema::objects::StoredOwnerKind::Accumulator => "Accumulator",
             })
         });
 
@@ -898,19 +899,44 @@ impl Query {
 
     /// Get the SOMA balance for an address.
     ///
-    /// Stage 13a/13k: balances live in a per-(owner, coin_type)
-    /// accumulator, not as Coin objects. The indexer-alt schema
-    /// does not yet have an accumulator-balances table and the
-    /// production `Object::as_coin` API was deleted in Stage 13k,
-    /// so this query is a hard stub that always returns 0. Use the
-    /// gRPC `LiveDataService.GetBalance` for an authoritative read
-    /// until the indexer ships an accumulator pipeline.
-    async fn balance(&self, _ctx: &Context<'_>, address: String) -> Result<BigInt> {
-        // Validate the address format so callers still get a clear
-        // error for malformed input; otherwise return 0.
+    /// Stage 13m: `soma_balance_deltas` materializes per-checkpoint
+    /// signed deltas keyed by `(owner, coin_type)`. The current
+    /// balance is `SUM(delta)` over those rows. The same source-of-
+    /// truth (`TransactionEffects.balance_events`) feeds the
+    /// authority store and the indexer, so this answer matches the
+    /// gRPC `GetBalance` modulo indexer lag.
+    async fn balance(&self, ctx: &Context<'_>, address: String) -> Result<BigInt> {
         let addr_hex = address.strip_prefix("0x").unwrap_or(&address);
-        hex::decode(addr_hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
-        Ok(BigInt(0))
+        let addr_bytes = hex::decode(addr_hex)
+            .map_err(|e| Error::new(format!("Invalid address: {e}")))?;
+
+        let pg: &Arc<PgReader> = ctx.data()?;
+        let mut conn = pg.connect().await?;
+
+        use indexer_alt_schema::schema::soma_balance_deltas;
+
+        // Default coin denomination is SOMA (the native token).
+        // Per-coin balance lookup is exposed elsewhere; this entry
+        // point keeps the historical single-balance semantics.
+        //
+        // Sum in-process rather than via SQL `SUM(BIGINT)` — Postgres
+        // promotes that to `NUMERIC` which would force a `bigdecimal`
+        // dep. Soma's pre-mainnet data volume per address is small,
+        // so the index-prefix scan + Rust fold is well within budget.
+        let deltas: Vec<i64> = soma_balance_deltas::table
+            .filter(soma_balance_deltas::owner.eq(addr_bytes))
+            .filter(soma_balance_deltas::coin_type.eq("SOMA"))
+            .select(soma_balance_deltas::delta)
+            .load::<i64>(conn.deref_mut())
+            .await?;
+
+        // i128 accumulator keeps a long history of u64-sized deltas
+        // safely; we narrow back to i64 at the end (saturating to
+        // surface a bug if it ever overflows, since real balances
+        // can't exceed the supply).
+        let total: i128 = deltas.iter().map(|d| *d as i128).sum();
+        let total_i64 = total.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+        Ok(BigInt(total_i64))
     }
 
     /// Look up the epoch state for a given epoch (or latest).

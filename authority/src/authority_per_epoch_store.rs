@@ -238,6 +238,17 @@ pub struct ExecutionIndicesWithStats {
     pub stats: ConsensusStats,
 }
 
+/// Stage 14d: rendezvous state for the settlement-tx producer/consumer.
+/// `Ready(Some(tx))` means the CheckpointBuilder built and published a
+/// real settlement to dispatch. `Ready(None)` means the cp had no
+/// balance-touching events and no settlement was needed (skipped sentinel).
+/// `Waiting` parks the SettlementScheduler queue runner on a oneshot
+/// channel until the CheckpointBuilder publishes.
+enum SettlementRegistration {
+    Ready(Option<VerifiedExecutableTransaction>),
+    Waiting(tokio::sync::oneshot::Sender<Option<VerifiedExecutableTransaction>>),
+}
+
 pub struct AuthorityPerEpochStore {
     /// The name of this authority.
     pub(crate) name: AuthorityName,
@@ -280,6 +291,23 @@ pub struct AuthorityPerEpochStore {
     running_root_notify_read: NotifyRead<CheckpointSequenceNumber, GlobalStateHash>,
 
     executed_digests_notify_read: NotifyRead<TransactionKey, TransactionDigest>,
+
+    /// Stage 14d: settlement-tx producer/consumer rendezvous, keyed by
+    /// `TransactionKey::Digest` of the per-cp settlement placeholder.
+    /// The CheckpointBuilder produces the settlement tx (it owns the
+    /// AccumulatorSettlementTxBuilder run because it has the cp's
+    /// sorted user-tx effects in hand) and calls
+    /// `notify_settlement_transactions_ready`. The SettlementScheduler
+    /// queue runner blocks on `wait_for_settlement_transactions` to
+    /// pick up the constructed tx and dispatch it through the regular
+    /// ExecutionScheduler. Empty cps publish `Skipped` so the
+    /// SettlementScheduler doesn't block forever. Lifetime tied to
+    /// the epoch (cleared on epoch end).
+    ///
+    /// Mirrors `crates/sui-core/src/authority/authority_per_epoch_store.rs`
+    /// `settlement_registrations` (Sui c23812a6).
+    settlement_registrations:
+        Mutex<HashMap<TransactionKey, SettlementRegistration>>,
 
     /// This is used to notify all epoch specific tasks that epoch has ended.
     epoch_alive_notify: NotifyOnce,
@@ -594,6 +622,7 @@ impl AuthorityPerEpochStore {
             consensus_notify_read: NotifyRead::new(),
             signature_verifier,
             executed_digests_notify_read: NotifyRead::new(),
+            settlement_registrations: Mutex::new(HashMap::new()),
             running_root_notify_read: NotifyRead::new(),
             end_of_publish: Mutex::new(end_of_publish),
             pending_consensus_certificates: RwLock::new(pending_consensus_certificates),
@@ -1485,6 +1514,89 @@ impl AuthorityPerEpochStore {
             .collect())
     }
 
+    /// Stage 14d (SIP-58 single-path).
+    ///
+    /// Producer side: the [`crate::checkpoints::CheckpointBuilder`] calls
+    /// this once it has aggregated the cp's user-tx effects and built
+    /// the per-cp settlement transaction (or determined no settlement
+    /// is needed). The settlement TX is published under the same
+    /// `TransactionKey` the consensus handler used for the placeholder
+    /// (`SettlementBatchInfo::settlement_key`).
+    ///
+    /// `Some(tx)` means "dispatch this settlement"; `None` is the
+    /// "no balance-touching events in this cp, settlement was a
+    /// no-op" sentinel that wakes the SettlementScheduler waiter
+    /// without actually scheduling anything.
+    ///
+    /// Mirrors Sui's `notify_settlement_transactions_ready`
+    /// (sui-core/src/authority/authority_per_epoch_store.rs).
+    pub fn notify_settlement_transactions_ready(
+        &self,
+        tx_key: TransactionKey,
+        settlement_tx: Option<VerifiedExecutableTransaction>,
+    ) {
+        let mut registrations = self.settlement_registrations.lock();
+        match registrations.remove(&tx_key) {
+            Some(SettlementRegistration::Waiting(sender)) => {
+                // Receiver may already have been dropped if the
+                // SettlementScheduler queue task aborted (epoch end,
+                // etc.). That's not an error.
+                let _ = sender.send(settlement_tx);
+            }
+            Some(SettlementRegistration::Ready(_)) => {
+                // Duplicate publish — should not happen. Indicates
+                // the cp builder ran for the same settlement_key twice.
+                tracing::error!(
+                    ?tx_key,
+                    "duplicate notify_settlement_transactions_ready — \
+                     cp builder published the same settlement key twice"
+                );
+            }
+            None => {
+                registrations.insert(tx_key, SettlementRegistration::Ready(settlement_tx));
+            }
+        }
+    }
+
+    /// Stage 14d. Consumer side, called by the
+    /// [`crate::settlement_scheduler::SettlementScheduler`] queue
+    /// runner. Returns the settlement TX produced by the cp builder
+    /// (or `None` if the cp had no balance-touching events).
+    ///
+    /// Lock-ordering note: returns immediately if the cp builder has
+    /// already published the resolution; otherwise installs a
+    /// oneshot waiter and `await`s. The lock is dropped before the
+    /// `await`, so concurrent producers/consumers don't deadlock.
+    pub async fn wait_for_settlement_transactions(
+        &self,
+        key: TransactionKey,
+    ) -> Option<VerifiedExecutableTransaction> {
+        let rx = {
+            let mut registrations = self.settlement_registrations.lock();
+            match registrations.remove(&key) {
+                Some(SettlementRegistration::Ready(tx)) => {
+                    return tx;
+                }
+                Some(SettlementRegistration::Waiting(_)) => {
+                    panic!(
+                        "multiple SettlementScheduler waiters for same \
+                         settlement key — only one queue runner should call this"
+                    );
+                }
+                None => {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    registrations.insert(key, SettlementRegistration::Waiting(tx));
+                    rx
+                }
+            }
+        };
+        rx.await.expect(
+            "settlement TX producer (CheckpointBuilder) dropped its sender — \
+             this is a fatal liveness bug; the cp builder must always publish \
+             a resolution (Some|None) for every settlement_key it sees",
+        )
+    }
+
     /// Caller must call consensus_message_processed_notify before calling this to ensure that all
     /// user signatures are available.
     pub fn user_signatures_for_checkpoint(
@@ -1500,6 +1612,20 @@ impl AuthorityPerEpochStore {
                 .iter()
                 .zip(transactions.iter())
                 .map(|(d, t)| {
+                    // Stage 14d: settlement system txs are constructed
+                    // by the CheckpointBuilder out-of-band — they
+                    // never go through consensus, so consensus_handler
+                    // never inserts their (empty) signatures into
+                    // user_sigs. The cp builder includes their effects
+                    // in the cp's `all_effects` so they show up here,
+                    // but they have no user signature to look up.
+                    // Return an empty sig list for them.
+                    if matches!(
+                        t.transaction_data().kind(),
+                        TransactionKind::Settlement(_)
+                    ) {
+                        return Vec::new();
+                    }
                     // Expect is safe as long as consensus_message_processed_notify is called
                     // before this call, to ensure that all canonical user signatures are
                     // available.
@@ -1588,10 +1714,14 @@ impl AuthorityPerEpochStore {
         certificates: impl Iterator<Item = &'a Schedulable>,
     ) {
         let sigs: Vec<_> = certificates
-            .map(|s| match s {
+            .filter_map(|s| match s {
                 Schedulable::Transaction(certificate) => {
-                    (*certificate.digest(), certificate.tx_signatures().to_vec())
+                    Some((*certificate.digest(), certificate.tx_signatures().to_vec()))
                 }
+                // Stage 14c.5: settlement placeholders carry no
+                // user signatures — the actual settlement transactions
+                // are system txs constructed by the SettlementScheduler.
+                Schedulable::AccumulatorSettlement(_) => None,
             })
             .collect();
 

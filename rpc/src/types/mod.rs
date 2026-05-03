@@ -37,7 +37,7 @@ pub use effects::{
 };
 pub use execution_status::{ExecutionError, ExecutionStatus};
 pub use fee::TransactionFee;
-pub use object::{Object, ObjectReference, ObjectType, Owner, Version};
+pub use object::{AccumulatorKind, Object, ObjectReference, ObjectType, Owner, Version};
 pub(crate) use transaction::SignedTransactionWithIntentMessage;
 pub use transaction::{
     AddValidatorArgs, BalanceTransferArgs, BridgeDepositArgs, BridgeEmergencyPauseArgs,

@@ -85,6 +85,21 @@ pub enum Owner {
     ),
     /// Object is immutable, and hence ownership doesn't matter.
     Immutable,
+    /// Stage 14a: system-managed accumulator object (account-balance
+    /// or F1 delegation). Not user-transferable; mutated only by
+    /// privileged executors. The `kind` discriminator is the on-wire
+    /// string ("BALANCE" or "DELEGATION") so adding new accumulator
+    /// families later is non-breaking on the SDK boundary.
+    Accumulator { kind: AccumulatorKind },
+}
+
+/// SDK-side mirror of [`types::object::AccumulatorKind`]. See its
+/// documentation for the full semantics.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[non_exhaustive]
+pub enum AccumulatorKind {
+    Balance,
+    Delegation,
 }
 
 /// An object on the sui blockchain
@@ -155,4 +170,9 @@ pub enum ObjectType {
     PendingWithdrawal,
     Clock,
     Channel,
+    /// Stage 14a: per-(owner, coin_type) account-balance accumulator.
+    /// One object per pair, deterministically addressed.
+    BalanceAccumulator,
+    /// Stage 14a: per-(pool_id, staker) F1 delegation row accumulator.
+    DelegationAccumulator,
 }

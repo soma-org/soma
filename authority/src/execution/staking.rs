@@ -117,20 +117,25 @@ impl StakingExecutor {
             };
             let actual = pool_mut.f1_consume_pending_reward(pending);
             if actual > 0 {
-                store.emit_balance_event(BalanceEvent::Deposit {
-                    owner: signer,
-                    coin_type: CoinType::Soma,
-                    amount: actual,
-                });
+                // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+                store.emit_accumulator_event(
+                    types::effects::object_change::AccumulatorAddress::balance(
+                        signer,
+                        CoinType::Soma,
+                    ),
+                    types::effects::object_change::AccumulatorOperation::Merge,
+                    actual,
+                );
             }
         }
 
         // Debit the principal from the staker's SOMA balance.
-        store.emit_balance_event(BalanceEvent::Withdraw {
-            owner: signer,
-            coin_type: CoinType::Soma,
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
+            types::effects::object_change::AccumulatorOperation::Split,
             amount,
-        });
+        );
 
         // Stage 9d-C5: bump the pool's total_stake (drives voting
         // power) and update the staking_pool_mappings index so
@@ -301,11 +306,15 @@ impl StakingExecutor {
             };
             let actual = pool_mut.f1_consume_pending_reward(pending);
             if actual > 0 {
-                store.emit_balance_event(BalanceEvent::Deposit {
-                    owner: signer,
-                    coin_type: CoinType::Soma,
-                    amount: actual,
-                });
+                // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+                store.emit_accumulator_event(
+                    types::effects::object_change::AccumulatorAddress::balance(
+                        signer,
+                        CoinType::Soma,
+                    ),
+                    types::effects::object_change::AccumulatorOperation::Merge,
+                    actual,
+                );
             }
         }
         let _ = current_period;
@@ -316,11 +325,12 @@ impl StakingExecutor {
         state.remove_stake_from_validator(pool_id, withdraw_amount)?;
 
         // Credit the principal to the staker's SOMA balance.
-        store.emit_balance_event(BalanceEvent::Deposit {
-            owner: signer,
-            coin_type: CoinType::Soma,
-            amount: withdraw_amount,
-        });
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
+            types::effects::object_change::AccumulatorOperation::Merge,
+            withdraw_amount,
+        );
 
         // Drain the F1 row by `withdraw_amount`; advance the fold
         // mark to current_period so any future rewards on the

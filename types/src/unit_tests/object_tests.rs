@@ -129,6 +129,157 @@ fn test_owner_immutable() {
 }
 
 #[test]
+fn test_owner_accumulator_balance() {
+    // Stage 14a: Owner::Accumulator { Balance } is system-managed —
+    // not transferable, not address-owned, not Shared (no consensus
+    // sequencing on it, version follows the mutating system tx).
+    let owner = Owner::Accumulator { kind: AccumulatorKind::Balance };
+
+    assert!(owner.is_accumulator());
+    assert_eq!(owner.accumulator_kind(), Some(AccumulatorKind::Balance));
+    assert!(!owner.is_address_owned());
+    assert!(!owner.is_shared());
+    assert!(!owner.is_immutable());
+
+    assert!(owner.get_owner_address().is_err());
+    assert!(owner.get_address_owner_address().is_err());
+    assert_eq!(owner.start_version(), None);
+}
+
+#[test]
+fn test_owner_accumulator_delegation() {
+    let owner = Owner::Accumulator { kind: AccumulatorKind::Delegation };
+    assert!(owner.is_accumulator());
+    assert_eq!(owner.accumulator_kind(), Some(AccumulatorKind::Delegation));
+    assert!(!owner.is_address_owned());
+    assert!(!owner.is_shared());
+    assert!(!owner.is_immutable());
+}
+
+#[test]
+fn test_non_accumulator_owners_report_no_kind() {
+    assert_eq!(Owner::Immutable.accumulator_kind(), None);
+    assert_eq!(Owner::AddressOwner(SomaAddress::default()).accumulator_kind(), None);
+    assert_eq!(
+        Owner::Shared { initial_shared_version: Version::from_u64(1) }.accumulator_kind(),
+        None,
+    );
+}
+
+#[test]
+fn test_owner_accumulator_bcs_roundtrip() {
+    // Both kinds must serialize/deserialize stably so the on-disk
+    // form of accumulator objects is consistent across validators.
+    for kind in [AccumulatorKind::Balance, AccumulatorKind::Delegation] {
+        let owner = Owner::Accumulator { kind };
+        let bytes = bcs::to_bytes(&owner).expect("BCS serialize Owner::Accumulator");
+        let round: Owner = bcs::from_bytes(&bytes).expect("BCS deserialize Owner::Accumulator");
+        assert_eq!(owner, round, "BCS roundtrip must preserve the variant exactly");
+    }
+}
+
+#[test]
+fn test_owner_display_shape_matches_variants() {
+    // The CLI/log surface formats Owner::Accumulator distinctly from
+    // the other variants so log scrapers can recognize them.
+    assert!(format!("{}", Owner::Immutable).contains("Immutable"));
+    assert!(
+        format!("{}", Owner::Accumulator { kind: AccumulatorKind::Balance })
+            .contains("Accumulator(Balance)"),
+    );
+    assert!(
+        format!("{}", Owner::Accumulator { kind: AccumulatorKind::Delegation })
+            .contains("Accumulator(Delegation)"),
+    );
+}
+
+#[test]
+fn test_balance_accumulator_object_roundtrip() {
+    // Stage 14a: constructing a BalanceAccumulator object and reading
+    // it back must preserve the owner/coin_type/balance contents and
+    // anchor the ObjectID at the deterministic derivation.
+    use crate::accumulator::BalanceAccumulator;
+
+    let owner = SomaAddress::new([7u8; 32]);
+    let acc = BalanceAccumulator::new(owner, CoinType::Usdc, 1_000_000);
+    let obj = Object::new_balance_accumulator(acc, TransactionDigest::genesis_marker());
+
+    // ObjectID matches the deterministic derivation.
+    assert_eq!(obj.id(), BalanceAccumulator::derive_id(owner, CoinType::Usdc));
+
+    // Owner is the system-managed Accumulator(Balance) flavor.
+    assert!(obj.owner().is_accumulator());
+    assert_eq!(obj.owner().accumulator_kind(), Some(AccumulatorKind::Balance));
+
+    // Type is the dedicated variant.
+    assert_eq!(*obj.type_(), ObjectType::BalanceAccumulator);
+
+    // Contents round-trip through BCS to the original payload.
+    let read_back = obj.as_balance_accumulator().expect("must deserialize");
+    assert_eq!(read_back, acc);
+
+    // The wrong-type accessor must yield None — guards against
+    // accidentally reading a BalanceAccumulator as a DelegationAccumulator.
+    assert!(obj.as_delegation_accumulator().is_none());
+}
+
+#[test]
+fn test_delegation_accumulator_object_roundtrip() {
+    use crate::accumulator::DelegationAccumulator;
+
+    let pool_id = ObjectID::new([3u8; 32]);
+    let staker = SomaAddress::new([5u8; 32]);
+    let acc = DelegationAccumulator::new(pool_id, staker, 500, 7);
+    let obj = Object::new_delegation_accumulator(acc, TransactionDigest::genesis_marker());
+
+    assert_eq!(obj.id(), DelegationAccumulator::derive_id(pool_id, staker));
+    assert!(obj.owner().is_accumulator());
+    assert_eq!(obj.owner().accumulator_kind(), Some(AccumulatorKind::Delegation));
+    assert_eq!(*obj.type_(), ObjectType::DelegationAccumulator);
+
+    let read_back = obj.as_delegation_accumulator().expect("must deserialize");
+    assert_eq!(read_back, acc);
+    assert!(obj.as_balance_accumulator().is_none());
+}
+
+#[test]
+fn test_set_balance_accumulator_preserves_id_and_owner() {
+    // Stage 14a: in-place mutation via `set_balance_accumulator`
+    // must preserve the ObjectID (so versioning lines up across
+    // mutations) and leave the owner/type alone.
+    use crate::accumulator::BalanceAccumulator;
+
+    let owner = SomaAddress::new([1u8; 32]);
+    let initial = BalanceAccumulator::new(owner, CoinType::Soma, 100);
+    let mut obj = Object::new_balance_accumulator(initial, TransactionDigest::genesis_marker());
+    let id_before = obj.id();
+    let owner_before = obj.owner().clone();
+    let type_before = obj.type_().clone();
+
+    let updated = BalanceAccumulator::new(owner, CoinType::Soma, 250);
+    obj.set_balance_accumulator(&updated);
+
+    assert_eq!(obj.id(), id_before, "in-place mutation must preserve ID");
+    assert_eq!(*obj.owner(), owner_before);
+    assert_eq!(*obj.type_(), type_before);
+    assert_eq!(obj.as_balance_accumulator(), Some(updated));
+}
+
+#[test]
+fn test_object_type_accumulator_fromstr_roundtrip() {
+    assert_eq!(
+        ObjectType::from_str("BalanceAccumulator").unwrap(),
+        ObjectType::BalanceAccumulator,
+    );
+    assert_eq!(
+        ObjectType::from_str("DelegationAccumulator").unwrap(),
+        ObjectType::DelegationAccumulator,
+    );
+    assert_eq!(format!("{}", ObjectType::BalanceAccumulator), "BalanceAccumulator");
+    assert_eq!(format!("{}", ObjectType::DelegationAccumulator), "DelegationAccumulator");
+}
+
+#[test]
 fn test_version_ordering() {
     assert!(Version::MIN < Version::MAX, "MIN should be less than MAX");
     assert!(Version::MAX < Version::CANCELLED_READ, "MAX should be less than CANCELLED_READ");

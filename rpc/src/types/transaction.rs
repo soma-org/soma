@@ -188,13 +188,14 @@ pub struct BalanceTransferArgs {
     pub transfers: Vec<(Address, u64)>,
 }
 
-/// Per-commit balance-accumulator settlement.
+/// Per-commit accumulator settlement (balances + delegations).
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct SettlementTransaction {
     pub epoch: u64,
     pub round: u64,
     pub sub_dag_index: Option<u64>,
     pub changes: Vec<types::balance::BalanceEvent>,
+    pub delegation_changes: Vec<types::temporary_store::DelegationEvent>,
 }
 
 // Bridge arg types

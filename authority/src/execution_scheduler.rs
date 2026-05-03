@@ -116,6 +116,14 @@ impl ExecutionScheduler {
         Self { object_cache_read, transaction_cache_read, tx_ready_certificates }
     }
 
+    /// Stage 14c.5: expose the object-cache reader so the
+    /// `SettlementScheduler` can pass it to
+    /// [`crate::accumulators::AccumulatorSettlementTxBuilder::build`]
+    /// for accumulator-object lookups.
+    pub fn object_cache_read(&self) -> &Arc<dyn ObjectCacheRead> {
+        &self.object_cache_read
+    }
+
     #[instrument(level = "debug", skip_all, fields(tx_digest = ?cert.digest()))]
     async fn schedule_transaction(
         self,
@@ -257,6 +265,27 @@ impl ExecutionScheduler {
             match schedulable {
                 Schedulable::Transaction(tx) => {
                     ordinary_txns.push((tx, env));
+                }
+                Schedulable::AccumulatorSettlement(_) => {
+                    // Stage 14c.5: AccumulatorSettlement placeholders
+                    // are NOT executable transactions — they're sync
+                    // markers handled by `SettlementScheduler`.
+                    //
+                    // Until Stage 14c.5e wires the SettlementScheduler
+                    // into authority startup, the consensus handler
+                    // reaches this branch with the placeholder.
+                    // Silently drop it: the legacy `apply_settlement_events`
+                    // per-tx path (Stage 6/14b) is still applying
+                    // balance changes from `effects.balance_events`,
+                    // so the chain continues to function identically
+                    // to pre-14c.5d. Once 14c.5e lands, the consensus
+                    // handler routes via `SettlementScheduler::enqueue`
+                    // and this branch becomes dead code; promote back
+                    // to `error!` then.
+                    tracing::trace!(
+                        "Dropping AccumulatorSettlement placeholder — \
+                         SettlementScheduler not yet wired (Stage 14c.5e)."
+                    );
                 }
             }
         }

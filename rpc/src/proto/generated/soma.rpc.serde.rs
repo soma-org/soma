@@ -523,12 +523,18 @@ impl serde::Serialize for BalanceChange {
         if self.amount.is_some() {
             len += 1;
         }
+        if self.coin_type.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.BalanceChange", len)?;
         if let Some(v) = self.address.as_ref() {
             struct_ser.serialize_field("address", v)?;
         }
         if let Some(v) = self.amount.as_ref() {
             struct_ser.serialize_field("amount", v)?;
+        }
+        if let Some(v) = self.coin_type.as_ref() {
+            struct_ser.serialize_field("coinType", v)?;
         }
         struct_ser.end()
     }
@@ -542,12 +548,15 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
         const FIELDS: &[&str] = &[
             "address",
             "amount",
+            "coin_type",
+            "coinType",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Address,
             Amount,
+            CoinType,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -572,6 +581,7 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
                         match value {
                             "address" => Ok(GeneratedField::Address),
                             "amount" => Ok(GeneratedField::Amount),
+                            "coinType" | "coin_type" => Ok(GeneratedField::CoinType),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -595,6 +605,7 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
             {
                 let mut address__ = None;
                 let mut amount__ = None;
+                let mut coin_type__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Address => {
@@ -609,6 +620,12 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
                             }
                             amount__ = map_.next_value()?;
                         }
+                        GeneratedField::CoinType => {
+                            if coin_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("coinType"));
+                            }
+                            coin_type__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -617,6 +634,7 @@ impl<'de> serde::Deserialize<'de> for BalanceChange {
                 Ok(BalanceChange {
                     address: address__,
                     amount: amount__,
+                    coin_type: coin_type__,
                 })
             }
         }
@@ -2367,6 +2385,12 @@ impl serde::Serialize for ChangedObject {
         if self.object_type.is_some() {
             len += 1;
         }
+        if self.accumulator_operation.is_some() {
+            len += 1;
+        }
+        if self.accumulator_amount.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.ChangedObject", len)?;
         if let Some(v) = self.object_id.as_ref() {
             struct_ser.serialize_field("objectId", v)?;
@@ -2411,6 +2435,14 @@ impl serde::Serialize for ChangedObject {
         if let Some(v) = self.object_type.as_ref() {
             struct_ser.serialize_field("objectType", v)?;
         }
+        if let Some(v) = self.accumulator_operation.as_ref() {
+            struct_ser.serialize_field("accumulatorOperation", v)?;
+        }
+        if let Some(v) = self.accumulator_amount.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            #[allow(clippy::needless_borrows_for_generic_args)]
+            struct_ser.serialize_field("accumulatorAmount", ToString::to_string(&v).as_str())?;
+        }
         struct_ser.end()
     }
 }
@@ -2443,6 +2475,10 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
             "idOperation",
             "object_type",
             "objectType",
+            "accumulator_operation",
+            "accumulatorOperation",
+            "accumulator_amount",
+            "accumulatorAmount",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -2458,6 +2494,8 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
             OutputOwner,
             IdOperation,
             ObjectType,
+            AccumulatorOperation,
+            AccumulatorAmount,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -2491,6 +2529,8 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
                             "outputOwner" | "output_owner" => Ok(GeneratedField::OutputOwner),
                             "idOperation" | "id_operation" => Ok(GeneratedField::IdOperation),
                             "objectType" | "object_type" => Ok(GeneratedField::ObjectType),
+                            "accumulatorOperation" | "accumulator_operation" => Ok(GeneratedField::AccumulatorOperation),
+                            "accumulatorAmount" | "accumulator_amount" => Ok(GeneratedField::AccumulatorAmount),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -2523,6 +2563,8 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
                 let mut output_owner__ = None;
                 let mut id_operation__ = None;
                 let mut object_type__ = None;
+                let mut accumulator_operation__ = None;
+                let mut accumulator_amount__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ObjectId => {
@@ -2595,6 +2637,20 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
                             }
                             object_type__ = map_.next_value()?;
                         }
+                        GeneratedField::AccumulatorOperation => {
+                            if accumulator_operation__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("accumulatorOperation"));
+                            }
+                            accumulator_operation__ = map_.next_value()?;
+                        }
+                        GeneratedField::AccumulatorAmount => {
+                            if accumulator_amount__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("accumulatorAmount"));
+                            }
+                            accumulator_amount__ = 
+                                map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
+                            ;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -2612,6 +2668,8 @@ impl<'de> serde::Deserialize<'de> for ChangedObject {
                     output_owner: output_owner__,
                     id_operation: id_operation__,
                     object_type: object_type__,
+                    accumulator_operation: accumulator_operation__,
+                    accumulator_amount: accumulator_amount__,
                 })
             }
         }
@@ -2779,6 +2837,7 @@ impl serde::Serialize for changed_object::OutputObjectState {
             Self::Unknown => "OUTPUT_OBJECT_STATE_UNKNOWN",
             Self::DoesNotExist => "OUTPUT_OBJECT_STATE_DOES_NOT_EXIST",
             Self::ObjectWrite => "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+            Self::AccumulatorWriteV1 => "OUTPUT_OBJECT_STATE_ACCUMULATOR_WRITE_V1",
         };
         serializer.serialize_str(variant)
     }
@@ -2793,6 +2852,7 @@ impl<'de> serde::Deserialize<'de> for changed_object::OutputObjectState {
             "OUTPUT_OBJECT_STATE_UNKNOWN",
             "OUTPUT_OBJECT_STATE_DOES_NOT_EXIST",
             "OUTPUT_OBJECT_STATE_OBJECT_WRITE",
+            "OUTPUT_OBJECT_STATE_ACCUMULATOR_WRITE_V1",
         ];
 
         struct GeneratedVisitor;
@@ -2836,6 +2896,7 @@ impl<'de> serde::Deserialize<'de> for changed_object::OutputObjectState {
                     "OUTPUT_OBJECT_STATE_UNKNOWN" => Ok(changed_object::OutputObjectState::Unknown),
                     "OUTPUT_OBJECT_STATE_DOES_NOT_EXIST" => Ok(changed_object::OutputObjectState::DoesNotExist),
                     "OUTPUT_OBJECT_STATE_OBJECT_WRITE" => Ok(changed_object::OutputObjectState::ObjectWrite),
+                    "OUTPUT_OBJECT_STATE_ACCUMULATOR_WRITE_V1" => Ok(changed_object::OutputObjectState::AccumulatorWriteV1),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -11929,6 +11990,9 @@ impl serde::Serialize for Owner {
         if self.version.is_some() {
             len += 1;
         }
+        if self.accumulator_kind.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.Owner", len)?;
         if let Some(v) = self.kind.as_ref() {
             let v = owner::OwnerKind::try_from(*v)
@@ -11943,6 +12007,9 @@ impl serde::Serialize for Owner {
             #[allow(clippy::needless_borrows_for_generic_args)]
             struct_ser.serialize_field("version", ToString::to_string(&v).as_str())?;
         }
+        if let Some(v) = self.accumulator_kind.as_ref() {
+            struct_ser.serialize_field("accumulatorKind", v)?;
+        }
         struct_ser.end()
     }
 }
@@ -11956,6 +12023,8 @@ impl<'de> serde::Deserialize<'de> for Owner {
             "kind",
             "address",
             "version",
+            "accumulator_kind",
+            "accumulatorKind",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -11963,6 +12032,7 @@ impl<'de> serde::Deserialize<'de> for Owner {
             Kind,
             Address,
             Version,
+            AccumulatorKind,
             __SkipField__,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
@@ -11988,6 +12058,7 @@ impl<'de> serde::Deserialize<'de> for Owner {
                             "kind" => Ok(GeneratedField::Kind),
                             "address" => Ok(GeneratedField::Address),
                             "version" => Ok(GeneratedField::Version),
+                            "accumulatorKind" | "accumulator_kind" => Ok(GeneratedField::AccumulatorKind),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
                     }
@@ -12012,6 +12083,7 @@ impl<'de> serde::Deserialize<'de> for Owner {
                 let mut kind__ = None;
                 let mut address__ = None;
                 let mut version__ = None;
+                let mut accumulator_kind__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Kind => {
@@ -12034,6 +12106,12 @@ impl<'de> serde::Deserialize<'de> for Owner {
                                 map_.next_value::<::std::option::Option<crate::utils::_serde::NumberDeserialize<_>>>()?.map(|x| x.0)
                             ;
                         }
+                        GeneratedField::AccumulatorKind => {
+                            if accumulator_kind__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("accumulatorKind"));
+                            }
+                            accumulator_kind__ = map_.next_value()?;
+                        }
                         GeneratedField::__SkipField__ => {
                             let _ = map_.next_value::<serde::de::IgnoredAny>()?;
                         }
@@ -12043,6 +12121,7 @@ impl<'de> serde::Deserialize<'de> for Owner {
                     kind: kind__,
                     address: address__,
                     version: version__,
+                    accumulator_kind: accumulator_kind__,
                 })
             }
         }
@@ -12060,6 +12139,7 @@ impl serde::Serialize for owner::OwnerKind {
             Self::Address => "ADDRESS",
             Self::Shared => "SHARED",
             Self::Immutable => "IMMUTABLE",
+            Self::Accumulator => "ACCUMULATOR",
         };
         serializer.serialize_str(variant)
     }
@@ -12075,6 +12155,7 @@ impl<'de> serde::Deserialize<'de> for owner::OwnerKind {
             "ADDRESS",
             "SHARED",
             "IMMUTABLE",
+            "ACCUMULATOR",
         ];
 
         struct GeneratedVisitor;
@@ -12119,6 +12200,7 @@ impl<'de> serde::Deserialize<'de> for owner::OwnerKind {
                     "ADDRESS" => Ok(owner::OwnerKind::Address),
                     "SHARED" => Ok(owner::OwnerKind::Shared),
                     "IMMUTABLE" => Ok(owner::OwnerKind::Immutable),
+                    "ACCUMULATOR" => Ok(owner::OwnerKind::Accumulator),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }

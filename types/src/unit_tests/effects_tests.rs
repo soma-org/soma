@@ -28,6 +28,8 @@ fn make_effects(
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index,
+        balance_events: vec![],
+        delegation_events: vec![],
     })
 }
 
@@ -180,6 +182,8 @@ fn test_effects_written_includes_all() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: None,
+        balance_events: vec![],
+        delegation_events: vec![],
     });
 
     let written = effects.written();
@@ -218,6 +222,8 @@ fn test_effects_gas_object() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: Some(0),
+        balance_events: vec![],
+        delegation_events: vec![],
     });
 
     let (gas_ref, owner) = effects.gas_object();
@@ -265,6 +271,8 @@ fn test_effects_version_numbers() {
         unchanged_shared_objects: vec![],
         transaction_fee: TransactionFee::default(),
         gas_object_index: None,
+        balance_events: vec![],
+        delegation_events: vec![],
     });
 
     // All written objects should have the effects version.
@@ -280,6 +288,136 @@ fn test_effects_version_numbers() {
     for (obj_ref, _owner) in effects.mutated() {
         assert_eq!(obj_ref.1, version);
     }
+}
+
+// ---------------------------------------------------------------------
+// Stage 14c.1: ObjectOut::AccumulatorWriteV1
+// ---------------------------------------------------------------------
+
+#[test]
+fn test_accumulator_write_v1_basic_shape() {
+    use crate::base::SomaAddress;
+    use crate::effects::object_change::{
+        AccumulatorAddress, AccumulatorOperation, AccumulatorValue, AccumulatorWriteV1,
+    };
+    use crate::object::CoinType;
+
+    let alice = SomaAddress::new([1u8; 32]);
+    let address = AccumulatorAddress::balance(alice, CoinType::Usdc);
+    let write = AccumulatorWriteV1 {
+        address,
+        operation: AccumulatorOperation::Merge,
+        value: AccumulatorValue::U64(100),
+    };
+
+    // signed_delta: Merge → positive, Split → negative.
+    assert_eq!(write.signed_delta(), 100);
+    let split = AccumulatorWriteV1 { operation: AccumulatorOperation::Split, ..write };
+    assert_eq!(split.signed_delta(), -100);
+
+    // BCS roundtrip preserves the variant exactly so the wire form
+    // is stable across validators.
+    let bytes = bcs::to_bytes(&write).unwrap();
+    let round: AccumulatorWriteV1 = bcs::from_bytes(&bytes).unwrap();
+    assert_eq!(round, write);
+}
+
+#[test]
+fn test_accumulator_address_id_matches_balance_accumulator_derive_id() {
+    use crate::accumulator::BalanceAccumulator;
+    use crate::base::SomaAddress;
+    use crate::effects::object_change::AccumulatorAddress;
+    use crate::object::CoinType;
+
+    let alice = SomaAddress::new([7u8; 32]);
+    let address = AccumulatorAddress::balance(alice, CoinType::Soma);
+
+    // The whole point of the deterministic derivation is that
+    // executors and indexers reach the same ObjectID without needing
+    // an auxiliary lookup. AccumulatorAddress::balance must produce
+    // exactly the same ID as BalanceAccumulator::derive_id.
+    assert_eq!(address.object_id(), BalanceAccumulator::derive_id(alice, CoinType::Soma));
+}
+
+#[test]
+fn test_accumulator_events_filter_returns_only_accumulator_writes() {
+    use crate::base::SomaAddress;
+    use crate::effects::object_change::{
+        AccumulatorAddress, AccumulatorOperation, AccumulatorValue, AccumulatorWriteV1,
+        EffectsObjectChange, IDOperation, ObjectIn, ObjectOut,
+    };
+    use crate::object::{CoinType, ObjectID, Owner};
+
+    let version = Version::from_u64(5);
+
+    // Mix one regular object write with two accumulator writes.
+    let regular_id = ObjectID::random();
+    let regular_change = EffectsObjectChange {
+        input_state: ObjectIn::NotExist,
+        output_state: ObjectOut::ObjectWrite((
+            ObjectDigest::random(),
+            Owner::AddressOwner(SomaAddress::random()),
+        )),
+        id_operation: IDOperation::Created,
+    };
+
+    let alice = SomaAddress::new([1u8; 32]);
+    let bob = SomaAddress::new([2u8; 32]);
+    let alice_write = AccumulatorWriteV1 {
+        address: AccumulatorAddress::balance(alice, CoinType::Usdc),
+        operation: AccumulatorOperation::Split,
+        value: AccumulatorValue::U64(50),
+    };
+    let bob_write = AccumulatorWriteV1 {
+        address: AccumulatorAddress::balance(bob, CoinType::Usdc),
+        operation: AccumulatorOperation::Merge,
+        value: AccumulatorValue::U64(50),
+    };
+    let alice_acc_id = alice_write.address.object_id();
+    let bob_acc_id = bob_write.address.object_id();
+    let alice_change = EffectsObjectChange {
+        input_state: ObjectIn::NotExist,
+        output_state: ObjectOut::AccumulatorWriteV1(alice_write),
+        id_operation: IDOperation::None,
+    };
+    let bob_change = EffectsObjectChange {
+        input_state: ObjectIn::NotExist,
+        output_state: ObjectOut::AccumulatorWriteV1(bob_write),
+        id_operation: IDOperation::None,
+    };
+
+    let effects = TransactionEffects::V1(TransactionEffectsV1 {
+        status: ExecutionStatus::Success,
+        executed_epoch: 0,
+        transaction_digest: TransactionDigest::random(),
+        version,
+        changed_objects: vec![
+            (regular_id, regular_change),
+            (alice_acc_id, alice_change),
+            (bob_acc_id, bob_change),
+        ],
+        dependencies: vec![],
+        unchanged_shared_objects: vec![],
+        transaction_fee: TransactionFee::default(),
+        gas_object_index: None,
+        balance_events: vec![],
+        delegation_events: vec![],
+    });
+
+    let events = effects.accumulator_events();
+    assert_eq!(events.len(), 2, "must filter out the regular object write");
+    let by_id: std::collections::BTreeMap<_, _> = events.into_iter().collect();
+    assert!(by_id.contains_key(&alice_acc_id));
+    assert!(by_id.contains_key(&bob_acc_id));
+    assert!(!by_id.contains_key(&regular_id));
+
+    // `object_changes` (which surfaces user-tx-level object refs)
+    // must NOT report a version/digest for accumulator writes — those
+    // are delta records, not full object writes.
+    let object_changes = effects.object_changes();
+    let alice_oc = object_changes.iter().find(|c| c.id == alice_acc_id).unwrap();
+    assert!(alice_oc.output_version.is_none());
+    assert!(alice_oc.output_digest.is_none());
 }
 
 #[test]

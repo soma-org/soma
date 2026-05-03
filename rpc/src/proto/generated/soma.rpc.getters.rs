@@ -6,6 +6,7 @@ mod _getter_impls {
             Self {
                 address: None,
                 amount: None,
+                coin_type: None,
             }
         }
         #[doc(hidden)]
@@ -19,6 +20,10 @@ mod _getter_impls {
         }
         pub fn with_amount(mut self, field: String) -> Self {
             self.amount = Some(field.into());
+            self
+        }
+        pub fn with_coin_type(mut self, field: String) -> Self {
+            self.coin_type = Some(field.into());
             self
         }
     }
@@ -493,6 +498,8 @@ mod _getter_impls {
                 output_owner: None,
                 id_operation: None,
                 object_type: None,
+                accumulator_operation: None,
+                accumulator_amount: None,
             }
         }
         #[doc(hidden)]
@@ -560,6 +567,14 @@ mod _getter_impls {
         }
         pub fn with_object_type(mut self, field: String) -> Self {
             self.object_type = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_operation(mut self, field: String) -> Self {
+            self.accumulator_operation = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_amount(mut self, field: u64) -> Self {
+            self.accumulator_amount = Some(field.into());
             self
         }
     }
@@ -1537,6 +1552,7 @@ mod _getter_impls {
                 kind: None,
                 address: None,
                 version: None,
+                accumulator_kind: None,
             }
         }
         #[doc(hidden)]
@@ -1550,6 +1566,10 @@ mod _getter_impls {
         }
         pub fn with_version(mut self, field: u64) -> Self {
             self.version = Some(field.into());
+            self
+        }
+        pub fn with_accumulator_kind(mut self, field: String) -> Self {
+            self.accumulator_kind = Some(field.into());
             self
         }
     }

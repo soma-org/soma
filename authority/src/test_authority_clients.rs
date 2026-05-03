@@ -148,6 +148,8 @@ impl MockAuthorityApi {
             version: types::object::OBJECT_START_VERSION,
             changed_objects: vec![],
             unchanged_shared_objects: vec![],
+            balance_events: vec![],
+            delegation_events: vec![],
         });
         let sig = AuthoritySignInfo::new(
             self.epoch,

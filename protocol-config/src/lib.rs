@@ -12,7 +12,10 @@ use serde_with::skip_serializing_none;
 
 /// The minimum and maximum protocol versions supported by this build.
 pub const MIN_PROTOCOL_VERSION: u64 = 1;
-pub const MAX_PROTOCOL_VERSION: u64 = 5;
+/// V7 (Stage 14c.1): `ObjectOut::AccumulatorWriteV1` variant added
+/// for SIP-58-style per-tx accumulator delta records. Effects digest
+/// format changes — pre-mainnet network-wide flip, no runtime gate.
+pub const MAX_PROTOCOL_VERSION: u64 = 7;
 
 #[derive(Copy, Clone, Debug, Hash, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(u64);
@@ -319,8 +322,19 @@ impl ProtocolConfig {
         if version.0 >= 3 {
             cfg.execution_version = Some(2);
         }
-        // V6 is MAX_ALLOWED in msim (no-op, same as V5). Reserved for future changes.
-        if version.0 >= 7 {
+        // V6 (Stage 13m): TransactionEffects gains `balance_events` and
+        // `delegation_events` so indexers can attribute per-tx changes
+        // to the balance accumulator and F1 delegation rows without
+        // re-executing transactions. Effects digest format changes;
+        // since Soma is pre-mainnet there is no runtime gate — the
+        // entire network upgrades atomically.
+        //
+        // V7 (Stage 14c.1): `ObjectOut::AccumulatorWriteV1` variant —
+        // per-tx accumulator delta records ride effects.changed_objects
+        // (Sui SIP-58 style). The variant is unused at this version
+        // (Stage 14c.2+ migrates executors to emit it); the bump
+        // exists to gate the wire-format change.
+        if version.0 >= 9 {
             panic!("unsupported version {:?}", version);
         }
 

@@ -72,16 +72,34 @@ impl BalanceTransferExecutor {
 
         let total = checked_sum(args.transfers.iter().map(|(_, amt)| *amt))?;
 
-        // One Withdraw for the full debit — the post-execution settlement
-        // path aggregates per (owner, coin_type), so emitting per-entry
-        // Withdraws would only add wire bytes without changing the net
-        // delta. Single-Withdraw also matches the
-        // `reservations(unit_fee)` declaration shape, which makes the
-        // pre-pass invariant easy to read.
-        store.emit_balance_event(BalanceEvent::withdraw(signer, args.coin_type, total));
+        // Stage 14c.6 (SIP-58 cutover): user-tx executors emit ONLY
+        // `AccumulatorWriteV1` records via `emit_accumulator_event`.
+        // The per-cp `SettlementScheduler` aggregates these from
+        // every tx's `effects.accumulator_events()`, builds a single
+        // settlement tx whose `changes: Vec<BalanceEvent>` carries
+        // the aggregated net deltas, and dispatches it. Settlement
+        // is the SOLE driver of `apply_settlement_events`, so the
+        // CF apply path runs exactly once per cp regardless of how
+        // many user txs touched a balance.
+        //
+        // This matches Sui SIP-58: user txs emit delta records,
+        // never direct mutations; per-cp settlement aggregates and
+        // applies.
+        use types::effects::object_change::{AccumulatorAddress, AccumulatorOperation};
+
+        // Withdrawal: one record for the net debit.
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(signer, args.coin_type),
+            AccumulatorOperation::Split,
+            total,
+        );
 
         for (recipient, amount) in args.transfers {
-            store.emit_balance_event(BalanceEvent::deposit(recipient, args.coin_type, amount));
+            store.emit_accumulator_event(
+                AccumulatorAddress::balance(recipient, args.coin_type),
+                AccumulatorOperation::Merge,
+                amount,
+            );
         }
 
         Ok(())
@@ -169,14 +187,122 @@ mod tests {
             )
             .expect("transfer must succeed");
 
-        assert_eq!(
-            store.balance_events(),
-            &[
-                BalanceEvent::withdraw(alice, CoinType::Usdc, 100),
-                BalanceEvent::deposit(bob, CoinType::Usdc, 30),
-                BalanceEvent::deposit(carol, CoinType::Usdc, 70),
-            ],
+        // Stage 14c.6: user-tx executors emit ONLY AccumulatorWriteV1
+        // records. The legacy `BalanceEvent` emission was dropped —
+        // per-cp settlement aggregates the accumulator events and
+        // drives CF apply.
+        assert!(
+            store.balance_events().is_empty(),
+            "Stage 14c.6: user-tx executors must NOT emit BalanceEvents",
         );
+
+        // AccumulatorWriteV1 records: three (one per accumulator),
+        // each at the matching delta.
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::{
+            AccumulatorAddress, AccumulatorOperation, AccumulatorValue,
+        };
+
+        let writes = store.accumulator_writes();
+        assert_eq!(
+            writes.len(),
+            3,
+            "one AccumulatorWriteV1 per touched accumulator, got {writes:#?}",
+        );
+
+        let alice_id = BalanceAccumulator::derive_id(alice, CoinType::Usdc);
+        let bob_id = BalanceAccumulator::derive_id(bob, CoinType::Usdc);
+        let carol_id = BalanceAccumulator::derive_id(carol, CoinType::Usdc);
+
+        let alice_write = writes.get(&alice_id).expect("alice's accumulator write must exist");
+        assert_eq!(alice_write.address, AccumulatorAddress::balance(alice, CoinType::Usdc));
+        assert_eq!(alice_write.operation, AccumulatorOperation::Split);
+        assert_eq!(alice_write.value, AccumulatorValue::U64(100));
+
+        let bob_write = writes.get(&bob_id).expect("bob's accumulator write must exist");
+        assert_eq!(bob_write.operation, AccumulatorOperation::Merge);
+        assert_eq!(bob_write.value, AccumulatorValue::U64(30));
+
+        let carol_write = writes.get(&carol_id).expect("carol's accumulator write must exist");
+        assert_eq!(carol_write.operation, AccumulatorOperation::Merge);
+        assert_eq!(carol_write.value, AccumulatorValue::U64(70));
+    }
+
+    /// Stage 14c.2: a single tx that emits multiple events to the
+    /// SAME accumulator (e.g., gas + transfer Withdraw against the
+    /// sender's USDC) must net them into ONE AccumulatorWriteV1
+    /// record. Sui SIP-58's `merge()` does the same — one entry per
+    /// accumulator per tx.
+    #[test]
+    fn multiple_emissions_to_same_accumulator_net_within_a_tx() {
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::{
+            AccumulatorAddress, AccumulatorOperation, AccumulatorValue,
+        };
+
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        let bob = SomaAddress::random();
+        // Simulate prepare_gas Withdraw + BalanceTransfer Withdraw
+        // on the same (sender, USDC) accumulator. Both call
+        // emit_accumulator_event independently; the result is one
+        // record with the net.
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(alice, CoinType::Usdc),
+            AccumulatorOperation::Split,
+            10,
+        );
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(alice, CoinType::Usdc),
+            AccumulatorOperation::Split,
+            90,
+        );
+        // bob's accumulator stays untouched — separate ID, separate
+        // record.
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(bob, CoinType::Usdc),
+            AccumulatorOperation::Merge,
+            100,
+        );
+
+        let writes = store.accumulator_writes();
+        assert_eq!(writes.len(), 2, "one entry per touched accumulator: {writes:#?}");
+
+        let alice_id = BalanceAccumulator::derive_id(alice, CoinType::Usdc);
+        let alice_write = writes.get(&alice_id).unwrap();
+        assert_eq!(alice_write.operation, AccumulatorOperation::Split);
+        assert_eq!(alice_write.value, AccumulatorValue::U64(100), "10 + 90 netted");
+    }
+
+    /// A withdraw and an equal-magnitude deposit on the same
+    /// accumulator within one tx net to zero — the record stays
+    /// behind as a no-op (Merge with magnitude 0). Downstream
+    /// consumers tolerate zero-magnitude records; settlement
+    /// applies them as a no-op delta.
+    #[test]
+    fn offsetting_emissions_net_to_zero() {
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::{
+            AccumulatorAddress, AccumulatorOperation, AccumulatorValue,
+        };
+
+        let mut store = empty_store();
+        let alice = SomaAddress::random();
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(alice, CoinType::Soma),
+            AccumulatorOperation::Merge,
+            500,
+        );
+        store.emit_accumulator_event(
+            AccumulatorAddress::balance(alice, CoinType::Soma),
+            AccumulatorOperation::Split,
+            500,
+        );
+
+        let writes = store.accumulator_writes();
+        let alice_id = BalanceAccumulator::derive_id(alice, CoinType::Soma);
+        let w = writes.get(&alice_id).expect("net-zero entry stays behind");
+        assert_eq!(w.value, AccumulatorValue::U64(0));
     }
 
     /// Empty transfer list is rejected — a no-op tx wastes a commit

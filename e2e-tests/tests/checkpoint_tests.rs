@@ -8,6 +8,9 @@
 //! 1. basic_checkpoints_integration_test — Transaction included in checkpoint across all validators
 //! 2. test_checkpoint_timestamps_non_decreasing — Checkpoint timestamps never decrease
 //! 3. test_checkpoint_fork_detection_storage — Fork detection storage API correctness
+//! 4. test_settlement_digest_agrees_across_validators — All validators must construct the
+//!    same per-cp settlement TX from the same sorted user-tx effects (SIP-58 single-path
+//!    determinism invariant)
 //!
 //! Ported from Sui's `checkpoint_tests.rs`. Skipped:
 //! - test_checkpoint_split_brain (requires fail_point infrastructure)
@@ -175,4 +178,117 @@ async fn test_checkpoint_fork_detection_storage() {
 
         info!("Fork detection storage API works correctly");
     });
+}
+
+/// Stage 14d safety. SIP-58 single-path requires that every validator
+/// constructs the per-cp settlement TX deterministically from the same
+/// sorted user-tx effects. If two validators produced different
+/// settlement TX digests, their cp summaries would diverge and no
+/// quorum would form — but cp certification only fails *silently*
+/// (the cluster wedges instead of crashing). This test asserts the
+/// invariant directly so a regression is loud.
+///
+/// The test:
+///   1. Submits a balance transfer that emits accumulator events.
+///   2. Waits for the user tx to be included in a cp on all validators.
+///   3. Reads the locally-computed cp summary on each validator.
+///   4. Asserts every validator agrees on:
+///      - the cp content digest (implicit cross-tx agreement)
+///      - the exact settlement TX digest within the cp contents (the
+///        SIP-58 invariant we're guarding).
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_settlement_digest_agrees_across_validators() {
+    init_tracing();
+
+    let test_cluster = TestClusterBuilder::new().with_num_validators(4).build().await;
+
+    let addresses = test_cluster.wallet.get_addresses();
+    let sender = addresses[0];
+    let recipient = addresses[1];
+
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
+        sender,
+        vec![(recipient, 1_000)],
+    );
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(response.effects.status().is_ok());
+    let user_tx_digest = *response.effects.transaction_digest();
+
+    // Wait for the cp containing the user tx to land on every validator.
+    for _ in 0..600 {
+        let all_included = test_cluster.swarm.validator_node_handles().into_iter().all(|h| {
+            h.with(|node| {
+                node.state()
+                    .epoch_store_for_testing()
+                    .is_transaction_executed_in_checkpoint(&user_tx_digest)
+                    .unwrap()
+            })
+        });
+        if all_included {
+            break;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    // For each validator, find the cp seq containing user_tx and read the
+    // cp summary + contents. Collect (content_digest, settlement_tx_digest)
+    // tuples — they must be identical across all validators.
+    let observations: Vec<_> = test_cluster
+        .swarm
+        .validator_node_handles()
+        .into_iter()
+        .map(|h| {
+            h.with(|node| {
+                let epoch_store = node.state().epoch_store_for_testing();
+                let cp_seq = epoch_store
+                    .get_transaction_checkpoint(&user_tx_digest)
+                    .expect("cp lookup")
+                    .expect("user tx must be in a cp by now");
+                let cp_store = node.state().get_checkpoint_store().clone();
+                let summary = cp_store
+                    .get_locally_computed_checkpoint(cp_seq)
+                    .expect("read summary")
+                    .expect("locally-computed summary must exist");
+                let contents = cp_store
+                    .get_checkpoint_contents(&summary.content_digest)
+                    .expect("read contents")
+                    .expect("contents must exist");
+                let state = node.state();
+                let cache = state.get_transaction_cache_reader();
+                let settlement_digest = contents
+                    .iter()
+                    .map(|d| d.transaction)
+                    .find(|d| {
+                        cache
+                            .get_transaction_block(d)
+                            .map(|tx| matches!(
+                                tx.transaction_data().kind(),
+                                types::transaction::TransactionKind::Settlement(_)
+                            ))
+                            .unwrap_or(false)
+                    })
+                    .expect("a balance transfer must produce a Settlement TX in its cp");
+                (cp_seq, summary.content_digest, settlement_digest)
+            })
+        })
+        .collect();
+
+    let first = observations[0];
+    for (i, obs) in observations.iter().enumerate().skip(1) {
+        assert_eq!(
+            obs, &first,
+            "validator {} disagreed with validator 0 on cp seq / content_digest / settlement \
+             digest (SIP-58 cross-validator determinism violated): got {:?}, expected {:?}",
+            i, obs, first
+        );
+    }
+    info!(
+        cp_seq = first.0,
+        content_digest = ?first.1,
+        settlement_digest = ?first.2,
+        "all 4 validators agree on settlement TX digest"
+    );
 }

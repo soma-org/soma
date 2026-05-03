@@ -160,6 +160,11 @@ fn check_receiving_objects(
                 Owner::Immutable => {
                     return Err(SomaError::MutableParameterExpected { object_id: *object_id });
                 }
+                Owner::Accumulator { .. } => {
+                    // Stage 14a: accumulator objects are system-managed
+                    // and cannot be the target of a `Receiving` capability.
+                    return Err(SomaError::NotOwnedObjectError);
+                }
             };
         }
 
@@ -272,6 +277,14 @@ fn check_one_object(
                     // specifies it as an owned object. This is inconsistent.
                     return Err(SomaError::NotOwnedObjectError);
                 }
+                Owner::Accumulator { .. } => {
+                    // Stage 14a: accumulator objects can never be
+                    // declared as `ImmOrOwnedObject` inputs by user
+                    // transactions. Only privileged executors load
+                    // them, and they enter the input set via a
+                    // distinct path.
+                    return Err(SomaError::NotOwnedObjectError);
+                }
             };
         }
 
@@ -285,7 +298,7 @@ fn check_one_object(
             }
 
             match &object.owner {
-                Owner::AddressOwner(_) | Owner::Immutable => {
+                Owner::AddressOwner(_) | Owner::Immutable | Owner::Accumulator { .. } => {
                     // When someone locks an object as shared it must be shared already.
                     return Err(SomaError::NotSharedObjectError);
                 }

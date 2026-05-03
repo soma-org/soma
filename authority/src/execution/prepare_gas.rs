@@ -88,10 +88,14 @@ pub fn prepare_gas(
         return Err((ExecutionFailureStatus::InsufficientGas, TransactionFee::default()));
     }
 
-    // Emit a Withdraw event for the fee. Settlement aggregates
-    // these per (owner, coin_type) and applies the net delta
-    // atomically at the commit boundary.
-    temporary_store.emit_balance_event(BalanceEvent::withdraw(*signer, CoinType::Usdc, total_fee));
+    // Stage 14c.6 (SIP-58 cutover): user-tx executors emit ONLY
+    // `AccumulatorWriteV1`. The per-cp SettlementScheduler aggregates
+    // these and is the sole driver of CF apply.
+    temporary_store.emit_accumulator_event(
+        types::effects::object_change::AccumulatorAddress::balance(*signer, CoinType::Usdc),
+        types::effects::object_change::AccumulatorOperation::Split,
+        total_fee,
+    );
 
     Ok(GasPreparationResult {
         primary_gas_id: None,

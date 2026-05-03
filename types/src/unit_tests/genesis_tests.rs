@@ -988,6 +988,127 @@ fn test_genesis_allocations_land_in_accumulator_only() {
 }
 
 #[test]
+fn test_genesis_creates_balance_accumulator_objects() {
+    // Stage 14a: every non-zero (owner, coin_type) entry in the
+    // balance map must have a corresponding BalanceAccumulator object
+    // in the genesis object set, addressed at the deterministic
+    // ObjectID. This is the "create the objects at genesis" half of
+    // the dual-write that 14b will use to start serving reads through
+    // the object store.
+    use crate::accumulator::BalanceAccumulator;
+
+    let configs = make_validator_configs(3);
+    let alice = SomaAddress::random();
+    let bob = SomaAddress::random();
+    let mut builder = TokenDistributionScheduleBuilder::new();
+    for config in &configs {
+        let address = SomaAddress::from(&config.account_key_pair.public());
+        builder.add_allocation(TokenAllocation {
+            recipient_address: address,
+            amount_shannons: 1_000 * SHANNONS_PER_SOMA,
+            staked_with_validator: Some(address),
+        });
+    }
+    builder.add_allocation(TokenAllocation {
+        recipient_address: alice,
+        amount_shannons: 50 * SHANNONS_PER_SOMA,
+        staked_with_validator: None,
+    });
+    builder.add_usdc_allocation(UsdcAllocation {
+        recipient_address: bob,
+        amount_microdollars: 12_345,
+    });
+    let schedule = builder.build();
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    // For every CF balance entry, the corresponding accumulator
+    // object must exist with a matching balance and ID.
+    for (&(owner, coin_type), &expected_balance) in unsigned.balances() {
+        if expected_balance == 0 {
+            continue;
+        }
+        let expected_id = BalanceAccumulator::derive_id(owner, coin_type);
+        let acc_obj = unsigned
+            .objects()
+            .iter()
+            .find(|o| o.id() == expected_id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Genesis must create a BalanceAccumulator for ({owner:?}, {coin_type:?}); \
+                     expected ID {expected_id:?}",
+                )
+            });
+        assert_eq!(*acc_obj.type_(), ObjectType::BalanceAccumulator);
+        assert!(acc_obj.owner().is_accumulator());
+        let payload = acc_obj
+            .as_balance_accumulator()
+            .expect("genesis BalanceAccumulator must deserialize");
+        assert_eq!(payload.owner, owner);
+        assert_eq!(payload.coin_type, coin_type);
+        assert_eq!(
+            payload.balance, expected_balance,
+            "BalanceAccumulator object payload must equal the CF entry",
+        );
+    }
+}
+
+#[test]
+fn test_genesis_creates_delegation_accumulator_objects() {
+    // Stage 14a: every (pool_id, staker) genesis delegation must
+    // have a matching DelegationAccumulator object at the
+    // deterministic ID, with principal equal to the CF entry and
+    // last_collected_period == 0.
+    use crate::accumulator::DelegationAccumulator;
+
+    let configs = make_validator_configs(2);
+    let mut builder = TokenDistributionScheduleBuilder::new();
+    for config in &configs {
+        let address = SomaAddress::from(&config.account_key_pair.public());
+        builder.add_allocation(TokenAllocation {
+            recipient_address: address,
+            amount_shannons: 1_000 * SHANNONS_PER_SOMA,
+            staked_with_validator: Some(address),
+        });
+    }
+    let schedule = builder.build();
+
+    let unsigned = GenesisBuilder::new()
+        .with_validator_configs(configs)
+        .with_token_distribution_schedule(schedule)
+        .build_unsigned_genesis();
+
+    for (&(pool_id, staker), &expected_principal) in &unsigned.delegations {
+        if expected_principal == 0 {
+            continue;
+        }
+        let expected_id = DelegationAccumulator::derive_id(pool_id, staker);
+        let acc_obj = unsigned
+            .objects()
+            .iter()
+            .find(|o| o.id() == expected_id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Genesis must create a DelegationAccumulator for ({pool_id:?}, {staker:?}); \
+                     expected ID {expected_id:?}",
+                )
+            });
+        assert_eq!(*acc_obj.type_(), ObjectType::DelegationAccumulator);
+        assert!(acc_obj.owner().is_accumulator());
+        let payload = acc_obj
+            .as_delegation_accumulator()
+            .expect("genesis DelegationAccumulator must deserialize");
+        assert_eq!(payload.pool_id, pool_id);
+        assert_eq!(payload.staker, staker);
+        assert_eq!(payload.principal, expected_principal);
+        assert_eq!(payload.last_collected_period, 0);
+    }
+}
+
+#[test]
 fn test_genesis_balances_survive_bcs_roundtrip() {
     // The balance map is part of the BCS-serialized genesis blob. Loaders
     // that round-trip through BCS must observe identical balance entries.

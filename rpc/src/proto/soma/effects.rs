@@ -211,6 +211,11 @@ impl From<crate::types::ChangedObject> for ChangedObject {
                 message.output_owner = Some(owner.into());
                 OutputObjectState::ObjectWrite
             }
+            crate::types::ObjectOut::AccumulatorWriteV1 { operation, amount } => {
+                message.accumulator_operation = Some(operation);
+                message.accumulator_amount = Some(amount);
+                OutputObjectState::AccumulatorWriteV1
+            }
 
             _ => OutputObjectState::Unknown,
         };
@@ -285,6 +290,16 @@ impl TryFrom<&ChangedObject> for crate::types::ChangedObject {
                     .as_ref()
                     .ok_or_else(|| TryFromProtoError::missing("owner"))?
                     .try_into()?,
+            },
+            OutputObjectState::AccumulatorWriteV1 => crate::types::ObjectOut::AccumulatorWriteV1 {
+                operation: value
+                    .accumulator_operation
+                    .as_ref()
+                    .ok_or_else(|| TryFromProtoError::missing("accumulator_operation"))?
+                    .clone(),
+                amount: value
+                    .accumulator_amount
+                    .ok_or_else(|| TryFromProtoError::missing("accumulator_amount"))?,
             },
         };
 

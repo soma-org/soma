@@ -463,6 +463,74 @@ async fn test_transfer_objects_wrong_owner() {
 }
 
 #[tokio::test]
+async fn test_transfer_objects_rejects_accumulator() {
+    // Stage 14a: BalanceAccumulator and DelegationAccumulator are
+    // system-managed. A user must not be able to TransferObjects
+    // against one — even if they manage to forge a transaction that
+    // targets the deterministically-derived ID, the layered defense
+    // (input validation + executor up-front check) must reject it.
+    use types::accumulator::BalanceAccumulator;
+    use types::object::CoinType;
+
+    let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
+    let recipient = dbg_addr(1);
+
+    // Construct a BalanceAccumulator object and insert it into the
+    // authority store as if genesis had created it.
+    let accumulator = BalanceAccumulator::new(sender, CoinType::Usdc, 1_000);
+    let acc_obj = Object::new_balance_accumulator(
+        accumulator,
+        types::digests::TransactionDigest::genesis_marker(),
+    );
+    let acc_id = acc_obj.id();
+
+    let authority_state = TestAuthorityBuilder::new().build().await;
+    authority_state.insert_genesis_object(acc_obj.clone()).await;
+    crate::authority_test_utils::seed_balance_mode_funds(
+        &authority_state,
+        sender,
+        0,
+        10_000_000,
+    );
+
+    let data = TransactionData::new(
+        TransactionKind::TransferObjects {
+            objects: vec![acc_obj.compute_object_reference()],
+            recipient,
+        },
+        sender,
+        vec![],
+    );
+    let tx = to_sender_signed_transaction(data, &sender_key);
+    let result = send_and_confirm_transaction(&authority_state, tx).await;
+
+    // Must fail — either at input validation (layer 1) or at the
+    // executor up-front check (layer 2). Either is acceptable; both
+    // are guards against transferring system state.
+    match result {
+        Ok((_, effects)) => {
+            assert!(
+                !effects.status().is_ok(),
+                "Transferring an accumulator object must fail; effects status: {:?}",
+                effects.status(),
+            );
+        }
+        Err(_) => {
+            // Acceptable — input validation rejected the tx outright.
+        }
+    }
+
+    // The accumulator's owner must be unchanged regardless of which
+    // layer rejected the transfer.
+    let after = authority_state.get_object(&acc_id).await.unwrap();
+    assert!(
+        after.owner.is_accumulator(),
+        "Accumulator owner must remain Owner::Accumulator after rejected transfer; got {:?}",
+        after.owner,
+    );
+}
+
+#[tokio::test]
 async fn test_transfer_multiple_objects() {
     // Transfer multiple objects in a single TransferObjects
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();

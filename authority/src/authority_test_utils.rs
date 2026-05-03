@@ -133,6 +133,29 @@ pub async fn execute_certificate_with_execution_error(
             )
             .await;
     }
+
+    // Stage 14d: unit-test paths bypass the consensus/CheckpointBuilder
+    // pipeline, so settlement never runs for these txs. The CF would
+    // stay stale and `get_balance` / `get_delegation` would read
+    // pre-tx values. Synchronously aggregate the tx's accumulator and
+    // delegation events into the CF here — mirrors what
+    // `CheckpointBuilder::construct_and_execute_settlement` would do
+    // in the real pipeline, minus the object-side mutation (state-hash
+    // coverage of accumulator objects requires the e2e harness).
+    let effects_data = result.inner().data();
+    if let Err(e) =
+        authority.database_for_testing().flush_pending_settlement_for_testing(effects_data)
+    {
+        tracing::warn!(?e, "test-only settlement flush failed");
+    }
+    if let Some(fullnode) = fullnode {
+        if let Err(e) =
+            fullnode.database_for_testing().flush_pending_settlement_for_testing(effects_data)
+        {
+            tracing::warn!(?e, "test-only settlement flush on fullnode failed");
+        }
+    }
+
     Ok((certificate.into_inner(), result.into_inner(), execution_error_opt))
 }
 

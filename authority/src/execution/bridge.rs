@@ -210,11 +210,19 @@ impl BridgeExecutor {
             bridge.bridge_committee.threshold_deposit,
         )?;
 
-        // Stage 12: credit recipient's USDC accumulator. The off-chain
-        // bridge has already locked the corresponding ETH-side amount,
-        // so this Deposit completes the bridge transfer with no coin
-        // object materialized.
-        store.emit_balance_event(BalanceEvent::deposit(args.recipient, CoinType::Usdc, args.amount));
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        // The off-chain bridge has already locked the corresponding
+        // ETH-side amount, so this Merge completes the bridge transfer
+        // with no coin object materialized; the per-cp settlement
+        // applies the aggregated delta.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(
+                args.recipient,
+                CoinType::Usdc,
+            ),
+            types::effects::object_change::AccumulatorOperation::Merge,
+            args.amount,
+        );
 
         // Record nonce and update total
         bridge.processed_deposit_nonces.insert(args.nonce);
@@ -255,13 +263,17 @@ impl BridgeExecutor {
             )));
         }
 
-        // Stage 12: debit sender's USDC accumulator. The reservation
-        // pre-pass already verified the sender has the funds; the
-        // settlement pipeline applies the delta atomically with the
-        // PendingWithdrawal object's creation. Bridge nodes observe
-        // the PendingWithdrawal in checkpoints and sign for the
-        // Ethereum-side release.
-        store.emit_balance_event(BalanceEvent::withdraw(signer, CoinType::Usdc, args.amount));
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        // The reservation pre-pass verifies the sender has the funds;
+        // per-cp settlement applies the aggregated delta atomically
+        // with the PendingWithdrawal object's creation. Bridge nodes
+        // observe the PendingWithdrawal in checkpoints and sign for
+        // the Ethereum-side release.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Usdc),
+            types::effects::object_change::AccumulatorOperation::Split,
+            args.amount,
+        );
 
         // Create PendingWithdrawal — bridge nodes observe this in checkpoints
         // and begin off-chain signing for Ethereum release

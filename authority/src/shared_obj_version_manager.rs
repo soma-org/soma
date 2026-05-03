@@ -59,6 +59,62 @@ impl AssignedTxAndVersions {
 #[derive(Clone)]
 pub enum Schedulable<T = VerifiedExecutableTransaction> {
     Transaction(T),
+    /// Stage 14c.5: per-checkpoint settlement placeholder. Mirrors
+    /// Sui's `Schedulable::AccumulatorSettlement`. This is NOT a real
+    /// transaction — it's a sync marker that the [`SettlementScheduler`]
+    /// recognizes and routes to its dedicated queue. The queue runner
+    /// awaits the in-batch user-tx effects, builds the actual
+    /// settlement transactions via [`crate::accumulators::AccumulatorSettlementTxBuilder`],
+    /// and dispatches them to the regular [`ExecutionScheduler`].
+    ///
+    /// The placeholder carries enough information for the settlement
+    /// scheduler to:
+    ///   - identify itself in the cache (`settlement_key`),
+    ///   - know which user-tx effects to await (`tx_keys`), and
+    ///   - tag the resulting settlement txs with the right
+    ///     checkpoint sequence number (`checkpoint_seq`).
+    ///
+    /// [`SettlementScheduler`]: crate::execution_scheduler::settlement_scheduler::SettlementScheduler
+    /// [`ExecutionScheduler`]: crate::execution_scheduler::ExecutionScheduler
+    AccumulatorSettlement(Box<SettlementBatchInfo>),
+}
+
+/// Stage 14c.5: payload of [`Schedulable::AccumulatorSettlement`].
+///
+/// Constructed by the consensus handler when it processes a commit
+/// that contains balance-touching user txs. The settlement scheduler
+/// uses this to await user-tx effects, then to construct + dispatch
+/// the actual settlement transactions.
+#[derive(Clone, Debug)]
+pub struct SettlementBatchInfo {
+    /// Stable, unique key for this settlement batch. Used by the
+    /// epoch_store's notify-read mechanism (consensus handler signals
+    /// at enqueue time; settlement scheduler awaits before building
+    /// settlement). Also used as the cache key downstream.
+    pub settlement_key: TransactionKey,
+
+    /// Digests of every user transaction in this batch. The
+    /// settlement scheduler awaits these to complete via the cache's
+    /// `notify_read_executed_effects` before walking each tx's
+    /// `effects.accumulator_events()` to build the settlement.
+    ///
+    /// We carry digests directly (not `TransactionKey`s) because the
+    /// consensus handler knows them at schedulable-construction time
+    /// — no extra notify-read mapping is needed.
+    pub tx_digests: Vec<TransactionDigest>,
+
+    /// Checkpoint sequence number this settlement belongs to. Baked
+    /// into the settlement transaction's tx-data (alongside epoch +
+    /// commit metadata) so consecutive empty/identical settlements
+    /// at different checkpoints don't collide in the executed-digest
+    /// cache.
+    pub checkpoint_seq: u64,
+
+    /// Pre-computed shared-object version assignments for the
+    /// settlement transaction itself. The placeholder doesn't have
+    /// shared inputs of its own (it's a marker), but the resulting
+    /// settlement txs may — those inherit this assignment.
+    pub assigned_versions: AssignedVersions,
 }
 
 impl From<VerifiedExecutableTransaction> for Schedulable<VerifiedExecutableTransaction> {
@@ -90,6 +146,9 @@ impl Schedulable<&'_ VerifiedExecutableTransaction> {
     pub fn to_owned_schedulable(&self) -> Schedulable<VerifiedExecutableTransaction> {
         match self {
             Schedulable::Transaction(tx) => Schedulable::Transaction((*tx).clone()),
+            Schedulable::AccumulatorSettlement(info) => {
+                Schedulable::AccumulatorSettlement(info.clone())
+            }
         }
     }
 }
@@ -101,18 +160,29 @@ impl<T> Schedulable<T> {
     {
         match self {
             Schedulable::Transaction(tx) => Some(tx.as_tx()),
+            // AccumulatorSettlement is a placeholder, not a real tx —
+            // shared-input-version assignment, executed-digest cache
+            // hits, etc. don't apply to it. Callers that hit this
+            // branch should be filtering it out at the
+            // SettlementScheduler boundary.
+            Schedulable::AccumulatorSettlement(_) => None,
         }
     }
 
     pub fn shared_input_objects(
         &self,
         epoch_store: &AuthorityPerEpochStore,
-    ) -> impl Iterator<Item = SharedInputObject> + '_
+    ) -> Box<dyn Iterator<Item = SharedInputObject> + '_>
     where
         T: AsTx,
     {
         match self {
-            Schedulable::Transaction(tx) => tx.as_tx().shared_input_objects(),
+            Schedulable::Transaction(tx) => Box::new(tx.as_tx().shared_input_objects()),
+            // No shared inputs on the placeholder. The actual
+            // settlement transactions the scheduler builds may
+            // declare them, but those go through the regular
+            // ExecutionScheduler with their own assignment.
+            Schedulable::AccumulatorSettlement(_) => Box::new(std::iter::empty()),
         }
     }
 
@@ -123,6 +193,7 @@ impl<T> Schedulable<T> {
         match self {
             Schedulable::Transaction(tx) => transaction_non_shared_input_object_keys(tx.as_tx())
                 .expect("Transaction input should have been verified"),
+            Schedulable::AccumulatorSettlement(_) => Vec::new(),
         }
     }
 
@@ -132,6 +203,7 @@ impl<T> Schedulable<T> {
     {
         match self {
             Schedulable::Transaction(tx) => transaction_receiving_object_keys(tx.as_tx()),
+            Schedulable::AccumulatorSettlement(_) => Vec::new(),
         }
     }
 
@@ -141,6 +213,7 @@ impl<T> Schedulable<T> {
     {
         match self {
             Schedulable::Transaction(tx) => tx.as_tx().key(),
+            Schedulable::AccumulatorSettlement(info) => info.settlement_key,
         }
     }
 }

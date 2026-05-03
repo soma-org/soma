@@ -30,7 +30,7 @@ use types::consensus::{
 use types::digests::{AdditionalConsensusStateDigest, ConsensusCommitDigest, TransactionDigest};
 use types::system_state::epoch_start::EpochStartSystemStateTrait;
 use types::transaction::{
-    SenderSignedData, TrustedExecutableTransaction, VerifiedCertificate,
+    SenderSignedData, TransactionKey, TrustedExecutableTransaction, VerifiedCertificate,
     VerifiedExecutableTransaction, VerifiedTransaction,
 };
 
@@ -85,10 +85,22 @@ impl ConsensusHandlerInitializer {
         let new_epoch_start_state = self.epoch_store.epoch_start_state();
         let consensus_committee = new_epoch_start_state.get_committee();
 
+        // Stage 14d: construct a fresh SettlementScheduler per epoch.
+        // Mirrors Sui's `new_consensus_handler` — the scheduler holds
+        // a `Mutex<Option<SettlementQueueSender>>` that lazily spawns
+        // a queue runner bound to a specific `epoch_store`. Sharing one
+        // scheduler across epochs would leak the prior epoch's runner
+        // (still parked on the old epoch_store's
+        // `wait_for_settlement_transactions`) into the new epoch where
+        // it would never wake — the cluster would silently wedge.
+        let settlement_scheduler = crate::settlement_scheduler::SettlementScheduler::new(
+            (*self.state.execution_scheduler).clone(),
+        );
+
         ConsensusHandler::new(
             self.epoch_store.clone(),
             self.checkpoint_service.clone(),
-            self.state.execution_scheduler().clone(),
+            settlement_scheduler,
             self.consensus_adapter.clone(),
             self.state.get_object_cache_reader().clone(),
             self.low_scoring_authorities.clone(),
@@ -346,7 +358,7 @@ impl<C> ConsensusHandler<C> {
     pub(crate) fn new(
         epoch_store: Arc<AuthorityPerEpochStore>,
         checkpoint_service: Arc<C>,
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         consensus_adapter: Arc<ConsensusAdapter>,
         cache_reader: Arc<dyn ObjectCacheRead>,
         low_scoring_authorities: Arc<ArcSwap<HashMap<AuthorityName, u64>>>,
@@ -363,7 +375,7 @@ impl<C> ConsensusHandler<C> {
             last_consensus_stats.stats = ConsensusStats::new(committee.size());
         }
         let execution_scheduler_sender =
-            ExecutionSchedulerSender::start(execution_scheduler, epoch_store.clone());
+            ExecutionSchedulerSender::start(settlement_scheduler, epoch_store.clone());
         let commit_rate_estimate_window_size =
             epoch_store.protocol_config().get_consensus_commit_rate_estimation_window_size();
         Self {
@@ -634,8 +646,31 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
         let checkpoint_height =
             self.epoch_store.calculate_pending_checkpoint_height(commit_info.round);
 
+        // Stage 14d (SIP-58 single-path): split schedulables into
+        // real-tx roots and the settlement placeholder. The settlement
+        // placeholder doesn't have an executed-tx digest yet — the
+        // CheckpointBuilder constructs the settlement from the cp's
+        // user-tx effects and registers it via
+        // `epoch_store.notify_settlement_transactions_ready`. Mirrors
+        // Sui's `CheckpointRoots { tx_roots, settlement_root }`.
+        let mut tx_roots: Vec<TransactionKey> = Vec::with_capacity(schedulables.len());
+        let mut settlement_root: Option<TransactionKey> = None;
+        for s in schedulables {
+            if s.as_tx().is_some() {
+                tx_roots.push(s.key());
+            } else {
+                debug_assert!(
+                    settlement_root.is_none(),
+                    "consensus_handler emitted multiple AccumulatorSettlement placeholders \
+                     in a single cp — only one is supported"
+                );
+                settlement_root = Some(s.key());
+            }
+        }
+
         let pending_checkpoint = PendingCheckpoint {
-            roots: schedulables.iter().map(|s| s.key()).collect(),
+            roots: tx_roots,
+            settlement_root,
             details: PendingCheckpointInfo {
                 timestamp_ms: commit_info.timestamp,
                 last_of_epoch: final_round,
@@ -681,34 +716,54 @@ impl<C: CheckpointServiceNotify + Send + Sync> ConsensusHandler<C> {
             transactions_to_schedule.iter().map(Schedulable::Transaction),
         );
 
-        // Stage 6a: inject the per-commit accumulator settlement system
-        // transaction at the *end* of the schedulable list. Until
-        // executors start emitting `BalanceEvent`s (Stage 6c), `changes`
-        // is always empty and execution is a no-op write to
-        // `executed_transaction_digests`. The `(epoch, round,
-        // sub_dag_index)` triplet makes the digest unique per commit
-        // (Stage 3 fix), preventing executed-digest-cache collisions
-        // across consecutive empty settlements.
+        // SIP-58 single-path: emit a `Schedulable::AccumulatorSettlement`
+        // placeholder. The cp builder is the **producer** —
+        // `construct_and_execute_settlement` runs
+        // `AccumulatorSettlementTxBuilder` against the cp's user-tx
+        // effects, wraps the result as a system tx, and publishes it
+        // via `epoch_store.notify_settlement_transactions_ready`. The
+        // `SettlementScheduler` is the **thin consumer** — its queue
+        // runner awaits the published TX and forwards to the main
+        // `ExecutionScheduler`.
         //
-        // Once Stage 6c lands, this is where the consensus handler will
-        // aggregate balance events from the commit's user-tx outputs
-        // into `changes`. Right now there's nothing to aggregate.
-        let settlement = {
-            let tx = VerifiedTransaction::new_settlement_transaction(
-                epoch,
-                commit_info.round,
-                Some(commit_info.sub_dag_index),
-                Vec::new(),
+        // The `settlement_key` is a synthetic Blake2b-256 digest over
+        // `(epoch, round, sub_dag_index)`. It anchors the producer/
+        // consumer rendezvous and acts as a routing key in the
+        // per-epoch notify channel. Same `(epoch, round, sub_dag_index)`
+        // → same key (idempotent on consensus replay); different
+        // commits → different keys (no channel collisions).
+        let settlement_placeholder = {
+            use crate::shared_obj_version_manager::{AssignedVersions, SettlementBatchInfo};
+            use fastcrypto::hash::{Blake2b256, HashFunction as _};
+
+            let tx_digests: Vec<_> = transactions_to_schedule
+                .iter()
+                .map(|tx| *tx.digest())
+                .collect();
+
+            let mut hasher = Blake2b256::default();
+            hasher.update(b"soma/settlement-key/v1");
+            hasher.update(epoch.to_le_bytes());
+            hasher.update(commit_info.round.to_le_bytes());
+            hasher.update(commit_info.sub_dag_index.to_le_bytes());
+            let settlement_digest_bytes: [u8; 32] = hasher.finalize().into();
+            let settlement_key = types::transaction::TransactionKey::Digest(
+                types::digests::TransactionDigest::new(settlement_digest_bytes),
             );
-            VerifiedExecutableTransaction::new_system(tx, epoch)
+
+            Schedulable::AccumulatorSettlement(Box::new(SettlementBatchInfo {
+                settlement_key,
+                tx_digests,
+                checkpoint_seq: commit_info.round,
+                assigned_versions: AssignedVersions::default(),
+            }))
         };
 
-        let schedulables: Vec<_> = itertools::chain!(
-            consensus_commit_prologue.into_iter(),
-            transactions_to_schedule.into_iter(),
-            std::iter::once(settlement),
+        let schedulables: Vec<Schedulable> = itertools::chain!(
+            consensus_commit_prologue.into_iter().map(Schedulable::Transaction),
+            transactions_to_schedule.into_iter().map(Schedulable::Transaction),
+            std::iter::once(settlement_placeholder),
         )
-        .map(Schedulable::Transaction)
         .collect();
 
         let assigned_versions = self
@@ -1219,11 +1274,11 @@ pub(crate) struct ExecutionSchedulerSender {
 
 impl ExecutionSchedulerSender {
     fn start(
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) -> Self {
         let (sender, recv) = mpsc::unbounded_channel();
-        tokio::spawn(Self::run(recv, execution_scheduler, epoch_store));
+        tokio::spawn(Self::run(recv, settlement_scheduler, epoch_store));
         Self { sender }
     }
 
@@ -1242,13 +1297,17 @@ impl ExecutionSchedulerSender {
         let _ = self.sender.send((transactions, assigned_versions, scheduling_source));
     }
 
+    /// Stage 14c.5e: routes through `SettlementScheduler::enqueue`,
+    /// which splits real transactions to the main `ExecutionScheduler`
+    /// and `Schedulable::AccumulatorSettlement` placeholders to the
+    /// dedicated settlement queue.
     async fn run(
         mut recv: mpsc::UnboundedReceiver<(
             Vec<Schedulable>,
             AssignedTxAndVersions,
             SchedulingSource,
         )>,
-        execution_scheduler: Arc<ExecutionScheduler>,
+        settlement_scheduler: crate::settlement_scheduler::SettlementScheduler,
         epoch_store: Arc<AuthorityPerEpochStore>,
     ) {
         while let Some((transactions, assigned_versions, scheduling_source)) = recv.recv().await {
@@ -1265,7 +1324,7 @@ impl ExecutionSchedulerSender {
                     (txn, env)
                 })
                 .collect();
-            execution_scheduler.enqueue(txns, &epoch_store);
+            settlement_scheduler.enqueue(txns, &epoch_store);
         }
     }
 }

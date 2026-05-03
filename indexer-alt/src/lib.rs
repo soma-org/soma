@@ -125,6 +125,15 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .await
         .context("Failed to register tx_balance_changes pipeline")?;
 
+    // Stage 13m: per-(owner, coin_type) signed deltas keyed by
+    // checkpoint, sourced directly from `effects.balance_events()`.
+    // GraphQL `balance(addr)` SUMs over this table to return the
+    // current balance — no executor replay needed.
+    indexer
+        .concurrent_pipeline(handlers::soma_balance_deltas::SomaBalanceDeltas, no_prune.clone())
+        .await
+        .context("Failed to register soma_balance_deltas pipeline")?;
+
     indexer
         .concurrent_pipeline(handlers::tx_kinds::TxKinds, index_config.clone())
         .await

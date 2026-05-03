@@ -95,7 +95,16 @@ pub struct PendingCheckpointInfo {
 
 #[derive(Clone, Debug)]
 pub struct PendingCheckpoint {
+    /// Real transaction roots (user txs + ConsensusCommitPrologue).
+    /// These resolve via `epoch_store.notify_read_tx_key_to_digest`.
     pub roots: Vec<TransactionKey>,
+    /// Stage 14d: per-cp settlement placeholder key, separate from
+    /// `roots` because the settlement TX doesn't exist until the
+    /// CheckpointBuilder constructs it from the cp's user-tx effects.
+    /// `None` when the cp has no user txs (and therefore no settlement
+    /// to build). Mirrors Sui's `CheckpointRoots::settlement_root`
+    /// (`crates/sui-core/src/checkpoints/mod.rs`).
+    pub settlement_root: Option<TransactionKey>,
     pub details: PendingCheckpointInfo,
 }
 
@@ -1252,11 +1261,171 @@ impl CheckpointBuilder {
                 self.expensive_consensus_commit_prologue_invariants_check(&root_digests, &sorted);
             }
 
+            // Stage 14d (SIP-58 single-path): construct + dispatch the
+            // per-cp settlement transaction and append its effects to
+            // the cp's sorted effects. The settlement is built from the
+            // already-sorted user-tx effects (so all validators agree
+            // on the aggregated state changes), wrapped as a system
+            // tx, published to the SettlementScheduler via
+            // `notify_settlement_transactions_ready`, and awaited via
+            // `notify_read_executed_effects`. CP signing therefore
+            // blocks on settlement landing, which is the missing
+            // ordering invariant from 14c.7.
+            //
+            // Mirrors `crates/sui-core/src/checkpoints/mod.rs`
+            // `construct_and_execute_settlement_transactions`.
+            if let Some(settlement_key) = pending.settlement_root.clone() {
+                let settlement_effects = self
+                    .construct_and_execute_settlement(
+                        &sorted,
+                        settlement_key,
+                        pending.details.checkpoint_height,
+                    )
+                    .await;
+                // Sui-mirror: also track settlement digests in
+                // `effects_in_current_checkpoint` so the next pending
+                // cp's `complete_checkpoint_effects` doesn't drag them
+                // in again as dependencies. Mirrors
+                // `crates/sui-core/src/checkpoints/mod.rs` post-
+                // settlement bookkeeping.
+                effects_in_current_checkpoint
+                    .extend(settlement_effects.iter().map(|e| *e.transaction_digest()));
+                sorted.extend(settlement_effects);
+            }
+
             tx_effects.extend(sorted);
             tx_roots.extend(root_digests);
         }
 
         Ok((tx_effects, tx_roots))
+    }
+
+    /// Stage 14d. Build the per-cp settlement TX from the cp's sorted
+    /// user-tx effects, publish it for the SettlementScheduler queue
+    /// runner to dispatch, await its execution, and return its
+    /// effects. Empty cps publish a `None` skip-sentinel so the
+    /// SettlementScheduler doesn't block forever.
+    ///
+    /// `checkpoint_height` is baked into the `SettlementTransaction`'s
+    /// uniqueness fields (along with `epoch`) so consecutive settlements
+    /// have distinct BCS encodings — and therefore distinct digests —
+    /// preventing collisions in the executed-tx-digest cache. Mirrors
+    /// Sui's `TransactionKey::AccumulatorSettlement(epoch, checkpoint_height)`.
+    async fn construct_and_execute_settlement(
+        &self,
+        sorted_user_tx_effects: &[TransactionEffects],
+        settlement_key: TransactionKey,
+        checkpoint_height: CheckpointHeight,
+    ) -> Vec<TransactionEffects> {
+        use crate::accumulators::AccumulatorSettlementTxBuilder;
+        use types::transaction::VerifiedTransaction;
+
+        // Stage 14d: ChangeEpoch is a system tx that emits delegation
+        // events for validator commission rewards and applies them
+        // INLINE via its own writeback path (drained in
+        // `authority_store.rs::write_one_transaction_outputs`).
+        // Including ChangeEpoch effects in the per-cp settlement
+        // aggregation would double-apply: once direct, once via
+        // settlement's aggregated re-emit. Filter them out here so
+        // the settlement only handles user-tx events.
+        //
+        // CCP / Genesis don't emit accumulator events, so they're
+        // harmless — but we filter them too for clarity.
+        let tx_cache = self.state.get_transaction_cache_reader();
+        let user_only_effects: Vec<TransactionEffects> = sorted_user_tx_effects
+            .iter()
+            .filter(|effects| {
+                let digest = effects.transaction_digest();
+                let tx = tx_cache.get_transaction_block(digest);
+                match tx {
+                    Some(tx) => !matches!(
+                        tx.transaction_data().kind(),
+                        types::transaction::TransactionKind::ChangeEpoch(_)
+                            | types::transaction::TransactionKind::Genesis(_)
+                            | types::transaction::TransactionKind::ConsensusCommitPrologueV1(_)
+                    ),
+                    None => true,
+                }
+            })
+            .cloned()
+            .collect();
+
+        let builder = AccumulatorSettlementTxBuilder::new(&user_only_effects);
+        if builder.is_empty() {
+            // No balance/delegation events in this cp — nothing to
+            // settle. Wake the SettlementScheduler waiter with the
+            // skip sentinel and return empty.
+            self.epoch_store
+                .notify_settlement_transactions_ready(settlement_key, None);
+            return Vec::new();
+        }
+
+        // The cp builder needs the settlement digest binding to be
+        // unique per cp. Bind to (epoch, cp_height, position-in-cp);
+        // since this is the only settlement per cp, we use 0 for
+        // sub-dag-index. The settlement_key from the consensus handler
+        // already encodes (epoch, round, sub_dag_index) into a
+        // synthetic digest, so anchoring the SettlementTransaction's
+        // own (epoch, round, sub_dag_index) fields to those same
+        // values keeps cross-validator determinism.
+        let epoch = self.epoch_store.epoch();
+        // The SettlementTransaction's `round` field anchors digest
+        // uniqueness across cps (consecutive settlements with the
+        // same aggregated changes would otherwise collide in the
+        // executed-tx cache). Use the actual `checkpoint_height` from
+        // `pending.details` — every validator computes the same
+        // height for the same pending cp, so cross-validator
+        // determinism holds. Mirrors Sui's
+        // `TransactionKey::AccumulatorSettlement(epoch, checkpoint_height)`.
+        let settlement_payload = builder.build(epoch, checkpoint_height, None);
+
+        let verified_tx = VerifiedTransaction::new_settlement_transaction(
+            settlement_payload.epoch,
+            settlement_payload.round,
+            settlement_payload.sub_dag_index,
+            settlement_payload.changes.clone(),
+            settlement_payload.delegation_changes.clone(),
+        );
+        let executable = VerifiedExecutableTransaction::new_system(verified_tx, epoch);
+        let settlement_digest = *executable.digest();
+
+        debug!(
+            ?settlement_key,
+            ?settlement_digest,
+            "CheckpointBuilder: published settlement TX"
+        );
+
+        // Stage 14d safety. The crash window between **user-tx
+        // writeback** (effects + per-tx CF already on disk via
+        // `commit_transaction_outputs`) and **settlement publish**
+        // (this `notify_settlement_transactions_ready` call) is what
+        // SIP-58 single-path inherits. If a validator crashes in this
+        // window:
+        //   - user-tx effects are durable
+        //   - the in-memory `notify_settlement_transactions_ready`
+        //     channel is lost
+        //   - `pending_checkpoint` on disk still has `settlement_root`
+        //   - on restart, the cp builder re-runs
+        //     `construct_and_execute_settlement` against the same user-
+        //     tx effects → same digest → same payload (deterministic),
+        //     re-publishes, and the queue runner dispatches.
+        // Recovery is built into the architecture; this failpoint
+        // proves it.
+        utils::fail_point!("crash-after-user-effects-before-settlement-publish");
+
+        // Publish for the SettlementScheduler queue runner. This is
+        // non-blocking; the queue runner will pick it up and dispatch
+        // via the regular ExecutionScheduler.
+        self.epoch_store
+            .notify_settlement_transactions_ready(settlement_key, Some(executable));
+
+        // Block this cp's signing until the settlement effects land in
+        // the cache. Without this wait, the cp could finalize before
+        // the settlement applied, which is exactly the bug 14c.7 left
+        // open (supply violation at epoch boundary).
+        self.effects_store
+            .notify_read_executed_effects(&[settlement_digest])
+            .await
     }
 
     // This function is used to extract the consensus commit prologue digest and effects from the root
@@ -1480,6 +1649,17 @@ impl CheckpointBuilder {
                         // ConsensusCommitPrologueV1  are guaranteed to be
                         // processed before we reach here.
                     }
+
+                    // Stage 14d: settlement system txs are dispatched
+                    // by the CheckpointBuilder/SettlementScheduler
+                    // out-of-band — they don't ride consensus, so
+                    // there's nothing for `consensus_messages_processed_notify`
+                    // to wait for. Without this skip the cp builder
+                    // hangs on every cp that produces a non-empty
+                    // settlement, which deadlocks the entire e2e
+                    // pipeline. Mirrors Sui's exemption noted in
+                    // `crates/sui-core/src/checkpoints/mod.rs`.
+                    TransactionKind::Settlement(_) => {}
 
                     TransactionKind::ChangeEpoch(_) | TransactionKind::Genesis(_) => {
                         panic!("unexpected transaction in checkpoint effects: {:?}", transaction);

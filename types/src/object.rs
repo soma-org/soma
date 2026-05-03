@@ -372,6 +372,111 @@ impl Object {
         self.data.update_contents(bcs::to_bytes(inner).unwrap());
     }
 
+    // -----------------------------------------------------------------
+    // Stage 14a: accumulator-object constructors and accessors.
+    //
+    // BalanceAccumulator and DelegationAccumulator wrap CF-resident
+    // state into Sui-style objects so the global state hash, snapshot
+    // integrity, and effects pipeline cover them automatically. The
+    // ObjectID is deterministic (`derive_id` on the data type), the
+    // owner is `Owner::Accumulator { kind }`, and version is bumped
+    // by the privileged executor that mutates the object.
+    // -----------------------------------------------------------------
+
+    /// Construct a fresh `BalanceAccumulator` object at `Version::MIN`.
+    /// The caller is the genesis builder or the settlement executor
+    /// when a previously-untouched `(owner, coin_type)` first sees a
+    /// non-zero balance; both pass `previous_transaction` for the
+    /// audit trail.
+    pub fn new_balance_accumulator(
+        accumulator: crate::accumulator::BalanceAccumulator,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let id = crate::accumulator::BalanceAccumulator::derive_id(
+            accumulator.owner,
+            accumulator.coin_type,
+        );
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::BalanceAccumulator,
+            Version::MIN,
+            bcs::to_bytes(&accumulator)
+                .expect("BCS serialization of BalanceAccumulator is infallible"),
+        );
+        Self::new(
+            data,
+            Owner::Accumulator { kind: AccumulatorKind::Balance },
+            previous_transaction,
+        )
+    }
+
+    /// Construct a fresh `DelegationAccumulator` object at `Version::MIN`.
+    pub fn new_delegation_accumulator(
+        accumulator: crate::accumulator::DelegationAccumulator,
+        previous_transaction: TransactionDigest,
+    ) -> Self {
+        let id = crate::accumulator::DelegationAccumulator::derive_id(
+            accumulator.pool_id,
+            accumulator.staker,
+        );
+        let data = ObjectData::new_with_id(
+            id,
+            ObjectType::DelegationAccumulator,
+            Version::MIN,
+            bcs::to_bytes(&accumulator)
+                .expect("BCS serialization of DelegationAccumulator is infallible"),
+        );
+        Self::new(
+            data,
+            Owner::Accumulator { kind: AccumulatorKind::Delegation },
+            previous_transaction,
+        )
+    }
+
+    /// If this object is a `BalanceAccumulator`, deserialize its
+    /// contents and return them. Returns `None` for any other type.
+    pub fn as_balance_accumulator(&self) -> Option<crate::accumulator::BalanceAccumulator> {
+        if *self.data.object_type() == ObjectType::BalanceAccumulator {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// If this object is a `DelegationAccumulator`, deserialize its
+    /// contents and return them. Returns `None` for any other type.
+    pub fn as_delegation_accumulator(&self) -> Option<crate::accumulator::DelegationAccumulator> {
+        if *self.data.object_type() == ObjectType::DelegationAccumulator {
+            bcs::from_bytes(self.data.contents()).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Overwrite a `BalanceAccumulator` object's contents in-place.
+    /// Caller must ensure the object actually IS one; debug-asserts the
+    /// type.
+    pub fn set_balance_accumulator(&mut self, accumulator: &crate::accumulator::BalanceAccumulator) {
+        debug_assert_eq!(
+            *self.data.object_type(),
+            ObjectType::BalanceAccumulator,
+            "set_balance_accumulator called on non-BalanceAccumulator object"
+        );
+        self.update_contents(accumulator);
+    }
+
+    /// Overwrite a `DelegationAccumulator` object's contents in-place.
+    pub fn set_delegation_accumulator(
+        &mut self,
+        accumulator: &crate::accumulator::DelegationAccumulator,
+    ) {
+        debug_assert_eq!(
+            *self.data.object_type(),
+            ObjectType::DelegationAccumulator,
+            "set_delegation_accumulator called on non-DelegationAccumulator object"
+        );
+        self.update_contents(accumulator);
+    }
 }
 
 impl std::ops::Deref for Object {
@@ -523,6 +628,18 @@ impl fmt::Display for CoinType {
     }
 }
 
+impl FromStr for CoinType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "SOMA" => Ok(CoinType::Soma),
+            "USDC" => Ok(CoinType::Usdc),
+            _ => Err(format!("Unknown CoinType: {}", s)),
+        }
+    }
+}
+
 /// # ObjectType
 ///
 /// Defines the type of an object, which determines its behavior and structure.
@@ -545,6 +662,18 @@ pub enum ObjectType {
     /// [`crate::channel::Channel`] for the on-chain layout. Created by
     /// `OpenChannel`, deleted on `Close` or `WithdrawAfterTimeout`.
     Channel,
+    /// Stage 14a: per-(owner, coin_type) account-balance accumulator.
+    /// One object per (owner, coin_type) pair, deterministically
+    /// addressed via `BalanceAccumulator::derive_id`. Mutated only by
+    /// the per-commit `Settlement` system transaction; not transferable
+    /// or otherwise touchable by user transactions.
+    BalanceAccumulator,
+    /// Stage 14a: per-(pool_id, staker) F1 delegation row accumulator.
+    /// One object per (pool_id, staker) pair, deterministically
+    /// addressed via `DelegationAccumulator::derive_id`. Mutated by
+    /// `AddStake`, `WithdrawStake`, and `ChangeEpoch` (for validator
+    /// commission credit).
+    DelegationAccumulator,
 }
 
 impl fmt::Display for ObjectType {
@@ -556,6 +685,8 @@ impl fmt::Display for ObjectType {
             ObjectType::PendingWithdrawal => write!(f, "PendingWithdrawal"),
             ObjectType::Clock => write!(f, "Clock"),
             ObjectType::Channel => write!(f, "Channel"),
+            ObjectType::BalanceAccumulator => write!(f, "BalanceAccumulator"),
+            ObjectType::DelegationAccumulator => write!(f, "DelegationAccumulator"),
         }
     }
 }
@@ -572,6 +703,8 @@ impl FromStr for ObjectType {
             "PendingWithdrawal" => Ok(ObjectType::PendingWithdrawal),
             "Clock" => Ok(ObjectType::Clock),
             "Channel" => Ok(ObjectType::Channel),
+            "BalanceAccumulator" => Ok(ObjectType::BalanceAccumulator),
+            "DelegationAccumulator" => Ok(ObjectType::DelegationAccumulator),
             _ => Err(format!("Unknown ObjectType: {}", s)),
         }
     }
@@ -958,6 +1091,20 @@ impl LiveObject {
 ///
 /// ## Thread Safety
 /// Owner is Clone and can be safely shared across threads.
+/// Distinguishes the two accumulator object families. Used by
+/// `Owner::Accumulator` to tag which executor-suite is allowed to
+/// mutate the object's data.
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, Serialize, Hash, Ord, PartialOrd)]
+pub enum AccumulatorKind {
+    /// Per-(owner, coin_type) account balance accumulator. Mutated
+    /// only by the per-commit `Settlement` system transaction.
+    Balance,
+    /// Per-(pool_id, staker) F1 delegation row accumulator. Mutated
+    /// by `AddStake`, `WithdrawStake`, and `ChangeEpoch` (validator
+    /// commission credit).
+    Delegation,
+}
+
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash, Ord, PartialOrd)]
 pub enum Owner {
     /// Object is exclusively owned by a single address, and is mutable.
@@ -969,6 +1116,19 @@ pub enum Owner {
     },
     /// Object is immutable, and hence ownership doesn't matter.
     Immutable,
+    /// Stage 14a: system-managed accumulator object. The kernel's
+    /// privileged executors (Settlement for `Balance`,
+    /// AddStake/WithdrawStake/ChangeEpoch for `Delegation`) mutate
+    /// these directly; users cannot transfer, delete, or otherwise
+    /// touch them outside those executors.
+    ///
+    /// Versions on accumulator objects follow the lamport timestamp
+    /// of the mutating system transaction — same as how `Shared`
+    /// objects' versions are sequenced — so all validators reach
+    /// identical post-state digests deterministically.
+    Accumulator {
+        kind: AccumulatorKind,
+    },
 }
 
 impl Owner {
@@ -976,7 +1136,9 @@ impl Owner {
     pub fn get_address_owner_address(&self) -> SomaResult<SomaAddress> {
         match self {
             Self::AddressOwner(address) => Ok(*address),
-            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+            Self::Shared { .. } | Self::Immutable | Self::Accumulator { .. } => {
+                Err(SomaError::UnexpectedOwnerType)
+            }
         }
     }
 
@@ -984,7 +1146,9 @@ impl Owner {
     pub fn get_owner_address(&self) -> SomaResult<SomaAddress> {
         match self {
             Self::AddressOwner(address) => Ok(*address),
-            Self::Shared { .. } | Self::Immutable => Err(SomaError::UnexpectedOwnerType),
+            Self::Shared { .. } | Self::Immutable | Self::Accumulator { .. } => {
+                Err(SomaError::UnexpectedOwnerType)
+            }
         }
     }
 
@@ -992,7 +1156,7 @@ impl Owner {
     pub fn start_version(&self) -> Option<Version> {
         match self {
             Self::Shared { initial_shared_version } => Some(*initial_shared_version),
-            Self::Immutable | Self::AddressOwner(_) => None,
+            Self::Immutable | Self::AddressOwner(_) | Self::Accumulator { .. } => None,
         }
     }
 
@@ -1006,6 +1170,23 @@ impl Owner {
 
     pub fn is_shared(&self) -> bool {
         matches!(self, Owner::Shared { .. })
+    }
+
+    /// True for `Owner::Accumulator` of any kind. Stage 14a:
+    /// accumulator objects are system-managed — they are not
+    /// transferable, deletable, or mutable by user transactions, only
+    /// by the executors listed on the variant's docstring.
+    pub fn is_accumulator(&self) -> bool {
+        matches!(self, Owner::Accumulator { .. })
+    }
+
+    /// Returns the accumulator kind if this owner is `Accumulator`.
+    /// Useful for executors that branch on Balance vs Delegation.
+    pub fn accumulator_kind(&self) -> Option<AccumulatorKind> {
+        match self {
+            Owner::Accumulator { kind } => Some(*kind),
+            _ => None,
+        }
     }
 }
 
@@ -1022,6 +1203,10 @@ impl Display for Owner {
             Self::Shared { initial_shared_version } => {
                 write!(f, "Shared( {} )", initial_shared_version.value())
             }
+            Self::Accumulator { kind } => match kind {
+                AccumulatorKind::Balance => write!(f, "Accumulator(Balance)"),
+                AccumulatorKind::Delegation => write!(f, "Accumulator(Delegation)"),
+            },
         }
     }
 }

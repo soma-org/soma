@@ -172,6 +172,8 @@ impl From<crate::types::ObjectType> for String {
             crate::types::ObjectType::PendingWithdrawal => "PendingWithdrawal".to_string(),
             crate::types::ObjectType::Clock => "Clock".to_string(),
             crate::types::ObjectType::Channel => "Channel".to_string(),
+            crate::types::ObjectType::BalanceAccumulator => "BalanceAccumulator".to_string(),
+            crate::types::ObjectType::DelegationAccumulator => "DelegationAccumulator".to_string(),
         }
     }
 }
@@ -188,6 +190,8 @@ impl FromStr for crate::types::ObjectType {
             "PendingWithdrawal" => Ok(Self::PendingWithdrawal),
             "Clock" => Ok(Self::Clock),
             "Channel" => Ok(Self::Channel),
+            "BalanceAccumulator" => Ok(Self::BalanceAccumulator),
+            "DelegationAccumulator" => Ok(Self::DelegationAccumulator),
             _ => Err(format!("Unknown object type: {}", s)),
         }
     }
@@ -254,6 +258,16 @@ impl From<crate::types::Owner> for Owner {
                 OwnerKind::Shared
             }
             Immutable => OwnerKind::Immutable,
+            Accumulator { kind: acc_kind } => {
+                message.accumulator_kind = Some(
+                    match acc_kind {
+                        crate::types::AccumulatorKind::Balance => "BALANCE",
+                        crate::types::AccumulatorKind::Delegation => "DELEGATION",
+                    }
+                    .to_string(),
+                );
+                OwnerKind::Accumulator
+            }
             _ => OwnerKind::Unknown,
         };
 
@@ -281,6 +295,20 @@ impl TryFrom<&Owner> for crate::types::Owner {
 
             OwnerKind::Shared => Self::Shared(value.version()),
             OwnerKind::Immutable => Self::Immutable,
+            OwnerKind::Accumulator => {
+                let kind_str = value.accumulator_kind().to_string();
+                let kind = match kind_str.as_str() {
+                    "BALANCE" => crate::types::AccumulatorKind::Balance,
+                    "DELEGATION" => crate::types::AccumulatorKind::Delegation,
+                    other => {
+                        return Err(TryFromProtoError::invalid(
+                            "accumulator_kind",
+                            format!("unknown accumulator kind: {other}"),
+                        ));
+                    }
+                };
+                Self::Accumulator { kind }
+            }
         }
         .pipe(Ok)
     }

@@ -164,6 +164,11 @@ pub enum OwnerDisplay {
     AddressOwner { address: SomaAddress },
     Shared { initial_shared_version: Version },
     Immutable,
+    /// Stage 14a: system-managed accumulator (account-balance or
+    /// F1 delegation). The kind discriminator is rendered as a
+    /// human-readable string ("balance" / "delegation") so JSON
+    /// consumers can branch on it without parsing the SDK enum.
+    Accumulator { kind: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -187,12 +192,19 @@ impl TransactionStatus {
 
 impl From<Owner> for OwnerDisplay {
     fn from(owner: Owner) -> Self {
+        use types::object::AccumulatorKind;
         match owner {
             Owner::AddressOwner(address) => OwnerDisplay::AddressOwner { address },
             Owner::Shared { initial_shared_version } => {
                 OwnerDisplay::Shared { initial_shared_version }
             }
             Owner::Immutable => OwnerDisplay::Immutable,
+            Owner::Accumulator { kind } => OwnerDisplay::Accumulator {
+                kind: match kind {
+                    AccumulatorKind::Balance => "balance".to_string(),
+                    AccumulatorKind::Delegation => "delegation".to_string(),
+                },
+            },
         }
     }
 }
@@ -382,6 +394,7 @@ impl TransactionResponse {
                     format!("Shared (v{})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
+                OwnerDisplay::Accumulator { kind } => format!("Accumulator ({kind})"),
             };
             builder.push_record([
                 obj.object_id.to_string(),
@@ -879,6 +892,7 @@ impl Display for ObjectOutput {
                     format!("Shared (initial version: {})", initial_shared_version.value())
                 }
                 OwnerDisplay::Immutable => "Immutable".to_string(),
+                OwnerDisplay::Accumulator { kind } => format!("Accumulator ({kind})"),
             };
             builder.push_record(["Owner", &owner_str]);
         }

@@ -8,7 +8,11 @@ use crate::utils::merge::Merge;
 
 impl From<crate::types::BalanceChange> for BalanceChange {
     fn from(value: crate::types::BalanceChange) -> Self {
-        Self { address: Some(value.address.to_string()), amount: Some(value.amount.to_string()) }
+        Self {
+            address: Some(value.address.to_string()),
+            amount: Some(value.amount.to_string()),
+            coin_type: Some(value.coin_type),
+        }
     }
 }
 
@@ -23,6 +27,9 @@ impl Merge<&crate::types::BalanceChange> for BalanceChange {
         }
         if mask.contains(Self::AMOUNT_FIELD) {
             self.amount = Some(source.amount.to_string());
+        }
+        if mask.contains(Self::COIN_TYPE_FIELD) {
+            self.coin_type = Some(source.coin_type.clone());
         }
     }
 }
@@ -40,6 +47,7 @@ impl TryFrom<&BalanceChange> for crate::types::BalanceChange {
                 .amount()
                 .parse()
                 .map_err(|e| TryFromProtoError::invalid(BalanceChange::AMOUNT_FIELD, e))?,
+            coin_type: value.coin_type().to_owned(),
         })
     }
 }

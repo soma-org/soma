@@ -1,0 +1,6 @@
+---
+source: protocol-config/src/lib.rs
+assertion_line: 517
+expression: config.feature_map()
+---
+{}

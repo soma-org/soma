@@ -95,6 +95,10 @@ fn owner_info(owner: &Owner) -> (StoredOwnerKind, Vec<u8>) {
         Owner::AddressOwner(address) => (StoredOwnerKind::Address, address.to_vec()),
         Owner::Shared { .. } => (StoredOwnerKind::Shared, vec![]),
         Owner::Immutable => (StoredOwnerKind::Immutable, vec![]),
+        // Stage 14a: accumulator objects have no externally-meaningful
+        // owner address. The accumulator kind (Balance vs Delegation)
+        // is recoverable from the object's ObjectType when needed.
+        Owner::Accumulator { .. } => (StoredOwnerKind::Accumulator, vec![]),
     }
 }
 

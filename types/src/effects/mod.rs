@@ -10,7 +10,9 @@ use object_change::{EffectsObjectChange, IDOperation, ObjectIn, ObjectOut};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::balance::BalanceEvent;
 use crate::base::{ExecutionDigests, SomaAddress};
+use crate::effects::object_change::AccumulatorWriteV1;
 use crate::committee::{Committee, EpochId};
 use crate::consensus::block::BlockRef;
 use crate::crypto::{
@@ -25,7 +27,7 @@ use crate::object::{
     OBJECT_START_VERSION, ObjectID, ObjectRef, ObjectType, Owner, Version, VersionDigest,
 };
 use crate::storage::WriteKind;
-use crate::temporary_store::SharedInput;
+use crate::temporary_store::{DelegationEvent, SharedInput};
 use crate::tx_fee::TransactionFee;
 pub mod object_change;
 
@@ -93,6 +95,37 @@ pub struct TransactionEffectsV1 {
     /// and in order for a node to catch up and execute it without consensus sequencing,
     /// the version needs to be committed in the effects.
     pub unchanged_shared_objects: Vec<(ObjectID, UnchangedSharedKind)>,
+
+    /// # State families covered by TransactionEffects
+    ///
+    /// Soma tracks three independent state families. Every executor that
+    /// mutates any of them MUST surface that mutation through one of
+    /// these fields so that:
+    ///   - downstream indexers can attribute changes to a tx digest
+    ///     without re-executing,
+    ///   - lagging fullnodes can apply effects without re-execution, and
+    ///   - the per-epoch `GlobalStateHash` covers every change.
+    ///
+    /// 1. **Object store**          → `changed_objects`
+    /// 2. **Account-balance accumulator** (`accumulator_balances` CF)
+    ///                              → `balance_events`
+    /// 3. **F1 delegation rows**    (`delegations` CF)
+    ///                              → `delegation_events`
+    ///
+    /// The unified iterator [`TransactionEffectsAPI::all_state_changes`]
+    /// is the single chokepoint indexers/RPC should walk; adding a new
+    /// state family means extending both this struct and that walker.
+    ///
+    /// Per-tx balance accumulator events emitted by executors during this
+    /// transaction. Source of truth — the `TemporaryStore.balance_events`
+    /// is drained into here at effects-construction time, and the
+    /// authority store applies them straight off the effects struct.
+    pub balance_events: Vec<BalanceEvent>,
+
+    /// Per-tx F1 delegation events emitted by the staking executor and
+    /// epoch reward distribution. Same source-of-truth contract as
+    /// `balance_events`.
+    pub delegation_events: Vec<DelegationEvent>,
 }
 
 impl TransactionEffectsAPI for TransactionEffectsV1 {
@@ -317,6 +350,14 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
                 let output_version_digest = match &change.output_state {
                     ObjectOut::NotExist => None,
                     ObjectOut::ObjectWrite((d, _)) => Some((self.version, *d)),
+                    // Stage 14c: AccumulatorWriteV1 is a per-tx delta
+                    // record, not a full object write. The accumulator
+                    // object's actual mutation rides Settlement's
+                    // effects.changed_objects (with `ObjectWrite`).
+                    // From the perspective of `object_changes` (which
+                    // surfaces user-tx-level object refs), the delta
+                    // record has no version/digest of its own.
+                    ObjectOut::AccumulatorWriteV1(_) => None,
                 };
 
                 ObjectChange {
@@ -330,6 +371,24 @@ impl TransactionEffectsAPI for TransactionEffectsV1 {
 
                     id_operation: change.id_operation,
                 }
+            })
+            .collect()
+    }
+
+    fn balance_events(&self) -> &[BalanceEvent] {
+        &self.balance_events
+    }
+
+    fn delegation_events(&self) -> &[DelegationEvent] {
+        &self.delegation_events
+    }
+
+    fn accumulator_events(&self) -> Vec<(ObjectID, AccumulatorWriteV1)> {
+        self.changed_objects
+            .iter()
+            .filter_map(|(id, change)| match &change.output_state {
+                ObjectOut::AccumulatorWriteV1(write) => Some((*id, *write)),
+                ObjectOut::ObjectWrite(_) | ObjectOut::NotExist => None,
             })
             .collect()
     }
@@ -347,6 +406,8 @@ impl TransactionEffectsV1 {
         dependencies: Vec<TransactionDigest>,
         transaction_fee: TransactionFee,
         gas_object: Option<ObjectID>,
+        balance_events: Vec<BalanceEvent>,
+        delegation_events: Vec<DelegationEvent>,
     ) -> Self {
         let unchanged_shared_objects = shared_objects
             .into_iter()
@@ -387,6 +448,8 @@ impl TransactionEffectsV1 {
             unchanged_shared_objects,
             dependencies,
             transaction_fee,
+            balance_events,
+            delegation_events,
         };
         #[cfg(debug_assertions)]
         result.check_invariant();
@@ -452,6 +515,26 @@ impl TransactionEffectsV1 {
                         assert!(!new_owner.is_shared(), "Cannot share an existing object");
                     }
                 }
+                // Stage 14c: per-tx accumulator delta records.
+                //
+                // `AccumulatorWriteV1` is a per-tx delta — the
+                // accumulator object's actual state mutation rides
+                // Settlement's effects (with a normal `ObjectWrite`).
+                // The user-tx side records:
+                //   - input_state = ObjectIn::NotExist (no actual
+                //     read of the accumulator object, just an
+                //     emitted delta), and
+                //   - id_operation = IDOperation::None (delta records
+                //     don't create or delete object IDs themselves).
+                // Multiple txs in a commit can emit deltas to the
+                // same accumulator address without write-conflict;
+                // settlement aggregates them serially.
+                (ObjectIn::NotExist, ObjectOut::AccumulatorWriteV1(_), IDOperation::None) => {
+                    // valid per-tx delta record. No further invariant
+                    // to check here — the magnitude/operation are
+                    // bounded by reservations and conservation laws
+                    // enforced at the executor + settlement layer.
+                }
                 _ => {
                     panic!("Impossible object change: {:?}, {:?}", id, change);
                 }
@@ -477,6 +560,8 @@ impl TransactionEffects {
         dependencies: Vec<TransactionDigest>,
         transaction_fee: TransactionFee,
         gas_object: Option<ObjectID>,
+        balance_events: Vec<BalanceEvent>,
+        delegation_events: Vec<DelegationEvent>,
     ) -> Self {
         TransactionEffects::V1(TransactionEffectsV1::new(
             status,
@@ -488,6 +573,8 @@ impl TransactionEffects {
             dependencies,
             transaction_fee,
             gas_object,
+            balance_events,
+            delegation_events,
         ))
     }
 
@@ -532,6 +619,8 @@ impl Default for TransactionEffectsV1 {
             unchanged_shared_objects: vec![],
             transaction_fee: TransactionFee::default(),
             gas_object_index: None,
+            balance_events: vec![],
+            delegation_events: vec![],
         }
     }
 }
@@ -606,6 +695,65 @@ pub trait TransactionEffectsAPI {
     fn gas_object(&self) -> (ObjectRef, Owner);
 
     fn object_changes(&self) -> Vec<ObjectChange>;
+
+    /// Per-tx account-balance accumulator events emitted by executors.
+    /// Mirrors Sui's `accumulator_events()`. Indexers and the persistent
+    /// store both source from this — never re-execute to recover them.
+    fn balance_events(&self) -> &[BalanceEvent];
+
+    /// Per-tx F1 delegation events emitted by staking and epoch reward
+    /// distribution. Same source-of-truth contract as `balance_events`.
+    fn delegation_events(&self) -> &[DelegationEvent];
+
+    /// Stage 14c: per-tx accumulator-delta records.
+    ///
+    /// Filters `changed_objects` for entries whose `output_state` is
+    /// `ObjectOut::AccumulatorWriteV1`. These are the SIP-58-style
+    /// records emitted by balance-touching executors. Indexers,
+    /// RPC, and the settlement system tx all read from here rather
+    /// than reconstructing deltas any other way.
+    ///
+    /// During the 14c migration, executors gradually move from
+    /// emitting `BalanceEvent`s to emitting `AccumulatorWriteV1`
+    /// entries. While both coexist, indexers should consume both
+    /// (per-tx attribution comes from whichever an executor produced).
+    fn accumulator_events(&self) -> Vec<(ObjectID, AccumulatorWriteV1)>;
+
+    /// Single chokepoint that visits every state change recorded in
+    /// these effects. Preferred over directly walking individual fields:
+    /// adding a new state family means extending this iterator and the
+    /// `TransactionEffectsV1` struct, so no integration point can
+    /// silently drift behind.
+    fn all_state_changes(&self) -> AllStateChanges {
+        AllStateChanges {
+            object_changes: self.object_changes(),
+            balance_events: self.balance_events().to_vec(),
+            delegation_events: self.delegation_events().to_vec(),
+            accumulator_events: self.accumulator_events(),
+        }
+    }
+}
+
+/// Result of [`TransactionEffectsAPI::all_state_changes`]. Holds every
+/// state-mutating record this tx produced across all three families
+/// (object store, balance accumulator, F1 delegations) so consumers
+/// have a single iterator to walk.
+#[derive(Debug, Clone)]
+pub struct AllStateChanges {
+    pub object_changes: Vec<ObjectChange>,
+    pub balance_events: Vec<BalanceEvent>,
+    pub delegation_events: Vec<DelegationEvent>,
+    pub accumulator_events: Vec<(ObjectID, AccumulatorWriteV1)>,
+}
+
+impl AllStateChanges {
+    /// True when this transaction touched none of the four state families.
+    pub fn is_empty(&self) -> bool {
+        self.object_changes.is_empty()
+            && self.balance_events.is_empty()
+            && self.delegation_events.is_empty()
+            && self.accumulator_events.is_empty()
+    }
 }
 
 pub type TransactionEffectsEnvelope<S> = Envelope<TransactionEffects, S>;

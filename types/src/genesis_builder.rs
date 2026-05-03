@@ -609,6 +609,37 @@ impl GenesisBuilder {
         // readers in parallel.
         objects.push(Object::new_genesis_clock());
 
+        // Stage 14a: dual-write the genesis balance and delegation
+        // state as accumulator OBJECTS in addition to the CF maps
+        // returned below. Stage 14a only creates these objects; the
+        // runtime continues to read from the CF rows. Stages 14b–14d
+        // flip the runtime to source from the accumulator objects and
+        // eventually drop the CFs entirely. By creating the objects
+        // at genesis now, the migration boundary lands at the next
+        // protocol version flip rather than requiring a state-import
+        // pass on already-launched networks.
+        for (&(owner, coin_type), &balance) in &balances {
+            // Skip zero-balance rows — the BTreeMap entry exists but
+            // there's no point materializing an object for it. Stage
+            // 14b's dual-read path treats "absent object" the same as
+            // "zero balance".
+            if balance == 0 {
+                continue;
+            }
+            let acc = crate::accumulator::BalanceAccumulator::new(owner, coin_type, balance);
+            objects.push(Object::new_balance_accumulator(acc, TransactionDigest::default()));
+        }
+
+        for (&(pool_id, staker), &principal) in &delegations {
+            if principal == 0 {
+                continue;
+            }
+            let acc = crate::accumulator::DelegationAccumulator::new(
+                pool_id, staker, principal, /* last_collected_period */ 0,
+            );
+            objects.push(Object::new_delegation_accumulator(acc, TransactionDigest::default()));
+        }
+
         (system_state, objects, balances, delegations)
     }
 

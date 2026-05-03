@@ -129,6 +129,13 @@ pub fn execute_transaction(
         types::object::ObjectID,
         types::system_state::staking::Delegation,
     >,
+    // Stage 14c.7: pre-loaded `Owner::Accumulator` objects for the
+    // settlement system tx. The SettlementScheduler reads each
+    // touched accumulator from the cache at dispatch time and passes
+    // them through here so the settlement executor can mutate them
+    // via `mutate_input_object` without going through the standard
+    // InputObjectKind pipeline. Empty for every other tx kind.
+    pre_loaded_accumulators: Vec<types::object::Object>,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
@@ -146,6 +153,62 @@ pub fn execute_transaction(
         chain,
     );
     temporary_store.prefetched_delegations = prefetched_delegations;
+
+    // SIP-58 single-path replay-safety: for the per-cp Settlement
+    // system tx, load every BalanceAccumulator / DelegationAccumulator
+    // object referenced in `settlement.changes` / `delegation_changes`
+    // **directly from the canonical object store** (the `store: &dyn
+    // ObjectStore` argument), not from `ExecutionEnv`. This makes
+    // settlement effects deterministic across:
+    //   - the original-execution path (driven by SettlementScheduler
+    //     after the cp builder publishes the TX), AND
+    //   - state-sync / checkpoint replay (which doesn't go through
+    //     SettlementScheduler at all — `ExecutionEnv::pre_loaded_accumulators`
+    //     is empty in that path).
+    // For non-Settlement transactions the `pre_loaded_accumulators`
+    // arg passes through unchanged.
+    //
+    // Settlement tx-data has no traditional inputs, so its
+    // `lamport_timestamp` defaults to `Version::MIN + 1 = 1`. Fold
+    // each accumulator's prior version into `lamport_timestamp` so
+    // the settlement always lands at one above the highest input.
+    let resolved_accumulators: Vec<types::object::Object> = if let TransactionKind::Settlement(
+        settlement,
+    ) = &kind
+    {
+        use types::accumulator::{BalanceAccumulator, DelegationAccumulator};
+        let mut out: Vec<types::object::Object> = Vec::new();
+        let mut seen: std::collections::HashSet<types::object::ObjectID> =
+            std::collections::HashSet::new();
+        for ev in &settlement.changes {
+            let id = BalanceAccumulator::derive_id(ev.owner(), ev.coin_type());
+            if seen.insert(id) {
+                if let Some(obj) = store.get_object(&id) {
+                    out.push(obj);
+                }
+            }
+        }
+        for de in &settlement.delegation_changes {
+            let id = DelegationAccumulator::derive_id(de.pool_id, de.staker);
+            if seen.insert(id) {
+                if let Some(obj) = store.get_object(&id) {
+                    out.push(obj);
+                }
+            }
+        }
+        out
+    } else {
+        pre_loaded_accumulators
+    };
+
+    for acc in resolved_accumulators {
+        let acc_version = acc.version();
+        temporary_store.add_object_from_store(acc);
+        if acc_version.value() >= temporary_store.lamport_timestamp.value() {
+            temporary_store.lamport_timestamp =
+                types::object::Version::lamport_increment([acc_version]);
+        }
+    }
 
     let mut executor = create_executor(&kind);
 
@@ -662,7 +725,10 @@ fn handle_shared_object_transaction(
         })
         .collect();
 
-    // Create effects
+    // Create effects. This path is the legacy/object-only construction
+    // (used by some test/synthetic flows that don't run through
+    // TemporaryStore::into_effects). It emits no balance/delegation
+    // events because no executor mutates those families on this path.
     let effects = TransactionEffects::new(
         execution_status.clone(),
         epoch_id,
@@ -673,6 +739,8 @@ fn handle_shared_object_transaction(
         transaction_dependencies.into_iter().collect(),
         final_transaction_fee, // Include transaction fee
         gas_result.primary_gas_id,
+        Vec::new(),
+        Vec::new(),
     );
 
     // Create InnerTemporaryStore
@@ -682,8 +750,6 @@ fn handle_shared_object_transaction(
         mutable_inputs,
         Version::MAX,    // Use MAX as lamport_timestamp
         BTreeMap::new(), // No deleted shared objects
-        Vec::new(),      // No balance events emitted on this path
-        Vec::new(),      // No delegation events emitted on this path
     );
 
     (inner_store, effects, execution_error)
@@ -711,6 +777,8 @@ fn error_result(
         transaction_dependencies.into_iter().collect(),
         transaction_fee,
         gas_object,
+        Vec::new(),
+        Vec::new(),
     );
 
     let inner_store = InnerTemporaryStore::new(
@@ -719,8 +787,6 @@ fn error_result(
         BTreeMap::new(),
         Version::MAX,
         BTreeMap::new(),
-        Vec::new(),
-        Vec::new(),
     );
 
     (inner_store, effects, execution_error)

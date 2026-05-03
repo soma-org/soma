@@ -1,0 +1,23 @@
+---
+source: protocol-config/src/lib.rs
+assertion_line: 463
+expression: "ProtocolConfig::get_for_version(version, *chain)"
+---
+version: 6
+feature_flags: {}
+min_checkpoint_interval_ms: 200
+consensus_max_transaction_size_bytes: 262144
+consensus_max_transactions_in_block_bytes: 524288
+consensus_max_num_transactions_in_block: 512
+consensus_gc_depth: 60
+consensus_commit_rate_estimation_window_size: 10
+consensus_bad_nodes_stake_threshold: 30
+mysticeti_num_leaders_per_round: 1
+max_transactions_per_checkpoint: 20000
+max_checkpoint_size_bytes: 31457280
+buffer_stake_for_protocol_upgrade_bps: 5000
+epoch_duration_ms: 86400000
+reward_slashing_rate_bps: 5000
+unit_fee: 1000
+execution_version: 2
+channel_grace_period_ms: 600000

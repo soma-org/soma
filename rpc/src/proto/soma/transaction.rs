@@ -833,6 +833,15 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                         .ok_or_else(|| TryFromProtoError::missing("settlement.round"))?,
                     sub_dag_index: settlement.sub_dag_index,
                     changes,
+                    // Stage 14d: proto has not been extended for
+                    // delegation_changes yet; the wire shape stays
+                    // balance-only at this layer. Empty here means
+                    // proto-roundtripped settlements lose delegation
+                    // metadata, which is fine as long as proto isn't
+                    // used for inter-validator routing (it isn't —
+                    // SettlementScheduler dispatches via the in-process
+                    // ExecutionScheduler, not over the network).
+                    delegation_changes: vec![],
                 })
             }
 

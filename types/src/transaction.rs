@@ -699,8 +699,14 @@ pub struct SettlementTransaction {
     /// Sub-DAG index, populated when a round has multiple commits.
     /// Mirrors `ConsensusCommitPrologueV1::sub_dag_index`.
     pub sub_dag_index: Option<u64>,
-    /// Aggregated net per-(owner, coin_type) deltas. May be empty.
+    /// Aggregated net per-(owner, coin_type) balance deltas for the
+    /// `BalanceAccumulator` family. May be empty.
     pub changes: Vec<crate::balance::BalanceEvent>,
+    /// Stage 14d: aggregated per-(pool_id, staker) delegation deltas
+    /// for the `DelegationAccumulator` family. Each entry carries a
+    /// signed principal delta and an optional `set_period` advancing
+    /// the F1 collection mark. May be empty.
+    pub delegation_changes: Vec<crate::temporary_store::DelegationEvent>,
 }
 
 /// # CertificateProof
@@ -1556,12 +1562,14 @@ impl VerifiedTransaction {
         round: u64,
         sub_dag_index: Option<u64>,
         changes: Vec<crate::balance::BalanceEvent>,
+        delegation_changes: Vec<crate::temporary_store::DelegationEvent>,
     ) -> Self {
         TransactionKind::Settlement(crate::transaction::SettlementTransaction {
             epoch,
             round,
             sub_dag_index,
             changes,
+            delegation_changes,
         })
         .pipe(Self::new_system_transaction)
     }

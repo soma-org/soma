@@ -124,6 +124,22 @@ pub struct ExecutionEnv {
     /// Transactions that must finish before this transaction can be executed.
     /// Used to schedule barrier transactions after non-exclusive writes.
     pub barrier_dependencies: Vec<TransactionDigest>,
+
+    /// Stage 14c.7: pre-loaded `Owner::Accumulator` objects for the
+    /// settlement system tx. The [`SettlementScheduler`] reads each
+    /// touched accumulator object from the cache at dispatch time
+    /// and passes it through here so the settlement executor can
+    /// `mutate_input_object` it without going through the standard
+    /// `InputObjectKind` pipeline (accumulator objects can't be
+    /// declared as `ImmOrOwnedObject` or `SharedObject` cleanly —
+    /// they have a system-managed `Owner::Accumulator`).
+    ///
+    /// Empty for every other tx kind. The input loader merges these
+    /// into `temp_store.input_objects` after the standard loading
+    /// step runs.
+    ///
+    /// [`SettlementScheduler`]: crate::settlement_scheduler::SettlementScheduler
+    pub pre_loaded_accumulators: Vec<types::object::Object>,
 }
 
 impl Default for ExecutionEnv {
@@ -133,6 +149,7 @@ impl Default for ExecutionEnv {
             expected_effects_digest: None,
             scheduling_source: SchedulingSource::NonFastPath,
             barrier_dependencies: Default::default(),
+            pre_loaded_accumulators: Vec::new(),
         }
     }
 }
@@ -165,6 +182,16 @@ impl ExecutionEnv {
         barrier_dependencies: BTreeSet<TransactionDigest>,
     ) -> Self {
         self.barrier_dependencies = barrier_dependencies.into_iter().collect();
+        self
+    }
+
+    /// Stage 14c.7: attach pre-loaded accumulator objects for the
+    /// settlement system tx. See `ExecutionEnv::pre_loaded_accumulators`.
+    pub fn with_pre_loaded_accumulators(
+        mut self,
+        accumulators: Vec<types::object::Object>,
+    ) -> Self {
+        self.pre_loaded_accumulators = accumulators;
         self
     }
 }
@@ -873,6 +900,7 @@ impl AuthorityState {
             input_objects,
             expected_effects_digest,
             epoch_store,
+            execution_env.pre_loaded_accumulators,
         )
     }
 
@@ -914,6 +942,7 @@ impl AuthorityState {
         input_objects: InputObjects,
         expected_effects_digest: Option<TransactionEffectsDigest>,
         epoch_store: &Arc<AuthorityPerEpochStore>,
+        pre_loaded_accumulators: Vec<types::object::Object>,
     ) -> ExecutionOutput<(TransactionOutputs, Option<ExecutionError>)> {
         // The cost of partially re-auditing a transaction before execution is tolerated.
         // This step is required for correctness because, for example, ConsensusAddressOwner
@@ -1001,6 +1030,7 @@ impl AuthorityState {
             epoch_store.get_chain(),
             sender_usdc_balance,
             prefetched_delegations,
+            pre_loaded_accumulators,
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1166,6 +1196,10 @@ impl AuthorityState {
             epoch_store.get_chain(),
             sender_usdc_balance,
             prefetched_delegations,
+            // This `dry_run`-style execution path is for testing/
+            // simulation — settlement isn't dispatched here, so no
+            // accumulator pre-loading is needed.
+            Vec::new(),
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {
@@ -1351,6 +1385,8 @@ impl AuthorityState {
             tx_ready_certificates,
             &epoch_store,
         ));
+        // Stage 14c.5e: SettlementScheduler holds a clone of the
+        // ExecutionScheduler. Routes incoming schedulables —
         let (tx_execution_shutdown, rx_execution_shutdown) = oneshot::channel();
 
         let _authority_per_epoch_pruner = AuthorityPerEpochStorePruner::new(
@@ -2370,7 +2406,14 @@ impl AuthorityState {
         info!("Input objects for advance epoch: {:?}", input_objects);
 
         let (transaction_outputs, _execution_error_opt) = self
-            .execute_certificate(&execution_guard, &executable_tx, input_objects, None, epoch_store)
+            .execute_certificate(
+                &execution_guard,
+                &executable_tx,
+                input_objects,
+                None,
+                epoch_store,
+                Vec::new(),
+            )
             .unwrap();
         let system_obj = get_system_state(&transaction_outputs.written)
             .expect("change epoch tx must write to system object");

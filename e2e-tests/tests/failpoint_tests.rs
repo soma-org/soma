@@ -609,3 +609,132 @@ async fn test_crash_during_reconfig_with_tx_load() {
 
     clear_fail_point("before-open-new-epoch-store");
 }
+
+/// Stage 14d safety. Kill one validator in the crash window between
+/// user-tx writeback (effects + per-tx CF on disk) and settlement
+/// publish (the in-memory `notify_settlement_transactions_ready` call
+/// the cp builder makes). This is the SIP-58 single-path's most
+/// load-bearing recovery case: we dropped per-tx accumulator-CF drains
+/// in stage 14d step 3, so until the settlement TX runs the
+/// `accumulator_balances` CF lags behind the user-tx effects. If
+/// crash recovery doesn't re-run settlement, the lag becomes
+/// permanent. Recovery is built into the architecture
+/// (`pending_checkpoint` on disk has the `settlement_root`; on restart
+/// the cp builder re-runs `construct_and_execute_settlement`
+/// deterministically against the same user-tx effects) — this test
+/// proves it under fault injection.
+#[cfg(msim)]
+#[msim::sim_test]
+async fn test_crash_after_user_effects_before_settlement_publish() {
+    init_tracing();
+
+    static CRASHED: AtomicBool = AtomicBool::new(false);
+
+    register_fail_point("crash-after-user-effects-before-settlement-publish", || {
+        if !CRASHED.swap(true, Ordering::SeqCst) {
+            info!("failpoint: killing node between user-tx writeback and settlement publish");
+            msim::task::kill_current_node(Some(Duration::from_secs(1)));
+        }
+    });
+
+    let test_cluster =
+        TestClusterBuilder::new().with_num_validators(7).with_epoch_duration_ms(5000).build().await;
+
+    let sender = test_cluster.get_addresses()[0];
+    let recipient = types::base::SomaAddress::random();
+
+    // Submit a balance transfer that produces accumulator events (so
+    // the cp builder's settlement path is exercised — without events
+    // the failpoint is never reached). Wait for it to land in a cp on
+    // all validators, which only succeeds if the killed validator
+    // re-runs settlement after restart.
+    let tx_data = e2e_tests::balance_transfer_data(
+        &test_cluster,
+        types::object::CoinType::Usdc,
+        sender,
+        vec![(recipient, 1_000)],
+    );
+    let response = test_cluster.sign_and_execute_transaction(&tx_data).await;
+    assert!(response.effects.status().is_ok());
+    let user_tx_digest = *response.effects.transaction_digest();
+
+    // Drive a couple more epochs while traffic continues so any post-
+    // crash recovery that requires consensus to re-deliver pending
+    // commits has time to play out.
+    let target_epoch = 2u64;
+    let system_state = test_cluster
+        .wait_for_epoch_with_timeout(Some(target_epoch), Duration::from_secs(120))
+        .await;
+    assert!(system_state.epoch() >= target_epoch);
+    assert!(CRASHED.load(Ordering::SeqCst), "failpoint should have fired");
+
+    // Every validator (including the one that was killed mid-cp)
+    // must end up with the user tx durably executed AND the
+    // settlement that accompanies it durably applied. The is_tx
+    // poll only proves "the cp containing user_tx eventually
+    // executed"; on top of that we read both the
+    // `accumulator_balances` CF (`get_balance`) and the
+    // `BalanceAccumulator` object world (`get_balance_via_object`)
+    // and assert (a) the recipient's balance equals 1_000 in both
+    // stores on every validator, and (b) the two stores agree.
+    //
+    // Together those assertions catch:
+    //  - skip-apply (settlement never re-ran post-restart)        → balance == 0
+    //  - double-apply (settlement applied twice on recovery)      → balance == 2_000
+    //  - CF/object divergence (one path re-applied, other didn't) → cf != object
+    // Polling because the killed node's restart and state-sync
+    // take wall time.
+    for _ in 0..600 {
+        let observations: Vec<_> = test_cluster
+            .swarm
+            .validator_node_handles()
+            .into_iter()
+            .map(|h| {
+                h.with(|node| {
+                    let db = node.state().database_for_testing();
+                    let executed = db.is_tx_already_executed(&user_tx_digest).unwrap_or(false);
+                    let cf_balance = db
+                        .get_balance(recipient, types::object::CoinType::Usdc)
+                        .unwrap_or(u64::MAX);
+                    let obj_balance = db
+                        .get_balance_via_object(recipient, types::object::CoinType::Usdc)
+                        .unwrap_or(u64::MAX);
+                    (executed, cf_balance, obj_balance)
+                })
+            })
+            .collect();
+
+        let all_consistent = observations
+            .iter()
+            .all(|(executed, cf, obj)| *executed && *cf == 1_000 && *obj == 1_000);
+        if all_consistent {
+            info!("crash-after-user-effects-before-settlement-publish test passed");
+            clear_fail_point("crash-after-user-effects-before-settlement-publish");
+            return;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    // Final dump on failure so a regression is debuggable.
+    let observations: Vec<_> = test_cluster
+        .swarm
+        .validator_node_handles()
+        .into_iter()
+        .map(|h| {
+            h.with(|node| {
+                let db = node.state().database_for_testing();
+                (
+                    db.is_tx_already_executed(&user_tx_digest).unwrap_or(false),
+                    db.get_balance(recipient, types::object::CoinType::Usdc)
+                        .unwrap_or(u64::MAX),
+                    db.get_balance_via_object(recipient, types::object::CoinType::Usdc)
+                        .unwrap_or(u64::MAX),
+                )
+            })
+        })
+        .collect();
+    panic!(
+        "post-recovery state diverged. (executed, cf_balance, obj_balance) per validator: \
+         {observations:?}"
+    );
+}

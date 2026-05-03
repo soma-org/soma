@@ -2,11 +2,19 @@ syntax = "proto3";
 
 package soma.rpc;
 
-// The delta, or change, in balance for an address for a particular `Coin` type.
+// The delta, or change, in balance for an address for a particular coin type.
+//
+// Stage 13m: `coin_type` is now populated. Previously implicit (single
+// native coin); the address-balance accumulator keys per `(address,
+// coin_type)`, so each tx can produce multiple BalanceChange entries
+// for one address — one per coin type touched.
 message BalanceChange {
   // The account address that is affected by this balance change event.
   optional string address = 1;
 
   // The amount or change in balance.
   optional string amount = 2;
+
+  // Coin denomination this delta applies to (e.g. "SOMA", "USDC").
+  optional string coin_type = 3;
 }

@@ -420,7 +420,7 @@ impl IndexStoreTables {
                         let owner_key = OwnerIndexKey::from_object(removed_object);
                         batch.delete_batch(&self.owner, [owner_key])?;
                     }
-                    Owner::Shared { .. } | Owner::Immutable => {}
+                    Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                 }
             }
 
@@ -432,7 +432,7 @@ impl IndexStoreTables {
                             let owner_key = OwnerIndexKey::from_object(old_object);
                             batch.delete_batch(&self.owner, [owner_key])?;
                         }
-                        Owner::Shared { .. } | Owner::Immutable => {}
+                        Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                     }
                 }
 
@@ -442,7 +442,7 @@ impl IndexStoreTables {
                         let owner_info = OwnerIndexInfo::new(object);
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
                     }
-                    Owner::Shared { .. } | Owner::Immutable => {}
+                    Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                 }
             }
         }
@@ -527,7 +527,7 @@ impl IndexStoreTables {
                                 let owner_key = OwnerIndexKey::from_object(old_object);
                                 batch.delete_batch(&self.owner, [owner_key])?;
                             }
-                            Owner::Shared { .. } | Owner::Immutable => {}
+                            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
                         }
 
                     }
@@ -571,7 +571,7 @@ impl IndexStoreTables {
                         batch.insert_batch(&self.owner, [(owner_key, owner_info)])?;
                     }
                 }
-                Owner::Shared { .. } | Owner::Immutable => {}
+                Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
             }
 
         }
@@ -988,7 +988,7 @@ impl LiveObjectIndexer for RpcLiveObjectIndexer<'_> {
                 // to do for coin-typed objects.
             }
 
-            Owner::Shared { .. } | Owner::Immutable => {}
+            Owner::Shared { .. } | Owner::Immutable | Owner::Accumulator { .. } => {}
         }
 
         // If the batch size grows to greater than the limit then write out to the DB so that the

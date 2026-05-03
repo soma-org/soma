@@ -38,6 +38,24 @@ impl ObjectExecutor {
         for object_ref in &object_refs {
             let object_id = object_ref.0;
             let object = store.read_object(&object_id).unwrap();
+
+            // Stage 14a: accumulator objects are system-managed and
+            // must never be transferable by user transactions.
+            // `check_ownership` would already reject them because they
+            // have no `AddressOwner`, but the resulting
+            // `InvalidOwnership` error is misleading; reject up-front
+            // with a dedicated reason so the failure mode is named
+            // correctly. This is defense-in-depth: the transaction
+            // input check layer also blocks this path.
+            if object.owner().is_accumulator() {
+                return Err(ExecutionFailureStatus::InvalidArguments {
+                    reason: format!(
+                        "Cannot transfer accumulator object {object_id:?}: \
+                         accumulator objects are system-managed and not transferable",
+                    ),
+                });
+            }
+
             check_ownership(&object, signer)?;
 
             // Update object ownership

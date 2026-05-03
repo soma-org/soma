@@ -10,8 +10,10 @@
 #![allow(clippy::nonminimal_bool)]
 #![allow(clippy::unnecessary_unwrap)]
 
+pub mod accumulators;
 pub mod audit_service;
 pub mod authority;
+pub mod settlement_scheduler;
 pub mod authority_aggregator;
 pub mod authority_client;
 pub mod authority_per_epoch_store;

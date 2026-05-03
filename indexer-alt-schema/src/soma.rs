@@ -5,12 +5,27 @@ use diesel::prelude::*;
 use soma_field_count::FieldCount;
 
 use crate::schema::soma_asks;
+use crate::schema::soma_balance_deltas;
 use crate::schema::soma_bids;
 use crate::schema::soma_epoch_state;
 use crate::schema::soma_settlements;
 use crate::schema::soma_staked_soma;
 use crate::schema::soma_validators;
 use crate::schema::soma_vaults;
+
+/// Stage 13m: per-checkpoint signed balance delta for one
+/// `(owner, coin_type)`. The pipeline emits one row per
+/// `(owner, coin_type, cp_sequence_number)` whose contents differ
+/// (i.e. some tx in the cp touched that balance). Current balance is
+/// the SUM of `delta` over all rows for the `(owner, coin_type)`.
+#[derive(Insertable, Debug, Clone, FieldCount, Queryable)]
+#[diesel(table_name = soma_balance_deltas)]
+pub struct StoredBalanceDelta {
+    pub owner: Vec<u8>,
+    pub coin_type: String,
+    pub cp_sequence_number: i64,
+    pub delta: i64,
+}
 
 #[derive(Insertable, Debug, Clone, FieldCount)]
 #[diesel(table_name = soma_staked_soma)]

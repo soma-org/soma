@@ -180,6 +180,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    soma_balance_deltas (owner, coin_type, cp_sequence_number) {
+        owner -> Bytea,
+        coin_type -> Text,
+        cp_sequence_number -> Int8,
+        delta -> Int8,
+    }
+}
+
+diesel::table! {
     soma_validators (address, epoch) {
         address -> Bytea,
         epoch -> Int8,
@@ -286,6 +295,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     obj_info_deletion_reference,
     obj_versions,
     soma_asks,
+    soma_balance_deltas,
     soma_bids,
     soma_epoch_state,
     soma_settlements,

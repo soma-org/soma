@@ -5,7 +5,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::balance::BalanceEvent;
 use crate::base::{FullObjectID, SomaAddress};
 use crate::committee::EpochId;
 use crate::effects::{TransactionEffects, TransactionEffectsAPI};
@@ -18,6 +17,14 @@ use crate::transaction::{TransactionData, VerifiedTransaction};
 pub type ObjectMap = BTreeMap<ObjectID, Object>;
 pub type WrittenObjects = BTreeMap<ObjectID, Object>;
 /// TransactionOutputs
+///
+/// Per-tx artifacts the perpetual store needs to persist alongside the
+/// effects struct. Balance/delegation events used to live as dedicated
+/// fields here; Stage 13m made `effects` the single source of truth, so
+/// callers read them via `effects.balance_events()` /
+/// `effects.delegation_events()`. This keeps the dual-path discipline:
+/// any new state family added to effects is automatically visible to
+/// the writer without a parallel field to remember.
 pub struct TransactionOutputs {
     pub transaction: Arc<VerifiedTransaction>,
     pub effects: TransactionEffects,
@@ -29,20 +36,6 @@ pub struct TransactionOutputs {
 
     pub locks_to_delete: Vec<ObjectRef>,
     pub new_locks_to_init: Vec<ObjectRef>,
-
-    /// Balance accumulator events emitted by this transaction. Empty
-    /// for every existing tx kind today (Stage 2 plumbing only); will
-    /// be populated as gas (Stage 6), transfers (Stage 7), and
-    /// channels/staking migrate to the address-balance model. The
-    /// per-commit settlement system tx aggregates these across all
-    /// txs in the commit and applies the net deltas atomically.
-    pub balance_events: Vec<BalanceEvent>,
-
-    /// Stage 9d-C1: F1-shaped delegation events to apply to the
-    /// `delegations` column family. Populated by the staking
-    /// executor alongside the StakedSomaV1 object writes (until
-    /// Stage 9d-C5 deletes the object).
-    pub delegation_events: Vec<crate::temporary_store::DelegationEvent>,
 }
 
 impl TransactionOutputs {
@@ -58,8 +51,6 @@ impl TransactionOutputs {
             mutable_inputs,
             written,
             lamport_version,
-            balance_events,
-            delegation_events,
         } = inner_temporary_store;
 
         let tx_digest = *transaction.digest();
@@ -150,8 +141,6 @@ impl TransactionOutputs {
             written,
             locks_to_delete,
             new_locks_to_init,
-            balance_events,
-            delegation_events,
         }
     }
 }

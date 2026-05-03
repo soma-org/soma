@@ -16,11 +16,18 @@ mod _field_impls {
             number: 2i32,
             message_fields: None,
         };
+        pub const COIN_TYPE_FIELD: &'static MessageField = &MessageField {
+            name: "coin_type",
+            json_name: "coinType",
+            number: 3i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for BalanceChange {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::ADDRESS_FIELD,
             Self::AMOUNT_FIELD,
+            Self::COIN_TYPE_FIELD,
         ];
     }
     impl BalanceChange {
@@ -49,6 +56,10 @@ mod _field_impls {
         }
         pub fn amount(mut self) -> String {
             self.path.push(BalanceChange::AMOUNT_FIELD.name);
+            self.finish()
+        }
+        pub fn coin_type(mut self) -> String {
+            self.path.push(BalanceChange::COIN_TYPE_FIELD.name);
             self.finish()
         }
     }
@@ -721,6 +732,18 @@ mod _field_impls {
             number: 11i32,
             message_fields: None,
         };
+        pub const ACCUMULATOR_OPERATION_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_operation",
+            json_name: "accumulatorOperation",
+            number: 12i32,
+            message_fields: None,
+        };
+        pub const ACCUMULATOR_AMOUNT_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_amount",
+            json_name: "accumulatorAmount",
+            number: 13i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for ChangedObject {
         const FIELDS: &'static [&'static MessageField] = &[
@@ -735,6 +758,8 @@ mod _field_impls {
             Self::OUTPUT_OWNER_FIELD,
             Self::ID_OPERATION_FIELD,
             Self::OBJECT_TYPE_FIELD,
+            Self::ACCUMULATOR_OPERATION_FIELD,
+            Self::ACCUMULATOR_AMOUNT_FIELD,
         ];
     }
     impl ChangedObject {
@@ -799,6 +824,14 @@ mod _field_impls {
         }
         pub fn object_type(mut self) -> String {
             self.path.push(ChangedObject::OBJECT_TYPE_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_operation(mut self) -> String {
+            self.path.push(ChangedObject::ACCUMULATOR_OPERATION_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_amount(mut self) -> String {
+            self.path.push(ChangedObject::ACCUMULATOR_AMOUNT_FIELD.name);
             self.finish()
         }
     }
@@ -2228,12 +2261,19 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
+        pub const ACCUMULATOR_KIND_FIELD: &'static MessageField = &MessageField {
+            name: "accumulator_kind",
+            json_name: "accumulatorKind",
+            number: 4i32,
+            message_fields: None,
+        };
     }
     impl MessageFields for Owner {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::KIND_FIELD,
             Self::ADDRESS_FIELD,
             Self::VERSION_FIELD,
+            Self::ACCUMULATOR_KIND_FIELD,
         ];
     }
     impl Owner {
@@ -2266,6 +2306,10 @@ mod _field_impls {
         }
         pub fn version(mut self) -> String {
             self.path.push(Owner::VERSION_FIELD.name);
+            self.finish()
+        }
+        pub fn accumulator_kind(mut self) -> String {
+            self.path.push(Owner::ACCUMULATOR_KIND_FIELD.name);
             self.finish()
         }
     }

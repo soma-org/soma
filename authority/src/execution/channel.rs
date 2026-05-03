@@ -123,10 +123,12 @@ impl ChannelExecutor {
             args.deposit_amount,
         );
 
-        // Debit the sender's accumulator. The reservation pre-pass
-        // already verified the sender has the funds; settlement
-        // applies the delta atomically with the rest of the commit.
-        store.emit_balance_event(BalanceEvent::withdraw(signer, args.token, args.deposit_amount));
+        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+        store.emit_accumulator_event(
+            types::effects::object_change::AccumulatorAddress::balance(signer, args.token),
+            types::effects::object_change::AccumulatorOperation::Split,
+            args.deposit_amount,
+        );
 
         // Create the Channel shared object.
         let channel_id = ObjectID::derive_id(tx_digest, store.next_creation_num());
@@ -195,7 +197,15 @@ impl ChannelExecutor {
         // decremented, so net accumulator supply is conserved
         // (locked-in-channel ↦ accumulator-held).
         if delta > 0 {
-            store.emit_balance_event(BalanceEvent::deposit(channel.payee, channel.token, delta));
+            // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+            store.emit_accumulator_event(
+                types::effects::object_change::AccumulatorAddress::balance(
+                    channel.payee,
+                    channel.token,
+                ),
+                types::effects::object_change::AccumulatorOperation::Merge,
+                delta,
+            );
         }
 
         Ok(())
@@ -300,7 +310,15 @@ impl ChannelExecutor {
         // supply.
         let remainder = channel.remainder_to_payer();
         if remainder > 0 {
-            store.emit_balance_event(BalanceEvent::deposit(channel.payer, channel.token, remainder));
+            // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
+            store.emit_accumulator_event(
+                types::effects::object_change::AccumulatorAddress::balance(
+                    channel.payer,
+                    channel.token,
+                ),
+                types::effects::object_change::AccumulatorOperation::Merge,
+                remainder,
+            );
         }
         store.delete_input_object(&args.channel_id);
 
@@ -518,13 +536,18 @@ mod tests {
         )
         .expect("OpenChannel succeeds");
 
-        // The accumulator-debit Withdraw event landed on the temp store.
-        // Settlement applies it atomically with the rest of the commit.
-        assert_eq!(
-            store.balance_events(),
-            &[BalanceEvent::withdraw(f.payer, CoinType::Usdc, 100_000)],
-            "OpenChannel must emit a single Withdraw for the deposit",
-        );
+        // Stage 14c.6: user-tx executors emit AccumulatorWriteV1
+        // records; legacy BalanceEvents are gone. The per-cp
+        // SettlementScheduler aggregates these and the per-tx apply
+        // path drains them via accumulator_events into the CF.
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::AccumulatorOperation;
+        let writes = store.accumulator_writes();
+        let payer_id = BalanceAccumulator::derive_id(f.payer, CoinType::Usdc);
+        let w = writes.get(&payer_id).expect("payer's withdraw must exist");
+        assert_eq!(w.operation, AccumulatorOperation::Split);
+        assert_eq!(w.value.as_u64(), 100_000);
+        assert!(store.balance_events().is_empty());
 
         // Channel exists with payer/payee/deposit set correctly.
         let channel_obj = store
@@ -600,14 +623,16 @@ mod tests {
         assert_eq!(updated_channel.deposit, 700);
         assert_eq!(updated_channel.settled_amount, 300);
 
-        // Payee's accumulator is credited via a Deposit event of `delta`.
-        // Channel internal deposit dropped by the same amount, so net
-        // accumulator-supply is conserved.
-        assert_eq!(
-            store.balance_events(),
-            &[BalanceEvent::deposit(f.payee, CoinType::Usdc, 300)],
-            "Settle must emit a single Deposit to the payee for the delta",
-        );
+        // Stage 14c.6: payee's accumulator is credited via an
+        // AccumulatorWriteV1::Merge of `delta`.
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::AccumulatorOperation;
+        let writes = store.accumulator_writes();
+        let payee_id = BalanceAccumulator::derive_id(f.payee, CoinType::Usdc);
+        let w = writes.get(&payee_id).expect("payee's deposit must exist");
+        assert_eq!(w.operation, AccumulatorOperation::Merge);
+        assert_eq!(w.value.as_u64(), 300);
+        assert!(store.balance_events().is_empty());
     }
 
     /// Sequential settles update settled_amount monotonically and
@@ -879,15 +904,18 @@ mod tests {
             store.execution_results.deleted_object_ids.contains(&f.channel_id),
             "channel must be deleted"
         );
-        // Payer's accumulator is credited with the remainder via a
-        // Deposit event (Stage 8 — no coin output). The channel's
-        // internal `deposit` was 700 at this point, so the credit
-        // matches and conserves total supply.
-        assert_eq!(
-            store.balance_events(),
-            &[BalanceEvent::deposit(f.payer, CoinType::Usdc, 700)],
-            "WithdrawAfterTimeout must emit a single Deposit for the remainder",
-        );
+        // Stage 14c.6: payer's accumulator is credited via
+        // AccumulatorWriteV1::Merge of the remainder. The channel's
+        // internal `deposit` was 700, so the credit matches and
+        // conserves total supply.
+        use types::accumulator::BalanceAccumulator;
+        use types::effects::object_change::AccumulatorOperation;
+        let writes = store.accumulator_writes();
+        let payer_id = BalanceAccumulator::derive_id(f.payer, CoinType::Usdc);
+        let w = writes.get(&payer_id).expect("payer's deposit must exist");
+        assert_eq!(w.operation, AccumulatorOperation::Merge);
+        assert_eq!(w.value.as_u64(), 700);
+        assert!(store.balance_events().is_empty());
     }
 
     #[test]

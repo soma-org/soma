@@ -511,16 +511,22 @@ impl AuthorityStore {
 
     /// Seed the accumulator-balance column family at genesis. Skips zero
     /// entries (the balance helpers treat absent and zero as equivalent).
+    ///
+    /// Stage 14b: dual-writes through the shared bottleneck so the
+    /// matching `BalanceAccumulator` objects also land at genesis.
+    /// Genesis-builder callers already insert the accumulator objects
+    /// via `bulk_insert_genesis_objects`; that path produces objects
+    /// at the same `(ObjectID, Version::MIN)` key, so inserting here
+    /// is idempotent against that path.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_balances(
         &self,
         balances: &BTreeMap<(SomaAddress, CoinType), u64>,
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
-        batch.insert_batch(
-            &self.perpetual_tables.accumulator_balances,
-            balances.iter().filter(|(_, v)| **v != 0).map(|(k, v)| (*k, *v)),
-        )?;
+        for ((owner, coin_type), balance) in balances.iter().filter(|(_, v)| **v != 0) {
+            self.dual_write_balance_to_batch(&mut batch, *owner, *coin_type, *balance)?;
+        }
         batch.write()?;
         Ok(())
     }
@@ -530,6 +536,9 @@ impl AuthorityStore {
     /// (pool, staker) → principal mapping; we materialise it as a
     /// `Delegation { principal, last_collected_period: 0 }` since
     /// genesis delegators haven't collected anything yet.
+    ///
+    /// Stage 14b: dual-writes the matching `DelegationAccumulator`
+    /// objects through the shared bottleneck.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_delegations(
         &self,
@@ -537,13 +546,14 @@ impl AuthorityStore {
     ) -> SomaResult<()> {
         use types::system_state::staking::Delegation;
         let mut batch = self.perpetual_tables.delegations.batch();
-        batch.insert_batch(
-            &self.perpetual_tables.delegations,
-            delegations
-                .iter()
-                .filter(|(_, v)| **v != 0)
-                .map(|(k, v)| (*k, Delegation::new(*v, 0))),
-        )?;
+        for ((pool_id, staker), principal) in delegations.iter().filter(|(_, v)| **v != 0) {
+            self.dual_write_delegation_to_batch(
+                &mut batch,
+                *pool_id,
+                *staker,
+                Delegation::new(*principal, 0),
+            )?;
+        }
         batch.write()?;
         Ok(())
     }
@@ -655,10 +665,29 @@ impl AuthorityStore {
 
             locks_to_delete,
             new_locks_to_init,
-            balance_events,
-            delegation_events,
             ..
         } = tx_outputs;
+
+        // Stage 14d (SIP-58 single-path): per-tx writeback no longer
+        // applies accumulator state to the CF. User-tx executors emit
+        // `AccumulatorWriteV1` records on `effects.changed_objects`
+        // (delta records, never directly applied here). The
+        // CheckpointBuilder aggregates them per-cp via
+        // `AccumulatorSettlementTxBuilder`, publishes the resulting
+        // settlement TX to the `SettlementScheduler` via
+        // `notify_settlement_transactions_ready`, and blocks cp
+        // signing on the settlement TX's effects landing. Settlement
+        // is the SOLE driver of accumulator state — both the
+        // `BalanceAccumulator` / `DelegationAccumulator` object
+        // mutations AND the `accumulator_balances` / `delegations` CF
+        // updates (via re-emitted `BalanceEvent` / `DelegationEvent`
+        // records on the settlement TX's own effects).
+        //
+        // The drain below now only fires for the settlement system tx
+        // and ChangeEpoch system tx — user-tx
+        // `effects.balance_events` is empty.
+        let all_balance_events: Vec<BalanceEvent> = effects.balance_events().to_vec();
+        let delegation_events = effects.delegation_events();
 
         let effects_digest = effects.digest();
         let transaction_digest = transaction.digest();
@@ -692,17 +721,39 @@ impl AuthorityStore {
         // adds defense-in-depth against same-sender-multiple-txs-
         // in-one-commit underflow; for single-sender single-tx the
         // direct apply is sound on its own.
-        if !balance_events.is_empty() {
-            self.apply_settlement_events(write_batch, balance_events)?;
+        if !all_balance_events.is_empty() {
+            self.apply_settlement_events(write_batch, &all_balance_events)?;
         }
 
-        // Stage 9b: apply delegation deltas to the `delegations`
-        // column family. Atomic with the rest of the commit's writes —
-        // either every change in this tx lands or none do. Aggregate
-        // first so multiple events on the same key (rare today, but
-        // possible if a tx adds and partially withdraws in one go)
-        // collapse to a single net delta and a single row write.
-        if !delegation_events.is_empty() {
+        // Stage 14d (SIP-58 single-path): same single-writer rule for
+        // delegations as for balances — user-tx staking executors
+        // emit `DelegationEvent` records on `effects.delegation_events`
+        // (per-tx delta records the `SettlementScheduler` aggregates),
+        // but the per-tx writeback skips applying them. The
+        // settlement system tx re-emits the aggregated records on its
+        // own `effects.delegation_events` and the apply path runs
+        // once, with the post-cp aggregated deltas + F1 period
+        // advance.
+        //
+        // System txs that are NOT settlement (today: `ChangeEpoch`,
+        // which emits validator-reward principal deltas at the epoch
+        // boundary) keep applying directly — they don't ride the
+        // SettlementScheduler and their events are already
+        // aggregated by the executor before being emitted.
+        // Stage 14d: only the settlement system tx (which re-emits
+        // aggregated delegation deltas after the CheckpointBuilder
+        // builds it) and ChangeEpoch (which emits validator-commission
+        // delegation events directly inline at epoch boundary) write
+        // to the `delegations` CF. User-tx executors keep emitting
+        // `DelegationEvent`s on their effects but those are only
+        // consumed as inputs to the per-cp settlement aggregation.
+        let kind = transaction.transaction_data().kind();
+        let drains_delegation_events = matches!(
+            kind,
+            types::transaction::TransactionKind::Settlement(_)
+                | types::transaction::TransactionKind::ChangeEpoch(_)
+        );
+        if drains_delegation_events && !delegation_events.is_empty() {
             self.apply_delegation_events(write_batch, delegation_events)?;
         }
 
@@ -794,8 +845,14 @@ impl AuthorityStore {
             new_balances.push((key, new_balance));
         }
 
-        write_batch
-            .insert_batch(&self.perpetual_tables.accumulator_balances, new_balances)?;
+        // Stage 14b: dual-write each post-state to BOTH the CF AND
+        // the accumulator-object path through the shared bottleneck.
+        // CF stays source of truth this stage; debug-mode
+        // `get_balance` asserts both stores agree on every read.
+        for ((owner, coin_type), new_balance) in &new_balances {
+            self.dual_write_balance_to_batch(write_batch, *owner, *coin_type, *new_balance)?;
+        }
+
         Ok(())
     }
 
@@ -839,10 +896,6 @@ impl AuthorityStore {
             }
         }
 
-        let mut updates: Vec<((ObjectID, SomaAddress), Delegation)> =
-            Vec::with_capacity(aggregated.len());
-        let mut deletes: Vec<(ObjectID, SomaAddress)> = Vec::new();
-
         for (key, agg) in aggregated {
             let current = self.perpetual_tables.delegations.get(&key)?.unwrap_or_default();
             let new_principal = if agg.delta == 0 {
@@ -865,20 +918,24 @@ impl AuthorityStore {
                 }
             };
 
-            if new_principal == 0 {
-                // Drain to zero → drop the row entirely so it doesn't
-                // show up in `iter_delegations_for_staker` scans.
-                // Mirrors `set_delegation`'s zero-deletes contract.
-                deletes.push(key);
+            let new_delegation = if new_principal == 0 {
+                // Drain to zero → set principal to 0; the dual-write
+                // helper recognizes this and drops the CF row +
+                // tombstones the accumulator object so neither store
+                // surfaces it in iteration.
+                Delegation::new(0, current.last_collected_period)
             } else {
                 let last_collected_period =
                     agg.set_period.unwrap_or(current.last_collected_period);
-                updates.push((key, Delegation::new(new_principal, last_collected_period)));
-            }
+                Delegation::new(new_principal, last_collected_period)
+            };
+
+            // Stage 14b: route through the shared dual-write
+            // bottleneck so the CF row and the corresponding
+            // `DelegationAccumulator` object both land in this batch.
+            self.dual_write_delegation_to_batch(write_batch, key.0, key.1, new_delegation)?;
         }
 
-        write_batch.insert_batch(&self.perpetual_tables.delegations, updates)?;
-        write_batch.delete_batch(&self.perpetual_tables.delegations, deletes)?;
         Ok(())
     }
 
@@ -1323,6 +1380,13 @@ impl AuthorityStore {
     /// or held this currency has balance 0, indistinguishable from one
     /// that drained to zero and was pruned. Both cases want the same
     /// answer here.
+    ///
+    /// Stage 14c.6: CF is the sole runtime balance source of truth.
+    /// The 14b dual-read assertion was dropped because accumulator
+    /// objects in the store are frozen at genesis (see
+    /// `dual_write_balance_to_batch`); the SettlementScheduler now
+    /// drives CF updates directly. Stage 14c.7 brings the
+    /// accumulator objects back in sync via settlement effects.
     pub fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> SomaResult<u64> {
         Ok(self
             .perpetual_tables
@@ -1331,18 +1395,71 @@ impl AuthorityStore {
             .unwrap_or(0))
     }
 
+    /// Stage 14b: read the balance via the accumulator object path.
+    /// Returns 0 if no accumulator object exists for `(owner,
+    /// coin_type)` — same "missing == zero" semantics as the CF
+    /// reader. Source-of-truth flips here in Stage 14c.
+    pub fn get_balance_via_object(
+        &self,
+        owner: SomaAddress,
+        coin_type: CoinType,
+    ) -> SomaResult<u64> {
+        use types::accumulator::BalanceAccumulator;
+        let id = BalanceAccumulator::derive_id(owner, coin_type);
+        match self.perpetual_tables.get_object_fallible(&id)? {
+            None => Ok(0),
+            Some(obj) => obj.as_balance_accumulator().map(|acc| acc.balance).ok_or_else(|| {
+                SomaError::from(format!(
+                    "Object at deterministic accumulator ID {id:?} for \
+                     ({owner:?}, {coin_type:?}) is not a BalanceAccumulator — \
+                     ID-collision or schema corruption"
+                ))
+            }),
+        }
+    }
+
     /// Direct balance write. **Only valid from genesis or settlement
     /// execution paths.** User transactions must go through the
     /// settlement pipeline (events → aggregate → multi_apply).
+    ///
+    /// Stage 14b: dual-writes to BOTH the CF and the corresponding
+    /// `BalanceAccumulator` object in a single `WriteBatch`. The
+    /// dual-read assertion in `get_balance` would otherwise fail
+    /// since this method is the bottleneck for direct writes.
     pub fn set_balance(
         &self,
         owner: SomaAddress,
         coin_type: CoinType,
         balance: u64,
     ) -> SomaResult<()> {
-        self.perpetual_tables
-            .accumulator_balances
-            .insert(&(owner, coin_type), &balance)?;
+        let mut batch = self.perpetual_tables.accumulator_balances.batch();
+        self.dual_write_balance_to_batch(&mut batch, owner, coin_type, balance)?;
+        batch.write()?;
+        Ok(())
+    }
+
+    /// Stage 14b/14c.6: write a balance update to the CF.
+    ///
+    /// 14b's parallel write to the accumulator-object table was
+    /// dropped in 14c.6 because it bypassed the writeback cache,
+    /// causing coherence panics when reads through the cache met
+    /// directly-written disk state. The accumulator-object writes
+    /// will return through the standard effects pipeline once the
+    /// settlement-input-declaration mechanism lands (Stage 14c.7);
+    /// until then, accumulator objects in the store are frozen at
+    /// their genesis values and CF is the sole runtime balance
+    /// source of truth.
+    fn dual_write_balance_to_batch(
+        &self,
+        write_batch: &mut DBBatch,
+        owner: SomaAddress,
+        coin_type: CoinType,
+        new_balance: u64,
+    ) -> SomaResult<()> {
+        write_batch.insert_batch(
+            &self.perpetual_tables.accumulator_balances,
+            std::iter::once((&(owner, coin_type), &new_balance)),
+        )?;
         Ok(())
     }
 
@@ -1397,9 +1514,14 @@ impl AuthorityStore {
             let current = self.get_balance(*owner, *coin_type)?;
             match apply_delta_to_balance(current, *delta) {
                 BalanceUpdate::Ok(new_balance) => {
-                    batch.insert_batch(
-                        &self.perpetual_tables.accumulator_balances,
-                        std::iter::once((&(*owner, *coin_type), &new_balance)),
+                    // Stage 14b: dual-write through the shared
+                    // bottleneck so the CF and the accumulator object
+                    // land in the same batch.
+                    self.dual_write_balance_to_batch(
+                        &mut batch,
+                        *owner,
+                        *coin_type,
+                        new_balance,
                     )?;
                     new_balances.push(((*owner, *coin_type), new_balance));
                 }
@@ -1472,9 +1594,12 @@ impl AuthorityStore {
     // callers are migrated.
     // ===========================================================================
 
-    /// Read the principal staked into `pool_id` by `staker` with
-    /// `activation_epoch`. Returns 0 when no entry exists — same
-    /// semantics as `get_balance`: missing == zero.
+    /// Read the principal staked into `pool_id` by `staker`.
+    /// Returns 0 when no entry exists — same semantics as
+    /// `get_balance`: missing == zero.
+    ///
+    /// Stage 14c.6: dropped the 14b dual-read assertion. See
+    /// `get_balance` for context.
     pub fn get_delegation(
         &self,
         pool_id: ObjectID,
@@ -1487,6 +1612,31 @@ impl AuthorityStore {
             .unwrap_or_default())
     }
 
+    /// Stage 14b: read the delegation row via the accumulator-object
+    /// path. Returns `Delegation::default()` (zero principal, period 0)
+    /// if no accumulator object exists for `(pool_id, staker)`.
+    pub fn get_delegation_via_object(
+        &self,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+    ) -> SomaResult<types::system_state::staking::Delegation> {
+        use types::accumulator::DelegationAccumulator;
+        use types::system_state::staking::Delegation;
+
+        let id = DelegationAccumulator::derive_id(pool_id, staker);
+        match self.perpetual_tables.get_object_fallible(&id)? {
+            None => Ok(Delegation::default()),
+            Some(obj) => match obj.as_delegation_accumulator() {
+                Some(acc) => Ok(Delegation::new(acc.principal, acc.last_collected_period)),
+                None => Err(SomaError::from(format!(
+                    "Object at deterministic accumulator ID {id:?} for \
+                     ({pool_id:?}, {staker:?}) is not a DelegationAccumulator — \
+                     ID-collision or schema corruption"
+                ))),
+            },
+        }
+    }
+
     /// Direct delegation write. **Only valid from genesis,
     /// AddStake/WithdrawStake execution, or epoch reward distribution
     /// paths.** Like `set_balance`, this is the privileged path —
@@ -1495,17 +1645,49 @@ impl AuthorityStore {
     ///
     /// Setting a row whose principal is zero deletes it outright —
     /// `iter_delegations_for_staker` should never see drained stakes.
+    ///
+    /// Stage 14b: dual-writes to BOTH the `delegations` CF and the
+    /// corresponding `DelegationAccumulator` object in a single
+    /// `WriteBatch`.
     pub fn set_delegation(
         &self,
         pool_id: ObjectID,
         staker: SomaAddress,
         delegation: types::system_state::staking::Delegation,
     ) -> SomaResult<()> {
+        let mut batch = self.perpetual_tables.delegations.batch();
+        self.dual_write_delegation_to_batch(&mut batch, pool_id, staker, delegation)?;
+        batch.write()?;
+        Ok(())
+    }
+
+    /// Stage 14b/14c.6: write a delegation update to the CF.
+    ///
+    /// 14b's parallel object-store write was dropped in 14c.6 (see
+    /// `dual_write_balance_to_batch` for context). Delegation
+    /// objects in the store stay frozen at genesis until the
+    /// settlement-input-declaration work lands; CF is the runtime
+    /// source of truth.
+    fn dual_write_delegation_to_batch(
+        &self,
+        write_batch: &mut DBBatch,
+        pool_id: ObjectID,
+        staker: SomaAddress,
+        delegation: types::system_state::staking::Delegation,
+    ) -> SomaResult<()> {
         if delegation.principal == 0 {
-            self.perpetual_tables.delegations.remove(&(pool_id, staker))?;
+            write_batch.delete_batch(
+                &self.perpetual_tables.delegations,
+                std::iter::once(&(pool_id, staker)),
+            )?;
             return Ok(());
         }
-        self.perpetual_tables.delegations.insert(&(pool_id, staker), &delegation)?;
+
+        write_batch.insert_batch(
+            &self.perpetual_tables.delegations,
+            std::iter::once((&(pool_id, staker), &delegation)),
+        )?;
+
         Ok(())
     }
 
@@ -1688,6 +1870,57 @@ impl AuthorityStore {
             return Err(e);
         }
         Ok(decisions)
+    }
+
+    /// Stage 14d test helper. Synchronously aggregates a tx's
+    /// `effects.accumulator_events()` and `effects.delegation_events()`
+    /// and applies them to the CF (`accumulator_balances`,
+    /// `delegations`). Mirrors what the per-cp `SettlementScheduler`
+    /// would dispatch in production, but for unit tests that bypass
+    /// the consensus pipeline (`try_execute_for_test`,
+    /// `send_and_confirm_transaction`, etc.).
+    ///
+    /// Object-side (`BalanceAccumulator` / `DelegationAccumulator`)
+    /// state is NOT mutated here — tests that need state-hash
+    /// coverage of the object world must run the real
+    /// `SettlementScheduler` via the e2e test harness. This helper
+    /// exists purely to keep `get_balance` and `get_delegation` in
+    /// sync with executed user txs in unit-test contexts.
+    pub fn flush_pending_settlement_for_testing(
+        &self,
+        effects: &types::effects::TransactionEffects,
+    ) -> SomaResult<()> {
+        use types::balance::BalanceEvent;
+        use types::effects::TransactionEffectsAPI;
+        use types::effects::object_change::{AccumulatorAddress, AccumulatorOperation};
+
+        let mut events: Vec<BalanceEvent> = Vec::new();
+        for (_id, write) in effects.accumulator_events() {
+            let (owner, coin_type) = match write.address {
+                AccumulatorAddress::Balance { owner, coin_type, .. } => (owner, coin_type),
+            };
+            let mag = write.value.as_u64();
+            events.push(match write.operation {
+                AccumulatorOperation::Merge => BalanceEvent::deposit(owner, coin_type, mag),
+                AccumulatorOperation::Split => BalanceEvent::withdraw(owner, coin_type, mag),
+            });
+        }
+
+        let delegation_events = effects.delegation_events().to_vec();
+
+        if events.is_empty() && delegation_events.is_empty() {
+            return Ok(());
+        }
+
+        let mut batch = self.perpetual_tables.accumulator_balances.batch();
+        if !events.is_empty() {
+            self.apply_settlement_events(&mut batch, &events)?;
+        }
+        if !delegation_events.is_empty() {
+            self.apply_delegation_events(&mut batch, &delegation_events)?;
+        }
+        batch.write()?;
+        Ok(())
     }
 }
 

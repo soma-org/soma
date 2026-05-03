@@ -53,6 +53,11 @@ pub enum StoredOwnerKind {
     Address = 1,
     Object = 2,
     Shared = 3,
+    /// Stage 14a: system-managed accumulator object (account-balance
+    /// or F1 delegation). The accumulator-kind discriminator (Balance
+    /// vs Delegation) is recoverable from the object's ObjectType,
+    /// so we don't burn another schema column for it.
+    Accumulator = 4,
 }
 
 // Stage 13i: StoredCoinOwnerKind removed alongside the
@@ -92,6 +97,7 @@ where
             StoredOwnerKind::Address => 1.to_sql(out),
             StoredOwnerKind::Object => 2.to_sql(out),
             StoredOwnerKind::Shared => 3.to_sql(out),
+            StoredOwnerKind::Accumulator => 4.to_sql(out),
         }
     }
 }
@@ -106,6 +112,7 @@ where
             1 => StoredOwnerKind::Address,
             2 => StoredOwnerKind::Object,
             3 => StoredOwnerKind::Shared,
+            4 => StoredOwnerKind::Accumulator,
             o => return Err(format!("Unexpected StoredOwnerKind: {o}").into()),
         })
     }

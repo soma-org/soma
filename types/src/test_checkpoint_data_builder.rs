@@ -226,6 +226,8 @@ impl TestCheckpointBuilder {
             unchanged_shared_objects: vec![],
             transaction_fee: TransactionFee::default(),
             gas_object_index: Some(0),
+            balance_events: vec![],
+            delegation_events: vec![],
         });
 
         self.transactions.push(TestTransaction {
@@ -293,6 +295,8 @@ impl TestCheckpointBuilder {
             unchanged_shared_objects: vec![],
             transaction_fee: TransactionFee::default(),
             gas_object_index: None,
+            balance_events: vec![],
+            delegation_events: vec![],
         });
 
         self.transactions.push(TestTransaction {
@@ -351,6 +355,8 @@ impl TestCheckpointBuilder {
                 unchanged_shared_objects: vec![],
                 transaction_fee: TransactionFee::default(),
                 gas_object_index: None,
+                balance_events: vec![],
+                delegation_events: vec![],
             });
 
             self.transactions.insert(

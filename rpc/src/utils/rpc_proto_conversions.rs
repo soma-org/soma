@@ -399,6 +399,7 @@ impl From<types::balance_change::BalanceChange> for BalanceChange {
         Self {
             address: Some(value.address.to_string()),
             amount: Some(value.amount.to_string()),
+            coin_type: Some(value.coin_type.to_string()),
             ..Default::default()
         }
     }
@@ -422,7 +423,14 @@ impl TryFrom<&BalanceChange> for types::balance_change::BalanceChange {
             .parse()
             .map_err(|e| TryFromProtoError::invalid("amount", e))?;
 
-        Ok(types::balance_change::BalanceChange { address, amount })
+        let coin_type = value
+            .coin_type
+            .as_deref()
+            .ok_or_else(|| TryFromProtoError::missing("coin_type"))?
+            .parse()
+            .map_err(|e| TryFromProtoError::invalid("coin_type", e))?;
+
+        Ok(types::balance_change::BalanceChange { address, coin_type, amount })
     }
 }
 
@@ -508,6 +516,19 @@ impl From<types::object::Owner> for Owner {
                 OwnerKind::Shared
             }
             O::Immutable => OwnerKind::Immutable,
+            O::Accumulator { kind: acc_kind } => {
+                // Stage 14a: serialize the accumulator family as a
+                // string so adding new families later is non-breaking.
+                use types::object::AccumulatorKind;
+                message.accumulator_kind = Some(
+                    match acc_kind {
+                        AccumulatorKind::Balance => "BALANCE",
+                        AccumulatorKind::Delegation => "DELEGATION",
+                    }
+                    .to_string(),
+                );
+                OwnerKind::Accumulator
+            }
         };
 
         message.set_kind(kind);
@@ -897,6 +918,18 @@ impl From<types::effects::object_change::EffectsObjectChange> for ChangedObject 
                 message.output_digest = Some(digest.to_string());
                 message.output_owner = Some(owner.into());
                 OutputObjectState::ObjectWrite
+            }
+            ObjectOut::AccumulatorWriteV1(write) => {
+                use types::effects::object_change::AccumulatorOperation;
+                message.accumulator_operation = Some(
+                    match write.operation {
+                        AccumulatorOperation::Merge => "Merge",
+                        AccumulatorOperation::Split => "Split",
+                    }
+                    .to_string(),
+                );
+                message.accumulator_amount = Some(write.value.as_u64());
+                OutputObjectState::AccumulatorWriteV1
             }
         };
         message.set_output_state(output_state);
