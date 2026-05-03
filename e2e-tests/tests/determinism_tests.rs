@@ -52,18 +52,12 @@ async fn execute_stake_tx(
         .unwrap()
         .expect("Should have a gas object");
     // Stake principal must be SOMA; gas is USDC.
-    let (stake_coin, _) = test_cluster
-        .wallet
-        .get_richest_soma_coin(sender)
-        .await
-        .unwrap()
-        .expect("Should have a SOMA coin");
-
+    // Stage 9d-C2: AddStake is balance-mode — debits sender's SOMA
+    // accumulator directly. Gas is USDC.
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas],

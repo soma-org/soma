@@ -4174,14 +4174,16 @@ pub struct TransferObjects {
     #[prost(string, optional, tag = "2")]
     pub recipient: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Stage 9d-C2: AddStake is balance-mode — no coin reference. The
+/// executor debits `amount` SOMA from the sender's accumulator.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AddStake {
+    /// Validator's SOMA address (hex string).
     #[prost(string, optional, tag = "1")]
-    pub address: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "2")]
-    pub coin_ref: ::core::option::Option<ObjectReference>,
-    #[prost(uint64, optional, tag = "3")]
+    pub validator: ::core::option::Option<::prost::alloc::string::String>,
+    /// Stake principal in shannons.
+    #[prost(uint64, optional, tag = "2")]
     pub amount: ::core::option::Option<u64>,
 }
 #[non_exhaustive]

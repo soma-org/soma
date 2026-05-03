@@ -119,6 +119,15 @@ pub fn execute_transaction(
     // a system tx; `None` otherwise. The caller is responsible for
     // reading the accumulator before calling.
     sender_usdc_balance: Option<u64>,
+    // Stage 9d-C2: pre-read signer's delegation rows so the staking
+    // executor can fold F1 rewards without reaching into the
+    // perpetual store. Caller reads `iter_delegations_for_staker(signer)`
+    // for AddStake/WithdrawStake and passes the (pool_id → Delegation)
+    // map; empty for other tx kinds.
+    prefetched_delegations: std::collections::BTreeMap<
+        types::object::ObjectID,
+        types::system_state::staking::Delegation,
+    >,
 ) -> (InnerTemporaryStore, TransactionEffects, Option<ExecutionError>) {
     let input_objects = input_objects.into_inner();
     // Extract common information
@@ -135,6 +144,7 @@ pub fn execute_transaction(
         execution_version,
         chain,
     );
+    temporary_store.prefetched_delegations = prefetched_delegations;
 
     let mut executor = create_executor(&kind);
 

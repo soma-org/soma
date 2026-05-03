@@ -271,20 +271,19 @@ pub struct TemporaryStore {
     /// and for the audit trail in transaction effects.
     balance_events: Vec<BalanceEvent>,
 
-    /// Stage 9b: signed deltas to the delegation-balance table emitted
-    /// by the staking executor during this transaction. Each entry is
-    /// `(pool_id, staker, activation_epoch, signed_delta)` — positive
-    /// for AddStake, negative for WithdrawStake. The post-execution
-    /// write path (`AuthorityStore::write_one_transaction_outputs`)
-    /// applies these to the `delegations` column family in the same
-    /// `DBBatch` as the rest of the commit's outputs, atomic with the
-    /// per-stake `StakedSomaV1` object writes.
-    ///
-    /// Stage 9b is dual-write: both the StakedSomaV1 object and this
-    /// table are populated, and an integrity check verifies they stay
-    /// in sync. Stage 9c routes reward distribution through this
-    /// table; Stage 9d removes the object entirely.
+    /// Stage 9d-C1: F1-shaped delegation events emitted by executors
+    /// during this transaction. Applied to the `delegations` column
+    /// family by `write_one_transaction_outputs` atomically with the
+    /// rest of the commit's outputs.
     delegation_events: Vec<DelegationEvent>,
+
+    /// Stage 9d-C2: signer's delegation rows pre-fetched before
+    /// execution so the staking executor can compute F1
+    /// fold-to-balance without reaching into the perpetual store. The
+    /// caller (authority.rs) reads `iter_delegations_for_staker(signer)`
+    /// for AddStake/WithdrawStake and passes the result here. Empty
+    /// for txs that don't need delegation reads.
+    pub prefetched_delegations: BTreeMap<ObjectID, crate::system_state::staking::Delegation>,
 }
 
 /// An event recorded during execution that describes a change to the
@@ -353,6 +352,7 @@ impl TemporaryStore {
             chain,
             balance_events: Vec::new(),
             delegation_events: Vec::new(),
+            prefetched_delegations: BTreeMap::new(),
         }
     }
 

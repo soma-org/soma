@@ -238,19 +238,16 @@ EXAMPLES:
         name = "stake",
         after_help = "\
 EXAMPLES:
-    soma stake --validator 0xVAL... --amount 10
-    soma stake --validator 0xVAL... --coin 0xCOIN..."
+    soma stake --validator 0xVAL... --amount 10"
     )]
     Stake {
         /// Validator address to stake with
         #[clap(long)]
         validator: SomaAddress,
-        /// Amount to stake in SOMA (uses entire coin if not specified)
+        /// Amount to stake in SOMA. Debited directly from the sender's
+        /// SOMA balance accumulator (Stage 9d-C2: balance-mode).
         #[clap(long)]
-        amount: Option<SomaAmount>,
-        /// Coin to use for staking (auto-selected if not provided)
-        #[clap(long)]
-        coin: Option<ObjectID>,
+        amount: SomaAmount,
         #[clap(flatten)]
         tx_args: TxProcessingArgs,
         #[clap(long, global = true, help = "Output as JSON")]
@@ -744,13 +741,12 @@ impl SomaCommand {
                 Ok(())
             }
 
-            SomaCommand::Stake { validator, amount, coin, tx_args, json } => {
+            SomaCommand::Stake { validator, amount, tx_args, json } => {
                 let mut context = get_wallet_context(&SomaEnvConfig::default()).await?;
                 let result = commands::stake::execute_stake(
                     &mut context,
                     validator,
-                    amount.map(|a| a.shannons()),
-                    coin,
+                    amount.shannons(),
                     tx_args,
                 )
                 .await?;

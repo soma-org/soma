@@ -58,15 +58,11 @@ fn metadata_json(kind: &TransactionKind) -> Option<String> {
         TransactionKind::MergeCoins { coins } => {
             Some(format!(r#"{{"coin_count":{}}}"#, coins.len()))
         }
-        TransactionKind::AddStake { address, amount, .. } => {
-            let amount_str = match amount {
-                Some(a) => format!("{a}"),
-                None => "null".to_string(),
-            };
+        TransactionKind::AddStake { validator, amount } => {
             Some(format!(
-                r#"{{"address":"0x{}","amount":{}}}"#,
-                hex::encode(address.to_vec()),
-                amount_str,
+                r#"{{"validator":"0x{}","amount":{}}}"#,
+                hex::encode(validator.to_vec()),
+                amount,
             ))
         }
         _ => None,

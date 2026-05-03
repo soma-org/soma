@@ -119,10 +119,17 @@ async fn test_shared_object_version_assignment() {
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    // AddStake uses SystemState (shared object)
+    // AddStake uses SystemState (shared object). Stage 9d-C2:
+    // balance-mode, so the SOMA stake is debited from the sender's
+    // accumulator. Gas is the coin we created above.
     let coin_ref = coin.compute_object_reference();
+    let _ = coin_ref;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, 50_000_000)
+        .unwrap();
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref, amount: Some(1_000_000) },
+        TransactionKind::AddStake { validator: validator_address, amount: 1_000_000 },
         sender,
         vec![coin_ref],
     );
@@ -143,15 +150,16 @@ async fn test_shared_object_version_assignment() {
 async fn test_execute_sequenced_shared_object_transaction() {
     // Execute a shared-object transaction through the sequenced path
     // (assign versions then execute), verifying correct execution.
+    // Stage 9d-C2: AddStake is balance-mode. Gas coin is USDC.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    // Stake coin is SOMA; gas coin is USDC.
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
     let gas_coin = Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(stake_coin.clone()).await;
     authority_state.insert_genesis_object(gas_coin.clone()).await;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, 50_000_000)
+        .unwrap();
 
     // Get the first validator's address from the system state
     let validator_address = {
@@ -161,9 +169,8 @@ async fn test_execute_sequenced_shared_object_transaction() {
 
     let data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin.compute_object_reference(),
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas_coin.compute_object_reference()],

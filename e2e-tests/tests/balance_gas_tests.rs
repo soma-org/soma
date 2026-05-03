@@ -74,15 +74,14 @@ async fn test_balance_mode_gas_addstake_succeeds() {
         .unwrap()
         .expect("sender must have a SOMA coin to stake");
 
-    // Build a stateless tx: empty gas_payment + ValidDuring covering
-    // the current epoch. The validator's handle_vote_transaction
-    // requires this combination for non-system txs without owned
-    // gas coins.
+    // Stage 9d-C2: AddStake is balance-mode — both stake and gas
+    // come out of the sender's accumulator. ValidDuring covers the
+    // current epoch.
+    let _ = stake_coin;
     let tx_data = TransactionData::new_with_expiration(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         Vec::new(), // EMPTY gas_payment → balance-mode
@@ -165,11 +164,11 @@ async fn test_balance_mode_gas_without_valid_during_is_rejected() {
 
     // Stateless tx (empty gas_payment) but expiration = None.
     // This should be rejected by the validator at signing time.
+    let _ = stake_coin;
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         Vec::new(), // empty

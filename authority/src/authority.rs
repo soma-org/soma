@@ -967,6 +967,23 @@ impl AuthorityState {
             None
         };
 
+        // Stage 9d-C2: pre-read signer's delegations for staking txs so
+        // the executor can fold F1 rewards without reaching into the
+        // perpetual store. We pre-fetch eagerly for AddStake/
+        // WithdrawStake; other tx kinds get an empty map.
+        let prefetched_delegations = if matches!(
+            &kind,
+            types::transaction::TransactionKind::AddStake { .. }
+                | types::transaction::TransactionKind::WithdrawStake { .. }
+        ) {
+            self.database_for_testing()
+                .iter_delegations_for_staker(signer)
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default()
+        } else {
+            std::collections::BTreeMap::new()
+        };
+
         #[allow(unused_mut)]
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
@@ -981,6 +998,7 @@ impl AuthorityState {
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
             sender_usdc_balance,
+            prefetched_delegations,
         );
 
         if let Some(expected_effects_digest) = expected_effects_digest {
@@ -1127,6 +1145,20 @@ impl AuthorityState {
             None
         };
 
+        // Stage 9d-C2: pre-read signer's delegations for staking txs.
+        let prefetched_delegations = if matches!(
+            &kind,
+            types::transaction::TransactionKind::AddStake { .. }
+                | types::transaction::TransactionKind::WithdrawStake { .. }
+        ) {
+            self.database_for_testing()
+                .iter_delegations_for_staker(signer)
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default()
+        } else {
+            std::collections::BTreeMap::new()
+        };
+
         let (inner, effects, execution_error_opt) = execute_transaction(
             epoch_store.epoch(),
             epoch_store.protocol_config().execution_version(),
@@ -1140,6 +1172,7 @@ impl AuthorityState {
             epoch_store.epoch_start_state().fee_parameters(),
             epoch_store.get_chain(),
             sender_usdc_balance,
+            prefetched_delegations,
         );
 
         let execution_result: ExecutionResult = match execution_error_opt {

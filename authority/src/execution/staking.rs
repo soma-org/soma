@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use types::SYSTEM_STATE_OBJECT_ID;
+use types::balance::BalanceEvent;
 use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
@@ -12,7 +13,7 @@ use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
 
 use super::object::check_ownership;
-use super::{TransactionExecutor, checked_sub};
+use super::TransactionExecutor;
 
 pub struct StakingExecutor;
 
@@ -21,26 +22,43 @@ impl StakingExecutor {
         Self {}
     }
 
-    /// Execute AddStake. Gas fee was already deducted from the gas coin in
-    /// `prepare_gas`, so this just moves the stake amount.
+    /// Execute AddStake (Stage 9d-C2: balance-mode + F1 fold-to-balance).
+    ///
+    /// Flow:
+    /// 1. Look up the validator's StakingPool and its current F1
+    ///    period + cumulative index.
+    /// 2. Read the pre-fetched delegation row for (pool, signer). If
+    ///    a non-empty row exists, compute pending reward via F1 and
+    ///    emit a Deposit balance event paying it to the signer's SOMA
+    ///    balance — that's the "fold to balance" semantics.
+    /// 3. Emit a Withdraw balance event for `amount` SOMA against the
+    ///    signer's accumulator. The reservation pre-pass already
+    ///    confirmed the sender has enough; underflow at apply time
+    ///    indicates a race we propagate as a hard error.
+    /// 4. Run the pool-token side via `state.request_add_stake` so the
+    ///    StakingPool's pending_stake / soma_balance / pool_token_balance
+    ///    stay in sync (Stage 9d-C5 deletes those fields).
+    /// 5. Emit a delegation event with `delta = +amount` and
+    ///    `set_period = current_period` to advance the row's fold
+    ///    mark. The principal grows by `amount` only; pending
+    ///    rewards have already been paid out separately.
+    /// 6. Create a StakedSomaV1 object as a safety net — Stage 9d-C5
+    ///    deletes it once the F1 path is sole truth.
+    #[allow(clippy::too_many_arguments)]
     fn execute_add_stake(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
-        address: SomaAddress,
-        coin_ref: ObjectRef,
-        amount: Option<u64>,
+        validator: SomaAddress,
+        amount: u64,
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
-        let coin_id = coin_ref.0;
-        let is_gas_coin = store.gas_object_id == Some(coin_id);
-
-        let source_object = store
-            .read_object(&coin_id)
-            .ok_or_else(|| ExecutionFailureStatus::ObjectNotFound { object_id: coin_id })?;
-
-        check_ownership(&source_object, signer)?;
-        let source_balance = verify_coin(&source_object)?;
+        if amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Stake amount cannot be 0".to_string(),
+            }
+            .into());
+        }
 
         let state_object = store
             .read_object(&SYSTEM_STATE_OBJECT_ID)
@@ -57,28 +75,63 @@ impl StakingExecutor {
                 )))
             })?;
 
-        // Resolve actual stake amount.
-        let stake_amount = match amount {
-            Some(n) => n,
-            None => source_balance, // stake the full coin
+        // Locate the validator's pool to get the current F1 period.
+        // request_add_stake itself will validate the validator
+        // exists, but we need the pool data first for the fold.
+        let (pool_id, current_period) = {
+            let v = state
+                .validators()
+                .find_validator(validator)
+                .or_else(|| {
+                    state.validators().pending_validators.iter().find(|v| {
+                        v.metadata.soma_address == validator
+                    })
+                })
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            (v.staking_pool.id, v.staking_pool.current_period)
         };
 
-        if source_balance < stake_amount {
-            return Err(ExecutionFailureStatus::InsufficientCoinBalance.into());
+        // F1 fold-to-balance: read pre-fetched row, compute pending,
+        // pay to balance. A new staker (no row) gets nothing.
+        if let Some(existing) = store.prefetched_delegations.get(&pool_id).copied() {
+            if existing.principal > 0 {
+                let v = state
+                    .validators()
+                    .find_validator(validator)
+                    .expect("validator existence checked above");
+                let pending = v
+                    .staking_pool
+                    .f1_pending_reward(existing.principal, existing.last_collected_period);
+                if pending > 0 {
+                    store.emit_balance_event(BalanceEvent::Deposit {
+                        owner: signer,
+                        coin_type: CoinType::Soma,
+                        amount: pending,
+                    });
+                }
+            }
         }
 
-        let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
+        // Debit the principal from the staker's SOMA balance.
+        store.emit_balance_event(BalanceEvent::Withdraw {
+            owner: signer,
+            coin_type: CoinType::Soma,
+            amount,
+        });
 
-        // Stage 9d-C1: dual-write into the F1-shaped delegations
-        // table. Adds the new principal to the (pool, staker) row.
-        // No fold yet (Stage 9d-C2 introduces the F1 fold-to-balance
-        // path); leaving `set_period: None` keeps any existing
-        // `last_collected_period` intact.
+        // Run the pool-token side. Stage 9d-C5 deletes the StakedSomaV1
+        // creation and the pool-token math; today they remain as a
+        // safety net.
+        let staked_soma = state.request_add_stake(signer, validator, amount)?;
+
+        // F1 row update: bump principal by `amount`, advance the
+        // collection mark to current_period (the period from which
+        // any future rewards will count).
         store.emit_delegation_event(
-            staked_soma.pool_id,
+            pool_id,
             signer,
-            staked_soma.principal as i128,
-            None,
+            amount as i128,
+            Some(current_period),
         );
 
         let staked_soma_object = Object::new_staked_soma_object(
@@ -88,18 +141,6 @@ impl StakingExecutor {
             tx_digest,
         );
         store.create_object(staked_soma_object);
-
-        // Update or delete the source coin. Gas fee was already taken in prepare_gas,
-        // so the gas-coin distinction no longer matters here.
-        let _ = is_gas_coin;
-        let remaining = checked_sub(source_balance, stake_amount)?;
-        if remaining == 0 {
-            store.delete_input_object(&coin_id);
-        } else {
-            let mut updated_source = source_object.clone();
-            updated_source.update_coin_balance(remaining);
-            store.mutate_input_object(updated_source);
-        }
 
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -229,31 +270,13 @@ impl TransactionExecutor for StakingExecutor {
         tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         match kind {
-            TransactionKind::AddStake { address, coin_ref, amount } => {
-                self.execute_add_stake(store, signer, address, coin_ref, amount, tx_digest)
+            TransactionKind::AddStake { validator, amount } => {
+                self.execute_add_stake(store, signer, validator, amount, tx_digest)
             }
             TransactionKind::WithdrawStake { staked_soma } => {
                 self.execute_withdraw_stake(store, signer, staked_soma, tx_digest)
             }
             _ => Err(ExecutionFailureStatus::InvalidTransactionType),
         }
-    }
-}
-
-/// Verifies an object is a SOMA coin and returns its balance
-fn verify_coin(object: &Object) -> Result<u64, ExecutionFailureStatus> {
-    // Staking requires SOMA coins
-    let balance = object.as_coin().ok_or_else(|| ExecutionFailureStatus::InvalidObjectType {
-        object_id: object.id(),
-        expected_type: ObjectType::Coin(CoinType::Soma),
-        actual_type: object.type_().clone(),
-    })?;
-    match object.coin_type() {
-        Some(CoinType::Soma) => Ok(balance),
-        _ => Err(ExecutionFailureStatus::InvalidObjectType {
-            object_id: object.id(),
-            expected_type: ObjectType::Coin(CoinType::Soma),
-            actual_type: object.type_().clone(),
-        }),
     }
 }

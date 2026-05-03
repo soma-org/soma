@@ -38,11 +38,12 @@ async fn make_add_stake_consensus_tx(
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let gas_ref = gas_object.compute_object_reference();
+    // Stage 9d-C2: AddStake is balance-mode — the SOMA stake debit
+    // comes from the sender's accumulator, not a coin reference.
     let data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: gas_ref,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas_ref],

@@ -1,10 +1,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Tests for AddStake and WithdrawStake under the unit-fee USDC-gas model.
+//! Tests for AddStake (Stage 9d-C2: balance-mode) and WithdrawStake.
 //!
-//! Stake principal is SOMA (because validators are staked in SOMA), gas is USDC.
-//! Each test thus needs two coins: a USDC gas coin and a SOMA stake coin.
+//! Stake principal is SOMA, debited from the sender's accumulator
+//! balance — no SOMA coin input. Gas is paid in USDC (still
+//! coin-mode here for simplicity). The F1 fold-to-balance path is
+//! verified separately via the dual-write delegation tests.
 
 use std::sync::Arc;
 
@@ -15,7 +17,7 @@ use types::effects::{
     ExecutionFailureStatus, ExecutionStatus, SignedTransactionEffects, TransactionEffectsAPI,
 };
 use types::error::SomaError;
-use types::object::{Object, ObjectID, ObjectRef};
+use types::object::{CoinType, Object, ObjectID, ObjectRef};
 use types::transaction::{TransactionData, TransactionKind};
 use types::unit_tests::utils::to_sender_signed_transaction;
 
@@ -30,58 +32,69 @@ const STAKING_FEE_UNITS: u64 = 2;
 const STAKING_FEE: u64 = UNIT_FEE * STAKING_FEE_UNITS;
 
 #[tokio::test]
-async fn test_add_stake_specific_amount() {
+async fn test_add_stake_balance_mode_succeeds() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_id = ObjectID::random();
-    let stake_coin = Object::with_id_owner_soma_coin_for_testing(stake_id, sender, 50_000_000);
+    let stake_amount = 10_000_000u64;
+    let starting_balance = 50_000_000u64;
 
-    let res = execute_add_stake(stake_coin, Some(10_000_000), sender, SomaKeyPair::Ed25519(key))
-        .await;
+    let res = execute_add_stake(
+        starting_balance,
+        stake_amount,
+        sender,
+        SomaKeyPair::Ed25519(key),
+    )
+    .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // Should create a StakedSoma object.
-    assert!(effects.created().len() >= 1, "Should create StakedSoma");
+    // Should create a StakedSomaV1 object (still dual-written until C5).
+    assert!(effects.created().len() >= 1, "Should create StakedSomaV1");
 
-    // SOMA stake coin should still exist with reduced balance (gas is paid in USDC).
-    let stake_obj = res.authority_state.get_object(&stake_id).await.unwrap();
+    // Flush so the writeback cache's settlement events land in the
+    // perpetual store (unit tests skip the checkpoint executor that
+    // does this in production — same plumbing concern as
+    // delegation_dual_write tests).
+    let tx_digest = effects.transaction_digest();
+    let epoch = res.authority_state.epoch_store_for_testing().epoch();
+    let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
+    res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
+
+    let store = res.authority_state.database_for_testing();
+    let post_balance = store.get_balance(sender, CoinType::Soma).unwrap();
     assert_eq!(
-        stake_obj.as_coin().unwrap(),
-        50_000_000 - 10_000_000,
-        "Stake coin balance = original - stake_amount (no fee deducted from SOMA)"
+        post_balance,
+        starting_balance - stake_amount,
+        "stake_amount must be debited from the SOMA accumulator",
     );
 }
 
 #[tokio::test]
-async fn test_add_stake_entire_coin() {
-    // amount = None stakes the entire SOMA coin balance.
+async fn test_add_stake_zero_amount_rejected() {
+    // Stage 9d-C2: zero is now an explicit error in the executor.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_id = ObjectID::random();
-    let balance = 50_000_000u64;
-    let stake_coin = Object::with_id_owner_soma_coin_for_testing(stake_id, sender, balance);
-
-    let res = execute_add_stake(stake_coin, None, sender, SomaKeyPair::Ed25519(key)).await;
+    let res = execute_add_stake(
+        50_000_000,
+        0,
+        sender,
+        SomaKeyPair::Ed25519(key),
+    )
+    .await;
 
     let effects = res.txn_result.unwrap().into_data();
-    assert_eq!(*effects.status(), ExecutionStatus::Success);
-
-    // Stake coin should be deleted (entire balance staked).
-    let deleted_ids: Vec<ObjectID> = effects.deleted().iter().map(|d| d.0).collect();
-    assert!(deleted_ids.contains(&stake_id), "Stake coin should be deleted when staking all");
-
-    assert!(effects.created().len() >= 1, "Should create StakedSoma");
+    assert!(!effects.status().is_ok(), "zero stake amount must fail");
 }
 
 #[tokio::test]
 async fn test_add_stake_charges_fixed_fee() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_amount = 10_000_000u64;
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
-
-    let res = execute_add_stake(stake_coin, Some(stake_amount), sender, SomaKeyPair::Ed25519(key))
-        .await;
+    let res = execute_add_stake(
+        50_000_000,
+        10_000_000,
+        sender,
+        SomaKeyPair::Ed25519(key),
+    )
+    .await;
 
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
@@ -91,31 +104,12 @@ async fn test_add_stake_charges_fixed_fee() {
 }
 
 #[tokio::test]
-async fn test_add_stake_insufficient_balance_specific_amount() {
-    // SOMA stake coin doesn't have enough for the requested stake amount.
-    // Gas is USDC and is charged separately, so this fails on InsufficientCoinBalance
-    // (the SOMA coin), not InsufficientGas.
-    let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 5000);
-
-    let res = execute_add_stake(stake_coin, Some(6000), sender, SomaKeyPair::Ed25519(key)).await;
-
-    let effects = res.txn_result.unwrap().into_data();
-    assert!(!effects.status().is_ok(), "Should fail: stake amount > SOMA coin balance");
-}
-
-#[tokio::test]
 async fn test_add_stake_insufficient_gas() {
-    // Helper creates a small USDC gas coin (configurable). Force a failure by
-    // overriding the gas amount below the staking fee.
+    // Force a failure by giving a USDC gas coin smaller than STAKING_FEE.
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
-
     let res = execute_add_stake_with_gas(
-        stake_coin,
-        Some(1000),
+        50_000_000,
+        1_000,
         500, // USDC gas coin balance < STAKING_FEE (2000)
         sender,
         SomaKeyPair::Ed25519(key),
@@ -129,20 +123,19 @@ async fn test_add_stake_insufficient_gas() {
     );
 }
 
-/// Stage 9b: a successful AddStake writes both a StakedSomaV1 object
-/// **and** a matching row in the `delegations` column family. The two
-/// must agree on principal — they're the dual-write Stage 9d will
-/// later collapse into one.
+/// A successful AddStake writes the F1 delegation row alongside the
+/// StakedSomaV1 object until Stage 9d-C5 collapses to one source.
+/// Verifies the row's principal matches the StakedSomaV1's principal,
+/// and that `last_collected_period` advanced from 0 to the pool's
+/// current period.
 #[tokio::test]
 async fn test_add_stake_dual_writes_delegation_row() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_id = ObjectID::random();
     let stake_amount = 7_500_000u64;
-    let stake_coin = Object::with_id_owner_soma_coin_for_testing(stake_id, sender, 50_000_000);
 
     let res = execute_add_stake(
-        stake_coin,
-        Some(stake_amount),
+        50_000_000,
+        stake_amount,
         sender,
         SomaKeyPair::Ed25519(key),
     )
@@ -150,69 +143,66 @@ async fn test_add_stake_dual_writes_delegation_row() {
     let effects = res.txn_result.unwrap().into_data();
     assert_eq!(*effects.status(), ExecutionStatus::Success);
 
-    // The AddStake's write_transaction_outputs lands in the writeback
-    // cache's dirty state but isn't flushed to the perpetual store
-    // until a checkpoint executor commits it. Unit tests skip that
-    // path, so flush manually here so `database_for_testing()` reads
-    // the delegations table from the underlying RocksDB. Production
-    // (e2e) flow flushes via the checkpoint executor; this is purely
-    // a unit-test plumbing concern.
+    // Flush so the delegation row lands in perpetual_tables before we
+    // read it.
     let tx_digest = effects.transaction_digest();
     let epoch = res.authority_state.epoch_store_for_testing().epoch();
     let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
     res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
 
-    // Find the created StakedSoma so we can compare against the
-    // delegation row by the same key.
+    // Find the created StakedSomaV1 to compare against the delegation row.
     let store = res.authority_state.database_for_testing();
-    let mut staked_soma_pool: Option<types::object::ObjectID> = None;
-    let mut staked_soma_principal: Option<u64> = None;
-    let mut staked_soma_activation_epoch: Option<u64> = None;
+    let mut staked_pool: Option<types::object::ObjectID> = None;
+    let mut staked_principal: Option<u64> = None;
 
     for created in effects.created() {
         let obj = res.authority_state.get_object(&created.0.0).await.unwrap();
         if let Some(staked) = types::object::Object::as_staked_soma(&obj) {
-            staked_soma_pool = Some(staked.pool_id);
-            staked_soma_principal = Some(staked.principal);
-            staked_soma_activation_epoch = Some(staked.stake_activation_epoch);
+            staked_pool = Some(staked.pool_id);
+            staked_principal = Some(staked.principal);
             break;
         }
     }
-    let pool = staked_soma_pool.expect("a StakedSomaV1 must have been created");
-    let principal = staked_soma_principal.unwrap();
-    let activation_epoch = staked_soma_activation_epoch.unwrap();
+    let pool = staked_pool.expect("a StakedSomaV1 must have been created");
+    let principal = staked_principal.unwrap();
     assert_eq!(
         principal, stake_amount,
-        "StakedSoma.principal must equal the requested stake amount",
+        "StakedSomaV1.principal must equal the requested stake amount",
     );
 
-    // Delegation row must mirror the object's principal. The
-    // activation_epoch dimension dropped in Stage 9d-C1 (F1 schema is
-    // ONE row per (pool, staker)) — the StakedSoma still tracks it on
-    // its own object until C5 deletes the type, but the delegation row
-    // doesn't.
-    let _ = activation_epoch;
     let delegation = store.get_delegation(pool, sender).unwrap();
     assert_eq!(
         delegation.principal, principal,
-        "delegations[(pool, staker)].principal must equal StakedSoma.principal",
+        "delegations[(pool, staker)].principal must equal StakedSomaV1.principal",
     );
+
+    // F1 fold semantics: AddStake advances last_collected_period to the
+    // pool's current period.
+    let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
+    let pool_state = &system_state
+        .validators()
+        .validators
+        .iter()
+        .find(|v| v.staking_pool.id == pool)
+        .expect("pool must exist on a validator")
+        .staking_pool;
+    assert_eq!(
+        delegation.last_collected_period, pool_state.current_period,
+        "AddStake must advance last_collected_period to the pool's current period",
+    );
+
     let listed = store.iter_delegations_for_staker(sender).unwrap();
     assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
     assert_eq!(listed[0].0, pool);
     assert_eq!(listed[0].1.principal, principal);
 }
 
-/// Stage 9b: a successful WithdrawStake removes both the StakedSomaV1
-/// object **and** the matching delegations table row. Verifies the
-/// negative side of the dual-write — the executor emits
-/// `-principal`, and the post-execution write path drains the row to
-/// zero (which `apply_delegation_events` then deletes outright per
-/// the row-deletion contract on `set_delegation`).
-///
-/// Inlines AddStake here rather than calling `execute_add_stake` so
-/// the test keeps ownership of the keypair across both transactions
-/// (SomaKeyPair isn't `Clone`).
+/// A successful WithdrawStake removes both the StakedSomaV1 object
+/// **and** the matching delegation row. Verifies the negative side of
+/// the dual-write — the executor emits `-principal`, and the
+/// post-execution write path drains the row to zero (which
+/// `apply_delegation_events` then deletes outright per the row-deletion
+/// contract).
 #[tokio::test]
 async fn test_withdraw_stake_dual_writes_delegation_removal() {
     use types::object::Owner;
@@ -223,10 +213,11 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
 
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
-    let stake_ref = stake_coin.compute_object_reference();
-    authority_state.insert_genesis_object(stake_coin).await;
+    // Seed sender's SOMA balance so balance-mode AddStake can debit it.
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Soma, 50_000_000)
+        .unwrap();
 
     let gas_coin =
         Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
@@ -238,13 +229,9 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
         system_state.validators().validators[0].metadata.soma_address
     };
 
-    // Step 1: AddStake.
+    // Step 1: AddStake (Stage 9d-C2: balance-mode).
     let add_data = TransactionData::new(
-        TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_ref,
-            amount: Some(stake_amount),
-        },
+        TransactionKind::AddStake { validator: validator_address, amount: stake_amount },
         sender,
         vec![gas_ref],
     );
@@ -268,35 +255,28 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
     let store = authority_state.database_for_testing();
     let mut staked_oref: Option<ObjectRef> = None;
     let mut staked_pool: Option<ObjectID> = None;
-    let mut staked_activation_epoch: Option<u64> = None;
     for created in add_effects.created() {
         let obj = authority_state.get_object(&created.0.0).await.unwrap();
-        if let Some(staked) = types::object::Object::as_staked_soma(&obj) {
-            // The owner check matters here — genesis stakes also exist
-            // and live under different addresses; we only want the one
-            // we just created.
+        if let Some(_staked) = types::object::Object::as_staked_soma(&obj) {
+            // Owner check: genesis stakes also exist; we want the new one.
             if matches!(obj.owner(), Owner::AddressOwner(addr) if *addr == sender) {
                 staked_oref = Some(obj.compute_object_reference());
-                staked_pool = Some(staked.pool_id);
-                staked_activation_epoch = Some(staked.stake_activation_epoch);
+                staked_pool = Some(_staked.pool_id);
                 break;
             }
         }
     }
     let staked_oref = staked_oref.expect("StakedSomaV1 must exist after AddStake");
     let pool = staked_pool.unwrap();
-    let _activation_epoch = staked_activation_epoch.unwrap();
 
-    // Sanity: the row is there before WithdrawStake.
     assert_eq!(
         store.get_delegation(pool, sender).unwrap().principal,
         stake_amount,
-        "delegation row must mirror the StakedSoma post-AddStake",
+        "delegation row must mirror StakedSomaV1 post-AddStake",
     );
 
     // Step 2: WithdrawStake — produces a Coin output and removes the
-    // StakedSomaV1. The dual-write should also clear the delegations
-    // row.
+    // StakedSomaV1. The dual-write should also clear the delegation row.
     let gas_coin2 =
         Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
     let gas_ref2 = gas_coin2.compute_object_reference();
@@ -319,7 +299,6 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
         "WithdrawStake must succeed",
     );
 
-    // Flush so the perpetual store reflects the WithdrawStake's writes.
     let withdraw_tx_digest = withdraw_effects.transaction_digest();
     let batch = authority_state
         .get_cache_commit()
@@ -330,8 +309,6 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
         &[*withdraw_tx_digest],
     );
 
-    // The StakedSomaV1 object is deleted (existing behavior) — so is
-    // its delegations row.
     assert_eq!(
         store.get_delegation(pool, sender).unwrap().principal,
         0,
@@ -390,32 +367,34 @@ struct TransactionResult {
     txn_result: Result<SignedTransactionEffects, SomaError>,
 }
 
-/// Submit an AddStake with the given SOMA stake coin. A separate USDC gas
-/// coin (with default funding) is generated automatically and inserted at
-/// genesis.
+/// Submit an AddStake (balance-mode) where the sender's SOMA
+/// accumulator is pre-funded with `soma_balance`. A USDC gas coin
+/// (with default funding) is created automatically.
 async fn execute_add_stake(
-    stake_coin: Object,
-    amount: Option<u64>,
+    soma_balance: u64,
+    amount: u64,
     sender: SomaAddress,
     sender_key: SomaKeyPair,
 ) -> TransactionResult {
-    execute_add_stake_with_gas(stake_coin, amount, 10_000_000, sender, sender_key).await
+    execute_add_stake_with_gas(soma_balance, amount, 10_000_000, sender, sender_key).await
 }
 
-/// Same as [`execute_add_stake`] but with a custom USDC gas coin balance.
 async fn execute_add_stake_with_gas(
-    stake_coin: Object,
-    amount: Option<u64>,
+    soma_balance: u64,
+    amount: u64,
     gas_balance: u64,
     sender: SomaAddress,
     sender_key: SomaKeyPair,
 ) -> TransactionResult {
     let authority_state = TestAuthorityBuilder::new().build().await;
 
-    let stake_ref = stake_coin.compute_object_reference();
-    authority_state.insert_genesis_object(stake_coin).await;
+    // Stage 9d-C2: AddStake debits the sender's SOMA balance directly.
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, CoinType::Soma, soma_balance)
+        .unwrap();
 
-    // USDC gas coin (separate from the SOMA stake coin).
+    // USDC gas coin.
     let gas_coin =
         Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, gas_balance);
     let gas_ref = gas_coin.compute_object_reference();
@@ -427,7 +406,7 @@ async fn execute_add_stake_with_gas(
     };
 
     let data = TransactionData::new(
-        TransactionKind::AddStake { address: validator_address, coin_ref: stake_ref, amount },
+        TransactionKind::AddStake { validator: validator_address, amount },
         sender,
         vec![gas_ref],
     );

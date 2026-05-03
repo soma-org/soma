@@ -457,26 +457,28 @@ async fn test_transfer_multiple_objects() {
 
 #[tokio::test]
 async fn test_staking_creates_shared_object_mutation() {
-    // AddStake mutates SystemState (shared object) — verify shared object versioning works.
-    // Stake principal is SOMA, gas is USDC, so we provide both coins.
+    // AddStake mutates SystemState (shared object) — verify shared
+    // object versioning works. Stage 9d-C2: AddStake is balance-mode,
+    // so the SOMA stake comes out of the sender's accumulator. Gas
+    // is USDC.
     let (sender, sender_key): (_, Ed25519KeyPair) = get_key_pair();
-    let stake_coin =
-        Object::with_id_owner_soma_coin_for_testing(ObjectID::random(), sender, 50_000_000);
     let gas_coin =
         Object::with_id_owner_coin_for_testing(ObjectID::random(), sender, 10_000_000);
 
     let authority_state = TestAuthorityBuilder::new().build().await;
-    authority_state.insert_genesis_object(stake_coin.clone()).await;
     authority_state.insert_genesis_object(gas_coin.clone()).await;
+    authority_state
+        .database_for_testing()
+        .set_balance(sender, types::object::CoinType::Soma, 50_000_000)
+        .unwrap();
 
     let system_state = authority_state.get_system_state_object_for_testing().unwrap();
     let validator_address = system_state.validators().validators[0].metadata.soma_address;
 
     let data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin.compute_object_reference(),
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas_coin.compute_object_reference()],

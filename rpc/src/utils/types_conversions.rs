@@ -389,9 +389,8 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
             },
 
             // Staking operations
-            TK::AddStake { address, coin_ref, amount } => TransactionKind::AddStake {
-                address: address.into(),
-                coin_ref: coin_ref.into(),
+            TK::AddStake { validator, amount } => TransactionKind::AddStake {
+                validator: validator.into(),
                 amount,
             },
 
@@ -525,8 +524,8 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
             },
 
             // Staking operations
-            TransactionKind::AddStake { address, coin_ref, amount } => {
-                TK::AddStake { address: address.into(), coin_ref: coin_ref.into(), amount }
+            TransactionKind::AddStake { validator, amount } => {
+                TK::AddStake { validator: validator.into(), amount }
             }
 
             TransactionKind::WithdrawStake { staked_soma } => {

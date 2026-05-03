@@ -6,21 +6,15 @@ impl serde::Serialize for AddStake {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if self.address.is_some() {
-            len += 1;
-        }
-        if self.coin_ref.is_some() {
+        if self.validator.is_some() {
             len += 1;
         }
         if self.amount.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("soma.rpc.AddStake", len)?;
-        if let Some(v) = self.address.as_ref() {
-            struct_ser.serialize_field("address", v)?;
-        }
-        if let Some(v) = self.coin_ref.as_ref() {
-            struct_ser.serialize_field("coinRef", v)?;
+        if let Some(v) = self.validator.as_ref() {
+            struct_ser.serialize_field("validator", v)?;
         }
         if let Some(v) = self.amount.as_ref() {
             #[allow(clippy::needless_borrow)]
@@ -37,16 +31,13 @@ impl<'de> serde::Deserialize<'de> for AddStake {
         D: serde::Deserializer<'de>,
     {
         const FIELDS: &[&str] = &[
-            "address",
-            "coin_ref",
-            "coinRef",
+            "validator",
             "amount",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
-            Address,
-            CoinRef,
+            Validator,
             Amount,
             __SkipField__,
         }
@@ -70,8 +61,7 @@ impl<'de> serde::Deserialize<'de> for AddStake {
                         E: serde::de::Error,
                     {
                         match value {
-                            "address" => Ok(GeneratedField::Address),
-                            "coinRef" | "coin_ref" => Ok(GeneratedField::CoinRef),
+                            "validator" => Ok(GeneratedField::Validator),
                             "amount" => Ok(GeneratedField::Amount),
                             _ => Ok(GeneratedField::__SkipField__),
                         }
@@ -94,22 +84,15 @@ impl<'de> serde::Deserialize<'de> for AddStake {
                 where
                     V: serde::de::MapAccess<'de>,
             {
-                let mut address__ = None;
-                let mut coin_ref__ = None;
+                let mut validator__ = None;
                 let mut amount__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
-                        GeneratedField::Address => {
-                            if address__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("address"));
+                        GeneratedField::Validator => {
+                            if validator__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("validator"));
                             }
-                            address__ = map_.next_value()?;
-                        }
-                        GeneratedField::CoinRef => {
-                            if coin_ref__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("coinRef"));
-                            }
-                            coin_ref__ = map_.next_value()?;
+                            validator__ = map_.next_value()?;
                         }
                         GeneratedField::Amount => {
                             if amount__.is_some() {
@@ -125,8 +108,7 @@ impl<'de> serde::Deserialize<'de> for AddStake {
                     }
                 }
                 Ok(AddStake {
-                    address: address__,
-                    coin_ref: coin_ref__,
+                    validator: validator__,
                     amount: amount__,
                 })
             }

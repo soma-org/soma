@@ -114,10 +114,12 @@ pub enum TransactionKind {
     },
 
     // Staking
+    //
+    // Stage 9d-C2: AddStake is balance-mode — no coin reference. The
+    // executor debits `amount` SOMA from the sender's accumulator.
     AddStake {
-        address: Address,
-        coin_ref: ObjectReference,
-        amount: Option<u64>,
+        validator: Address,
+        amount: u64,
     },
 
     WithdrawStake {

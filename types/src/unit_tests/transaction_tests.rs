@@ -176,9 +176,8 @@ fn test_transaction_kind_classification() {
 
     // Staking transactions
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(add_stake.is_staking_tx());
     assert!(!add_stake.is_validator_tx());
@@ -246,16 +245,15 @@ fn test_user_tx_has_gas() {
     assert!(!data.gas().is_empty(), "TransferCoin should have gas payment");
     assert!(!data.is_system_tx());
 
-    // AddStake
+    // AddStake (Stage 9d-C2: balance-mode, no coin input)
     let sender = SomaAddress::random();
-    let coin_ref = random_object_ref();
     let gas_ref = random_object_ref();
     let add_stake_data = TransactionData::new(
-        TransactionKind::AddStake { address: SomaAddress::random(), coin_ref, amount: Some(1000) },
+        TransactionKind::AddStake { validator: SomaAddress::random(), amount: 1000 },
         sender,
         vec![gas_ref],
     );
-    assert!(!add_stake_data.gas().is_empty(), "AddStake should have gas payment");
+    assert!(!add_stake_data.gas().is_empty(), "AddStake can still take coin-mode gas");
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +316,8 @@ fn test_all_tx_kinds_bcs_roundtrip() {
         },
         // Staking
         TransactionKind::AddStake {
-            address: SomaAddress::random(),
-            coin_ref: random_object_ref(),
-            amount: Some(1000),
+            validator: SomaAddress::random(),
+            amount: 1000,
         },
         TransactionKind::WithdrawStake { staked_soma: random_object_ref() },
         // Bridge
@@ -466,9 +463,8 @@ fn test_shared_input_objects() {
 
     // Staking tx -> SystemState only
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     let shared: Vec<_> = add_stake.shared_input_objects().collect();
     assert_eq!(shared.len(), 1);
@@ -526,9 +522,8 @@ fn test_contains_shared_object() {
 
     // AddStake touches SystemState
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(
         add_stake.contains_shared_object(),
@@ -725,9 +720,8 @@ fn test_requires_system_state() {
 
     // Staking requires system state
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: random_object_ref(),
-        amount: None,
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     assert!(add_stake.requires_system_state());
 
@@ -803,22 +797,16 @@ fn test_input_objects_user_txs() {
     assert_eq!(inputs.len(), 1);
     assert_eq!(inputs[0].object_id(), coin_ref.0);
 
-    // AddStake: should have SystemState (shared) + coin_ref (owned)
-    let coin_ref2 = random_object_ref();
+    // AddStake (Stage 9d-C2: balance-mode): SystemState shared only,
+    // no coin input.
     let add_stake = TransactionKind::AddStake {
-        address: SomaAddress::random(),
-        coin_ref: coin_ref2,
-        amount: Some(1000),
+        validator: SomaAddress::random(),
+        amount: 1000,
     };
     let inputs = add_stake.input_objects().expect("should succeed");
-    assert_eq!(inputs.len(), 2);
-    // First is SystemState shared object
+    assert_eq!(inputs.len(), 1);
     assert!(inputs[0].is_shared_object());
     assert_eq!(inputs[0].object_id(), SYSTEM_STATE_OBJECT_ID);
-    // Second is the coin
-    assert!(!inputs[1].is_shared_object());
-    assert_eq!(inputs[1].object_id(), coin_ref2.0);
-
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,9 +1004,8 @@ fn test_envelope_shared_object_methods() {
     // AddStake transaction -> touches shared SystemState
     let add_stake_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: SomaAddress::random(),
-            coin_ref: random_object_ref(),
-            amount: Some(1000),
+            validator: SomaAddress::random(),
+            amount: 1000,
         },
         sender,
         vec![gas_ref],

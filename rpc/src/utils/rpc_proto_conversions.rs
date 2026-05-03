@@ -616,10 +616,9 @@ impl From<types::transaction::TransactionKind> for TransactionKind {
                 objects: objects.into_iter().map(object_ref_to_proto).collect(),
                 recipient: Some(recipient.to_string()),
             }),
-            K::AddStake { address, coin_ref, amount } => Kind::AddStake(AddStake {
-                address: Some(address.to_string()),
-                coin_ref: Some(object_ref_to_proto(coin_ref)),
-                amount,
+            K::AddStake { validator, amount } => Kind::AddStake(AddStake {
+                validator: Some(validator.to_string()),
+                amount: Some(amount),
             }),
 
             K::WithdrawStake { staked_soma } => Kind::WithdrawStake(WithdrawStake {

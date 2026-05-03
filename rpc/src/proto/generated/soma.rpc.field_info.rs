@@ -6969,29 +6969,22 @@ mod _field_impls {
         }
     }
     impl AddStake {
-        pub const ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "address",
-            json_name: "address",
+        pub const VALIDATOR_FIELD: &'static MessageField = &MessageField {
+            name: "validator",
+            json_name: "validator",
             number: 1i32,
             message_fields: None,
-        };
-        pub const COIN_REF_FIELD: &'static MessageField = &MessageField {
-            name: "coin_ref",
-            json_name: "coinRef",
-            number: 2i32,
-            message_fields: Some(ObjectReference::FIELDS),
         };
         pub const AMOUNT_FIELD: &'static MessageField = &MessageField {
             name: "amount",
             json_name: "amount",
-            number: 3i32,
+            number: 2i32,
             message_fields: None,
         };
     }
     impl MessageFields for AddStake {
         const FIELDS: &'static [&'static MessageField] = &[
-            Self::ADDRESS_FIELD,
-            Self::COIN_REF_FIELD,
+            Self::VALIDATOR_FIELD,
             Self::AMOUNT_FIELD,
         ];
     }
@@ -7015,13 +7008,9 @@ mod _field_impls {
         pub fn finish(self) -> String {
             self.path.join(".")
         }
-        pub fn address(mut self) -> String {
-            self.path.push(AddStake::ADDRESS_FIELD.name);
+        pub fn validator(mut self) -> String {
+            self.path.push(AddStake::VALIDATOR_FIELD.name);
             self.finish()
-        }
-        pub fn coin_ref(mut self) -> ObjectReferenceFieldPathBuilder {
-            self.path.push(AddStake::COIN_REF_FIELD.name);
-            ObjectReferenceFieldPathBuilder::new_with_base(self.path)
         }
         pub fn amount(mut self) -> String {
             self.path.push(AddStake::AMOUNT_FIELD.name);

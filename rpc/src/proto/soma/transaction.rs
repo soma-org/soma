@@ -272,8 +272,8 @@ impl From<crate::types::TransactionKind> for TransactionKind {
             }
 
             // Staking
-            AddStake { address, coin_ref, amount } => {
-                Kind::AddStake(AddStakeArgs { address, coin_ref, amount }.into())
+            AddStake { validator, amount } => {
+                Kind::AddStake(AddStakeArgs { validator, amount }.into())
             }
             WithdrawStake { staked_soma } => Kind::WithdrawStake(staked_soma.into()),
 
@@ -529,20 +529,17 @@ impl TryFrom<&TransactionKind> for crate::types::TransactionKind {
                     .map_err(|e| TryFromProtoError::invalid("recipient", e))?,
             },
 
-            // Staking
+            // Staking (Stage 9d-C2: balance-mode AddStake, no coin_ref)
             Kind::AddStake(stake) => Self::AddStake {
-                address: stake
-                    .address
+                validator: stake
+                    .validator
                     .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("address"))?
+                    .ok_or_else(|| TryFromProtoError::missing("validator"))?
                     .parse()
-                    .map_err(|e| TryFromProtoError::invalid("address", e))?,
-                coin_ref: stake
-                    .coin_ref
-                    .as_ref()
-                    .ok_or_else(|| TryFromProtoError::missing("coin_ref"))?
-                    .try_into()?,
-                amount: stake.amount,
+                    .map_err(|e| TryFromProtoError::invalid("validator", e))?,
+                amount: stake
+                    .amount
+                    .ok_or_else(|| TryFromProtoError::missing("amount"))?,
             },
 
             Kind::WithdrawStake(withdraw) => Self::WithdrawStake {
@@ -1194,19 +1191,17 @@ impl From<TransferObjectsArgs> for TransferObjects {
     }
 }
 
-// AddStake conversions
+// AddStake conversions (Stage 9d-C2: balance-mode, no coin_ref)
 pub struct AddStakeArgs {
-    pub address: crate::types::Address,
-    pub coin_ref: crate::types::ObjectReference,
-    pub amount: Option<u64>,
+    pub validator: crate::types::Address,
+    pub amount: u64,
 }
 
 impl From<AddStakeArgs> for AddStake {
     fn from(args: AddStakeArgs) -> Self {
         Self {
-            address: Some(args.address.to_string()),
-            coin_ref: Some(args.coin_ref.into()),
-            amount: args.amount,
+            validator: Some(args.validator.to_string()),
+            amount: Some(args.amount),
         }
     }
 }

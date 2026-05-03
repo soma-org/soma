@@ -5331,8 +5331,7 @@ mod _getter_impls {
     impl AddStake {
         pub const fn const_default() -> Self {
             Self {
-                address: None,
-                coin_ref: None,
+                validator: None,
                 amount: None,
             }
         }
@@ -5341,27 +5340,8 @@ mod _getter_impls {
             static DEFAULT: AddStake = AddStake::const_default();
             &DEFAULT
         }
-        pub fn with_address(mut self, field: String) -> Self {
-            self.address = Some(field.into());
-            self
-        }
-        pub fn coin_ref(&self) -> &ObjectReference {
-            self.coin_ref
-                .as_ref()
-                .map(|field| field as _)
-                .unwrap_or_else(|| ObjectReference::default_instance() as _)
-        }
-        pub fn coin_ref_opt(&self) -> Option<&ObjectReference> {
-            self.coin_ref.as_ref().map(|field| field as _)
-        }
-        pub fn coin_ref_opt_mut(&mut self) -> Option<&mut ObjectReference> {
-            self.coin_ref.as_mut().map(|field| field as _)
-        }
-        pub fn coin_ref_mut(&mut self) -> &mut ObjectReference {
-            self.coin_ref.get_or_insert_default()
-        }
-        pub fn with_coin_ref(mut self, field: ObjectReference) -> Self {
-            self.coin_ref = Some(field.into());
+        pub fn with_validator(mut self, field: String) -> Self {
+            self.validator = Some(field.into());
             self
         }
         pub fn with_amount(mut self, field: u64) -> Self {

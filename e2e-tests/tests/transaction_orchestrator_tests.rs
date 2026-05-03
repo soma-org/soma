@@ -437,19 +437,13 @@ async fn test_orchestrator_execute_staking() {
         .await
         .unwrap()
         .expect("sender must have a gas object");
-    // AddStake's principal must be SOMA; gas (above) is USDC.
-    let (stake_coin, _) = test_cluster
-        .wallet
-        .get_richest_soma_coin(sender)
-        .await
-        .unwrap()
-        .expect("sender must have a SOMA coin");
-
+    // Stage 9d-C2: AddStake is balance-mode — the executor debits
+    // the sender's SOMA accumulator directly, no coin reference
+    // required. Gas (above) is USDC.
     let tx_data = TransactionData::new(
         TransactionKind::AddStake {
-            address: validator_address,
-            coin_ref: stake_coin,
-            amount: Some(1_000_000),
+            validator: validator_address,
+            amount: 1_000_000,
         },
         sender,
         vec![gas],

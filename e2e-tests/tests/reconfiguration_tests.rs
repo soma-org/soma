@@ -597,17 +597,10 @@ async fn execute_add_stake_transaction(
         .await
         .unwrap()
         .expect("Can't get gas object for address");
-    // Stake principal must be SOMA; gas (above) is USDC.
-    let (stake_coin, _) = test_cluster
-        .wallet
-        .get_richest_soma_coin((&signer.public()).into())
-        .await
-        .unwrap()
-        .expect("Can't get SOMA coin for address");
-
+    // Stage 9d-C2: AddStake is balance-mode. Gas (above) is USDC.
     let tx = Transaction::from_data_and_signer(
         TransactionData::new(
-            TransactionKind::AddStake { address, coin_ref: stake_coin, amount: Some(stake) },
+            TransactionKind::AddStake { validator: address, amount: stake },
             (&signer.public()).into(),
             vec![gas_object],
         ),

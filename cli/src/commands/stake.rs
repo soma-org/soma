@@ -15,45 +15,21 @@ use crate::response::ClientCommandResponse;
 pub async fn execute_stake(
     context: &mut WalletContext,
     validator: SomaAddress,
-    amount: Option<u64>,
-    coin: Option<ObjectID>,
+    amount: u64,
     tx_args: TxProcessingArgs,
 ) -> Result<ClientCommandResponse> {
     let sender = context.active_address()?;
-    let client = context.get_client().await?;
 
-    // Get coin reference and gas payment in a single fetch.
-    let (coin_ref, gas_payment) = match coin {
-        Some(coin_id) => {
-            let obj = client
-                .get_object(coin_id)
-                .await
-                .map_err(|e| anyhow!("Failed to get coin: {}", e.message()))?;
-            let r = obj.compute_object_reference();
-            (r, vec![r])
-        }
-        None => {
-            let (r, balance) = context
-                .get_richest_coin_with_balance(sender)
-                .await?
-                .ok_or_else(|| anyhow!("No coins found for address {}", sender))?;
-            if let Some(amt) = amount {
-                if balance < amt {
-                    return Err(anyhow!(
-                        "Richest coin has balance {} but stake requires {}. \
-                         Run `soma merge-coins` to consolidate your coins.",
-                        balance,
-                        amt,
-                    ));
-                }
-            }
-            (r, vec![r])
-        }
-    };
+    if amount == 0 {
+        return Err(anyhow!("Stake amount must be greater than zero"));
+    }
 
-    let kind = TransactionKind::AddStake { address: validator, coin_ref, amount };
+    // Stage 9d-C2: AddStake is balance-mode — the executor debits
+    // `amount` SOMA from the sender's accumulator, no coin reference
+    // required. Gas is balance-mode too (vec![]).
+    let kind = TransactionKind::AddStake { validator, amount };
 
-    crate::client_commands::execute_or_serialize(context, sender, kind, gas_payment, tx_args).await
+    crate::client_commands::execute_or_serialize(context, sender, kind, vec![], tx_args).await
 }
 
 /// Execute the unstake command (withdraw staked SOMA)

@@ -384,14 +384,12 @@ async fn test_safe_mode_reconfig() {
     if let Some(gas_object) =
         test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
     {
-        // AddStake principal must be SOMA; gas is USDC.
-        let (stake_coin, _) =
-            test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap().unwrap();
+        // Stage 9d-C2: AddStake is balance-mode — debits sender's
+        // SOMA accumulator directly.
         let tx_data = types::transaction::TransactionData::new(
             types::transaction::TransactionKind::AddStake {
-                address: validator_address,
-                coin_ref: stake_coin,
-                amount: Some(1_000_000),
+                validator: validator_address,
+                amount: 1_000_000,
             },
             sender,
             vec![gas_object],
@@ -589,17 +587,12 @@ async fn test_crash_during_reconfig_with_tx_load() {
         if let Some(gas_object) =
             test_cluster.wallet.get_one_gas_object_owned_by_address(sender).await.unwrap()
         {
-            // Stake principal must be SOMA; gas is USDC.
-            let stake_coin =
-                match test_cluster.wallet.get_richest_soma_coin(sender).await.unwrap() {
-                    Some((c, _)) => c,
-                    None => break,
-                };
+            // Stage 9d-C2: AddStake is balance-mode — no SOMA coin
+            // ref needed.
             let tx_data = types::transaction::TransactionData::new(
                 types::transaction::TransactionKind::AddStake {
-                    address: validator_address,
-                    coin_ref: stake_coin,
-                    amount: Some(1_000_000),
+                    validator: validator_address,
+                    amount: 1_000_000,
                 },
                 sender,
                 vec![gas_object],

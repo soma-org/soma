@@ -92,10 +92,16 @@ pub enum TransactionKind {
         recipient: SomaAddress,
     },
     // Staking txs
+    //
+    // Stage 9d-C2: AddStake is balance-mode — `amount` SOMA is debited
+    // from the sender's accumulator. The executor folds any pending
+    // F1 rewards on the (validator, sender) row to the sender's
+    // SOMA balance before bumping principal, so the user never loses
+    // accrued rewards by re-staking. WithdrawStake stays object-mode
+    // for one more sub-step (Stage 9d-C3 reshapes it).
     AddStake {
-        address: SomaAddress,
-        coin_ref: ObjectRef,
-        amount: Option<u64>, // Optional to allow staking entire coin
+        validator: SomaAddress,
+        amount: u64,
     },
     WithdrawStake {
         staked_soma: ObjectRef,
@@ -581,9 +587,10 @@ impl TransactionKind {
                     input_objects.push(InputObjectKind::ImmOrOwnedObject(*object));
                 }
             }
-            TransactionKind::AddStake { coin_ref, .. } => {
-                input_objects.push(InputObjectKind::ImmOrOwnedObject(*coin_ref));
-            }
+            // Stage 9d-C2: AddStake is balance-mode — no SOMA coin
+            // input. The Withdraw event the executor emits is covered
+            // by `reservations()`.
+            TransactionKind::AddStake { .. } => {}
 
             TransactionKind::WithdrawStake { staked_soma } => {
                 input_objects.push(InputObjectKind::ImmOrOwnedObject(*staked_soma));
@@ -1284,6 +1291,21 @@ impl TransactionData {
                     self.sender(),
                     crate::object::CoinType::Usdc,
                     args.amount,
+                ));
+            }
+        }
+        // Stage 9d-C2: AddStake debits SOMA from the sender's
+        // accumulator. The F1 fold-to-balance only credits, never
+        // debits, so we don't subtract pending rewards here — the
+        // worst case is overstating the required balance, which the
+        // pre-pass treats as an Accept (we still have enough), and
+        // the executor's checked_sub catches the actual case.
+        if let TransactionKind::AddStake { amount, .. } = self.kind() {
+            if *amount > 0 {
+                out.push(WithdrawalReservation::new(
+                    self.sender(),
+                    crate::object::CoinType::Soma,
+                    *amount,
                 ));
             }
         }
