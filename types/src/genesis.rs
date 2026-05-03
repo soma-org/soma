@@ -42,13 +42,11 @@ pub struct Genesis {
     /// new balance column family is non-empty from epoch 0. Will become
     /// the sole source of fungible balances after Stage 13 deletes coins.
     balances: BTreeMap<(SomaAddress, CoinType), u64>,
-    /// Stage 9d: initial delegation entries to seed at genesis. Keyed
-    /// by (pool_id, staker, activation_epoch) and maps to principal.
-    /// Mirrors every genesis-issued StakedSomaV1 object so the
-    /// `delegations` column family is in sync from epoch 0 — without
-    /// this, the table only carries dual-writes from AddStake (9b) and
-    /// epoch rewards (9c), missing the genesis seed stakes.
-    delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+    /// Stage 9d-C1: initial delegation entries to seed at genesis.
+    /// Keyed by (pool_id, staker) → principal — F1's row schema is
+    /// ONE row per (validator, user). The table consumer materialises
+    /// these as `Delegation { principal, last_collected_period: 0 }`.
+    delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
@@ -60,7 +58,7 @@ pub struct UnsignedGenesis {
     pub objects: Vec<Object>,
     pub balances: BTreeMap<(SomaAddress, CoinType), u64>,
     /// Stage 9d genesis-time delegation seeds — see `Genesis::delegations`.
-    pub delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+    pub delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
 }
 
 impl PartialEq for Genesis {
@@ -91,7 +89,7 @@ impl Genesis {
         effects: TransactionEffects,
         objects: Vec<Object>,
         balances: BTreeMap<(SomaAddress, CoinType), u64>,
-        delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+        delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
     ) -> Self {
         Self {
             checkpoint,
@@ -114,9 +112,9 @@ impl Genesis {
         &self.balances
     }
 
-    /// Stage 9d: returns the initial (pool_id, staker, activation_epoch)
-    /// → principal entries to seed the delegations table at genesis.
-    pub fn delegations(&self) -> &BTreeMap<(ObjectID, SomaAddress, EpochId), u64> {
+    /// Stage 9d-C1: returns the initial (pool_id, staker) → principal
+    /// entries to seed the delegations table at genesis.
+    pub fn delegations(&self) -> &BTreeMap<(ObjectID, SomaAddress), u64> {
         &self.delegations
     }
 
@@ -203,7 +201,7 @@ impl Serialize for Genesis {
             effects: &'a TransactionEffects,
             objects: &'a [Object],
             balances: &'a BTreeMap<(SomaAddress, CoinType), u64>,
-            delegations: &'a BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+            delegations: &'a BTreeMap<(ObjectID, SomaAddress), u64>,
         }
 
         let raw_genesis = RawGenesis {
@@ -242,7 +240,7 @@ impl<'de> Deserialize<'de> for Genesis {
             effects: TransactionEffects,
             objects: Vec<Object>,
             balances: BTreeMap<(SomaAddress, CoinType), u64>,
-            delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+            delegations: BTreeMap<(ObjectID, SomaAddress), u64>,
         }
 
         let bytes = if deserializer.is_human_readable() {

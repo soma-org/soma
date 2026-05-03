@@ -478,10 +478,8 @@ impl RpcIndexes for RestReadStore {
         self.index()?.get_balance(owner)?.map(|info| info.into()).pipe(Ok)
     }
 
-    /// Stage 9d: route through `AuthorityStore::iter_delegations_for_staker`
-    /// which scans the on-chain `delegations` column family directly.
-    /// The data is already in the perpetual store (no separate index
-    /// to maintain), so we read straight from there.
+    /// Stage 9d-C1: route through `AuthorityStore::iter_delegations_for_staker`
+    /// which scans the F1-shaped `delegations` column family directly.
     fn list_delegations(
         &self,
         staker: &SomaAddress,
@@ -494,15 +492,11 @@ impl RpcIndexes for RestReadStore {
             .map_err(types::storage::storage_error::Error::custom)?;
         Ok(rows
             .into_iter()
-            .map(
-                |(pool_id, activation_epoch, principal)| {
-                    types::storage::read_store::DelegationInfo {
-                        pool_id,
-                        activation_epoch,
-                        principal,
-                    }
-                },
-            )
+            .map(|(pool_id, delegation)| types::storage::read_store::DelegationInfo {
+                pool_id,
+                principal: delegation.principal,
+                last_collected_period: delegation.last_collected_period,
+            })
             .collect())
     }
 

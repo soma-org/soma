@@ -171,27 +171,28 @@ pub struct AuthorityPerpetualTables {
     /// atomic with execution.
     pub(crate) executed_transaction_digests: DBMap<(EpochId, TransactionDigest), ()>,
 
-    /// Stage 9a: delegation principal per `(pool_id, staker, activation_epoch)`.
+    /// Stage 9d-C1: F1-shaped delegation table — ONE row per
+    /// (pool_id, staker). Replaces the previous tripled key
+    /// (pool_id, staker, activation_epoch) -> u64; activation epoch
+    /// drops out because F1's per-staker history is captured by the
+    /// `last_collected_period` field on the `Delegation` value.
     ///
-    /// Shadow of the per-stake `StakedSomaV1` object's `principal`
-    /// field, indexed for efficient sum-by-pool and sum-by-staker
-    /// queries. Triplet key matches the StakedSoma identity: the
-    /// activation epoch is included because two stakes from the same
-    /// staker into the same pool but in different epochs lock in
-    /// different exchange rates and so must be tracked separately for
-    /// rewards math.
+    /// `principal` is the staker's committed stake. `last_collected_period`
+    /// is the F1 cumulative-index period as of their most recent
+    /// fold. Pending reward is computed at read time as
+    /// principal * (R(current_period) − R(last_collected_period)) /
+    /// F1_INDEX_SCALE.
     ///
-    /// **Stage 9a is additive:** the table exists and has accessor
-    /// methods, but no execution path writes to it yet. Stage 9b will
-    /// route AddStake / WithdrawStake through this table; Stage 9c
-    /// routes epoch-end reward distribution; Stage 9d removes the
-    /// `StakedSomaV1` object once all callers have migrated.
+    /// AddStake / WithdrawStake fold pending rewards to the staker's
+    /// SOMA balance and update `last_collected_period`. The table is
+    /// sole truth for reward collection — Stage 9d-C5 deletes
+    /// `StakedSomaV1` once no caller depends on it.
     ///
     /// Tuple-key encoding (BCS): `pool_id` first means all delegations
-    /// for one pool sort contiguously — the validator-removal /
-    /// model-deactivation paths can iterate a single pool's delegators
-    /// efficiently.
-    pub(crate) delegations: DBMap<(ObjectID, SomaAddress, EpochId), u64>,
+    /// for one pool sort contiguously — the validator-removal path can
+    /// iterate a single pool's delegators efficiently.
+    pub(crate) delegations:
+        DBMap<(ObjectID, SomaAddress), types::system_state::staking::Delegation>,
 }
 
 impl AuthorityPerpetualTables {

@@ -3191,15 +3191,15 @@ mod _field_impls {
             number: 1i32,
             message_fields: None,
         };
-        pub const ACTIVATION_EPOCH_FIELD: &'static MessageField = &MessageField {
-            name: "activation_epoch",
-            json_name: "activationEpoch",
-            number: 2i32,
-            message_fields: None,
-        };
         pub const PRINCIPAL_FIELD: &'static MessageField = &MessageField {
             name: "principal",
             json_name: "principal",
+            number: 2i32,
+            message_fields: None,
+        };
+        pub const LAST_COLLECTED_PERIOD_FIELD: &'static MessageField = &MessageField {
+            name: "last_collected_period",
+            json_name: "lastCollectedPeriod",
             number: 3i32,
             message_fields: None,
         };
@@ -3207,8 +3207,8 @@ mod _field_impls {
     impl MessageFields for DelegationEntry {
         const FIELDS: &'static [&'static MessageField] = &[
             Self::POOL_ID_FIELD,
-            Self::ACTIVATION_EPOCH_FIELD,
             Self::PRINCIPAL_FIELD,
+            Self::LAST_COLLECTED_PERIOD_FIELD,
         ];
     }
     impl DelegationEntry {
@@ -3235,12 +3235,12 @@ mod _field_impls {
             self.path.push(DelegationEntry::POOL_ID_FIELD.name);
             self.finish()
         }
-        pub fn activation_epoch(mut self) -> String {
-            self.path.push(DelegationEntry::ACTIVATION_EPOCH_FIELD.name);
-            self.finish()
-        }
         pub fn principal(mut self) -> String {
             self.path.push(DelegationEntry::PRINCIPAL_FIELD.name);
+            self.finish()
+        }
+        pub fn last_collected_period(mut self) -> String {
+            self.path.push(DelegationEntry::LAST_COLLECTED_PERIOD_FIELD.name);
             self.finish()
         }
     }

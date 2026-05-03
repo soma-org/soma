@@ -102,8 +102,8 @@ pub async fn execute_list_stakes(
             .map(|d| {
                 serde_json::json!({
                     "pool_id": d.pool_id,
-                    "activation_epoch": d.activation_epoch,
                     "principal": d.principal,
+                    "last_collected_period": d.last_collected_period,
                 })
             })
             .collect();
@@ -117,15 +117,11 @@ pub async fn execute_list_stakes(
         println!("No active stakes for {}", staker);
     } else {
         println!("Stakes for {}:", staker);
-        println!(
-            "  {:<66}  {:<16}  {}",
-            "POOL", "ACTIVATION_EPOCH", "PRINCIPAL"
-        );
+        println!("  {:<66}  {}", "POOL", "PRINCIPAL");
         for d in &response.delegations {
             println!(
-                "  {:<66}  {:<16}  {}",
+                "  {:<66}  {}",
                 d.pool_id.as_deref().unwrap_or(""),
-                d.activation_epoch.unwrap_or(0),
                 d.principal.unwrap_or(0),
             );
         }

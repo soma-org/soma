@@ -69,16 +69,16 @@ impl StakingExecutor {
 
         let staked_soma = state.request_add_stake(signer, address, stake_amount)?;
 
-        // Stage 9b: dual-write to the delegations table. Records the
-        // same `(pool_id, staker, activation_epoch) -> principal` as
-        // the StakedSomaV1 object below, indexed for O(pool) and
-        // O(staker) reads. Stage 9c will route reward distribution
-        // through this; Stage 9d removes the object.
+        // Stage 9d-C1: dual-write into the F1-shaped delegations
+        // table. Adds the new principal to the (pool, staker) row.
+        // No fold yet (Stage 9d-C2 introduces the F1 fold-to-balance
+        // path); leaving `set_period: None` keeps any existing
+        // `last_collected_period` intact.
         store.emit_delegation_event(
             staked_soma.pool_id,
             signer,
-            staked_soma.stake_activation_epoch,
             staked_soma.principal as i128,
+            None,
         );
 
         let staked_soma_object = Object::new_staked_soma_object(
@@ -168,18 +168,18 @@ impl StakingExecutor {
         // Process withdrawal
         let withdrawn_amount = state.request_withdraw_stake(staked_soma)?;
 
-        // Stage 9b: clear the delegation row. The principal field on
-        // the StakedSomaV1 doesn't change over a stake's lifetime
-        // (rewards accrue via the pool's exchange-rate book, not by
-        // mutating principal), so subtracting `principal` always
-        // drains the row to zero. `apply_delegation_events` deletes
-        // the row outright on a zero-balance result, keeping the
-        // table prune-clean.
+        // Stage 9d-C1: clear the delegation row. With ONE row per
+        // (pool, staker), withdrawing the StakedSomaV1's full
+        // principal drains that row to zero — `apply_delegation_events`
+        // deletes it outright per the row-deletion contract.
+        // `set_period: None` because no fold yet (Stage 9d-C3 wires
+        // the F1 fold-to-balance into WithdrawStake).
+        let _ = activation_epoch; // unused under the new schema
         store.emit_delegation_event(
             pool_id,
             signer,
-            activation_epoch,
             -(principal as i128),
+            None,
         );
 
         // Delete StakedSoma object

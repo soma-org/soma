@@ -1,21 +1,21 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Unit tests for the delegation-balance storage layer
+//! Unit tests for the F1-shaped delegation-balance storage layer
 //! (`AuthorityStore::*_delegation` methods + the `delegations` column
 //! family).
 //!
-//! Stage 9a is additive: the table exists with accessors, but no
-//! production execution path writes to it yet. These tests exercise
-//! the storage primitives in isolation so that Stage 9b (which will
-//! route AddStake/WithdrawStake through this table) can rely on them
-//! being correct.
+//! Stage 9d-C1 reshapes the table to one row per (pool, staker)
+//! holding a `Delegation { principal, last_collected_period }`. These
+//! tests exercise the storage primitives in isolation so the executor
+//! changes in C2/C3 can rely on them being correct.
 
 use std::sync::Arc;
 
 use tempfile::tempdir;
 use types::base::SomaAddress;
 use types::object::ObjectID;
+use types::system_state::staking::Delegation;
 
 use crate::authority_store::AuthorityStore;
 use crate::authority_store_tables::AuthorityPerpetualTables;
@@ -34,18 +34,22 @@ fn addr(seed: u8) -> SomaAddress {
     SomaAddress::new([seed; 32])
 }
 
+fn delegation(principal: u64, period: u64) -> Delegation {
+    Delegation::new(principal, period)
+}
+
 // ---------------------------------------------------------------------
 // get_delegation / set_delegation
 // ---------------------------------------------------------------------
 
-/// A delegation row that has never been written reads as zero, not as
-/// a missing-key error. Mirrors `get_balance` semantics — the rest of
-/// the staking layer will rely on this contract once Stage 9b lands.
+/// A delegation row that has never been written reads as the default
+/// (zero principal, period 0), not as a missing-key error. Mirrors
+/// `get_balance` semantics.
 #[tokio::test]
-async fn get_delegation_missing_returns_zero() {
+async fn get_delegation_missing_returns_default() {
     let store = fresh_store();
-    assert_eq!(store.get_delegation(pool(1), addr(1), 0).unwrap(), 0);
-    assert_eq!(store.get_delegation(pool(1), addr(2), 5).unwrap(), 0);
+    assert_eq!(store.get_delegation(pool(1), addr(1)).unwrap(), Delegation::default());
+    assert_eq!(store.get_delegation(pool(1), addr(2)).unwrap().principal, 0);
 }
 
 #[tokio::test]
@@ -54,51 +58,52 @@ async fn set_delegation_round_trips() {
     let p = pool(1);
     let alice = addr(2);
 
-    store.set_delegation(p, alice, 7, 1_000_000).unwrap();
-    assert_eq!(store.get_delegation(p, alice, 7).unwrap(), 1_000_000);
+    store.set_delegation(p, alice, delegation(1_000_000, 7)).unwrap();
+    let got = store.get_delegation(p, alice).unwrap();
+    assert_eq!(got.principal, 1_000_000);
+    assert_eq!(got.last_collected_period, 7);
 }
 
-/// Setting a delegation row to zero deletes the row entirely. Important
-/// because `get_delegation` returns 0 for missing entries — keeping a
-/// zero-valued row would still appear in `iter_delegations_for_staker`
-/// scans and waste storage. Withdrawing a stake fully should leave no
-/// trace.
+/// Setting a delegation row whose principal is zero deletes the row
+/// entirely. Important because `get_delegation` returns the default
+/// for missing entries — keeping a zero-principal row would still
+/// appear in `iter_delegations_for_staker` scans and waste storage.
+/// Withdrawing a stake fully should leave no trace.
 #[tokio::test]
-async fn set_delegation_zero_deletes_row() {
+async fn set_delegation_zero_principal_deletes_row() {
     let store = fresh_store();
     let p = pool(1);
     let alice = addr(2);
 
-    store.set_delegation(p, alice, 7, 500).unwrap();
+    store.set_delegation(p, alice, delegation(500, 3)).unwrap();
     assert_eq!(store.iter_delegations_for_staker(alice).unwrap().len(), 1);
 
-    store.set_delegation(p, alice, 7, 0).unwrap();
-    assert_eq!(store.get_delegation(p, alice, 7).unwrap(), 0);
+    store.set_delegation(p, alice, delegation(0, 3)).unwrap();
+    assert_eq!(store.get_delegation(p, alice).unwrap().principal, 0);
     assert!(
         store.iter_delegations_for_staker(alice).unwrap().is_empty(),
-        "zero-valued row must be deleted, not kept",
+        "zero-principal row must be deleted, not kept",
     );
 }
 
-/// The triplet key separates rows by activation epoch — same staker
-/// into the same pool but in different epochs locks in different
-/// exchange rates and so must be tracked as distinct rows.
+/// F1 schema: ONE row per (pool, staker). Repeat sets to the same key
+/// overwrite — they do NOT create separate rows by activation epoch.
 #[tokio::test]
-async fn delegations_for_same_pool_and_staker_distinguish_by_epoch() {
+async fn one_row_per_pool_staker_pair() {
     let store = fresh_store();
     let p = pool(1);
     let alice = addr(2);
 
-    store.set_delegation(p, alice, 5, 100).unwrap();
-    store.set_delegation(p, alice, 6, 200).unwrap();
-    store.set_delegation(p, alice, 7, 300).unwrap();
+    store.set_delegation(p, alice, delegation(100, 5)).unwrap();
+    store.set_delegation(p, alice, delegation(200, 6)).unwrap();
+    store.set_delegation(p, alice, delegation(300, 7)).unwrap();
 
-    assert_eq!(store.get_delegation(p, alice, 5).unwrap(), 100);
-    assert_eq!(store.get_delegation(p, alice, 6).unwrap(), 200);
-    assert_eq!(store.get_delegation(p, alice, 7).unwrap(), 300);
+    let got = store.get_delegation(p, alice).unwrap();
+    assert_eq!(got.principal, 300, "last set wins");
+    assert_eq!(got.last_collected_period, 7);
 
     let listed = store.iter_delegations_for_staker(alice).unwrap();
-    assert_eq!(listed.len(), 3, "all three epochs surface independently");
+    assert_eq!(listed.len(), 1, "F1 schema: one row per (pool, staker)");
 }
 
 // ---------------------------------------------------------------------
@@ -111,11 +116,30 @@ async fn apply_delegation_delta_increments() {
     let p = pool(1);
     let alice = addr(2);
 
-    let after = store.apply_delegation_delta(p, alice, 7, 1_000).unwrap();
+    let after = store.apply_delegation_delta(p, alice, 1_000, None).unwrap();
     assert_eq!(after, 1_000);
 
-    let after = store.apply_delegation_delta(p, alice, 7, 500).unwrap();
+    let after = store.apply_delegation_delta(p, alice, 500, None).unwrap();
     assert_eq!(after, 1_500);
+
+    // last_collected_period stays at 0 when no set_period override.
+    assert_eq!(store.get_delegation(p, alice).unwrap().last_collected_period, 0);
+}
+
+#[tokio::test]
+async fn apply_delegation_delta_advances_period_when_requested() {
+    let store = fresh_store();
+    let p = pool(1);
+    let alice = addr(2);
+
+    store.apply_delegation_delta(p, alice, 1_000, None).unwrap();
+    assert_eq!(store.get_delegation(p, alice).unwrap().last_collected_period, 0);
+
+    // F1 fold during AddStake: principal += 500 AND advance period to 5.
+    store.apply_delegation_delta(p, alice, 500, Some(5)).unwrap();
+    let got = store.get_delegation(p, alice).unwrap();
+    assert_eq!(got.principal, 1_500);
+    assert_eq!(got.last_collected_period, 5);
 }
 
 /// Underflow is a hard error — withdrawing more than was staked must
@@ -126,13 +150,13 @@ async fn apply_delegation_delta_underflow_errors() {
     let p = pool(1);
     let alice = addr(2);
 
-    store.set_delegation(p, alice, 7, 500).unwrap();
+    store.set_delegation(p, alice, delegation(500, 0)).unwrap();
     let err = store
-        .apply_delegation_delta(p, alice, 7, -1_000)
+        .apply_delegation_delta(p, alice, -1_000, None)
         .expect_err("underflow must error");
     assert!(format!("{:?}", err).contains("underflow"), "got: {:?}", err);
     // Row unchanged after the failed apply.
-    assert_eq!(store.get_delegation(p, alice, 7).unwrap(), 500);
+    assert_eq!(store.get_delegation(p, alice).unwrap().principal, 500);
 }
 
 // ---------------------------------------------------------------------
@@ -140,7 +164,7 @@ async fn apply_delegation_delta_underflow_errors() {
 // ---------------------------------------------------------------------
 
 #[tokio::test]
-async fn sum_delegations_for_pool_aggregates_across_stakers_and_epochs() {
+async fn sum_delegations_for_pool_aggregates_across_stakers() {
     let store = fresh_store();
     let p1 = pool(1);
     let p2 = pool(2);
@@ -148,12 +172,11 @@ async fn sum_delegations_for_pool_aggregates_across_stakers_and_epochs() {
     let bob = addr(11);
     let carol = addr(12);
 
-    store.set_delegation(p1, alice, 5, 100).unwrap();
-    store.set_delegation(p1, alice, 6, 200).unwrap(); // same staker, diff epoch
-    store.set_delegation(p1, bob, 5, 300).unwrap();
-    store.set_delegation(p1, carol, 7, 400).unwrap();
+    store.set_delegation(p1, alice, delegation(300, 0)).unwrap();
+    store.set_delegation(p1, bob, delegation(300, 0)).unwrap();
+    store.set_delegation(p1, carol, delegation(400, 0)).unwrap();
     // A delegation in a different pool — must not contribute.
-    store.set_delegation(p2, alice, 5, 9_999).unwrap();
+    store.set_delegation(p2, alice, delegation(9_999, 0)).unwrap();
 
     assert_eq!(store.sum_delegations_for_pool(p1).unwrap(), 1_000);
     assert_eq!(store.sum_delegations_for_pool(p2).unwrap(), 9_999);
@@ -162,20 +185,19 @@ async fn sum_delegations_for_pool_aggregates_across_stakers_and_epochs() {
 }
 
 /// Aggregate primitive used by future "total stake" RPC endpoints.
-/// Sums every row owned by a staker across pools and epochs; missing
-/// staker returns 0 (consistent with `get_balance` / `get_delegation`).
+/// Sums every row owned by a staker across pools; missing staker
+/// returns 0 (consistent with `get_balance` / `get_delegation`).
 #[tokio::test]
-async fn total_delegated_principal_for_staker_aggregates_across_pools_and_epochs() {
+async fn total_delegated_principal_for_staker_aggregates_across_pools() {
     let store = fresh_store();
     let p1 = pool(1);
     let p2 = pool(2);
     let alice = addr(10);
     let bob = addr(11);
 
-    store.set_delegation(p1, alice, 5, 100).unwrap();
-    store.set_delegation(p1, alice, 6, 200).unwrap(); // same pool, diff epoch
-    store.set_delegation(p2, alice, 5, 300).unwrap(); // diff pool
-    store.set_delegation(p1, bob, 5, 9_999).unwrap(); // unrelated staker
+    store.set_delegation(p1, alice, delegation(300, 0)).unwrap();
+    store.set_delegation(p2, alice, delegation(300, 0)).unwrap();
+    store.set_delegation(p1, bob, delegation(9_999, 0)).unwrap(); // unrelated staker
 
     assert_eq!(store.total_delegated_principal_for_staker(alice).unwrap(), 600);
     assert_eq!(store.total_delegated_principal_for_staker(bob).unwrap(), 9_999);
@@ -190,8 +212,8 @@ async fn total_delegated_principal_for_staker_aggregates_across_pools_and_epochs
 async fn total_delegated_principal_for_staker_overflow_errors() {
     let store = fresh_store();
     let alice = addr(10);
-    store.set_delegation(pool(1), alice, 5, u64::MAX).unwrap();
-    store.set_delegation(pool(2), alice, 5, 1).unwrap();
+    store.set_delegation(pool(1), alice, delegation(u64::MAX, 0)).unwrap();
+    store.set_delegation(pool(2), alice, delegation(1, 0)).unwrap();
 
     let err = store
         .total_delegated_principal_for_staker(alice)
@@ -200,9 +222,8 @@ async fn total_delegated_principal_for_staker_overflow_errors() {
 }
 
 /// Symmetric to `iter_delegations_for_staker`: list every staker
-/// who's delegated into a given pool. Different stakers, different
-/// activation epochs, all surface; the pool-mismatched row is filtered
-/// out.
+/// who's delegated into a given pool. The pool-mismatched row is
+/// filtered out.
 #[tokio::test]
 async fn iter_delegators_for_pool_filters_by_pool() {
     let store = fresh_store();
@@ -211,22 +232,23 @@ async fn iter_delegators_for_pool_filters_by_pool() {
     let alice = addr(10);
     let bob = addr(11);
 
-    store.set_delegation(p1, alice, 5, 100).unwrap();
-    store.set_delegation(p1, alice, 6, 200).unwrap(); // same staker, different epoch
-    store.set_delegation(p1, bob, 5, 300).unwrap();
+    store.set_delegation(p1, alice, delegation(300, 1)).unwrap();
+    store.set_delegation(p1, bob, delegation(300, 2)).unwrap();
     // A row in p2 — must not contribute to p1's listing.
-    store.set_delegation(p2, alice, 5, 9_999).unwrap();
+    store.set_delegation(p2, alice, delegation(9_999, 3)).unwrap();
 
     let mut listed = store.iter_delegators_for_pool(p1).unwrap();
-    listed.sort();
-    assert_eq!(
-        listed,
-        vec![(alice, 5, 100), (alice, 6, 200), (bob, 5, 300)],
-        "every p1 delegation surfaces; p2 row excluded"
-    );
+    listed.sort_by_key(|(addr, _)| *addr);
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].0, alice);
+    assert_eq!(listed[0].1.principal, 300);
+    assert_eq!(listed[1].0, bob);
+    assert_eq!(listed[1].1.principal, 300);
 
     let listed = store.iter_delegators_for_pool(p2).unwrap();
-    assert_eq!(listed, vec![(alice, 5, 9_999)]);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].0, alice);
+    assert_eq!(listed[0].1.principal, 9_999);
 
     // Nonexistent pool → empty listing.
     assert!(store.iter_delegators_for_pool(pool(99)).unwrap().is_empty());
@@ -240,16 +262,22 @@ async fn iter_delegations_for_staker_filters_by_address() {
     let alice = addr(10);
     let bob = addr(11);
 
-    store.set_delegation(p1, alice, 5, 100).unwrap();
-    store.set_delegation(p2, alice, 6, 200).unwrap();
-    store.set_delegation(p1, bob, 5, 300).unwrap();
+    store.set_delegation(p1, alice, delegation(100, 5)).unwrap();
+    store.set_delegation(p2, alice, delegation(200, 6)).unwrap();
+    store.set_delegation(p1, bob, delegation(300, 7)).unwrap();
 
     let mut listed = store.iter_delegations_for_staker(alice).unwrap();
-    listed.sort();
-    assert_eq!(listed, vec![(p1, 5, 100), (p2, 6, 200)]);
+    listed.sort_by_key(|(pool, _)| *pool);
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].0, p1);
+    assert_eq!(listed[0].1.principal, 100);
+    assert_eq!(listed[1].0, p2);
+    assert_eq!(listed[1].1.principal, 200);
 
     let listed = store.iter_delegations_for_staker(bob).unwrap();
-    assert_eq!(listed, vec![(p1, 5, 300)]);
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].0, p1);
+    assert_eq!(listed[0].1.principal, 300);
 
     // Nonexistent staker → empty list.
     assert!(store.iter_delegations_for_staker(addr(99)).unwrap().is_empty());
@@ -257,9 +285,7 @@ async fn iter_delegations_for_staker_filters_by_address() {
 
 /// Stage 9 invariant: balances and delegations live in separate
 /// column families. A staker's USDC balance must be unaffected by
-/// their delegations and vice versa. (Especially load-bearing once
-/// Stage 9b starts emitting Withdraw events for the SOMA principal —
-/// we want to be sure nothing leaks across the two tables.)
+/// their delegations and vice versa.
 #[tokio::test]
 async fn delegations_and_balances_are_independent() {
     use types::object::CoinType;
@@ -267,10 +293,10 @@ async fn delegations_and_balances_are_independent() {
     let p = pool(1);
     let alice = addr(2);
 
-    store.set_delegation(p, alice, 5, 1_000).unwrap();
+    store.set_delegation(p, alice, delegation(1_000, 0)).unwrap();
     assert_eq!(store.get_balance(alice, CoinType::Soma).unwrap(), 0);
     assert_eq!(store.get_balance(alice, CoinType::Usdc).unwrap(), 0);
 
     store.set_balance(alice, CoinType::Soma, 7_777).unwrap();
-    assert_eq!(store.get_delegation(p, alice, 5).unwrap(), 1_000);
+    assert_eq!(store.get_delegation(p, alice).unwrap().principal, 1_000);
 }

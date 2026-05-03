@@ -38,11 +38,11 @@ pub struct TransactionOutputs {
     /// txs in the commit and applies the net deltas atomically.
     pub balance_events: Vec<BalanceEvent>,
 
-    /// Stage 9b: signed delegation deltas
-    /// `(pool_id, staker, activation_epoch, delta)` to apply to the
-    /// `delegations` column family. Populated by the staking executor
-    /// alongside the StakedSomaV1 object writes.
-    pub delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
+    /// Stage 9d-C1: F1-shaped delegation events to apply to the
+    /// `delegations` column family. Populated by the staking
+    /// executor alongside the StakedSomaV1 object writes (until
+    /// Stage 9d-C5 deletes the object).
+    pub delegation_events: Vec<crate::temporary_store::DelegationEvent>,
 }
 
 impl TransactionOutputs {

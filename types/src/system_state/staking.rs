@@ -491,3 +491,26 @@ impl StakedSomaV1 {
         StakedSomaV1 { pool_id, stake_activation_epoch, principal }
     }
 }
+
+/// Stage 9d-C1: the value type for the F1-shaped `delegations` column
+/// family. ONE row per (pool_id, staker) — never multiple. Mirrors the
+/// design we agreed on: a user can stake into the same validator
+/// multiple times in one epoch or across many, but they always see one
+/// consolidated row showing their total principal and pending reward.
+///
+/// `last_collected_period` is the F1 cumulative-index period at which
+/// this delegation last collected its share. AddStake / WithdrawStake
+/// fold pending rewards (using R(current_period) − R(last_collected))
+/// to the staker's SOMA balance and then update this field. A fresh
+/// delegation reads as 0 / 0 (first-touch).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub struct Delegation {
+    pub principal: u64,
+    pub last_collected_period: u64,
+}
+
+impl Delegation {
+    pub fn new(principal: u64, last_collected_period: u64) -> Self {
+        Self { principal, last_collected_period }
+    }
+}

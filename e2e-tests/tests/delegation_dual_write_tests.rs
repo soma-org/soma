@@ -1,26 +1,26 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Stage 9b/9c integrity tests: the `delegations` column family stays
-//! in sync with the canonical `StakedSomaV1` object set across user
-//! AddStake/WithdrawStake (9b) and epoch reward distribution (9c).
+//! Stage 9d-C1 integrity tests: the F1-shaped `delegations` column
+//! family stays in sync with the canonical `StakedSomaV1` object set
+//! across user AddStake/WithdrawStake and epoch reward distribution.
 //!
-//! The dual-write design lets Stage 9d collapse the two by removing
-//! the StakedSomaV1 object once all consumers read from the table. The
-//! invariant we rely on for that future swap: every (pool_id, staker,
-//! activation_epoch) row in `delegations` is mirrored by a
-//! StakedSomaV1 with the same fields, and the principals agree.
+//! Schema is ONE row per (pool_id, staker). Repeat stakes from the
+//! same staker into the same validator collapse into a single row;
+//! per-epoch validator commission credits accumulate into that one
+//! row rather than spawning new rows.
 
 use std::collections::BTreeMap;
 
 use test_cluster::TestClusterBuilder;
 use types::base::SomaAddress;
 use types::object::ObjectID;
+use types::system_state::staking::Delegation;
 
 /// Read the entire `delegations` column family into a flat map.
 fn collect_delegations(
     test_cluster: &test_cluster::TestCluster,
-) -> BTreeMap<(ObjectID, SomaAddress, u64), u64> {
+) -> BTreeMap<(ObjectID, SomaAddress), Delegation> {
     test_cluster
         .fullnode_handle
         .soma_node
@@ -34,12 +34,11 @@ fn collect_delegations(
         })
 }
 
-/// Stage 9c invariant: after the chain advances at least one epoch,
-/// the validator-reward dual-write fires and the `delegations` table
-/// has at least one row, and every row's principal agrees with the
-/// matching StakedSomaV1 (looked up by deriving the StakedSomaV1
-/// object id is impractical — instead we use
-/// `get_balance(staker, ...)` + per-staker iteration to cross-check).
+/// Stage 9d-C1 invariant: after the chain advances at least one
+/// epoch, the validator-reward dual-write fires and grows the
+/// principal of each validator's existing self-stake row. Row count
+/// stays the same because F1 schema collapses repeat stakes into one
+/// row per (pool, staker).
 #[cfg(msim)]
 #[msim::sim_test]
 async fn delegations_table_populated_after_epoch_change() {
@@ -53,55 +52,60 @@ async fn delegations_table_populated_after_epoch_change() {
         .build()
         .await;
 
-    // Stage 9d: genesis seeds the delegations table with the
-    // validators' initial self-stakes (one row per validator). Stage
-    // 9b adds dual-writes for AddStake/WithdrawStake; Stage 9c adds
-    // dual-writes for the per-validator epoch-reward StakedSomaV1.
-    //
-    // Pre-epoch-1 the table holds the genesis seed stakes only.
+    // Genesis seeds the delegations table with the validators'
+    // initial self-stakes (one row per validator).
     let pre_delegations = collect_delegations(&test_cluster);
     assert!(
         !pre_delegations.is_empty(),
-        "Stage 9d genesis backfill: delegations table must carry every genesis \
-         StakedSomaV1 from epoch 0 — empty table indicates the backfill didn't fire",
+        "genesis backfill: delegations table must carry every genesis \
+         self-stake from epoch 0 — empty table indicates the backfill didn't fire",
     );
     let pre_count = pre_delegations.len();
+    let pre_total: u128 =
+        pre_delegations.values().map(|d| d.principal as u128).sum();
 
     test_cluster
         .wait_for_epoch_with_timeout(Some(1), std::time::Duration::from_secs(30))
         .await;
 
     let post_delegations = collect_delegations(&test_cluster);
+    let post_total: u128 =
+        post_delegations.values().map(|d| d.principal as u128).sum();
 
-    // Stage 9c: every validator gets a reward row at the boundary, so
-    // the post-epoch table strictly grows from the genesis-seeded
-    // baseline.
-    assert!(
-        post_delegations.len() > pre_count,
-        "post-epoch-1 table must have grown from genesis baseline: pre={}, post={}",
+    // F1 schema: validator commission credits accumulate into the
+    // existing self-stake row rather than spawning new rows. So the
+    // count is stable, but the total principal grows.
+    assert_eq!(
+        post_delegations.len(),
+        pre_count,
+        "post-epoch row count must match: F1 schema collapses repeat stakes \
+         into one row per (pool, staker). pre={}, post={}",
         pre_count,
         post_delegations.len(),
     );
+    assert!(
+        post_total > pre_total,
+        "post-epoch total principal must exceed genesis baseline (validator \
+         commission credits): pre={}, post={}",
+        pre_total,
+        post_total,
+    );
 
-    // Pre-epoch entries are still there (no AddStake or WithdrawStake
-    // happened to perturb them), and every row has non-zero
-    // principal — the row-deletion contract in `set_delegation` says
-    // zero entries are pruned, so any visible row should carry a real
-    // amount.
-    for (key, principal) in &pre_delegations {
-        assert_eq!(
-            post_delegations.get(key),
-            Some(principal),
-            "genesis delegation row {:?} disappeared after epoch 1 — Stage 9d \
-             backfill should be stable across epoch boundaries",
-            key,
-        );
-    }
-    for (key, principal) in &post_delegations {
+    for (key, post) in &post_delegations {
         assert!(
-            *principal > 0,
+            post.principal > 0,
             "delegation row {:?} has zero principal — should have been pruned",
             key
+        );
+        let pre = pre_delegations
+            .get(key)
+            .expect("post-epoch row must mirror a genesis row by key");
+        assert!(
+            post.principal >= pre.principal,
+            "validator {:?} commission credit must not shrink principal: pre={} post={}",
+            key,
+            pre.principal,
+            post.principal,
         );
     }
 }

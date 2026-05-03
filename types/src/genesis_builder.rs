@@ -443,17 +443,20 @@ impl GenesisBuilder {
         SystemState,
         Vec<Object>,
         BTreeMap<(SomaAddress, CoinType), u64>,
-        BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+        BTreeMap<(ObjectID, SomaAddress), u64>,
     ) {
         let mut objects = Vec::new();
         // Accumulator-balance entries seeded alongside coin objects. Stake
         // allocations do NOT contribute here — those tokens live in the
         // validator's StakingPool, not the holder's spendable balance.
         let mut balances: BTreeMap<(SomaAddress, CoinType), u64> = BTreeMap::new();
-        // Stage 9d: delegation entries seeded alongside StakedSomaV1
-        // objects. Mirrors the per-stake principal so the delegations
-        // table is in sync from epoch 0.
-        let mut delegations: BTreeMap<(ObjectID, SomaAddress, EpochId), u64> = BTreeMap::new();
+        // Stage 9d-C1: delegation entries seeded alongside StakedSomaV1
+        // objects. F1 row schema is ONE row per (pool, staker), so
+        // multiple genesis allocations from the same staker into the
+        // same validator collapse into a single principal sum. The
+        // table consumer materialises these as `Delegation { principal,
+        // last_collected_period: 0 }`.
+        let mut delegations: BTreeMap<(ObjectID, SomaAddress), u64> = BTreeMap::new();
         let mut id_counter: u64 = 0;
 
         let protocol_config = protocol_config::ProtocolConfig::get_for_version(
@@ -536,17 +539,11 @@ impl GenesisBuilder {
                         )
                         .expect("Failed to stake with validator at genesis");
 
-                    // Stage 9d: mirror the genesis StakedSomaV1 into
-                    // the delegations table. Without this, the table
-                    // only carries dual-writes from AddStake (9b) and
-                    // epoch rewards (9c), missing genesis stakes —
-                    // breaking the "table is the canonical source"
-                    // invariant Stage 9d depends on.
-                    let key = (
-                        staked_soma.pool_id,
-                        allocation.recipient_address,
-                        staked_soma.stake_activation_epoch,
-                    );
+                    // Stage 9d-C1: mirror the genesis StakedSomaV1 into
+                    // the F1-shaped delegations table. ONE row per
+                    // (pool, staker) — repeat allocations from the
+                    // same staker into the same validator sum.
+                    let key = (staked_soma.pool_id, allocation.recipient_address);
                     let entry = delegations.entry(key).or_insert(0);
                     *entry = entry
                         .checked_add(staked_soma.principal)

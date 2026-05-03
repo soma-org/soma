@@ -186,15 +186,21 @@ async fn test_add_stake_dual_writes_delegation_row() {
         "StakedSoma.principal must equal the requested stake amount",
     );
 
-    // Delegation row must mirror the object exactly.
-    let delegation_principal = store.get_delegation(pool, sender, activation_epoch).unwrap();
+    // Delegation row must mirror the object's principal. The
+    // activation_epoch dimension dropped in Stage 9d-C1 (F1 schema is
+    // ONE row per (pool, staker)) — the StakedSoma still tracks it on
+    // its own object until C5 deletes the type, but the delegation row
+    // doesn't.
+    let _ = activation_epoch;
+    let delegation = store.get_delegation(pool, sender).unwrap();
     assert_eq!(
-        delegation_principal, principal,
-        "delegations[(pool, staker, activation_epoch)] must equal StakedSoma.principal",
+        delegation.principal, principal,
+        "delegations[(pool, staker)].principal must equal StakedSoma.principal",
     );
     let listed = store.iter_delegations_for_staker(sender).unwrap();
     assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
-    assert_eq!(listed[0], (pool, activation_epoch, principal));
+    assert_eq!(listed[0].0, pool);
+    assert_eq!(listed[0].1.principal, principal);
 }
 
 /// Stage 9b: a successful WithdrawStake removes both the StakedSomaV1
@@ -279,11 +285,11 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
     }
     let staked_oref = staked_oref.expect("StakedSomaV1 must exist after AddStake");
     let pool = staked_pool.unwrap();
-    let activation_epoch = staked_activation_epoch.unwrap();
+    let _activation_epoch = staked_activation_epoch.unwrap();
 
     // Sanity: the row is there before WithdrawStake.
     assert_eq!(
-        store.get_delegation(pool, sender, activation_epoch).unwrap(),
+        store.get_delegation(pool, sender).unwrap().principal,
         stake_amount,
         "delegation row must mirror the StakedSoma post-AddStake",
     );
@@ -327,7 +333,7 @@ async fn test_withdraw_stake_dual_writes_delegation_removal() {
     // The StakedSomaV1 object is deleted (existing behavior) — so is
     // its delegations row.
     assert_eq!(
-        store.get_delegation(pool, sender, activation_epoch).unwrap(),
+        store.get_delegation(pool, sender).unwrap().principal,
         0,
         "delegation row must drain to zero after WithdrawStake",
     );

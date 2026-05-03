@@ -284,7 +284,27 @@ pub struct TemporaryStore {
     /// table are populated, and an integrity check verifies they stay
     /// in sync. Stage 9c routes reward distribution through this
     /// table; Stage 9d removes the object entirely.
-    delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
+    delegation_events: Vec<DelegationEvent>,
+}
+
+/// An event recorded during execution that describes a change to the
+/// (pool, staker) row in the `delegations` column family. Stage 9d-C1
+/// reshapes the event around the F1 row schema:
+///
+/// - `delta`: signed principal change (positive for AddStake / reward
+///   credit, negative for WithdrawStake).
+/// - `set_period`: when present, sets `last_collected_period` to the
+///   given F1 period. AddStake / WithdrawStake supply this so the
+///   delegator's collected-up-to mark advances atomically with the
+///   principal change. Reward dual-write callers that don't fold (eg.
+///   epoch validator-commission credit) leave it `None` to avoid
+///   silently advancing the period for unfolded delegations.
+#[derive(Debug, Clone, Copy)]
+pub struct DelegationEvent {
+    pub pool_id: ObjectID,
+    pub staker: SomaAddress,
+    pub delta: i128,
+    pub set_period: Option<u64>,
 }
 
 impl TemporaryStore {
@@ -351,22 +371,30 @@ impl TemporaryStore {
         &self.balance_events
     }
 
-    /// Stage 9b: record a signed delegation delta. Positive for
-    /// AddStake, negative for WithdrawStake. The store's write path
-    /// applies these to the `delegations` column family atomically
-    /// with the rest of the tx outputs.
+    /// Stage 9d-C1: record a F1-shaped delegation event. Positive
+    /// `delta` for AddStake / reward credit, negative for
+    /// WithdrawStake. `set_period` advances the row's
+    /// `last_collected_period` mark atomically with the principal
+    /// change — set it on AddStake / WithdrawStake so the F1 fold
+    /// is recorded on disk; leave it `None` for dual-write callers
+    /// (eg. epoch reward credit) that don't perform a fold.
     pub fn emit_delegation_event(
         &mut self,
         pool_id: ObjectID,
         staker: SomaAddress,
-        activation_epoch: EpochId,
         delta: i128,
+        set_period: Option<u64>,
     ) {
-        self.delegation_events.push((pool_id, staker, activation_epoch, delta));
+        self.delegation_events.push(DelegationEvent {
+            pool_id,
+            staker,
+            delta,
+            set_period,
+        });
     }
 
     /// Read-only view of delegation events emitted so far.
-    pub fn delegation_events(&self) -> &[(ObjectID, SomaAddress, EpochId, i128)] {
+    pub fn delegation_events(&self) -> &[DelegationEvent] {
         &self.delegation_events
     }
 
@@ -764,11 +792,10 @@ pub struct InnerTemporaryStore {
     /// Drained by the per-commit settlement transaction (Stage 3).
     pub balance_events: Vec<BalanceEvent>,
 
-    /// Stage 9b: signed delegation deltas
-    /// `(pool_id, staker, activation_epoch, delta)` to apply to the
+    /// Stage 9d-C1: F1-shaped delegation events to apply to the
     /// `delegations` column family. Applied per-tx in the same write
     /// batch as object outputs.
-    pub delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
+    pub delegation_events: Vec<DelegationEvent>,
 }
 
 impl InnerTemporaryStore {
@@ -779,7 +806,7 @@ impl InnerTemporaryStore {
         lamport_version: Version,
         deleted_shared_objects: BTreeMap<ObjectID, Version>,
         balance_events: Vec<BalanceEvent>,
-        delegation_events: Vec<(ObjectID, SomaAddress, EpochId, i128)>,
+        delegation_events: Vec<DelegationEvent>,
     ) -> Self {
         Self {
             input_objects,

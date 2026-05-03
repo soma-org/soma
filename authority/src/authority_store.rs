@@ -25,6 +25,7 @@ use types::effects::{TransactionEffects, TransactionEffectsAPI};
 use types::envelope::Message;
 use types::error::{SomaError, SomaResult};
 use types::genesis::Genesis;
+use types::temporary_store::DelegationEvent;
 use types::mutex_table::{Lock, MutexGuard, MutexTable, RwLockGuard, RwLockTable};
 use types::balance::{
     BalanceEvent, BalanceUpdate, ReservationDecision, WithdrawalReservation,
@@ -525,20 +526,23 @@ impl AuthorityStore {
     }
 
     /// Stage 9d: seed the `delegations` column family with the genesis
-    /// stake principals, mirroring every genesis-issued StakedSomaV1
-    /// object. Without this, the table only carries dual-writes from
-    /// AddStake (9b) and epoch rewards (9c) — the genesis stakes
-    /// would be invisible to any consumer reading from the table.
-    /// Like `bulk_insert_genesis_balances`, zero entries are skipped.
+    /// Stage 9d-C1: bulk-insert genesis delegations. Each entry is a
+    /// (pool, staker) → principal mapping; we materialise it as a
+    /// `Delegation { principal, last_collected_period: 0 }` since
+    /// genesis delegators haven't collected anything yet.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_delegations(
         &self,
-        delegations: &BTreeMap<(ObjectID, SomaAddress, EpochId), u64>,
+        delegations: &BTreeMap<(ObjectID, SomaAddress), u64>,
     ) -> SomaResult<()> {
+        use types::system_state::staking::Delegation;
         let mut batch = self.perpetual_tables.delegations.batch();
         batch.insert_batch(
             &self.perpetual_tables.delegations,
-            delegations.iter().filter(|(_, v)| **v != 0).map(|(k, v)| (*k, *v)),
+            delegations
+                .iter()
+                .filter(|(_, v)| **v != 0)
+                .map(|(k, v)| (*k, Delegation::new(*v, 0))),
         )?;
         batch.write()?;
         Ok(())
@@ -795,56 +799,81 @@ impl AuthorityStore {
         Ok(())
     }
 
-    /// Stage 9b: apply per-tx delegation deltas to the `delegations`
-    /// column family inside the same `DBBatch` as the rest of the
-    /// commit's outputs. Mirrors `apply_settlement_events`'s
-    /// aggregate-first design — multiple events on the same key
-    /// collapse to a single row write, avoiding the read-then-write
-    /// race where two events with the same key clobber each other.
+    /// Stage 9d-C1: apply per-tx delegation events to the F1-shaped
+    /// `delegations` column family inside the same `DBBatch` as the
+    /// rest of the commit's outputs. Each event carries a
+    /// (pool, staker) key plus a principal delta and an optional
+    /// `set_period` overriding `last_collected_period`. Mirrors
+    /// `apply_settlement_events`'s aggregate-first design — multiple
+    /// events on the same key collapse to a single row write,
+    /// avoiding the read-then-write race where two events with the
+    /// same key clobber each other.
+    ///
+    /// The `set_period` semantics are "last write wins" within a
+    /// commit, since AddStake / WithdrawStake on the same delegation
+    /// in one tx is rare and the executor enforces a single fold
+    /// before any principal mutation. Events without an explicit
+    /// `set_period` (genesis backfill, dual-write callers in earlier
+    /// stages) leave the existing field untouched.
     pub(crate) fn apply_delegation_events(
         &self,
         write_batch: &mut DBBatch,
-        events: &[(ObjectID, SomaAddress, EpochId, i128)],
+        events: &[DelegationEvent],
     ) -> SomaResult<()> {
-        // Aggregate per (pool_id, staker, activation_epoch).
-        let mut aggregated: BTreeMap<(ObjectID, SomaAddress, EpochId), i128> = BTreeMap::new();
-        for (pool_id, staker, activation_epoch, delta) in events {
-            *aggregated.entry((*pool_id, *staker, *activation_epoch)).or_insert(0) += *delta;
+        use types::system_state::staking::Delegation;
+
+        // Aggregate per (pool_id, staker). For deltas we sum; for
+        // set_period we take the last (max) value so a fold within a
+        // tx is not lost.
+        #[derive(Default)]
+        struct Agg {
+            delta: i128,
+            set_period: Option<u64>,
+        }
+        let mut aggregated: BTreeMap<(ObjectID, SomaAddress), Agg> = BTreeMap::new();
+        for ev in events {
+            let entry = aggregated.entry((ev.pool_id, ev.staker)).or_default();
+            entry.delta += ev.delta;
+            if let Some(p) = ev.set_period {
+                entry.set_period = Some(entry.set_period.map_or(p, |q| q.max(p)));
+            }
         }
 
-        let mut updates: Vec<((ObjectID, SomaAddress, EpochId), u64)> =
+        let mut updates: Vec<((ObjectID, SomaAddress), Delegation)> =
             Vec::with_capacity(aggregated.len());
-        let mut deletes: Vec<(ObjectID, SomaAddress, EpochId)> = Vec::new();
+        let mut deletes: Vec<(ObjectID, SomaAddress)> = Vec::new();
 
-        for (key, net_delta) in aggregated {
-            if net_delta == 0 {
-                continue;
-            }
-            let current = self.perpetual_tables.delegations.get(&key)?.unwrap_or(0);
-            match apply_delta_to_balance(current, net_delta) {
-                BalanceUpdate::Ok(new_principal) => {
-                    if new_principal == 0 {
-                        // Drain to zero → drop the row entirely so it
-                        // doesn't show up in `iter_delegations_for_staker`
-                        // scans. Mirrors `set_delegation`'s zero-deletes
-                        // contract.
-                        deletes.push(key);
-                    } else {
-                        updates.push((key, new_principal));
+        for (key, agg) in aggregated {
+            let current = self.perpetual_tables.delegations.get(&key)?.unwrap_or_default();
+            let new_principal = if agg.delta == 0 {
+                current.principal
+            } else {
+                match apply_delta_to_balance(current.principal, agg.delta) {
+                    BalanceUpdate::Ok(p) => p,
+                    BalanceUpdate::Underflow { current: c, delta } => {
+                        return Err(SomaError::from(format!(
+                            "Delegation underflow: key={:?} current={} delta={}",
+                            key, c, delta
+                        )));
+                    }
+                    BalanceUpdate::Overflow { current: c, delta } => {
+                        return Err(SomaError::from(format!(
+                            "Delegation overflow: key={:?} current={} delta={}",
+                            key, c, delta
+                        )));
                     }
                 }
-                BalanceUpdate::Underflow { current, delta } => {
-                    return Err(SomaError::from(format!(
-                        "Delegation underflow: key={:?} current={} delta={}",
-                        key, current, delta
-                    )));
-                }
-                BalanceUpdate::Overflow { current, delta } => {
-                    return Err(SomaError::from(format!(
-                        "Delegation overflow: key={:?} current={} delta={}",
-                        key, current, delta
-                    )));
-                }
+            };
+
+            if new_principal == 0 {
+                // Drain to zero → drop the row entirely so it doesn't
+                // show up in `iter_delegations_for_staker` scans.
+                // Mirrors `set_delegation`'s zero-deletes contract.
+                deletes.push(key);
+            } else {
+                let last_collected_period =
+                    agg.set_period.unwrap_or(current.last_collected_period);
+                updates.push((key, Delegation::new(new_principal, last_collected_period)));
             }
         }
 
@@ -1450,13 +1479,12 @@ impl AuthorityStore {
         &self,
         pool_id: ObjectID,
         staker: SomaAddress,
-        activation_epoch: EpochId,
-    ) -> SomaResult<u64> {
+    ) -> SomaResult<types::system_state::staking::Delegation> {
         Ok(self
             .perpetual_tables
             .delegations
-            .get(&(pool_id, staker, activation_epoch))?
-            .unwrap_or(0))
+            .get(&(pool_id, staker))?
+            .unwrap_or_default())
     }
 
     /// Direct delegation write. **Only valid from genesis,
@@ -1464,83 +1492,84 @@ impl AuthorityStore {
     /// paths.** Like `set_balance`, this is the privileged path —
     /// regular user txs go through executors that enforce the
     /// invariants.
+    ///
+    /// Setting a row whose principal is zero deletes it outright —
+    /// `iter_delegations_for_staker` should never see drained stakes.
     pub fn set_delegation(
         &self,
         pool_id: ObjectID,
         staker: SomaAddress,
-        activation_epoch: EpochId,
-        principal: u64,
+        delegation: types::system_state::staking::Delegation,
     ) -> SomaResult<()> {
-        if principal == 0 {
-            // A zero entry is identical to absence — store nothing,
-            // and prune any existing entry. Matches what fully
-            // withdrawing a stake should do at the row level.
-            self.perpetual_tables
-                .delegations
-                .remove(&(pool_id, staker, activation_epoch))?;
+        if delegation.principal == 0 {
+            self.perpetual_tables.delegations.remove(&(pool_id, staker))?;
             return Ok(());
         }
-        self.perpetual_tables
-            .delegations
-            .insert(&(pool_id, staker, activation_epoch), &principal)?;
+        self.perpetual_tables.delegations.insert(&(pool_id, staker), &delegation)?;
         Ok(())
     }
 
-    /// Apply a signed delta to a delegation row. Returns the new
-    /// principal on success. Underflow is a hard error — no row goes
-    /// negative.
+    /// Apply a signed principal delta and (optionally) advance the
+    /// row's `last_collected_period`. Returns the new principal.
+    /// Underflow is a hard error — no row goes negative.
     ///
-    /// Used by tests; production paths (Stage 9b+) will batch their
-    /// per-commit changes through a `DBBatch` written atomically with
-    /// the rest of the commit's outputs.
+    /// Used by tests; production paths batch per-commit changes
+    /// through a `DBBatch` via `apply_delegation_events`.
     pub fn apply_delegation_delta(
         &self,
         pool_id: ObjectID,
         staker: SomaAddress,
-        activation_epoch: EpochId,
         delta: i128,
+        set_period: Option<u64>,
     ) -> SomaResult<u64> {
-        let current = self.get_delegation(pool_id, staker, activation_epoch)?;
-        match apply_delta_to_balance(current, delta) {
+        use types::system_state::staking::Delegation;
+        let current = self.get_delegation(pool_id, staker)?;
+        match apply_delta_to_balance(current.principal, delta) {
             BalanceUpdate::Ok(new_principal) => {
-                self.set_delegation(pool_id, staker, activation_epoch, new_principal)?;
+                let last_collected_period =
+                    set_period.unwrap_or(current.last_collected_period);
+                self.set_delegation(
+                    pool_id,
+                    staker,
+                    Delegation::new(new_principal, last_collected_period),
+                )?;
                 Ok(new_principal)
             }
             BalanceUpdate::Underflow { current, delta } => Err(SomaError::from(format!(
-                "Delegation underflow: pool={} staker={} activation_epoch={} current={} delta={}",
-                pool_id, staker, activation_epoch, current, delta
+                "Delegation underflow: pool={} staker={} current={} delta={}",
+                pool_id, staker, current, delta
             ))),
             BalanceUpdate::Overflow { current, delta } => Err(SomaError::from(format!(
-                "Delegation overflow: pool={} staker={} activation_epoch={} current={} delta={}",
-                pool_id, staker, activation_epoch, current, delta
+                "Delegation overflow: pool={} staker={} current={} delta={}",
+                pool_id, staker, current, delta
             ))),
         }
     }
 
-    /// Sum every active delegation against `pool_id`, across all
-    /// stakers and activation epochs. The pool-token math at epoch
-    /// boundaries needs this aggregate; Stage 9c will read here
-    /// instead of summing individual `StakedSomaV1` objects.
+    /// Sum every active delegation principal against `pool_id`. The
+    /// pool-token math at epoch boundaries still uses this aggregate
+    /// (Stage 9d-B+) so the validator set's voting power is sourced
+    /// from real per-staker rows, not from a separately-tracked total.
     pub fn sum_delegations_for_pool(&self, pool_id: ObjectID) -> SomaResult<u64> {
         let mut total: u64 = 0;
         for entry in self.perpetual_tables.delegations.safe_iter() {
-            let ((entry_pool, _, _), principal) = entry?;
+            let ((entry_pool, _), delegation) = entry?;
             if entry_pool == pool_id {
                 total = total
-                    .checked_add(principal)
+                    .checked_add(delegation.principal)
                     .ok_or_else(|| SomaError::from("Delegation sum overflow".to_string()))?;
             }
         }
         Ok(total)
     }
 
-    /// Iterate every `(pool_id, staker, activation_epoch) -> principal`
-    /// entry. O(n). Intended for tests, snapshots, and full-state
-    /// inspection — RPC's per-staker path should use
+    /// Iterate every `(pool_id, staker) -> Delegation` entry. O(n).
+    /// Intended for tests, snapshots, and full-state inspection — the
+    /// RPC's per-staker path should use
     /// [`Self::iter_delegations_for_staker`] instead.
     pub fn iter_all_delegations(
         &self,
-    ) -> SomaResult<Vec<((ObjectID, SomaAddress, EpochId), u64)>> {
+    ) -> SomaResult<Vec<((ObjectID, SomaAddress), types::system_state::staking::Delegation)>> {
         let mut out = Vec::new();
         for entry in self.perpetual_tables.delegations.safe_iter() {
             let (k, v) = entry?;
@@ -1550,20 +1579,20 @@ impl AuthorityStore {
     }
 
     /// Sum every delegation principal owned by `staker` across all
-    /// pools and activation epochs. Used by aggregate-balance queries
-    /// (eventually RPC's "total stake" endpoint, dashboard summaries,
-    /// etc.) — saturating add intentionally: total supply is far below
-    /// `u64::MAX`, so saturation indicates a corruption upstream and
-    /// we surface it as `Err`.
+    /// pools. Used by aggregate-balance queries (RPC's "total stake"
+    /// endpoint, dashboard summaries, etc.). Saturating add
+    /// intentionally: total supply is far below `u64::MAX`, so
+    /// saturation indicates a corruption upstream and we surface it
+    /// as `Err`.
     pub fn total_delegated_principal_for_staker(
         &self,
         staker: SomaAddress,
     ) -> SomaResult<u64> {
         let mut total: u64 = 0;
         for entry in self.perpetual_tables.delegations.safe_iter() {
-            let ((_, entry_staker, _), principal) = entry?;
+            let ((_, entry_staker), delegation) = entry?;
             if entry_staker == staker {
-                total = total.checked_add(principal).ok_or_else(|| {
+                total = total.checked_add(delegation.principal).ok_or_else(|| {
                     SomaError::from(format!(
                         "Delegation total overflowed for staker {}",
                         staker
@@ -1575,22 +1604,21 @@ impl AuthorityStore {
     }
 
     /// List every active delegation into `pool_id` — symmetric to
-    /// [`Self::iter_delegations_for_staker`]. Used by future RPC
-    /// endpoints surfacing a validator's delegator set.
+    /// [`Self::iter_delegations_for_staker`]. Used by RPC endpoints
+    /// surfacing a validator's delegator set.
     ///
-    /// The triplet key sorts pool-first, so this could be a prefix
-    /// scan in principle. Today it's a full scan with a filter,
-    /// matching the staker-side helper. If we need this on a hot
-    /// path, the prefix-scan optimization is a single-line change.
+    /// The pair-key sorts pool-first, so this could be a prefix scan
+    /// in principle. Today it's a full scan with a filter, matching
+    /// the staker-side helper.
     pub fn iter_delegators_for_pool(
         &self,
         pool_id: ObjectID,
-    ) -> SomaResult<Vec<(SomaAddress, EpochId, u64)>> {
+    ) -> SomaResult<Vec<(SomaAddress, types::system_state::staking::Delegation)>> {
         let mut out = Vec::new();
         for entry in self.perpetual_tables.delegations.safe_iter() {
-            let ((entry_pool, staker, activation_epoch), principal) = entry?;
+            let ((entry_pool, staker), delegation) = entry?;
             if entry_pool == pool_id {
-                out.push((staker, activation_epoch, principal));
+                out.push((staker, delegation));
             }
         }
         Ok(out)
@@ -1602,12 +1630,12 @@ impl AuthorityStore {
     pub fn iter_delegations_for_staker(
         &self,
         staker: SomaAddress,
-    ) -> SomaResult<Vec<(ObjectID, EpochId, u64)>> {
+    ) -> SomaResult<Vec<(ObjectID, types::system_state::staking::Delegation)>> {
         let mut out = Vec::new();
         for entry in self.perpetual_tables.delegations.safe_iter() {
-            let ((pool_id, entry_staker, activation_epoch), principal) = entry?;
+            let ((pool_id, entry_staker), delegation) = entry?;
             if entry_staker == staker {
-                out.push((pool_id, activation_epoch, principal));
+                out.push((pool_id, delegation));
             }
         }
         Ok(out)

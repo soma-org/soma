@@ -48,8 +48,8 @@ pub fn list_delegations(
         total = total.saturating_add(row.principal);
         delegations.push(DelegationEntry {
             pool_id: Some(row.pool_id.to_string()),
-            activation_epoch: Some(row.activation_epoch),
             principal: Some(row.principal),
+            last_collected_period: Some(row.last_collected_period),
         });
     }
 

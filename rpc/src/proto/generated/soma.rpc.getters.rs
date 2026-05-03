@@ -2057,8 +2057,8 @@ mod _getter_impls {
         pub const fn const_default() -> Self {
             Self {
                 pool_id: None,
-                activation_epoch: None,
                 principal: None,
+                last_collected_period: None,
             }
         }
         #[doc(hidden)]
@@ -2070,12 +2070,12 @@ mod _getter_impls {
             self.pool_id = Some(field.into());
             self
         }
-        pub fn with_activation_epoch(mut self, field: u64) -> Self {
-            self.activation_epoch = Some(field.into());
-            self
-        }
         pub fn with_principal(mut self, field: u64) -> Self {
             self.principal = Some(field.into());
+            self
+        }
+        pub fn with_last_collected_period(mut self, field: u64) -> Self {
+            self.last_collected_period = Some(field.into());
             self
         }
     }

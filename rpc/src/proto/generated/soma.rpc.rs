@@ -2200,10 +2200,10 @@ pub struct ListOwnedObjectsResponse {
     #[prost(bytes = "bytes", optional, tag = "2")]
     pub next_page_token: ::core::option::Option<::prost::bytes::Bytes>,
 }
-/// Stage 9d: List one staker's active delegations across all
-/// validator pools. Returns the same `(pool_id, activation_epoch,
-/// principal)` tuples that the on-chain `delegations` table holds —
-/// no scanning of StakedSomaV1 objects required.
+/// Stage 9d-C1: List one staker's active delegations across all
+/// validator pools. Returns one row per (pool, staker) — F1 schema
+/// consolidates repeat stakes into the same row, so the user sees a
+/// single line per validator with their total committed principal.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ListDelegationsRequest {
@@ -2217,16 +2217,18 @@ pub struct DelegationEntry {
     /// Validator's StakingPool ObjectID (hex string).
     #[prost(string, optional, tag = "1")]
     pub pool_id: ::core::option::Option<::prost::alloc::string::String>,
-    /// Epoch the stake activated in. Two stakes from the same staker
-    /// into the same pool but in different epochs lock in different
-    /// exchange rates and so are tracked as separate rows.
+    /// Principal in shannons. Reward math is applied at AddStake /
+    /// WithdrawStake / Restake time via the F1 cumulative-index lookup
+    /// and paid to the staker's SOMA balance — it is not stored on the
+    /// row.
     #[prost(uint64, optional, tag = "2")]
-    pub activation_epoch: ::core::option::Option<u64>,
-    /// Principal in shannons. The Stage 9d delegations row is the
-    /// canonical source for this; pool-token-based reward math is
-    /// applied at withdrawal time, not stored on the row.
-    #[prost(uint64, optional, tag = "3")]
     pub principal: ::core::option::Option<u64>,
+    /// F1 cumulative-index period as of this delegation's last fold
+    /// (AddStake / WithdrawStake / Restake). Pending reward is computed
+    /// by the RPC consumer (or surfaced separately by a future
+    /// GetPendingReward endpoint).
+    #[prost(uint64, optional, tag = "3")]
+    pub last_collected_period: ::core::option::Option<u64>,
 }
 #[non_exhaustive]
 #[derive(Clone, PartialEq, ::prost::Message)]
