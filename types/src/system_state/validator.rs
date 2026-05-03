@@ -1302,6 +1302,28 @@ impl ValidatorSet {
     fn process_active_validator_stakes(&mut self, new_epoch: u64) {
         // Process consensus validators
         for validator in &mut self.validators {
+            // Stage 9d-B: fold F1 rewards into the cumulative index
+            // using the *principal* (un-compounded) stake during the
+            // just-ended epoch as the denominator. F1 has no auto-
+            // compound — `total_stake` in the algorithm means "sum of
+            // delegator principals", which under pool-token
+            // bookkeeping is `soma_balance - rewards_pool` (total
+            // contributed minus total reward residue).
+            //
+            // Why not soma_balance: that compounds rewards into the
+            // total each epoch, inflating the denominator and
+            // shrinking each delegator's per-epoch index delta. F1
+            // pays rewards to balance (Step C) instead of
+            // compounding, so principal must be the basis.
+            //
+            // Why not pool_token_balance: it represents shares minted
+            // at varying exchange rates (a 1000-SOMA stake at rate
+            // 1.5 mints 666 pool tokens), not principal SOMA.
+            let pool = &validator.staking_pool;
+            let total_principal =
+                pool.soma_balance.saturating_sub(pool.rewards_pool);
+            validator.staking_pool.f1_fold_rewards(total_principal);
+
             validator.staking_pool.process_pending_stake_withdraw();
             validator.staking_pool.process_pending_stake();
             validator.staking_pool.exchange_rates.insert(
