@@ -286,6 +286,12 @@ docs/_build/
 # Pyenv
 .python-version
 
+# Key material (TLS / wallet / validator artifacts written by local
+# soma runs and tests). Never check these in — they're private keys.
+*.key
+*.keystore
+*.pem
+
 # AI context / planning docs
 CLAUDE.md
 .claude/
