@@ -106,10 +106,11 @@ impl AccumulatorSettlementTxBuilder {
                     address: write.address,
                     delta: 0,
                 });
-                debug_assert_eq!(
+                assert_eq!(
                     entry.address, write.address,
                     "two accumulator events at the same ID with different addresses — \
-                     deterministic-derivation bug"
+                     deterministic-derivation bug (consensus-critical: a release-build \
+                     silent fallback to first-write address would write the wrong owner)"
                 );
                 entry.delta += write.signed_delta();
             }
@@ -121,8 +122,8 @@ impl AccumulatorSettlementTxBuilder {
                     delta: 0,
                     set_period: None,
                 });
-                debug_assert_eq!(entry.pool_id, de.pool_id);
-                debug_assert_eq!(entry.staker, de.staker);
+                assert_eq!(entry.pool_id, de.pool_id);
+                assert_eq!(entry.staker, de.staker);
                 entry.delta += de.delta;
                 if let Some(p) = de.set_period {
                     entry.set_period = Some(entry.set_period.map_or(p, |q| q.max(p)));

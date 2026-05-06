@@ -525,7 +525,7 @@ impl AuthorityStore {
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
         for ((owner, coin_type), balance) in balances.iter().filter(|(_, v)| **v != 0) {
-            self.dual_write_balance_to_batch(&mut batch, *owner, *coin_type, *balance)?;
+            self.write_balance_cf_to_batch(&mut batch, *owner, *coin_type, *balance)?;
         }
         batch.write()?;
         Ok(())
@@ -547,7 +547,7 @@ impl AuthorityStore {
         use types::system_state::staking::Delegation;
         let mut batch = self.perpetual_tables.delegations.batch();
         for ((pool_id, staker), principal) in delegations.iter().filter(|(_, v)| **v != 0) {
-            self.dual_write_delegation_to_batch(
+            self.write_delegation_cf_to_batch(
                 &mut batch,
                 *pool_id,
                 *staker,
@@ -708,19 +708,14 @@ impl AuthorityStore {
                 [((epoch_id, *transaction_digest), ())],
             )?;
 
-        // Stage 6a/6c: apply balance events from this tx to the
-        // accumulator. Two paths produce events:
-        //   1. User txs in balance-mode gas (Stage 6c): prepare_gas
-        //      emits a Withdraw for the gas fee. Applied per-tx so
-        //      the debit lands without waiting for settlement.
-        //   2. Settlement system tx (Stage 3+6a): pre-aggregated
-        //      changes from the consensus handler. Applied identically.
-        //
-        // Direct per-tx apply works because txs in a commit execute
-        // sequentially. The (future) reservation pre-pass (Stage 6d)
-        // adds defense-in-depth against same-sender-multiple-txs-
-        // in-one-commit underflow; for single-sender single-tx the
-        // direct apply is sound on its own.
+        // Stage 14d (SIP-58 single-path): user-tx `effects.balance_events`
+        // is empty — `prepare_gas` and other user-tx executors emit
+        // only `AccumulatorWriteV1` records on `effects.changed_objects`,
+        // which the cp builder's `AccumulatorSettlementTxBuilder`
+        // aggregates into the per-cp settlement TX. The settlement TX's
+        // own effects re-emit the post-aggregation `BalanceEvent`s,
+        // which is what this drain consumes. So in practice this path
+        // fires only for the per-cp settlement system tx.
         if !all_balance_events.is_empty() {
             self.apply_settlement_events(write_batch, &all_balance_events)?;
         }
@@ -850,7 +845,7 @@ impl AuthorityStore {
         // CF stays source of truth this stage; debug-mode
         // `get_balance` asserts both stores agree on every read.
         for ((owner, coin_type), new_balance) in &new_balances {
-            self.dual_write_balance_to_batch(write_batch, *owner, *coin_type, *new_balance)?;
+            self.write_balance_cf_to_batch(write_batch, *owner, *coin_type, *new_balance)?;
         }
 
         Ok(())
@@ -933,7 +928,7 @@ impl AuthorityStore {
             // Stage 14b: route through the shared dual-write
             // bottleneck so the CF row and the corresponding
             // `DelegationAccumulator` object both land in this batch.
-            self.dual_write_delegation_to_batch(write_batch, key.0, key.1, new_delegation)?;
+            self.write_delegation_cf_to_batch(write_batch, key.0, key.1, new_delegation)?;
         }
 
         Ok(())
@@ -1384,7 +1379,7 @@ impl AuthorityStore {
     /// Stage 14c.6: CF is the sole runtime balance source of truth.
     /// The 14b dual-read assertion was dropped because accumulator
     /// objects in the store are frozen at genesis (see
-    /// `dual_write_balance_to_batch`); the SettlementScheduler now
+    /// `write_balance_cf_to_batch`); the SettlementScheduler now
     /// drives CF updates directly. Stage 14c.7 brings the
     /// accumulator objects back in sync via settlement effects.
     pub fn get_balance(&self, owner: SomaAddress, coin_type: CoinType) -> SomaResult<u64> {
@@ -1422,10 +1417,14 @@ impl AuthorityStore {
     /// execution paths.** User transactions must go through the
     /// settlement pipeline (events → aggregate → multi_apply).
     ///
-    /// Stage 14b: dual-writes to BOTH the CF and the corresponding
-    /// `BalanceAccumulator` object in a single `WriteBatch`. The
-    /// dual-read assertion in `get_balance` would otherwise fail
-    /// since this method is the bottleneck for direct writes.
+    /// Test/genesis-only direct write to the `accumulator_balances` CF.
+    ///
+    /// In production, runtime balance updates ride the per-cp settlement
+    /// pipeline: settlement-tx executor mutates the `BalanceAccumulator`
+    /// object via `mutate_input_object` (carried into the global state
+    /// hash via the standard effects pipeline) AND emits a `BalanceEvent`
+    /// that `apply_settlement_events` drains into this CF in the same
+    /// write batch. The two stores stay aligned by construction.
     pub fn set_balance(
         &self,
         owner: SomaAddress,
@@ -1433,23 +1432,27 @@ impl AuthorityStore {
         balance: u64,
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.accumulator_balances.batch();
-        self.dual_write_balance_to_batch(&mut batch, owner, coin_type, balance)?;
+        self.write_balance_cf_to_batch(&mut batch, owner, coin_type, balance)?;
         batch.write()?;
         Ok(())
     }
 
-    /// Stage 14b/14c.6: write a balance update to the CF.
+    /// Stage 14b/14c.6/14d: write a balance update to the CF only.
     ///
-    /// 14b's parallel write to the accumulator-object table was
-    /// dropped in 14c.6 because it bypassed the writeback cache,
-    /// causing coherence panics when reads through the cache met
-    /// directly-written disk state. The accumulator-object writes
-    /// will return through the standard effects pipeline once the
-    /// settlement-input-declaration mechanism lands (Stage 14c.7);
-    /// until then, accumulator objects in the store are frozen at
-    /// their genesis values and CF is the sole runtime balance
-    /// source of truth.
-    fn dual_write_balance_to_batch(
+    /// Note: despite the historical `dual_write_*` naming this writes
+    /// **only** the `accumulator_balances` CF. The `BalanceAccumulator`
+    /// object is updated independently through the settlement-tx
+    /// effects pipeline (`apply_settlement_to_object_inputs`); the two
+    /// stores converge because the cp builder waits for settlement
+    /// effects before signing the cp summary, so any drain landing in
+    /// this CF rode an effects record that also moved the matching
+    /// object.
+    ///
+    /// Stage 14b briefly bundled an object write here, but it bypassed
+    /// the writeback cache and caused coherence panics; 14c.6 dropped
+    /// it. Stage 14c.7 / 14d brought objects back into sync via the
+    /// settlement effects pipeline, which is the design today.
+    fn write_balance_cf_to_batch(
         &self,
         write_batch: &mut DBBatch,
         owner: SomaAddress,
@@ -1517,7 +1520,7 @@ impl AuthorityStore {
                     // Stage 14b: dual-write through the shared
                     // bottleneck so the CF and the accumulator object
                     // land in the same batch.
-                    self.dual_write_balance_to_batch(
+                    self.write_balance_cf_to_batch(
                         &mut batch,
                         *owner,
                         *coin_type,
@@ -1637,18 +1640,19 @@ impl AuthorityStore {
         }
     }
 
-    /// Direct delegation write. **Only valid from genesis,
-    /// AddStake/WithdrawStake execution, or epoch reward distribution
-    /// paths.** Like `set_balance`, this is the privileged path —
-    /// regular user txs go through executors that enforce the
-    /// invariants.
+    /// Test/genesis-only direct write to the `delegations` CF.
+    ///
+    /// In production, runtime delegation updates ride the standard
+    /// effects pipeline: AddStake/WithdrawStake (via per-cp settlement)
+    /// and ChangeEpoch (commission credits, F1/F9 audit fix) both
+    /// mutate the `DelegationAccumulator` object via
+    /// `mutate_input_object` AND emit a `DelegationEvent` that
+    /// `apply_delegation_events` drains into this CF in the same
+    /// atomic write batch. The two stores converge because the cp
+    /// builder waits for those effects before signing the cp summary.
     ///
     /// Setting a row whose principal is zero deletes it outright —
     /// `iter_delegations_for_staker` should never see drained stakes.
-    ///
-    /// Stage 14b: dual-writes to BOTH the `delegations` CF and the
-    /// corresponding `DelegationAccumulator` object in a single
-    /// `WriteBatch`.
     pub fn set_delegation(
         &self,
         pool_id: ObjectID,
@@ -1656,19 +1660,23 @@ impl AuthorityStore {
         delegation: types::system_state::staking::Delegation,
     ) -> SomaResult<()> {
         let mut batch = self.perpetual_tables.delegations.batch();
-        self.dual_write_delegation_to_batch(&mut batch, pool_id, staker, delegation)?;
+        self.write_delegation_cf_to_batch(&mut batch, pool_id, staker, delegation)?;
         batch.write()?;
         Ok(())
     }
 
-    /// Stage 14b/14c.6: write a delegation update to the CF.
+    /// Write a delegation update to the `delegations` CF only.
     ///
-    /// 14b's parallel object-store write was dropped in 14c.6 (see
-    /// `dual_write_balance_to_batch` for context). Delegation
-    /// objects in the store stay frozen at genesis until the
-    /// settlement-input-declaration work lands; CF is the runtime
-    /// source of truth.
-    fn dual_write_delegation_to_batch(
+    /// Despite the historical `dual_write_*` naming this writes only
+    /// the CF. The `DelegationAccumulator` object is updated
+    /// independently through the settlement-tx effects pipeline
+    /// (`apply_delegation_settlement_to_object_inputs`) for user txs
+    /// and through `ChangeEpochExecutor` for commission credits
+    /// (audit F1 fix). Both ride `mutate_input_object`, so the
+    /// standard writeback cache + effects digest carry the change;
+    /// this CF write rides `apply_delegation_events` and lands in
+    /// the same atomic batch as the object writeback.
+    fn write_delegation_cf_to_batch(
         &self,
         write_batch: &mut DBBatch,
         pool_id: ObjectID,

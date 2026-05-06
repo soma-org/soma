@@ -37,7 +37,11 @@ impl Display for MergeCoinsResponse {
                 write!(
                     f,
                     "{}",
-                    "Stage 13b: balance-mode has no coin objects to merge.".yellow()
+                    "[deprecated] `merge-coins` is a no-op: balance-mode has no \
+                     coin objects to merge. The accumulator stores a single u64 \
+                     per (owner, coin_type), so consolidation is meaningless. \
+                     This command will be removed in a future release."
+                        .yellow()
                 )
             }
         }

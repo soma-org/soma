@@ -172,33 +172,82 @@ pub fn execute_transaction(
     // `lamport_timestamp` defaults to `Version::MIN + 1 = 1`. Fold
     // each accumulator's prior version into `lamport_timestamp` so
     // the settlement always lands at one above the highest input.
-    let resolved_accumulators: Vec<types::object::Object> = if let TransactionKind::Settlement(
-        settlement,
-    ) = &kind
-    {
-        use types::accumulator::{BalanceAccumulator, DelegationAccumulator};
-        let mut out: Vec<types::object::Object> = Vec::new();
-        let mut seen: std::collections::HashSet<types::object::ObjectID> =
-            std::collections::HashSet::new();
-        for ev in &settlement.changes {
-            let id = BalanceAccumulator::derive_id(ev.owner(), ev.coin_type());
-            if seen.insert(id) {
-                if let Some(obj) = store.get_object(&id) {
-                    out.push(obj);
+    let resolved_accumulators: Vec<types::object::Object> = match &kind {
+        TransactionKind::Settlement(settlement) => {
+            use types::accumulator::{BalanceAccumulator, DelegationAccumulator};
+            let mut out: Vec<types::object::Object> = Vec::new();
+            let mut seen: std::collections::HashSet<types::object::ObjectID> =
+                std::collections::HashSet::new();
+            for ev in &settlement.changes {
+                let id = BalanceAccumulator::derive_id(ev.owner(), ev.coin_type());
+                if seen.insert(id) {
+                    if let Some(obj) = store.get_object(&id) {
+                        out.push(obj);
+                    }
                 }
             }
-        }
-        for de in &settlement.delegation_changes {
-            let id = DelegationAccumulator::derive_id(de.pool_id, de.staker);
-            if seen.insert(id) {
-                if let Some(obj) = store.get_object(&id) {
-                    out.push(obj);
+            for de in &settlement.delegation_changes {
+                let id = DelegationAccumulator::derive_id(de.pool_id, de.staker);
+                if seen.insert(id) {
+                    if let Some(obj) = store.get_object(&id) {
+                        out.push(obj);
+                    }
                 }
             }
+            out
         }
-        out
-    } else {
-        pre_loaded_accumulators
+        TransactionKind::ChangeEpoch(_) => {
+            // F1/F9 audit fix: ChangeEpoch credits validator-commission
+            // rewards directly to each validator's `(pool, validator)`
+            // delegation row. Pre-Stage-14d the credit landed only in
+            // the `delegations` CF, leaving the `DelegationAccumulator`
+            // object stale and the row's `last_collected_period`
+            // unchanged. The executor now mutates the object directly
+            // via `mutate_input_object` (so the object world stays in
+            // sync with the CF), and advances `last_collected_period`
+            // (so subsequent F1 reads don't over-pay rewards on the
+            // commission for periods predating it). To enable that, we
+            // pre-load every active+pending+inactive validator's
+            // `DelegationAccumulator` from the canonical store here —
+            // mirroring the Settlement pre-load above.
+            use types::accumulator::DelegationAccumulator;
+            use types::SYSTEM_STATE_OBJECT_ID;
+            let mut out: Vec<types::object::Object> = Vec::new();
+            let mut seen: std::collections::HashSet<types::object::ObjectID> =
+                std::collections::HashSet::new();
+            // SystemState lives in input_objects (declared as mutable
+            // shared input by every ChangeEpoch tx). Find + deserialize
+            // it to enumerate validators.
+            if let Some(state_obj) = input_objects
+                .iter_objects()
+                .find(|o| o.id() == SYSTEM_STATE_OBJECT_ID)
+            {
+                if let Ok(state) = bcs::from_bytes::<types::system_state::SystemState>(
+                    state_obj.as_inner().data.contents(),
+                ) {
+                    let mut visit = |pool_id: types::object::ObjectID,
+                                     validator: types::base::SomaAddress| {
+                        let id = DelegationAccumulator::derive_id(pool_id, validator);
+                        if seen.insert(id) {
+                            if let Some(obj) = store.get_object(&id) {
+                                out.push(obj);
+                            }
+                        }
+                    };
+                    for v in &state.validators().validators {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                    for v in &state.validators().pending_validators {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                    for v in state.validators().inactive_validators.values() {
+                        visit(v.staking_pool.id, v.metadata.soma_address);
+                    }
+                }
+            }
+            out
+        }
+        _ => pre_loaded_accumulators,
     };
 
     for acc in resolved_accumulators {

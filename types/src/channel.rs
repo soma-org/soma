@@ -30,20 +30,24 @@ use crate::object::{CoinType, Object, ObjectData, ObjectID, ObjectType, Owner, V
 /// On-chain payment channel.
 ///
 /// Created by `OpenChannel`, mutated by `Settle` / `RequestClose`,
-/// and **deleted** (not just flagged closed) on `Close` or
-/// `WithdrawAfterTimeout`. The object's existence is the channel's
-/// liveness signal — there is no `closed: bool` field.
+/// and **deleted** (not just flagged closed) on `WithdrawAfterTimeout`.
+/// The object's existence is the channel's liveness signal — there is
+/// no `closed: bool` field. (A payee-initiated `Close` op and a
+/// `TopUp` op are planned for Phase 2; today only the four ops listed
+/// above are implemented.)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Channel {
     /// Address that opened the channel and owns the deposit (gets
-    /// remainder back on close). Authorized to call `TopUp`,
-    /// `RequestClose`, `WithdrawAfterTimeout`.
+    /// remainder back on close). Authorized to call `RequestClose`
+    /// and `WithdrawAfterTimeout` (Phase 1); future `TopUp` (Phase 2)
+    /// will also require this address.
     pub payer: SomaAddress,
 
-    /// Address that receives settlements. Authorized to call `Settle`
-    /// and `Close`. Restricting voucher-driven ops to the payee
-    /// prevents the payer from short-paying with stale vouchers
-    /// (see Tempo's access-control rules).
+    /// Address that receives settlements. Authorized to call `Settle`.
+    /// Restricting voucher-driven ops to the payee prevents the payer
+    /// from short-paying with stale vouchers (see Tempo's
+    /// access-control rules). Phase 2 will add a payee-initiated
+    /// `Close`.
     pub payee: SomaAddress,
 
     /// Address whose key signs off-chain vouchers. Typically equal to
@@ -58,8 +62,9 @@ pub struct Channel {
     /// can be added without a Channel layout change.
     pub token: CoinType,
 
-    /// Current escrow balance. Decreases by `delta` on each `Settle`;
-    /// increases on `TopUp`. Funds flow back to `payer` on close.
+    /// Current escrow balance. Decreases by `delta` on each `Settle`.
+    /// (Phase 2 `TopUp` will also increase it.) Funds flow back to
+    /// `payer` on `WithdrawAfterTimeout`.
     pub deposit: u64,
 
     /// Highest `cumulative_amount` paid out so far. Strictly
@@ -68,9 +73,9 @@ pub struct Channel {
     pub settled_amount: u64,
 
     /// `Some(ts)` once `RequestClose` has been called by the payer;
-    /// `None` while the channel is in normal operation. Cleared by
-    /// `TopUp` (Phase 2) so a renewing payer can withdraw their close
-    /// request. The grace period elapses when
+    /// `None` while the channel is in normal operation. Phase 2's
+    /// `TopUp` will clear this so a renewing payer can withdraw their
+    /// close request. The grace period elapses when
     /// `current_clock_ts - ts >= channel_grace_period_ms`.
     pub close_requested_at_ms: Option<TimestampMs>,
 }

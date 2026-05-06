@@ -111,20 +111,92 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         match result {
             Ok(validator_rewards) => {
-                // Stage 9d-C4: validator commission credits flow only
-                // through the F1 row — no StakedSomaV1 object output.
-                // ONE row per (pool, validator); successive epochs
-                // accumulate into that single row. `set_period: None`
-                // because this isn't a fold — the validator collects
-                // pending rewards (including this credit) on their
-                // next AddStake / WithdrawStake.
-                let _ = tx_digest;
+                // Stage 9d-C4 + F1/F9 audit fix: validator commission
+                // credits flow through the F1 row — ONE row per
+                // (pool, validator), successive epochs accumulate.
+                //
+                // Two halves to keep the CF and the
+                // `DelegationAccumulator` object in sync (audit F1):
+                //
+                // 1. Mutate the object directly via `mutate_input_object`.
+                //    The object was pre-loaded by `execute_transaction`'s
+                //    `resolved_accumulators` block for ChangeEpoch.
+                // 2. Emit a `DelegationEvent` so `apply_delegation_events`
+                //    drains the matching delta into the `delegations`
+                //    CF in the same atomic write batch.
+                //
+                // `set_period` is the validator's pool's NEW
+                // `current_period` (post-fold). This advances the row's
+                // `last_collected_period` to current so the validator's
+                // next AddStake/WithdrawStake doesn't compute
+                // `f1_pending_reward` over a period range that
+                // pre-dates the commission credit (audit F9).
                 for (validator, reward) in validator_rewards {
+                    let pool_id = reward.pool_id;
+                    let principal_delta = reward.principal;
+                    if principal_delta == 0 {
+                        continue;
+                    }
+
+                    // Look up post-fold current_period for this pool.
+                    let new_current_period = state
+                        .validators()
+                        .find_validator(validator)
+                        .map(|v| v.staking_pool.current_period)
+                        .or_else(|| {
+                            state
+                                .validators()
+                                .pending_validators
+                                .iter()
+                                .find(|v| v.metadata.soma_address == validator)
+                                .map(|v| v.staking_pool.current_period)
+                        })
+                        .or_else(|| {
+                            state
+                                .validators()
+                                .inactive_validators
+                                .get(&pool_id)
+                                .map(|v| v.staking_pool.current_period)
+                        });
+
+                    let acc_id = types::accumulator::DelegationAccumulator::derive_id(
+                        pool_id, validator,
+                    );
+
+                    // Mutate the DelegationAccumulator object so the
+                    // object world stays in sync with the CF.
+                    if let Some(existing) = store.read_object(&acc_id) {
+                        if let Some(mut acc) = existing.as_delegation_accumulator() {
+                            acc.principal = acc.principal.saturating_add(principal_delta);
+                            if let Some(p) = new_current_period {
+                                acc.last_collected_period = p;
+                            }
+                            let mut new_obj = existing.clone();
+                            new_obj.set_delegation_accumulator(&acc);
+                            store.mutate_input_object(new_obj);
+                        }
+                    } else {
+                        // First-touch: validator's row doesn't exist yet
+                        // (e.g., fresh validator at activation epoch).
+                        // Create the object so the next mutation finds it.
+                        let acc = types::accumulator::DelegationAccumulator::new(
+                            pool_id,
+                            validator,
+                            principal_delta,
+                            new_current_period.unwrap_or(0),
+                        );
+                        let new_obj = types::object::Object::new_delegation_accumulator(
+                            acc, tx_digest,
+                        );
+                        store.create_object(new_obj);
+                    }
+
+                    // Emit the matching CF event.
                     store.emit_delegation_event(
-                        reward.pool_id,
+                        pool_id,
                         validator,
-                        reward.principal as i128,
-                        None,
+                        principal_delta as i128,
+                        new_current_period,
                     );
                 }
             }
@@ -161,3 +233,4 @@ impl TransactionExecutor for ChangeEpochExecutor {
         Ok(())
     }
 }
+

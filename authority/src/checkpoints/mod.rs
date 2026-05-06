@@ -1336,16 +1336,28 @@ impl CheckpointBuilder {
             .iter()
             .filter(|effects| {
                 let digest = effects.transaction_digest();
-                let tx = tx_cache.get_transaction_block(digest);
-                match tx {
-                    Some(tx) => !matches!(
-                        tx.transaction_data().kind(),
-                        types::transaction::TransactionKind::ChangeEpoch(_)
-                            | types::transaction::TransactionKind::Genesis(_)
-                            | types::transaction::TransactionKind::ConsensusCommitPrologueV1(_)
-                    ),
-                    None => true,
-                }
+                // Cache miss here would be a load-bearing invariant
+                // violation: every effect in `sorted_user_tx_effects`
+                // came from a tx that just executed, so the cache is
+                // expected to have it. A `None` would otherwise let the
+                // filter fall *open* — including ChangeEpoch effects in
+                // the settlement aggregation and double-applying its
+                // delegation_events. Panic instead so cross-validator
+                // determinism is preserved (a wrong-but-deterministic
+                // cp summary is much worse than a loud crash).
+                let tx = tx_cache.get_transaction_block(digest).unwrap_or_else(|| {
+                    panic!(
+                        "cp builder: transaction {digest:?} appears in \
+                         sorted_user_tx_effects but is missing from the \
+                         tx cache — cannot classify for settlement filtering"
+                    )
+                });
+                !matches!(
+                    tx.transaction_data().kind(),
+                    types::transaction::TransactionKind::ChangeEpoch(_)
+                        | types::transaction::TransactionKind::Genesis(_)
+                        | types::transaction::TransactionKind::ConsensusCommitPrologueV1(_)
+                )
             })
             .cloned()
             .collect();

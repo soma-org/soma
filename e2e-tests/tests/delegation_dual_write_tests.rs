@@ -107,5 +107,53 @@ async fn delegations_table_populated_after_epoch_change() {
             pre.principal,
             post.principal,
         );
+
+        // F9 audit-fix invariant: ChangeEpoch's commission credit must
+        // advance `last_collected_period`. Pre-fix, ChangeEpoch emitted
+        // its `DelegationEvent` with `set_period: None` so this field
+        // stayed at 0 forever and the validator's next AddStake /
+        // WithdrawStake retroactively collected rewards on the
+        // commission for periods predating it. Post-fix, the field
+        // advances to the new `current_period` after each commission
+        // credit, capping rewards at the period the commission landed.
+        if post.principal > pre.principal {
+            assert!(
+                post.last_collected_period > 0,
+                "F9: validator {:?} received commission but \
+                 last_collected_period is still 0 — ChangeEpoch must \
+                 advance the period mark or the validator will over-collect \
+                 rewards on the credit",
+                key,
+            );
+        }
     }
+
+    // F1 audit-fix invariant: the `delegations` CF and the on-chain
+    // `DelegationAccumulator` objects must agree on (principal,
+    // last_collected_period). Pre-fix, ChangeEpoch's commission
+    // credit landed only in the CF — the object stayed at its genesis
+    // value forever. Post-fix, ChangeEpoch's executor mutates the
+    // object via `mutate_input_object` so the standard effects
+    // pipeline carries the change.
+    test_cluster.fullnode_handle.soma_node.with(|node| {
+        let store = node.state().database_for_testing();
+        for ((pool_id, staker), cf_row) in &post_delegations {
+            let obj_row = store
+                .get_delegation_via_object(*pool_id, *staker)
+                .expect("delegation object lookup");
+            assert_eq!(
+                obj_row.principal, cf_row.principal,
+                "F1: principal divergence between CF and DelegationAccumulator \
+                 object for ({:?}, {:?}): cf={} obj={}",
+                pool_id, staker, cf_row.principal, obj_row.principal,
+            );
+            assert_eq!(
+                obj_row.last_collected_period, cf_row.last_collected_period,
+                "F1: last_collected_period divergence between CF and \
+                 DelegationAccumulator object for ({:?}, {:?}): cf={} obj={}",
+                pool_id, staker,
+                cf_row.last_collected_period, obj_row.last_collected_period,
+            );
+        }
+    });
 }

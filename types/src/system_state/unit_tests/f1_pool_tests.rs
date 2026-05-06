@@ -118,6 +118,50 @@ fn fold_with_zero_stake_does_not_corrupt_index() {
     assert_eq!(p.f1_index_at(p.current_period), prev_index);
 }
 
+/// When `total_stake == 0` but `pending_fold_rewards > 0`, the rewards
+/// must NOT be silently dropped — they have to carry forward to the
+/// next non-empty fold so the SOMA in `pool_rewards` can eventually
+/// reach a delegator. (Pre-fix behavior cleared
+/// `pending_fold_rewards` to 0, stranding the rewards: the bank
+/// retained the SOMA but no future cumulative_index growth was tied
+/// to those rewards.)
+#[test]
+fn fold_with_zero_stake_carries_pending_forward_to_next_fold() {
+    let mut p = pool();
+    // Deposit rewards while pool has 0 stake.
+    p.f1_deposit_pool_reward(1_000);
+    assert_eq!(p.pending_fold_rewards, 1_000);
+    let pool_rewards_before = p.pool_rewards;
+
+    // Fold with zero stake — rewards should NOT be cleared.
+    let pre_period = p.current_period;
+    p.f1_fold_rewards(0);
+    assert_eq!(p.current_period, pre_period + 1, "period must advance");
+    assert_eq!(
+        p.pending_fold_rewards, 1_000,
+        "pending_fold_rewards must carry forward when total_stake == 0",
+    );
+    assert_eq!(
+        p.pool_rewards, pool_rewards_before,
+        "pool_rewards bank is preserved",
+    );
+
+    // Now a delegator joins; the next fold must distribute the
+    // carried-forward rewards.
+    let stake = 1_000_000u64;
+    p.f1_fold_rewards(stake);
+    assert_eq!(
+        p.pending_fold_rewards, 0,
+        "next non-empty fold must drain the carried rewards",
+    );
+    let cur = p.f1_index_at(p.current_period);
+    let expected_index = (1_000u128).saturating_mul(F1_INDEX_SCALE) / (stake as u128);
+    assert_eq!(
+        cur, expected_index,
+        "carried-forward rewards must be distributed at the joining stake",
+    );
+}
+
 /// Index is monotonically non-decreasing across folds — a property
 /// every staker collection algorithm relies on.
 #[test]

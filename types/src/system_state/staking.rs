@@ -145,16 +145,42 @@ impl StakingPool {
     /// epoch boundary. The shannons themselves stay parked in
     /// `pool_rewards` until a delegator claims via
     /// `f1_consume_pending_reward`.
+    ///
+    /// **Zero-stake invariant:** when `total_stake == 0` we cannot
+    /// divide; advancing the period without distributing would
+    /// strand any `pending_fold_rewards` (the SOMA stays in
+    /// `pool_rewards` but the cumulative index never grows on its
+    /// behalf, so no future delegator can claim it). Carry
+    /// `pending_fold_rewards` forward so the next non-empty fold
+    /// distributes them. The period still advances so fresh
+    /// delegators starting now begin from a clean index.
+    ///
+    /// **Tradeoff acknowledged:** a delegator who stakes after this
+    /// zero-stake fold (`last_collected_period = current_period`) is
+    /// later eligible for a share of the carried rewards when they
+    /// fold in a future period — even though the rewards were earned
+    /// when the pool had no committed stake. We accept this in favor
+    /// of avoiding stranded SOMA. Documented for callers reasoning
+    /// about reward-distribution fairness.
     pub fn f1_fold_rewards(&mut self, total_stake: u64) {
-        if total_stake == 0 || self.pending_fold_rewards == 0 {
-            // Nothing to fold; still advance the period so a fresh
-            // delegator that joins now starts from this index.
+        if self.pending_fold_rewards == 0 {
+            // No rewards to fold; advance period so a fresh delegator
+            // that joins now starts from this index.
             self.current_period += 1;
             self.cumulative_index.insert(
                 self.current_period,
                 self.f1_index_at(self.current_period - 1),
             );
-            self.pending_fold_rewards = 0;
+            return;
+        }
+        if total_stake == 0 {
+            // No divisor — carry rewards forward to the next fold.
+            // Period still advances; index unchanged.
+            self.current_period += 1;
+            self.cumulative_index.insert(
+                self.current_period,
+                self.f1_index_at(self.current_period - 1),
+            );
             return;
         }
         let prev = self.f1_index_at(self.current_period);

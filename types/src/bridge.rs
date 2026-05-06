@@ -92,10 +92,27 @@ pub const SOMA_BRIDGE_CHAIN_ID: u64 = 1;
 pub struct BridgeState {
     pub paused: bool,
     pub next_withdrawal_nonce: u64,
+    /// Set of recent deposit nonces that have already been processed,
+    /// for replay protection. Bounded by [`PROCESSED_NONCE_RETENTION_LIMIT`]:
+    /// when the set hits the limit, the oldest nonces are pruned and
+    /// `min_acceptable_deposit_nonce` advances accordingly. Audit F16
+    /// fix — without bounding, this set grew with every deposit forever
+    /// and inflated SystemState's BCS size on every system tx.
     pub processed_deposit_nonces: BTreeSet<u64>,
+    /// Watermark below which deposit nonces are rejected outright as
+    /// "too old" — they may have been pruned from
+    /// `processed_deposit_nonces`, so we can no longer tell apart "new"
+    /// from "replayed". Audit F16 fix.
+    pub min_acceptable_deposit_nonce: u64,
     pub bridge_committee: BridgeCommittee,
     pub total_bridged_usdc: u64,
 }
+
+/// Maximum size of [`BridgeState::processed_deposit_nonces`] before
+/// the oldest nonces are pruned. 100k nonces ≈ 800kB BCS-encoded —
+/// large enough to absorb realistic out-of-order delivery, bounded
+/// enough that SystemState size stays manageable.
+pub const PROCESSED_NONCE_RETENTION_LIMIT: usize = 100_000;
 
 impl BridgeState {
     pub fn new(committee: BridgeCommittee) -> Self {
@@ -103,8 +120,29 @@ impl BridgeState {
             paused: false,
             next_withdrawal_nonce: 0,
             processed_deposit_nonces: BTreeSet::new(),
+            min_acceptable_deposit_nonce: 0,
             bridge_committee: committee,
             total_bridged_usdc: 0,
+        }
+    }
+
+    /// Record a freshly-processed deposit nonce, evicting the oldest
+    /// entries if the set has grown past
+    /// [`PROCESSED_NONCE_RETENTION_LIMIT`]. The replay check
+    /// (`nonce > min_acceptable_deposit_nonce && !set.contains(&nonce)`)
+    /// stays correct because evicted nonces fall below the watermark
+    /// and are rejected as "too old".
+    pub fn record_processed_deposit_nonce(&mut self, nonce: u64) {
+        self.processed_deposit_nonces.insert(nonce);
+        while self.processed_deposit_nonces.len() > PROCESSED_NONCE_RETENTION_LIMIT {
+            if let Some(&min) = self.processed_deposit_nonces.iter().next() {
+                self.processed_deposit_nonces.remove(&min);
+                if min >= self.min_acceptable_deposit_nonce {
+                    self.min_acceptable_deposit_nonce = min + 1;
+                }
+            } else {
+                break;
+            }
         }
     }
 }

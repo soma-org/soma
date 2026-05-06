@@ -122,8 +122,12 @@ impl TransactionExecutor for SettlementExecutor {
 ///
 /// For each pre-aggregated `BalanceEvent`:
 ///   1. Derive the canonical accumulator ID.
-///   2. Locate the corresponding input object (pre-loaded by the
-///      `SettlementScheduler` via `ExecutionEnv::pre_loaded_accumulators`).
+///   2. Locate the input object via `store.read_object`. Per Stage 14d
+///      replay-safety, the accumulator object is loaded from the
+///      canonical `ObjectStore` inside `execute_transaction` (the
+///      `resolved_accumulators` block in `execution/mod.rs`), NOT
+///      pre-loaded via `ExecutionEnv::pre_loaded_accumulators` (which
+///      stays empty for replays / state-sync).
 ///   3. Apply the delta, write the new `BalanceAccumulator` object
 ///      via `mutate_input_object`/`create_object` (drives the object
 ///      world; the standard effects pipeline carries it into the
@@ -268,17 +272,20 @@ fn apply_delegation_settlement_to_object_inputs(
                 acc.last_collected_period = p;
             }
 
-            // A drain-to-zero with no `set_period` retention deletes
-            // the row everywhere — the CF apply path already does this
-            // via `apply_delegation_events`. Mirror that here by
-            // tombstoning the object so the two stores stay aligned.
-            // For now we simply mutate in place even at zero principal;
-            // the perpetual store's `apply_delegation_events` deletes
-            // the CF row, while the object stays at zero. A future
-            // pass can add object deletion via `delete_object`.
-            let mut new_obj = existing.clone();
-            new_obj.set_delegation_accumulator(&acc);
-            store.mutate_input_object(new_obj);
+            // Drain-to-zero CF/object alignment: `apply_delegation_events`
+            // (via `write_delegation_cf_to_batch`) deletes the CF row
+            // unconditionally when `principal == 0`. Mirror that here by
+            // deleting the object so the two stores stay aligned and a
+            // subsequent first-touch deposit goes through `create_object`
+            // at `Version::MIN` instead of mutating a zero-principal
+            // zombie. F4 audit fix.
+            if new_principal == 0 {
+                store.delete_input_object(&acc_id);
+            } else {
+                let mut new_obj = existing.clone();
+                new_obj.set_delegation_accumulator(&acc);
+                store.mutate_input_object(new_obj);
+            }
         } else {
             // First-touch delegation: principal must be positive.
             if change.delta <= 0 {

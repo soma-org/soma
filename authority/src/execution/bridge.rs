@@ -186,7 +186,14 @@ impl BridgeExecutor {
             return Err(ExecutionFailureStatus::BridgePaused);
         }
 
-        // Check nonce not replayed (mirrors EVM isTransferProcessed + Sui sequence_nums)
+        // Check nonce not replayed (mirrors EVM isTransferProcessed + Sui sequence_nums).
+        // Audit F16: with the bounded `processed_deposit_nonces` set,
+        // any nonce ≤ `min_acceptable_deposit_nonce` may have been
+        // evicted — reject it outright as "too old" rather than risk
+        // letting an evicted nonce replay.
+        if args.nonce < bridge.min_acceptable_deposit_nonce {
+            return Err(ExecutionFailureStatus::BridgeNonceAlreadyProcessed);
+        }
         if bridge.processed_deposit_nonces.contains(&args.nonce) {
             return Err(ExecutionFailureStatus::BridgeNonceAlreadyProcessed);
         }
@@ -224,8 +231,9 @@ impl BridgeExecutor {
             args.amount,
         );
 
-        // Record nonce and update total
-        bridge.processed_deposit_nonces.insert(args.nonce);
+        // Record nonce (with eviction if the set has grown past the
+        // retention limit — audit F16) and update total.
+        bridge.record_processed_deposit_nonce(args.nonce);
         bridge.total_bridged_usdc = bridge
             .total_bridged_usdc
             .checked_add(args.amount)

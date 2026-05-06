@@ -16,10 +16,12 @@ use super::TransactionExecutor;
 /// Result of gas preparation.
 pub(crate) struct GasPreparationResult {
     /// Stage 13c: always `None` — gas no longer routes through a
-    /// coin object. Kept on the struct so the existing
-    /// `execute_transaction` plumbing keeps compiling; downstream
-    /// code that branched on `primary_gas_id.is_some()` should
-    /// just delete the branch.
+    /// coin object. The field is preserved because it is part of
+    /// `TransactionEffectsV1::gas_object_index`'s wire layout (the
+    /// effects struct still serializes it for backward-compatibility
+    /// with existing checkpoint data). A future effects-schema bump
+    /// (e.g. `TransactionEffectsV2`) can drop the field cleanly;
+    /// changing it now would alter BCS encoding and break the digest.
     pub primary_gas_id: Option<ObjectID>,
     /// Transaction fee that was deducted from the sender's USDC
     /// accumulator via a `BalanceEvent::Withdraw`.

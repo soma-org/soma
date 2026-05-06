@@ -1704,7 +1704,46 @@ impl AuthorityState {
             }
         }
 
-        let total_accounted = accumulator_soma + system_state_balance;
+        // SOMA escrowed in payment channels: not in iter_all_balances
+        // (channels are objects, not BalanceAccumulators) and not in
+        // any system_state pool. Walk the live object set and add the
+        // SOMA-typed channels' deposits. Without this, opening a SOMA
+        // channel would falsely trip the conservation panic.
+        let mut channel_soma: u128 = 0;
+        for live_object in self.database_for_testing().iter_live_object_set() {
+            let types::object::LiveObject::Normal(obj) = live_object;
+            if let Some(channel) = obj.as_channel() {
+                if matches!(channel.token, CoinType::Soma) {
+                    channel_soma += channel.deposit as u128;
+                }
+            }
+        }
+
+        // Stage 14d invariant audit: the in-memory `StakingPool.total_stake`
+        // and the on-disk `delegations` CF should agree. The conservation
+        // check above sums the counter; this asserts the counter matches
+        // the CF so a divergence shows up as the actual bug rather than
+        // silently inflating/deflating accounted supply.
+        for v in &system_state.validators().validators {
+            let pool_id = v.staking_pool.id;
+            if let Ok(cf_total) = self.database_for_testing().sum_delegations_for_pool(pool_id) {
+                let counter = v.staking_pool.total_stake;
+                if cf_total != counter {
+                    let msg = format!(
+                        "delegations CF / total_stake counter divergence at epoch {}: \
+                         pool {pool_id} cf_total={cf_total} counter={counter}",
+                        cur_epoch_store.epoch(),
+                    );
+                    if cfg!(msim) {
+                        panic!("{msg}");
+                    } else {
+                        error!("{msg}");
+                    }
+                }
+            }
+        }
+
+        let total_accounted = accumulator_soma + channel_soma + system_state_balance;
         let expected = TOTAL_SUPPLY_SHANNONS as u128;
 
         if total_accounted != expected {
@@ -1712,6 +1751,7 @@ impl AuthorityState {
                 "SUPPLY CONSERVATION VIOLATION at epoch {}! \
                  Expected {expected}, got {total_accounted} \
                  (accumulator_soma={accumulator_soma}, \
+                 channel_soma={channel_soma}, \
                  system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );
@@ -1724,6 +1764,7 @@ impl AuthorityState {
             info!(
                 "Supply conservation check passed for epoch {} \
                  (total={expected}, accumulator_soma={accumulator_soma}, \
+                 channel_soma={channel_soma}, \
                  system_state={system_state_balance})",
                 cur_epoch_store.epoch(),
             );

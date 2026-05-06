@@ -503,8 +503,17 @@ impl SystemStateV1 {
 
         // 2. Route this epoch's USDC fees to the protocol fund.
         // Validators are paid from SOMA emissions only; fees fund future buybacks.
-        self.protocol_fund_balance =
-            self.protocol_fund_balance.saturating_add(epoch_total_transaction_fees);
+        // checked_add: a u64 saturation in the protocol fund would silently
+        // forfeit fees forever. Realistically unreachable, but if it happens
+        // we surface it as an explicit error rather than swallow.
+        self.protocol_fund_balance = self
+            .protocol_fund_balance
+            .checked_add(epoch_total_transaction_fees)
+            .ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(crate::error::SomaError::from(
+                    "protocol_fund_balance overflow on fee routing".to_string(),
+                ))
+            })?;
 
         // 3. Calculate validator rewards — pure SOMA emissions.
         let mut total_rewards = 0u64;
@@ -561,9 +570,21 @@ impl SystemStateV1 {
         self.protocol_version = next_protocol_version;
         self.epoch_start_timestamp_ms = epoch_start_timestamp_ms;
 
-        // Fees → fund directly. saturating_add can't fail.
-        self.protocol_fund_balance =
-            self.protocol_fund_balance.saturating_add(epoch_total_transaction_fees);
+        // Fees → fund directly. saturating_add: in safe mode we never
+        // fail; if the fund would overflow we log loudly and continue
+        // (the fees that didn't land are forfeited to keep liveness).
+        let pre = self.protocol_fund_balance;
+        self.protocol_fund_balance = pre.saturating_add(epoch_total_transaction_fees);
+        let credited = self.protocol_fund_balance.wrapping_sub(pre);
+        if credited != epoch_total_transaction_fees {
+            error!(
+                "safe-mode fee routing saturated: requested {}, credited {}, \
+                 forfeited {}",
+                epoch_total_transaction_fees,
+                credited,
+                epoch_total_transaction_fees - credited,
+            );
+        }
 
         // Emissions: forfeited. emission_pool is untouched (matches Sui's
         // stake_subsidy behavior during safe mode).

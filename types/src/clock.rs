@@ -84,11 +84,24 @@ impl Object {
 
     /// Update the Clock's timestamp in place. Caller must ensure this is
     /// only invoked from the consensus commit prologue path.
+    ///
+    /// Mirrors Sui's on-chain `clock::set_timestamp` monotonicity check:
+    /// the new timestamp must be `>=` the current one. A backward jump
+    /// would silently extend channel grace periods and rewind any other
+    /// time-dependent invariants, so we panic rather than absorb it —
+    /// the prologue is the sole writer and its inputs are validated by
+    /// consensus, so a regression here means a load-bearing invariant
+    /// upstream broke.
     pub fn set_clock_timestamp_ms(&mut self, timestamp_ms: TimestampMs) {
-        debug_assert_eq!(
+        assert_eq!(
             *self.data.object_type(),
             ObjectType::Clock,
             "set_clock_timestamp_ms called on non-Clock object"
+        );
+        let cur = self.clock_timestamp_ms();
+        assert!(
+            timestamp_ms >= cur,
+            "Clock monotonicity violation: cur={cur} new={timestamp_ms}",
         );
         let clock = Clock { timestamp_ms };
         self.update_contents(&clock);
@@ -183,5 +196,24 @@ mod tests {
     fn set_clock_for_testing_rejects_backward_jump() {
         let mut obj = Object::new_clock_with_timestamp_for_testing(1_000);
         obj.set_clock_for_testing(999);
+    }
+
+    /// Production-path monotonicity: `set_clock_timestamp_ms` (used by
+    /// the consensus commit prologue) must reject backward jumps in
+    /// non-test builds too. A silent backward jump would rewind
+    /// channel grace periods and any other time-dependent invariant.
+    #[test]
+    #[should_panic(expected = "Clock monotonicity violation")]
+    fn set_clock_timestamp_ms_rejects_backward_jump() {
+        let mut obj = Object::new_clock_with_timestamp_for_testing(1_000);
+        obj.set_clock_timestamp_ms(999);
+    }
+
+    /// Production-path equality is allowed (no-op tick).
+    #[test]
+    fn set_clock_timestamp_ms_accepts_equal_timestamp() {
+        let mut obj = Object::new_clock_with_timestamp_for_testing(1_000);
+        obj.set_clock_timestamp_ms(1_000);
+        assert_eq!(obj.clock_timestamp_ms(), 1_000);
     }
 }

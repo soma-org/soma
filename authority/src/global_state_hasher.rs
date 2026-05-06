@@ -12,7 +12,7 @@ use types::committee::EpochId;
 use types::digests::ObjectDigest;
 use types::effects::{TransactionEffects, TransactionEffectsAPI as _};
 use types::error::SomaResult;
-use types::object::{LiveObject, ObjectID};
+use types::object::{LiveObject, ObjectID, Owner};
 use types::storage::object_store::ObjectStore;
 use types::storage::shared_in_memory_store::SharedInMemoryStore;
 
@@ -77,6 +77,25 @@ impl GlobalStateHashStore for SharedInMemoryStore {
     }
 }
 
+/// Accumulator objects (`Owner::Accumulator`) are excluded from the
+/// state hash on BOTH sides:
+///
+///   - `accumulate_effects` skips `Owner::Accumulator` refs on
+///     insertion (created/mutated) and removal (old_object_metadata).
+///   - `accumulate_live_object` skips `Owner::Accumulator` live entries.
+///
+/// This matches Sui's symmetric-exclusion posture for SIP-58
+/// accumulator state: the running root attests to the regular object
+/// graph; accumulator state is attested per-cp by the settlement-tx
+/// effects digest (which the cp summary pins) plus executor
+/// determinism. Soma has no `0xacc`-equivalent shared root whose
+/// version-bump would otherwise pin accumulator state into the
+/// running root, so the per-cp commitment is the load-bearing
+/// guarantee.
+fn skip_accumulator(owner: &Owner) -> bool {
+    matches!(owner, Owner::Accumulator { .. })
+}
+
 pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
     let mut acc = GlobalStateHash::default();
 
@@ -85,7 +104,9 @@ pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
         effects
             .iter()
             .flat_map(|fx| {
-                fx.all_changed_objects().into_iter().map(|(object_ref, _, _)| object_ref.2)
+                fx.all_changed_objects().into_iter().filter_map(|(object_ref, owner, _)| {
+                    if skip_accumulator(&owner) { None } else { Some(object_ref.2) }
+                })
             })
             .collect::<Vec<ObjectDigest>>(),
     );
@@ -95,46 +116,12 @@ pub fn accumulate_effects(effects: &[TransactionEffects]) -> GlobalStateHash {
         effects
             .iter()
             .flat_map(|fx| {
-                fx.old_object_metadata().into_iter().map(|(object_ref, _owner)| object_ref.2)
+                fx.old_object_metadata().into_iter().filter_map(|(object_ref, owner)| {
+                    if skip_accumulator(&owner) { None } else { Some(object_ref.2) }
+                })
             })
             .collect::<Vec<ObjectDigest>>(),
     );
-
-    // TODO(stage-13m+): extend the global state hash to cover
-    // `accumulator_balances` and `delegations` CFs.
-    //
-    // The naive approach — hashing each `BalanceEvent` /
-    // `DelegationEvent` and inserting it into the multiset — looks
-    // right but breaks the load-bearing invariant:
-    //
-    //   live_object_set_hash() == prior_hash + accumulate_effects(fx)
-    //
-    // because `live_object_set_hash` only walks objects, not balance
-    // or delegation state, while `accumulate_effects` would mix in
-    // event hashes that have no counterpart on the live side.
-    //
-    // The correct extension is a delta-replacement multiset:
-    //   - extend `accumulate_live_object_set` to also walk
-    //     `accumulator_balances` and `delegations` and fold a
-    //     domain-separated digest of every row into the multiset;
-    //   - have effects carry the **pre-state digest** alongside each
-    //     balance/delegation event (or have the apply path emit the
-    //     before/after pair) so `accumulate_effects` can subtract the
-    //     pre-state digest and insert the post-state digest, matching
-    //     the live walk's view.
-    //
-    // For Stage 13m we keep this object-only and rely on:
-    //   1. Determinism in the executor / settlement path (no fork
-    //      risk — silently divergent balances would still match
-    //      because validators apply the same events).
-    //   2. The `write_one_transaction_outputs` atomicity test in
-    //      `balance_storage_tests.rs`, which keeps the chokepoint
-    //      property enforced from the inside.
-    //
-    // The state-hash extension is purely defense-in-depth (catches
-    // a hypothetical determinism bug at the next checkpoint instead
-    // of at the next epoch's reconciliation), so deferring it does
-    // not weaken correctness — only the speed of bug detection.
 
     acc
 }
@@ -190,6 +177,9 @@ impl GlobalStateHasher {
     pub fn accumulate_live_object(acc: &mut GlobalStateHash, live_object: &LiveObject) {
         match live_object {
             LiveObject::Normal(object) => {
+                if skip_accumulator(object.owner()) {
+                    return;
+                }
                 acc.insert(object.compute_object_reference().2);
             }
         }
