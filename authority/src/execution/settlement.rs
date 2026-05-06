@@ -242,44 +242,34 @@ fn apply_delegation_settlement_to_object_inputs(
         let staker = change.staker;
         let acc_id = DelegationAccumulator::derive_id(pool_id, staker);
 
+        let new_state = change.new_state;
+
         if let Some(existing) = store.read_object(&acc_id) {
-            let mut acc = existing.as_delegation_accumulator().ok_or_else(|| {
-                ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                    "Settlement input at deterministic delegation accumulator ID {acc_id:?} for \
-                     ({pool_id:?}, {staker:?}) is not a DelegationAccumulator object"
-                )))
-            })?;
-
-            let new_principal = match types::balance::apply_delta_to_balance(acc.principal, change.delta) {
-                types::balance::BalanceUpdate::Ok(p) => p,
-                types::balance::BalanceUpdate::Underflow { current, delta } => {
-                    return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                        "Settlement delegation underflow on ({pool_id:?}, {staker:?}): \
-                         current={current} delta={delta}"
-                    )))
-                    .into());
-                }
-                types::balance::BalanceUpdate::Overflow { current, delta } => {
-                    return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                        "Settlement delegation overflow on ({pool_id:?}, {staker:?}): \
-                         current={current} delta={delta}"
-                    )))
-                    .into());
-                }
+            // Drain → tombstone-via-zero (the perpetual store's
+            // `apply_delegation_events` deletes the CF row; a future
+            // pass can fully delete the object). For non-drain, write
+            // the post-settle row through.
+            let acc = match new_state {
+                Some(d) => DelegationAccumulator::new(
+                    pool_id,
+                    staker,
+                    d.principal,
+                    d.index_at_last_collect,
+                    d.pending_principal,
+                    d.pending_added_at_epoch,
+                ),
+                None => DelegationAccumulator::new(pool_id, staker, 0, 0, 0, 0),
             };
-            acc.principal = new_principal;
-            if let Some(p) = change.set_period {
-                acc.last_collected_period = p;
-            }
-
-            // Drain-to-zero CF/object alignment: `apply_delegation_events`
-            // (via `write_delegation_cf_to_batch`) deletes the CF row
-            // unconditionally when `principal == 0`. Mirror that here by
-            // deleting the object so the two stores stay aligned and a
-            // subsequent first-touch deposit goes through `create_object`
-            // at `Version::MIN` instead of mutating a zero-principal
-            // zombie. F4 audit fix.
-            if new_principal == 0 {
+            // Drain-to-zero CF/object alignment (F4 audit):
+            // `apply_delegation_events` (via
+            // `write_delegation_cf_to_batch`) deletes the CF row
+            // unconditionally when the row is empty. Mirror that
+            // here by deleting the object so the two stores stay
+            // aligned and a subsequent first-touch deposit goes
+            // through `create_object` at `Version::MIN` instead of
+            // mutating a zero-principal zombie.
+            let is_drain = new_state.map_or(true, |d| d.is_empty());
+            if is_drain {
                 store.delete_input_object(&acc_id);
             } else {
                 let mut new_obj = existing.clone();
@@ -287,28 +277,37 @@ fn apply_delegation_settlement_to_object_inputs(
                 store.mutate_input_object(new_obj);
             }
         } else {
-            // First-touch delegation: principal must be positive.
-            if change.delta <= 0 {
-                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                    "Settlement delegation withdraw on non-existent accumulator \
+            // First-touch delegation: must carry a non-empty row.
+            let d = new_state.ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Settlement delegation drain on non-existent accumulator \
                      ({pool_id:?}, {staker:?}) — reservation pre-pass should have blocked this tx"
+                )))
+            })?;
+            if d.is_empty() {
+                return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "Settlement first-touch delegation row is empty \
+                     ({pool_id:?}, {staker:?})"
                 )))
                 .into());
             }
-            let principal = change.delta as u64;
-            let period = change.set_period.unwrap_or(0);
-            let acc = DelegationAccumulator::new(pool_id, staker, principal, period);
+            let acc = DelegationAccumulator::new(
+                pool_id,
+                staker,
+                d.principal,
+                d.index_at_last_collect,
+                d.pending_principal,
+                d.pending_added_at_epoch,
+            );
             let new_obj = types::object::Object::new_delegation_accumulator(acc, tx_digest);
             store.create_object(new_obj);
         }
 
-        // Stage 14d: settlement drives the `delegations` CF as well
-        // as the DelegationAccumulator object world. The per-tx
-        // delegation_events drain in
-        // `authority_store.rs::write_one_transaction_outputs` is
-        // gated to only fire for ChangeEpoch (which emits its own
-        // validator-commission delegation events directly).
-        store.emit_delegation_event(pool_id, staker, change.delta, change.set_period);
+        // Settlement drives the `delegations` CF as well as the
+        // DelegationAccumulator object world. Re-emit so the
+        // perpetual store's `apply_delegation_events` writes the
+        // matching CF row.
+        store.emit_delegation_event(pool_id, staker, new_state);
     }
     Ok(())
 }
@@ -555,23 +554,26 @@ mod tests {
     /// Stage 14d safety. First-touch delegation with positive delta
     /// creates the row at the supplied principal + period. This is the
     /// F1-equivalent of "first stake to a pool the staker has never
-    /// touched"; the row must be born with `last_collected_period`
-    /// set so the next reward calc picks the right start mark.
+    /// touched"; the row must be born with the post-settle state
+    /// emitted by the executor so the next reward calc starts from
+    /// the right `index_at_last_collect`.
     #[test]
-    fn first_touch_delegation_positive_delta_creates_with_period() {
+    fn first_touch_delegation_creates_accumulator_with_state() {
         use types::accumulator::DelegationAccumulator;
         use types::object::ObjectID;
+        use types::system_state::staking::Delegation;
         use types::temporary_store::DelegationEvent;
 
         let mut store = empty_store();
         let pool_id = ObjectID::random();
         let staker = SomaAddress::random();
-        let de = DelegationEvent {
-            pool_id,
-            staker,
-            delta: 1_000,
-            set_period: Some(42),
+        let row = Delegation {
+            principal: 1_000,
+            index_at_last_collect: 42,
+            pending_principal: 250,
+            pending_added_at_epoch: 7,
         };
+        let de = DelegationEvent { pool_id, staker, new_state: Some(row) };
 
         apply_delegation_settlement_to_object_inputs(
             &mut store,
@@ -590,50 +592,36 @@ mod tests {
             .as_delegation_accumulator()
             .expect("created object is a DelegationAccumulator");
         assert_eq!(acc.principal, 1_000);
-        assert_eq!(acc.last_collected_period, 42);
+        assert_eq!(acc.index_at_last_collect, 42);
+        assert_eq!(acc.pending_principal, 250);
+        assert_eq!(acc.pending_added_at_epoch, 7);
     }
 
-    /// Stage 14d safety. First-touch delegation with non-positive
-    /// delta is an invariant violation: a withdraw or zero-delta on
-    /// a pool/staker pair that has no row yet should never reach
-    /// settlement — the staking executor's pre-checks (or the
-    /// reservation pre-pass for pure withdraws) should have blocked
-    /// it. The executor must surface this loudly rather than create
-    /// an empty row.
+    /// First-touch delegation with `new_state = None` is an invariant
+    /// violation: a drain on a pool/staker pair that has no row yet
+    /// should never reach settlement. The executor must surface this
+    /// loudly rather than create an empty row.
     #[test]
-    fn first_touch_delegation_non_positive_delta_is_loud_error() {
+    fn first_touch_delegation_drain_is_loud_error() {
         use types::object::ObjectID;
         use types::temporary_store::DelegationEvent;
 
         let mut store = empty_store();
         let pool_id = ObjectID::random();
         let staker = SomaAddress::random();
-        let bad_zero = DelegationEvent {
-            pool_id,
-            staker,
-            delta: 0,
-            set_period: Some(1),
-        };
-        let bad_neg = DelegationEvent {
-            pool_id,
-            staker,
-            delta: -5,
-            set_period: None,
-        };
+        let drain = DelegationEvent { pool_id, staker, new_state: None };
 
-        for de in [bad_zero, bad_neg] {
-            let err = apply_delegation_settlement_to_object_inputs(
-                &mut store,
-                vec![de],
-                TransactionDigest::default(),
-            )
-            .expect_err("non-positive first-touch delegation must fail");
-            let msg = format!("{:?}", err);
-            assert!(
-                msg.contains("delegation withdraw on non-existent accumulator"),
-                "error must call out the invariant, got: {msg}"
-            );
-        }
+        let err = apply_delegation_settlement_to_object_inputs(
+            &mut store,
+            vec![drain],
+            TransactionDigest::default(),
+        )
+        .expect_err("first-touch drain must fail");
+        let msg = format!("{:?}", err);
+        assert!(
+            msg.contains("delegation drain on non-existent accumulator"),
+            "error must call out the invariant, got: {msg}"
+        );
     }
 
     /// Same commit metadata + same changes produce identical encodings —

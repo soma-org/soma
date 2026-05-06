@@ -300,7 +300,6 @@ pub struct AddValidatorArgs {
     pub net_address: Vec<u8>,
     pub p2p_address: Vec<u8>,
     pub primary_address: Vec<u8>,
-    pub proxy_address: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde_derive::Serialize, serde_derive::Deserialize)]
@@ -313,7 +312,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_network_address: Option<Vec<u8>>,
     pub next_epoch_p2p_address: Option<Vec<u8>>,
     pub next_epoch_primary_address: Option<Vec<u8>>,
-    pub next_epoch_proxy_address: Option<Vec<u8>>,
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,
     pub next_epoch_worker_pubkey: Option<Vec<u8>>,
     pub next_epoch_network_pubkey: Option<Vec<u8>>,

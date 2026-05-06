@@ -1,14 +1,15 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Unit tests for the F1-shaped delegation-balance storage layer
+//! Unit tests for the auto-compound delegation storage layer
 //! (`AuthorityStore::*_delegation` methods + the `delegations` column
 //! family).
 //!
-//! Stage 9d-C1 reshapes the table to one row per (pool, staker)
-//! holding a `Delegation { principal, last_collected_period }`. These
-//! tests exercise the storage primitives in isolation so the executor
-//! changes in C2/C3 can rely on them being correct.
+//! ONE row per (pool, staker) holding a [`Delegation`] with active
+//! principal, an `index_at_last_collect` snapshot of the pool's
+//! cumulative reward index, plus a pending bucket. These tests
+//! exercise the storage primitives in isolation; the executor /
+//! settlement / change_epoch tests cover the apply-pipeline.
 
 use std::sync::Arc;
 
@@ -34,8 +35,8 @@ fn addr(seed: u8) -> SomaAddress {
     SomaAddress::new([seed; 32])
 }
 
-fn delegation(principal: u64, period: u64) -> Delegation {
-    Delegation::new(principal, period)
+fn delegation(principal: u64, index: u128) -> Delegation {
+    Delegation::new(principal, index)
 }
 
 // ---------------------------------------------------------------------
@@ -43,7 +44,7 @@ fn delegation(principal: u64, period: u64) -> Delegation {
 // ---------------------------------------------------------------------
 
 /// A delegation row that has never been written reads as the default
-/// (zero principal, period 0), not as a missing-key error. Mirrors
+/// (zero principal, zero index), not as a missing-key error. Mirrors
 /// `get_balance` semantics.
 #[tokio::test]
 async fn get_delegation_missing_returns_default() {
@@ -61,16 +62,15 @@ async fn set_delegation_round_trips() {
     store.set_delegation(p, alice, delegation(1_000_000, 7)).unwrap();
     let got = store.get_delegation(p, alice).unwrap();
     assert_eq!(got.principal, 1_000_000);
-    assert_eq!(got.last_collected_period, 7);
+    assert_eq!(got.index_at_last_collect, 7);
 }
 
-/// Setting a delegation row whose principal is zero deletes the row
-/// entirely. Important because `get_delegation` returns the default
-/// for missing entries — keeping a zero-principal row would still
-/// appear in `iter_delegations_for_staker` scans and waste storage.
-/// Withdrawing a stake fully should leave no trace.
+/// A row whose active and pending buckets are both empty deletes
+/// outright. Important because `get_delegation` returns the default
+/// for missing entries — keeping an empty row would surface in scans
+/// and waste storage. Withdrawing a stake fully should leave no trace.
 #[tokio::test]
-async fn set_delegation_zero_principal_deletes_row() {
+async fn set_delegation_empty_row_deletes() {
     let store = fresh_store();
     let p = pool(1);
     let alice = addr(2);
@@ -82,12 +82,40 @@ async fn set_delegation_zero_principal_deletes_row() {
     assert_eq!(store.get_delegation(p, alice).unwrap().principal, 0);
     assert!(
         store.iter_delegations_for_staker(alice).unwrap().is_empty(),
-        "zero-principal row must be deleted, not kept",
+        "empty row must be deleted, not kept",
     );
 }
 
-/// F1 schema: ONE row per (pool, staker). Repeat sets to the same key
-/// overwrite — they do NOT create separate rows by activation epoch.
+/// A row with an active drain (principal == 0) but a non-zero
+/// `pending_principal` is NOT empty — the pending bucket carries
+/// real shannons that haven't promoted yet, and the row must persist
+/// across writes.
+#[tokio::test]
+async fn set_delegation_pending_only_row_is_kept() {
+    let store = fresh_store();
+    let p = pool(1);
+    let alice = addr(2);
+
+    let pending_only = Delegation {
+        principal: 0,
+        index_at_last_collect: 0,
+        pending_principal: 250,
+        pending_added_at_epoch: 4,
+    };
+    store.set_delegation(p, alice, pending_only).unwrap();
+    let got = store.get_delegation(p, alice).unwrap();
+    assert_eq!(got.principal, 0);
+    assert_eq!(got.pending_principal, 250);
+    assert_eq!(got.pending_added_at_epoch, 4);
+    assert_eq!(
+        store.iter_delegations_for_staker(alice).unwrap().len(),
+        1,
+        "pending-only row persists",
+    );
+}
+
+/// Auto-compound schema: ONE row per (pool, staker). Repeat sets to
+/// the same key overwrite — they do NOT create separate rows.
 #[tokio::test]
 async fn one_row_per_pool_staker_pair() {
     let store = fresh_store();
@@ -100,10 +128,10 @@ async fn one_row_per_pool_staker_pair() {
 
     let got = store.get_delegation(p, alice).unwrap();
     assert_eq!(got.principal, 300, "last set wins");
-    assert_eq!(got.last_collected_period, 7);
+    assert_eq!(got.index_at_last_collect, 7);
 
     let listed = store.iter_delegations_for_staker(alice).unwrap();
-    assert_eq!(listed.len(), 1, "F1 schema: one row per (pool, staker)");
+    assert_eq!(listed.len(), 1, "one row per (pool, staker)");
 }
 
 // ---------------------------------------------------------------------
@@ -122,24 +150,26 @@ async fn apply_delegation_delta_increments() {
     let after = store.apply_delegation_delta(p, alice, 500, None).unwrap();
     assert_eq!(after, 1_500);
 
-    // last_collected_period stays at 0 when no set_period override.
-    assert_eq!(store.get_delegation(p, alice).unwrap().last_collected_period, 0);
+    // index_at_last_collect stays at 0 when no override is supplied.
+    assert_eq!(store.get_delegation(p, alice).unwrap().index_at_last_collect, 0);
 }
 
 #[tokio::test]
-async fn apply_delegation_delta_advances_period_when_requested() {
+async fn apply_delegation_delta_advances_index_when_requested() {
     let store = fresh_store();
     let p = pool(1);
     let alice = addr(2);
 
     store.apply_delegation_delta(p, alice, 1_000, None).unwrap();
-    assert_eq!(store.get_delegation(p, alice).unwrap().last_collected_period, 0);
+    assert_eq!(store.get_delegation(p, alice).unwrap().index_at_last_collect, 0);
 
-    // F1 fold during AddStake: principal += 500 AND advance period to 5.
-    store.apply_delegation_delta(p, alice, 500, Some(5)).unwrap();
+    // Settle: principal += 500 AND snapshot the pool's
+    // cumulative_index. The snapshot is the boundary that the next
+    // reward calc will project from.
+    store.apply_delegation_delta(p, alice, 500, Some(5_000_000_000)).unwrap();
     let got = store.get_delegation(p, alice).unwrap();
     assert_eq!(got.principal, 1_500);
-    assert_eq!(got.last_collected_period, 5);
+    assert_eq!(got.index_at_last_collect, 5_000_000_000);
 }
 
 /// Underflow is a hard error — withdrawing more than was staked must

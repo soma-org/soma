@@ -497,7 +497,9 @@ impl RpcIndexes for RestReadStore {
             .map(|(pool_id, delegation)| types::storage::read_store::DelegationInfo {
                 pool_id,
                 principal: delegation.principal,
-                last_collected_period: delegation.last_collected_period,
+                index_at_last_collect: delegation.index_at_last_collect,
+                pending_principal: delegation.pending_principal,
+                pending_added_at_epoch: delegation.pending_added_at_epoch,
             })
             .collect())
     }

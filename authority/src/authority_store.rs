@@ -531,27 +531,26 @@ impl AuthorityStore {
         Ok(())
     }
 
-    /// Stage 9d: seed the `delegations` column family with the genesis
-    /// Stage 9d-C1: bulk-insert genesis delegations. Each entry is a
-    /// (pool, staker) → principal mapping; we materialise it as a
-    /// `Delegation { principal, last_collected_period: 0 }` since
-    /// genesis delegators haven't collected anything yet.
-    ///
-    /// Stage 14b: dual-writes the matching `DelegationAccumulator`
-    /// objects through the shared bottleneck.
+    /// Bulk-insert genesis delegations. Each entry is a
+    /// `(pool, staker) → principal` mapping; we materialise it as a
+    /// fully-active row baselined at the pool's initial
+    /// `cumulative_index` (= [`F1_INDEX_SCALE`]) so subsequent
+    /// reward folds compound the genesis principal correctly. Dual-
+    /// writes the matching `DelegationAccumulator` objects through
+    /// the shared bottleneck.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn bulk_insert_genesis_delegations(
         &self,
         delegations: &BTreeMap<(ObjectID, SomaAddress), u64>,
     ) -> SomaResult<()> {
-        use types::system_state::staking::Delegation;
+        use types::system_state::staking::{Delegation, F1_INDEX_SCALE};
         let mut batch = self.perpetual_tables.delegations.batch();
         for ((pool_id, staker), principal) in delegations.iter().filter(|(_, v)| **v != 0) {
             self.write_delegation_cf_to_batch(
                 &mut batch,
                 *pool_id,
                 *staker,
-                Delegation::new(*principal, 0),
+                Delegation::new(*principal, F1_INDEX_SCALE),
             )?;
         }
         batch.write()?;
@@ -853,20 +852,12 @@ impl AuthorityStore {
 
     /// Stage 9d-C1: apply per-tx delegation events to the F1-shaped
     /// `delegations` column family inside the same `DBBatch` as the
-    /// rest of the commit's outputs. Each event carries a
-    /// (pool, staker) key plus a principal delta and an optional
-    /// `set_period` overriding `last_collected_period`. Mirrors
-    /// `apply_settlement_events`'s aggregate-first design — multiple
-    /// events on the same key collapse to a single row write,
-    /// avoiding the read-then-write race where two events with the
-    /// same key clobber each other.
-    ///
-    /// The `set_period` semantics are "last write wins" within a
-    /// commit, since AddStake / WithdrawStake on the same delegation
-    /// in one tx is rare and the executor enforces a single fold
-    /// before any principal mutation. Events without an explicit
-    /// `set_period` (genesis backfill, dual-write callers in earlier
-    /// stages) leave the existing field untouched.
+    /// rest of the commit's outputs. Each event carries the full
+    /// post-settle `(pool, staker)` row state. Multiple events for
+    /// the same key within a commit collapse "last write wins" — the
+    /// executor settles, mutates, and emits the resulting state, and
+    /// AddStake/WithdrawStake on the same delegation in one tx is
+    /// not exercised today.
     pub(crate) fn apply_delegation_events(
         &self,
         write_batch: &mut DBBatch,
@@ -874,60 +865,25 @@ impl AuthorityStore {
     ) -> SomaResult<()> {
         use types::system_state::staking::Delegation;
 
-        // Aggregate per (pool_id, staker). For deltas we sum; for
-        // set_period we take the last (max) value so a fold within a
-        // tx is not lost.
-        #[derive(Default)]
-        struct Agg {
-            delta: i128,
-            set_period: Option<u64>,
-        }
-        let mut aggregated: BTreeMap<(ObjectID, SomaAddress), Agg> = BTreeMap::new();
+        // Aggregate per (pool_id, staker): later events override
+        // earlier ones for the same key.
+        let mut aggregated: BTreeMap<
+            (ObjectID, SomaAddress),
+            Option<Delegation>,
+        > = BTreeMap::new();
         for ev in events {
-            let entry = aggregated.entry((ev.pool_id, ev.staker)).or_default();
-            entry.delta += ev.delta;
-            if let Some(p) = ev.set_period {
-                entry.set_period = Some(entry.set_period.map_or(p, |q| q.max(p)));
-            }
+            aggregated.insert((ev.pool_id, ev.staker), ev.new_state);
         }
 
-        for (key, agg) in aggregated {
-            let current = self.perpetual_tables.delegations.get(&key)?.unwrap_or_default();
-            let new_principal = if agg.delta == 0 {
-                current.principal
-            } else {
-                match apply_delta_to_balance(current.principal, agg.delta) {
-                    BalanceUpdate::Ok(p) => p,
-                    BalanceUpdate::Underflow { current: c, delta } => {
-                        return Err(SomaError::from(format!(
-                            "Delegation underflow: key={:?} current={} delta={}",
-                            key, c, delta
-                        )));
-                    }
-                    BalanceUpdate::Overflow { current: c, delta } => {
-                        return Err(SomaError::from(format!(
-                            "Delegation overflow: key={:?} current={} delta={}",
-                            key, c, delta
-                        )));
-                    }
-                }
-            };
+        for (key, new_state) in aggregated {
+            // `Delegation::new(0, 0)` is the drained-row sentinel;
+            // the helper drops the CF row so neither store surfaces
+            // it.
+            let new_delegation = new_state.unwrap_or_else(|| Delegation::new(0, 0));
 
-            let new_delegation = if new_principal == 0 {
-                // Drain to zero → set principal to 0; the dual-write
-                // helper recognizes this and drops the CF row +
-                // tombstones the accumulator object so neither store
-                // surfaces it in iteration.
-                Delegation::new(0, current.last_collected_period)
-            } else {
-                let last_collected_period =
-                    agg.set_period.unwrap_or(current.last_collected_period);
-                Delegation::new(new_principal, last_collected_period)
-            };
-
-            // Stage 14b: route through the shared dual-write
-            // bottleneck so the CF row and the corresponding
-            // `DelegationAccumulator` object both land in this batch.
+            // Route through the shared CF write helper so the CF row
+            // and the corresponding `DelegationAccumulator` object
+            // both land in this batch.
             self.write_delegation_cf_to_batch(write_batch, key.0, key.1, new_delegation)?;
         }
 
@@ -1630,7 +1586,12 @@ impl AuthorityStore {
         match self.perpetual_tables.get_object_fallible(&id)? {
             None => Ok(Delegation::default()),
             Some(obj) => match obj.as_delegation_accumulator() {
-                Some(acc) => Ok(Delegation::new(acc.principal, acc.last_collected_period)),
+                Some(acc) => Ok(Delegation {
+                    principal: acc.principal,
+                    index_at_last_collect: acc.index_at_last_collect,
+                    pending_principal: acc.pending_principal,
+                    pending_added_at_epoch: acc.pending_added_at_epoch,
+                }),
                 None => Err(SomaError::from(format!(
                     "Object at deterministic accumulator ID {id:?} for \
                      ({pool_id:?}, {staker:?}) is not a DelegationAccumulator — \
@@ -1683,7 +1644,7 @@ impl AuthorityStore {
         staker: SomaAddress,
         delegation: types::system_state::staking::Delegation,
     ) -> SomaResult<()> {
-        if delegation.principal == 0 {
+        if delegation.is_empty() {
             write_batch.delete_batch(
                 &self.perpetual_tables.delegations,
                 std::iter::once(&(pool_id, staker)),
@@ -1699,29 +1660,35 @@ impl AuthorityStore {
         Ok(())
     }
 
-    /// Apply a signed principal delta and (optionally) advance the
-    /// row's `last_collected_period`. Returns the new principal.
-    /// Underflow is a hard error — no row goes negative.
+    /// Apply a signed principal delta to the active portion of a
+    /// `(pool, staker)` row, optionally snapshotting
+    /// `index_at_last_collect` to the given cumulative-index value.
+    /// Returns the new principal. Underflow is a hard error.
     ///
-    /// Used by tests; production paths batch per-commit changes
-    /// through a `DBBatch` via `apply_delegation_events`.
+    /// Used by tests; production paths emit `DelegationEvent`s with
+    /// the full post-settle row state and batch them through
+    /// `apply_delegation_events`.
     pub fn apply_delegation_delta(
         &self,
         pool_id: ObjectID,
         staker: SomaAddress,
         delta: i128,
-        set_period: Option<u64>,
+        set_index: Option<u128>,
     ) -> SomaResult<u64> {
-        use types::system_state::staking::Delegation;
         let current = self.get_delegation(pool_id, staker)?;
         match apply_delta_to_balance(current.principal, delta) {
             BalanceUpdate::Ok(new_principal) => {
-                let last_collected_period =
-                    set_period.unwrap_or(current.last_collected_period);
+                let index_at_last_collect =
+                    set_index.unwrap_or(current.index_at_last_collect);
                 self.set_delegation(
                     pool_id,
                     staker,
-                    Delegation::new(new_principal, last_collected_period),
+                    types::system_state::staking::Delegation {
+                        principal: new_principal,
+                        index_at_last_collect,
+                        pending_principal: current.pending_principal,
+                        pending_added_at_epoch: current.pending_added_at_epoch,
+                    },
                 )?;
                 Ok(new_principal)
             }
@@ -1736,10 +1703,12 @@ impl AuthorityStore {
         }
     }
 
-    /// Sum every active delegation principal against `pool_id`. The
-    /// pool-token math at epoch boundaries still uses this aggregate
-    /// (Stage 9d-B+) so the validator set's voting power is sourced
-    /// from real per-staker rows, not from a separately-tracked total.
+    /// Sum every delegation row's `(principal + pending_principal)`
+    /// against `pool_id`. Matches the "total user-claimable shannons
+    /// on this pool" notion that pool aggregates audit against. Under
+    /// auto-compound, settled-row sum may lag the pool counter by
+    /// the unclaimed compound — that direction is fine; the inverse
+    /// (sum > counter) signals a row/pool drift bug.
     pub fn sum_delegations_for_pool(&self, pool_id: ObjectID) -> SomaResult<u64> {
         let mut total: u64 = 0;
         for entry in self.perpetual_tables.delegations.safe_iter() {
@@ -1747,6 +1716,7 @@ impl AuthorityStore {
             if entry_pool == pool_id {
                 total = total
                     .checked_add(delegation.principal)
+                    .and_then(|t| t.checked_add(delegation.pending_principal))
                     .ok_or_else(|| SomaError::from("Delegation sum overflow".to_string()))?;
             }
         }

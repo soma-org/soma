@@ -7,7 +7,6 @@ version.workspace = true
 # Workspace
 types = { path = "../types", default-features = false }
 sdk = { path = "../sdk" }
-soma-keys.workspace = true
 
 # Async + HTTP
 anyhow.workspace = true
@@ -20,7 +19,6 @@ hex.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
-tower.workspace = true
 bcs.workspace = true
 
 # Serde + persistence
@@ -41,7 +39,6 @@ fs2 = "0.4"
 tiktoken-rs = "0.6"
 uuid = { version = "1", features = ["v4"] }
 dirs.workspace = true
-clap.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

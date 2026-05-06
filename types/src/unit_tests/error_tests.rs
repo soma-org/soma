@@ -23,7 +23,6 @@ fn test_soma_error_display() {
         SomaError::RpcError("rpc msg".into(), "code".into()),
         SomaError::ValidatorHaltedAtEpochEnd,
         SomaError::EpochEnded(5),
-        SomaError::AdvanceEpochError { error: "advance failed".into() },
         SomaError::TimeoutError,
         SomaError::TransactionOrchestratorLocalExecutionError { error: "orchestrator fail".into() },
         SomaError::FailedToSubmitToConsensus("submit fail".into()),

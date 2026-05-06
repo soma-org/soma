@@ -957,7 +957,6 @@ impl From<crate::types::AddValidatorArgs> for AddValidator {
             net_address: Some(value.net_address.into()),
             p2p_address: Some(value.p2p_address.into()),
             primary_address: Some(value.primary_address.into()),
-            proxy_address: Some(value.proxy_address.into()),
             proof_of_possession: Some(value.proof_of_possession.into()),
         }
     }
@@ -1003,11 +1002,6 @@ impl TryFrom<&AddValidator> for crate::types::AddValidatorArgs {
                 .clone()
                 .ok_or_else(|| TryFromProtoError::missing("primary_address"))?
                 .into(),
-            proxy_address: value
-                .proxy_address
-                .clone()
-                .ok_or_else(|| TryFromProtoError::missing("proxy_address"))?
-                .into(),
         })
     }
 }
@@ -1040,7 +1034,6 @@ impl From<crate::types::UpdateValidatorMetadataArgs> for UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.map(|v| v.into()),
-            next_epoch_proxy_address: value.next_epoch_proxy_address.map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.map(|v| v.into()),
@@ -1057,7 +1050,6 @@ impl TryFrom<&UpdateValidatorMetadata> for crate::types::UpdateValidatorMetadata
             next_epoch_network_address: value.next_epoch_network_address.clone().map(|v| v.into()),
             next_epoch_p2p_address: value.next_epoch_p2p_address.clone().map(|v| v.into()),
             next_epoch_primary_address: value.next_epoch_primary_address.clone().map(|v| v.into()),
-            next_epoch_proxy_address: value.next_epoch_proxy_address.clone().map(|v| v.into()),
             next_epoch_protocol_pubkey: value.next_epoch_protocol_pubkey.clone().map(|v| v.into()),
             next_epoch_worker_pubkey: value.next_epoch_worker_pubkey.clone().map(|v| v.into()),
             next_epoch_network_pubkey: value.next_epoch_network_pubkey.clone().map(|v| v.into()),

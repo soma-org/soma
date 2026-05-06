@@ -25,7 +25,6 @@ pub mod execution;
 pub mod finality;
 pub mod full_checkpoint_content;
 pub mod genesis;
-#[cfg(feature = "ml")]
 pub mod genesis_builder;
 pub mod grpc_timeout;
 pub mod intent;

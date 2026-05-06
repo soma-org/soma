@@ -248,9 +248,12 @@ mod add_stake {
                         .into_iter()
                         .find(|(pool, delegation)| {
                             // Pick the row matching this validator. With ONE
-                            // row per (pool, staker), repeat AddStakes against
-                            // the same validator collapse — verify principal
-                            // is at least our stake_amount.
+                            // row per (pool, staker), repeat AddStakes
+                            // against the same validator collapse. AddStake
+                            // on an active pool lands in the pending bucket
+                            // (the new stake doesn't earn current-epoch
+                            // rewards), so we verify the row's *total*
+                            // position (active + pending) covers our contribution.
                             let mappings =
                                 &node.state().get_system_state_object_for_testing().unwrap();
                             let mapping_addr = mappings
@@ -259,7 +262,7 @@ mod add_stake {
                                 .get(pool)
                                 .copied();
                             mapping_addr == Some(self.staked_with)
-                                && delegation.principal >= self.stake_amount
+                                && delegation.total() >= self.stake_amount
                         })
                         .map(|(pool, _)| pool)
                 })
@@ -273,9 +276,9 @@ mod add_stake {
             runner: &StressTestRunner,
             _effects: &TransactionEffects,
         ) {
-            // Stage 9d-C5: pending_stake/withdraw fields gone. Just
-            // verify total_stake reflects our contribution after the
-            // epoch boundary.
+            // After the epoch boundary the pending bucket has
+            // promoted into `active_stake`, so the rewards-eligible
+            // stake should reflect our contribution.
             let system_state = runner.system_state();
             let validator = system_state
                 .validators()
@@ -285,16 +288,16 @@ mod add_stake {
                 .expect("Validator must still be in the active set");
 
             assert!(
-                validator.staking_pool.total_stake >= self.stake_amount,
-                "Validator {}'s total_stake ({}) should be >= staked amount ({})",
+                validator.staking_pool.active_stake >= self.stake_amount,
+                "Validator {}'s active_stake ({}) should be >= staked amount ({})",
                 self.staked_with,
-                validator.staking_pool.total_stake,
+                validator.staking_pool.active_stake,
                 self.stake_amount
             );
 
             info!(
-                "post_epoch AddStake verified: validator {} total_stake={}",
-                self.staked_with, validator.staking_pool.total_stake,
+                "post_epoch AddStake verified: validator {} active_stake={}",
+                self.staked_with, validator.staking_pool.active_stake,
             );
         }
     }
@@ -401,8 +404,12 @@ async fn fuzz_dynamic_committee() {
     // Collect information about total stake of validators, and then check if each validator's
     // voting power is the right % of the total stake.
     let system_state = runner.system_state();
-    let total_stake: u64 =
-        system_state.validators().validators.iter().map(|v| v.staking_pool.total_stake).sum();
+    let total_stake: u64 = system_state
+        .validators()
+        .validators
+        .iter()
+        .map(|v| v.staking_pool.active_stake + v.staking_pool.pending_active_stake)
+        .sum();
     info!("post-fuzz total stake across {} validators: {}", committee_size, total_stake);
 
     // Sanity: all stress senders are still in the wallet's keystore

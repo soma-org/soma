@@ -11,6 +11,9 @@ protocol-config-macros.workspace = true
 schemars = { version = "0.8.22", features = ["either"] }
 clap.workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["clap", "schemars", "tracing"]
+
 [dev-dependencies]
 insta.workspace = true
 

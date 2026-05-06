@@ -106,13 +106,12 @@ impl BalanceAccumulator {
     }
 }
 
-/// Stage 14a: per-(pool_id, staker) F1 delegation row payload.
-/// Stored as the BCS contents of an [`Object`] of type
+/// Per-(pool_id, staker) auto-compound F1 delegation row payload,
+/// stored as the BCS contents of an [`Object`] of type
 /// [`ObjectType::DelegationAccumulator`], owned by
 /// `Owner::Accumulator { kind: Delegation }`.
 ///
-/// The shape mirrors the pre-14a `delegations` CF row schema so the
-/// migration is value-preserving.
+/// Mirrors [`crate::system_state::staking::Delegation`].
 ///
 /// [`Object`]: crate::object::Object
 /// [`ObjectType::DelegationAccumulator`]: crate::object::ObjectType::DelegationAccumulator
@@ -121,7 +120,9 @@ pub struct DelegationAccumulator {
     pub pool_id: ObjectID,
     pub staker: SomaAddress,
     pub principal: u64,
-    pub last_collected_period: u64,
+    pub index_at_last_collect: u128,
+    pub pending_principal: u64,
+    pub pending_added_at_epoch: u64,
 }
 
 impl DelegationAccumulator {
@@ -129,9 +130,18 @@ impl DelegationAccumulator {
         pool_id: ObjectID,
         staker: SomaAddress,
         principal: u64,
-        last_collected_period: u64,
+        index_at_last_collect: u128,
+        pending_principal: u64,
+        pending_added_at_epoch: u64,
     ) -> Self {
-        Self { pool_id, staker, principal, last_collected_period }
+        Self {
+            pool_id,
+            staker,
+            principal,
+            index_at_last_collect,
+            pending_principal,
+            pending_added_at_epoch,
+        }
     }
 
     /// Derive the canonical [`ObjectID`] for the `(pool_id, staker)`
@@ -222,7 +232,7 @@ mod tests {
 
     #[test]
     fn delegation_bcs_roundtrip() {
-        let acc = DelegationAccumulator::new(pool(7), addr(1), 500, 42);
+        let acc = DelegationAccumulator::new(pool(7), addr(1), 500, 42, 100, 3);
         let bytes = bcs::to_bytes(&acc).unwrap();
         let round: DelegationAccumulator = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(acc, round);

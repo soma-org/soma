@@ -229,7 +229,7 @@ fn test_delegation_accumulator_object_roundtrip() {
 
     let pool_id = ObjectID::new([3u8; 32]);
     let staker = SomaAddress::new([5u8; 32]);
-    let acc = DelegationAccumulator::new(pool_id, staker, 500, 7);
+    let acc = DelegationAccumulator::new(pool_id, staker, 500, 7, 100, 2);
     let obj = Object::new_delegation_accumulator(acc, TransactionDigest::genesis_marker());
 
     assert_eq!(obj.id(), DelegationAccumulator::derive_id(pool_id, staker));

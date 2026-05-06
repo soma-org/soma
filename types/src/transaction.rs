@@ -187,8 +187,6 @@ pub struct AddValidatorArgs {
     pub p2p_address: Vec<u8>,
     /// The validator's primary address for client communication
     pub primary_address: Vec<u8>,
-    /// The validator's proxy server address for data/model serving
-    pub proxy_address: Vec<u8>,
 }
 
 /// # RemoveValidatorArgs
@@ -219,8 +217,6 @@ pub struct UpdateValidatorMetadataArgs {
     pub next_epoch_p2p_address: Option<Vec<u8>>,
     /// Optional new primary address (serialized Multiaddr)
     pub next_epoch_primary_address: Option<Vec<u8>>,
-    /// Optional new proxy address (serialized Multiaddr)
-    pub next_epoch_proxy_address: Option<Vec<u8>>,
 
     /// Optional new protocol public key (BLS)
     pub next_epoch_protocol_pubkey: Option<Vec<u8>>,

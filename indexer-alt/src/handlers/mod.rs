@@ -25,13 +25,11 @@ pub mod soma_channel_events;
 pub mod soma_channels;
 pub mod soma_epoch_state;
 pub mod soma_providers;
-pub mod soma_staked_soma;
 pub mod soma_tx_details;
 pub mod soma_validators;
 pub mod tx_affected_addresses;
 pub mod tx_affected_objects;
 pub mod tx_balance_changes;
-pub mod tx_calls;
 pub mod tx_digests;
 pub mod tx_kinds;
 

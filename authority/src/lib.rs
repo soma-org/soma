@@ -11,7 +11,6 @@
 #![allow(clippy::unnecessary_unwrap)]
 
 pub mod accumulators;
-pub mod audit_service;
 pub mod authority;
 pub mod settlement_scheduler;
 pub mod authority_aggregator;
@@ -38,10 +37,8 @@ pub mod execution;
 pub mod execution_driver;
 pub mod execution_scheduler;
 pub mod fallback_fetch;
-pub mod fullnode_proxy;
 pub mod global_state_hasher;
 pub mod mysticeti_adapter;
-pub mod proxy_server;
 pub mod reconfiguration;
 pub mod rpc_index;
 pub mod safe_client;

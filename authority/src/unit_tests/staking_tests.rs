@@ -131,12 +131,13 @@ async fn test_add_stake_insufficient_gas() {
     );
 }
 
-/// A successful AddStake records a (pool, staker) row whose
-/// principal equals the staked amount, with `last_collected_period`
-/// pinned to the pool's current F1 period — that's the fold mark
-/// from which any future rewards on this principal will count.
+/// A successful AddStake against an *active* pool lands the staked
+/// amount in the row's pending bucket — the new stake doesn't count
+/// toward current-epoch rewards. `pending_added_at_epoch` records the
+/// epoch in which it was added so the next-epoch promotion logic can
+/// distinguish matured pending from fresh deposits.
 #[tokio::test]
-async fn test_add_stake_writes_delegation_row() {
+async fn test_add_stake_writes_pending_bucket() {
     let (sender, key): (_, Ed25519KeyPair) = get_key_pair();
     let stake_amount = 7_500_000u64;
 
@@ -157,20 +158,35 @@ async fn test_add_stake_writes_delegation_row() {
     let batch = res.authority_state.get_cache_commit().build_db_batch(epoch, &[*tx_digest]);
     res.authority_state.get_cache_commit().commit_transaction_outputs(epoch, batch, &[*tx_digest]);
 
-    // Find the validator's pool_id. The sender just staked there, so
-    // exactly one row should exist for them.
+    // Exactly one row exists for this staker.
     let store = res.authority_state.database_for_testing();
     let listed = store.iter_delegations_for_staker(sender).unwrap();
     assert_eq!(listed.len(), 1, "exactly one delegation row should exist for this staker");
     let (pool, delegation) = listed[0];
+
+    // Active-pool AddStake: amount lands in pending, not principal.
     assert_eq!(
-        delegation.principal, stake_amount,
-        "delegation row's principal must equal the staked amount",
+        delegation.principal, 0,
+        "active-pool AddStake leaves principal at 0 (no current-epoch reward share)",
+    );
+    assert_eq!(
+        delegation.pending_principal, stake_amount,
+        "active-pool AddStake credits pending bucket with the full amount",
     );
 
-    // F1 fold semantics: AddStake advances last_collected_period to
-    // the pool's current period.
+    // `pending_added_at_epoch` records the staking epoch.
+    use types::system_state::SystemStateTrait;
     let system_state = res.authority_state.get_system_state_object_for_testing().unwrap();
+    assert_eq!(
+        delegation.pending_added_at_epoch,
+        system_state.epoch(),
+        "pending_added_at_epoch must equal the current epoch",
+    );
+
+    // `index_at_last_collect` snapshots the pool's cumulative_index
+    // at settlement time. For a first-time staker on a fresh pool
+    // this is zero; for any pool that has already deposited rewards
+    // it must equal the live `cumulative_index`.
     let pool_state = &system_state
         .validators()
         .validators
@@ -179,8 +195,8 @@ async fn test_add_stake_writes_delegation_row() {
         .expect("pool must exist on a validator")
         .staking_pool;
     assert_eq!(
-        delegation.last_collected_period, pool_state.current_period,
-        "AddStake must advance last_collected_period to the pool's current period",
+        delegation.index_at_last_collect, pool_state.cumulative_index,
+        "AddStake must snapshot the pool's cumulative_index",
     );
 }
 
@@ -234,8 +250,8 @@ async fn test_withdraw_stake_drains_delegation_row() {
     assert_eq!(listed.len(), 1, "AddStake must create exactly one row");
     let pool = listed[0].0;
     assert_eq!(
-        listed[0].1.principal, stake_amount,
-        "delegation row's principal must equal the staked amount",
+        listed[0].1.pending_principal, stake_amount,
+        "active-pool AddStake credits the pending bucket",
     );
 
     // Step 2: WithdrawStake (Stage 13c: balance-mode, drains the row).
@@ -268,11 +284,9 @@ async fn test_withdraw_stake_drains_delegation_row() {
         &[*withdraw_tx_digest],
     );
 
-    assert_eq!(
-        store.get_delegation(pool, sender).unwrap().principal,
-        0,
-        "delegation row must drain to zero after WithdrawStake",
-    );
+    let drained = store.get_delegation(pool, sender).unwrap();
+    assert_eq!(drained.principal, 0, "active principal drained");
+    assert_eq!(drained.pending_principal, 0, "pending principal drained");
     let listed = store.iter_delegations_for_staker(sender).unwrap();
     assert!(
         listed.is_empty(),

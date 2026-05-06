@@ -20,7 +20,6 @@ members = [
   "data-ingestion",
   "protocol-config",
   "protocol-config-macros",
-  "admin",
   "soma-field-count-derive",
   "soma-field-count",
   "soma-futures",
@@ -107,7 +106,6 @@ store = { path = "store" }
 data-ingestion = { path = "data-ingestion" }
 protocol-config-macros = { path = "protocol-config-macros" }
 protocol-config = { path = "protocol-config" }
-admin = { path = "admin" }
 soma-field-count-derive = { path = "soma-field-count-derive" }
 soma-field-count = { path = "soma-field-count" }
 soma-futures = { path = "soma-futures" }
@@ -270,13 +268,6 @@ wiremock = "0.6"
 quick_cache = "0.6.18"
 hex = "0.4.3"
 dashmap = "6.1.0"
-burn = { version = "0.19.1", features = [
-  "ndarray",
-  "store",
-  "wgpu",
-  "train",
-  "cuda",
-] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"

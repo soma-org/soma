@@ -49,38 +49,6 @@ impl TransactionEvent {
     }
 }
 
-/// A target was filled (data submitted successfully).
-pub struct TargetFilledEvent {
-    pub target_id: String,
-    pub epoch: i64,
-    pub fill_epoch: Option<i64>,
-    pub winning_model_id: String,
-    pub submitter: String,
-    pub reward_pool: i64,
-}
-
-#[Object]
-impl TargetFilledEvent {
-    async fn target_id(&self) -> &str {
-        &self.target_id
-    }
-    async fn epoch(&self) -> crate::api::scalars::BigInt {
-        crate::api::scalars::BigInt(self.epoch)
-    }
-    async fn fill_epoch(&self) -> Option<crate::api::scalars::BigInt> {
-        self.fill_epoch.map(crate::api::scalars::BigInt)
-    }
-    async fn winning_model_id(&self) -> &str {
-        &self.winning_model_id
-    }
-    async fn submitter(&self) -> &str {
-        &self.submitter
-    }
-    async fn reward_pool(&self) -> crate::api::scalars::BigInt {
-        crate::api::scalars::BigInt(self.reward_pool)
-    }
-}
-
 /// A new checkpoint was indexed.
 pub struct CheckpointEvent {
     pub cp_sequence_number: i64,
@@ -129,7 +97,6 @@ impl EpochEvent {
 #[derive(Clone)]
 pub struct SubscriptionChannels {
     pub new_transaction: broadcast::Sender<Arc<TransactionEvent>>,
-    pub target_filled: broadcast::Sender<Arc<TargetFilledEvent>>,
     pub new_checkpoint: broadcast::Sender<Arc<CheckpointEvent>>,
     pub new_epoch: broadcast::Sender<Arc<EpochEvent>>,
 }
@@ -138,7 +105,6 @@ impl SubscriptionChannels {
     pub fn new(capacity: usize) -> Self {
         Self {
             new_transaction: broadcast::channel(capacity).0,
-            target_filled: broadcast::channel(capacity).0,
             new_checkpoint: broadcast::channel(capacity).0,
             new_epoch: broadcast::channel(capacity).0,
         }
@@ -202,10 +168,10 @@ async fn run_listener(
     });
 
     // Subscribe to channels
-    for ch in &["new_transaction", "target_filled", "new_checkpoint", "new_epoch"] {
+    for ch in &["new_transaction", "new_checkpoint", "new_epoch"] {
         client.execute(&format!("LISTEN {ch}"), &[]).await?;
     }
-    info!("Postgres LISTEN active on: new_transaction, target_filled, new_checkpoint, new_epoch");
+    info!("Postgres LISTEN active on: new_transaction, new_checkpoint, new_epoch");
 
     // Process incoming notifications
     while let Some(notification) = ntf_rx.recv().await {
@@ -241,17 +207,6 @@ fn dispatch_notification(
                 timestamp_ms: json["timestamp_ms"].as_i64().unwrap_or(0),
             });
             let _ = channels.new_transaction.send(event);
-        }
-        "target_filled" => {
-            let event = Arc::new(TargetFilledEvent {
-                target_id: format!("0x{}", json["target_id"].as_str().unwrap_or("")),
-                epoch: json["epoch"].as_i64().unwrap_or(0),
-                fill_epoch: json["fill_epoch"].as_i64(),
-                winning_model_id: format!("0x{}", json["winning_model_id"].as_str().unwrap_or("")),
-                submitter: format!("0x{}", json["submitter"].as_str().unwrap_or("")),
-                reward_pool: json["reward_pool"].as_i64().unwrap_or(0),
-            });
-            let _ = channels.target_filled.send(event);
         }
         "new_checkpoint" => {
             let event = Arc::new(CheckpointEvent {
@@ -306,33 +261,6 @@ impl Subscription {
                         warn!("newTransaction subscription lagged, skipped {n} events");
                         continue;
                     }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        }
-    }
-
-    /// Stream of targets that have been filled (data submitted successfully).
-    async fn target_filled(
-        &self,
-        ctx: &Context<'_>,
-    ) -> impl futures::Stream<Item = TargetFilledEvent> {
-        let channels = ctx.data_unchecked::<SubscriptionChannels>();
-        let mut rx = channels.target_filled.subscribe();
-        async_stream::stream! {
-            loop {
-                match rx.recv().await {
-                    Ok(event) => {
-                        yield TargetFilledEvent {
-                            target_id: event.target_id.clone(),
-                            epoch: event.epoch,
-                            fill_epoch: event.fill_epoch,
-                            winning_model_id: event.winning_model_id.clone(),
-                            submitter: event.submitter.clone(),
-                            reward_pool: event.reward_pool,
-                        };
-                    }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }

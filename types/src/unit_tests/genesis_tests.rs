@@ -1104,7 +1104,13 @@ fn test_genesis_creates_delegation_accumulator_objects() {
         assert_eq!(payload.pool_id, pool_id);
         assert_eq!(payload.staker, staker);
         assert_eq!(payload.principal, expected_principal);
-        assert_eq!(payload.last_collected_period, 0);
+        assert_eq!(
+            payload.index_at_last_collect,
+            crate::system_state::staking::F1_INDEX_SCALE,
+            "genesis stakers baseline at the pool's initial cumulative_index",
+        );
+        assert_eq!(payload.pending_principal, 0);
+        assert_eq!(payload.pending_added_at_epoch, 0);
     }
 }
 

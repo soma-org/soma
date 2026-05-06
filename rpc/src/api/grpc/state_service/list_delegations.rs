@@ -46,10 +46,14 @@ pub fn list_delegations(
     let mut delegations = Vec::with_capacity(rows.len());
     for row in rows {
         total = total.saturating_add(row.principal);
+        // Auto-compound: the proto schema's `last_collected_period`
+        // is a legacy F1 mark that no longer maps cleanly — the real
+        // baseline is `index_at_last_collect` (u128). Hardcode 0 as a
+        // placeholder until the proto is reshaped.
         delegations.push(DelegationEntry {
             pool_id: Some(row.pool_id.to_string()),
-            principal: Some(row.principal),
-            last_collected_period: Some(row.last_collected_period),
+            principal: Some(row.principal.saturating_add(row.pending_principal)),
+            last_collected_period: Some(0),
         });
     }
 

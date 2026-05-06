@@ -4281,12 +4281,6 @@ mod _field_impls {
             number: 7i32,
             message_fields: None,
         };
-        pub const PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "proxy_address",
-            json_name: "proxyAddress",
-            number: 19i32,
-            message_fields: None,
-        };
         pub const VOTING_POWER_FIELD: &'static MessageField = &MessageField {
             name: "voting_power",
             json_name: "votingPower",
@@ -4353,12 +4347,6 @@ mod _field_impls {
             number: 18i32,
             message_fields: None,
         };
-        pub const NEXT_EPOCH_PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_proxy_address",
-            json_name: "nextEpochProxyAddress",
-            number: 20i32,
-            message_fields: None,
-        };
         pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
             name: "proof_of_possession",
             json_name: "proofOfPossession",
@@ -4381,7 +4369,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::PROXY_ADDRESS_FIELD,
             Self::VOTING_POWER_FIELD,
             Self::COMMISSION_RATE_FIELD,
             Self::NEXT_EPOCH_STAKE_FIELD,
@@ -4393,7 +4380,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_NET_ADDRESS_FIELD,
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROXY_ADDRESS_FIELD,
             Self::PROOF_OF_POSSESSION_FIELD,
             Self::NEXT_EPOCH_PROOF_OF_POSSESSION_FIELD,
         ];
@@ -4446,10 +4432,6 @@ mod _field_impls {
             self.path.push(Validator::PRIMARY_ADDRESS_FIELD.name);
             self.finish()
         }
-        pub fn proxy_address(mut self) -> String {
-            self.path.push(Validator::PROXY_ADDRESS_FIELD.name);
-            self.finish()
-        }
         pub fn voting_power(mut self) -> String {
             self.path.push(Validator::VOTING_POWER_FIELD.name);
             self.finish()
@@ -4492,10 +4474,6 @@ mod _field_impls {
         }
         pub fn next_epoch_primary_address(mut self) -> String {
             self.path.push(Validator::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_proxy_address(mut self) -> String {
-            self.path.push(Validator::NEXT_EPOCH_PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn proof_of_possession(mut self) -> String {
@@ -6556,12 +6534,6 @@ mod _field_impls {
             number: 6i32,
             message_fields: None,
         };
-        pub const PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "proxy_address",
-            json_name: "proxyAddress",
-            number: 7i32,
-            message_fields: None,
-        };
         pub const PROOF_OF_POSSESSION_FIELD: &'static MessageField = &MessageField {
             name: "proof_of_possession",
             json_name: "proofOfPossession",
@@ -6577,7 +6549,6 @@ mod _field_impls {
             Self::NET_ADDRESS_FIELD,
             Self::P2P_ADDRESS_FIELD,
             Self::PRIMARY_ADDRESS_FIELD,
-            Self::PROXY_ADDRESS_FIELD,
             Self::PROOF_OF_POSSESSION_FIELD,
         ];
     }
@@ -6623,10 +6594,6 @@ mod _field_impls {
         }
         pub fn primary_address(mut self) -> String {
             self.path.push(AddValidator::PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn proxy_address(mut self) -> String {
-            self.path.push(AddValidator::PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn proof_of_possession(mut self) -> String {
@@ -6761,12 +6728,6 @@ mod _field_impls {
             number: 3i32,
             message_fields: None,
         };
-        pub const NEXT_EPOCH_PROXY_ADDRESS_FIELD: &'static MessageField = &MessageField {
-            name: "next_epoch_proxy_address",
-            json_name: "nextEpochProxyAddress",
-            number: 4i32,
-            message_fields: None,
-        };
         pub const NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD: &'static MessageField = &MessageField {
             name: "next_epoch_protocol_pubkey",
             json_name: "nextEpochProtocolPubkey",
@@ -6797,7 +6758,6 @@ mod _field_impls {
             Self::NEXT_EPOCH_NETWORK_ADDRESS_FIELD,
             Self::NEXT_EPOCH_P2P_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD,
-            Self::NEXT_EPOCH_PROXY_ADDRESS_FIELD,
             Self::NEXT_EPOCH_PROTOCOL_PUBKEY_FIELD,
             Self::NEXT_EPOCH_WORKER_PUBKEY_FIELD,
             Self::NEXT_EPOCH_NETWORK_PUBKEY_FIELD,
@@ -6836,10 +6796,6 @@ mod _field_impls {
         pub fn next_epoch_primary_address(mut self) -> String {
             self.path
                 .push(UpdateValidatorMetadata::NEXT_EPOCH_PRIMARY_ADDRESS_FIELD.name);
-            self.finish()
-        }
-        pub fn next_epoch_proxy_address(mut self) -> String {
-            self.path.push(UpdateValidatorMetadata::NEXT_EPOCH_PROXY_ADDRESS_FIELD.name);
             self.finish()
         }
         pub fn next_epoch_protocol_pubkey(mut self) -> String {

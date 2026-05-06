@@ -30,7 +30,6 @@ cfg-if.workspace = true
 base64.workspace = true
 itertools.workspace = true
 futures.workspace = true
-tracing-subscriber.workspace = true
 tempfile.workspace = true
 prost.workspace = true
 bytes.workspace = true
@@ -63,7 +62,6 @@ sha2 = "0.10"
 # Optional heavy deps
 store = { workspace = true, optional = true }
 object_store = { workspace = true, optional = true }
-burn = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 axum-server = { workspace = true, optional = true }
 soma-http = { workspace = true, optional = true }
@@ -80,10 +78,9 @@ reqwest = { workspace = true, optional = true }
 default = ["full"]
 storage = ["dep:store"]
 cloud-storage = ["dep:object_store"]
-ml = ["dep:burn"]
 server = ["dep:axum", "dep:axum-server", "dep:soma-http"]
 tls = ["dep:rustls", "dep:tokio-rustls", "dep:tonic-rustls", "dep:hyper-rustls", "dep:webpki", "dep:x509-parser", "dep:rcgen", "dep:reqwest"]
-full = ["storage", "cloud-storage", "ml", "server", "tls"]
+full = ["storage", "cloud-storage", "server", "tls"]
 
 [lints]
 workspace = true

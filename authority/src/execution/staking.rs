@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use types::SYSTEM_STATE_OBJECT_ID;
-use types::balance::BalanceEvent;
 use types::base::SomaAddress;
 use types::digests::TransactionDigest;
 use types::effects::ExecutionFailureStatus;
 use types::error::{ExecutionResult, SomaError};
 use types::object::{CoinType, ObjectID};
+use types::system_state::staking::{Delegation, auto_settle};
 use types::system_state::{SystemState, SystemStateTrait};
 use types::temporary_store::TemporaryStore;
 use types::transaction::TransactionKind;
@@ -21,36 +21,33 @@ impl StakingExecutor {
         Self {}
     }
 
-    /// Execute AddStake (Stage 9d-C2: balance-mode + F1 fold-to-balance).
+    /// Execute AddStake under the auto-compound F1 model.
     ///
     /// Flow:
-    /// 1. Look up the validator's StakingPool and its current F1
-    ///    period + cumulative index.
-    /// 2. Read the pre-fetched delegation row for (pool, signer). If
-    ///    a non-empty row exists, compute pending reward via F1 and
-    ///    emit a Deposit balance event paying it to the signer's SOMA
-    ///    balance — that's the "fold to balance" semantics.
-    /// 3. Emit a Withdraw balance event for `amount` SOMA against the
-    ///    signer's accumulator. The reservation pre-pass already
-    ///    confirmed the sender has enough; underflow at apply time
-    ///    indicates a race we propagate as a hard error.
-    /// 4. Run the pool-token side via `state.request_add_stake` so the
-    ///    StakingPool's pending_stake / soma_balance / pool_token_balance
-    ///    stay in sync (Stage 9d-C5 deletes those fields).
-    /// 5. Emit a delegation event with `delta = +amount` and
-    ///    `set_period = current_period` to advance the row's fold
-    ///    mark. The principal grows by `amount` only; pending
-    ///    rewards have already been paid out separately.
-    /// 6. Create a StakedSomaV1 object as a safety net — Stage 9d-C5
-    ///    deletes it once the F1 path is sole truth.
-    #[allow(clippy::too_many_arguments)]
+    /// 1. Read the prefetched `(pool, signer)` delegation row (or
+    ///    default-empty for a first-time staker).
+    /// 2. `auto_settle` against the validator's pool: any accrued
+    ///    rewards on the existing principal compound into the row's
+    ///    principal; matured pending stake promotes alongside its
+    ///    accrued share.
+    /// 3. Add `amount` to the appropriate bucket on the pool — direct
+    ///    `active_stake` for preactive pools (so the first
+    ///    `deposit_staker_rewards` has a divisor), or
+    ///    `pending_active_stake` for active pools (so the new stake
+    ///    doesn't earn current-epoch rewards).
+    /// 4. Mirror the bucket choice on the delegation row's
+    ///    `principal` / `pending_principal`.
+    /// 5. Withdraw `amount` SOMA from the staker's balance accumulator.
+    /// 6. Emit the post-mutation row as a `DelegationEvent` so the
+    ///    dual-write step persists it atomically with the rest of
+    ///    this commit.
     fn execute_add_stake(
         &self,
         store: &mut TemporaryStore,
         signer: SomaAddress,
         validator: SomaAddress,
         amount: u64,
-        tx_digest: TransactionDigest,
+        _tx_digest: TransactionDigest,
     ) -> ExecutionResult<()> {
         if amount == 0 {
             return Err(ExecutionFailureStatus::InvalidArguments {
@@ -74,87 +71,74 @@ impl StakingExecutor {
                 )))
             })?;
 
-        // Locate the validator's pool to get the current F1 period.
-        // request_add_stake itself will validate the validator
-        // exists, but we need the pool data first for the fold.
-        let (pool_id, current_period) = {
+        let current_epoch = state.epoch();
+
+        // Look up the pool (active or pending) to read the current
+        // cumulative_index for auto_settle, plus the pool_id and
+        // preactive flag for downstream routing.
+        let (pool_id, is_preactive, current_index) = {
             let v = state
                 .validators()
                 .find_validator(validator)
                 .or_else(|| {
-                    state.validators().pending_validators.iter().find(|v| {
-                        v.metadata.soma_address == validator
-                    })
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator)
                 })
                 .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
-            (v.staking_pool.id, v.staking_pool.current_period)
+            (
+                v.staking_pool.id,
+                v.staking_pool.is_preactive(),
+                v.staking_pool.cumulative_index,
+            )
         };
 
-        // F1 fold-to-balance: read pre-fetched row, compute pending,
-        // drain it from `pool_rewards`, and pay to balance. A new
-        // staker (no row) gets nothing.
-        let pending = if let Some(existing) =
-            store.prefetched_delegations.get(&pool_id).copied()
+        // Auto-compound any prior accrual into the row's principal,
+        // then bump the appropriate bucket by `amount`.
+        let mut row = store
+            .prefetched_delegations
+            .get(&pool_id)
+            .copied()
+            .unwrap_or_default();
         {
-            if existing.principal > 0 {
-                let v = state
-                    .validators()
-                    .find_validator(validator)
-                    .expect("validator existence checked above");
-                v.staking_pool
-                    .f1_pending_reward(existing.principal, existing.last_collected_period)
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-        if pending > 0 {
-            let pool_mut = if let Some(v) = state.validators_mut().find_validator_mut(validator) {
-                &mut v.staking_pool
-            } else {
-                return Err(ExecutionFailureStatus::ValidatorNotFound.into());
-            };
-            let actual = pool_mut.f1_consume_pending_reward(pending);
-            if actual > 0 {
-                // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
-                store.emit_accumulator_event(
-                    types::effects::object_change::AccumulatorAddress::balance(
-                        signer,
-                        CoinType::Soma,
-                    ),
-                    types::effects::object_change::AccumulatorOperation::Merge,
-                    actual,
-                );
-            }
+            let pool_view = state
+                .validators()
+                .find_validator(validator)
+                .or_else(|| {
+                    state
+                        .validators()
+                        .pending_validators
+                        .iter()
+                        .find(|v| v.metadata.soma_address == validator)
+                })
+                .map(|v| &v.staking_pool)
+                .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+            auto_settle(&mut row, pool_view, current_epoch);
         }
 
+        if is_preactive {
+            row.principal = row.principal.saturating_add(amount);
+            row.index_at_last_collect = current_index;
+        } else {
+            row.pending_principal = row.pending_principal.saturating_add(amount);
+            row.pending_added_at_epoch = current_epoch;
+        }
+
+        // Bump the pool aggregate (preactive → active, active →
+        // pending) and refresh the staking_pool_mappings index.
+        state.add_stake_to_validator(validator, amount)?;
+
         // Debit the principal from the staker's SOMA balance.
-        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
         store.emit_accumulator_event(
             types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
             types::effects::object_change::AccumulatorOperation::Split,
             amount,
         );
 
-        // Stage 9d-C5: bump the pool's total_stake (drives voting
-        // power) and update the staking_pool_mappings index so
-        // `state.remove_stake_from_validator` can route by pool_id
-        // later. F1 owns the per-staker side via the delegation
-        // event below.
-        let _ = tx_digest;
-        let _ = signer; // staker identity already captured in the delegation event
-        state.add_stake_to_validator(validator, amount)?;
-
-        // F1 row update: bump principal by `amount`, advance the
-        // collection mark to current_period (the period from which
-        // any future rewards will count).
-        store.emit_delegation_event(
-            pool_id,
-            signer,
-            amount as i128,
-            Some(current_period),
-        );
+        // Persist the post-mutation row.
+        store.emit_delegation_event(pool_id, signer, Some(row));
 
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -170,29 +154,24 @@ impl StakingExecutor {
         Ok(())
     }
 
-    /// Execute WithdrawStake (Stage 9d-C3: balance-mode + F1 fold-to-balance).
+    /// Execute WithdrawStake under the auto-compound F1 model.
     ///
     /// Flow:
-    /// 1. Read the pre-fetched (pool_id, signer) delegation row.
-    ///    Missing or zero-principal row → error.
-    /// 2. Resolve `amount` (None = entire row). Reject withdrawals
-    ///    larger than the row's principal.
-    /// 3. F1 fold pending rewards via the pool's cumulative index;
-    ///    emit a Deposit balance event paying them to the signer's
-    ///    SOMA balance.
-    /// 4. Run the pool-token side via `state.request_withdraw_stake`
-    ///    with a synthesized StakedSomaV1 whose `stake_activation_epoch`
-    ///    equals the current epoch — that path returns 0 rewards
-    ///    (rate at "activation" == rate now), so the only state
-    ///    change is the bookkeeping for `pending_total_soma_withdraw`
-    ///    and `next_epoch_stake`. No reward double-count: F1 already
-    ///    paid them in step 3.
-    /// 5. Emit a Deposit for the withdrawn principal — the staker's
-    ///    SOMA balance gets credited atomically with the principal
-    ///    reduction.
-    /// 6. Emit a delegation event with `delta = -amount` and
-    ///    `set_period = current_period`. A full drain deletes the
-    ///    row outright per the `apply_delegation_events` contract.
+    /// 1. Read the prefetched `(pool_id, signer)` row. Missing or
+    ///    fully-empty row → error.
+    /// 2. `auto_settle` against the pool to compound prior accrual
+    ///    into `principal` (so the user can withdraw from a fully
+    ///    up-to-date balance).
+    /// 3. Resolve `amount` (None = full balance, both buckets).
+    ///    Reject withdrawals exceeding `principal + pending_principal`.
+    /// 4. Drain pending first (a same-epoch deposit reversal — that
+    ///    stake never earned anything), then active. The active
+    ///    decrement at the next boundary's smaller fold divisor
+    ///    redistributes the withdrawer's current-epoch share to
+    ///    remaining stakers (matches Sui's pool-token semantics).
+    /// 5. Credit `amount` SOMA to the staker's balance accumulator.
+    /// 6. Emit the post-mutation row (or a drain event if both
+    ///    buckets are now zero).
     fn execute_withdraw_stake(
         &self,
         store: &mut TemporaryStore,
@@ -216,14 +195,19 @@ impl StakingExecutor {
                 )))
             })?;
 
-        // Read the F1 row.
-        let existing = store.prefetched_delegations.get(&pool_id).copied().ok_or_else(|| {
-            ExecutionFailureStatus::SomaError(SomaError::from(format!(
-                "No active stake by {} in pool {}",
-                signer, pool_id
-            )))
-        })?;
-        if existing.principal == 0 {
+        let current_epoch = state.epoch();
+
+        let mut row = store
+            .prefetched_delegations
+            .get(&pool_id)
+            .copied()
+            .ok_or_else(|| {
+                ExecutionFailureStatus::SomaError(SomaError::from(format!(
+                    "No active stake by {} in pool {}",
+                    signer, pool_id
+                )))
+            })?;
+        if row.is_empty() {
             return Err(ExecutionFailureStatus::SomaError(SomaError::from(format!(
                 "No active stake by {} in pool {}",
                 signer, pool_id
@@ -231,36 +215,22 @@ impl StakingExecutor {
             .into());
         }
 
-        let withdraw_amount = amount.unwrap_or(existing.principal);
-        if withdraw_amount == 0 {
-            return Err(ExecutionFailureStatus::InvalidArguments {
-                reason: "Withdraw amount cannot be 0".to_string(),
-            }
-            .into());
-        }
-        if withdraw_amount > existing.principal {
-            return Err(ExecutionFailureStatus::InvalidArguments {
-                reason: format!(
-                    "Withdraw amount {} exceeds delegation principal {}",
-                    withdraw_amount, existing.principal,
-                ),
-            }
-            .into());
-        }
-
-        // Look up the pool's current F1 period for the fold mark
-        // and compute the staker's pending reward against the pre-
-        // mutation principal. The pay-out itself happens below
-        // (after we've released the immutable borrow on `state`).
-        let (current_period, pending) = {
-            let mappings = &state.validators().staking_pool_mappings;
-            let validator_addr = mappings.get(&pool_id).copied().ok_or_else(|| {
+        // Locate the validator owning this pool (any of the three
+        // collections). We need a pool view for auto_settle and the
+        // current_index snapshot for the post-settle row.
+        let validator_addr = state
+            .validators()
+            .staking_pool_mappings
+            .get(&pool_id)
+            .copied()
+            .ok_or_else(|| {
                 ExecutionFailureStatus::SomaError(SomaError::from(format!(
                     "StakingPool not found: {}",
                     pool_id
                 )))
             })?;
-            let validator = state
+        let current_index = {
+            let pool_view = state
                 .validators()
                 .find_validator(validator_addr)
                 .or_else(|| {
@@ -270,77 +240,59 @@ impl StakingExecutor {
                         .iter()
                         .find(|v| v.metadata.soma_address == validator_addr)
                 })
-                .or_else(|| state.validators().inactive_validators.get(&pool_id))
+                .map(|v| &v.staking_pool)
+                .or_else(|| {
+                    state.validators().inactive_validators.get(&pool_id).map(|v| &v.staking_pool)
+                })
                 .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
-            let pool = &validator.staking_pool;
-            // F1 fold-to-balance: pay pending rewards on the pre-
-            // mutation principal. Uses the current cumulative index
-            // and the row's last_collected_period.
-            let pending = pool.f1_pending_reward(
-                existing.principal,
-                existing.last_collected_period,
-            );
-            (pool.current_period, pending)
+            auto_settle(&mut row, pool_view, current_epoch);
+            pool_view.cumulative_index
         };
 
-        if pending > 0 {
-            // Drain `pending` shannons out of the pool's reward bank
-            // (saturating against per-fold rounding overshoot) and
-            // credit them to the staker's SOMA balance.
-            let validator_addr = state
-                .validators()
-                .staking_pool_mappings
-                .get(&pool_id)
-                .copied()
-                .ok_or(ExecutionFailureStatus::StakingPoolNotFound)?;
-            let pool_mut = if let Some(v) =
-                state.validators_mut().find_validator_mut(validator_addr)
-            {
-                &mut v.staking_pool
-            } else if let Some(v) =
-                state.validators_mut().inactive_validators.get_mut(&pool_id)
-            {
-                &mut v.staking_pool
-            } else {
-                return Err(ExecutionFailureStatus::StakingPoolNotFound.into());
-            };
-            let actual = pool_mut.f1_consume_pending_reward(pending);
-            if actual > 0 {
-                // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
-                store.emit_accumulator_event(
-                    types::effects::object_change::AccumulatorAddress::balance(
-                        signer,
-                        CoinType::Soma,
-                    ),
-                    types::effects::object_change::AccumulatorOperation::Merge,
-                    actual,
-                );
+        let total_stake = row.total();
+        let withdraw_amount = amount.unwrap_or(total_stake);
+        if withdraw_amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Withdraw amount cannot be 0".to_string(),
             }
+            .into());
         }
-        let _ = current_period;
+        if withdraw_amount > total_stake {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: format!(
+                    "Withdraw amount {} exceeds delegation balance {} (active {} + pending {})",
+                    withdraw_amount, total_stake, row.principal, row.pending_principal,
+                ),
+            }
+            .into());
+        }
 
-        // Stage 9d-C5: drop principal from the pool's total_stake.
-        // F1 owns reward payout (already done above), so this is a
-        // pure aggregate update with no double-count concern.
-        state.remove_stake_from_validator(pool_id, withdraw_amount)?;
+        // Drain pending first, then active.
+        let from_pending = std::cmp::min(withdraw_amount, row.pending_principal);
+        let from_active = withdraw_amount - from_pending;
+        row.pending_principal = row.pending_principal.saturating_sub(from_pending);
+        row.principal = row.principal.saturating_sub(from_active);
+        if row.pending_principal == 0 {
+            row.pending_added_at_epoch = 0;
+        }
+        row.index_at_last_collect = current_index;
+
+        // Pool aggregate: pass the same active/pending split we
+        // applied to the row, so pool aggregates stay in sync with
+        // the staker's row when other stakers also have pending
+        // stake on this pool.
+        state.remove_stake_from_validator(pool_id, from_active, from_pending)?;
 
         // Credit the principal to the staker's SOMA balance.
-        // Stage 14c.6 (SIP-58 cutover): only AccumulatorWriteV1.
         store.emit_accumulator_event(
             types::effects::object_change::AccumulatorAddress::balance(signer, CoinType::Soma),
             types::effects::object_change::AccumulatorOperation::Merge,
             withdraw_amount,
         );
 
-        // Drain the F1 row by `withdraw_amount`; advance the fold
-        // mark to current_period so any future rewards on the
-        // remaining principal start from this period.
-        store.emit_delegation_event(
-            pool_id,
-            signer,
-            -(withdraw_amount as i128),
-            Some(current_period),
-        );
+        // Persist the post-mutation row, or signal a full drain.
+        let new_state = if row.is_empty() { None } else { Some(row) };
+        store.emit_delegation_event(pool_id, signer, new_state);
 
         let state_bytes = bcs::to_bytes(&state).map_err(|e| {
             ExecutionFailureStatus::SomaError(SomaError::from(format!(
@@ -360,8 +312,6 @@ impl StakingExecutor {
 impl TransactionExecutor for StakingExecutor {
     fn fee_units(&self, _store: &TemporaryStore, kind: &TransactionKind) -> u32 {
         match kind {
-            // AddStake / WithdrawStake each touch SystemState, source/StakedSoma, and
-            // create or delete a coin/StakedSoma. Charge a small flat amount.
             TransactionKind::AddStake { .. } | TransactionKind::WithdrawStake { .. } => 2,
             _ => 1,
         }

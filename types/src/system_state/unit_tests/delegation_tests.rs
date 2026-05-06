@@ -55,7 +55,7 @@ mod delegation_tests {
             .validators
             .iter()
             .find(|v| v.metadata.soma_address == addr)
-            .map(|v| v.staking_pool.total_stake)
+            .map(|v| v.staking_pool.active_stake + v.staking_pool.pending_active_stake)
     }
 
     fn inactive_pool_total_stake(state: &SystemState, addr: SomaAddress) -> Option<u64> {
@@ -64,7 +64,7 @@ mod delegation_tests {
             .inactive_validators
             .values()
             .find(|v| v.metadata.soma_address == addr)
-            .map(|v| v.staking_pool.total_stake)
+            .map(|v| v.staking_pool.active_stake + v.staking_pool.pending_active_stake)
     }
 
     /// Adding stake to an active validator immediately bumps its
@@ -123,8 +123,15 @@ mod delegation_tests {
             Some(160 * SHANNONS_PER_SOMA),
         );
 
+        // The 60 we just added went to pending (pool is active),
+        // so withdrawal drains pending. Caller controls the split
+        // explicitly because the pool has no row context.
         state
-            .remove_stake_from_validator(pool_id, 60 * SHANNONS_PER_SOMA)
+            .remove_stake_from_validator(
+                pool_id,
+                /* from_active */ 0,
+                /* from_pending */ 60 * SHANNONS_PER_SOMA,
+            )
             .expect("remove");
         assert_eq!(
             validator_total_stake(&state, validator_addr(1)),
@@ -194,9 +201,16 @@ mod delegation_tests {
             "inactive pool retains its total_stake",
         );
 
-        // Withdrawal from the inactive pool still works.
+        // Withdrawal from the inactive pool still works. The
+        // pending stake added before removal was promoted into
+        // active by `advance_epoch_with_reward_amounts` above, so
+        // the withdrawal drains from active.
         state
-            .remove_stake_from_validator(pool_id, 50 * SHANNONS_PER_SOMA)
+            .remove_stake_from_validator(
+                pool_id,
+                /* from_active */ 50 * SHANNONS_PER_SOMA,
+                /* from_pending */ 0,
+            )
             .expect("remove from inactive");
         assert_eq!(
             inactive_pool_total_stake(&state, validator_addr(1)),
@@ -253,7 +267,7 @@ mod delegation_tests {
         let mut state = set_up_2_validators();
         let unknown_pool = crate::object::ObjectID::random();
         let err = state
-            .remove_stake_from_validator(unknown_pool, 1)
+            .remove_stake_from_validator(unknown_pool, 1, 0)
             .expect_err("unknown pool must error");
         match err {
             ExecutionFailureStatus::StakingPoolNotFound => {}

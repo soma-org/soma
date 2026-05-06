@@ -342,18 +342,6 @@ async fn test_tx_kinds_commit() {
 }
 
 // ===========================================================================
-// tx_calls — always empty for Soma
-// ===========================================================================
-
-#[tokio::test]
-#[ignore]
-async fn test_tx_calls_always_empty() {
-    let cp = Arc::new(simple_checkpoint());
-    let values = tx_calls::TxCalls.process(&cp).await.unwrap();
-    assert!(values.is_empty());
-}
-
-// ===========================================================================
 // obj_versions
 // ===========================================================================
 

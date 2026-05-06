@@ -821,7 +821,6 @@ impl From<types::transaction::AddValidatorArgs> for AddValidator {
             net_address: Some(args.net_address.into()),
             p2p_address: Some(args.p2p_address.into()),
             primary_address: Some(args.primary_address.into()),
-            proxy_address: Some(args.proxy_address.into()),
             proof_of_possession: Some(args.proof_of_possession.into()),
         }
     }
@@ -839,7 +838,6 @@ impl From<types::transaction::UpdateValidatorMetadataArgs> for UpdateValidatorMe
             next_epoch_network_address: args.next_epoch_network_address.map(|bytes| bytes.into()),
             next_epoch_p2p_address: args.next_epoch_p2p_address.map(|bytes| bytes.into()),
             next_epoch_primary_address: args.next_epoch_primary_address.map(|bytes| bytes.into()),
-            next_epoch_proxy_address: args.next_epoch_proxy_address.map(|bytes| bytes.into()),
             next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey.map(|bytes| bytes.into()),
             next_epoch_worker_pubkey: args.next_epoch_worker_pubkey.map(|bytes| bytes.into()),
             next_epoch_network_pubkey: args.next_epoch_network_pubkey.map(|bytes| bytes.into()),
@@ -1316,24 +1314,6 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             })
             .transpose()?;
 
-        // Parse proxy addresses (optional)
-        let proxy_address = proto_val
-            .proxy_address
-            .map(|addr| {
-                types::multiaddr::Multiaddr::from_str(&addr)
-                    .map_err(|e| format!("Invalid proxy_address: {}", e))
-            })
-            .transpose()?
-            .unwrap_or_else(types::multiaddr::Multiaddr::empty);
-
-        let next_epoch_proxy_address = proto_val
-            .next_epoch_proxy_address
-            .map(|addr| {
-                types::multiaddr::Multiaddr::from_str(&addr)
-                    .map_err(|e| format!("Invalid next_epoch_proxy_address: {}", e))
-            })
-            .transpose()?;
-
         let proof_of_possession = proto_val
             .proof_of_possession
             .map(|bytes| {
@@ -1360,14 +1340,12 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             net_address,
             p2p_address,
             primary_address,
-            proxy_address,
             next_epoch_protocol_pubkey,
             next_epoch_network_pubkey,
             next_epoch_net_address,
             next_epoch_p2p_address,
             next_epoch_primary_address,
             next_epoch_worker_pubkey,
-            next_epoch_proxy_address,
             next_epoch_proof_of_possession,
             bridge_ecdsa_pubkey: None,
             next_epoch_bridge_ecdsa_pubkey: None,
@@ -1380,7 +1358,6 @@ impl TryFrom<Validator> for types::system_state::validator::Validator {
             voting_power: proto_val.voting_power.ok_or("Missing voting_power")?,
             staking_pool,
             commission_rate: proto_val.commission_rate.ok_or("Missing commission_rate")?,
-            next_epoch_stake: proto_val.next_epoch_stake.ok_or("Missing next_epoch_stake")?,
             next_epoch_commission_rate: proto_val
                 .next_epoch_commission_rate
                 .ok_or("Missing next_epoch_commission_rate")?,
@@ -1394,26 +1371,21 @@ impl TryFrom<StakingPool> for types::system_state::staking::StakingPool {
     fn try_from(proto_pool: StakingPool) -> Result<Self, Self::Error> {
         let id = proto_pool.id.ok_or("Missing id")?.parse().map_err(|_| "Invalid ObjectID")?;
 
-        // Stage 9d-C5: pool-token fields on the proto schema are
-        // ignored; the F1-only domain StakingPool reads `total_stake`
-        // out of `soma_balance` for now (the proto schema still
-        // carries that field — a follow-up trims the proto). F1
-        // fields default to zero on inbound: the proto wire still
-        // doesn't carry them, and any consumer reconstructing a
-        // StakingPool here has only the dashboard-grade view.
+        // Auto-compound F1: read `active_stake` out of `soma_balance`
+        // (the proto schema still carries the legacy field — a
+        // follow-up trims the proto). Other F1 fields default to zero
+        // since the proto wire doesn't carry them; consumers
+        // reconstructing here only get a dashboard-grade view.
         let _ = proto_pool.exchange_rates;
-        let mut cumulative_index = BTreeMap::new();
-        cumulative_index.insert(0u64, 0u128);
         Ok(types::system_state::staking::StakingPool {
             id,
             activation_epoch: proto_pool.activation_epoch,
             deactivation_epoch: proto_pool.deactivation_epoch,
-            total_stake: proto_pool.soma_balance.ok_or("Missing soma_balance")?,
-            pool_rewards: 0,
-            pending_fold_rewards: 0,
-            current_period: 0,
-            cumulative_index,
-            accumulated_commission: 0,
+            active_stake: proto_pool.soma_balance.ok_or("Missing soma_balance")?,
+            pending_active_stake: 0,
+            cumulative_index: 0,
+            index_history: vec![0],
+            commission_rate: 0,
         })
     }
 }
@@ -1573,16 +1545,6 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
         let next_epoch_primary_address =
             metadata.next_epoch_primary_address.map(|addr| addr.to_string());
 
-        let next_epoch_proxy_address =
-            metadata.next_epoch_proxy_address.map(|addr| addr.to_string());
-
-        // Convert proxy address (empty Multiaddr becomes None in proto)
-        let proxy_address = if metadata.proxy_address.is_empty() {
-            None
-        } else {
-            Some(metadata.proxy_address.to_string())
-        };
-
         Ok(Validator {
             soma_address: Some(metadata.soma_address.to_string()),
             protocol_pubkey: Some(Bytes::from(metadata.protocol_pubkey.as_bytes().to_vec())),
@@ -1591,11 +1553,16 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             net_address: Some(metadata.net_address.to_string()),
             p2p_address: Some(metadata.p2p_address.to_string()),
             primary_address: Some(metadata.primary_address.to_string()),
-            proxy_address,
 
             voting_power: Some(domain_val.voting_power),
             commission_rate: Some(domain_val.commission_rate),
-            next_epoch_stake: Some(domain_val.next_epoch_stake),
+            // Auto-compound: dashboards see "next epoch stake" =
+            // current active + same-epoch additions waiting to
+            // promote at the next boundary.
+            next_epoch_stake: Some(
+                domain_val.staking_pool.active_stake
+                    + domain_val.staking_pool.pending_active_stake,
+            ),
             next_epoch_commission_rate: Some(domain_val.next_epoch_commission_rate),
             staking_pool: Some(domain_val.staking_pool.try_into()?),
             next_epoch_protocol_pubkey,
@@ -1604,7 +1571,6 @@ impl TryFrom<types::system_state::validator::Validator> for Validator {
             next_epoch_net_address,
             next_epoch_p2p_address,
             next_epoch_primary_address,
-            next_epoch_proxy_address,
             proof_of_possession: Some(Bytes::from(metadata.proof_of_possession.as_ref().to_vec())),
             next_epoch_proof_of_possession: metadata
                 .next_epoch_proof_of_possession
@@ -1619,20 +1585,21 @@ impl TryFrom<types::system_state::staking::StakingPool> for StakingPool {
     fn try_from(
         domain_pool: types::system_state::staking::StakingPool,
     ) -> Result<Self, Self::Error> {
-        // Stage 9d-C5: pool-token fields on the proto schema are
-        // populated with zeros / empty for backward compatibility
-        // until a follow-up commit reshapes the proto.
-        // `soma_balance` carries `total_stake` since dashboards
-        // already read it as the validator's stake.
+        // Pool-token fields on the proto schema are populated with
+        // zeros / empty for backward compatibility until a follow-up
+        // commit reshapes the proto. `soma_balance` carries
+        // `active_stake` since dashboards already read it as the
+        // validator's stake; `pending_stake` carries the
+        // pending-active bucket.
         Ok(StakingPool {
             id: Some(domain_pool.id.to_string()),
             activation_epoch: domain_pool.activation_epoch,
             deactivation_epoch: domain_pool.deactivation_epoch,
-            soma_balance: Some(domain_pool.total_stake),
+            soma_balance: Some(domain_pool.active_stake),
             rewards_pool: Some(0),
             pool_token_balance: Some(0),
             exchange_rates: BTreeMap::new(),
-            pending_stake: Some(0),
+            pending_stake: Some(domain_pool.pending_active_stake),
             pending_total_soma_withdraw: Some(0),
             pending_pool_token_withdraw: Some(0),
         })

@@ -108,33 +108,40 @@ async fn delegations_table_populated_after_epoch_change() {
             post.principal,
         );
 
-        // F9 audit-fix invariant: ChangeEpoch's commission credit must
-        // advance `last_collected_period`. Pre-fix, ChangeEpoch emitted
-        // its `DelegationEvent` with `set_period: None` so this field
-        // stayed at 0 forever and the validator's next AddStake /
-        // WithdrawStake retroactively collected rewards on the
-        // commission for periods predating it. Post-fix, the field
-        // advances to the new `current_period` after each commission
-        // credit, capping rewards at the period the commission landed.
+        // F9 audit-fix invariant (auto-compound rephrasing):
+        // ChangeEpoch's commission credit must advance the row's
+        // `index_at_last_collect` to the post-fold cumulative_index.
+        // Otherwise the validator's next AddStake / WithdrawStake
+        // would retroactively compound the commission against a
+        // pre-fold baseline, over-claiming relative to the staker
+        // share they actually deserve.
         if post.principal > pre.principal {
             assert!(
-                post.last_collected_period > 0,
+                post.index_at_last_collect >= pre.index_at_last_collect,
                 "F9: validator {:?} received commission but \
-                 last_collected_period is still 0 — ChangeEpoch must \
-                 advance the period mark or the validator will over-collect \
-                 rewards on the credit",
+                 index_at_last_collect did not advance — ChangeEpoch \
+                 must snapshot the post-fold cumulative_index or the \
+                 validator will over-collect on the credit",
+                key,
+            );
+            assert!(
+                post.index_at_last_collect > 0,
+                "F9: validator {:?} received commission but \
+                 index_at_last_collect is still 0 — baseline was never set",
                 key,
             );
         }
     }
 
     // F1 audit-fix invariant: the `delegations` CF and the on-chain
-    // `DelegationAccumulator` objects must agree on (principal,
-    // last_collected_period). Pre-fix, ChangeEpoch's commission
-    // credit landed only in the CF — the object stayed at its genesis
-    // value forever. Post-fix, ChangeEpoch's executor mutates the
-    // object via `mutate_input_object` so the standard effects
-    // pipeline carries the change.
+    // `DelegationAccumulator` objects must agree on the full
+    // delegation row (principal, index_at_last_collect,
+    // pending_principal, pending_added_at_epoch). Pre-fix,
+    // ChangeEpoch's commission credit landed only in the CF — the
+    // object stayed at its genesis value forever. Post-fix,
+    // ChangeEpoch's executor mutates the object via
+    // `mutate_input_object` so the standard effects pipeline carries
+    // the change.
     test_cluster.fullnode_handle.soma_node.with(|node| {
         let store = node.state().database_for_testing();
         for ((pool_id, staker), cf_row) in &post_delegations {
@@ -148,11 +155,21 @@ async fn delegations_table_populated_after_epoch_change() {
                 pool_id, staker, cf_row.principal, obj_row.principal,
             );
             assert_eq!(
-                obj_row.last_collected_period, cf_row.last_collected_period,
-                "F1: last_collected_period divergence between CF and \
+                obj_row.index_at_last_collect, cf_row.index_at_last_collect,
+                "F1: index_at_last_collect divergence between CF and \
                  DelegationAccumulator object for ({:?}, {:?}): cf={} obj={}",
                 pool_id, staker,
-                cf_row.last_collected_period, obj_row.last_collected_period,
+                cf_row.index_at_last_collect, obj_row.index_at_last_collect,
+            );
+            assert_eq!(
+                obj_row.pending_principal, cf_row.pending_principal,
+                "F1: pending_principal divergence for ({:?}, {:?}): cf={} obj={}",
+                pool_id, staker, cf_row.pending_principal, obj_row.pending_principal,
+            );
+            assert_eq!(
+                obj_row.pending_added_at_epoch, cf_row.pending_added_at_epoch,
+                "F1: pending_added_at_epoch divergence for ({:?}, {:?}): cf={} obj={}",
+                pool_id, staker, cf_row.pending_added_at_epoch, obj_row.pending_added_at_epoch,
             );
         }
     });

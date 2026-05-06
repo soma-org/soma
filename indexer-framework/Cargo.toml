@@ -28,7 +28,6 @@ tokio-stream.workspace = true
 tracing.workspace = true
 types.workspace = true
 url.workspace = true
-zstd.workspace = true
 
 [features]
 default = []

@@ -998,21 +998,36 @@ impl AuthorityState {
             None
         };
 
-        // Stage 9d-C2: pre-read signer's delegations for staking txs so
-        // the executor can fold F1 rewards without reaching into the
-        // perpetual store. We pre-fetch eagerly for AddStake/
-        // WithdrawStake; other tx kinds get an empty map.
-        let prefetched_delegations = if matches!(
-            &kind,
+        // Pre-read delegation rows the executor needs.
+        // - AddStake/WithdrawStake: signer's rows so we can settle and
+        //   mutate without reaching into the perpetual store.
+        // - ChangeEpoch: every validator's *own* delegation row so
+        //   commission credits compound correctly into their existing
+        //   principal (rather than overwriting from a default-empty
+        //   row).
+        let prefetched_delegations = match &kind {
             types::transaction::TransactionKind::AddStake { .. }
-                | types::transaction::TransactionKind::WithdrawStake { .. }
-        ) {
-            self.database_for_testing()
+            | types::transaction::TransactionKind::WithdrawStake { .. } => self
+                .database_for_testing()
                 .iter_delegations_for_staker(signer)
                 .map(|rows| rows.into_iter().collect())
-                .unwrap_or_default()
-        } else {
-            std::collections::BTreeMap::new()
+                .unwrap_or_default(),
+            types::transaction::TransactionKind::ChangeEpoch(_) => {
+                let mut map = std::collections::BTreeMap::new();
+                if let Ok(state) = self.get_system_state_object_for_testing() {
+                    for v in &state.validators().validators {
+                        let pool = v.staking_pool.id;
+                        if let Ok(row) = self
+                            .database_for_testing()
+                            .get_delegation(pool, v.metadata.soma_address)
+                        {
+                            map.insert(pool, row);
+                        }
+                    }
+                }
+                map
+            }
+            _ => std::collections::BTreeMap::new(),
         };
 
         #[allow(unused_mut)]
@@ -1667,26 +1682,22 @@ impl AuthorityState {
         // Emission pool
         system_state_balance += system_state.emission_pool().balance as u128;
 
-        // Stage 9d-C5: validator staking pools — total_stake replaces
-        // soma_balance, and pending_stake/withdraw fields are gone.
-        // F1 reward inflow lands in `current_rewards` between folds
-        // and `accumulated_commission` (validator-only credit) so we
-        // include those too — they're real shannons sitting on the
-        // pool until the next stake-set change folds them out.
+        // Auto-compound F1: every shannon held by the system as
+        // stake lives in `active_stake` (rewards-eligible) or
+        // `pending_active_stake` (same-epoch addition awaiting
+        // promotion). No separate reward bank — rewards are folded
+        // directly into `active_stake` at each boundary.
         for v in &system_state.validators().validators {
-            system_state_balance += v.staking_pool.total_stake as u128;
-            system_state_balance += v.staking_pool.pool_rewards as u128;
-            system_state_balance += v.staking_pool.accumulated_commission as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
         for v in &system_state.validators().pending_validators {
-            system_state_balance += v.staking_pool.total_stake as u128;
-            system_state_balance += v.staking_pool.pool_rewards as u128;
-            system_state_balance += v.staking_pool.accumulated_commission as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
         for v in system_state.validators().inactive_validators.values() {
-            system_state_balance += v.staking_pool.total_stake as u128;
-            system_state_balance += v.staking_pool.pool_rewards as u128;
-            system_state_balance += v.staking_pool.accumulated_commission as u128;
+            system_state_balance += v.staking_pool.active_stake as u128;
+            system_state_balance += v.staking_pool.pending_active_stake as u128;
         }
 
         // Stage 13a+13k: SOMA lives entirely in the balance
@@ -1719,18 +1730,22 @@ impl AuthorityState {
             }
         }
 
-        // Stage 14d invariant audit: the in-memory `StakingPool.total_stake`
-        // and the on-disk `delegations` CF should agree. The conservation
-        // check above sums the counter; this asserts the counter matches
-        // the CF so a divergence shows up as the actual bug rather than
-        // silently inflating/deflating accounted supply.
+        // Auto-compound audit: pool counter must NOT undercount the
+        // on-disk delegation rows. Under auto-compound, the pool's
+        // `active_stake + pending_active_stake` includes any
+        // unclaimed compound (rewards already deposited but not yet
+        // settled into delegation rows), so the strict equality of
+        // the prior model doesn't hold — the counter can be larger
+        // than the CF sum. We only flag the inverse (CF sum exceeds
+        // counter), which would mean a row gained principal without
+        // the pool tracking it.
         for v in &system_state.validators().validators {
             let pool_id = v.staking_pool.id;
             if let Ok(cf_total) = self.database_for_testing().sum_delegations_for_pool(pool_id) {
-                let counter = v.staking_pool.total_stake;
-                if cf_total != counter {
+                let counter = v.staking_pool.active_stake + v.staking_pool.pending_active_stake;
+                if cf_total > counter {
                     let msg = format!(
-                        "delegations CF / total_stake counter divergence at epoch {}: \
+                        "delegations CF exceeds pool counter at epoch {}: \
                          pool {pool_id} cf_total={cf_total} counter={counter}",
                         cur_epoch_store.epoch(),
                     );

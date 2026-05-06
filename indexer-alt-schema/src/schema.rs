@@ -130,16 +130,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    tx_calls (package, module, function, tx_sequence_number) {
-        package -> Bytea,
-        module -> Text,
-        function -> Text,
-        tx_sequence_number -> Int8,
-        sender -> Bytea,
-    }
-}
-
-diesel::table! {
     tx_digests (tx_sequence_number) {
         tx_sequence_number -> Int8,
         tx_digest -> Bytea,
@@ -253,7 +243,6 @@ diesel::table! {
         pending_stake -> Int8,
         name -> Nullable<Text>,
         network_address -> Nullable<Text>,
-        proxy_address -> Nullable<Text>,
         protocol_pubkey -> Nullable<Bytea>,
     }
 }
@@ -267,60 +256,6 @@ diesel::table! {
         epoch -> Int8,
         timestamp_ms -> Int8,
         metadata_json -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    soma_asks (ask_id, cp_sequence_number) {
-        ask_id -> Bytea,
-        cp_sequence_number -> Int8,
-        buyer -> Bytea,
-        task_digest -> Bytea,
-        max_price_per_bid -> Int8,
-        num_bids_wanted -> Int4,
-        timeout_ms -> Int8,
-        created_at_ms -> Int8,
-        status -> Text,
-        accepted_bid_count -> Int4,
-    }
-}
-
-diesel::table! {
-    soma_bids (bid_id, cp_sequence_number) {
-        bid_id -> Bytea,
-        cp_sequence_number -> Int8,
-        ask_id -> Bytea,
-        seller -> Bytea,
-        price -> Int8,
-        response_digest -> Bytea,
-        created_at_ms -> Int8,
-        status -> Text,
-    }
-}
-
-diesel::table! {
-    soma_settlements (settlement_id, cp_sequence_number) {
-        settlement_id -> Bytea,
-        cp_sequence_number -> Int8,
-        ask_id -> Bytea,
-        bid_id -> Bytea,
-        buyer -> Bytea,
-        seller -> Bytea,
-        amount -> Int8,
-        task_digest -> Bytea,
-        response_digest -> Bytea,
-        settled_at_ms -> Int8,
-        seller_rating -> Text,
-        rating_deadline_ms -> Int8,
-    }
-}
-
-diesel::table! {
-    soma_vaults (vault_id, cp_sequence_number) {
-        vault_id -> Bytea,
-        cp_sequence_number -> Int8,
-        owner -> Bytea,
-        balance -> Int8,
     }
 }
 
@@ -347,23 +282,18 @@ diesel::allow_tables_to_appear_in_same_query!(
     obj_info,
     obj_info_deletion_reference,
     obj_versions,
-    soma_asks,
     soma_balance_deltas,
-    soma_bids,
-    soma_channels,
     soma_channel_events,
+    soma_channels,
     soma_epoch_state,
-    soma_providers,
     provider_reputation,
-    soma_settlements,
+    soma_providers,
     soma_staked_soma,
     soma_validators,
-    soma_vaults,
     soma_tx_details,
     tx_affected_addresses,
     tx_affected_objects,
     tx_balance_changes,
-    tx_calls,
     tx_digests,
     tx_kinds,
     watermarks,

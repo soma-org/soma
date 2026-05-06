@@ -79,7 +79,6 @@ message Validator {
   optional string net_address = 5;
   optional string p2p_address = 6;
   optional string primary_address = 7;
-  optional string proxy_address = 19;  // HTTP proxy address for serving data/model downloads
 
   optional uint64 voting_power = 8;
   optional uint64 commission_rate = 9;
@@ -95,7 +94,6 @@ message Validator {
   optional string next_epoch_net_address = 16;
   optional string next_epoch_p2p_address = 17;
   optional string next_epoch_primary_address = 18;
-  optional string next_epoch_proxy_address = 20;  // HTTP proxy address for next epoch
 
   // Proof of possession for the protocol key (BLS signature)
   optional bytes proof_of_possession = 21;

@@ -199,17 +199,20 @@ pub fn execute_transaction(
             out
         }
         TransactionKind::ChangeEpoch(_) => {
-            // F1/F9 audit fix: ChangeEpoch credits validator-commission
-            // rewards directly to each validator's `(pool, validator)`
-            // delegation row. Pre-Stage-14d the credit landed only in
-            // the `delegations` CF, leaving the `DelegationAccumulator`
-            // object stale and the row's `last_collected_period`
-            // unchanged. The executor now mutates the object directly
-            // via `mutate_input_object` (so the object world stays in
-            // sync with the CF), and advances `last_collected_period`
-            // (so subsequent F1 reads don't over-pay rewards on the
-            // commission for periods predating it). To enable that, we
-            // pre-load every active+pending+inactive validator's
+            // F1/F9 audit fix (auto-compound rephrasing): ChangeEpoch
+            // credits validator-commission rewards directly to each
+            // validator's `(pool, validator)` delegation row.
+            // Pre-fix the credit landed only in the `delegations` CF,
+            // leaving the `DelegationAccumulator` object stale and
+            // the row's `index_at_last_collect` unchanged. The
+            // executor now mutates the object directly via
+            // `mutate_input_object` (so the object world stays in
+            // sync with the CF), and snapshots
+            // `index_at_last_collect` to the post-fold
+            // `cumulative_index` (so subsequent compound reads don't
+            // over-pay rewards on the commission for the period
+            // predating it). To enable that, we pre-load every
+            // active+pending+inactive validator's
             // `DelegationAccumulator` from the canonical store here —
             // mirroring the Settlement pre-load above.
             use types::accumulator::DelegationAccumulator;

@@ -25,19 +25,9 @@ pub mod error;
 pub mod faucet_client;
 pub mod keypair;
 pub mod provider;
-#[cfg(feature = "proxy")]
-pub mod proxy_client;
 pub mod transaction_builder;
 pub mod wallet_context;
 
-// Re-export types for downstream crates
-#[cfg(feature = "grpc-services")]
-pub use admin::admin_types;
-
-// gRPC client type aliases (tonic 0.14.3 channels, separate from core ledger)
-#[cfg(feature = "grpc-services")]
-type AdminGrpcClient =
-    admin::admin_gen::admin_client::AdminClient<admin::tonic::transport::Channel>;
 // TODO: define these when public rpcs are finalized
 pub const SOMA_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
 pub const SOMA_LOCAL_NETWORK_URL_0: &str = "http://0.0.0.0:9000";
@@ -48,8 +38,6 @@ pub const SOMA_TESTNET_URL: &str = "https://fullnode.testnet.soma.org:443";
 pub struct SomaClientBuilder {
     request_timeout: Duration,
     faucet_url: Option<String>,
-    #[cfg(feature = "grpc-services")]
-    admin_url: Option<String>,
 }
 
 impl Default for SomaClientBuilder {
@@ -57,8 +45,6 @@ impl Default for SomaClientBuilder {
         Self {
             request_timeout: Duration::from_secs(60),
             faucet_url: None,
-            #[cfg(feature = "grpc-services")]
-            admin_url: None,
         }
     }
 }
@@ -67,13 +53,6 @@ impl SomaClientBuilder {
     /// Set the request timeout
     pub fn request_timeout(mut self, timeout: Duration) -> Self {
         self.request_timeout = timeout;
-        self
-    }
-
-    /// Set the admin service URL (e.g. `http://127.0.0.1:9125`).
-    #[cfg(feature = "grpc-services")]
-    pub fn admin_url(mut self, url: impl Into<String>) -> Self {
-        self.admin_url = Some(url.into());
         self
     }
 
@@ -88,17 +67,6 @@ impl SomaClientBuilder {
         let client = Client::new(rpc_url.as_ref())
             .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
 
-        #[cfg(feature = "grpc-services")]
-        let admin_client = match self.admin_url {
-            Some(url) => {
-                let ac = AdminGrpcClient::connect(url)
-                    .await
-                    .map_err(|e| error::Error::ClientInitError(e.to_string()))?;
-                Some(Arc::new(Mutex::new(ac)))
-            }
-            None => None,
-        };
-
         let faucet_client = match self.faucet_url {
             Some(url) => {
                 let fc = faucet_client::FaucetClient::connect(url)
@@ -112,8 +80,6 @@ impl SomaClientBuilder {
         Ok(SomaClient {
             inner: Arc::new(RwLock::new(client)),
             faucet_client,
-            #[cfg(feature = "grpc-services")]
-            admin_client,
         })
     }
 
@@ -137,8 +103,6 @@ impl SomaClientBuilder {
 pub struct SomaClient {
     inner: Arc<RwLock<Client>>,
     faucet_client: Option<Arc<Mutex<faucet_client::FaucetClient>>>,
-    #[cfg(feature = "grpc-services")]
-    admin_client: Option<Arc<Mutex<AdminGrpcClient>>>,
 }
 
 impl SomaClient {
@@ -412,25 +376,5 @@ impl SomaClient {
         Ok(response)
     }
 
-    /// Trigger epoch advancement on localnet. Returns the new epoch number.
-    #[cfg(feature = "grpc-services")]
-    pub async fn advance_epoch(&self) -> Result<u64, error::Error> {
-        let ac = self
-            .admin_client
-            .as_ref()
-            .ok_or_else(|| {
-                error::Error::ServiceNotConfigured(
-                    "No admin_url was provided when creating SomaClient".into(),
-                )
-            })?
-            .clone();
-        let mut client = ac.lock().await;
-        let response = client
-            .advance_epoch(admin::admin_types::AdvanceEpochRequest {})
-            .await
-            .map_err(|e| error::Error::GrpcError(e.to_string()))?
-            .into_inner();
-        Ok(response.epoch)
-    }
 }
 

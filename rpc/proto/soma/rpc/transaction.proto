@@ -188,7 +188,6 @@ message AddValidator {
   optional bytes net_address = 4;
   optional bytes p2p_address = 5;
   optional bytes primary_address = 6;
-  optional bytes proxy_address = 7;
   optional bytes proof_of_possession = 8;
 }
 
@@ -208,7 +207,6 @@ message UpdateValidatorMetadata {
   optional bytes next_epoch_network_address = 1;
   optional bytes next_epoch_p2p_address = 2;
   optional bytes next_epoch_primary_address = 3;
-  optional bytes next_epoch_proxy_address = 4;
   optional bytes next_epoch_protocol_pubkey = 5;
   optional bytes next_epoch_worker_pubkey = 6;
   optional bytes next_epoch_network_pubkey = 7;

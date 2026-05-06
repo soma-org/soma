@@ -484,7 +484,6 @@ impl GenesisBuilder {
                             net_address: v.info.network_address.clone(),
                             p2p_address: v.info.p2p_address.clone(),
                             primary_address: v.info.primary_address.clone(),
-                            proxy_address: v.info.proxy_address.clone(),
                             proof_of_possession: pop,
                             next_epoch_protocol_pubkey: None,
                             next_epoch_network_pubkey: None,
@@ -493,7 +492,6 @@ impl GenesisBuilder {
                             next_epoch_primary_address: None,
                             next_epoch_worker_pubkey: None,
                             next_epoch_proof_of_possession: None,
-                            next_epoch_proxy_address: None,
                             bridge_ecdsa_pubkey: None,
                             next_epoch_bridge_ecdsa_pubkey: None,
                         },
@@ -502,7 +500,6 @@ impl GenesisBuilder {
                             &mut id_counter,
                         )),
                         commission_rate: v.info.commission_rate,
-                        next_epoch_stake: 0,
                         next_epoch_commission_rate: v.info.commission_rate,
                     }
                 }
@@ -634,8 +631,21 @@ impl GenesisBuilder {
             if principal == 0 {
                 continue;
             }
+            // Genesis: stake is committed directly into `principal`
+            // (preactive 1:1 absorption), no pending bucket. The
+            // baseline `index_at_last_collect` is the pool's initial
+            // cumulative_index (= F1_INDEX_SCALE = 1.0); using 0
+            // would suppress compound on the first epoch's rewards
+            // (`auto_settle` treats a zero baseline as
+            // no-compound-yet to avoid divide-by-zero).
             let acc = crate::accumulator::DelegationAccumulator::new(
-                pool_id, staker, principal, /* last_collected_period */ 0,
+                pool_id,
+                staker,
+                principal,
+                /* index_at_last_collect */
+                crate::system_state::staking::F1_INDEX_SCALE,
+                /* pending_principal */ 0,
+                /* pending_added_at_epoch */ 0,
             );
             objects.push(Object::new_delegation_accumulator(acc, TransactionDigest::default()));
         }

@@ -3709,9 +3709,6 @@ pub struct Validator {
     pub p2p_address: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "7")]
     pub primary_address: ::core::option::Option<::prost::alloc::string::String>,
-    /// HTTP proxy address for serving data/model downloads
-    #[prost(string, optional, tag = "19")]
-    pub proxy_address: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint64, optional, tag = "8")]
     pub voting_power: ::core::option::Option<u64>,
     #[prost(uint64, optional, tag = "9")]
@@ -3737,9 +3734,6 @@ pub struct Validator {
     pub next_epoch_primary_address: ::core::option::Option<
         ::prost::alloc::string::String,
     >,
-    /// HTTP proxy address for next epoch
-    #[prost(string, optional, tag = "20")]
-    pub next_epoch_proxy_address: ::core::option::Option<::prost::alloc::string::String>,
     /// Proof of possession for the protocol key (BLS signature)
     #[prost(bytes = "bytes", optional, tag = "21")]
     pub proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
@@ -4249,8 +4243,6 @@ pub struct AddValidator {
     pub p2p_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "6")]
     pub primary_address: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "7")]
-    pub proxy_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "8")]
     pub proof_of_possession: ::core::option::Option<::prost::bytes::Bytes>,
 }
@@ -4281,8 +4273,6 @@ pub struct UpdateValidatorMetadata {
     pub next_epoch_p2p_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "3")]
     pub next_epoch_primary_address: ::core::option::Option<::prost::bytes::Bytes>,
-    #[prost(bytes = "bytes", optional, tag = "4")]
-    pub next_epoch_proxy_address: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "5")]
     pub next_epoch_protocol_pubkey: ::core::option::Option<::prost::bytes::Bytes>,
     #[prost(bytes = "bytes", optional, tag = "6")]

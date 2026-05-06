@@ -40,32 +40,6 @@ use crate::supported_protocol_versions::SupportedProtocolVersions;
 /// Default commission rate of 2%
 pub const DEFAULT_COMMISSION_RATE: u64 = 200;
 
-/// Compute backend for ML inference (scoring service and audit service).
-///
-/// All backends are always compiled in. CUDA requires the NVIDIA CUDA toolkit
-/// to be installed at runtime.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum DeviceConfig {
-    /// CPU backend (NdArray).
-    #[default]
-    Cpu,
-    /// GPU via WebGPU (auto-selects Metal/Vulkan/DX12).
-    Wgpu,
-    /// NVIDIA GPU via CUDA. Requires CUDA toolkit at runtime.
-    Cuda,
-}
-
-impl std::fmt::Display for DeviceConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DeviceConfig::Cpu => write!(f, "cpu"),
-            DeviceConfig::Wgpu => write!(f, "wgpu"),
-            DeviceConfig::Cuda => write!(f, "cuda"),
-        }
-    }
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 // #[serde(rename_all = "kebab-case")]
@@ -150,20 +124,6 @@ pub struct NodeConfig {
     /// Configuration for the transaction driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_driver_config: Option<TransactionDriverConfig>,
-
-    /// URL of the remote scoring service for fraud auditing (e.g. "http://gpu-host:9124").
-    /// If None, a local scoring server is started automatically on a free port.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scoring_url: Option<String>,
-
-    /// Compute backend for the local scoring engine (used when `scoring_url` is None).
-    /// Defaults to Wgpu. Only relevant for validators.
-    #[serde(default = "default_scoring_device")]
-    pub scoring_device: DeviceConfig,
-}
-
-fn default_scoring_device() -> DeviceConfig {
-    DeviceConfig::Wgpu
 }
 
 impl NodeConfig {
@@ -731,8 +691,6 @@ impl ValidatorConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            scoring_url: None,
-            scoring_device: default_scoring_device(),
         }
     }
 
@@ -882,8 +840,6 @@ impl FullnodeConfigBuilder {
             transaction_driver_config: Some(TransactionDriverConfig::default()),
             transaction_deny_config: Default::default(),
             certificate_deny_config: Default::default(),
-            scoring_url: None,
-            scoring_device: default_scoring_device(),
         }
     }
 }

@@ -2653,7 +2653,6 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
-                proxy_address: None,
                 voting_power: None,
                 commission_rate: None,
                 next_epoch_stake: None,
@@ -2665,7 +2664,6 @@ mod _getter_impls {
                 next_epoch_net_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
-                next_epoch_proxy_address: None,
                 proof_of_possession: None,
                 next_epoch_proof_of_possession: None,
             }
@@ -2701,10 +2699,6 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: String) -> Self {
             self.primary_address = Some(field.into());
-            self
-        }
-        pub fn with_proxy_address(mut self, field: String) -> Self {
-            self.proxy_address = Some(field.into());
             self
         }
         pub fn with_voting_power(mut self, field: u64) -> Self {
@@ -2773,10 +2767,6 @@ mod _getter_impls {
         }
         pub fn with_next_epoch_primary_address(mut self, field: String) -> Self {
             self.next_epoch_primary_address = Some(field.into());
-            self
-        }
-        pub fn with_next_epoch_proxy_address(mut self, field: String) -> Self {
-            self.next_epoch_proxy_address = Some(field.into());
             self
         }
         pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
@@ -5170,7 +5160,6 @@ mod _getter_impls {
                 net_address: None,
                 p2p_address: None,
                 primary_address: None,
-                proxy_address: None,
                 proof_of_possession: None,
             }
         }
@@ -5204,10 +5193,6 @@ mod _getter_impls {
         }
         pub fn with_primary_address(mut self, field: ::prost::bytes::Bytes) -> Self {
             self.primary_address = Some(field.into());
-            self
-        }
-        pub fn with_proxy_address(mut self, field: ::prost::bytes::Bytes) -> Self {
-            self.proxy_address = Some(field.into());
             self
         }
         pub fn with_proof_of_possession(mut self, field: ::prost::bytes::Bytes) -> Self {
@@ -5263,7 +5248,6 @@ mod _getter_impls {
                 next_epoch_network_address: None,
                 next_epoch_p2p_address: None,
                 next_epoch_primary_address: None,
-                next_epoch_proxy_address: None,
                 next_epoch_protocol_pubkey: None,
                 next_epoch_worker_pubkey: None,
                 next_epoch_network_pubkey: None,
@@ -5294,13 +5278,6 @@ mod _getter_impls {
             field: ::prost::bytes::Bytes,
         ) -> Self {
             self.next_epoch_primary_address = Some(field.into());
-            self
-        }
-        pub fn with_next_epoch_proxy_address(
-            mut self,
-            field: ::prost::bytes::Bytes,
-        ) -> Self {
-            self.next_epoch_proxy_address = Some(field.into());
             self
         }
         pub fn with_next_epoch_protocol_pubkey(

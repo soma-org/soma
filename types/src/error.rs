@@ -4,8 +4,6 @@
 
 use std::collections::BTreeMap;
 
-#[cfg(feature = "ml")]
-use burn::store::SafetensorsStoreError;
 use fastcrypto::error;
 use fastcrypto::error::FastCryptoError;
 use fastcrypto::hash::Digest;
@@ -78,10 +76,6 @@ pub enum SomaError {
     /// Error when attempting operations for an epoch that has already ended
     #[error("Operations for epoch {0} have ended")]
     EpochEnded(EpochId),
-
-    /// Error when advancing to a new epoch
-    #[error("Error when advancing epoch: {:?}", error)]
-    AdvanceEpochError { error: String },
 
     /// Error when an operation times out
     #[error("Operation timed out")]
@@ -931,9 +925,6 @@ pub enum ModelError {
     SafeTensorsFailure(String),
     #[error("Failed type verification: {0}")]
     FailedTypeVerification(String),
-    #[cfg(feature = "ml")]
-    #[error("SafeTensor store error: {0}")]
-    SafeTensorStoreError(SafetensorsStoreError),
     #[error("Apply error")]
     ApplyError,
     #[error("Empty data: {0}")]

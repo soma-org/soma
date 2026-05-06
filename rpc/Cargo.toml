@@ -53,7 +53,7 @@ tonic-reflection = { version = "0.13", optional = true }
 default = ["server", "tls"]
 server = [
     "dep:axum", "dep:tonic-web", "dep:tonic-health", "dep:tonic-reflection",
-    "types/storage", "types/ml", "types/cloud-storage", "types/server", "types/tls",
+    "types/storage", "types/cloud-storage", "types/server", "types/tls",
 ]
 tls = ["tonic/tls-ring", "tonic/tls-webpki-roots", "types/tls"]
 

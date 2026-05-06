@@ -301,24 +301,32 @@ pub struct TemporaryStore {
         BTreeMap<ObjectID, crate::effects::object_change::AccumulatorWriteV1>,
 }
 
-/// An event recorded during execution that describes a change to the
-/// (pool, staker) row in the `delegations` column family. Stage 9d-C1
-/// reshapes the event around the F1 row schema:
+/// Event recorded during execution that describes the post-settle
+/// state of a `(pool, staker)` delegation row in the `delegations`
+/// column family.
 ///
-/// - `delta`: signed principal change (positive for AddStake / reward
-///   credit, negative for WithdrawStake).
-/// - `set_period`: when present, sets `last_collected_period` to the
-///   given F1 period. AddStake / WithdrawStake supply this so the
-///   delegator's collected-up-to mark advances atomically with the
-///   principal change. Reward dual-write callers that don't fold (eg.
-///   epoch validator-commission credit) leave it `None` to avoid
-///   silently advancing the period for unfolded delegations.
+/// In the auto-compound F1 model the executor:
+///   1. Reads the prefetched delegation row.
+///   2. Calls `auto_settle` in memory to compound any accrued
+///      reward into `principal` and promote matured pending stake.
+///   3. Mutates the in-memory row according to the transaction
+///      (`AddStake`, `WithdrawStake`, commission credit, …).
+///   4. Emits this event carrying the full post-mutation row.
+///
+/// The dual-write step (`authority_store::apply_delegation_events`)
+/// then writes `new_state` directly. Multiple events for the same
+/// `(pool_id, staker)` within a single transaction collapse "last
+/// write wins" — sequential AddStake/WithdrawStake within one tx is
+/// not exercised today, so we keep the simpler semantics until it is.
+///
+/// `new_state == None` means "drop the row" (full drain). Both the
+/// CF row and the corresponding `DelegationAccumulator` accumulator
+/// object are tombstoned in that case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DelegationEvent {
     pub pool_id: ObjectID,
     pub staker: SomaAddress,
-    pub delta: i128,
-    pub set_period: Option<u64>,
+    pub new_state: Option<crate::system_state::staking::Delegation>,
 }
 
 impl TemporaryStore {
@@ -387,25 +395,18 @@ impl TemporaryStore {
         &self.balance_events
     }
 
-    /// Stage 9d-C1: record a F1-shaped delegation event. Positive
-    /// `delta` for AddStake / reward credit, negative for
-    /// WithdrawStake. `set_period` advances the row's
-    /// `last_collected_period` mark atomically with the principal
-    /// change — set it on AddStake / WithdrawStake so the F1 fold
-    /// is recorded on disk; leave it `None` for dual-write callers
-    /// (eg. epoch reward credit) that don't perform a fold.
+    /// Record the post-settle, post-mutation `(pool, staker)`
+    /// delegation row. Pass `None` to delete the row (full drain).
     pub fn emit_delegation_event(
         &mut self,
         pool_id: ObjectID,
         staker: SomaAddress,
-        delta: i128,
-        set_period: Option<u64>,
+        new_state: Option<crate::system_state::staking::Delegation>,
     ) {
         self.delegation_events.push(DelegationEvent {
             pool_id,
             staker,
-            delta,
-            set_period,
+            new_state,
         });
     }
 

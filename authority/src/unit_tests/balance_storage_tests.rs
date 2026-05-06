@@ -630,16 +630,13 @@ async fn write_one_transaction_outputs_is_atomic_across_state_families() {
     store.set_balance(alice, CoinType::Usdc, 100).unwrap();
     let balance_event = BalanceEvent::deposit(alice, CoinType::Usdc, 25);
 
-    // 3. Delegation family: a stake delta. The pool/staker only
-    //    needs to be a stable bytes pair for this test — apply_
-    //    delegation_events writes via key composition, not lookup.
+    // 3. Delegation family: a fresh row. The pool/staker only
+    //    needs to be a stable bytes pair for this test —
+    //    apply_delegation_events writes via key composition.
     let delegation_event = DelegationEvent {
         pool_id: ObjectID::random(),
         staker: addr(2),
-        delta: 0, // zero delta still hits the apply path; non-zero
-                  // would also work but introduces the read-existing
-                  // path which isn't what we're testing here.
-        set_period: Some(0),
+        new_state: Some(types::system_state::staking::Delegation::new(123, 0)),
     };
 
     let effects = TransactionEffects::new(

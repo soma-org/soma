@@ -26,7 +26,7 @@ pub(crate) mod test_utils;
 ///   `kv_epoch_starts`, `kv_epoch_ends`. Data is duplicated in BigTable, so pruning
 ///   is safe once the KvLoader fallback is configured in GraphQL.
 /// - **Tier B (Indexes)**: `tx_digests`, `tx_affected_*`, `tx_balance_changes`,
-///   `tx_kinds`, `tx_calls`. No BigTable equivalent — pruning shrinks the queryable
+///   `tx_kinds`. No BigTable equivalent — pruning shrinks the queryable
 ///   window for historical index-backed queries.
 /// - **Tier B+ (Object state)**: `obj_versions`, `obj_info`. Prunable — only latest
 ///   versions needed for explorer; BigTable has historical BCS.
@@ -139,11 +139,6 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
         .await
         .context("Failed to register tx_kinds pipeline")?;
 
-    indexer
-        .concurrent_pipeline(handlers::tx_calls::TxCalls, index_config.clone())
-        .await
-        .context("Failed to register tx_calls pipeline")?;
-
     // --- Tier B+: Object state tables (prunable — BigTable has historical BCS) ---
     indexer
         .concurrent_pipeline(handlers::obj_versions::ObjVersions, index_config.clone())
@@ -160,11 +155,6 @@ pub async fn setup_indexer(indexer: &mut Indexer<Db>, pruning: PruningConfig) ->
     // balances; the indexer doesn't need to track Coin objects.
 
     // --- Tier C: Soma-specific pipelines (never pruned) ---
-    indexer
-        .concurrent_pipeline(handlers::soma_staked_soma::SomaStakedSoma, no_prune.clone())
-        .await
-        .context("Failed to register soma_staked_soma pipeline")?;
-
     indexer
         .concurrent_pipeline(handlers::soma_epoch_state::SomaEpochState, no_prune.clone())
         .await

@@ -147,7 +147,6 @@ async fn test_update_validator_metadata_success() {
             next_epoch_network_address: Some(addr_bytes),
             next_epoch_p2p_address: None,
             next_epoch_primary_address: None,
-            next_epoch_proxy_address: None,
             next_epoch_protocol_pubkey: None,
             next_epoch_worker_pubkey: None,
             next_epoch_network_pubkey: None,

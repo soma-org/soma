@@ -7,7 +7,6 @@ version.workspace = true
 types = { path = "../types", default-features = false }
 soma-keys.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 anyhow.workspace = true
 serde_with = { version = "3.16", default-features = false, features = ["alloc"] }
 thiserror.workspace = true
@@ -16,7 +15,6 @@ bcs.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
-uuid.workspace = true
 futures.workspace = true
 fastcrypto.workspace = true
 tonic = { version = "0.13", default-features = false, features = [
@@ -29,20 +27,14 @@ bytes.workspace = true
 rand.workspace = true
 aes.workspace = true
 ctr.workspace = true
-hex.workspace = true
 tiny-bip39.workspace = true
 
-# Optional gRPC service deps
-admin = { path = "../admin", optional = true }
-
-# Optional proxy/TLS deps
-reqwest = { version = "0.12", default-features = false, features = ["http2", "json", "stream"], optional = true }
+[package.metadata.cargo-machete]
+ignored = ["tiny-bip39"]
 
 [features]
 default = ["tls"]
-proxy = ["dep:reqwest"]
-tls = ["rpc/tls", "proxy", "reqwest/rustls-tls"]
-grpc-services = ["dep:admin"]
+tls = ["rpc/tls"]
 
 [dev-dependencies]
 tokio-stream.workspace = true

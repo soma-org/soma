@@ -58,11 +58,6 @@ pub struct ValidatorMetadata {
     /// The primary address for validator services
     pub primary_address: Multiaddr,
 
-    /// The proxy server address for serving data/model downloads to clients.
-    /// Clients use this address to fetch submission data and model weights.
-    /// Example: /dns/validator1.soma.io/tcp/8080/http
-    pub proxy_address: Multiaddr,
-
     /// Proof of possession for the current protocol public key.
     /// BLS12-381 signature over (protocol_pubkey_bytes || soma_address)
     /// with IntentScope::ProofOfPossession.
@@ -89,9 +84,6 @@ pub struct ValidatorMetadata {
     /// Required when next_epoch_protocol_pubkey is set.
     pub next_epoch_proof_of_possession: Option<AuthoritySignature>,
 
-    /// Optional new proxy address for the next epoch
-    pub next_epoch_proxy_address: Option<Multiaddr>,
-
     /// Compressed Secp256k1 public key (33 bytes) for EVM-compatible bridge signing
     #[serde(default)]
     pub bridge_ecdsa_pubkey: Option<Vec<u8>>,
@@ -113,8 +105,6 @@ pub struct Validator {
 
     pub commission_rate: u64,
 
-    pub next_epoch_stake: u64,
-
     pub next_epoch_commission_rate: u64,
 }
 
@@ -129,7 +119,6 @@ impl Validator {
         net_address: Multiaddr,
         p2p_address: Multiaddr,
         primary_address: Multiaddr,
-        proxy_address: Multiaddr,
 
         voting_power: u64,
         commission_rate: u64,
@@ -144,7 +133,6 @@ impl Validator {
                 net_address,
                 p2p_address,
                 primary_address,
-                proxy_address,
                 proof_of_possession,
 
                 next_epoch_protocol_pubkey: None,
@@ -154,54 +142,63 @@ impl Validator {
                 next_epoch_primary_address: None,
                 next_epoch_worker_pubkey: None,
                 next_epoch_proof_of_possession: None,
-                next_epoch_proxy_address: None,
                 bridge_ecdsa_pubkey: None,
                 next_epoch_bridge_ecdsa_pubkey: None,
             },
             voting_power,
             commission_rate,
-            next_epoch_stake: 0,
             next_epoch_commission_rate: commission_rate,
             staking_pool: StakingPool::new(staking_pool_id),
         }
     }
 
-    /// Stage 9d-C5: a delegator's stake is growing. Mutate
-    /// total_stake (the F1 fold denominator + voting-power input)
-    /// and the next-epoch voting-power tracker. The (pool, staker)
-    /// row is owned by the delegations table — the executor emits a
-    /// `DelegationEvent` for that side.
-    pub fn add_stake_principal(&mut self, amount: u64) {
+    /// Direct active-stake growth. Used for preactive pools (AddStake
+    /// on a candidate before activation) and for boundary commission
+    /// compound — paths where the contribution is rewards-eligible
+    /// immediately and shouldn't pass through the pending bucket.
+    pub fn add_active_stake_principal(&mut self, amount: u64) {
         if amount == 0 {
             return;
         }
-        self.staking_pool.add_principal(amount);
-        self.next_epoch_stake = self.next_epoch_stake.saturating_add(amount);
+        self.staking_pool.add_active_stake(amount);
     }
 
-    /// Stage 9d-C5: a delegator is shrinking their stake. Mirror of
-    /// `add_stake_principal`. The executor validates against the
-    /// delegation row before calling — saturating sub here is
-    /// defense-in-depth.
-    pub fn remove_stake_principal(&mut self, amount: u64) {
+    /// Mid-epoch addition on an active pool. Lands in the pending
+    /// bucket and promotes into `active_stake` at the next boundary
+    /// (so the new stake doesn't earn current-epoch rewards).
+    pub fn add_pending_stake_principal(&mut self, amount: u64) {
         if amount == 0 {
             return;
         }
-        self.staking_pool.remove_principal(amount);
-        self.next_epoch_stake = self.next_epoch_stake.saturating_sub(amount);
+        self.staking_pool.add_pending_stake(amount);
     }
 
-    /// Stage 9d-C5: deposit a post-commission reward into the F1
-    /// pool. `f1_fold_rewards` (called at epoch boundaries)
-    /// distributes them to delegators in proportion to their share.
-    /// No auto-compound — rewards accrue via the cumulative index
-    /// and are paid to the staker's balance on their next
-    /// AddStake/WithdrawStake.
+    /// Withdraw from active stake. Decrements `active_stake`
+    /// immediately — the smaller fold divisor at the next boundary
+    /// redistributes the withdrawer's current-epoch share to remaining
+    /// stakers (matches Sui's pool-token redistribution semantics).
+    pub fn remove_active_stake_principal(&mut self, amount: u64) {
+        if amount == 0 {
+            return;
+        }
+        self.staking_pool.remove_active_stake(amount);
+    }
+
+    /// Withdraw from pending stake (same-epoch deposit reversal).
+    pub fn remove_pending_stake_principal(&mut self, amount: u64) {
+        if amount == 0 {
+            return;
+        }
+        self.staking_pool.remove_pending_stake(amount);
+    }
+
+    /// Boundary helper — distribute a post-commission reward across
+    /// stakers via the cumulative index (auto-compound).
     pub fn deposit_staker_rewards(&mut self, amount: u64) {
         if amount == 0 {
             return;
         }
-        self.staking_pool.f1_deposit_pool_reward(amount);
+        self.staking_pool.deposit_staker_rewards(amount);
     }
 
     /// Set commission rate for the next epoch
@@ -368,7 +365,6 @@ impl Validator {
             || self.metadata.next_epoch_net_address.is_some()
             || self.metadata.next_epoch_p2p_address.is_some()
             || self.metadata.next_epoch_primary_address.is_some()
-            || self.metadata.next_epoch_proxy_address.is_some()
     }
 
     /// Clear all staged metadata (used when effectuation would create duplicates).
@@ -380,7 +376,6 @@ impl Validator {
         self.metadata.next_epoch_net_address = None;
         self.metadata.next_epoch_p2p_address = None;
         self.metadata.next_epoch_primary_address = None;
-        self.metadata.next_epoch_proxy_address = None;
     }
 
     /// Returns a copy of metadata with staged (next_epoch) values applied.
@@ -408,10 +403,6 @@ impl Validator {
                 .next_epoch_primary_address
                 .clone()
                 .unwrap_or_else(|| m.primary_address.clone()),
-            proxy_address: m
-                .next_epoch_proxy_address
-                .clone()
-                .unwrap_or_else(|| m.proxy_address.clone()),
             proof_of_possession: m
                 .next_epoch_proof_of_possession
                 .clone()
@@ -424,7 +415,6 @@ impl Validator {
             next_epoch_net_address: None,
             next_epoch_p2p_address: None,
             next_epoch_primary_address: None,
-            next_epoch_proxy_address: None,
             bridge_ecdsa_pubkey: m
                 .next_epoch_bridge_ecdsa_pubkey
                 .clone()
@@ -493,15 +483,11 @@ impl Validator {
         if let Some(key) = self.metadata.next_epoch_worker_pubkey.take() {
             self.metadata.worker_pubkey = key;
         }
-        if let Some(addr) = self.metadata.next_epoch_proxy_address.take() {
-            self.metadata.proxy_address = addr;
-        }
     }
 }
 
-// Stage 9d-C5 deleted Validator's test-only pool-token wrappers.
-// Tests that need to inspect F1 reward state read pool fields
-// (current_period, cumulative_index, total_stake) directly.
+// Tests that inspect F1 reward state read pool fields
+// (cumulative_index, active_stake, index_history) directly.
 
 /// # ValidatorSet
 ///
@@ -554,7 +540,7 @@ impl ValidatorSet {
     /// calculated total stake
     pub fn new(validators: Vec<Validator>) -> Self {
         // Calculate total stake
-        let total_stake: u64 = validators.iter().map(|v| v.staking_pool.total_stake).sum();
+        let total_stake: u64 = validators.iter().map(|v| v.staking_pool.active_stake).sum();
 
         let mut staking_pool_mappings = BTreeMap::new();
 
@@ -978,12 +964,14 @@ impl ValidatorSet {
             let validator_commission = commission_amount as u64;
             let staker_reward = reward_amount - validator_commission;
 
+            // Order matches Sui: distribute staker rewards first (so
+            // the index advance only includes existing stakers), then
+            // mint validator's commission as new self-stake (grows
+            // active_stake without diluting the index advance).
+            validator.deposit_staker_rewards(staker_reward);
+
             if validator_commission > 0 {
-                // Commission accrues into the (pool, validator)
-                // delegation row via change_epoch's emitted event.
-                // The pool's total_stake also rises by the commission
-                // amount so voting power tracks compounded self-stake.
-                validator.add_stake_principal(validator_commission);
+                validator.add_active_stake_principal(validator_commission);
                 rewards.insert(
                     validator.metadata.soma_address,
                     ValidatorRewardCredit {
@@ -992,8 +980,6 @@ impl ValidatorSet {
                     },
                 );
             }
-
-            validator.deposit_staker_rewards(staker_reward);
 
             distributed_total += reward_amount;
         }
@@ -1004,7 +990,7 @@ impl ValidatorSet {
 
     /// Calculate total stake across all validators
     pub fn calculate_total_stake(&self) -> u64 {
-        self.validators.iter().map(|v| v.staking_pool.total_stake).sum()
+        self.validators.iter().map(|v| v.staking_pool.active_stake).sum()
     }
 
     /// Calculate total stake INCLUDING pending (for threshold calculations)
@@ -1012,7 +998,7 @@ impl ValidatorSet {
         let active_stake = self.calculate_total_stake();
 
         let pending_stake: u64 =
-            self.pending_validators.iter().map(|v| v.staking_pool.total_stake).sum();
+            self.pending_validators.iter().map(|v| v.staking_pool.active_stake).sum();
 
         active_stake + pending_stake
     }
@@ -1050,15 +1036,15 @@ impl ValidatorSet {
         // Sort validators by stake in descending order for consistent processing
         all_validators.sort_by(|a, b| {
             b.staking_pool
-                .total_stake
-                .cmp(&a.staking_pool.total_stake)
+                .active_stake
+                .cmp(&a.staking_pool.active_stake)
                 .then_with(|| a.metadata.soma_address.cmp(&b.metadata.soma_address))
         });
 
         // First pass: calculate capped voting power based on stake
         let mut total_power = 0;
         for validator in &mut all_validators {
-            let stake_fraction = (validator.staking_pool.total_stake as u128)
+            let stake_fraction = (validator.staking_pool.active_stake as u128)
                 * (TOTAL_VOTING_POWER as u128)
                 / (total_stake as u128);
             validator.voting_power = std::cmp::min(stake_fraction as u64, threshold);
@@ -1098,7 +1084,7 @@ impl ValidatorSet {
             info!(
                 "Final: Validator {} stake: {}, voting_power: {}",
                 validator.metadata.soma_address,
-                validator.staking_pool.total_stake,
+                validator.staking_pool.active_stake,
                 validator.voting_power,
             );
         }
@@ -1113,8 +1099,8 @@ impl ValidatorSet {
         for i in 0..all_validators.len() {
             info!("Validator {} voting power is: {}", i, all_validators[i].voting_power);
             for j in i + 1..all_validators.len() {
-                let stake_i = all_validators[i].staking_pool.total_stake;
-                let stake_j = all_validators[j].staking_pool.total_stake;
+                let stake_i = all_validators[i].staking_pool.active_stake;
+                let stake_j = all_validators[j].staking_pool.active_stake;
                 let power_i = all_validators[i].voting_power;
                 let power_j = all_validators[j].voting_power;
 
@@ -1145,7 +1131,7 @@ impl ValidatorSet {
 
             let validator_address = validator.metadata.soma_address;
             let voting_power = derive_raw_voting_power(
-                validator.staking_pool.total_stake,
+                validator.staking_pool.active_stake,
                 total_stake_for_thresholds,
             );
 
@@ -1190,7 +1176,7 @@ impl ValidatorSet {
         while i < self.pending_validators.len() {
             let validator = &mut self.pending_validators[i];
             let voting_power = derive_raw_voting_power(
-                validator.staking_pool.total_stake,
+                validator.staking_pool.active_stake,
                 total_stake_for_thresholds,
             );
 
@@ -1225,7 +1211,7 @@ impl ValidatorSet {
         self.at_risk_validators.remove(&validator_address);
 
         // Update total stake
-        // self.total_stake -= validator.staking_pool.total_stake;
+        // self.total_stake -= validator.staking_pool.active_stake;
 
         // Clean up report records
         self.clean_report_records(validator_report_records, validator_address);
@@ -1256,14 +1242,15 @@ impl ValidatorSet {
         validator_report_records.retain(|_, reporters| !reporters.is_empty());
     }
 
-    /// Stage 9d-C5: at every epoch boundary, fold each pool's
-    /// `current_rewards` into its cumulative index using
-    /// `total_stake` as the denominator. F1 owns reward distribution
-    /// fully — there's no pool-token bookkeeping to update.
+    /// At every epoch boundary, after rewards are deposited via
+    /// `calculate_and_distribute_rewards` (which advances each pool's
+    /// `cumulative_index` and grows `active_stake`), promote each
+    /// pool's pending bucket into active and snapshot the new index
+    /// for next epoch's baseline lookups.
     fn process_active_validator_stakes(&mut self, _new_epoch: u64) {
         for validator in &mut self.validators {
-            let total = validator.staking_pool.total_stake;
-            validator.staking_pool.f1_fold_rewards(total);
+            validator.staking_pool.process_pending_active_stake();
+            validator.staking_pool.snapshot_index_history();
         }
     }
 

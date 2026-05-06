@@ -111,93 +111,88 @@ impl TransactionExecutor for ChangeEpochExecutor {
 
         match result {
             Ok(validator_rewards) => {
-                // Stage 9d-C4 + F1/F9 audit fix: validator commission
-                // credits flow through the F1 row — ONE row per
-                // (pool, validator), successive epochs accumulate.
+                // Auto-compound + F1/F4 audit fix: validator commission
+                // credits flow through the row — ONE row per (pool,
+                // validator), successive epochs accumulate.
                 //
                 // Two halves to keep the CF and the
                 // `DelegationAccumulator` object in sync (audit F1):
                 //
-                // 1. Mutate the object directly via `mutate_input_object`.
-                //    The object was pre-loaded by `execute_transaction`'s
-                //    `resolved_accumulators` block for ChangeEpoch.
-                // 2. Emit a `DelegationEvent` so `apply_delegation_events`
-                //    drains the matching delta into the `delegations`
-                //    CF in the same atomic write batch.
-                //
-                // `set_period` is the validator's pool's NEW
-                // `current_period` (post-fold). This advances the row's
-                // `last_collected_period` to current so the validator's
-                // next AddStake/WithdrawStake doesn't compute
-                // `f1_pending_reward` over a period range that
-                // pre-dates the commission credit (audit F9).
+                // 1. Compute the new row state: read the prefetched
+                //    row, auto_settle against the post-advance pool
+                //    (compounding any prior accrual into principal),
+                //    add the commission to principal, snapshot the
+                //    post-advance cumulative_index.
+                // 2. Mutate the object directly via
+                //    `mutate_input_object` (or `create_object` on
+                //    first-touch). The object was pre-loaded by
+                //    `execute_transaction`'s `resolved_accumulators`
+                //    block for ChangeEpoch.
+                // 3. Emit a `DelegationEvent` so
+                //    `apply_delegation_events` writes the matching
+                //    CF row in the same atomic write batch.
                 for (validator, reward) in validator_rewards {
-                    let pool_id = reward.pool_id;
-                    let principal_delta = reward.principal;
-                    if principal_delta == 0 {
+                    if reward.principal == 0 {
                         continue;
                     }
 
-                    // Look up post-fold current_period for this pool.
-                    let new_current_period = state
+                    let pool_id = reward.pool_id;
+                    let pool_view = state
                         .validators()
                         .find_validator(validator)
-                        .map(|v| v.staking_pool.current_period)
                         .or_else(|| {
                             state
                                 .validators()
                                 .pending_validators
                                 .iter()
                                 .find(|v| v.metadata.soma_address == validator)
-                                .map(|v| v.staking_pool.current_period)
                         })
-                        .or_else(|| {
-                            state
-                                .validators()
-                                .inactive_validators
-                                .get(&pool_id)
-                                .map(|v| v.staking_pool.current_period)
-                        });
+                        .map(|v| &v.staking_pool);
 
-                    let acc_id = types::accumulator::DelegationAccumulator::derive_id(
-                        pool_id, validator,
+                    // 1. Compute the new row state.
+                    let mut row = store
+                        .prefetched_delegations
+                        .get(&pool_id)
+                        .copied()
+                        .unwrap_or_default();
+                    if let Some(pool) = pool_view {
+                        types::system_state::staking::auto_settle(
+                            &mut row,
+                            pool,
+                            change_epoch.epoch,
+                        );
+                        row.principal = row.principal.saturating_add(reward.principal);
+                        row.index_at_last_collect = pool.cumulative_index;
+                    }
+
+                    // 2. Mutate the DelegationAccumulator object so
+                    // the object world stays in sync with the CF.
+                    let acc_id =
+                        types::accumulator::DelegationAccumulator::derive_id(pool_id, validator);
+                    let acc = types::accumulator::DelegationAccumulator::new(
+                        pool_id,
+                        validator,
+                        row.principal,
+                        row.index_at_last_collect,
+                        row.pending_principal,
+                        row.pending_added_at_epoch,
                     );
-
-                    // Mutate the DelegationAccumulator object so the
-                    // object world stays in sync with the CF.
                     if let Some(existing) = store.read_object(&acc_id) {
-                        if let Some(mut acc) = existing.as_delegation_accumulator() {
-                            acc.principal = acc.principal.saturating_add(principal_delta);
-                            if let Some(p) = new_current_period {
-                                acc.last_collected_period = p;
-                            }
-                            let mut new_obj = existing.clone();
-                            new_obj.set_delegation_accumulator(&acc);
-                            store.mutate_input_object(new_obj);
-                        }
+                        let mut new_obj = existing.clone();
+                        new_obj.set_delegation_accumulator(&acc);
+                        store.mutate_input_object(new_obj);
                     } else {
-                        // First-touch: validator's row doesn't exist yet
-                        // (e.g., fresh validator at activation epoch).
-                        // Create the object so the next mutation finds it.
-                        let acc = types::accumulator::DelegationAccumulator::new(
-                            pool_id,
-                            validator,
-                            principal_delta,
-                            new_current_period.unwrap_or(0),
-                        );
-                        let new_obj = types::object::Object::new_delegation_accumulator(
-                            acc, tx_digest,
-                        );
+                        // First-touch: validator's row doesn't exist
+                        // yet (e.g., fresh validator at activation
+                        // epoch). Create the object so the next
+                        // mutation finds it.
+                        let new_obj =
+                            types::object::Object::new_delegation_accumulator(acc, tx_digest);
                         store.create_object(new_obj);
                     }
 
-                    // Emit the matching CF event.
-                    store.emit_delegation_event(
-                        pool_id,
-                        validator,
-                        principal_delta as i128,
-                        new_current_period,
-                    );
+                    // 3. Emit the matching CF event.
+                    store.emit_delegation_event(pool_id, validator, Some(row));
                 }
             }
             Err(e) => {

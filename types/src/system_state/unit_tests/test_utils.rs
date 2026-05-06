@@ -1,14 +1,12 @@
 // Copyright (c) Soma Contributors
 // SPDX-License-Identifier: Apache-2.0
 //
-// Stage 9d-C5 trimmed this file: pool-token helpers and the
-// `ValidatorRewards` tracker (which mirrored each StakedSomaV1 reward
-// to test compounded self-stake) are gone. F1's per-staker reward is
-// computed from `StakingPool::f1_pending_reward(principal,
-// last_collected_period)` directly.
-//
-// Only the helpers used by `f1_pool_tests` and `validator_pop_tests`
-// remain.
+// Helpers for SystemState-level staking tests. Per-staker reward
+// math is exercised at the pool level in `auto_compound_pool_tests`
+// (using `StakingPool::deposit_staker_rewards` /
+// `StakingPool::pending_compound` directly) — at the SystemState
+// layer we only verify aggregate behavior (active_stake, voting
+// power, validator removal lifecycle).
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -48,8 +46,6 @@ pub fn create_validator_for_testing_with_seed(
         Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port_base + 1)).unwrap();
     let primary_address =
         Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port_base + 2)).unwrap();
-    let proxy_address =
-        Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}/http", port_base + 3)).unwrap();
 
     let mut validator = Validator::new(
         addr,
@@ -60,16 +56,14 @@ pub fn create_validator_for_testing_with_seed(
         net_address,
         p2p_address,
         primary_address,
-        proxy_address,
         0, // voting_power, set later
         0, // commission_rate
         ObjectID::random(),
     );
 
-    // Stage 9d-C5: pool-token fields gone — just bump total_stake +
-    // next_epoch_stake.
-    validator.next_epoch_stake = init_stake_amount;
-    validator.staking_pool.total_stake = init_stake_amount;
+    // Auto-compound: seed the pool's active_stake directly (preactive
+    // pools accept stake without going through the pending bucket).
+    validator.staking_pool.active_stake = init_stake_amount;
 
     validator
 }
@@ -123,9 +117,9 @@ pub fn create_test_system_state(
     )
 }
 
-/// Tracker used by f1_pool_tests integration tests. Stage 9d-C5
-/// reduced this to a no-op shell — F1 reward credits are visible
-/// directly on each pool's `total_stake` and `current_period`.
+/// No-op tracker kept for backwards compatibility with the existing
+/// SystemState-level tests. Validator-commission credits are
+/// inspected by reading the post-advance system state directly.
 #[derive(Clone, Default)]
 pub struct ValidatorRewards;
 
@@ -142,15 +136,24 @@ impl ValidatorRewards {
     }
 }
 
-/// Helper for f1_pool_tests: drive an epoch with the given SOMA
-/// reward budget injected into the emission pool, run advance_epoch
-/// with zero fees, drop the returned credit map (test reads pool
-/// state directly).
+/// Drive an epoch with the given SOMA reward budget injected into
+/// the emission pool, run advance_epoch with zero fees, drop the
+/// returned credit map (test reads pool state directly).
 pub fn advance_epoch_with_reward_amounts(
     system_state: &mut SystemState,
     reward_amount: u64,
     _validator_stakes: &mut ValidatorRewards,
 ) {
+    let _ = advance_epoch_returning_credits(system_state, reward_amount);
+}
+
+/// Same as [`advance_epoch_with_reward_amounts`] but returns the
+/// commission-credit map so tests can assert on per-validator
+/// commission directly.
+pub fn advance_epoch_returning_credits(
+    system_state: &mut SystemState,
+    reward_amount: u64,
+) -> BTreeMap<SomaAddress, ValidatorRewardCredit> {
     let next_epoch = system_state.epoch() + 1;
     let new_timestamp =
         system_state.epoch_start_timestamp_ms() + system_state.parameters().epoch_duration_ms;
@@ -170,8 +173,8 @@ pub fn advance_epoch_with_reward_amounts(
         protocol_config::Chain::default(),
     );
 
-    let _credits = system_state
+    system_state
         .advance_epoch(next_epoch, &protocol_config, 0, new_timestamp, vec![0; 32])
-        .expect("Failed to advance epoch");
+        .expect("Failed to advance epoch")
 }
 

@@ -601,15 +601,17 @@ pub struct BalanceInfo {
     pub balance: u64,
 }
 
-/// Stage 9d-C1: a single row of the F1-shaped `delegations` table.
-/// ONE row per (pool, staker); the user sees `principal` (their
-/// committed stake) and `last_collected_period` (the F1 period as of
-/// their last fold). Pending reward is computed at read time by the
-/// RPC layer using the live cumulative index — it isn't stored here
-/// to keep writes cheap.
+/// A single row of the auto-compound `delegations` table. One row
+/// per `(pool, staker)`. Mirrors
+/// [`crate::system_state::staking::Delegation`] for read-store
+/// consumers — the RPC layer can compute current accrued reward by
+/// joining `index_at_last_collect` against the live pool's
+/// `cumulative_index`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DelegationInfo {
     pub pool_id: ObjectID,
     pub principal: u64,
-    pub last_collected_period: u64,
+    pub index_at_last_collect: u128,
+    pub pending_principal: u64,
+    pub pending_added_at_epoch: u64,
 }

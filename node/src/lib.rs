@@ -32,7 +32,6 @@ use authority::consensus_manager::{ConsensusManager, UpdatableConsensusClient};
 use authority::consensus_store_pruner::ConsensusStorePruner;
 use authority::consensus_validator::TxValidator;
 use authority::execution_scheduler::SchedulingSource;
-use authority::fullnode_proxy::FullnodeProxy;
 use authority::global_state_hasher::GlobalStateHasher;
 use authority::reconfiguration::ReconfigurationInitiator;
 use authority::rpc_index::RpcIndexStore;
@@ -1450,11 +1449,6 @@ async fn build_http_servers(
         rpc_service.into_router().await
     };
 
-    // Create fullnode proxy router for forwarding /data and /model requests to validators
-    let fullnode_proxy = Arc::new(FullnodeProxy::with_default_config(state.clone()));
-    let fullnode_proxy_router = fullnode_proxy.router();
-    info!("Fullnode proxy enabled for /data and /model endpoints");
-
     let layers = ServiceBuilder::new()
         .map_request(|mut request: axum::http::Request<_>| {
             if let Some(connect_info) = request.extensions().get::<soma_http::ConnectInfo>() {
@@ -1472,7 +1466,7 @@ async fn build_http_servers(
                 .allow_headers(tower_http::cors::Any),
         );
 
-    router = router.merge(rpc_router).merge(fullnode_proxy_router).layer(layers);
+    router = router.merge(rpc_router).layer(layers);
 
     let https = if let Some((tls_config, https_address)) =
         config.rpc().and_then(|config| config.tls_config().map(|tls| (tls, config.https_address())))

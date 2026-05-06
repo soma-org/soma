@@ -177,7 +177,6 @@ fn test_transaction_kind_classification() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     assert!(add_val.is_validator_tx());
@@ -316,7 +315,6 @@ fn test_all_tx_kinds_bcs_roundtrip() {
             net_address: vec![40],
             p2p_address: vec![50],
             primary_address: vec![60],
-            proxy_address: vec![70],
             proof_of_possession: vec![80],
         }),
         TransactionKind::RemoveValidator(RemoveValidatorArgs { pubkey_bytes: vec![10] }),
@@ -483,7 +481,6 @@ fn test_shared_input_objects() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     let shared: Vec<_> = add_val.shared_input_objects().collect();
@@ -719,7 +716,6 @@ fn test_requires_system_state() {
         net_address: vec![],
         p2p_address: vec![],
         primary_address: vec![],
-        proxy_address: vec![],
         proof_of_possession: vec![],
     });
     assert!(add_val.requires_system_state());

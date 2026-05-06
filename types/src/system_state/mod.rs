@@ -50,11 +50,14 @@ pub mod validator;
 #[path = "unit_tests/delegation_tests.rs"]
 mod delegation_tests;
 #[cfg(test)]
-#[path = "unit_tests/f1_pool_tests.rs"]
-mod f1_pool_tests;
+#[path = "unit_tests/auto_compound_pool_tests.rs"]
+mod auto_compound_pool_tests;
 #[cfg(test)]
-#[path = "unit_tests/rewards_distribution_tests.rs"]
-mod rewards_distribution_tests;
+#[path = "unit_tests/staking_lifecycle_tests.rs"]
+mod staking_lifecycle_tests;
+// f1_pool_tests and rewards_distribution_tests covered the prior
+// fold-to-balance F1 model and have no analogue under auto-compound.
+// auto_compound_pool_tests above replaces both.
 #[cfg(test)]
 #[path = "unit_tests/test_utils.rs"]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -209,7 +212,6 @@ impl SystemStateV1 {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
-        proxy_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         let protocol_pubkey = PublicKey::from_bytes(&pubkey_bytes).map_err(|e| {
@@ -262,7 +264,6 @@ impl SystemStateV1 {
         let net_addr = parse_address(&net_address, "network address")?;
         let p2p_addr = parse_address(&p2p_address, "p2p address")?;
         let primary_addr = parse_address(&primary_address, "primary address")?;
-        let proxy_addr = parse_address(&proxy_address, "proxy address")?;
 
         let validator = Validator::new(
             signer,
@@ -273,7 +274,6 @@ impl SystemStateV1 {
             net_addr,
             p2p_addr,
             primary_addr,
-            proxy_addr,
             0,
             10,
             staking_pool_id,
@@ -332,33 +332,62 @@ impl SystemStateV1 {
             .find_validator_with_pending_mut(validator_address)
             .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
         let pool_id = validator.staking_pool.id;
-        validator.add_stake_principal(amount);
+        // Route by pool state: preactive pools (validator candidate not
+        // yet in the active set) absorb stake directly into
+        // `active_stake` so the first deposit_staker_rewards has a
+        // divisor; active pools land in the pending bucket so the new
+        // stake doesn't earn current-epoch rewards.
+        if validator.staking_pool.is_preactive() {
+            validator.add_active_stake_principal(amount);
+        } else {
+            validator.add_pending_stake_principal(amount);
+        }
         self.validators.staking_pool_mappings.insert(pool_id, validator_address);
         Ok(pool_id)
     }
 
-    /// Stage 9d-C5: at-genesis variant — pool starts preactive but
-    /// the genesis builder activates it before sealing the genesis
-    /// state. Behaviorally identical to `add_stake_to_validator` at
-    /// runtime since `add_stake_principal` doesn't gate on
-    /// activation.
+    /// Genesis variant — always seeds stake directly into
+    /// `active_stake` (bypasses the preactive routing in
+    /// [`Self::add_stake_to_validator`]). Required because
+    /// [`Self::create`] activates all validators at epoch 0 *before*
+    /// the genesis builder seeds stakes; without this carve-out the
+    /// stakes would land in the pending bucket and the initial
+    /// committee would have zero voting power.
     #[allow(clippy::result_large_err)]
     pub fn add_stake_to_validator_at_genesis(
         &mut self,
         validator_address: SomaAddress,
         amount: u64,
     ) -> ExecutionResult<ObjectID> {
-        self.add_stake_to_validator(validator_address, amount)
+        if amount == 0 {
+            return Err(ExecutionFailureStatus::InvalidArguments {
+                reason: "Stake amount cannot be 0!".to_string(),
+            });
+        }
+        let validator = self
+            .validators
+            .find_validator_with_pending_mut(validator_address)
+            .ok_or(ExecutionFailureStatus::ValidatorNotFound)?;
+        let pool_id = validator.staking_pool.id;
+        validator.add_active_stake_principal(amount);
+        self.validators.staking_pool_mappings.insert(pool_id, validator_address);
+        Ok(pool_id)
     }
 
-    /// Stage 9d-C5: drop `amount` of principal from the validator's
-    /// pool total_stake. Returns the pool_id so callers can emit the
-    /// matching DelegationEvent.
+    /// Drop principal from the validator's pool, splitting between
+    /// the active and pending buckets exactly as the caller
+    /// specifies. The pool's `pending_active_stake` aggregates
+    /// pending across ALL stakers — only the executor (which holds
+    /// the staker's specific delegation row) knows what fraction of
+    /// a withdrawal should drain pending vs. active. This API takes
+    /// both amounts so that pool aggregates and the staker's row
+    /// stay in sync.
     #[allow(clippy::result_large_err)]
     pub fn remove_stake_from_validator(
         &mut self,
         pool_id: ObjectID,
-        amount: u64,
+        from_active: u64,
+        from_pending: u64,
     ) -> ExecutionResult<()> {
         let validator_address = self
             .validators
@@ -367,16 +396,21 @@ impl SystemStateV1 {
             .copied()
             .ok_or(ExecutionFailureStatus::StakingPoolNotFound)?;
 
+        let drain = |v: &mut crate::system_state::Validator| {
+            v.remove_pending_stake_principal(from_pending);
+            v.remove_active_stake_principal(from_active);
+        };
+
         if let Some(validator) =
             self.validators.find_validator_with_pending_mut(validator_address)
         {
-            validator.remove_stake_principal(amount);
+            drain(validator);
             return Ok(());
         }
         if let Some(inactive_validator) =
             self.validators.inactive_validators.get_mut(&pool_id)
         {
-            inactive_validator.remove_stake_principal(amount);
+            drain(inactive_validator);
             return Ok(());
         }
 
@@ -779,7 +813,6 @@ impl SystemState {
         net_address: Vec<u8>,
         p2p_address: Vec<u8>,
         primary_address: Vec<u8>,
-        proxy_address: Vec<u8>,
         staking_pool_id: ObjectID,
     ) -> ExecutionResult {
         match self {
@@ -792,7 +825,6 @@ impl SystemState {
                 net_address,
                 p2p_address,
                 primary_address,
-                proxy_address,
                 staking_pool_id,
             ),
         }
@@ -841,10 +873,11 @@ impl SystemState {
     pub fn remove_stake_from_validator(
         &mut self,
         pool_id: ObjectID,
-        amount: u64,
+        from_active: u64,
+        from_pending: u64,
     ) -> ExecutionResult<()> {
         match self {
-            Self::V1(v1) => v1.remove_stake_from_validator(pool_id, amount),
+            Self::V1(v1) => v1.remove_stake_from_validator(pool_id, from_active, from_pending),
         }
     }
 

@@ -533,7 +533,6 @@ async fn execute_add_validator_transactions(
             net_address: bcs::to_bytes(&new_validator.network_address).unwrap(),
             p2p_address: bcs::to_bytes(&new_validator.p2p_address).unwrap(),
             primary_address: bcs::to_bytes(&new_validator.consensus_address).unwrap(),
-            proxy_address: bcs::to_bytes(&new_validator.proxy_address).unwrap(),
         }
     });
     let tx_data = e2e_tests::stateless_tx_data(test_cluster, sender_address, kind);
@@ -732,7 +731,10 @@ async fn test_validator_candidate_pool_read() {
             pending.staking_pool.deactivation_epoch.is_none(),
             "Pending validator pool should not be deactivated"
         );
-        assert!(pending.staking_pool.total_stake > 0, "Pending validator should have stake");
+        assert!(
+            pending.staking_pool.active_stake + pending.staking_pool.pending_active_stake > 0,
+            "Pending validator should have stake",
+        );
     });
 
     // Verify the committee hasn't changed yet.

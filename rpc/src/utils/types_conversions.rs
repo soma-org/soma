@@ -350,7 +350,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                 net_address: args.net_address,
                 p2p_address: args.p2p_address,
                 primary_address: args.primary_address,
-                proxy_address: args.proxy_address,
             }),
 
             TK::RemoveValidator(args) => TransactionKind::RemoveValidator(RemoveValidatorArgs {
@@ -370,7 +369,6 @@ impl TryFrom<types::transaction::TransactionKind> for TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
-                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,
@@ -472,7 +470,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     net_address: args.net_address,
                     p2p_address: args.p2p_address,
                     primary_address: args.primary_address,
-                    proxy_address: args.proxy_address,
                 })
             }
 
@@ -495,7 +492,6 @@ impl TryFrom<TransactionKind> for types::transaction::TransactionKind {
                     next_epoch_network_address: args.next_epoch_network_address,
                     next_epoch_p2p_address: args.next_epoch_p2p_address,
                     next_epoch_primary_address: args.next_epoch_primary_address,
-                    next_epoch_proxy_address: args.next_epoch_proxy_address,
                     next_epoch_protocol_pubkey: args.next_epoch_protocol_pubkey,
                     next_epoch_worker_pubkey: args.next_epoch_worker_pubkey,
                     next_epoch_network_pubkey: args.next_epoch_network_pubkey,

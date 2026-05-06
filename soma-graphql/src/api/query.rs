@@ -13,9 +13,7 @@ use diesel_async::RunQueryDsl;
 
 use crate::api::scalars::BigInt;
 use crate::api::types::address::Address;
-use crate::api::types::ask::Ask;
 use crate::api::types::available_range::AvailableRange;
-use crate::api::types::bid::Bid;
 use crate::api::types::channel::{Channel as GqlChannel, ChannelStatus};
 use crate::api::types::checkpoint::Checkpoint;
 use crate::api::types::epoch::Epoch;
@@ -23,9 +21,7 @@ use crate::api::types::epoch_state::EpochState;
 use crate::api::types::network_metrics::NetworkMetrics;
 use crate::api::types::object::Object as GqlObject;
 use crate::api::types::provider::Provider as GqlProvider;
-use crate::api::types::reputation::Reputation;
 use crate::api::types::service_config::ServiceConfig;
-use crate::api::types::settlement::Settlement;
 use crate::api::types::staked_soma::StakedSoma;
 use crate::api::types::transaction::Transaction;
 use crate::api::types::transaction_detail::TransactionDetail;
@@ -432,305 +428,6 @@ impl Query {
             total_stake: end.as_ref().and_then(|e| e.total_stake),
             total_gas_fees: end.as_ref().and_then(|e| e.total_gas_fees),
         }))
-    }
-
-    /// Query marketplace asks with optional filters.
-    async fn asks(
-        &self,
-        ctx: &Context<'_>,
-        status: Option<String>,
-        buyer: Option<String>,
-        limit: Option<i64>,
-    ) -> Result<Vec<Ask>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_asks;
-
-        type AskRow = (Vec<u8>, Vec<u8>, Vec<u8>, i64, i32, i64, i64, String, i32);
-
-        let mut query = soma_asks::table
-            .select((
-                soma_asks::ask_id,
-                soma_asks::buyer,
-                soma_asks::task_digest,
-                soma_asks::max_price_per_bid,
-                soma_asks::num_bids_wanted,
-                soma_asks::timeout_ms,
-                soma_asks::created_at_ms,
-                soma_asks::status,
-                soma_asks::accepted_bid_count,
-            ))
-            .order(soma_asks::created_at_ms.desc())
-            .limit(limit.unwrap_or(50))
-            .into_boxed();
-
-        if let Some(ref s) = status {
-            query = query.filter(soma_asks::status.eq(s));
-        }
-
-        if let Some(ref b) = buyer {
-            let hex = b.strip_prefix("0x").unwrap_or(b);
-            let bytes =
-                hex::decode(hex).map_err(|e| Error::new(format!("Invalid buyer address: {e}")))?;
-            query = query.filter(soma_asks::buyer.eq(bytes));
-        }
-
-        let rows: Vec<AskRow> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Ask {
-                ask_id: r.0,
-                buyer: r.1,
-                task_digest: r.2,
-                max_price_per_bid: r.3,
-                num_bids_wanted: r.4,
-                timeout_ms: r.5,
-                created_at_ms: r.6,
-                status: r.7,
-                accepted_bid_count: r.8,
-            })
-            .collect())
-    }
-
-    /// Query bids for a specific ask.
-    async fn bids(
-        &self,
-        ctx: &Context<'_>,
-        ask_id: Option<String>,
-        seller: Option<String>,
-        status: Option<String>,
-        limit: Option<i64>,
-    ) -> Result<Vec<Bid>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_bids;
-
-        type BidRow = (Vec<u8>, Vec<u8>, Vec<u8>, i64, Vec<u8>, i64, String);
-
-        let mut query = soma_bids::table
-            .select((
-                soma_bids::bid_id,
-                soma_bids::ask_id,
-                soma_bids::seller,
-                soma_bids::price,
-                soma_bids::response_digest,
-                soma_bids::created_at_ms,
-                soma_bids::status,
-            ))
-            .order(soma_bids::created_at_ms.desc())
-            .limit(limit.unwrap_or(50))
-            .into_boxed();
-
-        if let Some(ref a) = ask_id {
-            let hex = a.strip_prefix("0x").unwrap_or(a);
-            let bytes =
-                hex::decode(hex).map_err(|e| Error::new(format!("Invalid ask ID: {e}")))?;
-            query = query.filter(soma_bids::ask_id.eq(bytes));
-        }
-
-        if let Some(ref s) = seller {
-            let hex = s.strip_prefix("0x").unwrap_or(s);
-            let bytes = hex::decode(hex)
-                .map_err(|e| Error::new(format!("Invalid seller address: {e}")))?;
-            query = query.filter(soma_bids::seller.eq(bytes));
-        }
-
-        if let Some(ref st) = status {
-            query = query.filter(soma_bids::status.eq(st));
-        }
-
-        let rows: Vec<BidRow> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Bid {
-                bid_id: r.0,
-                ask_id: r.1,
-                seller: r.2,
-                price: r.3,
-                response_digest: r.4,
-                created_at_ms: r.5,
-                status: r.6,
-            })
-            .collect())
-    }
-
-    /// Query settlements with optional filters.
-    async fn settlements(
-        &self,
-        ctx: &Context<'_>,
-        buyer: Option<String>,
-        seller: Option<String>,
-        limit: Option<i64>,
-    ) -> Result<Vec<Settlement>> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        use indexer_alt_schema::schema::soma_settlements;
-
-        type Row = (
-            Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, i64,
-            Vec<u8>, Vec<u8>, i64, String, i64,
-        );
-
-        let mut query = soma_settlements::table
-            .select((
-                soma_settlements::settlement_id,
-                soma_settlements::ask_id,
-                soma_settlements::bid_id,
-                soma_settlements::buyer,
-                soma_settlements::seller,
-                soma_settlements::amount,
-                soma_settlements::task_digest,
-                soma_settlements::response_digest,
-                soma_settlements::settled_at_ms,
-                soma_settlements::seller_rating,
-                soma_settlements::rating_deadline_ms,
-            ))
-            .order(soma_settlements::settled_at_ms.desc())
-            .limit(limit.unwrap_or(50))
-            .into_boxed();
-
-        if let Some(ref b) = buyer {
-            let hex = b.strip_prefix("0x").unwrap_or(b);
-            let bytes =
-                hex::decode(hex).map_err(|e| Error::new(format!("Invalid buyer address: {e}")))?;
-            query = query.filter(soma_settlements::buyer.eq(bytes));
-        }
-
-        if let Some(ref s) = seller {
-            let hex = s.strip_prefix("0x").unwrap_or(s);
-            let bytes = hex::decode(hex)
-                .map_err(|e| Error::new(format!("Invalid seller address: {e}")))?;
-            query = query.filter(soma_settlements::seller.eq(bytes));
-        }
-
-        let rows: Vec<Row> =
-            query.load(conn.deref_mut()).await.map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Settlement {
-                settlement_id: r.0,
-                ask_id: r.1,
-                bid_id: r.2,
-                buyer: r.3,
-                seller: r.4,
-                amount: r.5,
-                task_digest: r.6,
-                response_digest: r.7,
-                settled_at_ms: r.8,
-                seller_rating: r.9,
-                rating_deadline_ms: r.10,
-            })
-            .collect())
-    }
-
-    /// Query reputation for an address, computed from settlement history.
-    async fn reputation(
-        &self,
-        ctx: &Context<'_>,
-        address: String,
-    ) -> Result<Reputation> {
-        let pg: &Arc<PgReader> = ctx.data()?;
-        let mut conn = pg.connect().await?;
-
-        let hex = address.strip_prefix("0x").unwrap_or(&address);
-        let addr_bytes =
-            hex::decode(hex).map_err(|e| Error::new(format!("Invalid address: {e}")))?;
-
-        use indexer_alt_schema::schema::{soma_asks, soma_bids, soma_settlements};
-
-        // Buyer metrics
-        let total_asks_created: i64 = soma_asks::table
-            .filter(soma_asks::buyer.eq(&addr_bytes))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_bids_accepted: i64 = soma_settlements::table
-            .filter(soma_settlements::buyer.eq(&addr_bytes))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_volume_spent: Option<i64> = soma_settlements::table
-            .filter(soma_settlements::buyer.eq(&addr_bytes))
-            .select(diesel::dsl::sql::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>>(
-                "COALESCE(SUM(amount), 0)::BIGINT",
-            ))
-            .first(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let unique_sellers: i64 = soma_settlements::table
-            .filter(soma_settlements::buyer.eq(&addr_bytes))
-            .select(diesel::dsl::sql::<diesel::sql_types::BigInt>(
-                "COUNT(DISTINCT seller)",
-            ))
-            .first(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        // Seller metrics
-        let total_bids_submitted: i64 = soma_bids::table
-            .filter(soma_bids::seller.eq(&addr_bytes))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_settlements_as_seller: i64 = soma_settlements::table
-            .filter(soma_settlements::seller.eq(&addr_bytes))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_volume_earned: Option<i64> = soma_settlements::table
-            .filter(soma_settlements::seller.eq(&addr_bytes))
-            .select(diesel::dsl::sql::<diesel::sql_types::Nullable<diesel::sql_types::BigInt>>(
-                "COALESCE(SUM(amount), 0)::BIGINT",
-            ))
-            .first(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let negative_ratings_received: i64 = soma_settlements::table
-            .filter(soma_settlements::seller.eq(&addr_bytes))
-            .filter(soma_settlements::seller_rating.eq("negative"))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        let total_bids_won: i64 = soma_bids::table
-            .filter(soma_bids::seller.eq(&addr_bytes))
-            .filter(soma_bids::status.eq("accepted"))
-            .count()
-            .get_result(conn.deref_mut())
-            .await
-            .map_err(|e| Error::new(e.to_string()))?;
-
-        Ok(Reputation {
-            address: addr_bytes,
-            total_asks_created,
-            total_bids_accepted,
-            total_volume_spent: total_volume_spent.unwrap_or(0),
-            unique_sellers,
-            total_bids_submitted,
-            total_bids_won,
-            total_volume_earned: total_volume_earned.unwrap_or(0),
-            negative_ratings_received,
-            total_settlements_as_seller,
-        })
     }
 
     /// Look up a staked SOMA position by its object ID.
@@ -1264,7 +961,6 @@ impl Query {
             i64,
             Option<String>,
             Option<String>,
-            Option<String>,
         );
 
         let mut query = soma_validators::table
@@ -1279,7 +975,6 @@ impl Query {
                 soma_validators::pending_stake,
                 soma_validators::name,
                 soma_validators::network_address,
-                soma_validators::proxy_address,
             ))
             .filter(soma_validators::epoch.eq(epoch_num))
             .order(soma_validators::stake.desc())
@@ -1315,7 +1010,6 @@ impl Query {
                     pending_stake: row.7,
                     name: row.8,
                     network_address: row.9,
-                    proxy_address: row.10,
                 },
             ));
         }
@@ -1350,7 +1044,6 @@ impl Query {
             i64,
             Option<String>,
             Option<String>,
-            Option<String>,
         );
 
         let mut query = soma_validators::table
@@ -1365,7 +1058,6 @@ impl Query {
                 soma_validators::pending_stake,
                 soma_validators::name,
                 soma_validators::network_address,
-                soma_validators::proxy_address,
             ))
             .filter(soma_validators::address.eq(&addr_bytes))
             .order(soma_validators::epoch.desc())
@@ -1393,7 +1085,6 @@ impl Query {
             pending_stake: row.7,
             name: row.8,
             network_address: row.9,
-            proxy_address: row.10,
         }))
     }
 

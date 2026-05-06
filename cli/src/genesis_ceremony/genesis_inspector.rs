@@ -200,8 +200,8 @@ fn display_validator(validator: &Validator) {
     println!("Voting Power: {}", validator.voting_power);
     println!("Commission Rate: {}", validator.commission_rate);
     println!("Staking Pool ID: {}", validator.staking_pool.id);
-    println!("Staking Pool Total Stake: {}", validator.staking_pool.total_stake);
-    println!("Next Epoch Stake: {}", validator.next_epoch_stake);
+    println!("Active Stake: {}", validator.staking_pool.active_stake);
+    println!("Pending Active Stake: {}", validator.staking_pool.pending_active_stake);
     print_divider(&validator.metadata.soma_address.to_string());
 }
 

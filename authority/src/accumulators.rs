@@ -68,16 +68,13 @@ struct Update {
     delta: i128,
 }
 
-/// One delegation row's per-cp aggregated state. Mirrors Cosmos x/distribution F1.
+/// One delegation row's per-cp aggregated state. Last writer wins
+/// across the checkpoint's events for the same `(pool, staker)`.
 #[derive(Debug, Clone, Copy)]
 struct DelegationUpdate {
     pool_id: ObjectID,
     staker: SomaAddress,
-    delta: i128,
-    /// Highest `set_period` seen across the cp's events for this row.
-    /// F1 mark-advancement is monotonic — taking the max is the
-    /// correct "last writer wins" semantics for a cp.
-    set_period: Option<u64>,
+    new_state: Option<types::system_state::staking::Delegation>,
 }
 
 /// Per-cp accumulator-settlement aggregator. Construct from
@@ -119,15 +116,16 @@ impl AccumulatorSettlementTxBuilder {
                 let entry = delegation_updates.entry(acc_id).or_insert(DelegationUpdate {
                     pool_id: de.pool_id,
                     staker: de.staker,
-                    delta: 0,
-                    set_period: None,
+                    new_state: None,
                 });
+                // Promoted from debug_assert_eq! to assert_eq! to
+                // catch the deterministic-derivation bug in release
+                // builds — a silent fallback to the first-write key
+                // would be consensus-critical.
                 assert_eq!(entry.pool_id, de.pool_id);
                 assert_eq!(entry.staker, de.staker);
-                entry.delta += de.delta;
-                if let Some(p) = de.set_period {
-                    entry.set_period = Some(entry.set_period.map_or(p, |q| q.max(p)));
-                }
+                // Last writer wins.
+                entry.new_state = de.new_state;
             }
         }
 
@@ -189,17 +187,10 @@ impl AccumulatorSettlementTxBuilder {
         }
 
         for (_acc_id, du) in self.delegation_updates {
-            // Keep a row even when delta is zero IF set_period
-            // advanced — the F1 mark needs to land. Drop only when
-            // both delta and set_period are no-ops.
-            if du.delta == 0 && du.set_period.is_none() {
-                continue;
-            }
             delegation_changes.push(DelegationEvent {
                 pool_id: du.pool_id,
                 staker: du.staker,
-                delta: du.delta,
-                set_period: du.set_period,
+                new_state: du.new_state,
             });
         }
 
@@ -381,23 +372,19 @@ mod tests {
 
     /// Two effects in the same cp that both touch the same
     /// `(pool_id, staker)` row must aggregate to ONE delegation
-    /// update with the deltas summed and `set_period` taken as the
-    /// **max** of the inputs. The max-aggregate is the F1 / Cosmos
-    /// x/distribution semantics — period marks are monotonic across
-    /// reward claims, so a single cp's worth of claims should land at
-    /// the highest mark seen. Mirrors the structural intent of Sui's
-    /// `MergedValueIntermediate::accumulate_into` for commutative
-    /// cp-level aggregation, adapted for F1's monotonic mark.
+    /// Multiple delegation events for the same `(pool, staker)`
+    /// within a checkpoint collapse to a single update — the last
+    /// write wins. Each executor is responsible for emitting the
+    /// post-settle, post-mutation row, so within a single tx (or a
+    /// chain of txs in one cp) the last emitted state is the correct
+    /// one to land on disk.
     #[tokio::test]
-    async fn delegation_set_period_aggregates_as_max_within_cp() {
+    async fn delegation_events_collapse_last_write_wins() {
+        use types::system_state::staking::Delegation;
         use types::temporary_store::DelegationEvent;
         let pool_id = ObjectID::from_address(addr(7));
         let staker = addr(8);
 
-        // Tx 1: stake 100 with mark 5.
-        // Tx 2: unstake 30  with mark 7.   <-- larger mark
-        // Tx 3: stake 200 with no mark advance.
-        // Expected: delta = +270, set_period = Some(7).
         let mk_effects = |events: Vec<DelegationEvent>| {
             TransactionEffects::V1(TransactionEffectsV1 {
                 status: ExecutionStatus::Success,
@@ -413,24 +400,15 @@ mod tests {
                 delegation_events: events,
             })
         };
-        let e1 = mk_effects(vec![DelegationEvent {
-            pool_id,
-            staker,
-            delta: 100,
-            set_period: Some(5),
-        }]);
-        let e2 = mk_effects(vec![DelegationEvent {
-            pool_id,
-            staker,
-            delta: -30,
-            set_period: Some(7),
-        }]);
-        let e3 = mk_effects(vec![DelegationEvent {
-            pool_id,
-            staker,
-            delta: 200,
-            set_period: None,
-        }]);
+        let row_a = Delegation::new(100, 1_000);
+        let row_b = Delegation::new(70, 2_000);
+        let row_c = Delegation::new(270, 3_000);
+        let e1 =
+            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_a) }]);
+        let e2 =
+            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_b) }]);
+        let e3 =
+            mk_effects(vec![DelegationEvent { pool_id, staker, new_state: Some(row_c) }]);
 
         let payload = AccumulatorSettlementTxBuilder::new(&[e1, e2, e3]).build(0, 1, None);
 
@@ -440,18 +418,15 @@ mod tests {
             "three delegation events on the same (pool, staker) must collapse to one"
         );
         let de = &payload.delegation_changes[0];
-        assert_eq!(de.delta, 270, "deltas sum");
-        assert_eq!(de.set_period, Some(7), "set_period takes the max across the cp");
+        assert_eq!(de.new_state, Some(row_c), "last write wins");
     }
 
-    /// A delegation row with net-zero delta but a non-trivial
-    /// `set_period` advance must be **kept** in the settlement payload.
-    /// This is the F1-specific reason a delegation update can't piggy-
-    /// back on the pure-balance "drop net-zero" rule: even when no
-    /// principal moves, the period mark still has to land so the next
-    /// reward calc starts from the right cumulative-mark snapshot.
+    /// A drain (`new_state = None`) following an earlier non-drain
+    /// must replace the row — the disk state should reflect the
+    /// drain, not the prior add.
     #[tokio::test]
-    async fn delegation_zero_delta_with_set_period_is_kept() {
+    async fn delegation_drain_overrides_prior_writes() {
+        use types::system_state::staking::Delegation;
         use types::temporary_store::DelegationEvent;
         let pool_id = ObjectID::from_address(addr(9));
         let staker = addr(10);
@@ -471,26 +446,22 @@ mod tests {
                 delegation_events: events,
             })
         };
-        // +50 then -50 with mark advance to 12. delta nets to zero but
-        // set_period must still be carried forward.
         let e = mk_effects(vec![
-            DelegationEvent { pool_id, staker, delta: 50, set_period: Some(11) },
-            DelegationEvent { pool_id, staker, delta: -50, set_period: Some(12) },
+            DelegationEvent { pool_id, staker, new_state: Some(Delegation::new(50, 11)) },
+            DelegationEvent { pool_id, staker, new_state: None },
         ]);
 
         let payload = AccumulatorSettlementTxBuilder::new(&[e]).build(0, 1, None);
 
-        assert_eq!(payload.delegation_changes.len(), 1, "row kept for the period mark");
+        assert_eq!(payload.delegation_changes.len(), 1, "drain row still surfaces");
         let de = &payload.delegation_changes[0];
-        assert_eq!(de.delta, 0);
-        assert_eq!(de.set_period, Some(12));
+        assert_eq!(de.new_state, None, "drain overrides prior writes");
     }
 
-    /// Net-zero delta AND no period advance → drop. Without this the
-    /// settlement TX would carry pointless rows that grow per-cp wire
-    /// bytes for no on-chain effect.
+    /// A single drain event surfaces in the settlement payload — the
+    /// applier needs to see it to delete the on-disk row.
     #[tokio::test]
-    async fn delegation_zero_delta_no_set_period_is_dropped() {
+    async fn delegation_drain_passes_through() {
         use types::temporary_store::DelegationEvent;
         let pool_id = ObjectID::from_address(addr(11));
         let staker = addr(12);
@@ -506,14 +477,12 @@ mod tests {
             transaction_fee: TransactionFee::default(),
             gas_object_index: None,
             balance_events: vec![],
-            delegation_events: vec![
-                DelegationEvent { pool_id, staker, delta: 1, set_period: None },
-                DelegationEvent { pool_id, staker, delta: -1, set_period: None },
-            ],
+            delegation_events: vec![DelegationEvent { pool_id, staker, new_state: None }],
         });
 
         let payload = AccumulatorSettlementTxBuilder::new(&[e]).build(0, 1, None);
-        assert!(payload.delegation_changes.is_empty(), "no-op rows must be dropped");
+        assert_eq!(payload.delegation_changes.len(), 1, "drain row kept for applier");
+        assert_eq!(payload.delegation_changes[0].new_state, None);
     }
 
     #[tokio::test]

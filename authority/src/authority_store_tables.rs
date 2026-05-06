@@ -172,21 +172,15 @@ pub struct AuthorityPerpetualTables {
     pub(crate) executed_transaction_digests: DBMap<(EpochId, TransactionDigest), ()>,
 
     /// Stage 9d-C1: F1-shaped delegation table — ONE row per
-    /// (pool_id, staker). Replaces the previous tripled key
-    /// (pool_id, staker, activation_epoch) -> u64; activation epoch
-    /// drops out because F1's per-staker history is captured by the
-    /// `last_collected_period` field on the `Delegation` value.
-    ///
-    /// `principal` is the staker's committed stake. `last_collected_period`
-    /// is the F1 cumulative-index period as of their most recent
-    /// fold. Pending reward is computed at read time as
-    /// principal * (R(current_period) − R(last_collected_period)) /
-    /// F1_INDEX_SCALE.
-    ///
-    /// AddStake / WithdrawStake fold pending rewards to the staker's
-    /// SOMA balance and update `last_collected_period`. The table is
-    /// sole truth for reward collection — Stage 9d-C5 deletes
-    /// `StakedSomaV1` once no caller depends on it.
+    /// (pool_id, staker) → auto-compound delegation row. One row per
+    /// (pool, staker), with the row's `principal` being the staker's
+    /// rewards-eligible active stake and `index_at_last_collect` the
+    /// pool exchange-rate snapshot at last settle. A staker's
+    /// compounded value at any time is
+    /// `principal × pool.cumulative_index / index_at_last_collect`.
+    /// Pending stake (mid-epoch additions) lives on the row as
+    /// `pending_principal` and promotes into `principal` at the next
+    /// boundary on the staker's next interaction.
     ///
     /// Tuple-key encoding (BCS): `pool_id` first means all delegations
     /// for one pool sort contiguously — the validator-removal path can

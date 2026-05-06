@@ -1263,24 +1263,6 @@ async fn start(
         let _ = update_wallet_config_rpc(soma_config_dir()?, fullnode_rpc_url.clone())?;
     }
 
-    // -- Admin server (epoch advance) -----------------------------------------
-    let swarm = std::sync::Arc::new(swarm);
-    {
-        let admin_swarm = swarm.clone();
-        tokio::spawn(async move {
-            let svc = AdminServiceImpl::new(admin_swarm);
-            let addr: std::net::SocketAddr = "127.0.0.1:9125".parse().unwrap();
-            if let Err(e) = admin::tonic::transport::Server::builder()
-                .add_service(admin::admin_gen::admin_server::AdminServer::new(svc))
-                .serve(addr)
-                .await
-            {
-                tracing::error!("Admin server error: {}", e);
-            }
-        });
-    }
-    let admin_url = "http://127.0.0.1:9125".to_string();
-
     // -- Network ready banner -------------------------------------------------
     let epoch_ms = epoch_duration_ms.unwrap_or(DEFAULT_EPOCH_DURATION_MS);
     let state_dir = config_dir.display().to_string();
@@ -1292,7 +1274,6 @@ async fn start(
     let epoch_display = format!("{}s", epoch_ms / 1000);
     let rows: Vec<(&str, &str)> = vec![
         ("RPC URL", &fullnode_rpc_url),
-        ("Admin", &admin_url),
         ("Epoch", &epoch_display),
         ("Persistence", persistence),
     ];
@@ -1337,138 +1318,6 @@ async fn start(
     eprintln!("  {}", "Done.".green().bold());
 
     Ok(())
-}
-
-/// gRPC admin service for epoch advancement on localnet.
-struct AdminServiceImpl {
-    swarm: std::sync::Arc<Swarm>,
-}
-
-impl AdminServiceImpl {
-    fn new(swarm: std::sync::Arc<Swarm>) -> Self {
-        Self { swarm }
-    }
-}
-
-#[admin::tonic::async_trait]
-impl admin::admin_gen::admin_server::Admin for AdminServiceImpl {
-    async fn advance_epoch(
-        &self,
-        _request: admin::tonic::Request<admin::admin_types::AdvanceEpochRequest>,
-    ) -> Result<
-        admin::tonic::Response<admin::admin_types::AdvanceEpochResponse>,
-        admin::tonic::Status,
-    > {
-        info!("[admin] advance_epoch called");
-
-        let fullnode = self
-            .swarm
-            .fullnodes()
-            .next()
-            .ok_or_else(|| admin::tonic::Status::internal("No fullnode available"))?;
-
-        let fullnode_handle = fullnode
-            .get_node_handle()
-            .ok_or_else(|| admin::tonic::Status::internal("Fullnode handle unavailable"))?;
-
-        let cur_committee = fullnode_handle.with(|node| node.state().clone_committee_for_testing());
-        let target_epoch = cur_committee.epoch + 1;
-        info!("[admin] current epoch={}, target={}", cur_committee.epoch, target_epoch);
-
-        // Wait for all validators to reach the current fullnode epoch first.
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-        loop {
-            let mut all_ready = true;
-            for node in self.swarm.validator_nodes() {
-                if let Some(handle) = node.get_node_handle() {
-                    let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
-                    if v_epoch < cur_committee.epoch {
-                        all_ready = false;
-                        break;
-                    }
-                }
-            }
-            if all_ready {
-                break;
-            }
-            if tokio::time::Instant::now() > deadline {
-                return Err(admin::tonic::Status::deadline_exceeded(
-                    "Validators did not reach current epoch",
-                ));
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-        info!("[admin] all validators ready");
-
-        // Close epoch on all validator nodes sequentially.
-        // Important: do NOT use timeout here — dropping the close_epoch future
-        // mid-lock-acquisition aborts it entirely, and the epoch never advances.
-        info!("[admin] calling close_epoch_for_testing...");
-        for node in self.swarm.validator_nodes() {
-            if let Some(handle) = node.get_node_handle() {
-                if let Err(e) =
-                    handle.with_async(|n| async move { n.close_epoch_for_testing().await }).await
-                {
-                    tracing::warn!("[admin] close_epoch_for_testing failed: {e}");
-                }
-            }
-        }
-        info!("[admin] all close_epoch calls done, polling for epoch {target_epoch}...");
-
-        // Wait for ALL nodes to fully reconfigure.
-        loop {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-
-            let mut all_ready = true;
-
-            // Check fullnode: epoch_store AND authority aggregator
-            if let Some(handle) = fullnode.get_node_handle() {
-                let ready = handle.with(|node| {
-                    let epoch = node.state().epoch_store_for_testing().epoch();
-                    if epoch < target_epoch {
-                        return false;
-                    }
-                    if let Some(agg) = node.clone_authority_aggregator() {
-                        agg.committee.epoch() >= target_epoch
-                    } else {
-                        true
-                    }
-                });
-                if !ready {
-                    all_ready = false;
-                }
-            }
-
-            // Check all validators: epoch_store only
-            if all_ready {
-                for node in self.swarm.validator_nodes() {
-                    if let Some(handle) = node.get_node_handle() {
-                        let v_epoch = handle.with(|n| n.state().epoch_store_for_testing().epoch());
-                        if v_epoch < target_epoch {
-                            all_ready = false;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if all_ready {
-                // Grace period for consensus startup
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-                info!("[admin] epoch advanced to {target_epoch}");
-                return Ok(admin::tonic::Response::new(admin::admin_types::AdvanceEpochResponse {
-                    epoch: target_epoch,
-                }));
-            }
-
-            if tokio::time::Instant::now() > deadline {
-                info!("[admin] TIMEOUT waiting for epoch {target_epoch}");
-                return Err(admin::tonic::Status::deadline_exceeded(
-                    "Epoch did not advance within 120s",
-                ));
-            }
-        }
-    }
 }
 
 async fn genesis(
